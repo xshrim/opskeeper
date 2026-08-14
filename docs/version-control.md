@@ -4,7 +4,8 @@
 
 - 默认分支：`main`
 - 远端名称：`origin`
-- 远端地址：`https://github.com/xshrim/opskeeper.git`
+- GitHub 仓库：`https://github.com/xshrim/opskeeper.git`
+- 当前 SSH 远端：`ssh://git@ssh.github.com:443/xshrim/opskeeper.git`
 
 检查当前配置：
 
@@ -25,9 +26,19 @@ git push origin main
 git push --set-upstream origin main
 ```
 
+当前网络不能直接连接 GitHub SSH 端口。已经在 GitHub 添加本机 `~/.ssh/id_rsa.pub` 时，可以让 SSH 通过本机 HTTP 代理连接 GitHub 官方 SSH 443 入口：
+
+```bash
+GIT_SSH_COMMAND="ssh -o IdentitiesOnly=yes -i $HOME/.ssh/id_rsa \
+  -o 'ProxyCommand=nc -X connect -x 127.0.0.1:7890 %h %p'" \
+git push origin main
+```
+
+`GIT_SSH_COMMAND` 仅对当前命令生效，不修改用户级 SSH 配置。首次连接时应核对并接受 `ssh.github.com` 的官方主机指纹。
+
 ## 临时代理
 
-无法直接连接 GitHub 时，只对当前命令临时设置本机代理：
+使用 HTTPS 远端且无法直接连接 GitHub 时，只对当前命令临时设置本机代理：
 
 ```bash
 http_proxy=http://127.0.0.1:7890 \
