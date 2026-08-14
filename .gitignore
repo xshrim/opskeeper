@@ -1,0 +1,11 @@
+.env
+.cache/
+.DS_Store
+
+backend/bin/
+backend/coverage.out
+
+frontend/.env
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
