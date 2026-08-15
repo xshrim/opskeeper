@@ -30,6 +30,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BasePath != "/test-ops" {
 		t.Fatalf("Load() returned unexpected base path: %#v", cfg)
 	}
+	if cfg.CookieSecure || cfg.SessionAccessTTL != 15*time.Minute || cfg.SessionRefreshTTL != 7*24*time.Hour {
+		t.Fatalf("Load() returned unexpected session config: %#v", cfg)
+	}
 	if len(cfg.TrustedProxies) != 0 {
 		t.Fatalf("Load() TrustedProxies = %#v, want empty", cfg.TrustedProxies)
 	}
@@ -97,6 +100,46 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid duration error")
 	}
+}
+
+func TestLoadRequiresSecureCookiesInProduction(t *testing.T) {
+	t.Setenv("OPSK_ENVIRONMENT", "production")
+	t.Setenv("OPSK_COOKIE_SECURE", "false")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil for insecure production cookies")
+	}
+
+	t.Setenv("OPSK_COOKIE_SECURE", "true")
+	cfg, err := Load()
+	if err != nil || !cfg.CookieSecure {
+		t.Fatalf("Load() = %#v, %v", cfg, err)
+	}
+}
+
+func TestLoadRejectsInvalidSessionConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "cookie boolean", key: "OPSK_COOKIE_SECURE", value: "sometimes"},
+		{name: "access duration", key: "OPSK_SESSION_ACCESS_TTL", value: "soon"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
+			}
+		})
+	}
+
+	t.Run("refresh must exceed access", func(t *testing.T) {
+		t.Setenv("OPSK_SESSION_ACCESS_TTL", "1h")
+		t.Setenv("OPSK_SESSION_REFRESH_TTL", "1h")
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() error = nil for equal session TTLs")
+		}
+	})
 }
 
 func TestLoadAcceptsBasePaths(t *testing.T) {

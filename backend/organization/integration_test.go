@@ -118,6 +118,16 @@ func TestMigrationRollback(t *testing.T) {
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() error = %v", err)
 	}
+	var usersTable *string
+	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.users')::text").Scan(&usersTable); err != nil {
+		t.Fatalf("check users table: %v", err)
+	}
+	if usersTable != nil {
+		t.Fatalf("users table still exists after identity rollback: %s", *usersTable)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() status migration error = %v", err)
+	}
 	var organizationStatusColumns int
 	if err := pool.QueryRow(context.Background(), `
 		SELECT count(*)
@@ -131,7 +141,7 @@ func TestMigrationRollback(t *testing.T) {
 		t.Fatalf("restored organization status columns = %d, want 3", organizationStatusColumns)
 	}
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
-		t.Fatalf("second RollbackLast() error = %v", err)
+		t.Fatalf("RollbackLast() organization migration error = %v", err)
 	}
 	var scopesTable *string
 	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.scopes')::text").Scan(&scopesTable); err != nil {

@@ -14,6 +14,7 @@ import (
 	"opskeeper/backend/config"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
+	"opskeeper/backend/identity"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/version"
@@ -75,12 +76,16 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	})
 	organizationStore := organization.NewStore(pool)
 	organizationService := organization.NewService(organizationStore)
+	identityStore := identity.NewStore(pool)
+	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
 		Handler: httpapi.NewRouter(logger, healthService, version.Current(), httpapi.Options{
 			BasePath:       cfg.BasePath,
 			TrustedProxies: cfg.TrustedProxies,
+			Identity:       identityService,
+			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,

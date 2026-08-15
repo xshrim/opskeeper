@@ -34,6 +34,9 @@ type Config struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
+	CookieSecure      bool
+	SessionAccessTTL  time.Duration
+	SessionRefreshTTL time.Duration
 }
 
 func Load() (Config, error) {
@@ -60,6 +63,15 @@ func Load() (Config, error) {
 	if cfg.TrustedProxies, err = prefixesFromEnv("OPSK_TRUSTED_PROXIES"); err != nil {
 		return Config{}, err
 	}
+	if cfg.CookieSecure, err = boolFromEnv("OPSK_COOKIE_SECURE", cfg.Environment == "production"); err != nil {
+		return Config{}, err
+	}
+	if cfg.SessionAccessTTL, err = durationFromEnv("OPSK_SESSION_ACCESS_TTL", 15*time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.SessionRefreshTTL, err = durationFromEnv("OPSK_SESSION_REFRESH_TTL", 7*24*time.Hour); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.HTTPAddress == "" {
 		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
@@ -75,6 +87,12 @@ func Load() (Config, error) {
 	}
 	if cfg.RedisURL == "" {
 		return Config{}, errors.New("OPSK_REDIS_URL must not be empty")
+	}
+	if cfg.Environment == "production" && !cfg.CookieSecure {
+		return Config{}, errors.New("OPSK_COOKIE_SECURE must be true in production")
+	}
+	if cfg.SessionRefreshTTL <= cfg.SessionAccessTTL {
+		return Config{}, errors.New("OPSK_SESSION_REFRESH_TTL must be greater than OPSK_SESSION_ACCESS_TTL")
 	}
 
 	return cfg, nil
@@ -150,4 +168,19 @@ func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) 
 		return 0, fmt.Errorf("%s must be positive", key)
 	}
 	return duration, nil
+}
+
+func boolFromEnv(key string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("parse %s: expected true or false", key)
+	}
 }

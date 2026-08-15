@@ -131,6 +131,17 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	if organizationStatusColumns != 0 {
 		t.Fatalf("organization status columns = %d, want 0", organizationStatusColumns)
 	}
+	var identityTables int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.tables
+		 WHERE table_schema = current_schema()
+		   AND table_name IN ('users', 'credentials', 'sessions')`).Scan(&identityTables); err != nil {
+		t.Fatalf("count identity tables: %v", err)
+	}
+	if identityTables != 3 {
+		t.Fatalf("identity tables = %d, want 3", identityTables)
+	}
 }
 
 func TestApplyRejectsChecksumMismatch(t *testing.T) {

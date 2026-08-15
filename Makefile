@@ -29,7 +29,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -43,6 +43,9 @@ migrate: ## Apply pending PostgreSQL migrations.
 
 migrate-down: ## Roll back the latest PostgreSQL migration.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/migrate down
+
+admin-create: ## Create the first administrator through the controlled bootstrap flow.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create
 
 infra-up: ## Start PostgreSQL and Redis.
 	$(call run-compose,up -d)
@@ -74,8 +77,8 @@ backend-test:
 backend-embedded-test: webui-assets
 	cd backend && go test -tags=embed_webui ./webui ./httpapi
 
-backend-integration-test: ## Run PostgreSQL migration and organization integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization
+backend-integration-test: ## Run PostgreSQL migration, organization, and identity integration tests.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity
 
 frontend-test:
 	cd frontend && npm run test
@@ -115,6 +118,7 @@ backend-build:
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-worker ./cmd/worker
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-scheduler ./cmd/scheduler
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-migrate ./cmd/migrate
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-admin ./cmd/admin
 
 build: webui-assets ## Build production binaries with the embedded frontend.
 	$(MAKE) backend-build

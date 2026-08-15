@@ -16,6 +16,8 @@ import (
 type Options struct {
 	BasePath       string
 	TrustedProxies []netip.Prefix
+	Identity       identityService
+	CookieSecure   bool
 }
 
 func NewRouter(logger *slog.Logger, healthService *health.Service, build version.Info, options Options, organizationService organizationService, webUI http.Handler) http.Handler {
@@ -38,9 +40,18 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 		}
 		writeJSON(writer, status, report)
 	})
-	if organizationService != nil {
+	if organizationService != nil || options.Identity != nil {
 		app.Route("/api/v1", func(router chi.Router) {
-			registerOrganizationRoutes(router, organizationService, path.Join(basePath, "api/v1"))
+			if organizationService != nil {
+				organizationRouter := router
+				if options.Identity != nil {
+					organizationRouter = router.With(authHandler{service: options.Identity}.requireAuth)
+				}
+				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"))
+			}
+			if options.Identity != nil {
+				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure)
+			}
 		})
 	}
 
