@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/opskeeper/opskeeper/backend/internal/version"
+	"opskeeper/backend/version"
 )
 
 func main() {

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opskeeper/opskeeper/backend/internal/health"
+	"opskeeper/backend/health"
 )
 
 func TestLiveness(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opskeeper/opskeeper/backend/internal/migrations"
-	"github.com/opskeeper/opskeeper/backend/internal/organization"
+	"opskeeper/backend/migrations"
+	"opskeeper/backend/organization"
 )
 
 func TestOrganizationLifecycle(t *testing.T) {

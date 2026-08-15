@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opskeeper/opskeeper/backend/internal/config"
-	"github.com/opskeeper/opskeeper/backend/internal/migrations"
+	"opskeeper/backend/config"
+	"opskeeper/backend/migrations"
 )
 
 func main() {

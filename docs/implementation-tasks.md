@@ -26,10 +26,15 @@
 opskeeper/
 ├── backend/
 │   ├── cmd/api/
+│   ├── cmd/migrate/
 │   ├── cmd/worker/
 │   ├── cmd/scheduler/
-│   ├── internal/
+│   ├── config/
+│   ├── health/
+│   ├── httpapi/
 │   ├── migrations/
+│   ├── organization/
+│   ├── version/
 │   └── tests/
 ├── frontend/
 │   ├── src/lib/
@@ -76,7 +81,7 @@ opskeeper/
 
 ### 实施细节
 
-1. 初始化 Go Module，创建 `api`、`worker`、`scheduler` 三个入口及共享 `internal` 包。
+1. 初始化 Go Module，创建 `api`、`worker`、`scheduler` 三个入口及后端共享包。
 2. 建立配置加载规范，支持环境变量和本地配置样例，禁止提交真实密钥。
 3. 建立结构化日志、请求 ID、Recover、统一错误结构和 `/health/live`、`/health/ready`。
 4. 初始化 Svelte 5、TypeScript、Vite，建立路由、API Client、基础布局和错误边界。
@@ -131,7 +136,7 @@ opskeeper/
 
 ### 预计文件范围
 
-`backend/migrations/`、`backend/internal/scope/`、`backend/internal/organization/`、HTTP 路由、数据库测试工具。
+`backend/migrations/`、`backend/scope/`、`backend/organization/`、HTTP 路由、数据库测试工具。
 
 ### 验收标准
 
@@ -168,7 +173,7 @@ opskeeper/
 
 ### 预计文件范围
 
-认证和授权迁移、`backend/internal/identity/`、`backend/internal/authorization/`、HTTP 中间件和安全测试。
+认证和授权迁移、`backend/identity/`、`backend/authorization/`、HTTP 中间件和安全测试。
 
 ### 验收标准
 
@@ -206,7 +211,7 @@ opskeeper/
 
 ### 预计文件范围
 
-资源迁移、`backend/internal/resource/`、`backend/internal/credential/`、拓扑查询和相关 API。
+资源迁移、`backend/resource/`、`backend/credential/`、拓扑查询和相关 API。
 
 ### 验收标准
 
@@ -282,7 +287,7 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 ### 预计文件范围
 
-发现迁移、`backend/internal/discovery/`、Kubernetes Connector、Worker 任务和前端导入页面。
+发现迁移、`backend/discovery/`、Kubernetes Connector、Worker 任务和前端导入页面。
 
 ### 验收标准
 
@@ -319,7 +324,7 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 ### 预计文件范围
 
-`backend/internal/connector/`、Prometheus/Loki/Kubernetes 适配器、资源连接测试 API 和对应前端状态。
+`backend/connector/`、Prometheus/Loki/Kubernetes 适配器、资源连接测试 API 和对应前端状态。
 
 ### 验收标准
 
@@ -356,7 +361,7 @@ Tempo/Jaeger/Elastic 实现、AI 诊断编排和自动巡检。
 
 ### 预计文件范围
 
-AI/Skill 迁移、`backend/internal/llm/`、`backend/internal/skill/`、Runner、Provider/Skill 管理 API 和基础页面。
+AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill 管理 API 和基础页面。
 
 ### 验收标准
 
@@ -394,7 +399,7 @@ AI/Skill 迁移、`backend/internal/llm/`、`backend/internal/skill/`、Runner�
 
 ### 预计文件范围
 
-诊断迁移、`backend/internal/diagnosis/`、AI Orchestrator、SSE、诊断前端页面和测试数据集。
+诊断迁移、`backend/diagnosis/`、AI Orchestrator、SSE、诊断前端页面和测试数据集。
 
 ### 验收标准
 
@@ -432,7 +437,7 @@ AI/Skill 迁移、`backend/internal/llm/`、`backend/internal/skill/`、Runner�
 
 ### 预计文件范围
 
-内置 Skill Manifest、`backend/internal/skills/builtin/`、中间件 Connector、测试夹具和使用文档。
+内置 Skill Manifest、`backend/skills/builtin/`、中间件 Connector、测试夹具和使用文档。
 
 ### 验收标准
 
@@ -470,7 +475,7 @@ AI/Skill 迁移、`backend/internal/llm/`、`backend/internal/skill/`、Runner�
 
 ### 预计文件范围
 
-巡检迁移、`backend/internal/inspection/`、Scheduler、Worker Job、通知模块和巡检前端页面。
+巡检迁移、`backend/inspection/`、Scheduler、Worker Job、通知模块和巡检前端页面。
 
 ### 验收标准
 
@@ -508,7 +513,7 @@ AI/Skill 迁移、`backend/internal/llm/`、`backend/internal/skill/`、Runner�
 
 ### 预计文件范围
 
-MCP/审批迁移、`backend/internal/mcp/`、沙箱执行器、Policy Enforcement、审批页面和安全测试。
+MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审批页面和安全测试。
 
 ### 验收标准
 

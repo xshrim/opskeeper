@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opskeeper/opskeeper/backend/internal/health"
-	"github.com/opskeeper/opskeeper/backend/internal/organization"
+	"opskeeper/backend/health"
+	"opskeeper/backend/organization"
 )
 
 const handlerTestUUID = "11111111-1111-4111-8111-111111111111"
