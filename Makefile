@@ -12,7 +12,7 @@ GOPROXY ?= https://goproxy.cn,direct
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend run-dev test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check validate-binary-prefix frontend-build webui-assets backend-binaries build image quality
+.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check validate-binary-prefix frontend-build webui-assets backend-binaries build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,27 +51,8 @@ run-scheduler: ## Run the scheduler process.
 run-frontend: ## Run the Svelte development server.
 	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
 
-run-dev: ## Run the API and Vite frontend together.
-	@set -uo pipefail; \
-	api_pid=""; \
-	frontend_pid=""; \
-	cleanup() { \
-		trap - EXIT INT TERM; \
-		for pid in "$$api_pid" "$$frontend_pid"; do \
-			if [[ -n "$$pid" ]] && kill -0 "$$pid" 2>/dev/null; then \
-				kill -TERM "$$pid" 2>/dev/null || true; \
-			fi; \
-		done; \
-		for pid in "$$api_pid" "$$frontend_pid"; do \
-			if [[ -n "$$pid" ]]; then wait "$$pid" 2>/dev/null || true; fi; \
-		done; \
-	}; \
-	trap cleanup EXIT; \
-	trap 'exit 130' INT; \
-	trap 'exit 143' TERM; \
-	$(MAKE) --no-print-directory run-api & api_pid=$$!; \
-	$(MAKE) --no-print-directory run-frontend & frontend_pid=$$!; \
-	wait -n "$$api_pid" "$$frontend_pid"
+run-front-api: webui-assets ## Build and embed the frontend, then run the API.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
 
 backend-test:
 	cd backend && go test ./...

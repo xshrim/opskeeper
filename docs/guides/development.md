@@ -14,16 +14,16 @@ cp deploy/compose/.env.example deploy/compose/.env
 make deps
 make dev-services-up
 make migrate
-make run-dev
+make run-front-api
 ```
 
-`make run-dev` 同时启动 API 和 Vite，任一进程退出时会关闭另一个进程。它不会启动 PostgreSQL、Redis、Worker、Scheduler，也不会自动迁移数据库。
+`make run-front-api` 先构建 Vite 前端，将制品同步到后端嵌入目录，再使用 `embed_webui` 构建标签启动 API。最终只运行一个 Go 进程，由 API 同时提供前端页面、静态资源和业务接口。它不会启动 PostgreSQL、Redis、Worker、Scheduler，也不会自动迁移数据库。
 
 默认地址：
 
 | 用途 | 地址 |
 |---|---|
-| 前端 | `http://localhost:5173/opskeeper/` |
+| 前端 | `http://localhost:8080/opskeeper/` |
 | API 存活检查 | `http://localhost:8080/opskeeper/health/live` |
 | API 就绪检查 | `http://localhost:8080/opskeeper/health/ready` |
 
@@ -42,7 +42,7 @@ make run-dev
 | `make run-worker` | 临时运行 Worker |
 | `make run-scheduler` | 临时运行 Scheduler |
 | `make run-frontend` | 临时运行 Vite 前端 |
-| `make run-dev` | 同时临时运行 API 和 Vite |
+| `make run-front-api` | 构建并嵌入前端，然后通过一个 API 进程提供完整应用 |
 | `make test` | 运行前后端单元测试 |
 | `make backend-integration-test` | 运行数据库集成测试 |
 | `make quality` | 执行完整本地质量门禁 |
@@ -55,27 +55,40 @@ make run-dev
 
 前后端同仓但依赖独立：`backend/go.mod` 定义 Go Module `opskeeper/backend`，`frontend/package.json` 管理 Svelte 前端依赖。
 
-仅开发后端：
+运行前后端合并后的完整应用：
+
+```bash
+make dev-services-up
+make run-front-api
+```
+
+`run-front-api` 与生产环境采用相同的前端嵌入和 HTTP 服务方式，但使用 `go run` 临时运行。前端源代码变化后需要重新执行该命令，不提供 Vite 热更新。
+
+执行链路为：
+
+```text
+frontend-build
+    -> frontend/dist
+    -> webui-assets 复制到 backend/webui/dist
+    -> go run -tags=embed_webui ./cmd/api
+    -> assets_embed.go 使用 go:embed 将 backend/webui/dist 编译进 API
+```
+
+仅开发后端时运行 API：
 
 ```bash
 make dev-services-up
 make run-api
 ```
 
-仅开发前端：
+需要前端热更新时，在不同终端分开运行 API 和 Vite：
 
 ```bash
+make run-api
 make run-frontend
 ```
 
-Vite 可独立提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。API 未启动时，依赖后端的数据不可用。
-
-同时开发前后端：
-
-```bash
-make dev-services-up
-make run-dev
-```
+Vite 默认通过 `http://localhost:5173/<prefix>/` 提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。只执行 `make run-frontend` 时仍可打开页面，但 API 数据不可用。
 
 Worker 和 Scheduler 按需在其他终端启动：
 
@@ -84,7 +97,7 @@ make run-worker
 make run-scheduler
 ```
 
-生产构建与本地开发不同：Vite 制品会嵌入 `opskeeper-api`，生产环境由一个 Go 进程同时提供页面、静态资源和业务 API。
+`make run-front-api` 不生成持久二进制；`make build` 才生成包含相同嵌入前端的生产 `opskeeper-api` 制品。
 
 ## 4. 应用配置
 
