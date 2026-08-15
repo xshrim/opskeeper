@@ -9,7 +9,7 @@ import (
 	"github.com/opskeeper/opskeeper/backend/internal/health"
 )
 
-func NewRouter(logger *slog.Logger, healthService *health.Service, version string) http.Handler {
+func NewRouter(logger *slog.Logger, healthService *health.Service, version string, organizationService organizationService) http.Handler {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
@@ -27,6 +27,11 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, version strin
 		}
 		writeJSON(writer, status, report)
 	})
+	if organizationService != nil {
+		router.Route("/api/v1", func(router chi.Router) {
+			registerOrganizationRoutes(router, organizationService)
+		})
+	}
 
 	router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, request, http.StatusNotFound, "not_found", "Route not found")

@@ -2,15 +2,20 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-opskeeper}
-      POSTGRES_USER: ${POSTGRES_USER:-opskeeper}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opskeeper}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
+      OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
+      OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./postgres/check-ready.sh:/usr/local/bin/opskeeper-postgres-ready:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD", "/usr/local/bin/opskeeper-postgres-ready"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -20,7 +25,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
