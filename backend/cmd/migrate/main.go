@@ -15,6 +15,12 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
+	logger = logger.With("service", cfg.ServiceName("migrate"))
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -22,18 +28,14 @@ func main() {
 	if len(os.Args) > 1 {
 		direction = os.Args[1]
 	}
-	if err := run(ctx, direction); err != nil {
+	if err := run(ctx, direction, cfg); err != nil {
 		logger.Error("migration failed", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("migration command completed", "direction", direction)
 }
 
-func run(ctx context.Context, direction string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
+func run(ctx context.Context, direction string, cfg config.Config) error {
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err

@@ -34,7 +34,7 @@ Platform
 
 ```mermaid
 flowchart LR
-    UI[Svelte Web] --> API[Go API Server]
+    UI[Browser] <--> API[Go API Server + Embedded Svelte Web]
     API --> Auth[Scope RBAC]
     API --> Catalog[Resource Catalog]
     API --> AI[AI Orchestrator]
@@ -111,28 +111,31 @@ flowchart LR
 
 ## 7. 核心 API 边界
 
+所有公开页面、健康检查和业务 API 统一挂载在由 `OPSK_PREFIX` 派生的 HTTP Base Path 下。以下路径中的 `{prefix}` 默认是 `opskeeper`：
+
 ```text
-/api/v1/platform/resources
-/api/v1/teams/{teamId}/resources
-/api/v1/teams/{teamId}/projects
-/api/v1/projects/{projectId}/resources
-/api/v1/resources/{resourceId}/relations
-/api/v1/kubernetes-clusters/{id}/discoveries
-/api/v1/discoveries/{id}/imports
-/api/v1/diagnosis-sessions
-/api/v1/diagnosis-sessions/{id}/events
-/api/v1/inspection-policies
-/api/v1/inspection-runs
-/api/v1/skills
-/api/v1/role-bindings
-/api/v1/audit-logs
+/{prefix}/api/v1/platform/resources
+/{prefix}/api/v1/teams/{teamId}/resources
+/{prefix}/api/v1/teams/{teamId}/projects
+/{prefix}/api/v1/projects/{projectId}/resources
+/{prefix}/api/v1/resources/{resourceId}/relations
+/{prefix}/api/v1/kubernetes-clusters/{id}/discoveries
+/{prefix}/api/v1/discoveries/{id}/imports
+/{prefix}/api/v1/diagnosis-sessions
+/{prefix}/api/v1/diagnosis-sessions/{id}/events
+/{prefix}/api/v1/inspection-policies
+/{prefix}/api/v1/inspection-runs
+/{prefix}/api/v1/skills
+/{prefix}/api/v1/role-bindings
+/{prefix}/api/v1/audit-logs
 ```
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。
 
 ## 8. 部署与可靠性
 
-- Web 静态资源可由独立容器或对象存储/CDN 提供。
+- 前后端源码和依赖保持独立，本地使用 Go API 与 Vite 分离开发；生产构建将 Vite 静态制品嵌入 `opskeeper-api`，由同一进程提供页面、静态资源和业务 API。
+- `OPSK_PREFIX` 同时派生 Go 进程服务名和 API HTTP Base Path；镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
 - API Server 无状态部署，生产环境至少两个副本。
 - Scheduler 使用 PostgreSQL advisory lock 保证单一调度主节点。
 - Worker 使用任务租约、心跳和幂等键恢复中断任务。

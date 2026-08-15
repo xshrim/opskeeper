@@ -15,6 +15,8 @@
 5. 应用回滚不自动执行 `down`；生产数据库问题优先通过新的前滚迁移修复。
 6. 滚动发布中的 Schema 变更遵循 Expand/Contract，保证新旧应用版本并存时兼容。
 7. 构建阶段不接触数据库凭据；迁移凭据只在部署环境注入 Migration Job。
+8. 前后端源码保持独立工程边界，生产构建将经过检查的 Vite 制品嵌入 Go API 二进制；生产环境不需要 Node.js 或独立静态文件服务器。
+9. API、Worker、Scheduler 和 Migration 使用同一不可变镜像。镜像内二进制固定命名为 `opskeeper-*`，运行时服务名和 HTTP Base Path 由 `OPSK_PREFIX` 派生。
 
 这意味着“每次发布执行一次迁移步骤”，而不是“每次启动一个应用实例都执行一次迁移”。
 
@@ -80,6 +82,9 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 
 ```text
 质量检查
+    -> 构建 Vite 前端制品
+    -> 将前端制品嵌入 Go API
+    -> 构建 opskeeper-api/worker/scheduler/migrate
     -> 构建不可变镜像
     -> 推送镜像并确定 digest
     -> 在目标环境创建 Migration Job
@@ -90,6 +95,19 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 ```
 
 Migration Job 必须使用与待发布应用相同提交构建的镜像和确定的镜像 digest，确保二进制中嵌入的迁移与应用代码完全一致。不能使用 `latest` 或从工作区临时挂载 SQL。
+
+仓库中的 `deploy/Dockerfile` 使用 Node.js 和 Go 多阶段构建。最终镜像只保留四个 Go 二进制，`opskeeper-api` 同时包含前端静态制品；Worker、Scheduler 和 Migration 不启动 HTTP 前端服务。构建阶段不读取 `.env`，数据库和 Redis 凭据只在运行时注入。Go 依赖代理通过 Docker Build Argument `GOPROXY` 显式配置并允许流水线覆盖，不属于应用运行配置。
+
+`OPSK_PREFIX` 默认值为 `opskeeper`，运行时派生以下身份和路径：
+
+```text
+opskeeper-api        /opskeeper
+opskeeper-worker
+opskeeper-scheduler
+opskeeper-migrate
+```
+
+修改 `OPSK_PREFIX` 会同时修改日志及遥测服务名和 API 的 HTTP Base Path，但不会重命名镜像中固定的二进制文件。Kubernetes 资源名、Ingress Prefix、探针路径和注入容器的 `OPSK_PREFIX` 必须来自同一个 Helm Value。
 
 流水线的行为必须是：
 
@@ -102,7 +120,7 @@ Migration Job 必须使用与待发布应用相同提交构建的镜像和确定
 
 ## 7. Kubernetes Migration Job 约束
 
-T13 实现容器镜像和 Helm Chart 时，应提供一次性 Kubernetes Job。以下是结构模板，具体镜像路径、Secret 名和资源配置由部署环境确定：
+T13 补齐 Helm Chart 时，应提供一次性 Kubernetes Job。以下是结构模板，具体镜像路径、Secret 名和资源配置由部署环境确定：
 
 ```yaml
 apiVersion: batch/v1
@@ -123,7 +141,10 @@ spec:
       containers:
         - name: migrate
           image: <registry>/opskeeper@sha256:<digest>
-          command: ["/app/migrate", "up"]
+          command: ["/app/opskeeper-migrate", "up"]
+          env:
+            - name: OPSK_PREFIX
+              value: opskeeper
           envFrom:
             - secretRef:
                 name: opskeeper-database-migration
@@ -178,6 +199,8 @@ spec:
 
 - [ ] 应用入口不调用迁移器。
 - [ ] 发布使用同一提交构建的不可变镜像 digest。
+- [ ] 前端制品已经嵌入 `opskeeper-api`，镜像运行时不依赖 Node.js。
+- [ ] `OPSK_PREFIX` 与 Kubernetes 资源名、Ingress 路径和健康探针路径一致。
 - [ ] Migration Job 是滚动发布前的独立阶段。
 - [ ] Job 设置总超时、有限重试和结构化日志。
 - [ ] Job 失败会阻断应用发布。

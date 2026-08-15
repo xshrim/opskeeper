@@ -15,6 +15,7 @@ import (
 )
 
 const handlerTestUUID = "11111111-1111-4111-8111-111111111111"
+const handlerTestBasePath = "/opskeeper"
 
 type stubOrganizationService struct {
 	createTeamInput organization.CreateTeamInput
@@ -63,13 +64,13 @@ func (s *stubOrganizationService) UpdateProject(context.Context, string, organiz
 
 func newOrganizationTestRouter(service organizationService) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(logger, health.NewService(time.Second, nil), "test", service)
+	return NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", handlerTestBasePath, service, nil)
 }
 
 func TestCreateTeam(t *testing.T) {
 	service := &stubOrganizationService{}
 	router := newOrganizationTestRouter(service)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","labels":{"tier":"critical"}}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","labels":{"tier":"critical"}}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -80,14 +81,14 @@ func TestCreateTeam(t *testing.T) {
 	if service.createTeamInput.Code != "payments" {
 		t.Fatalf("CreateTeam() input = %#v", service.createTeamInput)
 	}
-	if response.Header().Get("Location") != "/api/v1/teams/"+handlerTestUUID {
+	if response.Header().Get("Location") != handlerTestBasePath+"/api/v1/teams/"+handlerTestUUID {
 		t.Fatalf("Location = %q", response.Header().Get("Location"))
 	}
 }
 
 func TestCreateTeamRejectsUnknownField(t *testing.T) {
 	router := newOrganizationTestRouter(&stubOrganizationService{})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","owner":"ignored"}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","owner":"ignored"}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -99,7 +100,7 @@ func TestCreateTeamRejectsUnknownField(t *testing.T) {
 
 func TestListTeamsRejectsInvalidPagination(t *testing.T) {
 	router := newOrganizationTestRouter(&stubOrganizationService{})
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/teams?page=zero", nil)
+	request := httptest.NewRequest(http.MethodGet, handlerTestBasePath+"/api/v1/teams?page=zero", nil)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -112,7 +113,7 @@ func TestListTeamsRejectsInvalidPagination(t *testing.T) {
 func TestCreateTeamMapsConflict(t *testing.T) {
 	service := &stubOrganizationService{createTeamErr: organization.ErrConflict}
 	router := newOrganizationTestRouter(service)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments"}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments"}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)

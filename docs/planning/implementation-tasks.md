@@ -34,6 +34,7 @@ opskeeper/
 │   ├── httpapi/
 │   ├── migrations/
 │   ├── organization/
+│   ├── webui/
 │   ├── database/       # 出现跨特性的连接生命周期需求时创建
 │   ├── cache/          # 出现跨特性的缓存基础设施需求时创建
 │   ├── connector/      # 外部平台协议形成稳定边界时创建
@@ -45,6 +46,7 @@ opskeeper/
 │   ├── src/routes/
 │   └── tests/
 ├── deploy/
+│   ├── Dockerfile
 │   ├── compose/
 │   └── helm/
 ├── docs/

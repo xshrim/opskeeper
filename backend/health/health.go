@@ -26,18 +26,23 @@ type Report struct {
 }
 
 type Service struct {
+	name    string
 	timeout time.Duration
 	checks  []Check
 }
 
-func NewService(timeout time.Duration, checks []Check) *Service {
-	return &Service{timeout: timeout, checks: checks}
+func NewService(name string, timeout time.Duration, checks []Check) *Service {
+	return &Service{name: name, timeout: timeout, checks: checks}
+}
+
+func (s *Service) Name() string {
+	return s.name
 }
 
 func (s *Service) Readiness(ctx context.Context, version string) Report {
 	report := Report{
 		Status:    "ready",
-		Service:   "opskeeper-api",
+		Service:   s.name,
 		Version:   version,
 		Timestamp: time.Now().UTC(),
 		Checks:    make(map[string]CheckResult, len(s.checks)),
@@ -77,10 +82,10 @@ func (s *Service) Readiness(ctx context.Context, version string) Report {
 	return report
 }
 
-func Liveness(version string) Report {
+func Liveness(serviceName, version string) Report {
 	return Report{
 		Status:    "alive",
-		Service:   "opskeeper-api",
+		Service:   serviceName,
 		Version:   version,
 		Timestamp: time.Now().UTC(),
 	}

@@ -4,15 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 )
 
 const (
 	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
 	defaultRedisURL    = "redis://localhost:6379/0"
+	defaultPrefix      = "opskeeper"
+	maxPrefixLength    = 40
 )
 
+var prefixPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
+
 type Config struct {
+	Prefix            string
 	Environment       string
 	HTTPAddress       string
 	DatabaseURL       string
@@ -27,6 +33,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
+		Prefix:            envOrDefault("OPSK_PREFIX", defaultPrefix),
 		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
 		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
 		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
@@ -48,6 +55,9 @@ func Load() (Config, error) {
 	if cfg.HTTPAddress == "" {
 		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
 	}
+	if len(cfg.Prefix) > maxPrefixLength || !prefixPattern.MatchString(cfg.Prefix) {
+		return Config{}, fmt.Errorf("OPSK_PREFIX must contain 1-%d lowercase letters, digits, or internal hyphens", maxPrefixLength)
+	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")
 	}
@@ -56,6 +66,14 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func (c Config) ServiceName(component string) string {
+	return c.Prefix + "-" + component
+}
+
+func (c Config) HTTPBasePath() string {
+	return "/" + c.Prefix
 }
 
 func envOrDefault(key, fallback string) string {

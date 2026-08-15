@@ -4,10 +4,12 @@ COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compos
 COMPOSE_FILE := deploy/compose/docker-compose.yml
 APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
+BINARY_PREFIX ?= opskeeper
+WEBUI_DIST := backend/webui/dist
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend test backend-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check build quality
+.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend run-dev test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check validate-binary-prefix frontend-build webui-assets backend-binaries build quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -44,10 +46,16 @@ run-scheduler: ## Run the scheduler process.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/scheduler
 
 run-frontend: ## Run the Svelte development server.
-	cd frontend && npm run dev
+	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
+
+run-dev: ## Run the API and Vite frontend together.
+	./scripts/run-dev.sh
 
 backend-test:
 	cd backend && go test ./...
+
+backend-embedded-test: webui-assets
+	cd backend && go test -tags=embed_webui ./webui ./httpapi
 
 backend-integration-test: ## Run PostgreSQL migration and organization integration tests.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization
@@ -65,6 +73,7 @@ frontend-lint:
 
 deploy-lint:
 	sh -n deploy/compose/postgres/check-ready.sh deploy/compose/postgres/init/001-create-opskeeper.sh
+	bash -n scripts/run-dev.sh
 
 lint: backend-lint frontend-lint deploy-lint ## Run backend, frontend, and deployment static checks.
 
@@ -76,8 +85,24 @@ format-check: ## Check source formatting without modifying files.
 	@files=$$(cd backend && gofmt -l .); test -z "$$files" || (echo "Unformatted Go files:"; echo "$$files"; exit 1)
 	cd frontend && npm run format:check
 
-build: ## Build backend binaries and the frontend bundle.
-	cd backend && go build -buildvcs=false ./...
+validate-binary-prefix:
+	@[[ "$(BINARY_PREFIX)" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$$ ]] || (echo "BINARY_PREFIX must contain lowercase letters, digits, or internal hyphens" && exit 1)
+
+frontend-build:
 	cd frontend && npm run build
 
-quality: format-check lint test build ## Run the complete local quality gate.
+webui-assets: frontend-build
+	mkdir -p $(WEBUI_DIST)
+	find $(WEBUI_DIST) -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	cp -R frontend/dist/. $(WEBUI_DIST)/
+
+backend-binaries: validate-binary-prefix webui-assets
+	mkdir -p backend/bin
+	cd backend && go build -buildvcs=false -tags=embed_webui -o bin/$(BINARY_PREFIX)-api ./cmd/api
+	cd backend && go build -buildvcs=false -o bin/$(BINARY_PREFIX)-worker ./cmd/worker
+	cd backend && go build -buildvcs=false -o bin/$(BINARY_PREFIX)-scheduler ./cmd/scheduler
+	cd backend && go build -buildvcs=false -o bin/$(BINARY_PREFIX)-migrate ./cmd/migrate
+
+build: backend-binaries ## Build production binaries with the embedded frontend.
+
+quality: format-check lint test backend-embedded-test build ## Run the complete local quality gate.

@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("OPSK_PREFIX", "test-ops")
 	t.Setenv("OPSK_ENVIRONMENT", "test")
 	t.Setenv("OPSK_HTTP_ADDRESS", ":9090")
 	t.Setenv("OPSK_DATABASE_URL", "postgres://test")
@@ -21,6 +22,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout != 10*time.Second || cfg.DependencyTimeout != 2*time.Second {
 		t.Fatalf("Load() returned unexpected timeouts: %#v", cfg)
 	}
+	if cfg.ServiceName("api") != "test-ops-api" || cfg.HTTPBasePath() != "/test-ops" {
+		t.Fatalf("Load() returned unexpected application identity: %#v", cfg)
+	}
 }
 
 func TestLoadRejectsInvalidDuration(t *testing.T) {
@@ -28,5 +32,16 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid duration error")
+	}
+}
+
+func TestLoadRejectsInvalidPrefix(t *testing.T) {
+	for _, prefix := range []string{"", "OpsKeeper", "ops_keeper", "opskeeper/", "-opskeeper", "opskeeper-", "a-prefix-that-is-deliberately-longer-than-forty-characters"} {
+		t.Run(prefix, func(t *testing.T) {
+			t.Setenv("OPSK_PREFIX", prefix)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for OPSK_PREFIX=%q", prefix)
+			}
+		})
 	}
 }

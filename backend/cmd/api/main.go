@@ -16,20 +16,27 @@ import (
 	"opskeeper/backend/httpapi"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/version"
+	"opskeeper/backend/webui"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if err := run(logger); err != nil {
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
+	logger = logger.With("service", cfg.ServiceName("api"))
+	if err := run(logger, cfg); err != nil {
 		logger.Error("api stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger) error {
-	cfg, err := config.Load()
+func run(logger *slog.Logger, cfg config.Config) error {
+	webUI, err := webui.New(cfg.HTTPBasePath())
 	if err != nil {
-		return err
+		return errors.Join(errors.New("configure web UI"), err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -52,7 +59,7 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	healthService := health.NewService(cfg.DependencyTimeout, []health.Check{
+	healthService := health.NewService(cfg.ServiceName("api"), cfg.DependencyTimeout, []health.Check{
 		{Name: "postgres", Run: pool.Ping},
 		{Name: "redis", Run: func(checkCtx context.Context) error {
 			return redisClient.Ping(checkCtx).Err()
@@ -63,7 +70,7 @@ func run(logger *slog.Logger) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewRouter(logger, healthService, version.Value, organizationService),
+		Handler:           httpapi.NewRouter(logger, healthService, version.Value, cfg.HTTPBasePath(), organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -72,7 +79,7 @@ func run(logger *slog.Logger) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "address", cfg.HTTPAddress, "environment", cfg.Environment, "version", version.Value)
+		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.HTTPBasePath(), "environment", cfg.Environment, "version", version.Value)
 		serverErr <- server.ListenAndServe()
 	}()
 

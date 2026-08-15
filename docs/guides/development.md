@@ -2,7 +2,7 @@
 
 本文档前半部分说明如何搭建和运行本地环境，后半部分说明配置边界、PostgreSQL 初始化和数据库迁移机制。
 
-本仓库采用前后端同仓的 Monorepo 结构。`backend/go.mod` 定义独立 Go Module `opskeeper/backend`，后端包直接位于 `backend/<package>` 并使用 `opskeeper/backend/<package>` 导入；`frontend/package.json` 独立管理 Svelte 前端依赖。两个工程共享版本库和发布流程，但依赖、构建和包解析相互独立。
+本仓库采用前后端同仓的 Monorepo 结构。`backend/go.mod` 定义独立 Go Module `opskeeper/backend`，后端包直接位于 `backend/<package>` 并使用 `opskeeper/backend/<package>` 导入；`frontend/package.json` 独立管理 Svelte 前端依赖。两个工程共享版本库和发布流程，但依赖、构建和包解析相互独立。本地开发使用独立的 Go API 和 Vite Server，生产构建将前端静态制品嵌入 API 二进制。
 
 `opskeeper/backend` 是仓库内应用代码的本地导入命名空间，不作为可由外部项目通过 `go get` 获取的公共 Module 地址。未来如果提供 Go SDK，应为 SDK 单独建立带代码托管域名的 Module 路径和兼容性边界。
 
@@ -53,13 +53,23 @@ make run-scheduler
 make run-frontend
 ```
 
+只开发 Web 控制台时，可以用一个命令同时启动 API 和 Vite：
+
+```bash
+make run-dev
+```
+
+`run-dev` 复用 `run-api` 和 `run-frontend`，任一进程退出时会终止另一个进程。它不会启动 PostgreSQL、Redis、Worker 或 Scheduler，也不会自动执行数据库迁移。
+
 本地默认访问地址：
 
 | 服务 | 地址 |
 |---|---|
-| 前端 | `http://localhost:5173` |
-| API 存活检查 | `http://localhost:8080/health/live` |
-| API 就绪检查 | `http://localhost:8080/health/ready` |
+| 前端 | `http://localhost:5173/opskeeper/` |
+| API 存活检查 | `http://localhost:8080/opskeeper/health/live` |
+| API 就绪检查 | `http://localhost:8080/opskeeper/health/ready` |
+
+地址中的 `opskeeper` 来自 `OPSK_PREFIX`。单独执行 `make run-frontend` 时，Vite 仍可提供页面和前端热更新；如果 API 未启动，依赖后端的请求会显示不可用。Vite 将同前缀的 `/api` 和 `/health` 请求代理到本地 API。
 
 ### 1.4 中间件日志与停止
 
@@ -103,7 +113,16 @@ API Server 不会自动修改数据库 Schema。首次初始化以及拉取包�
 make quality
 ```
 
-该命令依次检查格式、静态分析、单元测试和构建结果。
+该命令依次检查格式、静态分析、单元测试和生产构建结果。生产构建会先生成 Vite 静态制品，再将其复制到后端可嵌入目录并输出四个二进制：
+
+```text
+backend/bin/opskeeper-api
+backend/bin/opskeeper-worker
+backend/bin/opskeeper-scheduler
+backend/bin/opskeeper-migrate
+```
+
+也可以单独执行 `make build`。二进制文件名使用构建参数 `BINARY_PREFIX`，默认固定为 `opskeeper`；运行时的服务名称和 HTTP 路径使用 `OPSK_PREFIX`，构建过程不会加载生产 `.env` 或凭据。
 
 PostgreSQL 集成测试需要显式提供测试连接：
 
@@ -119,7 +138,7 @@ OPSK_TEST_DATABASE_URL='postgres://opskeeper:opskeeper@localhost:5432/opskeeper?
 
 | 文件 | 使用方 | 内容 |
 |---|---|---|
-| 根目录 `.env` | API、Worker、Scheduler 和迁移命令 | 应用配置、业务数据库连接串和 Redis 连接串 |
+| 根目录 `.env` | API、Worker、Scheduler、迁移命令和 Vite | 应用前缀、应用配置、业务数据库连接串和 Redis 连接串 |
 | `deploy/compose/.env` | Docker Compose | PostgreSQL/Redis 容器配置、PostgreSQL 管理员凭据和业务库初始化参数 |
 
 应用进程只加载根目录 `.env`，不会加载 `deploy/compose/.env`，因此不会获得 `postgres` 管理员密码。
@@ -144,6 +163,27 @@ OPSK_DATABASE_URL=postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmod
 - `deploy/compose/.env` 包含基础设施初始化凭据和 PostgreSQL 管理员密码，不能提交到版本库。
 - `.env.example` 只能包含无敏感性的开发默认值。
 - 生产环境必须通过 Secret 管理系统注入数据库、Redis 和后续外部资源凭据。
+
+### 4.3 应用名称与 HTTP 前缀
+
+`OPSK_PREFIX` 是部署实例的统一基础名称，默认值为 `opskeeper`。它必须由 1 至 40 个小写字母、数字或内部连字符组成，不能包含斜杠、空格、下划线、前导连字符或尾随连字符。
+
+```text
+OPSK_PREFIX=opskeeper
+├── opskeeper-api
+├── opskeeper-worker
+├── opskeeper-scheduler
+├── opskeeper-migrate
+└── /opskeeper
+```
+
+四个 Go 进程使用派生名称写入结构化日志和后续遥测的 `service` 字段。API 的健康检查、业务 API、前端页面和静态资源统一挂载在 `/<OPSK_PREFIX>` 下。`OPSK_PREFIX` 不负责重命名已经构建的二进制文件；需要构建其他制品名称时，显式传入 `BINARY_PREFIX`：
+
+```bash
+make build BINARY_PREFIX=acme-ops
+```
+
+生产镜像固定包含 `opskeeper-*` 二进制，以便同一个不可变镜像在不同环境通过 `OPSK_PREFIX` 改变运行时服务名和访问路径。
 
 ## 5. PostgreSQL 初始化与权限机制
 
@@ -242,18 +282,18 @@ NNNN_description.down.sql
 
 ## 7. 组织 API 参考
 
-当前提供以下无认证开发接口；认证和 Scope 授权将在后续阶段接入：
+当前提供以下无认证开发接口；认证和 Scope 授权将在后续阶段接入。以下为默认 `OPSK_PREFIX=opskeeper` 时的路径：
 
 ```text
-GET   /api/v1/platform
-GET   /api/v1/teams?page=1&page_size=20
-POST  /api/v1/teams
-GET   /api/v1/teams/{teamId}
-PATCH /api/v1/teams/{teamId}
-GET   /api/v1/teams/{teamId}/projects?page=1&page_size=20
-POST  /api/v1/teams/{teamId}/projects
-GET   /api/v1/projects/{projectId}
-PATCH /api/v1/projects/{projectId}
+GET   /opskeeper/api/v1/platform
+GET   /opskeeper/api/v1/teams?page=1&page_size=20
+POST  /opskeeper/api/v1/teams
+GET   /opskeeper/api/v1/teams/{teamId}
+PATCH /opskeeper/api/v1/teams/{teamId}
+GET   /opskeeper/api/v1/teams/{teamId}/projects?page=1&page_size=20
+POST  /opskeeper/api/v1/teams/{teamId}/projects
+GET   /opskeeper/api/v1/projects/{projectId}
+PATCH /opskeeper/api/v1/projects/{projectId}
 ```
 
 创建请求使用 `name`、`code` 和可选 `labels`。更新请求支持 `name`、`labels` 和 `status`；`status` 取值为 `active` 或 `disabled`。
