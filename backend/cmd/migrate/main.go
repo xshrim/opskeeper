@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/config"
@@ -13,11 +15,14 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	direction := "up"
 	if len(os.Args) > 1 {
 		direction = os.Args[1]
 	}
-	if err := run(context.Background(), direction); err != nil {
+	if err := run(ctx, direction); err != nil {
 		logger.Error("migration failed", "error", err)
 		os.Exit(1)
 	}

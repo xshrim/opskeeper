@@ -1,0 +1,153 @@
+//go:build integration
+
+package migrations
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func TestApplyWaitsForAdvisoryLock(t *testing.T) {
+	pool := integrationPool(t)
+	blocker, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire blocking connection: %v", err)
+	}
+	locked := true
+	if _, err := blocker.Exec(context.Background(), "SELECT pg_advisory_lock($1)", migrationAdvisoryLockID); err != nil {
+		blocker.Release()
+		t.Fatalf("acquire blocking advisory lock: %v", err)
+	}
+	t.Cleanup(func() {
+		if locked {
+			_, _ = blocker.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", migrationAdvisoryLockID)
+		}
+		blocker.Release()
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		result <- Apply(ctx, pool)
+	}()
+
+	select {
+	case err := <-result:
+		t.Fatalf("Apply() returned before advisory lock was released: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	var unlocked bool
+	if err := blocker.QueryRow(context.Background(),
+		"SELECT pg_advisory_unlock($1)",
+		migrationAdvisoryLockID,
+	).Scan(&unlocked); err != nil {
+		t.Fatalf("release blocking advisory lock: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("blocking advisory lock was not held")
+	}
+	locked = false
+	blocker.Release()
+
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("Apply() error = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("Apply() did not complete after advisory lock release: %v", ctx.Err())
+	}
+}
+
+func TestConcurrentApplyIsIdempotent(t *testing.T) {
+	pool := integrationPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := make(chan struct{})
+	errorsByRun := make(chan error, 2)
+	var wait sync.WaitGroup
+	for range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			errorsByRun <- Apply(ctx, pool)
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(errorsByRun)
+
+	for err := range errorsByRun {
+		if err != nil {
+			t.Fatalf("concurrent Apply() error = %v", err)
+		}
+	}
+
+	items, err := load()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	var applied int
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations").Scan(&applied); err != nil {
+		t.Fatalf("count applied migrations: %v", err)
+	}
+	if applied != len(items) {
+		t.Fatalf("applied migrations = %d, want %d", applied, len(items))
+	}
+	var platforms int
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM platforms").Scan(&platforms); err != nil {
+		t.Fatalf("count platforms: %v", err)
+	}
+	if platforms != 1 {
+		t.Fatalf("platform count = %d, want 1", platforms)
+	}
+}
+
+func integrationPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	databaseURL := os.Getenv("OPSK_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("OPSK_TEST_DATABASE_URL is required")
+	}
+
+	ctx := context.Background()
+	adminPool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("connect integration database: %v", err)
+	}
+	schema := fmt.Sprintf("migration_test_%d", time.Now().UnixNano())
+	if _, err := adminPool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		adminPool.Close()
+		t.Fatalf("create integration schema: %v", err)
+	}
+
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		adminPool.Close()
+		t.Fatalf("parse integration database config: %v", err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	config.MaxConns = 4
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		adminPool.Close()
+		t.Fatalf("connect integration schema: %v", err)
+	}
+
+	t.Cleanup(func() {
+		pool.Close()
+		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		adminPool.Close()
+	})
+	return pool
+}

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +18,12 @@ import (
 
 //go:embed sql/*.sql
 var migrationFiles embed.FS
+
+const (
+	// Keep this value stable so migrators built from different releases contend on the same lock.
+	migrationAdvisoryLockID int64 = 0x4f50534b4d494752
+	migrationUnlockTimeout        = 5 * time.Second
+)
 
 type migration struct {
 	version int64
@@ -26,12 +33,16 @@ type migration struct {
 }
 
 func Apply(ctx context.Context, pool *pgxpool.Pool) error {
+	return withMigrationLock(ctx, pool, apply)
+}
+
+func apply(ctx context.Context, conn *pgxpool.Conn) error {
 	migrations, err := load()
 	if err != nil {
 		return err
 	}
 
-	if _, err := pool.Exec(ctx, `
+	if _, err := conn.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version bigint PRIMARY KEY,
 			name text NOT NULL,
@@ -42,7 +53,7 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 
 	for _, item := range migrations {
 		var applied bool
-		if err := pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
 			item.version,
 		).Scan(&applied); err != nil {
@@ -52,7 +63,7 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 			continue
 		}
 
-		tx, err := pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin migration %d: %w", item.version, err)
 		}
@@ -77,11 +88,15 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
+	return withMigrationLock(ctx, pool, rollbackLast)
+}
+
+func rollbackLast(ctx context.Context, conn *pgxpool.Conn) error {
 	migrations, err := load()
 	if err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `
+	if _, err := conn.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version bigint PRIMARY KEY,
 			name text NOT NULL,
@@ -92,7 +107,7 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 
 	var version int64
 	var name string
-	if err := pool.QueryRow(ctx,
+	if err := conn.QueryRow(ctx,
 		"SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1",
 	).Scan(&version, &name); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -112,7 +127,7 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("migration %d (%s) is not embedded in this binary", version, name)
 	}
 
-	tx, err := pool.Begin(ctx)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin rollback %d: %w", version, err)
 	}
@@ -125,6 +140,57 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit rollback %d: %w", version, err)
+	}
+	return nil
+}
+
+func withMigrationLock(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	run func(context.Context, *pgxpool.Conn) error,
+) (runErr error) {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationAdvisoryLockID); err != nil {
+		closeErr := closeMigrationConnection(conn)
+		return errors.Join(fmt.Errorf("acquire migration advisory lock: %w", err), closeErr)
+	}
+
+	defer func() {
+		runErr = errors.Join(runErr, releaseMigrationLock(conn))
+	}()
+	return run(ctx, conn)
+}
+
+func releaseMigrationLock(conn *pgxpool.Conn) error {
+	ctx, cancel := context.WithTimeout(context.Background(), migrationUnlockTimeout)
+	defer cancel()
+
+	var unlocked bool
+	unlockErr := conn.QueryRow(ctx,
+		"SELECT pg_advisory_unlock($1)",
+		migrationAdvisoryLockID,
+	).Scan(&unlocked)
+	if unlockErr == nil && unlocked {
+		conn.Release()
+		return nil
+	}
+
+	closeErr := closeMigrationConnection(conn)
+	if unlockErr != nil {
+		return errors.Join(fmt.Errorf("release migration advisory lock: %w", unlockErr), closeErr)
+	}
+	return errors.Join(errors.New("release migration advisory lock: lock was not held"), closeErr)
+}
+
+func closeMigrationConnection(conn *pgxpool.Conn) error {
+	rawConn := conn.Hijack()
+	ctx, cancel := context.WithTimeout(context.Background(), migrationUnlockTimeout)
+	defer cancel()
+	if err := rawConn.Close(ctx); err != nil {
+		return fmt.Errorf("close migration connection: %w", err)
 	}
 	return nil
 }

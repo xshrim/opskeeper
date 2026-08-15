@@ -139,6 +139,7 @@ flowchart LR
 - 外部调用统一实施超时、限流、重试、熔断和最大响应体限制。
 - PostgreSQL 开启备份、PITR 和高可用；Redis 只承载可恢复数据。
 - 诊断、巡检和工具执行保存输入摘要、证据、版本和结果，支持复现。
+- 数据库迁移由滚动发布前的单实例 Migration Job 执行，使用 PostgreSQL advisory lock 防止并发；应用进程不自动迁移，Schema 演进遵循 Expand/Contract。
 
 ### 数据库权限边界
 
@@ -146,6 +147,8 @@ flowchart LR
 - 容器首次初始化时，`POSTGRES_*` 只定义基础设施管理员和管理连接数据库，`OPSK_DB_*` 由项目初始化脚本用于创建受限的业务角色和业务数据库。
 - API、Worker、Scheduler 和数据库迁移只允许使用业务角色连接，不得注入或回退使用 PostgreSQL 超级用户凭据。
 - 初始化环境变量和 `/docker-entrypoint-initdb.d/` 脚本只对空数据目录生效；已有实例的角色、密码和所有权变更必须通过受控的数据库管理操作完成。
+
+数据库迁移和自动化发布的完整流程见[数据库与应用自动化发布](delivery.md)。
 
 ## 9. 建议交付阶段
 

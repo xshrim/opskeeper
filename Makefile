@@ -49,8 +49,8 @@ run-frontend: ## Run the Svelte development server.
 backend-test:
 	cd backend && go test ./...
 
-backend-integration-test: ## Run PostgreSQL organization integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./organization
+backend-integration-test: ## Run PostgreSQL migration and organization integration tests.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization
 
 frontend-test:
 	cd frontend && npm run test

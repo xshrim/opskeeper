@@ -91,7 +91,9 @@ make migrate
 make migrate-down
 ```
 
-API Server 不会自动修改数据库 Schema。首次初始化以及拉取包含新迁移的代码后，应在启动新版本 API 前显式执行 `make migrate`。
+API Server 不会自动修改数据库 Schema。首次初始化以及拉取包含新迁移的代码后，应在启动新版本 API 前显式执行 `make migrate`；没有新迁移时，日常重启应用不需要重复执行。自动化环境在每次部署中固定运行一次独立 Migration Job，再滚动发布应用，完整流程见[数据库与应用自动化发布](delivery.md)。
+
+`make migrate-down` 主要用于本地开发和迁移测试。生产环境回滚应用时不得自动执行数据库 `down`。
 
 ## 3. 质量检查与测试
 
@@ -219,11 +221,13 @@ NNNN_description.down.sql
 
 执行 `make migrate` 时：
 
-1. 创建或复用 `schema_migrations(version, name, applied_at)` 版本表。
-2. 按版本顺序检查每条迁移是否已经记录。
-3. 对每条尚未执行的迁移开启独立 PostgreSQL 事务。
-4. 在同一事务中执行前滚 SQL 并写入版本记录。
-5. SQL 或版本记录写入失败时回滚整条迁移，不留下半完成 Schema。
+1. 从连接池获取固定连接，并在该 PostgreSQL 会话上持有迁移 advisory lock。
+2. 创建或复用 `schema_migrations(version, name, applied_at)` 版本表。
+3. 按版本顺序检查每条迁移是否已经记录。
+4. 对每条尚未执行的迁移开启独立 PostgreSQL 事务。
+5. 在同一事务中执行前滚 SQL 并写入版本记录。
+6. SQL 或版本记录写入失败时回滚整条迁移，不留下半完成 Schema。
+7. 全部完成后释放 advisory lock；释放失败时销毁持锁连接。
 
 执行 `make migrate-down` 时：
 
@@ -232,7 +236,9 @@ NNNN_description.down.sql
 3. 在一个事务中执行对应的 `.down.sql` 并删除版本记录。
 4. 一次只回滚一个版本；需要回滚多个版本时重复执行命令。
 
-当前 `0001_scope_organization` 迁移创建三级 Scope 和 Platform、Team、Project 表、约束、触发器及默认平台根节点；回滚会删除这些组织对象，但保留 `schema_migrations` 表和共享的 `pgcrypto` 扩展。迁移命令应由单一发布任务执行，不应由多个 API 副本并发运行。
+当前 `0001_scope_organization` 迁移创建三级 Scope 和 Platform、Team、Project 表、约束、触发器及默认平台根节点；回滚会删除这些组织对象，但保留 `schema_migrations` 表和共享的 `pgcrypto` 扩展。`up` 和 `down` 使用同一把数据库级锁；发布系统仍应只创建一个逻辑迁移任务，不由 API 副本或每个 Pod 的 Init Container 执行。
+
+自动化发布顺序、Kubernetes Job 约束、Expand/Contract 和生产回滚原则见[数据库与应用自动化发布](delivery.md)。
 
 ## 7. 组织 API 参考
 

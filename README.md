@@ -12,6 +12,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 - [T01 验收记录](docs/t01-acceptance.md)
 - [T02 验收记录](docs/t02-acceptance.md)
 - [本地开发环境](docs/development.md)
+- [数据库与应用自动化发布](docs/delivery.md)
 - [Go 编码与工程组织通用规范](docs/go-coding-conventions.md)
 - [Git 与远端仓库](docs/version-control.md)
 

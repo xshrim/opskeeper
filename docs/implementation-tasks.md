@@ -542,7 +542,7 @@ MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审�
 
 ### 实施细节
 
-1. 完成 API、Worker、Scheduler、Web 的容器镜像和 Helm Chart。
+1. 完成 API、Worker、Scheduler、Migration、Web 的容器镜像和 Helm Chart；提供滚动发布前执行的单实例 Migration Job。
 2. 配置 Pod 安全上下文、NetworkPolicy、资源限制、探针、PDB 和水平扩容建议。
 3. 接入 OpenTelemetry，建立请求、任务、Connector、LLM、Token、队列和错误指标。
 4. 完善只追加审计日志、保留策略、查询页面和敏感字段脱敏检查。
@@ -560,6 +560,7 @@ MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审�
 ### 验收标准
 
 - 在干净 Kubernetes 环境可按文档部署并完成首次初始化。
+- Migration Job 失败能阻断应用发布，并通过 advisory lock、超时和审计记录保证安全执行。
 - 核心端到端流程、权限矩阵和故障恢复测试通过。
 - 平台自身关键服务、外部调用和任务执行均可观测。
 - 生产配置无默认密码、开发密钥或过宽权限。
