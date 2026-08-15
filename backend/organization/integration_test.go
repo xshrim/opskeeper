@@ -116,7 +116,17 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
-		t.Fatalf("RollbackLast() error = %v", err)
+		t.Fatalf("RollbackLast() RBAC migration error = %v", err)
+	}
+	var rolesTable *string
+	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.roles')::text").Scan(&rolesTable); err != nil {
+		t.Fatalf("check roles table: %v", err)
+	}
+	if rolesTable != nil {
+		t.Fatalf("roles table still exists after RBAC rollback: %s", *rolesTable)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() identity migration error = %v", err)
 	}
 	var usersTable *string
 	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.users')::text").Scan(&usersTable); err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"opskeeper/backend/authorization"
 	"opskeeper/backend/health"
 	"opskeeper/backend/version"
 )
@@ -17,6 +18,7 @@ type Options struct {
 	BasePath       string
 	TrustedProxies []netip.Prefix
 	Identity       identityService
+	Authorization  authorizationService
 	CookieSecure   bool
 }
 
@@ -44,10 +46,15 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 		app.Route("/api/v1", func(router chi.Router) {
 			if organizationService != nil {
 				organizationRouter := router
+				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Identity != nil {
 					organizationRouter = router.With(authHandler{service: options.Identity}.requireAuth)
 				}
-				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"))
+				if options.Authorization != nil {
+					authorizationMiddleware := authorizationHandler{service: options.Authorization}
+					requirePermission = authorizationMiddleware.requirePermission
+				}
+				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"), requirePermission)
 			}
 			if options.Identity != nil {
 				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure)

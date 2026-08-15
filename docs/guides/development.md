@@ -283,7 +283,7 @@ OPSK_BOOTSTRAP_PASSWORD_FILE=/run/secrets/opskeeper-admin-password \
 make admin-create
 ```
 
-管理员 bootstrap 只允许在没有任何用户的数据库中成功一次，不能通过公开 HTTP 接口抢占首个账号。
+管理员 bootstrap 只允许在没有任何用户的数据库中成功一次，不能通过公开 HTTP 接口抢占首个账号。T04 起，`make admin-create` 在创建用户后同时建立平台级 `PlatformAdmin` 绑定，使首个管理员可以访问组织 API 和后续授权能力。
 
 ### 8.2 会话使用方式
 
@@ -291,7 +291,7 @@ make admin-create
 
 ## 9. 当前 API
 
-以下路径假设默认 `OPSK_BASE_PATH=/opskeeper`。T03 起，组织业务 API 要求通过身份认证；登录、刷新、注销和健康检查保持公开。使用根路径时去掉开头的 `/opskeeper`。
+以下路径假设默认 `OPSK_BASE_PATH=/opskeeper`。T03 起，组织业务 API 要求通过身份认证；T04 起，组织读写还需要匹配当前用户的角色和 Scope。登录、刷新、注销和健康检查保持公开。使用根路径时去掉开头的 `/opskeeper`。
 
 ```text
 POST  /opskeeper/api/v1/auth/login
@@ -310,4 +310,4 @@ GET   /opskeeper/api/v1/projects/{projectId}
 PATCH /opskeeper/api/v1/projects/{projectId}
 ```
 
-创建请求使用 `name`、`code` 和可选 `labels`。更新请求支持 `name`、`labels` 和 `status`；`status` 可选 `active` 或 `disabled`。组织接口需要有效身份会话，但 T03 尚未实现角色和 Scope 授权判断。
+创建请求使用 `name`、`code` 和可选 `labels`。更新请求支持 `name`、`labels` 和 `status`；`status` 可选 `active` 或 `disabled`。T04 使用九个内置角色和向下 Scope 继承；组织查询、分页、计数和按 ID 访问均在服务端应用 Scope 过滤。T04 暂不提供角色绑定管理 API，管理能力留给 T05。

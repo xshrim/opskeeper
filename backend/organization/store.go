@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"opskeeper/backend/authorization"
 )
 
 const platformSelect = `
@@ -59,7 +61,8 @@ func NewStore(pool *pgxpool.Pool) Store {
 }
 
 func (s *store) GetPlatform(ctx context.Context) (Platform, error) {
-	platform, err := scanPlatform(s.pool.QueryRow(ctx, platformSelect+" AND p.code = 'default'"))
+	query, args := scopedQuery(platformSelect+" AND p.code = 'default'", "p", ctx)
+	platform, err := scanPlatform(s.pool.QueryRow(ctx, query, args...))
 	if err != nil {
 		return Platform{}, mapStoreError(err)
 	}
@@ -73,7 +76,8 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	platform, err := scanPlatform(tx.QueryRow(ctx, platformSelect+" AND p.code = 'default' FOR UPDATE"))
+	query, args := scopedQuery(platformSelect+" AND p.code = 'default'", "p", ctx)
+	platform, err := scanPlatform(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
 		return Team{}, mapStoreError(err)
 	}
@@ -115,11 +119,15 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 
 func (s *store) ListTeams(ctx context.Context, pagination Pagination) (Page[Team], error) {
 	var total int64
-	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM teams WHERE deleted_at IS NULL").Scan(&total); err != nil {
+	countQuery, countArgs := scopedQuery("SELECT count(*) FROM teams t WHERE t.deleted_at IS NULL", "t", ctx)
+	if err := s.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return Page[Team]{}, fmt.Errorf("count teams: %w", err)
 	}
 
-	rows, err := s.pool.Query(ctx, teamSelect+" ORDER BY t.created_at DESC, t.id LIMIT $1 OFFSET $2", pagination.PageSize, pagination.Offset())
+	listQuery, listArgs := scopedQuery(teamSelect, "t", ctx)
+	listQuery += " ORDER BY t.created_at DESC, t.id LIMIT $" + strconv.Itoa(len(listArgs)+1) + " OFFSET $" + strconv.Itoa(len(listArgs)+2)
+	listArgs = append(listArgs, pagination.PageSize, pagination.Offset())
+	rows, err := s.pool.Query(ctx, listQuery, listArgs...)
 	if err != nil {
 		return Page[Team]{}, fmt.Errorf("list teams: %w", err)
 	}
@@ -140,7 +148,8 @@ func (s *store) ListTeams(ctx context.Context, pagination Pagination) (Page[Team
 }
 
 func (s *store) GetTeam(ctx context.Context, teamID string) (Team, error) {
-	team, err := scanTeam(s.pool.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid", teamID))
+	query, args := scopedQuery(teamSelect+" AND t.id = $1::uuid", "t", ctx, teamID)
+	team, err := scanTeam(s.pool.QueryRow(ctx, query, args...))
 	if err != nil {
 		return Team{}, mapStoreError(err)
 	}
@@ -154,7 +163,8 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	current, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid FOR UPDATE", teamID))
+	query, args := scopedQuery(teamSelect+" AND t.id = $1::uuid", "t", ctx, teamID)
+	current, err := scanTeam(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
 		return Team{}, mapStoreError(err)
 	}
@@ -204,7 +214,8 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	team, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid FOR UPDATE", input.TeamID))
+	query, args := scopedQuery(teamSelect+" AND t.id = $1::uuid", "t", ctx, input.TeamID)
+	team, err := scanTeam(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
 		return Project{}, mapStoreError(err)
 	}
@@ -250,19 +261,15 @@ func (s *store) ListProjects(ctx context.Context, teamID string, pagination Pagi
 	}
 
 	var total int64
-	if err := s.pool.QueryRow(ctx,
-		"SELECT count(*) FROM projects WHERE team_id = $1::uuid AND deleted_at IS NULL",
-		teamID,
-	).Scan(&total); err != nil {
+	countQuery, countArgs := scopedQuery("SELECT count(*) FROM projects p WHERE p.team_id = $1::uuid AND p.deleted_at IS NULL", "p", ctx, teamID)
+	if err := s.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return Page[Project]{}, fmt.Errorf("count projects: %w", err)
 	}
 
-	rows, err := s.pool.Query(ctx,
-		projectSelect+" AND p.team_id = $1::uuid ORDER BY p.created_at DESC, p.id LIMIT $2 OFFSET $3",
-		teamID,
-		pagination.PageSize,
-		pagination.Offset(),
-	)
+	listQuery, listArgs := scopedQuery(projectSelect+" AND p.team_id = $1::uuid", "p", ctx, teamID)
+	listQuery += " ORDER BY p.created_at DESC, p.id LIMIT $" + strconv.Itoa(len(listArgs)+1) + " OFFSET $" + strconv.Itoa(len(listArgs)+2)
+	listArgs = append(listArgs, pagination.PageSize, pagination.Offset())
+	rows, err := s.pool.Query(ctx, listQuery, listArgs...)
 	if err != nil {
 		return Page[Project]{}, fmt.Errorf("list projects: %w", err)
 	}
@@ -283,7 +290,8 @@ func (s *store) ListProjects(ctx context.Context, teamID string, pagination Pagi
 }
 
 func (s *store) GetProject(ctx context.Context, projectID string) (Project, error) {
-	project, err := scanProject(s.pool.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
+	query, args := scopedQuery(projectSelect+" AND p.id = $1::uuid", "p", ctx, projectID)
+	project, err := scanProject(s.pool.QueryRow(ctx, query, args...))
 	if err != nil {
 		return Project{}, mapStoreError(err)
 	}
@@ -297,7 +305,8 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	current, err := scanProject(tx.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid FOR UPDATE", projectID))
+	query, args := scopedQuery(projectSelect+" AND p.id = $1::uuid", "p", ctx, projectID)
+	current, err := scanProject(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
 		return Project{}, mapStoreError(err)
 	}
@@ -338,6 +347,20 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 		return Project{}, fmt.Errorf("commit update project: %w", err)
 	}
 	return updated, nil
+}
+
+// scopedQuery applies the server-computed authorization filter before any
+// pagination, count, lock, or object lookup is executed.
+func scopedQuery(query, alias string, ctx context.Context, args ...any) (string, []any) {
+	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	if !restricted {
+		return query, args
+	}
+	if len(filter.ScopeIDs) == 0 {
+		return query + " AND FALSE", args
+	}
+	position := strconv.Itoa(len(args) + 1)
+	return query + " AND " + alias + ".scope_id = ANY($" + position + ")", append(args, filter.ScopeIDs)
 }
 
 type scanner interface {

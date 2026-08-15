@@ -89,8 +89,8 @@ flowchart LR
 | 模块 | 核心职责 | 状态 |
 |---|---|---|
 | Organization | 平台、团队、项目及 Scope 关系 | 已实现，T02 |
-| Identity | 用户、凭据、登录、会话和身份同步 | T03 正在实施基础登录与会话；用户组和同步目标为 T05 |
-| Authorization | 三级 RBAC、权限继承和数据范围校验 | 目标，T04/T05 |
+| Identity | 用户、凭据、登录、会话和身份同步 | 已实现基础登录与会话，T05 负责用户组和同步 |
+| Authorization | 三级 RBAC、权限继承和数据范围校验 | T04 正在实施内置角色和数据范围过滤；管理与审计为 T05 |
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 目标，T06 |
 | Discovery | Kubernetes 发现、差异预览、导入和周期同步 | 目标，T08 |
 | Connector | Kubernetes、中间件、监控平台和 LLM Provider 适配 | 目标，T09-T10 |
@@ -136,7 +136,7 @@ flowchart LR
 |---|---|
 | `/opskeeper/health/live`、`/opskeeper/health/ready` | 已实现，T01 |
 | `/opskeeper/api/v1/teams`、`/opskeeper/api/v1/teams/{teamId}/projects` | 已实现，T02 |
-| `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 实施中，T03 |
+| `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 已实现，T03 |
 | `/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 目标，T04-T05 |
 | `/opskeeper/api/v1/platform/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations` | 目标，T06 |
 | `/opskeeper/api/v1/kubernetes-clusters/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 目标，T08 |

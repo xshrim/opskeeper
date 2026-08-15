@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/term"
+	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/identity"
 )
@@ -57,9 +58,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
-	service := identity.NewService(identity.NewStore(pool), cfg.SessionAccessTTL, cfg.SessionRefreshTTL)
-	if _, err := service.BootstrapAdmin(context.Background(), identity.BootstrapInput{Email: email, DisplayName: displayName, Password: password}); err != nil {
+	ctx := context.Background()
+	identityService := identity.NewService(identity.NewStore(pool), cfg.SessionAccessTTL, cfg.SessionRefreshTTL)
+	authorizationService := authorization.NewService(authorization.NewStore(pool))
+	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Email: email, DisplayName: displayName, Password: password})
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "create bootstrap administrator: %v\n", err)
+		os.Exit(1)
+	}
+	if err := authorizationService.EnsureBootstrapAdmin(ctx, admin.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "bind bootstrap administrator role: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stdout, "bootstrap administrator created")

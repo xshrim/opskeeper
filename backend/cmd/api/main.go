@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
@@ -78,6 +79,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	organizationService := organization.NewService(organizationStore)
 	identityStore := identity.NewStore(pool)
 	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL)
+	authorizationStore := authorization.NewStore(pool)
+	authorizationService := authorization.NewService(authorizationStore)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -85,6 +88,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			BasePath:       cfg.BasePath,
 			TrustedProxies: cfg.TrustedProxies,
 			Identity:       identityService,
+			Authorization:  authorizationService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
