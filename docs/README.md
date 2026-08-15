@@ -28,8 +28,8 @@
 
 ## 操作指南
 
-- [本地开发环境](guides/development.md)
-- [数据库与应用自动化发布](guides/delivery.md)
+- [本地开发](guides/development.md)
+- [自动化发布](guides/delivery.md)
 
 ## 计划与验收
 

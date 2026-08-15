@@ -1,136 +1,115 @@
-# 数据库与应用自动化发布
+# 自动化发布
 
-## 1. 文档目的
+本文定义应用制品、镜像、数据库迁移和自动化发布的统一流程。本地命令参见[本地开发](development.md)，Git 门禁参见[Git 与远端仓库](../standards/version-control.md)。
 
-本文定义 OpsKeeper 数据库迁移在本地开发、持续集成和自动化发布中的统一原则，并说明应用发布顺序、失败处理和权限边界。迁移文件格式与本地命令参见[本地开发环境](development.md)，Git 分支和合并门禁参见[Git 与远端仓库](../standards/version-control.md)。
+## 1. 发布原则
 
-## 2. 最终原则
+1. 应用临时运行、二进制构建和最终镜像打包只通过根目录 `Makefile` 暴露和编排，不使用独立包装脚本。
+2. 前后端源码保持独立；生产构建将 Vite 制品嵌入 Go API。
+3. API、Worker、Scheduler 和 Migration 使用同一个不可变镜像及同一个 digest。
+4. 长期运行的应用进程永不自动执行数据库迁移。
+5. 每次部署先运行一个独立 Migration Job；成功后才能滚动发布应用。
+6. 迁移失败立即阻断发布；应用回滚不自动执行数据库 `down`。
+7. Schema 变更遵循 Expand/Contract，保证滚动发布期间新旧版本兼容。
+8. 构建阶段不接触数据库凭据；部署阶段按进程最小权限注入。
 
-数据库迁移必须遵守以下原则：
+## 2. 标准入口与制品
 
-1. API、Worker 和 Scheduler 等长期运行的应用进程永不自动执行迁移。
-2. 每次部署由一个独立、一次性的 Migration Job 执行 `up`；即使当前版本没有待处理迁移，也允许幂等执行。
-3. Migration Job 成功后才能滚动发布应用；迁移失败立即阻断发布，旧应用继续运行。
-4. 迁移器使用 PostgreSQL advisory lock 对整个 `up` 或 `down` 过程加数据库级互斥，流水线仍应只创建一个逻辑迁移任务。
-5. 应用回滚不自动执行 `down`；生产数据库问题优先通过新的前滚迁移修复。
-6. 滚动发布中的 Schema 变更遵循 Expand/Contract，保证新旧应用版本并存时兼容。
-7. 构建阶段不接触数据库凭据；迁移凭据只在部署环境注入 Migration Job。
-8. 前后端源码保持独立工程边界，生产构建将经过检查的 Vite 制品嵌入 Go API 二进制；生产环境不需要 Node.js 或独立静态文件服务器。
-9. API、Worker、Scheduler 和 Migration 使用同一不可变镜像。镜像内二进制固定命名为 `opskeeper-*`，运行时服务名和 HTTP Base Path 由 `OPSK_PREFIX` 派生。
-
-这意味着“每次发布执行一次迁移步骤”，而不是“每次启动一个应用实例都执行一次迁移”。
-
-## 3. 什么时候运行迁移
-
-| 场景 | 是否运行 | 执行者 |
-|---|---|---|
-| 本地首次初始化 | 必须 | 开发者执行 `make migrate` |
-| 拉取包含新迁移的代码 | 必须 | 开发者在启动新代码前执行 |
-| 日常重启且代码无新迁移 | 不必 | 无 |
-| 持续集成 | 必须 | 临时 PostgreSQL 上执行迁移测试 |
-| 测试、预发布和生产部署 | 每次部署固定执行 | 单实例 Migration Job |
-| API Pod 重启或扩容 | 禁止触发 | 应用只启动自身进程 |
-
-流水线不需要在外部分析 SQL 文件来判断是否存在新迁移。迁移器读取 `schema_migrations`，跳过已应用版本，因此每次部署固定调用一次更加可靠。
-
-## 4. 当前迁移器机制
-
-迁移入口是 `backend/cmd/migrate`，迁移实现位于 `backend/migrations`，SQL 使用 `go:embed` 编译进迁移二进制。
-
-执行 `up` 时：
-
-1. 从连接池获取一条固定 PostgreSQL 连接。
-2. 在该会话上等待并持有项目固定的 session advisory lock。
-3. 创建或复用 `schema_migrations(version, name, applied_at)`。
-4. 按版本升序检查迁移，已经记录的版本直接跳过。
-5. 每条待执行迁移使用独立事务执行 SQL 并写入版本记录。
-6. 任一步骤失败时回滚当前迁移并返回非零退出状态。
-7. 全部完成后在同一连接上释放 advisory lock，再将连接归还连接池。
-
-执行 `down` 时使用同一把 advisory lock，一次只回滚最新版本。释放锁失败时迁移器会销毁持锁连接，不会把可能仍持有 session lock 的连接放回池中。
-
-迁移命令监听 `SIGINT` 和 `SIGTERM`。流水线取消 Job 或达到执行期限时，等待锁、SQL 和事务会收到 Context 取消信号。Migration Job 必须设置外部总超时，避免数据库锁竞争或长时间 DDL 造成无限等待。
-
-advisory lock 是并发误配置的最后防线，不替代发布编排。正常情况下同一环境、同一版本仍然只创建一个 Migration Job。
-
-## 5. 持续集成流程
-
-持续集成只访问临时数据库，不持有测试、预发布或生产凭据。涉及迁移的 Pull Request 至少验证：
-
-```text
-创建空 PostgreSQL 16 环境
-    -> up
-    -> 再次 up，验证幂等
-    -> down
-    -> up
-    -> 并发运行两个 up，验证互斥和最终版本
-    -> 运行数据库集成测试
-```
-
-当前本地入口为：
+流水线只调用以下 Make 入口：
 
 ```bash
-OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?sslmode=disable' \
-  make backend-integration-test
+make quality
+make build
+make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version>
 ```
 
-测试必须使用可丢弃的数据库、Schema 或容器，结束后清理测试对象。
+| 入口 | 结果 |
+|---|---|
+| `make quality` | 格式、静态检查、测试、嵌入式前端验证和生产构建全部通过 |
+| `make build` | 在 `backend/bin/` 生成四个本地二进制 |
+| `make image` | 使用 `deploy/Dockerfile` 生成最终不可变镜像 |
 
-## 6. 自动化发布流程
+`deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
 
-推荐的持续部署顺序为：
+最终镜像包含：
 
 ```text
-质量检查
-    -> 构建 Vite 前端制品
-    -> 将前端制品嵌入 Go API
-    -> 构建 opskeeper-api/worker/scheduler/migrate
-    -> 构建不可变镜像
-    -> 推送镜像并确定 digest
-    -> 在目标环境创建 Migration Job
-    -> 等待 Job 成功
+/app/opskeeper-api
+/app/opskeeper-worker
+/app/opskeeper-scheduler
+/app/opskeeper-migrate
+```
+
+`opskeeper-api` 内嵌经过构建和检查的 Vite 制品。最终镜像不包含 Node.js，不依赖独立静态文件服务器，也不读取构建机器的 `.env`。
+
+## 3. 构建与运行配置边界
+
+| 配置 | 阶段 | 作用 |
+|---|---|---|
+| `BINARY_PREFIX` | 本地 `make build` | 改变 `backend/bin/` 中的文件名，默认 `opskeeper` |
+| `IMAGE_REPOSITORY` | `make image` | 设置镜像仓库，默认 `opskeeper` |
+| `IMAGE_TAG` | `make image` | 设置镜像标签，默认 `local` |
+| `GOPROXY` | 构建 | 设置 Go 依赖代理，不属于应用运行配置 |
+| `OPSK_PREFIX` | 运行 | 派生服务名和 HTTP Base Path，默认 `opskeeper` |
+| `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `text` 或 `json`，默认 `text` |
+
+镜像内文件名固定为 `opskeeper-*`。修改 `OPSK_PREFIX` 只会改变：
+
+```text
+<prefix>-api        /<prefix>
+<prefix>-worker
+<prefix>-scheduler
+<prefix>-migrate
+```
+
+Kubernetes 资源名、Ingress Path、健康探针路径和容器中的 `OPSK_PREFIX` 应来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。四个进程使用相同格式，并保留一致的 `service` 字段。
+
+## 4. 流水线顺序
+
+```text
+检出确定提交
+    -> make quality
+    -> make image
+    -> 推送镜像并记录 digest
+    -> 使用同一 digest 创建 Migration Job
+    -> 等待 Migration Job 成功
     -> 滚动发布 API、Worker、Scheduler
-    -> 检查 readiness 和关键业务冒烟用例
-    -> 标记发布成功
+    -> 等待 readiness
+    -> 执行关键业务冒烟检查
+    -> 记录发布结果
 ```
 
-Migration Job 必须使用与待发布应用相同提交构建的镜像和确定的镜像 digest，确保二进制中嵌入的迁移与应用代码完全一致。不能使用 `latest` 或从工作区临时挂载 SQL。
-
-仓库中的 `deploy/Dockerfile` 使用 Node.js 和 Go 多阶段构建。最终镜像只保留四个 Go 二进制，`opskeeper-api` 同时包含前端静态制品；Worker、Scheduler 和 Migration 不启动 HTTP 前端服务。构建阶段不读取 `.env`，数据库和 Redis 凭据只在运行时注入。Go 依赖代理通过 Docker Build Argument `GOPROXY` 显式配置并允许流水线覆盖，不属于应用运行配置。
-
-`OPSK_PREFIX` 默认值为 `opskeeper`，运行时派生以下身份和路径：
-
-```text
-opskeeper-api        /opskeeper
-opskeeper-worker
-opskeeper-scheduler
-opskeeper-migrate
-```
-
-修改 `OPSK_PREFIX` 会同时修改日志及遥测服务名和 API 的 HTTP Base Path，但不会重命名镜像中固定的二进制文件。Kubernetes 资源名、Ingress Prefix、探针路径和注入容器的 `OPSK_PREFIX` 必须来自同一个 Helm Value。
-
-流水线的行为必须是：
+Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应用代码完全一致。不得使用 `latest`，也不得从工作区临时挂载 SQL。
 
 | 结果 | 流水线行为 |
 |---|---|
-| Migration Job 成功 | 继续滚动发布应用 |
-| Migration Job 失败或超时 | 停止发布，保留旧应用，输出 Job 日志 |
-| 迁移成功但应用发布失败 | 回滚应用镜像，不自动执行 `down` |
-| 冒烟测试失败 | 停止扩大发布，按兼容性策略回滚应用或前滚修复 |
+| Migration Job 成功 | 继续发布应用 |
+| Migration Job 失败或超时 | 停止发布，保留旧应用并输出 Job 日志 |
+| 迁移成功但应用发布失败 | 回滚应用镜像，不执行 `down` |
+| 冒烟检查失败 | 停止扩大发布，回滚应用或前滚修复 |
 
-## 7. Kubernetes Migration Job 约束
+## 5. Migration Job
 
-T13 补齐 Helm Chart 时，应提供一次性 Kubernetes Job。以下是结构模板，具体镜像路径、Secret 名和资源配置由部署环境确定：
+每次测试、预发布和生产部署固定执行一次 `opskeeper-migrate up`。即使没有待处理迁移也照常运行，因为迁移器读取 `schema_migrations` 并跳过已应用版本，外部流水线无需解析 SQL 判断是否需要迁移。
+
+迁移器使用 PostgreSQL session advisory lock 保护整个迁移过程：
+
+1. 获取一条固定连接并等待项目迁移锁。
+2. 创建或复用 `schema_migrations`。
+3. 按版本升序跳过已执行迁移。
+4. 在独立事务中执行每条待处理 SQL 和版本记录。
+5. 失败时回滚当前事务并返回非零状态。
+6. 完成后在同一连接释放锁；释放失败时销毁该连接。
+
+advisory lock 是并发误配置的最后防线，不代替发布编排。每个环境和版本仍只应创建一个逻辑 Migration Job。Job 必须监听取消信号并设置总超时、有限重试和可审计日志。
+
+Kubernetes 约束：
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: opskeeper-migrate-<release-id>
-  labels:
-    app.kubernetes.io/name: opskeeper
-    app.kubernetes.io/component: migration
-    app.kubernetes.io/version: <version>
 spec:
   backoffLimit: 1
   activeDeadlineSeconds: 600
@@ -145,68 +124,83 @@ spec:
           env:
             - name: OPSK_PREFIX
               value: opskeeper
+            - name: OPSK_LOG_FORMAT
+              value: json
           envFrom:
             - secretRef:
                 name: opskeeper-database-migration
 ```
 
-发布系统应等待 Job 的 `Complete` 条件，不能只等待 Pod 启动。Job 名包含发布 ID，日志和执行结果保留到发布审计中。
+发布系统必须等待 Job 的 `Complete` 条件，而不是只等待 Pod 启动。可以使用 Helm `pre-install,pre-upgrade` Hook 或 Argo CD `PreSync` Hook，但不得把迁移放入每个应用 Pod 的 Init Container。
 
-使用 Helm 时可以通过 `pre-install,pre-upgrade` Hook 实现；使用 Argo CD 时可以使用 `PreSync` Hook。但无论采用哪种工具，迁移都必须作为可观察的独立发布阶段，不能放到每个 Pod 的 Init Container 中。Helm 或应用自动回滚不会自动撤销已经提交的数据库迁移。
+## 6. CI 中的迁移验证
 
-## 8. Expand/Contract 兼容发布
+涉及数据库变更的 Pull Request 至少验证：
 
-滚动发布期间旧应用和新应用会同时访问数据库，因此单次发布不得立即破坏旧版本使用的 Schema。
+```text
+创建空 PostgreSQL 16
+    -> up
+    -> 再次 up，验证幂等
+    -> down
+    -> up
+    -> 并发执行两个 up，验证互斥和最终版本
+    -> 数据库集成测试
+```
 
-推荐三阶段：
+本地等价入口：
 
-1. **Expand**：先增加新表、新字段、兼容索引或宽松约束，不删除旧结构。
-2. **Migrate**：发布同时兼容新旧结构的应用，完成双写、读切换或后台数据回填。
-3. **Contract**：确认旧版本全部退出、数据回填完成并经过观测周期后，在后续独立迁移中删除旧字段、旧索引或旧约束。
+```bash
+OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?sslmode=disable' \
+  make backend-integration-test
+```
 
-典型规则：
+测试必须使用可丢弃数据库、Schema 或容器，并清理测试对象。
 
-- 新增必填字段时先允许空值或提供兼容默认值，回填后再增加 `NOT NULL`。
-- 重命名字段使用“新增、双写、切读、删除旧字段”，不能直接改名后立即滚动发布。
-- 删除表、字段和枚举值属于破坏性变更，必须在后续独立发布中执行。
-- 大表索引、约束验证和数据回填需要评估锁级别、执行时间和事务限制。
-- 当前迁移器按单迁移事务执行；未来需要 `CREATE INDEX CONCURRENTLY` 等不能位于事务中的语句时，必须先扩展迁移格式并增加显式的非事务标记，不能直接把特殊 SQL 塞入现有迁移。
+## 7. Expand/Contract
 
-## 9. 权限与凭据
+滚动发布期间新旧应用会同时访问数据库，破坏性 Schema 变更必须拆分：
 
-当前环境已经将 PostgreSQL Cluster 超级用户与 `opskeeper` 业务数据库所有者分离。迁移命令只使用业务数据库凭据，不使用 `postgres` 超级用户。
+1. **Expand**：增加新表、新字段、兼容索引或宽松约束，不删除旧结构。
+2. **Migrate**：发布兼容新旧结构的应用，执行双写、读切换或后台回填。
+3. **Contract**：旧版本全部退出并经过观测期后，在后续发布删除旧结构。
 
-生产加固时建议进一步拆分：
+具体要求：
+
+- 新增必填字段时先允许空值或提供兼容默认值，回填后再加 `NOT NULL`。
+- 字段重命名使用“新增、双写、切读、删除旧字段”，不直接改名。
+- 表、字段、枚举值删除必须放到后续独立发布。
+- 大表索引、约束和回填必须评估锁级别、执行时间及事务限制。
+- 当前迁移器按单迁移事务执行；需要 `CREATE INDEX CONCURRENTLY` 时，应先扩展迁移格式并增加显式非事务标记。
+
+## 8. 权限与凭据
 
 | 角色 | 权限和使用方 |
 |---|---|
-| Cluster 管理员 | 管理实例、角色和数据库；不注入普通流水线和应用 |
-| Migration 角色 | 拥有目标 Schema 的 DDL 权限；只注入 Migration Job |
-| Application 角色 | 只拥有运行所需的查询和 DML 权限；注入 API、Worker、Scheduler |
+| Cluster 管理员 | 管理实例、角色和数据库，不注入普通流水线和应用 |
+| Migration 角色 | 拥有目标 Schema DDL 权限，只注入 Migration Job |
+| Application 角色 | 只拥有运行所需查询和 DML 权限，注入 API、Worker、Scheduler |
 
-在独立 Migration/Application 角色正式实施前，流水线可以继续使用受限业务数据库所有者执行迁移，但应用和迁移都不得回退使用超级用户。
+当前阶段迁移器和应用使用受限的 `opskeeper` 业务数据库所有者，不使用 `postgres` 超级用户。生产环境应继续拆分 Migration 和 Application 角色。构建阶段不得获得任何数据库、Redis 或其他运行时 Secret。
 
-## 10. 回滚原则
+## 9. 回滚
 
-- `migrate down` 主要用于本地开发、迁移测试和部署前验证。
-- 生产发布不得因为应用回滚而自动执行 `down`。
-- 已经写入新格式数据后，回滚 Schema 可能造成不可恢复的数据丢失。
-- 生产迁移失败且事务已经回滚时，修复 SQL 后重新构建和发布。
-- 迁移已经成功但发现设计问题时，优先新增前滚修复迁移。
+- 应用回滚只切换到上一个兼容镜像，不自动执行 `migrate down`。
+- 迁移事务失败时，修复迁移后重新构建和发布。
+- 迁移成功后发现问题，优先新增前滚修复迁移。
+- `migrate down` 只用于本地开发、迁移测试和经过人工批准的恢复操作。
 - 破坏性迁移执行前必须确认备份、PITR、影响范围和人工恢复步骤。
 
-## 11. 发布验收清单
+## 10. 发布验收
 
-- [ ] 应用入口不调用迁移器。
-- [ ] 发布使用同一提交构建的不可变镜像 digest。
-- [ ] 前端制品已经嵌入 `opskeeper-api`，镜像运行时不依赖 Node.js。
-- [ ] `OPSK_PREFIX` 与 Kubernetes 资源名、Ingress 路径和健康探针路径一致。
-- [ ] Migration Job 是滚动发布前的独立阶段。
-- [ ] Job 设置总超时、有限重试和结构化日志。
-- [ ] Job 失败会阻断应用发布。
-- [ ] 数据库 advisory lock 和并发迁移测试通过。
-- [ ] 迁移在空数据库通过 `up -> down -> up`。
-- [ ] 新旧应用版本在 Expand/Contract 窗口内兼容。
-- [ ] 应用回滚不会自动触发数据库 `down`。
-- [ ] 流水线和应用均未获得 PostgreSQL 超级用户凭据。
-- [ ] 破坏性变更具有备份、PITR 和前滚修复方案。
+- [ ] 流水线只通过 Makefile 运行、构建和打包应用。
+- [ ] `make quality` 通过。
+- [ ] 镜像包含四个固定名称的二进制，API 已嵌入前端。
+- [ ] 运行时不依赖 Node.js 或外部静态文件目录。
+- [ ] `OPSK_PREFIX` 与资源名、Ingress 和探针路径一致。
+- [ ] `OPSK_LOG_FORMAT` 已按环境设为 `text` 或 `json`。
+- [ ] Migration Job 与应用使用同一镜像 digest。
+- [ ] Migration Job 成功后才滚动发布应用，失败会阻断发布。
+- [ ] 数据库迁移通过幂等、回滚、重放和并发互斥验证。
+- [ ] Schema 在新旧版本并存期间兼容。
+- [ ] 应用回滚不会触发数据库 `down`。
+- [ ] 应用和流水线未获得 PostgreSQL 超级用户凭据。

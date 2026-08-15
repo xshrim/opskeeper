@@ -135,7 +135,9 @@ flowchart LR
 ## 8. 部署与可靠性
 
 - 前后端源码和依赖保持独立，本地使用 Go API 与 Vite 分离开发；生产构建将 Vite 静态制品嵌入 `opskeeper-api`，由同一进程提供页面、静态资源和业务 API。
+- 应用临时运行、二进制构建和最终镜像打包统一由根目录 Makefile 提供入口，不使用独立包装脚本。
 - `OPSK_PREFIX` 同时派生 Go 进程服务名和 API HTTP Base Path；镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
+- API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `text` 和 `json`，默认使用 `text`。
 - API Server 无状态部署，生产环境至少两个副本。
 - Scheduler 使用 PostgreSQL advisory lock 保证单一调度主节点。
 - Worker 使用任务租约、心跳和幂等键恢复中断任务。
@@ -151,7 +153,7 @@ flowchart LR
 - API、Worker、Scheduler 和数据库迁移只允许使用业务角色连接，不得注入或回退使用 PostgreSQL 超级用户凭据。
 - 初始化环境变量和 `/docker-entrypoint-initdb.d/` 脚本只对空数据目录生效；已有实例的角色、密码和所有权变更必须通过受控的数据库管理操作完成。
 
-数据库迁移和自动化发布的完整流程见[数据库与应用自动化发布](../guides/delivery.md)。
+数据库迁移和自动化发布的完整流程见[自动化发布](../guides/delivery.md)。
 
 ## 9. 建议交付阶段
 

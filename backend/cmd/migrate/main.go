@@ -3,21 +3,26 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/config"
+	"opskeeper/backend/logging"
 	"opskeeper/backend/migrations"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := logging.NewText(os.Stdout)
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
+	logger, err = logging.New(os.Stdout, cfg.LogFormat)
+	if err != nil {
+		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
 	logger = logger.With("service", cfg.ServiceName("migrate"))

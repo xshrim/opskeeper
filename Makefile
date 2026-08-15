@@ -6,10 +6,13 @@ APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
 BINARY_PREFIX ?= opskeeper
 WEBUI_DIST := backend/webui/dist
+IMAGE_REPOSITORY ?= opskeeper
+IMAGE_TAG ?= local
+GOPROXY ?= https://goproxy.cn,direct
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend run-dev test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check validate-binary-prefix frontend-build webui-assets backend-binaries build quality
+.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend run-dev test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check validate-binary-prefix frontend-build webui-assets backend-binaries build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,7 +52,26 @@ run-frontend: ## Run the Svelte development server.
 	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
 
 run-dev: ## Run the API and Vite frontend together.
-	./scripts/run-dev.sh
+	@set -uo pipefail; \
+	api_pid=""; \
+	frontend_pid=""; \
+	cleanup() { \
+		trap - EXIT INT TERM; \
+		for pid in "$$api_pid" "$$frontend_pid"; do \
+			if [[ -n "$$pid" ]] && kill -0 "$$pid" 2>/dev/null; then \
+				kill -TERM "$$pid" 2>/dev/null || true; \
+			fi; \
+		done; \
+		for pid in "$$api_pid" "$$frontend_pid"; do \
+			if [[ -n "$$pid" ]]; then wait "$$pid" 2>/dev/null || true; fi; \
+		done; \
+	}; \
+	trap cleanup EXIT; \
+	trap 'exit 130' INT; \
+	trap 'exit 143' TERM; \
+	$(MAKE) --no-print-directory run-api & api_pid=$$!; \
+	$(MAKE) --no-print-directory run-frontend & frontend_pid=$$!; \
+	wait -n "$$api_pid" "$$frontend_pid"
 
 backend-test:
 	cd backend && go test ./...
@@ -73,7 +95,6 @@ frontend-lint:
 
 deploy-lint:
 	sh -n deploy/compose/postgres/check-ready.sh deploy/compose/postgres/init/001-create-opskeeper.sh
-	bash -n scripts/run-dev.sh
 
 lint: backend-lint frontend-lint deploy-lint ## Run backend, frontend, and deployment static checks.
 
@@ -104,5 +125,12 @@ backend-binaries: validate-binary-prefix webui-assets
 	cd backend && go build -buildvcs=false -o bin/$(BINARY_PREFIX)-migrate ./cmd/migrate
 
 build: backend-binaries ## Build production binaries with the embedded frontend.
+
+image: ## Build the final application image.
+	docker build \
+		--build-arg GOPROXY=$(GOPROXY) \
+		-f deploy/Dockerfile \
+		-t $(IMAGE_REPOSITORY):$(IMAGE_TAG) \
+		.
 
 quality: format-check lint test backend-embedded-test build ## Run the complete local quality gate.

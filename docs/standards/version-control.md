@@ -141,7 +141,7 @@ GitHub 上的 `main` 应启用以下保护规则：
 - 应用回滚不自动执行数据库 `down`；生产问题优先新增前滚修复迁移。
 - 发布分支中的迁移二进制和应用必须由同一提交构建，并使用同一个不可变镜像 digest。
 
-自动化 Migration Job、失败处理和权限边界见[数据库与应用自动化发布](../guides/delivery.md)。
+自动化 Migration Job、失败处理和权限边界见[自动化发布](../guides/delivery.md)。
 
 例如，`0001_scope_organization` 进入 `main` 后，不能直接改写该文件来增加新表，应新增 `0002_...` 迁移。
 

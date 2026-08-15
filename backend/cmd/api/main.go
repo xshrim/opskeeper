@@ -14,16 +14,22 @@ import (
 	"opskeeper/backend/config"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
+	"opskeeper/backend/logging"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/version"
 	"opskeeper/backend/webui"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := logging.NewText(os.Stdout)
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
+	logger, err = logging.New(os.Stdout, cfg.LogFormat)
+	if err != nil {
+		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
 	logger = logger.With("service", cfg.ServiceName("api"))

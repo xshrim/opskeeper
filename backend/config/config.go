@@ -12,6 +12,7 @@ const (
 	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
 	defaultRedisURL    = "redis://localhost:6379/0"
 	defaultPrefix      = "opskeeper"
+	defaultLogFormat   = "text"
 	maxPrefixLength    = 40
 )
 
@@ -20,6 +21,7 @@ var prefixPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
 type Config struct {
 	Prefix            string
 	Environment       string
+	LogFormat         string
 	HTTPAddress       string
 	DatabaseURL       string
 	RedisURL          string
@@ -35,6 +37,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Prefix:            envOrDefault("OPSK_PREFIX", defaultPrefix),
 		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
 		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
 		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
 		RedisURL:          envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
@@ -57,6 +60,9 @@ func Load() (Config, error) {
 	}
 	if len(cfg.Prefix) > maxPrefixLength || !prefixPattern.MatchString(cfg.Prefix) {
 		return Config{}, fmt.Errorf("OPSK_PREFIX must contain 1-%d lowercase letters, digits, or internal hyphens", maxPrefixLength)
+	}
+	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return Config{}, errors.New("OPSK_LOG_FORMAT must be text or json")
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")
