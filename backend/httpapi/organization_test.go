@@ -68,7 +68,7 @@ func newOrganizationTestRouter(service organizationService) http.Handler {
 
 func newOrganizationTestRouterAt(basePath string, service organizationService) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", basePath, service, nil)
+	return NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), testBuild, Options{BasePath: basePath}, service, nil)
 }
 
 func TestCreateTeam(t *testing.T) {

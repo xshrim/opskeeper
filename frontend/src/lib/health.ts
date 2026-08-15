@@ -10,6 +10,8 @@ export interface HealthReport {
   status: 'ready' | 'not_ready';
   service: string;
   version: string;
+  commit: string;
+  build_time: string;
   timestamp: string;
   checks: Record<string, DependencyCheck>;
 }

@@ -11,8 +11,11 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 		t.Fatal("load() returned no migrations")
 	}
 	for _, item := range items {
-		if item.sql == "" || item.downSQL == "" {
+		if item.sql == "" || item.downSQL == "" || item.checksum == "" {
 			t.Fatalf("migration is missing up or down SQL: %#v", item)
+		}
+		if item.checksum != migrationChecksum([]byte(item.sql)) {
+			t.Fatalf("migration checksum does not match SQL: %#v", item)
 		}
 	}
 	for index := 1; index < len(items); index++ {

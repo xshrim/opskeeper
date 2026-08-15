@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -23,6 +25,7 @@ type Config struct {
 	Environment       string
 	LogFormat         string
 	HTTPAddress       string
+	TrustedProxies    []netip.Prefix
 	DatabaseURL       string
 	RedisURL          string
 	ShutdownTimeout   time.Duration
@@ -54,6 +57,9 @@ func Load() (Config, error) {
 	if cfg.DependencyTimeout, err = durationFromEnv("OPSK_DEPENDENCY_TIMEOUT", 2*time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.TrustedProxies, err = prefixesFromEnv("OPSK_TRUSTED_PROXIES"); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.HTTPAddress == "" {
 		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
@@ -72,6 +78,52 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func prefixesFromEnv(key string) ([]netip.Prefix, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil, nil
+	}
+
+	prefixes := make([]netip.Prefix, 0)
+	seen := make(map[string]struct{})
+	for _, rawEntry := range strings.Split(value, ",") {
+		entry := strings.TrimSpace(rawEntry)
+		if entry == "" {
+			return nil, fmt.Errorf("%s must be a comma-separated list of IP addresses or CIDR prefixes", key)
+		}
+		prefix, err := parsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s entry %q: %w", key, entry, err)
+		}
+		canonical := prefix.String()
+		if _, exists := seen[canonical]; exists {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
+}
+
+func parsePrefix(value string) (netip.Prefix, error) {
+	if strings.Contains(value, "/") {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			return netip.Prefix{}, err
+		}
+		return prefix.Masked(), nil
+	}
+	address, err := netip.ParseAddr(value)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	if address.Zone() != "" {
+		return netip.Prefix{}, errors.New("scoped IPv6 addresses are not supported")
+	}
+	address = address.Unmap()
+	return netip.PrefixFrom(address, address.BitLen()), nil
 }
 
 func envOrDefault(key, fallback string) string {

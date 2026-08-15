@@ -3,27 +3,35 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"path"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"opskeeper/backend/health"
+	"opskeeper/backend/version"
 )
 
-func NewRouter(logger *slog.Logger, healthService *health.Service, version, basePath string, organizationService organizationService, webUI http.Handler) http.Handler {
+type Options struct {
+	BasePath       string
+	TrustedProxies []netip.Prefix
+}
+
+func NewRouter(logger *slog.Logger, healthService *health.Service, build version.Info, options Options, organizationService organizationService, webUI http.Handler) http.Handler {
+	basePath := options.BasePath
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
+	router.Use(trustedProxyClientIP(options.TrustedProxies))
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 
 	app := chi.NewRouter()
 	app.Get("/health/live", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(writer, http.StatusOK, health.Liveness(healthService.Name(), version))
+		writeJSON(writer, http.StatusOK, health.Liveness(healthService.Name(), build))
 	})
 	app.Get("/health/ready", func(writer http.ResponseWriter, request *http.Request) {
-		report := healthService.Readiness(request.Context(), version)
+		report := healthService.Readiness(request.Context(), build)
 		status := http.StatusOK
 		if report.Status != "ready" {
 			status = http.StatusServiceUnavailable

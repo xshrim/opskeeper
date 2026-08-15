@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -104,12 +105,49 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	if applied != len(items) {
 		t.Fatalf("applied migrations = %d, want %d", applied, len(items))
 	}
+	var checksummed int
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations WHERE checksum IS NOT NULL").Scan(&checksummed); err != nil {
+		t.Fatalf("count checksummed migrations: %v", err)
+	}
+	if checksummed != len(items) {
+		t.Fatalf("checksummed migrations = %d, want %d", checksummed, len(items))
+	}
 	var platforms int
 	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM platforms").Scan(&platforms); err != nil {
 		t.Fatalf("count platforms: %v", err)
 	}
 	if platforms != 1 {
 		t.Fatalf("platform count = %d, want 1", platforms)
+	}
+	var organizationStatusColumns int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name IN ('platforms', 'teams', 'projects')
+		   AND column_name = 'status'`).Scan(&organizationStatusColumns); err != nil {
+		t.Fatalf("count organization status columns: %v", err)
+	}
+	if organizationStatusColumns != 0 {
+		t.Fatalf("organization status columns = %d, want 0", organizationStatusColumns)
+	}
+}
+
+func TestApplyRejectsChecksumMismatch(t *testing.T) {
+	pool := integrationPool(t)
+	if err := Apply(context.Background(), pool); err != nil {
+		t.Fatalf("initial Apply() error = %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+		UPDATE schema_migrations
+		   SET checksum = 'tampered'
+		 WHERE version = (SELECT min(version) FROM schema_migrations)`); err != nil {
+		t.Fatalf("tamper migration checksum: %v", err)
+	}
+
+	err := Apply(context.Background(), pool)
+	if err == nil || !strings.Contains(err.Error(), "checksum does not match") {
+		t.Fatalf("Apply() error = %v, want checksum mismatch", err)
 	}
 }
 

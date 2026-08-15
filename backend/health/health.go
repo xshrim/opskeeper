@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"opskeeper/backend/version"
 )
 
 type Check struct {
@@ -21,6 +23,8 @@ type Report struct {
 	Status    string                 `json:"status"`
 	Service   string                 `json:"service"`
 	Version   string                 `json:"version"`
+	Commit    string                 `json:"commit"`
+	BuildTime string                 `json:"build_time"`
 	Timestamp time.Time              `json:"timestamp"`
 	Checks    map[string]CheckResult `json:"checks,omitempty"`
 }
@@ -39,11 +43,13 @@ func (s *Service) Name() string {
 	return s.name
 }
 
-func (s *Service) Readiness(ctx context.Context, version string) Report {
+func (s *Service) Readiness(ctx context.Context, build version.Info) Report {
 	report := Report{
 		Status:    "ready",
 		Service:   s.name,
-		Version:   version,
+		Version:   build.Version,
+		Commit:    build.Commit,
+		BuildTime: build.BuildTime,
 		Timestamp: time.Now().UTC(),
 		Checks:    make(map[string]CheckResult, len(s.checks)),
 	}
@@ -82,11 +88,13 @@ func (s *Service) Readiness(ctx context.Context, version string) Report {
 	return report
 }
 
-func Liveness(serviceName, version string) Report {
+func Liveness(serviceName string, build version.Info) Report {
 	return Report{
 		Status:    "alive",
 		Service:   serviceName,
-		Version:   version,
+		Version:   build.Version,
+		Commit:    build.Commit,
+		BuildTime: build.BuildTime,
 		Timestamp: time.Now().UTC(),
 	}
 }

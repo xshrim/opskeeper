@@ -1,4 +1,4 @@
-# Git 与远端仓库
+# Git 版本控制与开发模式
 
 本文档规定 OpsKeeper 的 Git 分支、提交、验收、合并和发布方式。项目采用**轻量级主干开发**：只有 `main` 是长期分支，具体任务使用短生命周期分支，完成开发和验收后才合并回 `main`。
 
@@ -44,7 +44,7 @@ git remote -v
 ```bash
 git switch main
 git pull --ff-only
-git switch -c feat/t03-scope-rbac
+git switch -c feat/t03-identity-session
 ```
 
 当前仓库的 T02 变更使用：
@@ -75,7 +75,7 @@ test(organization): cover concurrent team creation
 任务分支首次推送：
 
 ```bash
-git push --set-upstream origin feat/t03-scope-rbac
+git push --set-upstream origin feat/t03-identity-session
 ```
 
 开发过程中需要同步主干时：
@@ -113,7 +113,7 @@ git rebase origin/main
 ```bash
 git switch main
 git pull --ff-only
-git branch -d feat/t03-scope-rbac
+git branch -d feat/t03-identity-session
 ```
 
 ## 4. `main` 保护规则
@@ -135,6 +135,7 @@ GitHub 上的 `main` 应启用以下保护规则：
 - 每个迁移版本号在仓库中全局唯一。
 - 前滚 SQL 和同版本 `.down.sql` 必须在同一个 Pull Request 中提交。
 - 已经合并或部署的迁移文件不得修改，修复必须新增迁移。
+- 迁移器必须记录并校验已执行前滚 SQL 的内容校验和，任何名称或校验和不一致都必须阻断迁移。
 - 并行分支新增迁移时，后合并者必须基于最新 `main` 重新检查版本号并执行迁移测试。
 - 迁移由单一发布任务执行，API 副本不自动执行 Schema 变更。
 - 滚动发布优先采用“先扩展 Schema、再部署代码、最后清理旧字段”的向后兼容顺序。

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,42 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.BasePath != "/test-ops" {
 		t.Fatalf("Load() returned unexpected base path: %#v", cfg)
+	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("Load() TrustedProxies = %#v, want empty", cfg.TrustedProxies)
+	}
+}
+
+func TestLoadAcceptsTrustedProxies(t *testing.T) {
+	t.Setenv("OPSK_TRUSTED_PROXIES", "10.0.0.0/8, 192.0.2.10, 2001:db8::/32, 192.0.2.10/32")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("192.0.2.10/32"),
+		netip.MustParsePrefix("2001:db8::/32"),
+	}
+	if len(cfg.TrustedProxies) != len(want) {
+		t.Fatalf("Load() TrustedProxies = %#v, want %#v", cfg.TrustedProxies, want)
+	}
+	for index := range want {
+		if cfg.TrustedProxies[index] != want[index] {
+			t.Fatalf("Load() TrustedProxies[%d] = %v, want %v", index, cfg.TrustedProxies[index], want[index])
+		}
+	}
+}
+
+func TestLoadRejectsInvalidTrustedProxy(t *testing.T) {
+	for _, value := range []string{"10.0.0.0/99", "proxy.example.com", "10.0.0.1,,10.0.0.2"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("OPSK_TRUSTED_PROXIES", value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for OPSK_TRUSTED_PROXIES=%q", value)
+			}
+		})
 	}
 }
 

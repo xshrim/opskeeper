@@ -12,7 +12,7 @@
 cp .env.example .env
 cp deploy/compose/.env.example deploy/compose/.env
 make deps
-make dev-services-up
+make infra-up
 make migrate
 make run-front-api
 ```
@@ -33,9 +33,9 @@ make run-front-api
 |---|---|
 | `make help` | 查看全部 Make 入口 |
 | `make deps` | 安装 Go 和前端依赖 |
-| `make dev-services-up` | 启动 PostgreSQL 和 Redis |
-| `make dev-services-logs` | 持续查看中间件日志 |
-| `make dev-services-down` | 停止中间件，保留数据卷 |
+| `make infra-up` | 启动 PostgreSQL 和 Redis |
+| `make infra-logs` | 持续查看中间件日志 |
+| `make infra-down` | 停止中间件，保留数据卷 |
 | `make migrate` | 应用待执行迁移 |
 | `make migrate-down` | 回滚最近一条迁移，仅用于开发和测试 |
 | `make run-api` | 临时运行 API |
@@ -58,7 +58,7 @@ make run-front-api
 运行前后端合并后的完整应用：
 
 ```bash
-make dev-services-up
+make infra-up
 make run-front-api
 ```
 
@@ -77,7 +77,7 @@ frontend-build
 仅开发后端时运行 API：
 
 ```bash
-make dev-services-up
+make infra-up
 make run-api
 ```
 
@@ -111,6 +111,7 @@ make run-scheduler
 | `OPSK_ENVIRONMENT` | `development` | 标识运行环境 |
 | `OPSK_LOG_FORMAT` | `text` | Go 应用日志格式，可选 `text` 或 `json` |
 | `OPSK_HTTP_ADDRESS` | `:8080` | API 监听地址 |
+| `OPSK_TRUSTED_PROXIES` | 空 | 允许提供客户端转发头的反向代理 IP 或 CIDR，逗号分隔 |
 | `OPSK_DATABASE_URL` | 本地 `opskeeper` 连接串 | 业务数据库连接 |
 | `OPSK_REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 |
 | `OPSK_SHUTDOWN_TIMEOUT` | `10s` | 优雅退出期限 |
@@ -139,7 +140,19 @@ OPSK_BASE_PATH=/
 
 四个应用服务名称固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
 
-### 4.2 日志格式
+### 4.2 可信代理与客户端 IP
+
+默认 `OPSK_TRUSTED_PROXIES` 为空，API 不信任任何 `X-Forwarded-For` 或 `X-Real-IP`。直接访问 API 的客户端即使自行提供这些请求头，也不能改变日志和后续审计使用的来源 IP。
+
+通过 Ingress、Nginx 或其他反向代理部署时，只配置会直接连接 API 的代理地址或网段：
+
+```dotenv
+OPSK_TRUSTED_PROXIES=10.42.0.0/16,192.0.2.10,2001:db8:42::/64
+```
+
+API 只在 TCP 直连来源属于该列表时解析转发头。对于 `X-Forwarded-For`，从右向左跳过可信代理，选择第一个非可信地址作为客户端 IP；头部包含非法地址时整条链失效并保留直连来源。可信范围只能包含受控代理节点，不能为方便而配置全部内网或客户端网段。
+
+### 4.3 日志格式
 
 所有 Go 应用使用相同的 `OPSK_LOG_FORMAT`：
 
@@ -152,19 +165,19 @@ OPSK_LOG_FORMAT=json make run-api
 - `json`：适合容器平台和日志采集系统解析。
 - 其他值会在应用启动时被拒绝。
 
-格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段。
+格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段；API 请求日志还写入经过可信代理规则解析的 `client_ip`。
 
 ## 5. PostgreSQL 与 Redis
 
 启动、查看和停止中间件：
 
 ```bash
-make dev-services-up
-make dev-services-logs
-make dev-services-down
+make infra-up
+make infra-logs
+make infra-down
 ```
 
-`dev-services-down` 不删除持久化数据卷，再次启动会复用已有数据。PostgreSQL 初始化变量和初始化脚本仅在数据目录为空时生效；修改环境变量不会更新已有数据卷中的用户、密码或数据库所有权。
+`make infra-down` 不删除持久化数据卷，再次启动会复用已有数据。PostgreSQL 初始化变量和初始化脚本仅在数据目录为空时生效；修改环境变量不会更新已有数据卷中的用户、密码或数据库所有权。
 
 ### 5.1 管理员与业务角色
 
@@ -208,7 +221,7 @@ NNNN_description.sql
 NNNN_description.down.sql
 ```
 
-迁移器通过 `go:embed` 将 SQL 编译进 `opskeeper-migrate`。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，按版本顺序跳过已执行项，并在独立事务中执行每条待处理迁移和版本记录。失败会回滚当前迁移并返回非零状态。
+迁移器通过 `go:embed` 将 SQL 编译进 `opskeeper-migrate`。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，校验全部已执行版本的名称和前滚 SQL SHA-256，按版本顺序跳过已执行项，并在独立事务中执行每条待处理迁移和版本记录。失败会回滚当前迁移并返回非零状态。由旧版本迁移器创建且尚无校验和的记录，会在首次升级时于同一把锁内补录；后续发现文件被修改、重命名或数据库存在当前二进制未知版本时立即失败。
 
 执行 `make migrate-down` 时，迁移器使用同一把锁，在一个事务中回滚最新版本并删除其版本记录。生产发布回滚应用时不得自动执行 `down`；自动化发布流程见[自动化发布](delivery.md)。
 
@@ -236,7 +249,7 @@ backend/bin/opskeeper-scheduler
 backend/bin/opskeeper-migrate
 ```
 
-本地二进制名称可用 `make build BINARY_PREFIX=acme-ops` 覆盖；最终镜像内始终使用固定的 `opskeeper-*` 文件名。镜像名可通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定。
+本地二进制和最终镜像内文件名固定为 `opskeeper-*`。`make build` 默认从 Git 生成版本、提交和 UTC 构建时间，也可由流水线显式传入 `VERSION`、`COMMIT`、`BUILD_TIME`。镜像名通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定；镜像 Builder 默认使用 `goproxy.cn`、阿里云 Alpine 镜像和 npmmirror，均可通过同名 Make 变量覆盖。
 
 数据库集成测试必须显式提供可丢弃数据库：
 

@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"opskeeper/backend/health"
+	"opskeeper/backend/version"
 )
+
+var testBuild = version.Info{Version: "test", Commit: "abc123", BuildTime: "2026-01-01T00:00:00Z"}
 
 func TestLiveness(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), "test", "/test", nil, nil)
+	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{BasePath: "/test"}, nil, nil)
 	request := httptest.NewRequest(http.MethodGet, "/test/health/live", nil)
 	response := httptest.NewRecorder()
 
@@ -30,6 +33,9 @@ func TestLiveness(t *testing.T) {
 	if !strings.Contains(response.Body.String(), `"service":"test-api"`) {
 		t.Fatalf("GET /test/health/live body = %s", response.Body.String())
 	}
+	if !strings.Contains(response.Body.String(), `"commit":"abc123"`) {
+		t.Fatalf("GET /test/health/live body = %s", response.Body.String())
+	}
 }
 
 func TestReadinessFailure(t *testing.T) {
@@ -37,7 +43,7 @@ func TestReadinessFailure(t *testing.T) {
 	service := health.NewService("test-api", time.Second, []health.Check{
 		{Name: "postgres", Run: func(context.Context) error { return context.DeadlineExceeded }},
 	})
-	router := NewRouter(logger, service, "test", "/test", nil, nil)
+	router := NewRouter(logger, service, testBuild, Options{BasePath: "/test"}, nil, nil)
 	request := httptest.NewRequest(http.MethodGet, "/test/health/ready", nil)
 	response := httptest.NewRecorder()
 
@@ -50,7 +56,7 @@ func TestReadinessFailure(t *testing.T) {
 
 func TestRouterRejectsUnprefixedRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), "test", "/test", nil, nil)
+	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{BasePath: "/test"}, nil, nil)
 	request := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	response := httptest.NewRecorder()
 
@@ -67,7 +73,7 @@ func TestRouterKeepsUnknownAPIAsJSONWhenWebUIIsEnabled(t *testing.T) {
 		writer.Header().Set("Content-Type", "text/html")
 		_, _ = writer.Write([]byte("web UI"))
 	})
-	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), "test", "/test", nil, webUI)
+	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{BasePath: "/test"}, nil, webUI)
 
 	apiRequest := httptest.NewRequest(http.MethodGet, "/test/api/v1/missing", nil)
 	apiResponse := httptest.NewRecorder()
@@ -90,7 +96,7 @@ func TestRouterSupportsRootBasePath(t *testing.T) {
 		writer.Header().Set("Content-Type", "text/html")
 		_, _ = writer.Write([]byte("web UI"))
 	})
-	router := NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", "/", nil, webUI)
+	router := NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), testBuild, Options{BasePath: "/"}, nil, webUI)
 
 	for _, test := range []struct {
 		path        string

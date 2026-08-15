@@ -2,7 +2,9 @@ package migrations
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -26,10 +28,11 @@ const (
 )
 
 type migration struct {
-	version int64
-	name    string
-	sql     string
-	downSQL string
+	version  int64
+	name     string
+	checksum string
+	sql      string
+	downSQL  string
 }
 
 func Apply(ctx context.Context, pool *pgxpool.Pool) error {
@@ -42,24 +45,13 @@ func apply(ctx context.Context, conn *pgxpool.Conn) error {
 		return err
 	}
 
-	if _, err := conn.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version bigint PRIMARY KEY,
-			name text NOT NULL,
-			applied_at timestamptz NOT NULL DEFAULT now()
-		)`); err != nil {
-		return fmt.Errorf("create schema migrations table: %w", err)
+	applied, err := prepareMigrationHistory(ctx, conn, migrations)
+	if err != nil {
+		return err
 	}
 
 	for _, item := range migrations {
-		var applied bool
-		if err := conn.QueryRow(ctx,
-			"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
-			item.version,
-		).Scan(&applied); err != nil {
-			return fmt.Errorf("check migration %d: %w", item.version, err)
-		}
-		if applied {
+		if _, exists := applied[item.version]; exists {
 			continue
 		}
 
@@ -72,9 +64,10 @@ func apply(ctx context.Context, conn *pgxpool.Conn) error {
 			return fmt.Errorf("apply migration %d (%s): %w", item.version, item.name, err)
 		}
 		if _, err := tx.Exec(ctx,
-			"INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
+			"INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)",
 			item.version,
 			item.name,
+			item.checksum,
 		); err != nil {
 			_ = tx.Rollback(ctx)
 			return fmt.Errorf("record migration %d: %w", item.version, err)
@@ -96,13 +89,8 @@ func rollbackLast(ctx context.Context, conn *pgxpool.Conn) error {
 	if err != nil {
 		return err
 	}
-	if _, err := conn.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version bigint PRIMARY KEY,
-			name text NOT NULL,
-			applied_at timestamptz NOT NULL DEFAULT now()
-		)`); err != nil {
-		return fmt.Errorf("create schema migrations table: %w", err)
+	if _, err := prepareMigrationHistory(ctx, conn, migrations); err != nil {
+		return err
 	}
 
 	var version int64
@@ -142,6 +130,77 @@ func rollbackLast(ctx context.Context, conn *pgxpool.Conn) error {
 		return fmt.Errorf("commit rollback %d: %w", version, err)
 	}
 	return nil
+}
+
+func prepareMigrationHistory(ctx context.Context, conn *pgxpool.Conn, migrations []migration) (map[int64]struct{}, error) {
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version bigint PRIMARY KEY,
+			name text NOT NULL,
+			checksum text,
+			applied_at timestamptz NOT NULL DEFAULT now()
+		)`); err != nil {
+		return nil, fmt.Errorf("create schema migrations table: %w", err)
+	}
+	if _, err := conn.Exec(ctx, "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum text"); err != nil {
+		return nil, fmt.Errorf("add migration checksum column: %w", err)
+	}
+
+	embedded := make(map[int64]migration, len(migrations))
+	for _, item := range migrations {
+		embedded[item.version] = item
+	}
+
+	rows, err := conn.Query(ctx, "SELECT version, name, checksum FROM schema_migrations ORDER BY version")
+	if err != nil {
+		return nil, fmt.Errorf("read migration history: %w", err)
+	}
+	applied := make(map[int64]struct{})
+	backfill := make([]migration, 0)
+	for rows.Next() {
+		var version int64
+		var name string
+		var checksum *string
+		if err := rows.Scan(&version, &name, &checksum); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan migration history: %w", err)
+		}
+		item, exists := embedded[version]
+		if !exists {
+			rows.Close()
+			return nil, fmt.Errorf("applied migration %d (%s) is not embedded in this binary", version, name)
+		}
+		if item.name != name {
+			rows.Close()
+			return nil, fmt.Errorf("applied migration %d name is %q, embedded name is %q", version, name, item.name)
+		}
+		if checksum == nil {
+			backfill = append(backfill, item)
+		} else if *checksum != item.checksum {
+			rows.Close()
+			return nil, fmt.Errorf("applied migration %d (%s) checksum does not match embedded SQL", version, name)
+		}
+		applied[version] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("iterate migration history: %w", err)
+	}
+	rows.Close()
+
+	for _, item := range backfill {
+		if _, err := conn.Exec(ctx,
+			"UPDATE schema_migrations SET checksum = $2 WHERE version = $1 AND checksum IS NULL",
+			item.version,
+			item.checksum,
+		); err != nil {
+			return nil, fmt.Errorf("backfill migration %d checksum: %w", item.version, err)
+		}
+	}
+	if _, err := conn.Exec(ctx, "ALTER TABLE schema_migrations ALTER COLUMN checksum SET NOT NULL"); err != nil {
+		return nil, fmt.Errorf("require migration checksums: %w", err)
+	}
+	return applied, nil
 }
 
 func withMigrationLock(
@@ -230,10 +289,11 @@ func load() ([]migration, error) {
 			return nil, errors.New("rollback migration " + downName + " is empty")
 		}
 		items = append(items, migration{
-			version: version,
-			name:    parts[1],
-			sql:     string(content),
-			downSQL: string(downContent),
+			version:  version,
+			name:     parts[1],
+			checksum: migrationChecksum(content),
+			sql:      string(content),
+			downSQL:  string(downContent),
 		})
 	}
 
@@ -244,4 +304,9 @@ func load() ([]migration, error) {
 		}
 	}
 	return items, nil
+}
+
+func migrationChecksum(content []byte) string {
+	digest := sha256.Sum256(content)
+	return hex.EncodeToString(digest[:])
 }

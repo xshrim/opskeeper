@@ -34,7 +34,7 @@ func main() {
 		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With("service", serviceName)
+	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
 	if err := run(logger, cfg); err != nil {
 		logger.Error("api stopped", "error", err)
 		os.Exit(1)
@@ -77,8 +77,11 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	organizationService := organization.NewService(organizationStore)
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewRouter(logger, healthService, version.Value, cfg.BasePath, organizationService, webUI),
+		Addr: cfg.HTTPAddress,
+		Handler: httpapi.NewRouter(logger, healthService, version.Current(), httpapi.Options{
+			BasePath:       cfg.BasePath,
+			TrustedProxies: cfg.TrustedProxies,
+		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -87,7 +90,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.BasePath, "environment", cfg.Environment, "version", version.Value)
+		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
 		serverErr <- server.ListenAndServe()
 	}()
 

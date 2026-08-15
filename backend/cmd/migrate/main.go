@@ -11,6 +11,7 @@ import (
 	"opskeeper/backend/config"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/migrations"
+	"opskeeper/backend/version"
 )
 
 const serviceName = "opskeeper-migrate"
@@ -27,7 +28,7 @@ func main() {
 		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With("service", serviceName)
+	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

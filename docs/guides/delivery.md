@@ -19,8 +19,8 @@
 
 ```bash
 make quality
-make build
-make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version>
+make build VERSION=<version> COMMIT=<commit> BUILD_TIME=<UTC timestamp>
+make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<version> COMMIT=<commit> BUILD_TIME=<UTC timestamp>
 ```
 
 | 入口 | 结果 |
@@ -29,7 +29,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version>
 | `make build` | 在 `backend/bin/` 生成四个本地二进制 |
 | `make image` | 使用 `deploy/Dockerfile` 生成最终不可变镜像 |
 
-`deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
+`deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。Node Builder 调用 Make 的前端构建目标，Go Builder 接收前端制品后调用 Make 的后端构建目标；Dockerfile 不重复维护 npm 构建命令、Go Build Tag、版本注入或二进制清单。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
 
 本地 `make run-front-api` 使用相同的嵌入链路：先将 Vite 制品从 `frontend/dist` 复制到 `backend/webui/dist`，再通过 `embed_webui` 标签和 `go:embed` 将其编译进临时 API，最终只启动一个同时提供前后端服务的 Go 进程。
 
@@ -48,12 +48,17 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version>
 
 | 配置 | 阶段 | 作用 |
 |---|---|---|
-| `BINARY_PREFIX` | 本地 `make build` | 改变 `backend/bin/` 中的文件名，默认 `opskeeper` |
 | `IMAGE_REPOSITORY` | `make image` | 设置镜像仓库，默认 `opskeeper` |
 | `IMAGE_TAG` | `make image` | 设置镜像标签，默认 `local` |
 | `GOPROXY` | 构建 | 设置 Go 依赖代理，不属于应用运行配置 |
+| `ALPINE_MIRROR` | 镜像构建 | 设置 Builder 的 Alpine 软件源，默认 `https://mirrors.aliyun.com/alpine` |
+| `NPM_REGISTRY` | 镜像构建 | 设置 Builder 的 npm Registry，默认 `https://registry.npmmirror.com` |
+| `VERSION` | 构建 | 应用版本；默认使用当前 Git 描述，流水线应显式传入发布版本 |
+| `COMMIT` | 构建 | 完整 Git Commit；默认读取当前工作树 HEAD |
+| `BUILD_TIME` | 构建 | UTC 构建时间；流水线应传入 RFC 3339 时间 |
 | `OPSK_BASE_PATH` | 运行 | 设置 API 的 HTTP 路径前缀，默认 `/opskeeper`，根路径使用 `/` |
 | `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `text` 或 `json`，默认 `text` |
+| `OPSK_TRUSTED_PROXIES` | API 运行 | 允许提供客户端转发头的直接代理 IP/CIDR；默认空，不信任任何代理头 |
 
 镜像内文件名和四个应用的服务名称固定为：
 
@@ -63,6 +68,8 @@ opskeeper-worker
 opskeeper-scheduler
 opskeeper-migrate
 ```
+
+`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入四个二进制。API 健康响应返回这三个字段，所有 Go 进程日志也携带相同字段，使运行实例能够关联到发布版本、源码提交和构建批次。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
 
 `OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。四个进程使用相同格式，并写入固定的 `service` 字段。
 
@@ -97,8 +104,8 @@ Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应
 迁移器使用 PostgreSQL session advisory lock 保护整个迁移过程：
 
 1. 获取一条固定连接并等待项目迁移锁。
-2. 创建或复用 `schema_migrations`。
-3. 按版本升序跳过已执行迁移。
+2. 创建或复用 `schema_migrations`，校验已执行迁移的名称和前滚 SQL SHA-256。
+3. 按版本升序跳过已执行且校验一致的迁移。
 4. 在独立事务中执行每条待处理 SQL 和版本记录。
 5. 失败时回滚当前事务并返回非零状态。
 6. 完成后在同一连接释放锁；释放失败时销毁该连接。

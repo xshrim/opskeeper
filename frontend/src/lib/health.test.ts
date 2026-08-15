@@ -7,6 +7,8 @@ describe('toStatusRows', () => {
       status: 'not_ready',
       service: 'opskeeper-api',
       version: 'test',
+      commit: 'abc123',
+      build_time: '2026-01-01T00:00:00Z',
       timestamp: '2026-01-01T00:00:00Z',
       checks: {
         postgres: { status: 'up', latency_ms: 4 },

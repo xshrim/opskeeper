@@ -49,8 +49,12 @@ func TestOrganizationLifecycle(t *testing.T) {
 	}
 
 	disabled := organization.StatusDisabled
-	if _, err := service.UpdateTeam(context.Background(), team.ID, organization.UpdateTeamInput{Status: &disabled}); err != nil {
+	updatedTeam, err := service.UpdateTeam(context.Background(), team.ID, organization.UpdateTeamInput{Status: &disabled})
+	if err != nil {
 		t.Fatalf("UpdateTeam() error = %v", err)
+	}
+	if updatedTeam.Status != disabled || updatedTeam.Scope.Status != disabled {
+		t.Fatalf("UpdateTeam() status = %q, scope status = %q", updatedTeam.Status, updatedTeam.Scope.Status)
 	}
 	_, err = service.CreateProject(context.Background(), organization.CreateProjectInput{
 		TeamID: team.ID,
@@ -113,6 +117,21 @@ func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	var organizationStatusColumns int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name IN ('platforms', 'teams', 'projects')
+		   AND column_name = 'status'`).Scan(&organizationStatusColumns); err != nil {
+		t.Fatalf("check restored status columns: %v", err)
+	}
+	if organizationStatusColumns != 3 {
+		t.Fatalf("restored organization status columns = %d, want 3", organizationStatusColumns)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("second RollbackLast() error = %v", err)
 	}
 	var scopesTable *string
 	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.scopes')::text").Scan(&scopesTable); err != nil {

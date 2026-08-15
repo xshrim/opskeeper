@@ -14,7 +14,7 @@ import (
 
 const platformSelect = `
 	SELECT p.id::text, p.scope_id::text, s.scope_type, s.parent_scope_id::text,
-	       s.status, p.name, p.code, p.status, p.created_at, p.updated_at
+	       s.status, p.name, p.code, p.created_at, p.updated_at
 	  FROM platforms p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -22,7 +22,7 @@ const platformSelect = `
 const teamSelect = `
 	SELECT t.id::text, t.platform_id::text, t.scope_id::text, s.scope_type,
 	       s.parent_scope_id::text, s.status, t.name, t.code, t.labels,
-	       t.status, t.created_at, t.updated_at
+	       t.created_at, t.updated_at
 	  FROM teams t
 	  JOIN scopes s ON s.id = t.scope_id
 	 WHERE t.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -30,7 +30,7 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.labels, p.source, p.status, p.created_at, p.updated_at
+	       p.labels, p.source, p.created_at, p.updated_at
 	  FROM projects p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -77,7 +77,7 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	if err != nil {
 		return Team{}, mapStoreError(err)
 	}
-	if platform.Status != StatusActive || platform.Scope.Status != StatusActive {
+	if platform.Scope.Status != StatusActive {
 		return Team{}, ErrParentInactive
 	}
 
@@ -97,8 +97,8 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	var teamID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO teams (scope_id, platform_id, name, code, labels, status)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'active')
+		INSERT INTO teams (scope_id, platform_id, name, code, labels)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5)
 		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Code, labels).Scan(&teamID); err != nil {
 		return Team{}, mapStoreError(err)
 	}
@@ -173,15 +173,17 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	if err != nil {
 		return Team{}, fmt.Errorf("encode team labels: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE scopes SET status = $2, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
-		return Team{}, mapStoreError(err)
+	if input.Status != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE scopes SET status = $2, updated_at = now()
+			 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
+			return Team{}, mapStoreError(err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE teams
-		   SET name = $2, labels = $3, status = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, labels, current.Status); err != nil {
+		   SET name = $2, labels = $3, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, labels); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -206,7 +208,7 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	if err != nil {
 		return Project{}, mapStoreError(err)
 	}
-	if team.Status != StatusActive || team.Scope.Status != StatusActive {
+	if team.Scope.Status != StatusActive {
 		return Project{}, ErrParentInactive
 	}
 
@@ -226,8 +228,8 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, labels, source, status)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, 'active')
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, labels, source)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
 		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, labels, input.Source).Scan(&projectID); err != nil {
 		return Project{}, mapStoreError(err)
 	}
@@ -314,15 +316,17 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	if err != nil {
 		return Project{}, fmt.Errorf("encode project labels: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE scopes SET status = $2, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
-		return Project{}, mapStoreError(err)
+	if input.Status != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE scopes SET status = $2, updated_at = now()
+			 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
+			return Project{}, mapStoreError(err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE projects
-		   SET name = $2, labels = $3, status = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, labels, current.Status); err != nil {
+		   SET name = $2, labels = $3, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, labels); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -351,13 +355,13 @@ func scanPlatform(row scanner) (Platform, error) {
 		&platform.Scope.Status,
 		&platform.Name,
 		&platform.Code,
-		&platform.Status,
 		&platform.CreatedAt,
 		&platform.UpdatedAt,
 	); err != nil {
 		return Platform{}, err
 	}
 	platform.Scope.ParentID = nullableText(parentID)
+	platform.Status = platform.Scope.Status
 	return platform, nil
 }
 
@@ -375,7 +379,6 @@ func scanTeam(row scanner) (Team, error) {
 		&team.Name,
 		&team.Code,
 		&labels,
-		&team.Status,
 		&team.CreatedAt,
 		&team.UpdatedAt,
 	); err != nil {
@@ -385,6 +388,7 @@ func scanTeam(row scanner) (Team, error) {
 		return Team{}, fmt.Errorf("decode team labels: %w", err)
 	}
 	team.Scope.ParentID = nullableText(parentID)
+	team.Status = team.Scope.Status
 	return team, nil
 }
 
@@ -404,7 +408,6 @@ func scanProject(row scanner) (Project, error) {
 		&project.Code,
 		&labels,
 		&project.Source,
-		&project.Status,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 	); err != nil {
@@ -414,6 +417,7 @@ func scanProject(row scanner) (Project, error) {
 		return Project{}, fmt.Errorf("decode project labels: %w", err)
 	}
 	project.Scope.ParentID = nullableText(parentID)
+	project.Status = project.Scope.Status
 	return project, nil
 }
 
