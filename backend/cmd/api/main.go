@@ -58,7 +58,8 @@ func run(logger *slog.Logger) error {
 			return redisClient.Ping(checkCtx).Err()
 		}},
 	})
-	organizationService := organization.NewService(organization.NewRepository(pool))
+	organizationStore := organization.NewStore(pool)
+	organizationService := organization.NewService(organizationStore)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,

@@ -18,7 +18,7 @@ import (
 
 func TestOrganizationLifecycle(t *testing.T) {
 	pool := integrationPool(t)
-	service := organization.NewService(organization.NewRepository(pool))
+	service := organization.NewService(organization.NewStore(pool))
 
 	platform, err := service.GetPlatform(context.Background())
 	if err != nil {
@@ -64,7 +64,7 @@ func TestOrganizationLifecycle(t *testing.T) {
 
 func TestConcurrentTeamCodeIsUnique(t *testing.T) {
 	pool := integrationPool(t)
-	service := organization.NewService(organization.NewRepository(pool))
+	service := organization.NewService(organization.NewStore(pool))
 
 	var wait sync.WaitGroup
 	errorsByCall := make(chan error, 2)
@@ -97,7 +97,7 @@ func TestConcurrentTeamCodeIsUnique(t *testing.T) {
 
 func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 	pool := integrationPool(t)
-	platform, err := organization.NewService(organization.NewRepository(pool)).GetPlatform(context.Background())
+	platform, err := organization.NewService(organization.NewStore(pool)).GetPlatform(context.Background())
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}

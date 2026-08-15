@@ -34,6 +34,10 @@ opskeeper/
 │   ├── httpapi/
 │   ├── migrations/
 │   ├── organization/
+│   ├── database/       # 出现跨特性的连接生命周期需求时创建
+│   ├── cache/          # 出现跨特性的缓存基础设施需求时创建
+│   ├── connector/      # 外部平台协议形成稳定边界时创建
+│   ├── messaging/      # 出现共享事件传输需求时创建
 │   ├── version/
 │   └── tests/
 ├── frontend/
@@ -47,7 +51,7 @@ opskeeper/
 └── Makefile
 ```
 
-后端首版使用模块化单体。模块可以有独立的领域、服务、仓储和 HTTP 层，但共享进程和数据库；只有 API、Worker、Scheduler 分为独立运行单元。
+后端首版使用模块化单体并按业务特性建包。业务类型、Service、特性专属 Store 和测试留在同一特性包，通过文件划分职责；共享基础设施包只在出现真实的跨特性需求时创建，不预建空目录或全局 adapter 层。HTTP 作为协议边界独立，API、Worker、Scheduler 是独立运行单元。详细规则见 [Go 编码与工程组织规范](go-coding-conventions.md)。
 
 ## 4. 任务总览
 
@@ -129,7 +133,7 @@ opskeeper/
 2. 创建 `scopes`、`platforms`、`teams`、`projects` 表及状态、时间和软删除字段。
 3. 使用数据库约束保证 Platform 无父节点、Team 父节点为 Platform、Project 父节点为 Team。
 4. 建立团队编码平台内唯一、项目编码团队内唯一等索引。
-5. 实现事务化 Repository 和 Service，组织与 Scope 必须在同一事务创建或变更。
+5. 实现事务化 Store 和 Service，组织与 Scope 必须在同一事务创建或变更。
 6. 提供团队和项目的创建、查询、修改、停用及分页 API。
 7. 初始化单个平台根 Scope；不开放创建多个平台的业务接口。
 8. 对父子关系、唯一性、软删除、并发创建和非法迁移编写集成测试。
