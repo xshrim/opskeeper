@@ -74,15 +74,28 @@ func TestRoleInheritanceAndOrganizationFiltering(t *testing.T) {
 		t.Fatalf("GetProject(out of scope) error = %v", err)
 	}
 
-	if _, err := pool.Exec(ctx, "UPDATE scopes SET status = 'disabled' WHERE id = $1::uuid", teamA.Scope.ID); err != nil {
-		t.Fatalf("disable team scope: %v", err)
+	if _, err := pool.Exec(ctx, "UPDATE scopes SET status = 'disabled' WHERE id = $1::uuid", platform.Scope.ID); err != nil {
+		t.Fatalf("disable platform scope: %v", err)
 	}
 	filter, err = service.ScopeFilter(ctx, authorization.Subject{UserID: teamUser}, authorization.OrganizationRead)
 	if err != nil {
-		t.Fatalf("ScopeFilter(disabled parent) error = %v", err)
+		t.Fatalf("ScopeFilter(disabled ancestor) error = %v", err)
 	}
 	if len(filter.ScopeIDs) != 0 {
-		t.Fatalf("disabled parent filter = %#v, want empty", filter.ScopeIDs)
+		t.Fatalf("disabled ancestor filter = %#v, want empty", filter.ScopeIDs)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE scopes SET status = 'active' WHERE id = $1::uuid", platform.Scope.ID); err != nil {
+		t.Fatalf("restore platform scope: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE scopes SET status = 'disabled' WHERE id = $1::uuid", teamA.Scope.ID); err != nil {
+		t.Fatalf("disable bound team scope: %v", err)
+	}
+	filter, err = service.ScopeFilter(ctx, authorization.Subject{UserID: teamUser}, authorization.OrganizationRead)
+	if err != nil {
+		t.Fatalf("ScopeFilter(disabled bound scope) error = %v", err)
+	}
+	if len(filter.ScopeIDs) != 0 {
+		t.Fatalf("disabled bound scope filter = %#v, want empty", filter.ScopeIDs)
 	}
 }
 

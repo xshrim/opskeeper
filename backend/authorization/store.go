@@ -23,12 +23,32 @@ func NewStore(pool *pgxpool.Pool) Store {
 
 func (s *store) ResolveScopes(ctx context.Context, subject Subject, permission Permission) (ScopeFilter, error) {
 	rows, err := s.pool.Query(ctx, `
-		WITH RECURSIVE granted(scope_id) AS (
+		WITH RECURSIVE active_ancestors(scope_id, ancestor_id, ancestor_status, ancestor_deleted_at) AS (
+			SELECT id, id, status, deleted_at
+			  FROM scopes
+			 UNION ALL
+			SELECT chain.scope_id, parent.id, parent.status, parent.deleted_at
+			  FROM active_ancestors chain
+			  JOIN scopes current_scope ON current_scope.id = chain.ancestor_id
+			  JOIN scopes parent ON parent.id = current_scope.parent_scope_id
+		), eligible(scope_id) AS (
+			SELECT scope.id
+			  FROM scopes scope
+			 WHERE scope.status = 'active'
+			   AND scope.deleted_at IS NULL
+			   AND NOT EXISTS (
+					SELECT 1
+					  FROM active_ancestors chain
+					 WHERE chain.scope_id = scope.id
+					   AND (chain.ancestor_status <> 'active' OR chain.ancestor_deleted_at IS NOT NULL)
+				)
+		), granted(scope_id) AS (
 			SELECT scope.id
 			  FROM role_bindings binding
 			  JOIN roles role ON role.id = binding.role_id
 			  JOIN role_permissions role_permission ON role_permission.role_id = role.id
 			  JOIN scopes scope ON scope.id = binding.scope_id
+			  JOIN eligible ON eligible.scope_id = scope.id
 			  JOIN users ON users.id = binding.subject_id
 			 WHERE binding.subject_type = 'user'
 			   AND binding.subject_id = $1::uuid
@@ -41,7 +61,7 @@ func (s *store) ResolveScopes(ctx context.Context, subject Subject, permission P
 			SELECT child.id
 			  FROM scopes child
 			  JOIN granted parent ON parent.scope_id = child.parent_scope_id
-			 WHERE child.status = 'active' AND child.deleted_at IS NULL
+			  JOIN eligible ON eligible.scope_id = child.id
 		)
 		SELECT scope_id::text FROM granted ORDER BY scope_id`, subject.UserID, string(permission))
 	if err != nil {
