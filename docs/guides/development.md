@@ -38,6 +38,7 @@ make run-front-api
 | `make infra-down` | 停止中间件，保留数据卷 |
 | `make migrate` | 应用待执行迁移 |
 | `make migrate-down` | 回滚最近一条迁移，仅用于开发和测试 |
+| `make admin-create` | 通过受控流程创建首个管理员，只允许成功一次 |
 | `make run-api` | 临时运行 API |
 | `make run-worker` | 临时运行 Worker |
 | `make run-scheduler` | 临时运行 Scheduler |
@@ -110,6 +111,9 @@ make run-scheduler
 | `OPSK_BASE_PATH` | `/opskeeper` | 页面、静态资源、健康检查和业务 API 的路径前缀 |
 | `OPSK_ENVIRONMENT` | `development` | 标识运行环境 |
 | `OPSK_LOG_FORMAT` | `text` | Go 应用日志格式，可选 `text` 或 `json` |
+| `OPSK_COOKIE_SECURE` | 开发环境 `false`，生产环境 `true` | 会话 Cookie 是否只允许 HTTPS，生产环境不能关闭 |
+| `OPSK_SESSION_ACCESS_TTL` | `15m` | 短期访问会话有效期 |
+| `OPSK_SESSION_REFRESH_TTL` | `168h` | 刷新会话有效期，必须长于访问会话 |
 | `OPSK_HTTP_ADDRESS` | `:8080` | API 监听地址 |
 | `OPSK_TRUSTED_PROXIES` | 空 | 允许提供客户端转发头的反向代理 IP 或 CIDR，逗号分隔 |
 | `OPSK_DATABASE_URL` | 本地 `opskeeper` 连接串 | 业务数据库连接 |
@@ -247,6 +251,7 @@ backend/bin/opskeeper-api
 backend/bin/opskeeper-worker
 backend/bin/opskeeper-scheduler
 backend/bin/opskeeper-migrate
+backend/bin/opskeeper-admin
 ```
 
 本地二进制和最终镜像内文件名固定为 `opskeeper-*`。`make build` 默认从 Git 生成版本、提交和 UTC 构建时间，也可由流水线显式传入 `VERSION`、`COMMIT`、`BUILD_TIME`。镜像名通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定；镜像 Builder 默认使用 `goproxy.cn`、阿里云 Alpine 镜像和 npmmirror，均可通过同名 Make 变量覆盖。
@@ -260,11 +265,40 @@ OPSK_TEST_DATABASE_URL='postgres://opskeeper:opskeeper@localhost:5432/opskeeper?
 
 测试会创建临时 Schema 并在结束后删除，不会清空默认 Schema。
 
-## 8. 当前组织 API
+## 8. 身份与会话
 
-以下路径假设默认 `OPSK_BASE_PATH=/opskeeper`，当前阶段尚未接入认证；使用根路径时去掉开头的 `/opskeeper`。
+### 8.1 首次创建管理员
+
+首次启动一个空数据库后，必须通过 Makefile 提供的受控流程创建管理员：
+
+```bash
+make admin-create
+```
+
+命令交互式读取邮箱、显示名称和两次密码，不提供默认生产密码，也不会把密码写入日志或 API 响应。自动化环境使用临时权限安全文件：
+
+```bash
+OPSK_BOOTSTRAP_EMAIL=admin@example.com \
+OPSK_BOOTSTRAP_PASSWORD_FILE=/run/secrets/opskeeper-admin-password \
+make admin-create
+```
+
+管理员 bootstrap 只允许在没有任何用户的数据库中成功一次，不能通过公开 HTTP 接口抢占首个账号。
+
+### 8.2 会话使用方式
+
+登录成功后 API 通过 HttpOnly、SameSite=Lax Cookie 设置访问和刷新 Token；JSON 响应只返回用户资料。非浏览器客户端可读取 `Set-Cookie`，也可将访问 Token 作为 `Authorization: Bearer <token>` 发送。刷新会轮换访问和刷新 Token，旧刷新 Token 立即失效；注销、全部会话失效、用户 disabled 或 locked 均会阻止后续认证。
+
+## 9. 当前 API
+
+以下路径假设默认 `OPSK_BASE_PATH=/opskeeper`。T03 起，组织业务 API 要求通过身份认证；登录、刷新、注销和健康检查保持公开。使用根路径时去掉开头的 `/opskeeper`。
 
 ```text
+POST  /opskeeper/api/v1/auth/login
+POST  /opskeeper/api/v1/auth/refresh
+POST  /opskeeper/api/v1/auth/logout
+GET   /opskeeper/api/v1/auth/me
+POST  /opskeeper/api/v1/auth/logout-all
 GET   /opskeeper/api/v1/platform
 GET   /opskeeper/api/v1/teams?page=1&page_size=20
 POST  /opskeeper/api/v1/teams
@@ -276,4 +310,4 @@ GET   /opskeeper/api/v1/projects/{projectId}
 PATCH /opskeeper/api/v1/projects/{projectId}
 ```
 
-创建请求使用 `name`、`code` 和可选 `labels`。更新请求支持 `name`、`labels` 和 `status`；`status` 可选 `active` 或 `disabled`。
+创建请求使用 `name`、`code` 和可选 `labels`。更新请求支持 `name`、`labels` 和 `status`；`status` 可选 `active` 或 `disabled`。组织接口需要有效身份会话，但 T03 尚未实现角色和 Scope 授权判断。

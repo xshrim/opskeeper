@@ -10,6 +10,7 @@
 | [0002](0002-embedded-web-single-image.md) | 前后端源码分离，生产时嵌入 Web 并使用单镜像 | 已接受 |
 | [0003](0003-controlled-database-migrations.md) | 使用内嵌迁移器和独立 Migration Job | 已接受 |
 | [0004](0004-fixed-service-names-and-base-path.md) | 固定服务名称，仅配置 HTTP Base Path | 已接受 |
+| [0005](0005-identity-session-baseline.md) | 本地身份使用 Argon2id 和不透明双 Token 会话 | 已接受 |
 
 现行架构事实仍以 [`design/`](../design/) 为准。ADR 解释为什么形成当前决策，不替代操作指南、工程规范或实施计划。
 

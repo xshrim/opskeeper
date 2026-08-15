@@ -24,7 +24,10 @@ make infra-up
 # 5. 执行数据库迁移
 make migrate
 
-# 6. 构建并嵌入前端，然后运行 API
+# 6. 通过交互式受控流程创建首个管理员
+make admin-create
+
+# 7. 构建并嵌入前端，然后运行 API
 make run-front-api
 ```
 
