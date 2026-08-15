@@ -15,7 +15,7 @@ import (
 
 func TestLiveness(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger, health.NewService(time.Second, nil), "test")
+	router := NewRouter(logger, health.NewService(time.Second, nil), "test", nil)
 	request := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	response := httptest.NewRecorder()
 
@@ -34,7 +34,7 @@ func TestReadinessFailure(t *testing.T) {
 	service := health.NewService(time.Second, []health.Check{
 		{Name: "postgres", Run: func(context.Context) error { return context.DeadlineExceeded }},
 	})
-	router := NewRouter(logger, service, "test")
+	router := NewRouter(logger, service, "test", nil)
 	request := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	response := httptest.NewRecorder()
 

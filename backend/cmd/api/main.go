@@ -13,6 +13,7 @@ import (
 	"github.com/opskeeper/opskeeper/backend/internal/config"
 	"github.com/opskeeper/opskeeper/backend/internal/health"
 	"github.com/opskeeper/opskeeper/backend/internal/httpapi"
+	"github.com/opskeeper/opskeeper/backend/internal/organization"
 	"github.com/opskeeper/opskeeper/backend/internal/version"
 	"github.com/redis/go-redis/v9"
 )
@@ -57,10 +58,11 @@ func run(logger *slog.Logger) error {
 			return redisClient.Ping(checkCtx).Err()
 		}},
 	})
+	organizationService := organization.NewService(organization.NewRepository(pool))
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewRouter(logger, healthService, version.Value),
+		Handler:           httpapi.NewRouter(logger, healthService, version.Value, organizationService),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

@@ -1,6 +1,6 @@
 # OpsKeeper 设计文档
 
-OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守平台。本仓库当前仅包含设计文档，尚未进入代码实现阶段。
+OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守平台。本仓库已经完成 T02 组织模型，具备 Go/Svelte 工程骨架、健康检查、PostgreSQL 迁移和三级 Scope/组织 API；T03 身份认证与三级 RBAC 待批准。
 
 ## 文档索引
 
@@ -9,6 +9,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 - [权限与安全设计](docs/authorization.md)
 - [Kubernetes 导入、AI 诊断与自动巡检](docs/operations-workflows.md)
 - [分阶段实施任务书](docs/implementation-tasks.md)
+- [T02 验收记录](docs/t02-acceptance.md)
 - [本地开发环境](docs/development.md)
 - [Git 与远端仓库](docs/version-control.md)
 
