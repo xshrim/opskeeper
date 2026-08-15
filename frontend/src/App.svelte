@@ -40,7 +40,7 @@
       <span>OpsKeeper</span>
     </div>
     <nav aria-label="Primary navigation">
-      <a class="nav-item active" href="/" aria-current="page">Overview</a>
+      <a class="nav-item active" href="./" aria-current="page">Overview</a>
     </nav>
     <div class="environment">Development</div>
   </aside>

@@ -14,7 +14,7 @@ import (
 
 const platformSelect = `
 	SELECT p.id::text, p.scope_id::text, s.scope_type, s.parent_scope_id::text,
-	       s.status, p.name, p.code, p.status, p.created_at, p.updated_at
+	       s.status, p.name, p.code, p.created_at, p.updated_at
 	  FROM platforms p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -22,7 +22,7 @@ const platformSelect = `
 const teamSelect = `
 	SELECT t.id::text, t.platform_id::text, t.scope_id::text, s.scope_type,
 	       s.parent_scope_id::text, s.status, t.name, t.code, t.labels,
-	       t.status, t.created_at, t.updated_at
+	       t.created_at, t.updated_at
 	  FROM teams t
 	  JOIN scopes s ON s.id = t.scope_id
 	 WHERE t.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -30,33 +30,44 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.labels, p.source, p.status, p.created_at, p.updated_at
+	       p.labels, p.source, p.created_at, p.updated_at
 	  FROM projects p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
 
-type scanner interface {
-	Scan(...any) error
+// Store defines the persistence capabilities required by organization use cases.
+type Store interface {
+	GetPlatform(context.Context) (Platform, error)
+	CreateTeam(context.Context, CreateTeamInput) (Team, error)
+	ListTeams(context.Context, Pagination) (Page[Team], error)
+	GetTeam(context.Context, string) (Team, error)
+	UpdateTeam(context.Context, string, UpdateTeamInput) (Team, error)
+	CreateProject(context.Context, CreateProjectInput) (Project, error)
+	ListProjects(context.Context, string, Pagination) (Page[Project], error)
+	GetProject(context.Context, string) (Project, error)
+	UpdateProject(context.Context, string, UpdateProjectInput) (Project, error)
 }
 
-type RepositoryStore struct {
+type store struct {
 	pool *pgxpool.Pool
 }
 
-func NewRepository(pool *pgxpool.Pool) *RepositoryStore {
-	return &RepositoryStore{pool: pool}
+var _ Store = (*store)(nil)
+
+func NewStore(pool *pgxpool.Pool) Store {
+	return &store{pool: pool}
 }
 
-func (r *RepositoryStore) GetPlatform(ctx context.Context) (Platform, error) {
-	platform, err := scanPlatform(r.pool.QueryRow(ctx, platformSelect+" AND p.code = 'default'"))
+func (s *store) GetPlatform(ctx context.Context) (Platform, error) {
+	platform, err := scanPlatform(s.pool.QueryRow(ctx, platformSelect+" AND p.code = 'default'"))
 	if err != nil {
-		return Platform{}, mapDatabaseError(err)
+		return Platform{}, mapStoreError(err)
 	}
 	return platform, nil
 }
 
-func (r *RepositoryStore) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, error) {
-	tx, err := r.pool.Begin(ctx)
+func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Team{}, fmt.Errorf("begin create team: %w", err)
 	}
@@ -64,9 +75,9 @@ func (r *RepositoryStore) CreateTeam(ctx context.Context, input CreateTeamInput)
 
 	platform, err := scanPlatform(tx.QueryRow(ctx, platformSelect+" AND p.code = 'default' FOR UPDATE"))
 	if err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
-	if platform.Status != StatusActive || platform.Scope.Status != StatusActive {
+	if platform.Scope.Status != StatusActive {
 		return Team{}, ErrParentInactive
 	}
 
@@ -77,7 +88,7 @@ func (r *RepositoryStore) CreateTeam(ctx context.Context, input CreateTeamInput)
 		  FROM scopes
 		 WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL
 		RETURNING id::text`, platform.Scope.ID).Scan(&scopeID); err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 
 	labels, err := json.Marshal(input.Labels)
@@ -86,15 +97,15 @@ func (r *RepositoryStore) CreateTeam(ctx context.Context, input CreateTeamInput)
 	}
 	var teamID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO teams (scope_id, platform_id, name, code, labels, status)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'active')
+		INSERT INTO teams (scope_id, platform_id, name, code, labels)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5)
 		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Code, labels).Scan(&teamID); err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 
 	team, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid", teamID))
 	if err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Team{}, fmt.Errorf("commit create team: %w", err)
@@ -102,13 +113,13 @@ func (r *RepositoryStore) CreateTeam(ctx context.Context, input CreateTeamInput)
 	return team, nil
 }
 
-func (r *RepositoryStore) ListTeams(ctx context.Context, pagination Pagination) (Page[Team], error) {
+func (s *store) ListTeams(ctx context.Context, pagination Pagination) (Page[Team], error) {
 	var total int64
-	if err := r.pool.QueryRow(ctx, "SELECT count(*) FROM teams WHERE deleted_at IS NULL").Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM teams WHERE deleted_at IS NULL").Scan(&total); err != nil {
 		return Page[Team]{}, fmt.Errorf("count teams: %w", err)
 	}
 
-	rows, err := r.pool.Query(ctx, teamSelect+" ORDER BY t.created_at DESC, t.id LIMIT $1 OFFSET $2", pagination.PageSize, pagination.Offset())
+	rows, err := s.pool.Query(ctx, teamSelect+" ORDER BY t.created_at DESC, t.id LIMIT $1 OFFSET $2", pagination.PageSize, pagination.Offset())
 	if err != nil {
 		return Page[Team]{}, fmt.Errorf("list teams: %w", err)
 	}
@@ -128,16 +139,16 @@ func (r *RepositoryStore) ListTeams(ctx context.Context, pagination Pagination) 
 	return Page[Team]{Items: items, Page: pagination.Page, PageSize: pagination.PageSize, Total: total}, nil
 }
 
-func (r *RepositoryStore) GetTeam(ctx context.Context, teamID string) (Team, error) {
-	team, err := scanTeam(r.pool.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid", teamID))
+func (s *store) GetTeam(ctx context.Context, teamID string) (Team, error) {
+	team, err := scanTeam(s.pool.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid", teamID))
 	if err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 	return team, nil
 }
 
-func (r *RepositoryStore) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamInput) (Team, error) {
-	tx, err := r.pool.Begin(ctx)
+func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamInput) (Team, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Team{}, fmt.Errorf("begin update team: %w", err)
 	}
@@ -145,7 +156,7 @@ func (r *RepositoryStore) UpdateTeam(ctx context.Context, teamID string, input U
 
 	current, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid FOR UPDATE", teamID))
 	if err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 	if input.Name != nil {
 		current.Name = *input.Name
@@ -162,21 +173,23 @@ func (r *RepositoryStore) UpdateTeam(ctx context.Context, teamID string, input U
 	if err != nil {
 		return Team{}, fmt.Errorf("encode team labels: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE scopes SET status = $2, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
-		return Team{}, mapDatabaseError(err)
+	if input.Status != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE scopes SET status = $2, updated_at = now()
+			 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
+			return Team{}, mapStoreError(err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE teams
-		   SET name = $2, labels = $3, status = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, labels, current.Status); err != nil {
-		return Team{}, mapDatabaseError(err)
+		   SET name = $2, labels = $3, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, labels); err != nil {
+		return Team{}, mapStoreError(err)
 	}
 
 	updated, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid", teamID))
 	if err != nil {
-		return Team{}, mapDatabaseError(err)
+		return Team{}, mapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Team{}, fmt.Errorf("commit update team: %w", err)
@@ -184,8 +197,8 @@ func (r *RepositoryStore) UpdateTeam(ctx context.Context, teamID string, input U
 	return updated, nil
 }
 
-func (r *RepositoryStore) CreateProject(ctx context.Context, input CreateProjectInput) (Project, error) {
-	tx, err := r.pool.Begin(ctx)
+func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Project, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Project{}, fmt.Errorf("begin create project: %w", err)
 	}
@@ -193,9 +206,9 @@ func (r *RepositoryStore) CreateProject(ctx context.Context, input CreateProject
 
 	team, err := scanTeam(tx.QueryRow(ctx, teamSelect+" AND t.id = $1::uuid FOR UPDATE", input.TeamID))
 	if err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
-	if team.Status != StatusActive || team.Scope.Status != StatusActive {
+	if team.Scope.Status != StatusActive {
 		return Project{}, ErrParentInactive
 	}
 
@@ -206,7 +219,7 @@ func (r *RepositoryStore) CreateProject(ctx context.Context, input CreateProject
 		  FROM scopes
 		 WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL
 		RETURNING id::text`, team.Scope.ID).Scan(&scopeID); err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 
 	labels, err := json.Marshal(input.Labels)
@@ -215,15 +228,15 @@ func (r *RepositoryStore) CreateProject(ctx context.Context, input CreateProject
 	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, labels, source, status)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, 'active')
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, labels, source)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
 		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, labels, input.Source).Scan(&projectID); err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 
 	project, err := scanProject(tx.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
 	if err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Project{}, fmt.Errorf("commit create project: %w", err)
@@ -231,20 +244,20 @@ func (r *RepositoryStore) CreateProject(ctx context.Context, input CreateProject
 	return project, nil
 }
 
-func (r *RepositoryStore) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {
-	if _, err := r.GetTeam(ctx, teamID); err != nil {
+func (s *store) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {
+	if _, err := s.GetTeam(ctx, teamID); err != nil {
 		return Page[Project]{}, err
 	}
 
 	var total int64
-	if err := r.pool.QueryRow(ctx,
+	if err := s.pool.QueryRow(ctx,
 		"SELECT count(*) FROM projects WHERE team_id = $1::uuid AND deleted_at IS NULL",
 		teamID,
 	).Scan(&total); err != nil {
 		return Page[Project]{}, fmt.Errorf("count projects: %w", err)
 	}
 
-	rows, err := r.pool.Query(ctx,
+	rows, err := s.pool.Query(ctx,
 		projectSelect+" AND p.team_id = $1::uuid ORDER BY p.created_at DESC, p.id LIMIT $2 OFFSET $3",
 		teamID,
 		pagination.PageSize,
@@ -269,16 +282,16 @@ func (r *RepositoryStore) ListProjects(ctx context.Context, teamID string, pagin
 	return Page[Project]{Items: items, Page: pagination.Page, PageSize: pagination.PageSize, Total: total}, nil
 }
 
-func (r *RepositoryStore) GetProject(ctx context.Context, projectID string) (Project, error) {
-	project, err := scanProject(r.pool.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
+func (s *store) GetProject(ctx context.Context, projectID string) (Project, error) {
+	project, err := scanProject(s.pool.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
 	if err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 	return project, nil
 }
 
-func (r *RepositoryStore) UpdateProject(ctx context.Context, projectID string, input UpdateProjectInput) (Project, error) {
-	tx, err := r.pool.Begin(ctx)
+func (s *store) UpdateProject(ctx context.Context, projectID string, input UpdateProjectInput) (Project, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Project{}, fmt.Errorf("begin update project: %w", err)
 	}
@@ -286,7 +299,7 @@ func (r *RepositoryStore) UpdateProject(ctx context.Context, projectID string, i
 
 	current, err := scanProject(tx.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid FOR UPDATE", projectID))
 	if err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 	if input.Name != nil {
 		current.Name = *input.Name
@@ -303,26 +316,32 @@ func (r *RepositoryStore) UpdateProject(ctx context.Context, projectID string, i
 	if err != nil {
 		return Project{}, fmt.Errorf("encode project labels: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE scopes SET status = $2, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
-		return Project{}, mapDatabaseError(err)
+	if input.Status != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE scopes SET status = $2, updated_at = now()
+			 WHERE id = $1::uuid AND deleted_at IS NULL`, current.Scope.ID, current.Scope.Status); err != nil {
+			return Project{}, mapStoreError(err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE projects
-		   SET name = $2, labels = $3, status = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, labels, current.Status); err != nil {
-		return Project{}, mapDatabaseError(err)
+		   SET name = $2, labels = $3, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, labels); err != nil {
+		return Project{}, mapStoreError(err)
 	}
 
 	updated, err := scanProject(tx.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
 	if err != nil {
-		return Project{}, mapDatabaseError(err)
+		return Project{}, mapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Project{}, fmt.Errorf("commit update project: %w", err)
 	}
 	return updated, nil
+}
+
+type scanner interface {
+	Scan(...any) error
 }
 
 func scanPlatform(row scanner) (Platform, error) {
@@ -336,13 +355,13 @@ func scanPlatform(row scanner) (Platform, error) {
 		&platform.Scope.Status,
 		&platform.Name,
 		&platform.Code,
-		&platform.Status,
 		&platform.CreatedAt,
 		&platform.UpdatedAt,
 	); err != nil {
 		return Platform{}, err
 	}
 	platform.Scope.ParentID = nullableText(parentID)
+	platform.Status = platform.Scope.Status
 	return platform, nil
 }
 
@@ -360,7 +379,6 @@ func scanTeam(row scanner) (Team, error) {
 		&team.Name,
 		&team.Code,
 		&labels,
-		&team.Status,
 		&team.CreatedAt,
 		&team.UpdatedAt,
 	); err != nil {
@@ -370,6 +388,7 @@ func scanTeam(row scanner) (Team, error) {
 		return Team{}, fmt.Errorf("decode team labels: %w", err)
 	}
 	team.Scope.ParentID = nullableText(parentID)
+	team.Status = team.Scope.Status
 	return team, nil
 }
 
@@ -389,7 +408,6 @@ func scanProject(row scanner) (Project, error) {
 		&project.Code,
 		&labels,
 		&project.Source,
-		&project.Status,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 	); err != nil {
@@ -399,6 +417,7 @@ func scanProject(row scanner) (Project, error) {
 		return Project{}, fmt.Errorf("decode project labels: %w", err)
 	}
 	project.Scope.ParentID = nullableText(parentID)
+	project.Status = project.Scope.Status
 	return project, nil
 }
 
@@ -409,7 +428,7 @@ func nullableText(value pgtype.Text) *string {
 	return &value.String
 }
 
-func mapDatabaseError(err error) error {
+func mapStoreError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}

@@ -3,18 +3,29 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 )
 
 const (
 	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
 	defaultRedisURL    = "redis://localhost:6379/0"
+	defaultBasePath    = "/opskeeper"
+	defaultLogFormat   = "text"
+	maxBasePathLength  = 128
 )
 
+var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
+
 type Config struct {
+	BasePath          string
 	Environment       string
+	LogFormat         string
 	HTTPAddress       string
+	TrustedProxies    []netip.Prefix
 	DatabaseURL       string
 	RedisURL          string
 	ShutdownTimeout   time.Duration
@@ -27,7 +38,9 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
+		BasePath:          envOrDefault("OPSK_BASE_PATH", defaultBasePath),
 		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
 		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
 		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
 		RedisURL:          envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
@@ -44,9 +57,18 @@ func Load() (Config, error) {
 	if cfg.DependencyTimeout, err = durationFromEnv("OPSK_DEPENDENCY_TIMEOUT", 2*time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.TrustedProxies, err = prefixesFromEnv("OPSK_TRUSTED_PROXIES"); err != nil {
+		return Config{}, err
+	}
 
 	if cfg.HTTPAddress == "" {
 		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
+	}
+	if !validBasePath(cfg.BasePath) {
+		return Config{}, fmt.Errorf("OPSK_BASE_PATH must be / or a slash-prefixed path of lowercase letters, digits, or internal hyphens (maximum %d characters)", maxBasePathLength)
+	}
+	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return Config{}, errors.New("OPSK_LOG_FORMAT must be text or json")
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")
@@ -58,11 +80,61 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+func prefixesFromEnv(key string) ([]netip.Prefix, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil, nil
+	}
+
+	prefixes := make([]netip.Prefix, 0)
+	seen := make(map[string]struct{})
+	for _, rawEntry := range strings.Split(value, ",") {
+		entry := strings.TrimSpace(rawEntry)
+		if entry == "" {
+			return nil, fmt.Errorf("%s must be a comma-separated list of IP addresses or CIDR prefixes", key)
+		}
+		prefix, err := parsePrefix(entry)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s entry %q: %w", key, entry, err)
+		}
+		canonical := prefix.String()
+		if _, exists := seen[canonical]; exists {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
+}
+
+func parsePrefix(value string) (netip.Prefix, error) {
+	if strings.Contains(value, "/") {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			return netip.Prefix{}, err
+		}
+		return prefix.Masked(), nil
+	}
+	address, err := netip.ParseAddr(value)
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	if address.Zone() != "" {
+		return netip.Prefix{}, errors.New("scoped IPv6 addresses are not supported")
+	}
+	address = address.Unmap()
+	return netip.PrefixFrom(address, address.BitLen()), nil
+}
+
 func envOrDefault(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
 	}
 	return fallback
+}
+
+func validBasePath(value string) bool {
+	return value == "/" || (len(value) <= maxBasePathLength && basePathPattern.MatchString(value))
 }
 
 func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) {

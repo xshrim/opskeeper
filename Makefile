@@ -1,13 +1,35 @@
 SHELL := /bin/bash
 
-COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || (docker-compose version >/dev/null 2>&1 && echo "docker-compose"))
 COMPOSE_FILE := deploy/compose/docker-compose.yml
 APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
+WEBUI_DIST := backend/webui/dist
+IMAGE_REPOSITORY ?= opskeeper
+IMAGE_TAG ?= local
+GOPROXY ?= https://goproxy.cn,direct
+ALPINE_MIRROR ?= https://mirrors.aliyun.com/alpine
+NPM_REGISTRY ?= https://registry.npmmirror.com
+CGO_ENABLED ?= 0
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION_PACKAGE := opskeeper/backend/version
+GO_LDFLAGS := -s -w -X $(VERSION_PACKAGE).Value=$(VERSION) -X $(VERSION_PACKAGE).Commit=$(COMMIT) -X $(VERSION_PACKAGE).BuildTime=$(BUILD_TIME)
+
+define run-compose
+@if docker compose version >/dev/null 2>&1; then \
+	docker compose -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) $(1); \
+elif command -v docker-compose >/dev/null 2>&1; then \
+	docker-compose -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) $(1); \
+else \
+	echo "Docker Compose is not installed"; \
+	exit 1; \
+fi
+endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down dev-services-up dev-services-down dev-services-logs run-api run-worker run-scheduler run-frontend test backend-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check build quality
+.PHONY: help deps migrate migrate-down infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -22,17 +44,14 @@ migrate: ## Apply pending PostgreSQL migrations.
 migrate-down: ## Roll back the latest PostgreSQL migration.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/migrate down
 
-dev-services-up: ## Start PostgreSQL and Redis.
-	@test -n "$(COMPOSE)" || (echo "Docker Compose is not installed" && exit 1)
-	$(COMPOSE) -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) up -d
+infra-up: ## Start PostgreSQL and Redis.
+	$(call run-compose,up -d)
 
-dev-services-down: ## Stop PostgreSQL and Redis.
-	@test -n "$(COMPOSE)" || (echo "Docker Compose is not installed" && exit 1)
-	$(COMPOSE) -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) down
+infra-down: ## Stop PostgreSQL and Redis.
+	$(call run-compose,down)
 
-dev-services-logs: ## Follow PostgreSQL and Redis logs.
-	@test -n "$(COMPOSE)" || (echo "Docker Compose is not installed" && exit 1)
-	$(COMPOSE) -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) logs -f
+infra-logs: ## Follow PostgreSQL and Redis logs.
+	$(call run-compose,logs -f)
 
 run-api: ## Run the API server.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/api
@@ -44,13 +63,19 @@ run-scheduler: ## Run the scheduler process.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/scheduler
 
 run-frontend: ## Run the Svelte development server.
-	cd frontend && npm run dev
+	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
+
+run-front-api: webui-assets ## Build and embed the frontend, then run the API.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
 
 backend-test:
 	cd backend && go test ./...
 
-backend-integration-test: ## Run PostgreSQL organization integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./organization
+backend-embedded-test: webui-assets
+	cd backend && go test -tags=embed_webui ./webui ./httpapi
+
+backend-integration-test: ## Run PostgreSQL migration and organization integration tests.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization
 
 frontend-test:
 	cd frontend && npm run test
@@ -76,8 +101,34 @@ format-check: ## Check source formatting without modifying files.
 	@files=$$(cd backend && gofmt -l .); test -z "$$files" || (echo "Unformatted Go files:"; echo "$$files"; exit 1)
 	cd frontend && npm run format:check
 
-build: ## Build backend binaries and the frontend bundle.
-	cd backend && go build -buildvcs=false ./...
+frontend-build:
 	cd frontend && npm run build
 
-quality: format-check lint test build ## Run the complete local quality gate.
+webui-assets: frontend-build
+	mkdir -p $(WEBUI_DIST)
+	find $(WEBUI_DIST) -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	cp -R frontend/dist/. $(WEBUI_DIST)/
+
+backend-build:
+	mkdir -p backend/bin
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -tags=embed_webui -o bin/opskeeper-api ./cmd/api
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-worker ./cmd/worker
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-scheduler ./cmd/scheduler
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-migrate ./cmd/migrate
+
+build: webui-assets ## Build production binaries with the embedded frontend.
+	$(MAKE) backend-build
+
+image: ## Build the final application image.
+	docker build \
+		--build-arg GOPROXY=$(GOPROXY) \
+		--build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) \
+		--build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-f deploy/Dockerfile \
+		-t $(IMAGE_REPOSITORY):$(IMAGE_TAG) \
+		.
+
+quality: format-check lint test backend-embedded-test build ## Run the complete local quality gate.

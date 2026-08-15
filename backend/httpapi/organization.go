@@ -27,7 +27,8 @@ type organizationService interface {
 }
 
 type organizationHandler struct {
-	service organizationService
+	service     organizationService
+	apiBasePath string
 }
 
 type createTeamRequest struct {
@@ -49,8 +50,8 @@ type updateOrganizationRequest struct {
 	Status *string            `json:"status"`
 }
 
-func registerOrganizationRoutes(router chi.Router, service organizationService) {
-	handler := organizationHandler{service: service}
+func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string) {
+	handler := organizationHandler{service: service, apiBasePath: apiBasePath}
 	router.Get("/platform", handler.getPlatform)
 	router.Route("/teams", func(router chi.Router) {
 		router.Get("/", handler.listTeams)
@@ -91,7 +92,7 @@ func (h organizationHandler) createTeam(writer http.ResponseWriter, request *htt
 		writeOrganizationError(writer, request, err)
 		return
 	}
-	writer.Header().Set("Location", "/api/v1/teams/"+team.ID)
+	writer.Header().Set("Location", h.apiBasePath+"/teams/"+team.ID)
 	writeJSON(writer, http.StatusCreated, team)
 }
 
@@ -150,7 +151,7 @@ func (h organizationHandler) createProject(writer http.ResponseWriter, request *
 		writeOrganizationError(writer, request, err)
 		return
 	}
-	writer.Header().Set("Location", "/api/v1/projects/"+project.ID)
+	writer.Header().Set("Location", h.apiBasePath+"/projects/"+project.ID)
 	writeJSON(writer, http.StatusCreated, project)
 }
 

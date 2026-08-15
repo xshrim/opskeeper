@@ -14,22 +14,37 @@ import (
 	"opskeeper/backend/config"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
+	"opskeeper/backend/logging"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/version"
+	"opskeeper/backend/webui"
 )
 
+const serviceName = "opskeeper-api"
+
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if err := run(logger); err != nil {
+	logger := logging.NewText(os.Stdout)
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
+	logger, err = logging.New(os.Stdout, cfg.LogFormat)
+	if err != nil {
+		logger.Error("configure logging", "error", err)
+		os.Exit(1)
+	}
+	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
+	if err := run(logger, cfg); err != nil {
 		logger.Error("api stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger) error {
-	cfg, err := config.Load()
+func run(logger *slog.Logger, cfg config.Config) error {
+	webUI, err := webui.New(cfg.BasePath)
 	if err != nil {
-		return err
+		return errors.Join(errors.New("configure web UI"), err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -52,17 +67,21 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
-	healthService := health.NewService(cfg.DependencyTimeout, []health.Check{
+	healthService := health.NewService(serviceName, cfg.DependencyTimeout, []health.Check{
 		{Name: "postgres", Run: pool.Ping},
 		{Name: "redis", Run: func(checkCtx context.Context) error {
 			return redisClient.Ping(checkCtx).Err()
 		}},
 	})
-	organizationService := organization.NewService(organization.NewRepository(pool))
+	organizationStore := organization.NewStore(pool)
+	organizationService := organization.NewService(organizationStore)
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewRouter(logger, healthService, version.Value, organizationService),
+		Addr: cfg.HTTPAddress,
+		Handler: httpapi.NewRouter(logger, healthService, version.Current(), httpapi.Options{
+			BasePath:       cfg.BasePath,
+			TrustedProxies: cfg.TrustedProxies,
+		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -71,7 +90,7 @@ func run(logger *slog.Logger) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "address", cfg.HTTPAddress, "environment", cfg.Environment, "version", version.Value)
+		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
 		serverErr <- server.ListenAndServe()
 	}()
 

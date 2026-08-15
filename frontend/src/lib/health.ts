@@ -10,6 +10,8 @@ export interface HealthReport {
   status: 'ready' | 'not_ready';
   service: string;
   version: string;
+  commit: string;
+  build_time: string;
   timestamp: string;
   checks: Record<string, DependencyCheck>;
 }
@@ -39,8 +41,12 @@ export function toStatusRows(report: HealthReport | null): StatusRow[] {
   ];
 }
 
+export function appURL(path: string): URL {
+  return new URL(path.replace(/^\/+/, ''), document.baseURI);
+}
+
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthReport> {
-  const response = await fetch('/health/ready', {
+  const response = await fetch(appURL('health/ready'), {
     headers: { Accept: 'application/json' },
     signal
   });
