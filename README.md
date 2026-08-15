@@ -9,6 +9,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 - [权限与安全设计](docs/authorization.md)
 - [Kubernetes 导入、AI 诊断与自动巡检](docs/operations-workflows.md)
 - [分阶段实施任务书](docs/implementation-tasks.md)
+- [T01 验收记录](docs/t01-acceptance.md)
 - [T02 验收记录](docs/t02-acceptance.md)
 - [本地开发环境](docs/development.md)
 - [Git 与远端仓库](docs/version-control.md)
