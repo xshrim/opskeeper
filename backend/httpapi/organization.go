@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"opskeeper/backend/authorization"
 	"opskeeper/backend/organization"
 )
 
@@ -50,22 +51,28 @@ type updateOrganizationRequest struct {
 	Status *string            `json:"status"`
 }
 
-func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string) {
+func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
 	handler := organizationHandler{service: service, apiBasePath: apiBasePath}
-	router.Get("/platform", handler.getPlatform)
+	guard := func(permission authorization.Permission) func(http.Handler) http.Handler {
+		if requirePermission == nil {
+			return func(next http.Handler) http.Handler { return next }
+		}
+		return requirePermission(permission)
+	}
+	router.With(guard(authorization.OrganizationRead)).Get("/platform", handler.getPlatform)
 	router.Route("/teams", func(router chi.Router) {
-		router.Get("/", handler.listTeams)
-		router.Post("/", handler.createTeam)
+		router.With(guard(authorization.OrganizationRead)).Get("/", handler.listTeams)
+		router.With(guard(authorization.TeamManage)).Post("/", handler.createTeam)
 		router.Route("/{teamID}", func(router chi.Router) {
-			router.Get("/", handler.getTeam)
-			router.Patch("/", handler.updateTeam)
-			router.Get("/projects", handler.listProjects)
-			router.Post("/projects", handler.createProject)
+			router.With(guard(authorization.OrganizationRead)).Get("/", handler.getTeam)
+			router.With(guard(authorization.TeamManage)).Patch("/", handler.updateTeam)
+			router.With(guard(authorization.OrganizationRead)).Get("/projects", handler.listProjects)
+			router.With(guard(authorization.ProjectManage)).Post("/projects", handler.createProject)
 		})
 	})
 	router.Route("/projects/{projectID}", func(router chi.Router) {
-		router.Get("/", handler.getProject)
-		router.Patch("/", handler.updateProject)
+		router.With(guard(authorization.OrganizationRead)).Get("/", handler.getProject)
+		router.With(guard(authorization.ProjectManage)).Patch("/", handler.updateProject)
 	})
 }
 
