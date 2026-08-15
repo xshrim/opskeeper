@@ -83,3 +83,31 @@ func TestRouterKeepsUnknownAPIAsJSONWhenWebUIIsEnabled(t *testing.T) {
 		t.Fatalf("SPA response = %d %q", pageResponse.Code, pageResponse.Body.String())
 	}
 }
+
+func TestRouterSupportsRootBasePath(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	webUI := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html")
+		_, _ = writer.Write([]byte("web UI"))
+	})
+	router := NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", "/", nil, webUI)
+
+	for _, test := range []struct {
+		path        string
+		status      int
+		contentType string
+	}{
+		{path: "/health/live", status: http.StatusOK, contentType: "application/json"},
+		{path: "/api/v1/missing", status: http.StatusNotFound, contentType: "application/json"},
+		{path: "/teams/example", status: http.StatusOK, contentType: "text/html"},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != test.status || !strings.Contains(response.Header().Get("Content-Type"), test.contentType) {
+				t.Fatalf("GET %s response = %d %q", test.path, response.Code, response.Header().Get("Content-Type"))
+			}
+		})
+	}
+}

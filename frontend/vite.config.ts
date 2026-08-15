@@ -1,19 +1,25 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 
-const prefixPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const basePathPattern =
+  /^\/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
 
 export default defineConfig(({ command }) => {
-  const prefix = process.env.OPSK_PREFIX ?? 'opskeeper';
-  if (prefix.length > 40 || !prefixPattern.test(prefix)) {
+  const basePath = process.env.OPSK_BASE_PATH ?? '/opskeeper';
+  if (
+    basePath !== '/' &&
+    (basePath.length > 128 || !basePathPattern.test(basePath))
+  ) {
     throw new Error(
-      'OPSK_PREFIX must contain 1-40 lowercase letters, digits, or internal hyphens'
+      'OPSK_BASE_PATH must be / or a slash-prefixed path of lowercase letters, digits, or internal hyphens'
     );
   }
 
-  const basePath = `/${prefix}`;
+  const baseHref = basePath === '/' ? '/' : `${basePath}/`;
+  const route = (suffix: string) =>
+    basePath === '/' ? suffix : `${basePath}${suffix}`;
   return {
-    base: command === 'serve' ? `${basePath}/` : './',
+    base: command === 'serve' ? baseHref : './',
     plugins: [
       svelte(),
       {
@@ -24,7 +30,7 @@ export default defineConfig(({ command }) => {
           }
           return html.replace(
             'href="./" data-opsk-runtime-base',
-            `href="${basePath}/" data-opsk-runtime-base`
+            `href="${baseHref}" data-opsk-runtime-base`
           );
         }
       }
@@ -33,8 +39,8 @@ export default defineConfig(({ command }) => {
       port: 5173,
       strictPort: true,
       proxy: {
-        [`${basePath}/api`]: 'http://localhost:8080',
-        [`${basePath}/health`]: 'http://localhost:8080'
+        [route('/api')]: 'http://localhost:8080',
+        [route('/health')]: 'http://localhost:8080'
       }
     },
     test: {

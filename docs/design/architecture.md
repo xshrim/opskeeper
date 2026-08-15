@@ -111,23 +111,23 @@ flowchart LR
 
 ## 7. 核心 API 边界
 
-所有公开页面、健康检查和业务 API 统一挂载在由 `OPSK_PREFIX` 派生的 HTTP Base Path 下。以下路径中的 `{prefix}` 默认是 `opskeeper`：
+所有公开页面、健康检查和业务 API 统一挂载在 `OPSK_BASE_PATH` 下，默认值是 `/opskeeper`，也可以设置为根路径 `/`。以下示例使用默认值：
 
 ```text
-/{prefix}/api/v1/platform/resources
-/{prefix}/api/v1/teams/{teamId}/resources
-/{prefix}/api/v1/teams/{teamId}/projects
-/{prefix}/api/v1/projects/{projectId}/resources
-/{prefix}/api/v1/resources/{resourceId}/relations
-/{prefix}/api/v1/kubernetes-clusters/{id}/discoveries
-/{prefix}/api/v1/discoveries/{id}/imports
-/{prefix}/api/v1/diagnosis-sessions
-/{prefix}/api/v1/diagnosis-sessions/{id}/events
-/{prefix}/api/v1/inspection-policies
-/{prefix}/api/v1/inspection-runs
-/{prefix}/api/v1/skills
-/{prefix}/api/v1/role-bindings
-/{prefix}/api/v1/audit-logs
+/opskeeper/api/v1/platform/resources
+/opskeeper/api/v1/teams/{teamId}/resources
+/opskeeper/api/v1/teams/{teamId}/projects
+/opskeeper/api/v1/projects/{projectId}/resources
+/opskeeper/api/v1/resources/{resourceId}/relations
+/opskeeper/api/v1/kubernetes-clusters/{id}/discoveries
+/opskeeper/api/v1/discoveries/{id}/imports
+/opskeeper/api/v1/diagnosis-sessions
+/opskeeper/api/v1/diagnosis-sessions/{id}/events
+/opskeeper/api/v1/inspection-policies
+/opskeeper/api/v1/inspection-runs
+/opskeeper/api/v1/skills
+/opskeeper/api/v1/role-bindings
+/opskeeper/api/v1/audit-logs
 ```
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。
@@ -136,7 +136,7 @@ flowchart LR
 
 - 前后端源码和依赖保持独立；本地既可使用 Go API 与 Vite 分离热更新，也可通过 `make run-front-api` 构建并嵌入前端后只运行 API。生产构建同样将 Vite 静态制品嵌入 `opskeeper-api`，由一个进程提供页面、静态资源和业务 API。
 - 应用临时运行、二进制构建和最终镜像打包统一由根目录 Makefile 提供入口，不使用独立包装脚本。
-- `OPSK_PREFIX` 同时派生 Go 进程服务名和 API HTTP Base Path；镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
+- API、Worker、Scheduler 和 Migration 的服务名称及镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`；`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
 - API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `text` 和 `json`，默认使用 `text`。
 - API Server 无状态部署，生产环境至少两个副本。
 - Scheduler 使用 PostgreSQL advisory lock 保证单一调度主节点。

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -31,7 +32,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, version, base
 	})
 	if organizationService != nil {
 		app.Route("/api/v1", func(router chi.Router) {
-			registerOrganizationRoutes(router, organizationService, basePath+"/api/v1")
+			registerOrganizationRoutes(router, organizationService, path.Join(basePath, "api/v1"))
 		})
 	}
 
@@ -61,6 +62,9 @@ func canServeWebUI(request *http.Request, basePath string) bool {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		return false
 	}
-	relativePath := strings.TrimPrefix(request.URL.Path, basePath)
+	relativePath := request.URL.Path
+	if basePath != "/" {
+		relativePath = strings.TrimPrefix(relativePath, basePath)
+	}
 	return relativePath != "/api" && !strings.HasPrefix(relativePath, "/api/") && relativePath != "/health" && !strings.HasPrefix(relativePath, "/health/")
 }

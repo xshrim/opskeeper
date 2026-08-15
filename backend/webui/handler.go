@@ -35,7 +35,11 @@ func newHandler(assets fs.FS, basePath string) (http.Handler, error) {
 	if !bytes.Contains(index, []byte(runtimeBaseMarker)) {
 		return nil, errors.New("embedded index.html does not contain the runtime base marker")
 	}
-	replacement := `href="` + basePath + `/" data-opsk-runtime-base`
+	baseHref := basePath
+	if baseHref != "/" {
+		baseHref += "/"
+	}
+	replacement := `href="` + baseHref + `" data-opsk-runtime-base`
 	index = bytes.ReplaceAll(index, []byte(runtimeBaseMarker), []byte(replacement))
 	return &handler{assets: assets, basePath: basePath, index: index}, nil
 }

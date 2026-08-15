@@ -20,6 +20,8 @@ import (
 	"opskeeper/backend/webui"
 )
 
+const serviceName = "opskeeper-api"
+
 func main() {
 	logger := logging.NewText(os.Stdout)
 	cfg, err := config.Load()
@@ -32,7 +34,7 @@ func main() {
 		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With("service", cfg.ServiceName("api"))
+	logger = logger.With("service", serviceName)
 	if err := run(logger, cfg); err != nil {
 		logger.Error("api stopped", "error", err)
 		os.Exit(1)
@@ -40,7 +42,7 @@ func main() {
 }
 
 func run(logger *slog.Logger, cfg config.Config) error {
-	webUI, err := webui.New(cfg.HTTPBasePath())
+	webUI, err := webui.New(cfg.BasePath)
 	if err != nil {
 		return errors.Join(errors.New("configure web UI"), err)
 	}
@@ -65,7 +67,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		}
 	}()
 
-	healthService := health.NewService(cfg.ServiceName("api"), cfg.DependencyTimeout, []health.Check{
+	healthService := health.NewService(serviceName, cfg.DependencyTimeout, []health.Check{
 		{Name: "postgres", Run: pool.Ping},
 		{Name: "redis", Run: func(checkCtx context.Context) error {
 			return redisClient.Ping(checkCtx).Err()
@@ -76,7 +78,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           httpapi.NewRouter(logger, healthService, version.Value, cfg.HTTPBasePath(), organizationService, webUI),
+		Handler:           httpapi.NewRouter(logger, healthService, version.Value, cfg.BasePath, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -85,7 +87,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.HTTPBasePath(), "environment", cfg.Environment, "version", version.Value)
+		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.BasePath, "environment", cfg.Environment, "version", version.Value)
 		serverErr <- server.ListenAndServe()
 	}()
 

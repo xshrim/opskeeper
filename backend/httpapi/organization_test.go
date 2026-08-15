@@ -63,8 +63,12 @@ func (s *stubOrganizationService) UpdateProject(context.Context, string, organiz
 }
 
 func newOrganizationTestRouter(service organizationService) http.Handler {
+	return newOrganizationTestRouterAt(handlerTestBasePath, service)
+}
+
+func newOrganizationTestRouterAt(basePath string, service organizationService) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", handlerTestBasePath, service, nil)
+	return NewRouter(logger, health.NewService("opskeeper-api", time.Second, nil), "test", basePath, service, nil)
 }
 
 func TestCreateTeam(t *testing.T) {
@@ -82,6 +86,22 @@ func TestCreateTeam(t *testing.T) {
 		t.Fatalf("CreateTeam() input = %#v", service.createTeamInput)
 	}
 	if response.Header().Get("Location") != handlerTestBasePath+"/api/v1/teams/"+handlerTestUUID {
+		t.Fatalf("Location = %q", response.Header().Get("Location"))
+	}
+}
+
+func TestCreateTeamAtRootBasePath(t *testing.T) {
+	service := &stubOrganizationService{}
+	router := newOrganizationTestRouterAt("/", service)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments"}`))
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/teams status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Location") != "/api/v1/teams/"+handlerTestUUID {
 		t.Fatalf("Location = %q", response.Header().Get("Location"))
 	}
 }

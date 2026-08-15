@@ -107,7 +107,7 @@ make run-scheduler
 
 | 变量 | 默认值 | 作用 |
 |---|---|---|
-| `OPSK_PREFIX` | `opskeeper` | 派生服务名和 HTTP Base Path |
+| `OPSK_BASE_PATH` | `/opskeeper` | 页面、静态资源、健康检查和业务 API 的路径前缀 |
 | `OPSK_ENVIRONMENT` | `development` | 标识运行环境 |
 | `OPSK_LOG_FORMAT` | `text` | Go 应用日志格式，可选 `text` 或 `json` |
 | `OPSK_HTTP_ADDRESS` | `:8080` | API 监听地址 |
@@ -116,20 +116,28 @@ make run-scheduler
 | `OPSK_SHUTDOWN_TIMEOUT` | `10s` | 优雅退出期限 |
 | `OPSK_DEPENDENCY_TIMEOUT` | `2s` | 健康检查依赖超时 |
 
-### 4.1 统一前缀
+### 4.1 HTTP Base Path
 
-`OPSK_PREFIX` 必须由 1 至 40 个小写字母、数字或内部连字符组成。默认派生结果为：
+`OPSK_BASE_PATH` 只控制 API 提供的 HTTP 路径，不影响应用名称或二进制文件名。默认值为：
 
-```text
-OPSK_PREFIX=opskeeper
-├── opskeeper-api
-├── opskeeper-worker
-├── opskeeper-scheduler
-├── opskeeper-migrate
-└── /opskeeper
+```dotenv
+OPSK_BASE_PATH=/opskeeper
 ```
 
-它同时控制四个 Go 进程日志中的 `service` 字段，以及页面、静态资源、健康检查和业务 API 的 URL 前缀。它不改变已构建的二进制文件名。
+根路径部署使用：
+
+```dotenv
+OPSK_BASE_PATH=/
+```
+
+还可以使用 `/platform/opskeeper` 这样的多段路径。除根路径外，每一段只能包含小写字母、数字或内部连字符，路径必须以 `/` 开头且不能以 `/` 结尾，总长度不能超过 128 个字符。
+
+| `OPSK_BASE_PATH` | 页面 | API | 存活检查 |
+|---|---|---|---|
+| `/opskeeper` | `/opskeeper/` | `/opskeeper/api/v1/*` | `/opskeeper/health/live` |
+| `/` | `/` | `/api/v1/*` | `/health/live` |
+
+四个应用服务名称固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
 
 ### 4.2 日志格式
 
@@ -144,7 +152,7 @@ OPSK_LOG_FORMAT=json make run-api
 - `json`：适合容器平台和日志采集系统解析。
 - 其他值会在应用启动时被拒绝。
 
-格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 都会写入由 `OPSK_PREFIX` 派生的 `service` 字段。
+格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段。
 
 ## 5. PostgreSQL 与 Redis
 
@@ -241,7 +249,7 @@ OPSK_TEST_DATABASE_URL='postgres://opskeeper:opskeeper@localhost:5432/opskeeper?
 
 ## 8. 当前组织 API
 
-以下路径假设 `OPSK_PREFIX=opskeeper`，当前阶段尚未接入认证：
+以下路径假设默认 `OPSK_BASE_PATH=/opskeeper`，当前阶段尚未接入认证；使用根路径时去掉开头的 `/opskeeper`。
 
 ```text
 GET   /opskeeper/api/v1/platform

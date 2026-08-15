@@ -52,19 +52,19 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version>
 | `IMAGE_REPOSITORY` | `make image` | 设置镜像仓库，默认 `opskeeper` |
 | `IMAGE_TAG` | `make image` | 设置镜像标签，默认 `local` |
 | `GOPROXY` | 构建 | 设置 Go 依赖代理，不属于应用运行配置 |
-| `OPSK_PREFIX` | 运行 | 派生服务名和 HTTP Base Path，默认 `opskeeper` |
+| `OPSK_BASE_PATH` | 运行 | 设置 API 的 HTTP 路径前缀，默认 `/opskeeper`，根路径使用 `/` |
 | `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `text` 或 `json`，默认 `text` |
 
-镜像内文件名固定为 `opskeeper-*`。修改 `OPSK_PREFIX` 只会改变：
+镜像内文件名和四个应用的服务名称固定为：
 
 ```text
-<prefix>-api        /<prefix>
-<prefix>-worker
-<prefix>-scheduler
-<prefix>-migrate
+opskeeper-api
+opskeeper-worker
+opskeeper-scheduler
+opskeeper-migrate
 ```
 
-Kubernetes 资源名、Ingress Path、健康探针路径和容器中的 `OPSK_PREFIX` 应来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。四个进程使用相同格式，并保留一致的 `service` 字段。
+`OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。四个进程使用相同格式，并写入固定的 `service` 字段。
 
 ## 4. 流水线顺序
 
@@ -124,8 +124,6 @@ spec:
           image: <registry>/opskeeper@sha256:<digest>
           command: ["/app/opskeeper-migrate", "up"]
           env:
-            - name: OPSK_PREFIX
-              value: opskeeper
             - name: OPSK_LOG_FORMAT
               value: json
           envFrom:
@@ -198,7 +196,7 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 - [ ] `make quality` 通过。
 - [ ] 镜像包含四个固定名称的二进制，API 已嵌入前端。
 - [ ] 运行时不依赖 Node.js 或外部静态文件目录。
-- [ ] `OPSK_PREFIX` 与资源名、Ingress 和探针路径一致。
+- [ ] `OPSK_BASE_PATH` 与 Ingress 和健康探针路径一致。
 - [ ] `OPSK_LOG_FORMAT` 已按环境设为 `text` 或 `json`。
 - [ ] Migration Job 与应用使用同一镜像 digest。
 - [ ] Migration Job 成功后才滚动发布应用，失败会阻断发布。

@@ -34,4 +34,16 @@ describe('appURL', () => {
 
     base.remove();
   });
+
+  it('resolves application paths from a root base URI', () => {
+    const base = document.createElement('base');
+    base.href = 'http://localhost:5173/';
+    document.head.append(base);
+
+    expect(appURL('/api/v1/teams').toString()).toBe(
+      'http://localhost:5173/api/v1/teams'
+    );
+
+    base.remove();
+  });
 });

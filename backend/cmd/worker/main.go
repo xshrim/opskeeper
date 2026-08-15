@@ -11,6 +11,8 @@ import (
 	"opskeeper/backend/version"
 )
 
+const serviceName = "opskeeper-worker"
+
 func main() {
 	logger := logging.NewText(os.Stdout)
 	cfg, err := config.Load()
@@ -23,7 +25,7 @@ func main() {
 		logger.Error("configure logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With("service", cfg.ServiceName("worker"))
+	logger = logger.With("service", serviceName)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

@@ -11,15 +11,15 @@ import (
 const (
 	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
 	defaultRedisURL    = "redis://localhost:6379/0"
-	defaultPrefix      = "opskeeper"
+	defaultBasePath    = "/opskeeper"
 	defaultLogFormat   = "text"
-	maxPrefixLength    = 40
+	maxBasePathLength  = 128
 )
 
-var prefixPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
+var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
 type Config struct {
-	Prefix            string
+	BasePath          string
 	Environment       string
 	LogFormat         string
 	HTTPAddress       string
@@ -35,7 +35,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		Prefix:            envOrDefault("OPSK_PREFIX", defaultPrefix),
+		BasePath:          envOrDefault("OPSK_BASE_PATH", defaultBasePath),
 		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
 		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
 		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
@@ -58,8 +58,8 @@ func Load() (Config, error) {
 	if cfg.HTTPAddress == "" {
 		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
 	}
-	if len(cfg.Prefix) > maxPrefixLength || !prefixPattern.MatchString(cfg.Prefix) {
-		return Config{}, fmt.Errorf("OPSK_PREFIX must contain 1-%d lowercase letters, digits, or internal hyphens", maxPrefixLength)
+	if !validBasePath(cfg.BasePath) {
+		return Config{}, fmt.Errorf("OPSK_BASE_PATH must be / or a slash-prefixed path of lowercase letters, digits, or internal hyphens (maximum %d characters)", maxBasePathLength)
 	}
 	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
 		return Config{}, errors.New("OPSK_LOG_FORMAT must be text or json")
@@ -74,19 +74,15 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-func (c Config) ServiceName(component string) string {
-	return c.Prefix + "-" + component
-}
-
-func (c Config) HTTPBasePath() string {
-	return "/" + c.Prefix
-}
-
 func envOrDefault(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
 	}
 	return fallback
+}
+
+func validBasePath(value string) bool {
+	return value == "/" || (len(value) <= maxBasePathLength && basePathPattern.MatchString(value))
 }
 
 func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) {

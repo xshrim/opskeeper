@@ -54,6 +54,24 @@ func TestHandlerRejectsUnsupportedMethod(t *testing.T) {
 	}
 }
 
+func TestHandlerSupportsRootBasePath(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html":    {Data: []byte(`<html><head><base href="./" data-opsk-runtime-base /></head></html>`)},
+		"assets/app.js": {Data: []byte(`console.log("ready")`)},
+	}
+	handler, err := newHandler(assets, "/")
+	if err != nil {
+		t.Fatalf("newHandler() error = %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `href="/" data-opsk-runtime-base`) {
+		t.Fatalf("GET / response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
 	assets := fstest.MapFS{
