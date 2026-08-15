@@ -90,7 +90,7 @@ flowchart LR
 
 包之间优先直接依赖清晰的具体类型。只有消费者需要测试替身、已经存在多个真实实现或边界需要稳定契约时，才定义小接口；不要求所有模块机械地通过接口调用。耗时任务进入 Worker，普通资源查询和管理请求由 API Server 直接处理。
 
-完整约束见 [Go 编码与工程组织通用规范](go-coding-conventions.md)。
+完整约束见 [Go 编码与工程组织通用规范](../standards/go-coding-conventions.md)。
 
 ## 6. 前端信息架构
 
@@ -148,7 +148,7 @@ flowchart LR
 - API、Worker、Scheduler 和数据库迁移只允许使用业务角色连接，不得注入或回退使用 PostgreSQL 超级用户凭据。
 - 初始化环境变量和 `/docker-entrypoint-initdb.d/` 脚本只对空数据目录生效；已有实例的角色、密码和所有权变更必须通过受控的数据库管理操作完成。
 
-数据库迁移和自动化发布的完整流程见[数据库与应用自动化发布](delivery.md)。
+数据库迁移和自动化发布的完整流程见[数据库与应用自动化发布](../guides/delivery.md)。
 
 ## 9. 建议交付阶段
 

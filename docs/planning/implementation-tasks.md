@@ -51,7 +51,7 @@ opskeeper/
 └── Makefile
 ```
 
-后端首版使用模块化单体并按业务特性建包。业务类型、Service、特性专属 Store 和测试留在同一特性包，通过文件划分职责；共享基础设施包只在出现真实的跨特性需求时创建，不预建空目录或全局 adapter 层。HTTP 作为协议边界独立，API、Worker、Scheduler 是独立运行单元。详细规则见 [Go 编码与工程组织通用规范](go-coding-conventions.md)。
+后端首版使用模块化单体并按业务特性建包。业务类型、Service、特性专属 Store 和测试留在同一特性包，通过文件划分职责；共享基础设施包只在出现真实的跨特性需求时创建，不预建空目录或全局 adapter 层。HTTP 作为协议边界独立，API、Worker、Scheduler 是独立运行单元。详细规则见 [Go 编码与工程组织通用规范](../standards/go-coding-conventions.md)。
 
 ## 4. 任务总览
 
@@ -77,7 +77,7 @@ opskeeper/
 
 **状态：已完成**
 
-验收记录：[T01 工程初始化与质量基线验收记录](t01-acceptance.md)
+验收记录：[T01 工程初始化与质量基线验收记录](../acceptance/t01.md)
 
 ### 目标
 
@@ -121,7 +121,7 @@ opskeeper/
 
 **状态：已完成，依赖 T01（已完成）**
 
-验收记录：[T02 Scope 与组织模型验收记录](t02-acceptance.md)
+验收记录：[T02 Scope 与组织模型验收记录](../acceptance/t02.md)
 
 ### 目标
 
