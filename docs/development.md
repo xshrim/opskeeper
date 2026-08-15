@@ -2,6 +2,10 @@
 
 本文档前半部分说明如何搭建和运行本地环境，后半部分说明配置边界、PostgreSQL 初始化和数据库迁移机制。
 
+本仓库采用前后端同仓的 Monorepo 结构。`backend/go.mod` 定义独立 Go Module `opskeeper/backend`，后端包直接位于 `backend/<package>` 并使用 `opskeeper/backend/<package>` 导入；`frontend/package.json` 独立管理 Svelte 前端依赖。两个工程共享版本库和发布流程，但依赖、构建和包解析相互独立。
+
+`opskeeper/backend` 是仓库内应用代码的本地导入命名空间，不作为可由外部项目通过 `go get` 获取的公共 Module 地址。未来如果提供 Go SDK，应为 SDK 单独建立带代码托管域名的 Module 路径和兼容性边界。
+
 ## 1. 快速开始
 
 ### 1.1 前置条件
@@ -200,9 +204,9 @@ Compose 健康检查不仅调用 `pg_isready`，还会读取 PostgreSQL 系统�
 
 ## 6. 数据库迁移机制
 
-迁移入口是 `backend/cmd/migrate`，实现位于 `backend/internal/migrations`。迁移命令使用 `OPSK_DATABASE_URL` 中的 `opskeeper` 业务数据库所有者执行，不使用 `postgres` 超级用户。
+迁移入口是 `backend/cmd/migrate`，实现位于 `backend/migrations`。迁移命令使用 `OPSK_DATABASE_URL` 中的 `opskeeper` 业务数据库所有者执行，不使用 `postgres` 超级用户。
 
-迁移文件位于 `backend/internal/migrations/sql/`，命名规则为：
+迁移文件位于 `backend/migrations/sql/`，命名规则为：
 
 ```text
 NNNN_description.sql

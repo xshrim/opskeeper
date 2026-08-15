@@ -1,4 +1,4 @@
-module github.com/opskeeper/opskeeper/backend
+module opskeeper/backend
 
 go 1.26.1
 

@@ -50,7 +50,7 @@ backend-test:
 	cd backend && go test ./...
 
 backend-integration-test: ## Run PostgreSQL organization integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./internal/organization
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./organization
 
 frontend-test:
 	cd frontend && npm run test

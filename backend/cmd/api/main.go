@@ -10,12 +10,12 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/opskeeper/opskeeper/backend/internal/config"
-	"github.com/opskeeper/opskeeper/backend/internal/health"
-	"github.com/opskeeper/opskeeper/backend/internal/httpapi"
-	"github.com/opskeeper/opskeeper/backend/internal/organization"
-	"github.com/opskeeper/opskeeper/backend/internal/version"
 	"github.com/redis/go-redis/v9"
+	"opskeeper/backend/config"
+	"opskeeper/backend/health"
+	"opskeeper/backend/httpapi"
+	"opskeeper/backend/organization"
+	"opskeeper/backend/version"
 )
 
 func main() {

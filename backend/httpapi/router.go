@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/opskeeper/opskeeper/backend/internal/health"
+	"opskeeper/backend/health"
 )
 
 func NewRouter(logger *slog.Logger, healthService *health.Service, version string, organizationService organizationService) http.Handler {
