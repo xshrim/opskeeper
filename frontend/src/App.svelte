@@ -4,6 +4,8 @@
   import {
     api,
     ApiError,
+    type ConnectionCheck,
+    type ConnectorCapability,
     type DiscoveryItem,
     type DiscoveryProjectMapping,
     type DiscoveryRun,
@@ -53,6 +55,8 @@
   let selectedResourceId = '';
   let relations: Relation[] = [];
   let topology: TopologyNode[] = [];
+  let connectionCheck: ConnectionCheck | null = null;
+  let connectionBusy = false;
   let users: User[] = [];
   let groups: Group[] = [];
   let roles: RoleDefinition[] = [];
@@ -120,6 +124,10 @@
   $: rows = toStatusRows(health);
   $: selectedSchema = schemas.find(
     (schema) => schema.kind === selectedResource?.kind
+  );
+  $: selectedResourceHasConnector = Boolean(
+    selectedResource &&
+    ['Kubernetes', 'Prometheus', 'Loki'].includes(selectedResource.kind)
   );
   $: createSchema = schemas.find((schema) => schema.kind === resourceKind);
   $: kubernetesClusters = resources.filter(
@@ -520,6 +528,7 @@
 
   async function loadResourceDetails(id: string) {
     selectedResourceId = id;
+    connectionCheck = null;
     const resource = resources.find((item) => item.id === id);
     if (resource) syncResourceEditor(resource);
     try {
@@ -531,6 +540,41 @@
       topology = loadedTopology.items;
     } catch (error) {
       errorMessage = describeError(error, '资源关系加载失败');
+    }
+    await loadConnectionCheck(id);
+  }
+
+  async function loadConnectionCheck(id: string) {
+    const current = resources.find((item) => item.id === id);
+    if (
+      !current ||
+      !['Kubernetes', 'Prometheus', 'Loki'].includes(current.kind)
+    )
+      return;
+    try {
+      const check = await api.latestResourceConnectionCheck(id);
+      if (selectedResourceId === id) connectionCheck = check;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return;
+      if (selectedResourceId === id)
+        errorMessage = describeError(error, '连接状态加载失败');
+    }
+  }
+
+  async function testSelectedResourceConnection() {
+    if (!selectedResource || !selectedResourceHasConnector) return;
+    connectionBusy = true;
+    errorMessage = '';
+    try {
+      connectionCheck = await api.testResourceConnection(selectedResource.id);
+      notice =
+        connectionCheck.status === 'succeeded'
+          ? `资源“${selectedResource.name}”连接测试通过`
+          : `资源“${selectedResource.name}”连接测试失败`;
+    } catch (error) {
+      errorMessage = describeError(error, '连接测试失败');
+    } finally {
+      connectionBusy = false;
     }
   }
 
@@ -795,6 +839,17 @@
       dateStyle: 'medium',
       timeStyle: 'short'
     });
+  }
+
+  function capabilityName(capability: ConnectorCapability) {
+    const names: Record<ConnectorCapability, string> = {
+      kubernetes_read: '读取 Kubernetes',
+      query_metrics: '查询指标',
+      query_logs: '查询日志',
+      query_traces: '查询链路',
+      get_alerts: '读取告警'
+    };
+    return names[capability] ?? capability;
   }
 
   function iconGlyph(icon: string | undefined) {
@@ -1508,6 +1563,7 @@
                     >标签<input
                       bind:value={resourceLabels}
                       placeholder="env=prod, owner=platform"
+                      autocomplete="off"
                     /></label
                   >
                 </div>
@@ -1520,6 +1576,7 @@
                             type="password"
                             bind:value={resourceSensitiveValues[key]}
                             placeholder="敏感信息将加密保存"
+                            autocomplete="new-password"
                           />{:else if field.enum}<select
                             bind:value={resourceConfigValues[key]}
                             ><option value="">未设置</option
@@ -1531,10 +1588,11 @@
                             type={field.type === 'number' ||
                             field.type === 'integer'
                               ? 'number'
-                              : field.type === 'url'
+                              : field.type === 'url' || field.format === 'uri'
                                 ? 'url'
                                 : 'text'}
                             placeholder={field.description || key}
+                            autocomplete="off"
                           />{/if}</label
                       >
                     {/each}
@@ -1575,6 +1633,47 @@
                     >更新于 {formatDate(selectedResource.updated_at)}</span
                   >
                 </div>
+                {#if selectedResourceHasConnector}
+                  <div class="connection-status">
+                    <div class="connection-summary">
+                      <span
+                        class:success={connectionCheck?.status === 'succeeded'}
+                        class:failed={connectionCheck?.status === 'failed'}
+                        class="connection-indicator"
+                        aria-hidden="true"
+                      ></span>
+                      <span>
+                        <strong
+                          >{connectionCheck?.status === 'succeeded'
+                            ? '连接正常'
+                            : connectionCheck?.status === 'failed'
+                              ? '连接失败'
+                              : '尚未测试'}</strong
+                        >
+                        <small
+                          >{connectionCheck
+                            ? `${connectionCheck.message} · ${connectionCheck.latency_ms} ms · ${formatDate(connectionCheck.checked_at)}`
+                            : '当前资源还没有连接测试记录'}</small
+                        >
+                      </span>
+                    </div>
+                    {#if connectionCheck?.capabilities.length}
+                      <div class="capability-list" aria-label="连接器能力">
+                        {#each connectionCheck.capabilities as capability}
+                          <span>{capabilityName(capability)}</span>
+                        {/each}
+                      </div>
+                    {/if}
+                    <button
+                      class="secondary connection-test-button"
+                      on:click={testSelectedResourceConnection}
+                      disabled={busy || connectionBusy}
+                    >
+                      <span aria-hidden="true">↻</span>
+                      {connectionBusy ? '测试中' : '测试连接'}
+                    </button>
+                  </div>
+                {/if}
                 <form
                   class="stack-form editor-form"
                   on:submit|preventDefault={updateSelectedResource}
@@ -1597,6 +1696,7 @@
                     >标签<input
                       bind:value={editResourceLabels}
                       placeholder="env=prod, owner=platform"
+                      autocomplete="off"
                     /></label
                   >
                   {#if selectedSchema?.schema.properties}
@@ -1610,6 +1710,7 @@
                               placeholder={selectedResource.credential_id
                                 ? '已有关联凭据，留空保持不变'
                                 : '敏感信息将加密保存'}
+                              autocomplete="new-password"
                             />{:else if field.enum}<select
                               bind:value={resourceConfigValues[key]}
                               ><option value="">未设置</option
@@ -1621,9 +1722,10 @@
                               type={field.type === 'number' ||
                               field.type === 'integer'
                                 ? 'number'
-                                : field.type === 'url'
+                                : field.type === 'url' || field.format === 'uri'
                                   ? 'url'
                                   : 'text'}
+                              autocomplete="off"
                             />{/if}</label
                         >
                       {/each}

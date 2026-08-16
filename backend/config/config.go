@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,22 +22,25 @@ const (
 var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
 type Config struct {
-	BasePath          string
-	Environment       string
-	LogFormat         string
-	HTTPAddress       string
-	TrustedProxies    []netip.Prefix
-	DatabaseURL       string
-	RedisURL          string
-	ShutdownTimeout   time.Duration
-	DependencyTimeout time.Duration
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	CookieSecure      bool
-	SessionAccessTTL  time.Duration
-	SessionRefreshTTL time.Duration
+	BasePath                  string
+	Environment               string
+	LogFormat                 string
+	HTTPAddress               string
+	TrustedProxies            []netip.Prefix
+	DatabaseURL               string
+	RedisURL                  string
+	ShutdownTimeout           time.Duration
+	DependencyTimeout         time.Duration
+	ReadHeaderTimeout         time.Duration
+	ReadTimeout               time.Duration
+	WriteTimeout              time.Duration
+	IdleTimeout               time.Duration
+	CookieSecure              bool
+	SessionAccessTTL          time.Duration
+	SessionRefreshTTL         time.Duration
+	ConnectorTimeout          time.Duration
+	ConnectorMaxConcurrency   int
+	ConnectorMaxResponseBytes int64
 }
 
 func Load() (Config, error) {
@@ -70,6 +74,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.SessionRefreshTTL, err = durationFromEnv("OPSK_SESSION_REFRESH_TTL", 7*24*time.Hour); err != nil {
+		return Config{}, err
+	}
+	if cfg.ConnectorTimeout, err = durationFromEnv("OPSK_CONNECTOR_TIMEOUT", 10*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.ConnectorMaxConcurrency, err = intFromEnv("OPSK_CONNECTOR_MAX_CONCURRENCY", 8, 1, 128); err != nil {
+		return Config{}, err
+	}
+	if cfg.ConnectorMaxResponseBytes, err = int64FromEnv("OPSK_CONNECTOR_MAX_RESPONSE_BYTES", 4<<20, 1024, 64<<20); err != nil {
 		return Config{}, err
 	}
 
@@ -183,4 +196,28 @@ func boolFromEnv(key string, fallback bool) (bool, error) {
 	default:
 		return false, fmt.Errorf("parse %s: expected true or false", key)
 	}
+}
+
+func intFromEnv(key string, fallback, minimum, maximum int) (int, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, fmt.Errorf("%s must be an integer between %d and %d", key, minimum, maximum)
+	}
+	return parsed, nil
+}
+
+func int64FromEnv(key string, fallback, minimum, maximum int64) (int64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return 0, fmt.Errorf("%s must be an integer between %d and %d", key, minimum, maximum)
+	}
+	return parsed, nil
 }

@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog 和 Kubernetes Discovery；AI、巡检与生产运维能力按 T09-T15 逐步交付。
+下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog、Kubernetes Discovery 和首批 Connector；AI、巡检与生产运维能力按 T10-T15 逐步交付。
 
 ```mermaid
 flowchart LR
@@ -67,12 +67,12 @@ flowchart LR
 
 | 层次 | 技术选型 | 状态 | 说明 |
 |---|---|---|---|
-| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T08 | 独立开发，生产时嵌入 Go API |
-| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T08 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
-| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T08 | REST API、健康检查、迁移和模块化业务能力 |
+| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T09 | 独立开发，生产时嵌入 Go API |
+| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T09 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
+| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T09 | REST API、健康检查、迁移和模块化业务能力 |
 | 查询生成 | `sqlc` | 候选，按真实复杂度引入 | 不作为所有 Store 的强制前置条件 |
 | Kubernetes 客户端 | `client-go` | 已实现，T08 | 集群发现、Project/Application 导入 |
-| 数据库 | PostgreSQL 16 | 已实现，T01-T08 | 当前保存组织、身份、授权、审计、资源、凭据、关系和发现数据 |
+| 数据库 | PostgreSQL 16 | 已实现，T01-T09 | 当前保存组织、身份、授权、审计、资源、凭据、关系、发现和连接检查数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
 | 实时交互 | SSE | 目标，T11 | 推送诊断过程、工具调用和巡检进度 |
 | 日志 | `slog` text/json | 已实现，T01 | 全部 Go 进程统一结构化字段 |
@@ -93,7 +93,7 @@ flowchart LR
 | Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
-| Connector | Kubernetes、中间件、监控平台和 LLM Provider 适配 | 目标，T09-T10 |
+| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 LLM Provider 在 T10-T12 扩展 |
 | Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10 |
 | AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
@@ -141,6 +141,7 @@ flowchart LR
 | `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 已实现，T06 |
 | `/opskeeper/api/v1/resources/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 已实现，T08 |
 | `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
+| `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |
 | `/opskeeper/api/v1/skills` | 目标，T10 |
@@ -157,13 +158,14 @@ flowchart LR
 - API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `text` 和 `json`，默认使用 `text`。
 - API 默认不信任客户端转发头；只有 `OPSK_TRUSTED_PROXIES` 明确列出的直连代理才能提供客户端 IP，解析结果写入请求日志并供后续审计使用。
 - 数据库迁移由滚动发布前的单实例 Migration Job 执行，使用 PostgreSQL advisory lock 防止并发；应用进程不自动迁移，Schema 演进遵循 Expand/Contract。
+- Connector 调用统一使用超时、全局并发、有限重试、查询范围和最大响应大小限制；连接检查只持久化安全分类、公开消息、耗时和能力，不保存上游响应正文或凭据。
 
 ### 目标设计
 
 - API Server 保持无状态，生产环境至少两个副本，在 T15 完成集群部署验收。
 - Scheduler 在 T13 使用 PostgreSQL advisory lock 保证单一调度主节点。
 - Worker 在 T10-T13 使用任务租约、心跳和幂等键恢复中断任务。
-- 外部调用从各 Connector 引入时实施超时、限流、重试、熔断和最大响应体限制。
+- Connector 熔断和按目标隔离的配额在真实负载出现后评估；当前已经具备超时、全局并发、有限重试、查询范围和最大响应大小限制。
 - PostgreSQL 备份、PITR 和高可用以及 Redis 可恢复数据边界在 T15 验收。
 - 诊断、巡检和工具执行从 T11 起保存输入摘要、证据、版本和结果，支持复现。
 

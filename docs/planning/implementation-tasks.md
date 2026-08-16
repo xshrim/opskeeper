@@ -67,7 +67,7 @@ opskeeper/
 | T06 | 资源目录与关系模型 | 资源、凭据、关系、拓扑 API | 已完成 |
 | T07 | 管理控制台基础功能 | 作用域导航和组织/资源页面 | 已完成 |
 | T08 | Kubernetes 发现与导入 | 集群接入、预览、项目映射和同步 | 已完成 |
-| T09 | Connector 与监控平台 | 统一查询接口、Prometheus、Loki | 待批准 |
+| T09 | Connector 与监控平台 | 统一查询接口、Prometheus、Loki | 已完成 |
 | T10 | LLM、Skill 与 Runner | Provider、Skill 版本和受控执行 | 待批准 |
 | T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 待批准 |
 | T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 待批准 |
@@ -398,7 +398,9 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 ## T09 Connector 框架与外部监控平台
 
-**状态：待批准，依赖 T08**
+**状态：已完成，依赖 T08（已完成）**
+
+验收记录：[T09 Connector 框架与外部监控平台验收记录](../acceptance/t09.md)
 
 ### 目标
 
@@ -434,7 +436,7 @@ Tempo/Jaeger/Elastic 实现、AI 诊断编排和自动巡检。
 
 ## T10 LLM Provider、Skill 注册表与受控 Runner
 
-**状态：待批准，依赖 T09**
+**状态：待批准，依赖 T09（已完成）**
 
 ### 目标
 

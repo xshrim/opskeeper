@@ -36,6 +36,42 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.TrustedProxies) != 0 {
 		t.Fatalf("Load() TrustedProxies = %#v, want empty", cfg.TrustedProxies)
 	}
+	if cfg.ConnectorTimeout != 10*time.Second || cfg.ConnectorMaxConcurrency != 8 || cfg.ConnectorMaxResponseBytes != 4<<20 {
+		t.Fatalf("Load() returned unexpected connector config: %#v", cfg)
+	}
+}
+
+func TestLoadAcceptsConnectorLimits(t *testing.T) {
+	t.Setenv("OPSK_CONNECTOR_TIMEOUT", "3s")
+	t.Setenv("OPSK_CONNECTOR_MAX_CONCURRENCY", "12")
+	t.Setenv("OPSK_CONNECTOR_MAX_RESPONSE_BYTES", "2097152")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ConnectorTimeout != 3*time.Second || cfg.ConnectorMaxConcurrency != 12 || cfg.ConnectorMaxResponseBytes != 2097152 {
+		t.Fatalf("Load() connector config = %#v", cfg)
+	}
+}
+
+func TestLoadRejectsInvalidConnectorLimits(t *testing.T) {
+	tests := []struct {
+		key   string
+		value string
+	}{
+		{key: "OPSK_CONNECTOR_TIMEOUT", value: "0s"},
+		{key: "OPSK_CONNECTOR_MAX_CONCURRENCY", value: "0"},
+		{key: "OPSK_CONNECTOR_MAX_RESPONSE_BYTES", value: "128"},
+	}
+	for _, test := range tests {
+		t.Run(test.key, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
+			}
+		})
+	}
 }
 
 func TestLoadAcceptsTrustedProxies(t *testing.T) {

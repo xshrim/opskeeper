@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, request } from './api';
+import { api, ApiError, request } from './api';
 
 describe('request', () => {
   beforeEach(() => {
@@ -60,6 +60,37 @@ describe('request', () => {
       requestId: 'req-1',
       message: 'No access'
     });
+    document.querySelector('base')?.remove();
+  });
+
+  it('uses the resource connection test endpoints', async () => {
+    const check = {
+      id: 'check-1',
+      resource_id: 'resource-1',
+      status: 'succeeded',
+      message: '连接测试通过',
+      latency_ms: 12,
+      capabilities: ['query_metrics'],
+      checked_at: '2026-08-16T00:00:00Z'
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(
+        async () => new Response(JSON.stringify(check), { status: 200 })
+      );
+
+    await api.testResourceConnection('resource-1');
+    await api.latestResourceConnectionCheck('resource-1');
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/connection-tests'
+    );
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/connection-tests/latest'
+    );
     document.querySelector('base')?.remove();
   });
 });

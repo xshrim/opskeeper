@@ -27,6 +27,7 @@ type Options struct {
 	Resources      resourceService
 	Credentials    credentialService
 	Discovery      discoveryService
+	Connectors     connectorService
 	CookieSecure   bool
 }
 
@@ -75,7 +76,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				auditRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
 			}
-			if options.Identity != nil && (options.Resources != nil || options.Credentials != nil || options.Discovery != nil) {
+			if options.Identity != nil && (options.Resources != nil || options.Credentials != nil || options.Discovery != nil || options.Connectors != nil) {
 				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
@@ -83,6 +84,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				}
 				registerResourceRoutes(resourceRouter, options.Resources, options.Credentials, options.Auditor, requirePermission)
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
+				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
 		})
 	}
