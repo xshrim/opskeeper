@@ -119,15 +119,9 @@ func (a *kubernetesAdapter) ReadKubernetes(ctx context.Context, query Kubernetes
 		if err != nil {
 			return Evidence{}, connectorError(CategoryInternal, "encode Kubernetes objects", false, err)
 		}
-		return Evidence{
-			CollectedAt: time.Now(), Data: json.RawMessage(payload), Partial: partial,
-			Summary: map[string]any{"resource": resourceName, "namespace": query.Namespace, "item_count": count},
-		}, nil
+		return Evidence{CollectedAt: time.Now(), Data: json.RawMessage(payload), Partial: partial, Summary: kubernetesSummary(resourceName, query.Namespace, count, payload)}, nil
 	}
-	return Evidence{
-		CollectedAt: time.Now(), Data: json.RawMessage(payload),
-		Summary: map[string]any{"resource": resourceName, "namespace": query.Namespace, "item_count": count},
-	}, nil
+	return Evidence{CollectedAt: time.Now(), Data: json.RawMessage(payload), Summary: kubernetesSummary(resourceName, query.Namespace, count, payload)}, nil
 }
 
 func kubernetesError(operation string, err error) error {

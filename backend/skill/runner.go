@@ -31,6 +31,9 @@ type Connector interface {
 	QueryTraces(context.Context, string, connector.TracesQuery) (connector.Evidence, error)
 	GetAlerts(context.Context, string, connector.AlertsQuery) (connector.Evidence, error)
 	ReadKubernetes(context.Context, string, connector.KubernetesQuery) (connector.Evidence, error)
+	InspectPostgreSQL(context.Context, string) (connector.Evidence, error)
+	InspectRedis(context.Context, string) (connector.Evidence, error)
+	InspectKafka(context.Context, string) (connector.Evidence, error)
 }
 
 type RunInput struct {
@@ -352,6 +355,9 @@ type alertsArgs struct {
 	TargetResourceID string `json:"target_resource_id"`
 	ActiveOnly       bool   `json:"active_only"`
 }
+type middlewareInspectArgs struct {
+	TargetResourceID string `json:"target_resource_id"`
+}
 
 func (p *policy) tools(ctx context.Context) ([]tool.Tool, error) {
 	if p.runner.Connector == nil && len(p.version.Tools) > 0 {
@@ -391,6 +397,20 @@ func (p *policy) tools(ctx context.Context) ([]tool.Tool, error) {
 				return p.execute(ctx, spec.Name, args.TargetResourceID, args, func() (connector.Evidence, error) {
 					return p.runner.Connector.GetAlerts(ctx, args.TargetResourceID, connector.AlertsQuery{ActiveOnly: args.ActiveOnly})
 				})
+			})
+		case "connector_postgresql_inspect":
+			item, err = functiontool.New(functiontool.Config{Name: spec.Name, Description: spec.Description}, func(_ agent.Context, args middlewareInspectArgs) (map[string]any, error) {
+				return p.execute(ctx, spec.Name, args.TargetResourceID, args, func() (connector.Evidence, error) {
+					return p.runner.Connector.InspectPostgreSQL(ctx, args.TargetResourceID)
+				})
+			})
+		case "connector_redis_inspect":
+			item, err = functiontool.New(functiontool.Config{Name: spec.Name, Description: spec.Description}, func(_ agent.Context, args middlewareInspectArgs) (map[string]any, error) {
+				return p.execute(ctx, spec.Name, args.TargetResourceID, args, func() (connector.Evidence, error) { return p.runner.Connector.InspectRedis(ctx, args.TargetResourceID) })
+			})
+		case "connector_kafka_inspect":
+			item, err = functiontool.New(functiontool.Config{Name: spec.Name, Description: spec.Description}, func(_ agent.Context, args middlewareInspectArgs) (map[string]any, error) {
+				return p.execute(ctx, spec.Name, args.TargetResourceID, args, func() (connector.Evidence, error) { return p.runner.Connector.InspectKafka(ctx, args.TargetResourceID) })
 			})
 		default:
 			return nil, invalid("Skill declares an unsupported tool")

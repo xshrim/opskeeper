@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -187,6 +188,55 @@ func (s *Service) ReadKubernetes(ctx context.Context, resourceID string, query K
 	}
 	return s.collect(ctx, item.ID, CapabilityKubernetesRead, func(runCtx context.Context) (Evidence, error) {
 		return reader.ReadKubernetes(runCtx, query)
+	})
+}
+
+func (s *Service) InspectPostgreSQL(ctx context.Context, resourceID string) (Evidence, error) {
+	return s.inspect(ctx, resourceID, CapabilityPostgreSQLInspect, func(adapter Adapter, runCtx context.Context) (DiagnosticSnapshot, error) {
+		inspector, ok := adapter.(PostgreSQLInspector)
+		if !ok {
+			return DiagnosticSnapshot{}, connectorError(CategoryUnsupported, "inspect PostgreSQL", false, ErrUnsupported)
+		}
+		return inspector.InspectPostgreSQL(runCtx)
+	})
+}
+
+func (s *Service) InspectRedis(ctx context.Context, resourceID string) (Evidence, error) {
+	return s.inspect(ctx, resourceID, CapabilityRedisInspect, func(adapter Adapter, runCtx context.Context) (DiagnosticSnapshot, error) {
+		inspector, ok := adapter.(RedisInspector)
+		if !ok {
+			return DiagnosticSnapshot{}, connectorError(CategoryUnsupported, "inspect Redis", false, ErrUnsupported)
+		}
+		return inspector.InspectRedis(runCtx)
+	})
+}
+
+func (s *Service) InspectKafka(ctx context.Context, resourceID string) (Evidence, error) {
+	return s.inspect(ctx, resourceID, CapabilityKafkaInspect, func(adapter Adapter, runCtx context.Context) (DiagnosticSnapshot, error) {
+		inspector, ok := adapter.(KafkaInspector)
+		if !ok {
+			return DiagnosticSnapshot{}, connectorError(CategoryUnsupported, "inspect Kafka", false, ErrUnsupported)
+		}
+		return inspector.InspectKafka(runCtx)
+	})
+}
+
+func (s *Service) inspect(ctx context.Context, resourceID string, capability Capability, run func(Adapter, context.Context) (DiagnosticSnapshot, error)) (Evidence, error) {
+	item, adapter, err := s.adapter(ctx, resourceID)
+	if err != nil {
+		return Evidence{}, err
+	}
+	return s.collect(ctx, item.ID, capability, func(runCtx context.Context) (Evidence, error) {
+		snapshot, err := run(adapter, runCtx)
+		if err != nil {
+			return Evidence{}, err
+		}
+		snapshot.Findings = EvaluateDiagnosticSnapshot(snapshot)
+		data, err := json.Marshal(snapshot)
+		if err != nil {
+			return Evidence{}, connectorError(CategoryInternal, "encode diagnostic snapshot", false, err)
+		}
+		return Evidence{CollectedAt: s.now(), Summary: map[string]any{"kind": snapshot.Kind, "finding_count": len(snapshot.Findings), "unavailable": snapshot.Unavailable}, Data: data}, nil
 	})
 }
 
