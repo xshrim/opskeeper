@@ -1563,6 +1563,7 @@
                     >标签<input
                       bind:value={resourceLabels}
                       placeholder="env=prod, owner=platform"
+                      autocomplete="off"
                     /></label
                   >
                 </div>
@@ -1575,6 +1576,7 @@
                             type="password"
                             bind:value={resourceSensitiveValues[key]}
                             placeholder="敏感信息将加密保存"
+                            autocomplete="new-password"
                           />{:else if field.enum}<select
                             bind:value={resourceConfigValues[key]}
                             ><option value="">未设置</option
@@ -1590,6 +1592,7 @@
                                 ? 'url'
                                 : 'text'}
                             placeholder={field.description || key}
+                            autocomplete="off"
                           />{/if}</label
                       >
                     {/each}
@@ -1693,6 +1696,7 @@
                     >标签<input
                       bind:value={editResourceLabels}
                       placeholder="env=prod, owner=platform"
+                      autocomplete="off"
                     /></label
                   >
                   {#if selectedSchema?.schema.properties}
@@ -1706,6 +1710,7 @@
                               placeholder={selectedResource.credential_id
                                 ? '已有关联凭据，留空保持不变'
                                 : '敏感信息将加密保存'}
+                              autocomplete="new-password"
                             />{:else if field.enum}<select
                               bind:value={resourceConfigValues[key]}
                               ><option value="">未设置</option
@@ -1720,6 +1725,7 @@
                                 : field.type === 'url' || field.format === 'uri'
                                   ? 'url'
                                   : 'text'}
+                              autocomplete="off"
                             />{/if}</label
                         >
                       {/each}
