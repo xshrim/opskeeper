@@ -163,7 +163,7 @@ func (s *store) Delete(ctx context.Context, id string) error {
 }
 
 func (s *store) GetSchema(ctx context.Context, kind string, version int) (Schema, error) {
-	query := `SELECT id::text, kind, version, schema, status, created_at FROM resource_schemas WHERE kind = $1 AND status = 'active'`
+	query := `SELECT id::text, kind, version, schema, status, display_name, description, icon, created_at FROM resource_schemas WHERE kind = $1 AND status = 'active'`
 	args := []any{kind}
 	if version > 0 {
 		query += " AND version = $2"
@@ -173,7 +173,7 @@ func (s *store) GetSchema(ctx context.Context, kind string, version int) (Schema
 	}
 	var item Schema
 	var raw []byte
-	if err := s.pool.QueryRow(ctx, query, args...).Scan(&item.ID, &item.Kind, &item.Version, &raw, &item.Status, &item.CreatedAt); err != nil {
+	if err := s.pool.QueryRow(ctx, query, args...).Scan(&item.ID, &item.Kind, &item.Version, &raw, &item.Status, &item.DisplayName, &item.Description, &item.Icon, &item.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Schema{}, ErrSchemaNotFound
 		}
@@ -186,7 +186,7 @@ func (s *store) GetSchema(ctx context.Context, kind string, version int) (Schema
 }
 
 func (s *store) ListSchemas(ctx context.Context) ([]Schema, error) {
-	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (kind) id::text, kind, version, schema, status, created_at FROM resource_schemas WHERE status = 'active' ORDER BY kind, version DESC`)
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (kind) id::text, kind, version, schema, status, display_name, description, icon, created_at FROM resource_schemas WHERE status = 'active' ORDER BY kind, version DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list resource schemas: %w", err)
 	}
@@ -195,7 +195,7 @@ func (s *store) ListSchemas(ctx context.Context) ([]Schema, error) {
 	for rows.Next() {
 		var item Schema
 		var raw []byte
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Version, &raw, &item.Status, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Version, &raw, &item.Status, &item.DisplayName, &item.Description, &item.Icon, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan resource schema: %w", err)
 		}
 		if err := json.Unmarshal(raw, &item.Schema); err != nil {

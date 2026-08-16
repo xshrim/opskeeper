@@ -1,0 +1,7 @@
+ALTER TABLE teams DROP CONSTRAINT IF EXISTS teams_icon_length;
+ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_icon_length;
+ALTER TABLE platforms DROP CONSTRAINT IF EXISTS platforms_icon_length;
+
+ALTER TABLE teams DROP COLUMN IF EXISTS icon;
+ALTER TABLE projects DROP COLUMN IF EXISTS icon;
+ALTER TABLE platforms DROP COLUMN IF EXISTS icon;

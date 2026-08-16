@@ -77,6 +77,26 @@ func TestCreateTeamNormalizesInput(t *testing.T) {
 	if store.createTeamInput.Labels == nil {
 		t.Fatal("CreateTeam() passed nil labels")
 	}
+	if store.createTeamInput.Icon != "team" {
+		t.Fatalf("CreateTeam() icon = %q, want team", store.createTeamInput.Icon)
+	}
+}
+
+func TestCreateProjectPreservesCustomIcon(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+
+	if _, err := service.CreateProject(context.Background(), CreateProjectInput{
+		TeamID: testUUID,
+		Name:   "Checkout",
+		Code:   "checkout",
+		Icon:   "rocket",
+	}); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	if store.createProjectInput.Icon != "rocket" {
+		t.Fatalf("CreateProject() icon = %q, want rocket", store.createProjectInput.Icon)
+	}
 }
 
 func TestCreateTeamRejectsInvalidCode(t *testing.T) {

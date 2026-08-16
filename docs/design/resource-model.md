@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 正在实施资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询。具体连接器、Kubernetes 自动发现和资源管理前端不属于 T06。
+T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面。具体连接器、Kubernetes 自动发现和资源导入仍属于后续任务。
 
 ## 1. 设计原则
 
@@ -19,9 +19,9 @@ T06 正在实施资源目录、凭据密文边界、关系约束、默认解析�
 
 ```text
 scopes(id, tenant_id, scope_type, parent_scope_id, status)
-platforms(id, scope_id, name, code)
-teams(id, scope_id, platform_id, name, code, labels)
-projects(id, scope_id, platform_id, team_id, name, code, labels, source)
+platforms(id, scope_id, name, code, icon)
+teams(id, scope_id, platform_id, name, code, icon, labels)
+projects(id, scope_id, platform_id, team_id, name, code, icon, labels, source)
 ```
 
 `Scope` 是统一的权限和资源归属节点，平台、团队、项目是它的三种业务表现。资源、角色绑定、巡检策略、诊断会话和审计记录统一引用 `scope_id`，不再分别保存多态组织外键。
@@ -61,18 +61,32 @@ resources {
 }
 ```
 
-建议首批 `kind`：
+首批可登记的 `kind`：
 
 | 分类 | 资源类型 |
 |---|---|
-| 基础设施 | KubernetesCluster、Namespace、Node、Workload、Pod、Service、Ingress |
+| 基础设施 | KubernetesCluster |
 | 业务 | BusinessApplication、Endpoint、CronApplication |
 | 中间件 | PostgreSQL、Redis、Kafka、Elasticsearch、GenericMiddleware |
-| AI | LLMProvider、Model、MCPServer、Skill |
+| AI | LLMProvider、MCPServer、Skill |
 | 可观测平台 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、GenericAPI |
-| 运维支撑 | Credential、NotificationChannel、Runbook、ArtifactStore |
+| 运维支撑 | NotificationChannel、Runbook、ArtifactStore |
 
-`config` 使用 JSONB 保存类型特有字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。Credential 资源只保存名称、作用域和用途等元数据，密文载荷单独存入 `resource_credentials`，普通资源配置仅保存凭据引用。登录用户的 `credentials` 表与外部资源凭据严格分开。
+Kubernetes 的 Namespace、Node、Workload、Pod、Service、Ingress 是集群发现后得到的派生对象，不单独作为用户登记的资源；LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。连接凭据同样由独立的 `resource_credentials` 管理，不把 Credential 当作资源登记。
+
+`resource_schemas` 同时保存 `display_name`、`description` 和 `icon`，前端据此展示中文名称、说明和类型图标。`config` 使用 JSONB 保存非敏感类型字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。
+
+敏感字段按照类型定义进入加密凭据，例如：
+
+| 资源类型 | 非敏感配置 | 加密凭据 |
+|---|---|---|
+| KubernetesCluster | Context、API Server | kubeconfig |
+| PostgreSQL | Host、Port、Database、Username | Password |
+| Redis | Host、Port、Database、Username | Password |
+| Kafka | Brokers、TLS | Username、Password |
+| LLMProvider | URL、Model | Token |
+
+登录用户的 `credentials` 表与外部资源凭据严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段写入加密凭据并保存 `credential_id`；用户不需要手写配置 JSON。
 
 ## 4. 可见性与引用规则
 

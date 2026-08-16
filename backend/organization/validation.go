@@ -56,6 +56,17 @@ func validateStatus(status string) error {
 	return nil
 }
 
+func normalizeIcon(icon, fallback string) string {
+	icon = strings.TrimSpace(icon)
+	if icon == "" {
+		return fallback
+	}
+	if len([]rune(icon)) > 64 {
+		return fallback
+	}
+	return icon
+}
+
 func validateID(id, field string) error {
 	if !uuidPattern.MatchString(id) {
 		return invalid(field + " must be a valid UUID")

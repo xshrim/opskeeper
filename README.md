@@ -72,6 +72,7 @@ make run-front-api
 - [T04 三级 RBAC 与数据隔离验收记录](docs/acceptance/t04.md)
 - [T05 身份权限管理与安全审计验收记录](docs/acceptance/t05.md)
 - [T06 统一资源目录、凭据和关系模型验收记录](docs/acceptance/t06.md)
+- [T07 Svelte 管理控制台基础功能验收记录](docs/acceptance/t07.md)
 
 ## 架构决策与运行手册
 

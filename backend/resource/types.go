@@ -25,12 +25,15 @@ type Resource struct {
 }
 
 type Schema struct {
-	ID        string         `json:"id"`
-	Kind      string         `json:"kind"`
-	Version   int            `json:"version"`
-	Schema    map[string]any `json:"schema"`
-	Status    string         `json:"status"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID          string         `json:"id"`
+	Kind        string         `json:"kind"`
+	Version     int            `json:"version"`
+	Schema      map[string]any `json:"schema"`
+	Status      string         `json:"status"`
+	DisplayName string         `json:"display_name"`
+	Description string         `json:"description"`
+	Icon        string         `json:"icon"`
+	CreatedAt   time.Time      `json:"created_at"`
 }
 
 type Relation struct {
