@@ -8,6 +8,7 @@ const (
 	OrganizationRead  Permission = "organization:read"
 	TeamManage        Permission = "team:manage"
 	ProjectManage     Permission = "project:manage"
+	MemberGrant       Permission = "member:grant"
 	ResourceRead      Permission = "resource:read"
 	ResourceCreate    Permission = "resource:create"
 	ResourceUpdate    Permission = "resource:update"

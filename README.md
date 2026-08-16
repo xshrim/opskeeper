@@ -69,6 +69,7 @@ make run-front-api
 - [T01 工程初始化与质量基线验收记录](docs/acceptance/t01.md)
 - [T02 Scope 与组织模型验收记录](docs/acceptance/t02.md)
 - [T03 本地身份与会话验收记录](docs/acceptance/t03.md)
+- [T04 三级 RBAC 与数据隔离验收记录](docs/acceptance/t04.md)
 
 ## 架构决策与运行手册
 

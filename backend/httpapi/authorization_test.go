@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/health"
 	"opskeeper/backend/identity"
@@ -17,6 +18,12 @@ import (
 
 type stubAuthorizationService struct {
 	filter authorization.ScopeFilter
+}
+
+type stubAuditQueryService struct{}
+
+func (stubAuditQueryService) List(context.Context, []string, int) (audit.Page, error) {
+	return audit.Page{Items: []audit.Event{}, Total: 0}, nil
 }
 
 func (s *stubAuthorizationService) ScopeFilter(context.Context, authorization.Subject, authorization.Permission) (authorization.ScopeFilter, error) {
@@ -54,5 +61,21 @@ func TestAuthorizationMiddlewarePassesScopeFilterToOrganization(t *testing.T) {
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("authorized organization response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAuditRouteRequiresAuthenticationBeforeAuthorization(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{
+		BasePath:      "/test",
+		Identity:      &stubIdentityService{authenticateError: identity.ErrInvalidSession},
+		Authorization: &stubAuthorizationService{filter: authorization.ScopeFilter{ScopeIDs: []string{handlerTestUUID}}},
+		AuditLog:      stubAuditQueryService{},
+	}, nil, nil)
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/audit-logs", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("audit route status = %d, body = %s", response.Code, response.Body.String())
 	}
 }

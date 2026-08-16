@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/health"
@@ -78,9 +79,13 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	organizationStore := organization.NewStore(pool)
 	organizationService := organization.NewService(organizationStore)
 	identityStore := identity.NewStore(pool)
-	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL)
-	authorizationStore := authorization.NewStore(pool)
+	auditService := audit.NewService(audit.NewStore(pool))
+	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL, auditService)
+	authorizationCache := authorization.NewRedisScopeCache(redisClient)
+	authorizationStore := authorization.NewStore(pool, authorizationCache)
 	authorizationService := authorization.NewService(authorizationStore)
+	managementStore := authorization.NewManagementStore(pool)
+	managementService := authorization.NewManagementService(managementStore, authorizationService, auditService)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -88,7 +93,11 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			BasePath:       cfg.BasePath,
 			TrustedProxies: cfg.TrustedProxies,
 			Identity:       identityService,
+			Users:          identityService,
 			Authorization:  authorizationService,
+			Access:         managementService,
+			Auditor:        auditService,
+			AuditLog:       auditService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

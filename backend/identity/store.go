@@ -43,10 +43,10 @@ func (s *store) BootstrapAdmin(ctx context.Context, email, displayName, password
 
 	user, err := insertUser(ctx, tx, email, displayName)
 	if err != nil {
-		return User{}, mapStoreError(err)
+		return User{}, mapBootstrapStoreError(err)
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO credentials (user_id, password_hash) VALUES ($1::uuid, $2)", user.ID, passwordHash); err != nil {
-		return User{}, mapStoreError(err)
+		return User{}, mapBootstrapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return User{}, fmt.Errorf("commit bootstrap administrator: %w", err)
@@ -177,6 +177,83 @@ func (s *store) RevokeAllSessions(ctx context.Context, userID string, now time.T
 	return nil
 }
 
+func (s *store) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, email, display_name, status, created_at, updated_at
+		  FROM users WHERE deleted_at IS NULL ORDER BY created_at, id`)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+	users := make([]User, 0)
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (s *store) CreateUser(ctx context.Context, email, displayName, passwordHash string) (User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, fmt.Errorf("begin create user: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	user, err := insertUser(ctx, tx, email, displayName)
+	if err != nil {
+		return User{}, mapStoreError(err)
+	}
+	if _, err := tx.Exec(ctx, "INSERT INTO credentials (user_id, password_hash) VALUES ($1::uuid, $2)", user.ID, passwordHash); err != nil {
+		return User{}, mapStoreError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, fmt.Errorf("commit create user: %w", err)
+	}
+	return user, nil
+}
+
+func (s *store) GetUser(ctx context.Context, userID string) (User, error) {
+	var user User
+	err := s.pool.QueryRow(ctx, `
+		SELECT id::text, email, display_name, status, created_at, updated_at
+		  FROM users WHERE id = $1::uuid AND deleted_at IS NULL`, userID).
+		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("get user: %w", err)
+	}
+	return user, nil
+}
+
+func (s *store) UpdateUser(ctx context.Context, userID string, input UpdateUserInput) (User, error) {
+	current, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return User{}, err
+	}
+	if input.DisplayName != nil {
+		current.DisplayName = *input.DisplayName
+	}
+	if input.Status != nil {
+		current.Status = *input.Status
+	}
+	var user User
+	err = s.pool.QueryRow(ctx, `
+		UPDATE users SET display_name = $2, status = $3, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL
+		RETURNING id::text, email, display_name, status, created_at, updated_at`,
+		userID, current.DisplayName, current.Status).
+		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		return User{}, fmt.Errorf("update user: %w", err)
+	}
+	return user, nil
+}
+
 type queryer interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
@@ -193,6 +270,14 @@ func insertUser(ctx context.Context, query queryer, email, displayName string) (
 }
 
 func mapStoreError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ErrConflict
+	}
+	return err
+}
+
+func mapBootstrapStoreError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrBootstrapComplete

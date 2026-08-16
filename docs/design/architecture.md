@@ -137,7 +137,7 @@ flowchart LR
 | `/opskeeper/health/live`、`/opskeeper/health/ready` | 已实现，T01 |
 | `/opskeeper/api/v1/teams`、`/opskeeper/api/v1/teams/{teamId}/projects` | 已实现，T02 |
 | `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 已实现，T03 |
-| `/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 目标，T04-T05 |
+| `/opskeeper/api/v1/users`、`/opskeeper/api/v1/groups`、`/opskeeper/api/v1/roles`、`/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 已实现基础管理能力，T05 |
 | `/opskeeper/api/v1/platform/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations` | 目标，T06 |
 | `/opskeeper/api/v1/kubernetes-clusters/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 目标，T08 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
