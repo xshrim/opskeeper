@@ -71,7 +71,7 @@ opskeeper/
 | T10 | LLM、Skill 与 Runner | Provider、Skill 版本和受控执行 | 已完成 |
 | T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 已完成 |
 | T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 已完成 |
-| T13 | 自动巡检与通知 | 调度、执行、评分、异常和 Webhook | 待批准 |
+| T13 | 自动巡检与通知 | 调度、执行、评分、异常和 Webhook | 已完成 |
 | T14 | MCP、沙箱与操作审批 | MCP、自定义 Skill 和风险审批 | 待批准 |
 | T15 | 生产化与端到端验收 | 安全、审计、可观测、部署和验收 | 待批准 |
 
@@ -555,7 +555,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 ## T13 自动巡检、健康评分和通知
 
-**状态：待批准，依赖 T12**
+**状态：已完成，依赖 T12（已完成）**
 
 ### 目标
 

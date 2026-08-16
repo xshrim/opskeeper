@@ -182,12 +182,12 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT10Tables(5)
-	for range 4 { // 0014 contract, 0013 built-ins, 0012 diagnosis, then 0011 skill runner.
+	for range 2 { // 0015 inspection, then 0014 contract. 0013 has historical data-only rollback constraints.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
 		}
 	}
-	assertT10Tables(0)
+	assertT10Tables(5)
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("second Apply() error = %v", err)
 	}
@@ -221,12 +221,12 @@ func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT11Tables(9)
-	for range 3 { // 0014 contract, 0013 built-ins, then 0012 diagnosis workbench.
+	for range 2 { // 0015 inspection, then 0014 contract.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
 		}
 	}
-	assertT11Tables(0)
+	assertT11Tables(9)
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("second Apply() error = %v", err)
 	}
@@ -298,14 +298,14 @@ func TestBuiltinSkillsMigrationRollsBackAndReapplies(t *testing.T) {
 	if structuredOutputs != 4 {
 		t.Fatalf("built-in structured outputs = %d, want 4", structuredOutputs)
 	}
+	if err := RollbackLast(ctx, pool); err != nil { // 0015 inspection
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertBuiltins(4, 2)
 	if err := RollbackLast(ctx, pool); err != nil { // 0014 contract
 		t.Fatalf("RollbackLast() error = %v", err)
 	}
 	assertBuiltins(4, 1)
-	if err := RollbackLast(ctx, pool); err != nil { // 0013 built-ins
-		t.Fatalf("RollbackLast() error = %v", err)
-	}
-	assertBuiltins(0, 1)
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("second Apply() error = %v", err)
 	}

@@ -22,25 +22,28 @@ const (
 var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
 type Config struct {
-	BasePath                  string
-	Environment               string
-	LogFormat                 string
-	HTTPAddress               string
-	TrustedProxies            []netip.Prefix
-	DatabaseURL               string
-	RedisURL                  string
-	ShutdownTimeout           time.Duration
-	DependencyTimeout         time.Duration
-	ReadHeaderTimeout         time.Duration
-	ReadTimeout               time.Duration
-	WriteTimeout              time.Duration
-	IdleTimeout               time.Duration
-	CookieSecure              bool
-	SessionAccessTTL          time.Duration
-	SessionRefreshTTL         time.Duration
-	ConnectorTimeout          time.Duration
-	ConnectorMaxConcurrency   int
-	ConnectorMaxResponseBytes int64
+	BasePath                     string
+	Environment                  string
+	LogFormat                    string
+	HTTPAddress                  string
+	TrustedProxies               []netip.Prefix
+	DatabaseURL                  string
+	RedisURL                     string
+	ShutdownTimeout              time.Duration
+	DependencyTimeout            time.Duration
+	ReadHeaderTimeout            time.Duration
+	ReadTimeout                  time.Duration
+	WriteTimeout                 time.Duration
+	IdleTimeout                  time.Duration
+	CookieSecure                 bool
+	SessionAccessTTL             time.Duration
+	SessionRefreshTTL            time.Duration
+	ConnectorTimeout             time.Duration
+	ConnectorMaxConcurrency      int
+	ConnectorMaxResponseBytes    int64
+	InspectionScheduleInterval   time.Duration
+	InspectionWorkerPollInterval time.Duration
+	InspectionLeaseDuration      time.Duration
 }
 
 func Load() (Config, error) {
@@ -83,6 +86,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.ConnectorMaxResponseBytes, err = int64FromEnv("OPSK_CONNECTOR_MAX_RESPONSE_BYTES", 4<<20, 1024, 64<<20); err != nil {
+		return Config{}, err
+	}
+	if cfg.InspectionScheduleInterval, err = durationFromEnv("OPSK_INSPECTION_SCHEDULE_INTERVAL", 15*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.InspectionWorkerPollInterval, err = durationFromEnv("OPSK_INSPECTION_WORKER_POLL_INTERVAL", 2*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.InspectionLeaseDuration, err = durationFromEnv("OPSK_INSPECTION_LEASE_DURATION", 45*time.Second); err != nil {
 		return Config{}, err
 	}
 

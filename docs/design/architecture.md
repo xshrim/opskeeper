@@ -100,8 +100,8 @@ flowchart LR
 | Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现基础能力，T10 |
 | AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算和执行记录 | 已实现执行基线，T10；诊断计划与证据归纳在 T11 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
-| Inspection | 巡检策略、调度、执行、评分和异常项 | 目标，T13 |
-| Notification | Webhook、邮件及其他通知渠道 | 目标，T13 |
+| Inspection | 巡检策略、调度、执行、评分和异常项 | 已实现，T13 |
+| Notification | HTTPS Webhook、签名、限流、重试和投递记录 | 已实现，T13；邮件等渠道后续扩展 |
 | Audit | 管理操作、模型调用、工具调用和审批记录 | 管理操作审计已实现，T05；完整目标 T15 |
 
 后端代码默认按业务特性组织。每个特性包拥有自身的类型、业务规则、持久化实现和测试，并在同包内通过文件划分职责；不会把所有业务的数据库实现集中到全局 adapter 层。数据库连接生命周期、缓存客户端、消息传输和外部平台协议等真正跨特性的能力，才建立独立基础设施包。
@@ -146,7 +146,7 @@ flowchart LR
 | `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
 | `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
-| `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |
+| `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 已实现，T13 |
 | `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults`、`/opskeeper/api/v1/skill-executions` | 已实现，T10 |
 | `/opskeeper/api/v1/llm-defaults`、`/opskeeper/api/v1/llm-providers/{id}/test` | 已实现，T10 |
 
