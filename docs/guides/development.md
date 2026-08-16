@@ -125,6 +125,9 @@ make run-scheduler
 | `OPSK_CONNECTOR_TIMEOUT` | `10s` | 单次 Connector 执行总超时，必须为正数 |
 | `OPSK_CONNECTOR_MAX_CONCURRENCY` | `8` | 单个进程允许同时执行的 Connector 数，范围 1-128 |
 | `OPSK_CONNECTOR_MAX_RESPONSE_BYTES` | `4194304` | 单次 Connector 响应上限，范围 1 KiB-64 MiB |
+| `OPSK_INSPECTION_SCHEDULE_INTERVAL` | `15s` | Scheduler 检查到期策略的轮询间隔 |
+| `OPSK_INSPECTION_WORKER_POLL_INTERVAL` | `2s` | Worker 在无任务时的轮询间隔 |
+| `OPSK_INSPECTION_LEASE_DURATION` | `45s` | 巡检任务租约与心跳续约期限 |
 | `OPSK_TEST_LLM_BASE_URL` | 空 | 仅供 `make llm-provider-test` 使用的 OpenAI-compatible `/v1` 地址 |
 | `OPSK_TEST_LLM_MODEL` | 空 | 仅供外部 Provider 验证使用的模型名 |
 | `OPSK_TEST_LLM_API_KEY` | 空 | 仅保存在 Git 忽略的 `.env` 中的测试 Token；不得写入样例、日志或验收文档 |

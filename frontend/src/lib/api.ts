@@ -202,6 +202,11 @@ export interface SkillExecution {
   completed_at?: string;
 }
 
+export interface InspectionPolicy { id: string; scope_id: string; name: string; cron: string; timezone: string; status: string; target_resource_ids: string[]; skill_resource_ids: string[]; timeout: number; retries: number; max_concurrent: number; max_tool_calls: number; max_tokens: number }
+export interface InspectionRun { id: string; policy_id: string; scope_id: string; trigger: string; status: string; window_start: string; window_end: string; score?: number; deterministic_completed: boolean; llm_status: string; error_message: string }
+export interface InspectionFinding { id: string; policy_id: string; target_resource_id: string; rule: string; severity: string; message: string; status: string; first_observed_at: string; last_observed_at: string; resolved_at?: string }
+export interface NotificationChannel { id: string; scope_id: string; name: string; kind: string; webhook_url: string; status: string; rate_limit_per_minute: number }
+
 export interface SkillRunResult {
   execution: SkillExecution;
   output: string;
@@ -615,6 +620,12 @@ export const api = {
     appURL(
       `api/v1/diagnosis-sessions/${sessionId}/events?after=${encodeURIComponent(String(after))}`
     ),
+	inspectionPolicies: (scopeId: string) => request<InspectionPolicy[]>(`api/v1/inspection-policies?scope_id=${encodeURIComponent(scopeId)}`),
+	inspectionRuns: (scopeId: string) => request<InspectionRun[]>(`api/v1/inspection-runs?scope_id=${encodeURIComponent(scopeId)}`),
+	inspectionFindings: (scopeId: string) => request<InspectionFinding[]>(`api/v1/inspection-findings?scope_id=${encodeURIComponent(scopeId)}`),
+	startInspectionRun: (policyId: string, scopeId: string) => request<{run_id:string}>(`api/v1/inspection-policies/${policyId}/runs?scope_id=${encodeURIComponent(scopeId)}`, {method:'POST'}),
+	setInspectionPolicyStatus: (policyId:string, scopeId:string, status:string) => request<void>(`api/v1/inspection-policies/${policyId}/status`, patch({scope_id:scopeId,status})),
+	notificationChannels: (scopeId:string) => request<NotificationChannel[]>(`api/v1/notification-channels?scope_id=${encodeURIComponent(scopeId)}`),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

@@ -24,6 +24,10 @@
     type RoleDefinition,
     type Team,
     type LLMConnectionResult,
+    type InspectionPolicy,
+    type InspectionRun,
+    type InspectionFinding,
+    type NotificationChannel,
     type SkillExecution,
     type SkillVersion,
     type TopologyNode,
@@ -37,6 +41,7 @@
     | 'resources'
     | 'ai'
     | 'diagnosis'
+    | 'inspection'
     | 'access';
   type ProjectMappingDraft = DiscoveryProjectMapping & {
     mode: 'existing' | 'create' | 'ignore';
@@ -192,6 +197,11 @@
   let diagnosisFollowup = '';
   let selectedEvidence: DiagnosisEvidence | null = null;
   let diagnosisEvents: EventSource | null = null;
+	let inspectionLoaded = false;
+	let inspectionPolicies: InspectionPolicy[] = [];
+	let inspectionRuns: InspectionRun[] = [];
+	let inspectionFindings: InspectionFinding[] = [];
+	let notificationChannels: NotificationChannel[] = [];
   let diagnosisEventCursor = 0;
   let accessLoaded = false;
   let discoveryLoaded = false;
@@ -371,8 +381,18 @@
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
     if (nextView === 'ai' && !aiLoaded) void loadAI();
     if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
+	if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
     if (nextView !== 'diagnosis') closeDiagnosisEvents();
   }
+
+	async function loadInspection() {
+		if (!selectedScopeId) return;
+		inspectionLoaded = true;
+		try { [inspectionPolicies, inspectionRuns, inspectionFindings, notificationChannels] = await Promise.all([api.inspectionPolicies(selectedScopeId), api.inspectionRuns(selectedScopeId), api.inspectionFindings(selectedScopeId), api.notificationChannels(selectedScopeId)]); }
+		catch (error) { errorMessage = describeError(error, '巡检数据加载失败'); }
+	}
+	async function rerunInspection(policyID: string) { busy=true; try { await api.startInspectionRun(policyID, selectedScopeId); notice='已创建手动巡检任务。'; await loadInspection(); } catch (error) { errorMessage=describeError(error,'创建巡检任务失败'); } finally { busy=false; } }
+	async function setInspectionPolicyStatus(policyID: string, status: string) { busy=true; try { await api.setInspectionPolicyStatus(policyID,selectedScopeId,status); notice=status==='disabled'?'已停止周期巡检。':'已恢复周期巡检。'; await loadInspection(); } catch (error) { errorMessage=describeError(error,'更新巡检策略失败'); } finally { busy=false; } }
 
   async function loadDiagnosis() {
     diagnosisLoaded = true;
@@ -1396,6 +1416,7 @@
           on:click={() => chooseView('diagnosis')}
           ><span aria-hidden="true">⌁</span>AI 诊断</button
         >
+		<button class:active={view === 'inspection'} class="nav-item" on:click={() => chooseView('inspection')}><span aria-hidden="true">◴</span>自动巡检</button>
         <button
           class:active={view === 'access'}
           class="nav-item"
@@ -1426,6 +1447,8 @@
                       ? 'AI Runtime'
                       : view === 'diagnosis'
                         ? 'AI Diagnosis'
+						: view === 'inspection'
+							? 'Inspection'
                         : 'Access'}
           </p>
           <h1>
@@ -1441,6 +1464,8 @@
                       ? '模型与 Skill'
                       : view === 'diagnosis'
                         ? 'AI 诊断工作台'
+						: view === 'inspection'
+							? '自动巡检与健康'
                         : '成员与角色'}
           </h1>
         </div>
@@ -2270,6 +2295,14 @@
               </section>{/if}
           </section>
         </section>
+      {:else if view === 'inspection'}
+		<section class="content-grid">
+			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">POLICIES</p><h2>巡检策略</h2></div><span class="count">{inspectionPolicies.length}</span></div>
+				<div class="table-list">{#each inspectionPolicies as policy}<article class="list-row"><div><strong>{policy.name}</strong><p>{policy.cron} · {policy.timezone} · {policy.target_resource_ids.length} 个目标 · {policy.status}</p></div><div class="inline-actions"><button class="quiet-button" disabled={busy || policy.status !== 'active'} on:click={() => rerunInspection(policy.id)}>立即运行</button><button class="quiet-button" disabled={busy} on:click={() => setInspectionPolicyStatus(policy.id, policy.status === 'active' ? 'disabled' : 'active')}>{policy.status === 'active' ? '停止' : '恢复'}</button></div></article>{:else}<p class="empty-state">当前作用域还没有巡检策略。</p>{/each}</div></section>
+			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">HEALTH</p><h2>最近运行</h2></div><span class="count">{inspectionRuns.length}</span></div><div class="table-list">{#each inspectionRuns as run}<article class="list-row"><div><strong>{run.score ?? '—'} 分 · {run.status}</strong><p>{new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}</p></div></article>{:else}<p class="empty-state">尚无运行记录。</p>{/each}</div></section>
+			<section class="panel wide-panel"><div class="panel-heading"><div><p class="eyebrow">FINDINGS</p><h2>异常与恢复</h2></div><span class="count">{inspectionFindings.length}</span></div><div class="table-list">{#each inspectionFindings as finding}<article class="list-row"><div><strong>{finding.severity} · {finding.rule}</strong><p>{finding.message || '无补充说明'} · {finding.status}</p></div></article>{:else}<p class="empty-state">没有已记录的异常。</p>{/each}</div></section>
+			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">WEBHOOKS</p><h2>通知渠道</h2></div><span class="count">{notificationChannels.length}</span></div><div class="table-list">{#each notificationChannels as channel}<article class="list-row"><div><strong>{channel.name}</strong><p>{channel.kind} · {channel.status} · 每分钟 {channel.rate_limit_per_minute} 次</p></div></article>{:else}<p class="empty-state">当前作用域没有启用的通知渠道。</p>{/each}</div></section>
+		</section>
       {:else if view === 'diagnosis'}
         <section class="content-grid diagnosis-workbench">
           <section class="panel diagnosis-start">

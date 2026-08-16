@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS notification_deliveries;
+DROP TABLE IF EXISTS notification_channels;
+DROP TABLE IF EXISTS inspection_health_snapshots;
+DROP TABLE IF EXISTS inspection_findings;
+DROP TABLE IF EXISTS inspection_jobs;
+DROP TABLE IF EXISTS inspection_run_steps;
+DROP TABLE IF EXISTS inspection_runs;
+DROP TABLE IF EXISTS inspection_policy_targets;
+DROP TABLE IF EXISTS inspection_policies;
