@@ -106,8 +106,29 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	if input.Source != "manual" && input.Source != "kubernetes" {
 		return Project{}, invalid("source must be manual or kubernetes")
 	}
+	if input.Source == "kubernetes" && (input.SourceResourceID == nil || strings.TrimSpace(*input.SourceResourceID) == "" || strings.TrimSpace(input.ExternalUID) == "") {
+		return Project{}, invalid("kubernetes projects require source_resource_id and external_uid")
+	}
+	if input.SourceConfig == nil {
+		input.SourceConfig = map[string]any{}
+	}
 	input.Labels = cloneLabels(input.Labels)
 	return s.store.CreateProject(ctx, input)
+}
+
+func (s *Service) BindProjectSource(ctx context.Context, projectID string, input ProjectSourceInput) (Project, error) {
+	if err := validateID(projectID, "project_id"); err != nil {
+		return Project{}, err
+	}
+	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
+	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
+	if input.SourceResourceID == "" || input.ExternalUID == "" {
+		return Project{}, invalid("source_resource_id and external_uid are required")
+	}
+	if input.SourceConfig == nil {
+		input.SourceConfig = map[string]any{}
+	}
+	return s.store.BindProjectSource(ctx, projectID, input)
 }
 
 func (s *Service) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {

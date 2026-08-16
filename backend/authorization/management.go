@@ -43,6 +43,26 @@ type RoleBinding struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type ResourceRoleDefinition struct {
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Builtin     bool         `json:"builtin"`
+	Permissions []Permission `json:"permissions"`
+}
+
+type ResourceRoleBinding struct {
+	ID           string    `json:"id"`
+	SubjectType  string    `json:"subject_type"`
+	SubjectID    string    `json:"subject_id"`
+	RoleID       string    `json:"role_id"`
+	RoleName     string    `json:"role_name"`
+	ResourceID   string    `json:"resource_id"`
+	ResourceName string    `json:"resource_name"`
+	ResourceKind string    `json:"resource_kind"`
+	ScopeID      string    `json:"scope_id"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type CreateGroupInput struct {
 	ScopeID     string
 	Name        string
@@ -62,6 +82,13 @@ type GrantRoleInput struct {
 	ScopeID     string
 }
 
+type GrantResourceRoleInput struct {
+	SubjectType string
+	SubjectID   string
+	RoleID      string
+	ResourceID  string
+}
+
 type ManagementStore interface {
 	CreateGroup(context.Context, CreateGroupInput) (Group, error)
 	ListGroups(context.Context, []string) ([]Group, error)
@@ -78,6 +105,14 @@ type ManagementStore interface {
 	GetRoleBinding(context.Context, string) (RoleBinding, error)
 	DeleteRoleBinding(context.Context, string) error
 	IsPlatformAdmin(context.Context, string) (bool, error)
+	ListResourceRoles(context.Context) ([]ResourceRoleDefinition, error)
+	GetResourceRole(context.Context, string) (ResourceRoleDefinition, error)
+	CreateResourceRoleBinding(context.Context, GrantResourceRoleInput, string) (ResourceRoleBinding, error)
+	ListResourceRoleBindings(context.Context, []string) ([]ResourceRoleBinding, error)
+	GetResourceRoleBinding(context.Context, string) (ResourceRoleBinding, error)
+	DeleteResourceRoleBinding(context.Context, string) error
+	ResourceScope(context.Context, string) (string, error)
+	SubjectHasScopePermission(context.Context, string, string, Permission, string) (bool, error)
 }
 
 type ManagementService struct {
@@ -285,6 +320,8 @@ func (s *ManagementService) record(ctx context.Context, event audit.Event, actio
 	event.Details = details
 	if strings.HasPrefix(action, "group.") {
 		event.TargetType = "group"
+	} else if strings.HasPrefix(action, "resource_role_binding.") {
+		event.TargetType = "resource_role_binding"
 	} else if strings.HasPrefix(action, "role_binding.") {
 		event.TargetType = "role_binding"
 	}

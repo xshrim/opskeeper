@@ -28,3 +28,7 @@ type UpdateInput struct {
 type Encryptor interface {
 	Encrypt([]byte) ([]byte, string, error)
 }
+
+type Decryptor interface {
+	Decrypt([]byte, string) ([]byte, error)
+}

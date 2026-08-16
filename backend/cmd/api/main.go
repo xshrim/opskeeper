@@ -15,6 +15,7 @@ import (
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/credential"
+	"opskeeper/backend/discovery"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
 	"opskeeper/backend/identity"
@@ -94,6 +95,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
 	resourceService := resource.NewService(resource.NewStore(pool))
+	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, resourceService, organizationService, credentialService, discovery.NewKubernetesScanner())
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -108,6 +110,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			AuditLog:       auditService,
 			Resources:      resourceService,
 			Credentials:    credentialService,
+			Discovery:      discoveryService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

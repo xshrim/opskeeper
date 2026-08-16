@@ -39,18 +39,22 @@ type Team struct {
 }
 
 type Project struct {
-	ID         string            `json:"id"`
-	PlatformID string            `json:"platform_id"`
-	TeamID     string            `json:"team_id"`
-	Scope      Scope             `json:"scope"`
-	Name       string            `json:"name"`
-	Code       string            `json:"code"`
-	Icon       string            `json:"icon"`
-	Labels     map[string]string `json:"labels"`
-	Source     string            `json:"source"`
-	Status     string            `json:"status"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID               string            `json:"id"`
+	PlatformID       string            `json:"platform_id"`
+	TeamID           string            `json:"team_id"`
+	Scope            Scope             `json:"scope"`
+	Name             string            `json:"name"`
+	Code             string            `json:"code"`
+	Icon             string            `json:"icon"`
+	Labels           map[string]string `json:"labels"`
+	Source           string            `json:"source"`
+	SourceResourceID *string           `json:"source_resource_id,omitempty"`
+	ExternalUID      string            `json:"external_uid,omitempty"`
+	SourceConfig     map[string]any    `json:"source_config"`
+	LastSyncedAt     *time.Time        `json:"last_synced_at,omitempty"`
+	Status           string            `json:"status"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
 type Page[T any] struct {
@@ -84,12 +88,21 @@ type UpdateTeamInput struct {
 }
 
 type CreateProjectInput struct {
-	TeamID string
-	Name   string
-	Code   string
-	Icon   string
-	Labels map[string]string
-	Source string
+	TeamID           string
+	Name             string
+	Code             string
+	Icon             string
+	Labels           map[string]string
+	Source           string
+	SourceResourceID *string
+	ExternalUID      string
+	SourceConfig     map[string]any
+}
+
+type ProjectSourceInput struct {
+	SourceResourceID string
+	ExternalUID      string
+	SourceConfig     map[string]any
 }
 
 type UpdateProjectInput struct {

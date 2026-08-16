@@ -81,6 +81,8 @@ type CreateInput struct {
 	CredentialID     *string
 }
 
+type ImportedInput = CreateInput
+
 type UpdateInput struct {
 	ScopeID          *string
 	Name             *string

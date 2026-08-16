@@ -30,6 +30,10 @@ func (s *stubAuthorizationService) ScopeFilter(context.Context, authorization.Su
 	return s.filter, nil
 }
 
+func (s *stubAuthorizationService) ResourceFilter(context.Context, authorization.Subject, authorization.Permission) (authorization.ResourceFilter, error) {
+	return authorization.ResourceFilter{SubjectID: s.filter.SubjectID, Permission: s.filter.Permission, ScopeIDs: s.filter.ScopeIDs}, nil
+}
+
 func newAuthorizedTestRouter(filter authorization.ScopeFilter) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	identityStub := &stubIdentityService{user: identity.User{ID: handlerTestUUID, Status: identity.StatusActive}}

@@ -9,6 +9,7 @@ import (
 
 type Store interface {
 	Create(context.Context, CreateInput) (Resource, error)
+	UpsertImported(context.Context, ImportedInput) (Resource, error)
 	List(context.Context, Pagination, string, map[string]string) (Page[Resource], error)
 	Get(context.Context, string) (Resource, error)
 	Update(context.Context, string, UpdateInput) (Resource, error)
@@ -63,6 +64,49 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	}
 	input.SchemaVersion = schema.Version
 	return s.store.Create(ctx, input)
+}
+
+// Import persists a resource discovered from an external system. The source
+// identity is part of the input so repeated discovery runs update one record.
+func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, error) {
+	input.ScopeID = strings.TrimSpace(input.ScopeID)
+	input.Kind = strings.TrimSpace(input.Kind)
+	input.Name = strings.TrimSpace(input.Name)
+	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
+	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
+	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
+		return Resource{}, err
+	}
+	if input.ExternalUID == "" || input.SourceResourceID == "" {
+		return Resource{}, invalid("imported resources require external_uid and source_resource_id")
+	}
+	if !allowsExactScope(ctx, input.ScopeID) {
+		return Resource{}, authorization.ErrForbidden
+	}
+	if input.Status == "" {
+		input.Status = StatusActive
+	}
+	if err := validateStatus(input.Status); err != nil {
+		return Resource{}, err
+	}
+	if err := validateLabels(input.Labels); err != nil {
+		return Resource{}, err
+	}
+	if input.Labels == nil {
+		input.Labels = map[string]string{}
+	}
+	if input.Config == nil {
+		input.Config = map[string]any{}
+	}
+	schema, err := s.store.GetSchema(ctx, input.Kind, input.SchemaVersion)
+	if err != nil {
+		return Resource{}, err
+	}
+	if err := validateConfig(input.Config, schema); err != nil {
+		return Resource{}, err
+	}
+	input.SchemaVersion = schema.Version
+	return s.store.UpsertImported(ctx, input)
 }
 
 func (s *Service) List(ctx context.Context, pagination Pagination, kind string, labels map[string]string) (Page[Resource], error) {
@@ -169,7 +213,7 @@ func (s *Service) CreateRelation(ctx context.Context, actorID string, input Crea
 	if err != nil {
 		return Relation{}, err
 	}
-	if !allowsExactScope(ctx, source.ScopeID) {
+	if !allowsResource(ctx, source.ScopeID, source.ID) {
 		return Relation{}, authorization.ErrForbidden
 	}
 	return s.store.CreateRelation(ctx, input, actorID)
@@ -190,7 +234,7 @@ func (s *Service) DeleteRelation(ctx context.Context, resourceID, relationID str
 	if err != nil {
 		return err
 	}
-	if !allowsExactScope(ctx, source.ScopeID) {
+	if !allowsResource(ctx, source.ScopeID, source.ID) {
 		return authorization.ErrForbidden
 	}
 	return s.store.DeleteRelation(ctx, resourceID, relationID)
@@ -280,4 +324,11 @@ func normalizePagination(pagination Pagination) (Pagination, error) {
 func allowsExactScope(ctx context.Context, scopeID string) bool {
 	filter, restricted := authorization.ScopeFilterFromContext(ctx)
 	return !restricted || filter.Allows(scopeID)
+}
+
+func allowsResource(ctx context.Context, scopeID, resourceID string) bool {
+	if filter, restricted := authorization.ResourceFilterFromContext(ctx); restricted {
+		return filter.Allows(scopeID, resourceID)
+	}
+	return allowsExactScope(ctx, scopeID)
 }

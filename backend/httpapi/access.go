@@ -33,6 +33,10 @@ type accessManagementService interface {
 	CreateRoleBinding(context.Context, string, authorization.GrantRoleInput, audit.Event) (authorization.RoleBinding, error)
 	ListRoleBindings(context.Context, string) ([]authorization.RoleBinding, error)
 	DeleteRoleBinding(context.Context, string, string, audit.Event) error
+	ListResourceRoles(context.Context, string) ([]authorization.ResourceRoleDefinition, error)
+	CreateResourceRoleBinding(context.Context, string, authorization.GrantResourceRoleInput, audit.Event) (authorization.ResourceRoleBinding, error)
+	ListResourceRoleBindings(context.Context, string) ([]authorization.ResourceRoleBinding, error)
+	DeleteResourceRoleBinding(context.Context, string, string, audit.Event) error
 	IsPlatformAdmin(context.Context, string) (bool, error)
 }
 
@@ -81,6 +85,13 @@ type createRoleBindingRequest struct {
 	ScopeID     string `json:"scope_id"`
 }
 
+type createResourceRoleBindingRequest struct {
+	SubjectType string `json:"subject_type"`
+	SubjectID   string `json:"subject_id"`
+	RoleID      string `json:"role_id"`
+	ResourceID  string `json:"resource_id"`
+}
+
 func registerAccessRoutes(router chi.Router, users userManagementService, access accessManagementService, auditor audit.Logger, auditLog auditQueryService) {
 	handler := accessHandler{users: users, access: access, auditor: auditor, auditLog: auditLog}
 	router.Route("/users", func(router chi.Router) {
@@ -106,6 +117,12 @@ func registerAccessRoutes(router chi.Router, users userManagementService, access
 		router.Get("/", handler.listRoleBindings)
 		router.Post("/", handler.createRoleBinding)
 		router.Delete("/{bindingID}", handler.deleteRoleBinding)
+	})
+	router.Get("/resource-roles/", handler.listResourceRoles)
+	router.Route("/resource-role-bindings", func(router chi.Router) {
+		router.Get("/", handler.listResourceRoleBindings)
+		router.Post("/", handler.createResourceRoleBinding)
+		router.Delete("/{bindingID}", handler.deleteResourceRoleBinding)
 	})
 }
 
@@ -295,6 +312,50 @@ func (h accessHandler) createRoleBinding(writer http.ResponseWriter, request *ht
 
 func (h accessHandler) deleteRoleBinding(writer http.ResponseWriter, request *http.Request) {
 	if err := h.access.DeleteRoleBinding(request.Context(), currentUser(request).ID, chi.URLParam(request, "bindingID"), h.event(request)); err != nil {
+		writeAccessError(writer, request, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (h accessHandler) listResourceRoles(writer http.ResponseWriter, request *http.Request) {
+	roles, err := h.access.ListResourceRoles(request.Context(), currentUser(request).ID)
+	if err != nil {
+		writeAccessError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, roles)
+}
+
+func (h accessHandler) listResourceRoleBindings(writer http.ResponseWriter, request *http.Request) {
+	bindings, err := h.access.ListResourceRoleBindings(request.Context(), currentUser(request).ID)
+	if err != nil {
+		writeAccessError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, bindings)
+}
+
+func (h accessHandler) createResourceRoleBinding(writer http.ResponseWriter, request *http.Request) {
+	var body createResourceRoleBindingRequest
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	binding, err := h.access.CreateResourceRoleBinding(request.Context(), currentUser(request).ID, authorization.GrantResourceRoleInput{
+		SubjectType: body.SubjectType,
+		SubjectID:   body.SubjectID,
+		RoleID:      body.RoleID,
+		ResourceID:  body.ResourceID,
+	}, h.event(request))
+	if err != nil {
+		writeAccessError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusCreated, binding)
+}
+
+func (h accessHandler) deleteResourceRoleBinding(writer http.ResponseWriter, request *http.Request) {
+	if err := h.access.DeleteResourceRoleBinding(request.Context(), currentUser(request).ID, chi.URLParam(request, "bindingID"), h.event(request)); err != nil {
 		writeAccessError(writer, request, err)
 		return
 	}

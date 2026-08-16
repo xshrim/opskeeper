@@ -56,3 +56,16 @@ func (e *localEncryptor) Encrypt(plaintext []byte) ([]byte, string, error) {
 	}
 	return e.aead.Seal(nonce, nonce, plaintext, nil), "local-v1", nil
 }
+
+func (e *localEncryptor) Decrypt(ciphertext []byte, _ string) ([]byte, error) {
+	nonceSize := e.aead.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("credential ciphertext is truncated")
+	}
+	nonce, encrypted := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := e.aead.Open(nil, nonce, encrypted, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt credential: %w", err)
+	}
+	return plaintext, nil
+}

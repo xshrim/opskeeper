@@ -17,6 +17,8 @@ type Store interface {
 	Create(context.Context, string, CreateInput, []byte, string) (Credential, error)
 	List(context.Context, string) ([]Credential, error)
 	Get(context.Context, string, string) (Credential, error)
+	Secret(context.Context, string, string) ([]byte, string, string, error)
+	SecretByID(context.Context, string) ([]byte, string, error)
 	Update(context.Context, string, string, UpdateInput, []byte, string) (Credential, error)
 	Delete(context.Context, string, string) error
 }
@@ -76,6 +78,25 @@ func (s *store) Get(ctx context.Context, actorID, id string) (Credential, error)
 		return Credential{}, mapStoreError(err)
 	}
 	return item, nil
+}
+
+func (s *store) Secret(ctx context.Context, actorID, id string) ([]byte, string, string, error) {
+	query, args := visibleQuery(`SELECT credential.ciphertext, credential.key_version, credential.scope_id::text FROM resource_credentials credential WHERE credential.deleted_at IS NULL AND credential.id = $1::uuid`, "credential", ctx, id)
+	var ciphertext []byte
+	var keyVersion, scopeID string
+	if err := s.pool.QueryRow(ctx, query, args...).Scan(&ciphertext, &keyVersion, &scopeID); err != nil {
+		return nil, "", "", mapStoreError(err)
+	}
+	return ciphertext, keyVersion, scopeID, nil
+}
+
+func (s *store) SecretByID(ctx context.Context, id string) ([]byte, string, error) {
+	var ciphertext []byte
+	var keyVersion string
+	if err := s.pool.QueryRow(ctx, `SELECT ciphertext, key_version FROM resource_credentials WHERE id = $1::uuid AND deleted_at IS NULL`, id).Scan(&ciphertext, &keyVersion); err != nil {
+		return nil, "", mapStoreError(err)
+	}
+	return ciphertext, keyVersion, nil
 }
 
 func (s *store) Update(ctx context.Context, actorID, id string, input UpdateInput, ciphertext []byte, keyVersion string) (Credential, error) {

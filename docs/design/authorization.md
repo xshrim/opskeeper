@@ -2,7 +2,7 @@
 
 ## 1. 权限目标
 
-权限系统同时回答三个问题：用户能在哪个范围内操作、能操作哪类对象、能执行什么动作。
+权限系统同时回答三个问题：用户能在哪个范围内操作、能操作哪个具体资源、能执行什么动作。
 
 ```text
 Permission = Subject + Role + Scope + Conditions
@@ -12,6 +12,8 @@ Permission = Subject + Role + Scope + Conditions
 - Role：角色包含的权限集合。
 - Scope：平台、团队或项目。
 - Conditions：可选的资源类型、标签、环境或风险级别限制。
+
+组织权限始终保持 platform、team、project 三级 Scope，不为 Application 增加第四级 Scope。需要把项目成员限制到某个具体 Application 或其他资源时，使用资源角色绑定。
 
 ## 2. 作用域继承
 
@@ -37,6 +39,7 @@ Permission = Subject + Role + Scope + Conditions
 | ProjectAdmin | 项目 | 项目成员、项目资源和项目策略管理 |
 | ProjectOperator | 项目 | 项目诊断、巡检和低风险工具执行 |
 | ProjectViewer | 项目 | 项目资源和报告只读 |
+| ProjectMember | 项目 | 只获得项目及祖先导航可见性，具体资源权限另行绑定 |
 
 平台还应支持自定义角色，但自定义角色只能组合系统定义的权限点，不能创建任意脚本权限。
 
@@ -90,9 +93,14 @@ group_members(group_id, user_id)
 roles(id, name, builtin, scope_levels)
 role_permissions(role_id, permission, conditions)
 role_bindings(id, subject_type, subject_id, role_id, scope_id)
+resource_roles(id, name, builtin)
+resource_role_permissions(role_id, permission)
+resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 ```
 
 `scope_id` 指向统一 Scope 树。角色绑定、资源、诊断会话和巡检策略使用同一种祖先关系判断，不分别实现三套鉴权逻辑。
+
+资源读取与操作的最终过滤结果是“Scope 角色允许的全部资源”与“资源角色显式允许的资源”的并集。`ProjectMember` 只提供 `organization:read`，因此不会隐式获得项目内所有资源；`ResourceViewer`、`ResourceOperator` 和 `ResourceAdmin` 分别授予具体资源的只读、使用/执行和管理能力。资源授权仍由资源所属 Scope 中具备 `member:grant` 的管理员创建，不能绕过项目边界。
 
 鉴权过程：
 
@@ -119,6 +127,7 @@ role_bindings(id, subject_type, subject_id, role_id, scope_id)
 - API 查询必须注入授权后的 scope filter，不能先查询全部数据再在内存过滤。
 - PostgreSQL 可使用 RLS 作为纵深防御，但应用层仍需显式鉴权。
 - 用户不能通过已知资源 ID 访问无权资源。
+- 项目可见不等于项目内所有资源可见；列表、按 ID 查询、关系、拓扑和发现记录必须合并执行 Scope 与资源 ID 过滤。
 - 诊断会话、巡检结果、证据和审计记录继承目标资源的作用域。
 - 包含多个目标的任务，其作用域取所有目标的最近公共祖先，并要求用户对每个目标均有权限。
 

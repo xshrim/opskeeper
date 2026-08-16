@@ -49,7 +49,7 @@ func TestRoleInheritanceAndOrganizationFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScopeFilter(team viewer) error = %v", err)
 	}
-	if !filter.Allows(teamA.Scope.ID) || !filter.Allows(projectA.Scope.ID) || filter.Allows(teamB.Scope.ID) || filter.Allows(projectB.Scope.ID) || filter.Allows(platform.Scope.ID) {
+	if !filter.Allows(platform.Scope.ID) || !filter.Allows(teamA.Scope.ID) || !filter.Allows(projectA.Scope.ID) || filter.Allows(teamB.Scope.ID) || filter.Allows(projectB.Scope.ID) {
 		t.Fatalf("team viewer scope filter = %#v", filter.ScopeIDs)
 	}
 	if err := service.Authorize(ctx, authorization.Subject{UserID: teamUser}, authorization.OrganizationRead, projectA.Scope.ID); err != nil {
@@ -127,8 +127,8 @@ func TestRoleSeedAndBindingScopeConstraint(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM roles WHERE builtin").Scan(&roleCount); err != nil {
 		t.Fatalf("count builtin roles: %v", err)
 	}
-	if roleCount != 9 {
-		t.Fatalf("builtin roles = %d, want 9", roleCount)
+	if roleCount != 10 {
+		t.Fatalf("builtin roles = %d, want 10", roleCount)
 	}
 	var permissionCount int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM role_permissions").Scan(&permissionCount); err != nil {

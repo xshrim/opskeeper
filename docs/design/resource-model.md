@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面。具体连接器、Kubernetes 自动发现和资源导入仍属于后续任务。
+T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权。
 
 ## 1. 设计原则
 
@@ -65,14 +65,17 @@ resources {
 
 | 分类 | 资源类型 |
 |---|---|
-| 基础设施 | KubernetesCluster |
-| 业务 | BusinessApplication、Endpoint、CronApplication |
+| 基础设施 | Kubernetes |
+| 业务 | Application |
 | 中间件 | PostgreSQL、Redis、Kafka、Elasticsearch、GenericMiddleware |
 | AI | LLMProvider、MCPServer、Skill |
 | 可观测平台 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、GenericAPI |
-| 运维支撑 | NotificationChannel、Runbook、ArtifactStore |
+| 开发交付 | Repository、Artifact |
+| 运维支撑 | NotificationChannel、Runbook |
 
-Kubernetes 的 Namespace、Node、Workload、Pod、Service、Ingress 是集群发现后得到的派生对象，不单独作为用户登记的资源；LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。连接凭据同样由独立的 `resource_credentials` 管理，不把 Credential 当作资源登记。
+Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。连接凭据由独立的 `resource_credentials` 管理，不把 Credential 当作资源登记。
+
+Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型。该字段描述来源工作负载，不改变资源类型，也不产生新的权限层级。
 
 `resource_schemas` 同时保存 `display_name`、`description` 和 `icon`，前端据此展示中文名称、说明和类型图标。`config` 使用 JSONB 保存非敏感类型字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。
 
@@ -80,11 +83,13 @@ Kubernetes 的 Namespace、Node、Workload、Pod、Service、Ingress 是集群�
 
 | 资源类型 | 非敏感配置 | 加密凭据 |
 |---|---|---|
-| KubernetesCluster | Context、API Server | kubeconfig |
+| Kubernetes | Context、API Server | kubeconfig |
 | PostgreSQL | Host、Port、Database、Username | Password |
 | Redis | Host、Port、Database、Username | Password |
 | Kafka | Brokers、TLS | Username、Password |
 | LLMProvider | URL、Model | Token |
+| Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
+| Artifact | URL、Provider、Namespace | Username、Password、Token |
 
 登录用户的 `credentials` 表与外部资源凭据严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段写入加密凭据并保存 `credential_id`；用户不需要手写配置 JSON。
 
@@ -137,8 +142,7 @@ resource_relations {
 
 | 关系 | 示例 |
 |---|---|
-| `contains` | 集群包含 Namespace |
-| `deployed_on` | 应用部署在 Workload 或集群上 |
+| `deployed_on` | Application 部署在 Kubernetes 上 |
 | `depends_on` | 业务应用依赖 Redis、Kafka |
 | `observed_by` | 应用由 Prometheus、Loki 观测 |
 | `exposes` | Service/Ingress 暴露应用 |
@@ -189,8 +193,8 @@ scope_defaults
 
 ```text
 Project
-└── BusinessApplication
-    ├── deployed_on → Kubernetes Workload [项目]
+└── Application
+    ├── deployed_on → Kubernetes [团队]
     ├── depends_on → Redis [团队]
     ├── depends_on → PostgreSQL [团队]
     └── observed_by → Prometheus [平台]

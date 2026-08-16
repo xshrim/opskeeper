@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis 和 Organization；其他节点按 T03-T15 逐步交付。
+下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog 和 Kubernetes Discovery；AI、巡检与生产运维能力按 T09-T15 逐步交付。
 
 ```mermaid
 flowchart LR
@@ -67,12 +67,12 @@ flowchart LR
 
 | 层次 | 技术选型 | 状态 | 说明 |
 |---|---|---|---|
-| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T02 | 独立开发，生产时嵌入 Go API |
-| 前端数据访问 | TanStack Query | 目标，T07 | 管理控制台的数据获取和缓存 |
-| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T02 | REST API、健康检查、迁移和组织模型 |
+| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T08 | 独立开发，生产时嵌入 Go API |
+| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T08 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
+| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T08 | REST API、健康检查、迁移和模块化业务能力 |
 | 查询生成 | `sqlc` | 候选，按真实复杂度引入 | 不作为所有 Store 的强制前置条件 |
-| Kubernetes 客户端 | `client-go` | 目标，T08 | 集群发现、导入和同步 |
-| 数据库 | PostgreSQL 16 | 已实现，T01-T02 | 当前保存组织数据，后续扩展资源、任务、证据和审计 |
+| Kubernetes 客户端 | `client-go` | 已实现，T08 | 集群发现、Project/Application 导入 |
+| 数据库 | PostgreSQL 16 | 已实现，T01-T08 | 当前保存组织、身份、授权、审计、资源、凭据、关系和发现数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
 | 实时交互 | SSE | 目标，T11 | 推送诊断过程、工具调用和巡检进度 |
 | 日志 | `slog` text/json | 已实现，T01 | 全部 Go 进程统一结构化字段 |
@@ -88,18 +88,18 @@ flowchart LR
 
 | 模块 | 核心职责 | 状态 |
 |---|---|---|
-| Organization | 平台、团队、项目及 Scope 关系 | 已实现，T02 |
-| Identity | 用户、凭据、登录、会话和身份同步 | 已实现基础登录与会话，T05 负责用户组和同步 |
-| Authorization | 三级 RBAC、权限继承和数据范围校验 | T04 正在实施内置角色和数据范围过滤；管理与审计为 T05 |
-| Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 实施中，T06 |
-| Discovery | Kubernetes 发现、差异预览、导入和周期同步 | 目标，T08 |
+| Organization | 平台、团队、项目及 Scope 关系 | 已实现，T02；T08 增加 Kubernetes 来源信息 |
+| Identity | 用户、凭据、登录、会话和用户管理 | 已实现，T03-T05 |
+| Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
+| Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
+| Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、中间件、监控平台和 LLM Provider 适配 | 目标，T09-T10 |
 | Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10 |
 | AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
 | Inspection | 巡检策略、调度、执行、评分和异常项 | 目标，T13 |
 | Notification | Webhook、邮件及其他通知渠道 | 目标，T13 |
-| Audit | 管理操作、模型调用、工具调用和审批记录 | 基础目标 T05，完整目标 T15 |
+| Audit | 管理操作、模型调用、工具调用和审批记录 | 管理操作审计已实现，T05；完整目标 T15 |
 
 后端代码默认按业务特性组织。每个特性包拥有自身的类型、业务规则、持久化实现和测试，并在同包内通过文件划分职责；不会把所有业务的数据库实现集中到全局 adapter 层。数据库连接生命周期、缓存客户端、消息传输和外部平台协议等真正跨特性的能力，才建立独立基础设施包。
 
@@ -109,7 +109,7 @@ flowchart LR
 
 ## 6. 目标前端信息架构
 
-当前前端只有工程骨架和健康状态界面。以下业务页面均为目标设计，从 T07 开始按对应后端能力逐步交付。
+当前前端已实现登录、三级 Scope 导航、组织、资源、成员与角色、资源关系、拓扑及 Kubernetes 集群导入页面。AI 诊断、Skill、巡检和完整审计页面按后续任务交付。
 
 | 页面 | 主要能力 |
 |---|---|
@@ -130,7 +130,7 @@ flowchart LR
 
 所有公开页面、健康检查和业务 API 统一挂载在 `OPSK_BASE_PATH` 下，默认值是 `/opskeeper`，也可以设置为根路径 `/`。以下示例使用默认值：
 
-当前已实现健康检查和 Team/Project 组织 API。目标 API 按任务逐步增加：
+当前已实现健康检查、身份、组织、授权、资源、凭据、关系、拓扑和 Kubernetes 发现 API。后续 API 按任务逐步增加：
 
 | 路径示例 | 状态 |
 |---|---|
@@ -138,8 +138,9 @@ flowchart LR
 | `/opskeeper/api/v1/teams`、`/opskeeper/api/v1/teams/{teamId}/projects` | 已实现，T02 |
 | `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 已实现，T03 |
 | `/opskeeper/api/v1/users`、`/opskeeper/api/v1/groups`、`/opskeeper/api/v1/roles`、`/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 已实现基础管理能力，T05 |
-| `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 实施中，T06 |
-| `/opskeeper/api/v1/kubernetes-clusters/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 目标，T08 |
+| `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 已实现，T06 |
+| `/opskeeper/api/v1/resources/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 已实现，T08 |
+| `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |
 | `/opskeeper/api/v1/skills` | 目标，T10 |
