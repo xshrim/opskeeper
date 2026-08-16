@@ -78,7 +78,7 @@ backend-embedded-test: webui-assets
 	cd backend && go test -tags=embed_webui ./webui ./httpapi
 
 backend-integration-test: ## Run PostgreSQL-backed integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector ./diagnosis
 
 llm-provider-test: ## Test the configured external LLM through the ADK Runner.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./llm -run TestSiliconFlowThroughADKRunner -v

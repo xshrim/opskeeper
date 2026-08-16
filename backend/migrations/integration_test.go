@@ -183,6 +183,9 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 	}
 	assertT10Tables(5)
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback T11 migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("RollbackLast() error = %v", err)
 	}
 	assertT10Tables(0)
@@ -197,6 +200,36 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 	if schemas != 3 {
 		t.Fatalf("T10 resource schemas = %d, want 3", schemas)
 	}
+}
+
+func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	assertT11Tables := func(want int) {
+		t.Helper()
+		var count int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM information_schema.tables
+			 WHERE table_schema = current_schema()
+			   AND table_name IN ('diagnosis_sessions', 'diagnosis_targets', 'diagnosis_messages', 'diagnosis_plans', 'diagnosis_plan_steps', 'diagnosis_events', 'diagnosis_evidence', 'diagnosis_hypotheses', 'diagnosis_reports')`).Scan(&count); err != nil {
+			t.Fatalf("count T11 tables: %v", err)
+		}
+		if count != want {
+			t.Fatalf("T11 table count = %d, want %d", count, want)
+		}
+	}
+	assertT11Tables(9)
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertT11Tables(0)
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("second Apply() error = %v", err)
+	}
+	assertT11Tables(9)
 }
 
 func integrationPool(t *testing.T) *pgxpool.Pool {

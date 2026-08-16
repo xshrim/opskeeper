@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS diagnosis_reports;
+DROP TABLE IF EXISTS diagnosis_hypotheses;
+DROP TABLE IF EXISTS diagnosis_evidence;
+DROP TABLE IF EXISTS diagnosis_events;
+DROP TABLE IF EXISTS diagnosis_plan_steps;
+DROP TABLE IF EXISTS diagnosis_plans;
+DROP TABLE IF EXISTS diagnosis_messages;
+DROP TABLE IF EXISTS diagnosis_targets;
+DROP TABLE IF EXISTS diagnosis_sessions;

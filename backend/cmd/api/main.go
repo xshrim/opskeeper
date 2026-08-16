@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -17,6 +18,7 @@ import (
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/credential"
+	"opskeeper/backend/diagnosis"
 	"opskeeper/backend/discovery"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
@@ -113,6 +115,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	skillStore := skill.NewStore(pool)
 	skillService := skill.NewService(skillStore, resourceService)
 	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore)
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -132,6 +135,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			LLMs:           llmService,
 			Skills:         skillService,
 			SkillRunner:    skillRunner,
+			Diagnosis:      diagnosisService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
