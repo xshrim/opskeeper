@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "metadata": {"name": "api-7f6bd"},
+      "spec": {"containers": [{"name": "api", "resources": {}}]},
+      "status": {
+        "phase": "Pending",
+        "conditions": [
+          {"type": "PodScheduled", "status": "False", "reason": "Unschedulable"},
+          {"type": "Ready", "status": "False"}
+        ],
+        "containerStatuses": [{"name": "api", "restartCount": 3, "state": {"waiting": {"reason": "CrashLoopBackOff"}}}]
+      }
+    }
+  ]
+}

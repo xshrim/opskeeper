@@ -11,11 +11,14 @@ import (
 type Capability string
 
 const (
-	CapabilityKubernetesRead Capability = "kubernetes_read"
-	CapabilityQueryMetrics   Capability = "query_metrics"
-	CapabilityQueryLogs      Capability = "query_logs"
-	CapabilityQueryTraces    Capability = "query_traces"
-	CapabilityGetAlerts      Capability = "get_alerts"
+	CapabilityKubernetesRead    Capability = "kubernetes_read"
+	CapabilityQueryMetrics      Capability = "query_metrics"
+	CapabilityQueryLogs         Capability = "query_logs"
+	CapabilityQueryTraces       Capability = "query_traces"
+	CapabilityGetAlerts         Capability = "get_alerts"
+	CapabilityPostgreSQLInspect Capability = "postgresql_inspect"
+	CapabilityRedisInspect      Capability = "redis_inspect"
+	CapabilityKafkaInspect      Capability = "kafka_inspect"
 )
 
 type Target struct {
@@ -108,6 +111,35 @@ type AlertsQuerier interface {
 
 type KubernetesReader interface {
 	ReadKubernetes(context.Context, KubernetesQuery) (Evidence, error)
+}
+
+// DiagnosticSnapshot is a bounded, read-only protocol result. Its facts are
+// deterministic observations; callers must not treat the free-form detail as
+// executable instructions.
+type DiagnosticSnapshot struct {
+	Kind         string         `json:"kind"`
+	Facts        map[string]any `json:"facts"`
+	Findings     []Finding      `json:"findings"`
+	Capabilities []string       `json:"capabilities"`
+	Unavailable  []string       `json:"unavailable,omitempty"`
+}
+
+type Finding struct {
+	Code     string `json:"code"`
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+}
+
+type PostgreSQLInspector interface {
+	InspectPostgreSQL(context.Context) (DiagnosticSnapshot, error)
+}
+
+type RedisInspector interface {
+	InspectRedis(context.Context) (DiagnosticSnapshot, error)
+}
+
+type KafkaInspector interface {
+	InspectKafka(context.Context) (DiagnosticSnapshot, error)
 }
 
 type Limits struct {

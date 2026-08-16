@@ -18,6 +18,15 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		{kind: "Loki", factory: func(target Target) (Adapter, error) {
 			return newLokiAdapter(target, client, limits)
 		}},
+		{kind: "PostgreSQL", factory: func(target Target) (Adapter, error) {
+			return newPostgreSQLAdapter(target, limits)
+		}},
+		{kind: "Redis", factory: func(target Target) (Adapter, error) {
+			return newRedisAdapter(target, limits)
+		}},
+		{kind: "Kafka", factory: func(target Target) (Adapter, error) {
+			return newKafkaAdapter(target, limits)
+		}},
 	}
 	for _, registration := range registrations {
 		if err := registry.Register(registration.kind, 1, 0, registration.factory); err != nil {

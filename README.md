@@ -61,6 +61,7 @@ make run-front-api
 
 - [本地开发](docs/guides/development.md)
 - [自动化发布](docs/guides/delivery.md)
+- [内置诊断 Skill 与最小权限](docs/guides/builtin-skills.md)
 
 ## 计划与验收
 
@@ -76,6 +77,8 @@ make run-front-api
 - [T08 Kubernetes 集群发现与项目导入验收记录](docs/acceptance/t08.md)
 - [T09 Connector 框架与外部监控平台验收记录](docs/acceptance/t09.md)
 - [T10 LLM Provider、Skill 注册表与受控 Runner 验收记录](docs/acceptance/t10.md)
+- [T11 AI 诊断工作台验收记录](docs/acceptance/t11.md)
+- [T12 Kubernetes 与中间件内置 Skill 验收记录](docs/acceptance/t12.md)
 
 ## 架构决策与运行手册
 

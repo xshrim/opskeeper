@@ -182,11 +182,10 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT10Tables(5)
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback T11 migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("RollbackLast() error = %v", err)
+	for range 4 { // 0014 contract, 0013 built-ins, 0012 diagnosis, then 0011 skill runner.
+		if err := RollbackLast(ctx, pool); err != nil {
+			t.Fatalf("RollbackLast() error = %v", err)
+		}
 	}
 	assertT10Tables(0)
 	if err := Apply(ctx, pool); err != nil {
@@ -222,14 +221,95 @@ func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT11Tables(9)
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("RollbackLast() error = %v", err)
+	for range 3 { // 0014 contract, 0013 built-ins, then 0012 diagnosis workbench.
+		if err := RollbackLast(ctx, pool); err != nil {
+			t.Fatalf("RollbackLast() error = %v", err)
+		}
 	}
 	assertT11Tables(0)
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("second Apply() error = %v", err)
 	}
 	assertT11Tables(9)
+}
+
+func TestBuiltinSkillsMigrationRollsBackAndReapplies(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	assertBuiltins := func(want, version int) {
+		t.Helper()
+		var resources, versions int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM resources WHERE kind = 'Skill' AND config->>'owner' = 'OpsKeeper builtin'`).Scan(&resources); err != nil {
+			t.Fatalf("count built-in skill resources: %v", err)
+		}
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*)
+			  FROM skill_versions version
+			  JOIN resources resource ON resource.id = version.skill_resource_id
+			 WHERE resource.kind = 'Skill'
+			   AND resource.config->>'owner' = 'OpsKeeper builtin'
+			   AND version.version = $1
+			   AND version.status = 'published'`, version).Scan(&versions); err != nil {
+			t.Fatalf("count built-in skill versions: %v", err)
+		}
+		if resources != want || versions != want {
+			t.Fatalf("built-in resources/versions = %d/%d, want %d/%d", resources, versions, want, want)
+		}
+	}
+	assertBuiltins(4, 2)
+	var legacyPublished int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*)
+		  FROM skill_versions version
+		  JOIN resources resource ON resource.id = version.skill_resource_id
+		 WHERE resource.config->>'owner' = 'OpsKeeper builtin'
+		   AND version.version = 1
+		   AND version.status = 'published'`).Scan(&legacyPublished); err != nil {
+		t.Fatalf("count built-in legacy versions: %v", err)
+	}
+	if legacyPublished != 0 {
+		t.Fatalf("published built-in v1 versions = %d, want 0", legacyPublished)
+	}
+	var middlewareTools int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM skill_versions
+		 WHERE version = 2
+		   AND (tools @> '[{"name":"connector_postgresql_inspect"}]'::jsonb
+		     OR tools @> '[{"name":"connector_redis_inspect"}]'::jsonb
+		     OR tools @> '[{"name":"connector_kafka_inspect"}]'::jsonb)`).Scan(&middlewareTools); err != nil {
+		t.Fatalf("count built-in middleware tools: %v", err)
+	}
+	if middlewareTools != 3 {
+		t.Fatalf("built-in middleware tools = %d, want 3", middlewareTools)
+	}
+	var structuredOutputs int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*)
+		  FROM skill_versions version
+		  JOIN resources resource ON resource.id = version.skill_resource_id
+		 WHERE resource.config->>'owner' = 'OpsKeeper builtin'
+		   AND version.version = 2
+		   AND (version.output_schema->'required') ?& ARRAY['facts', 'findings', 'evidence', 'hypotheses', 'confidence', 'recommendations']`).Scan(&structuredOutputs); err != nil {
+		t.Fatalf("count built-in structured outputs: %v", err)
+	}
+	if structuredOutputs != 4 {
+		t.Fatalf("built-in structured outputs = %d, want 4", structuredOutputs)
+	}
+	if err := RollbackLast(ctx, pool); err != nil { // 0014 contract
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertBuiltins(4, 1)
+	if err := RollbackLast(ctx, pool); err != nil { // 0013 built-ins
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertBuiltins(0, 1)
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("second Apply() error = %v", err)
+	}
+	assertBuiltins(4, 2)
 }
 
 func integrationPool(t *testing.T) *pgxpool.Pool {

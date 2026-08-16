@@ -109,6 +109,20 @@ func TestPolicyRejectsUndeclaredInvalidOverBudgetAndUnauthorizedTools(t *testing
 	}
 }
 
+func TestPolicyBuildsOnlyDeclaredMiddlewareInspectionTools(t *testing.T) {
+	policy := &policy{
+		runner:  &Runner{Connector: &fakeConnector{}},
+		version: Version{Tools: []ToolSpec{{Name: "connector_postgresql_inspect"}, {Name: "connector_redis_inspect"}, {Name: "connector_kafka_inspect"}}},
+	}
+	tools, err := policy.tools(context.Background())
+	if err != nil {
+		t.Fatalf("tools() error = %v", err)
+	}
+	if len(tools) != 3 || tools[0].Name() != "connector_postgresql_inspect" || tools[1].Name() != "connector_redis_inspect" || tools[2].Name() != "connector_kafka_inspect" {
+		t.Fatalf("tools() = %#v", tools)
+	}
+}
+
 type fakeResourceReader struct{ items map[string]resource.Resource }
 
 func (f fakeResourceReader) Get(_ context.Context, id string) (resource.Resource, error) {
@@ -144,6 +158,15 @@ func (*fakeConnector) QueryTraces(context.Context, string, connector.TracesQuery
 	return connector.Evidence{}, connector.ErrUnsupported
 }
 func (*fakeConnector) GetAlerts(context.Context, string, connector.AlertsQuery) (connector.Evidence, error) {
+	return connector.Evidence{}, connector.ErrUnsupported
+}
+func (*fakeConnector) InspectPostgreSQL(context.Context, string) (connector.Evidence, error) {
+	return connector.Evidence{}, connector.ErrUnsupported
+}
+func (*fakeConnector) InspectRedis(context.Context, string) (connector.Evidence, error) {
+	return connector.Evidence{}, connector.ErrUnsupported
+}
+func (*fakeConnector) InspectKafka(context.Context, string) (connector.Evidence, error) {
 	return connector.Evidence{}, connector.ErrUnsupported
 }
 
