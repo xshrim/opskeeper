@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已实现 Kubernetes、Prometheus、Loki Connector 和连接检查，当前待验收。
+T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已完成 Kubernetes、Prometheus、Loki Connector 和连接检查并通过验收。
 
 ## 1. 设计原则
 

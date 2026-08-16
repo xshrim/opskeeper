@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog 和 Kubernetes Discovery；T09 的 Connector 已实现并待验收，AI、巡检与生产运维能力按 T10-T15 逐步交付。
+下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog、Kubernetes Discovery 和首批 Connector；AI、巡检与生产运维能力按 T10-T15 逐步交付。
 
 ```mermaid
 flowchart LR
@@ -93,7 +93,7 @@ flowchart LR
 | Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
-| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现，T09 待验收；中间件和 LLM Provider 在 T10-T12 扩展 |
+| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 LLM Provider 在 T10-T12 扩展 |
 | Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10 |
 | AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
@@ -141,7 +141,7 @@ flowchart LR
 | `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 已实现，T06 |
 | `/opskeeper/api/v1/resources/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 已实现，T08 |
 | `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
-| `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现，T09 待验收 |
+| `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |
 | `/opskeeper/api/v1/skills` | 目标，T10 |
