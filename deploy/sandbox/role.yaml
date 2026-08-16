@@ -1,0 +1,9 @@
+# The sandbox runner does not receive Kubernetes API credentials. If a future
+# worker needs to observe its own Job status, bind that worker to a separate,
+# namespace-scoped role; never widen this ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: opskeeper-sandbox-noop
+  namespace: opskeeper
+rules: []

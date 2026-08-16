@@ -182,7 +182,7 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT10Tables(5)
-	for range 2 { // 0015 inspection, then 0014 contract. 0013 has historical data-only rollback constraints.
+	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract. 0013 has historical data-only rollback constraints.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
 		}
@@ -221,7 +221,7 @@ func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT11Tables(9)
-	for range 2 { // 0015 inspection, then 0014 contract.
+	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
 		}
@@ -298,6 +298,14 @@ func TestBuiltinSkillsMigrationRollsBackAndReapplies(t *testing.T) {
 	if structuredOutputs != 4 {
 		t.Fatalf("built-in structured outputs = %d, want 4", structuredOutputs)
 	}
+	if err := RollbackLast(ctx, pool); err != nil { // 0017 MCP schema
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertBuiltins(4, 2)
+	if err := RollbackLast(ctx, pool); err != nil { // 0016 operations
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertBuiltins(4, 2)
 	if err := RollbackLast(ctx, pool); err != nil { // 0015 inspection
 		t.Fatalf("RollbackLast() error = %v", err)
 	}

@@ -33,6 +33,8 @@ type Options struct {
 	SkillRunner    skillRunner
 	Diagnosis      diagnosisService
 	Inspection     inspectionService
+	MCP            mcpService
+	Operations     operationService
 	CookieSecure   bool
 }
 
@@ -114,6 +116,15 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
 				registerInspectionRoutes(inspectionRouter, options.Inspection, requirePermission)
+			}
+			if options.Identity != nil && (options.MCP != nil || options.Operations != nil) {
+				operationRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
+				if options.Authorization != nil {
+					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
+				}
+				registerMCPRoutes(operationRouter, options.MCP, options.Auditor, requirePermission)
+				registerOperationRoutes(operationRouter, options.Operations, options.Auditor, requirePermission)
 			}
 		})
 	}

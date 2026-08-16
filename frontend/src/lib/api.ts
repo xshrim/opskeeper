@@ -202,10 +202,102 @@ export interface SkillExecution {
   completed_at?: string;
 }
 
-export interface InspectionPolicy { id: string; scope_id: string; name: string; cron: string; timezone: string; status: string; target_resource_ids: string[]; skill_resource_ids: string[]; timeout: number; retries: number; max_concurrent: number; max_tool_calls: number; max_tokens: number }
-export interface InspectionRun { id: string; policy_id: string; scope_id: string; trigger: string; status: string; window_start: string; window_end: string; score?: number; deterministic_completed: boolean; llm_status: string; error_message: string }
-export interface InspectionFinding { id: string; policy_id: string; target_resource_id: string; rule: string; severity: string; message: string; status: string; first_observed_at: string; last_observed_at: string; resolved_at?: string }
-export interface NotificationChannel { id: string; scope_id: string; name: string; kind: string; webhook_url: string; status: string; rate_limit_per_minute: number }
+export interface InspectionPolicy {
+  id: string;
+  scope_id: string;
+  name: string;
+  cron: string;
+  timezone: string;
+  status: string;
+  target_resource_ids: string[];
+  skill_resource_ids: string[];
+  timeout: number;
+  retries: number;
+  max_concurrent: number;
+  max_tool_calls: number;
+  max_tokens: number;
+}
+export interface InspectionRun {
+  id: string;
+  policy_id: string;
+  scope_id: string;
+  trigger: string;
+  status: string;
+  window_start: string;
+  window_end: string;
+  score?: number;
+  deterministic_completed: boolean;
+  llm_status: string;
+  error_message: string;
+}
+export interface InspectionFinding {
+  id: string;
+  policy_id: string;
+  target_resource_id: string;
+  rule: string;
+  severity: string;
+  message: string;
+  status: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  resolved_at?: string;
+}
+export interface NotificationChannel {
+  id: string;
+  scope_id: string;
+  name: string;
+  kind: string;
+  webhook_url: string;
+  status: string;
+  rate_limit_per_minute: number;
+}
+export interface OperationRequest {
+  id: string;
+  scope_id: string;
+  target_resource_id: string;
+  requested_by: string;
+  source: string;
+  operation_name: string;
+  risk_level: 'read_only' | 'low' | 'medium' | 'high';
+  parameters: Record<string, unknown>;
+  parameters_hash: string;
+  impact_summary: string;
+  rollback_summary: string;
+  dry_run: Record<string, unknown>;
+  idempotency_key: string;
+  status: string;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface OperationExecution {
+  id: string;
+  operation_request_id: string;
+  executor: string;
+  idempotency_key: string;
+  status: string;
+  result: Record<string, unknown>;
+  error_message?: string;
+  created_at: string;
+}
+export interface MCPSnapshot {
+  id: string;
+  server_resource_id: string;
+  scope_id: string;
+  protocol_version: string;
+  server_name: string;
+  server_version: string;
+  content_hash: string;
+  tools: Array<{
+    name: string;
+    description: string;
+    input_schema: Record<string, unknown>;
+  }>;
+  status: string;
+  error_message?: string;
+  created_at: string;
+  untrusted: true;
+}
 
 export interface SkillRunResult {
   execution: SkillExecution;
@@ -620,12 +712,63 @@ export const api = {
     appURL(
       `api/v1/diagnosis-sessions/${sessionId}/events?after=${encodeURIComponent(String(after))}`
     ),
-	inspectionPolicies: (scopeId: string) => request<InspectionPolicy[]>(`api/v1/inspection-policies?scope_id=${encodeURIComponent(scopeId)}`),
-	inspectionRuns: (scopeId: string) => request<InspectionRun[]>(`api/v1/inspection-runs?scope_id=${encodeURIComponent(scopeId)}`),
-	inspectionFindings: (scopeId: string) => request<InspectionFinding[]>(`api/v1/inspection-findings?scope_id=${encodeURIComponent(scopeId)}`),
-	startInspectionRun: (policyId: string, scopeId: string) => request<{run_id:string}>(`api/v1/inspection-policies/${policyId}/runs?scope_id=${encodeURIComponent(scopeId)}`, {method:'POST'}),
-	setInspectionPolicyStatus: (policyId:string, scopeId:string, status:string) => request<void>(`api/v1/inspection-policies/${policyId}/status`, patch({scope_id:scopeId,status})),
-	notificationChannels: (scopeId:string) => request<NotificationChannel[]>(`api/v1/notification-channels?scope_id=${encodeURIComponent(scopeId)}`),
+  inspectionPolicies: (scopeId: string) =>
+    request<InspectionPolicy[]>(
+      `api/v1/inspection-policies?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  inspectionRuns: (scopeId: string) =>
+    request<InspectionRun[]>(
+      `api/v1/inspection-runs?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  inspectionFindings: (scopeId: string) =>
+    request<InspectionFinding[]>(
+      `api/v1/inspection-findings?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  startInspectionRun: (policyId: string, scopeId: string) =>
+    request<{ run_id: string }>(
+      `api/v1/inspection-policies/${policyId}/runs?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'POST' }
+    ),
+  setInspectionPolicyStatus: (
+    policyId: string,
+    scopeId: string,
+    status: string
+  ) =>
+    request<void>(
+      `api/v1/inspection-policies/${policyId}/status`,
+      patch({ scope_id: scopeId, status })
+    ),
+  notificationChannels: (scopeId: string) =>
+    request<NotificationChannel[]>(
+      `api/v1/notification-channels?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  operationRequests: (scopeId: string) =>
+    request<OperationRequest[]>(
+      `api/v1/operation-requests?scope_id=${encodeURIComponent(scopeId)}&limit=50`
+    ),
+  createOperationRequest: (body: Record<string, unknown>) =>
+    request<OperationRequest>('api/v1/operation-requests', json(body)),
+  approveOperation: (
+    id: string,
+    body: { decision: string; parameters_hash: string; comment?: string }
+  ) =>
+    request<OperationRequest>(
+      `api/v1/operation-requests/${id}/approvals`,
+      json(body)
+    ),
+  startOperation: (id: string, idempotencyKey: string) =>
+    request<OperationExecution>(
+      `api/v1/operation-requests/${id}/execute`,
+      json({ idempotency_key: idempotencyKey })
+    ),
+  discoverMCP: (resourceId: string) =>
+    request<MCPSnapshot>(`api/v1/mcp-servers/${resourceId}/discover`, {
+      method: 'POST'
+    }),
+  mcpSnapshots: (resourceId: string) =>
+    request<MCPSnapshot[]>(
+      `api/v1/mcp-servers/${resourceId}/snapshots?limit=20`
+    ),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

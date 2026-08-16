@@ -63,6 +63,7 @@ make run-front-api
 - [自动化发布](docs/guides/delivery.md)
 - [内置诊断 Skill 与最小权限](docs/guides/builtin-skills.md)
 - [自动巡检、健康评分和通知](docs/guides/inspection.md)
+- [MCP、受控操作与自定义 Skill 沙箱](docs/guides/mcp-operations.md)
 
 ## 计划与验收
 
@@ -81,6 +82,7 @@ make run-front-api
 - [T11 AI 诊断工作台验收记录](docs/acceptance/t11.md)
 - [T12 Kubernetes 与中间件内置 Skill 验收记录](docs/acceptance/t12.md)
 - [T13 自动巡检、健康评分和通知验收记录](docs/acceptance/t13.md)
+- [T14 MCP、自定义 Skill 沙箱与高风险操作审批验收记录](docs/acceptance/t14.md)
 
 ## 架构决策与运行手册
 

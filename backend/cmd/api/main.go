@@ -26,6 +26,8 @@ import (
 	"opskeeper/backend/inspection"
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
+	"opskeeper/backend/mcp"
+	"opskeeper/backend/operation"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/skill"
@@ -118,6 +120,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore)
 	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
+	mcpService := mcp.NewService(resourceService, mcp.NewStore(pool))
+	operationService := operation.NewService(operation.NewStore(pool), resourceService)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -139,6 +143,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			SkillRunner:    skillRunner,
 			Diagnosis:      diagnosisService,
 			Inspection:     inspectionService,
+			MCP:            mcpService,
+			Operations:     operationService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
