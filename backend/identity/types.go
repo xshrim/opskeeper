@@ -20,6 +20,7 @@ type User struct {
 type SessionMetadata struct {
 	UserAgent string
 	ClientIP  string
+	RequestID string
 }
 
 type SessionTokens struct {
@@ -30,6 +31,17 @@ type SessionTokens struct {
 }
 
 type BootstrapInput struct {
+	Email       string
+	DisplayName string
+	Password    string
+}
+
+type UpdateUserInput struct {
+	DisplayName *string
+	Status      *string
+}
+
+type CreateUserInput struct {
 	Email       string
 	DisplayName string
 	Password    string

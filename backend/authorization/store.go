@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,16 +13,42 @@ import (
 const bootstrapAdvisoryLockID int64 = 0x4f50534b42535452
 
 type store struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	cache ScopeCache
 }
 
 var _ Store = (*store)(nil)
 
-func NewStore(pool *pgxpool.Pool) Store {
-	return &store{pool: pool}
+func NewStore(pool *pgxpool.Pool, caches ...ScopeCache) Store {
+	var cache ScopeCache
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
+	return &store{pool: pool, cache: cache}
 }
 
 func (s *store) ResolveScopes(ctx context.Context, subject Subject, permission Permission) (ScopeFilter, error) {
+	var revision int64
+	if err := s.pool.QueryRow(ctx, "SELECT revision FROM authorization_revision WHERE id = true").Scan(&revision); err != nil {
+		return ScopeFilter{}, fmt.Errorf("read authorization revision: %w", err)
+	}
+	cacheKey := fmt.Sprintf("opskeeper:authorization:%d:%s:%s", revision, subject.UserID, permission)
+	if s.cache != nil {
+		if cached, found, err := s.cache.Get(ctx, cacheKey); err == nil && found {
+			return cached, nil
+		}
+	}
+	filter, err := s.resolveScopes(ctx, subject, permission)
+	if err != nil {
+		return ScopeFilter{}, err
+	}
+	if s.cache != nil {
+		_ = s.cache.Set(ctx, cacheKey, filter, 10*time.Minute)
+	}
+	return filter, nil
+}
+
+func (s *store) resolveScopes(ctx context.Context, subject Subject, permission Permission) (ScopeFilter, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH RECURSIVE active_ancestors(scope_id, ancestor_id, ancestor_status, ancestor_deleted_at) AS (
 			SELECT id, id, status, deleted_at
@@ -49,12 +76,30 @@ func (s *store) ResolveScopes(ctx context.Context, subject Subject, permission P
 			  JOIN role_permissions role_permission ON role_permission.role_id = role.id
 			  JOIN scopes scope ON scope.id = binding.scope_id
 			  JOIN eligible ON eligible.scope_id = scope.id
-			  JOIN users ON users.id = binding.subject_id
-			 WHERE binding.subject_type = 'user'
-			   AND binding.subject_id = $1::uuid
+			 WHERE (
+				binding.subject_type = 'user'
+			   AND EXISTS (
+					SELECT 1 FROM users
+					 WHERE users.id = binding.subject_id
+					   AND users.id = $1::uuid
+					   AND users.status = 'active'
+					   AND users.deleted_at IS NULL
+				)
+			    OR binding.subject_type = 'group'
+			   AND EXISTS (
+					SELECT 1
+					  FROM group_members member
+					  JOIN groups group_record ON group_record.id = member.group_id
+					  JOIN users ON users.id = member.user_id
+					 WHERE member.group_id = binding.subject_id
+					   AND member.user_id = $1::uuid
+					   AND group_record.status = 'active'
+					   AND group_record.deleted_at IS NULL
+					   AND users.status = 'active'
+					   AND users.deleted_at IS NULL
+				)
+			   )
 			   AND role_permission.permission = $2
-			   AND users.status = 'active'
-			   AND users.deleted_at IS NULL
 			   AND scope.status = 'active'
 			   AND scope.deleted_at IS NULL
 			 UNION

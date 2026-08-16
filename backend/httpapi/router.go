@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/health"
 	"opskeeper/backend/version"
@@ -18,7 +19,11 @@ type Options struct {
 	BasePath       string
 	TrustedProxies []netip.Prefix
 	Identity       identityService
+	Users          userManagementService
 	Authorization  authorizationService
+	Access         accessManagementService
+	Auditor        audit.Logger
+	AuditLog       auditQueryService
 	CookieSecure   bool
 }
 
@@ -58,6 +63,14 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 			}
 			if options.Identity != nil {
 				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure)
+			}
+			if options.Identity != nil && (options.Users != nil || options.Access != nil) {
+				managementRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				registerAccessRoutes(managementRouter, options.Users, options.Access, options.Auditor, options.AuditLog)
+			}
+			if options.Identity != nil && options.Authorization != nil && options.AuditLog != nil {
+				auditRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
 			}
 		})
 	}

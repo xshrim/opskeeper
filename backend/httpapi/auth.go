@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"opskeeper/backend/identity"
 )
 
@@ -126,6 +127,7 @@ func sessionMetadata(request *http.Request) identity.SessionMetadata {
 	return identity.SessionMetadata{
 		UserAgent: truncateMetadata(request.UserAgent(), 512),
 		ClientIP:  truncateMetadata(requestClientIP(request), 255),
+		RequestID: truncateMetadata(middleware.GetReqID(request.Context()), 128),
 	}
 }
 

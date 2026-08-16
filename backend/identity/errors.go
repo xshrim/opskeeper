@@ -7,6 +7,8 @@ var (
 	ErrInvalidSession     = errors.New("invalid session")
 	ErrBootstrapComplete  = errors.New("bootstrap administrator already exists")
 	ErrUserInactive       = errors.New("user is inactive")
+	ErrNotFound           = errors.New("user not found")
+	ErrConflict           = errors.New("user conflicts with existing data")
 )
 
 type ValidationError struct {
