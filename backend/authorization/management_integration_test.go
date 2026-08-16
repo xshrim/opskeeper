@@ -13,6 +13,7 @@ import (
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/identity"
 	"opskeeper/backend/organization"
+	"opskeeper/backend/resource"
 )
 
 type memoryScopeCache struct {
@@ -103,7 +104,7 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScopeFilter(group member) error = %v", err)
 	}
-	if !filter.Allows(team.Scope.ID) || !filter.Allows(project.Scope.ID) || filter.Allows(platform.Scope.ID) {
+	if !filter.Allows(platform.Scope.ID) || !filter.Allows(team.Scope.ID) || !filter.Allows(project.Scope.ID) {
 		t.Fatalf("group member filter = %#v", filter.ScopeIDs)
 	}
 	if _, err := pool.Exec(ctx, "UPDATE users SET status = 'disabled' WHERE id = $1::uuid", managedUser); err != nil {
@@ -136,6 +137,103 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	if auditCount != 3 {
 		t.Fatalf("management audit events = %d, want 3", auditCount)
 	}
+}
+
+func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
+	pool := authorizationIntegrationPool(t)
+	ctx := context.Background()
+	organizations := organization.NewService(organization.NewStore(pool))
+	team, err := organizations.CreateTeam(ctx, organization.CreateTeamInput{Name: "Resource Team", Code: "resource-team"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	project, err := organizations.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Resource Project", Code: "resource-project"})
+	if err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	application, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+		ScopeID: project.Scope.ID,
+		Kind:    "Application",
+		Name:    "orders",
+		Config:  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Create(Application) error = %v", err)
+	}
+
+	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
+	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Email: "resource-admin@example.com", Password: "T08 integration password"})
+	if err != nil {
+		t.Fatalf("BootstrapAdmin() error = %v", err)
+	}
+	authorizationService := authorization.NewService(authorization.NewStore(pool, &memoryScopeCache{}))
+	if err := authorizationService.EnsureBootstrapAdmin(ctx, admin.ID); err != nil {
+		t.Fatalf("EnsureBootstrapAdmin() error = %v", err)
+	}
+	memberID := insertUser(t, pool, "resource-member@example.com")
+	management := authorization.NewManagementService(authorization.NewManagementStore(pool), authorizationService, audit.NewService(audit.NewStore(pool)))
+
+	resourceRoles, err := management.ListResourceRoles(ctx, admin.ID)
+	if err != nil {
+		t.Fatalf("ListResourceRoles() error = %v", err)
+	}
+	resourceViewerID := findResourceRoleID(t, resourceRoles, "ResourceViewer")
+	grant := authorization.GrantResourceRoleInput{SubjectType: "user", SubjectID: memberID, RoleID: resourceViewerID, ResourceID: application.ID}
+	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, grant, authorizationEvent(admin.ID)); !errors.Is(err, authorization.ErrInvalidInput) {
+		t.Fatalf("resource grant without project access error = %v, want ErrInvalidInput", err)
+	}
+
+	roles, err := management.ListRoles(ctx, admin.ID)
+	if err != nil {
+		t.Fatalf("ListRoles() error = %v", err)
+	}
+	projectMemberID := findRoleID(t, roles, "ProjectMember")
+	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{
+		SubjectType: "user", SubjectID: memberID, RoleID: projectMemberID, ScopeID: project.Scope.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateRoleBinding(ProjectMember) error = %v", err)
+	}
+	before, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	if err != nil || len(before.ScopeIDs) != 0 || len(before.ResourceIDs) != 0 {
+		t.Fatalf("resource filter before explicit grant = %#v, %v", before, err)
+	}
+	binding, err := management.CreateResourceRoleBinding(ctx, admin.ID, grant, authorizationEvent(admin.ID))
+	if err != nil {
+		t.Fatalf("CreateResourceRoleBinding() error = %v", err)
+	}
+	afterCreate, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	if err != nil || !afterCreate.Allows(project.Scope.ID, application.ID) {
+		t.Fatalf("resource filter after grant = %#v, %v", afterCreate, err)
+	}
+	if err := management.DeleteResourceRoleBinding(ctx, admin.ID, binding.ID, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("DeleteResourceRoleBinding() error = %v", err)
+	}
+	afterDelete, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	if err != nil || len(afterDelete.ScopeIDs) != 0 || len(afterDelete.ResourceIDs) != 0 {
+		t.Fatalf("resource filter after delete = %#v, %v", afterDelete, err)
+	}
+}
+
+func findRoleID(t *testing.T, roles []authorization.RoleDefinition, name string) string {
+	t.Helper()
+	for _, role := range roles {
+		if role.Name == name {
+			return role.ID
+		}
+	}
+	t.Fatalf("role %q was not returned", name)
+	return ""
+}
+
+func findResourceRoleID(t *testing.T, roles []authorization.ResourceRoleDefinition, name string) string {
+	t.Helper()
+	for _, role := range roles {
+		if role.Name == name {
+			return role.ID
+		}
+	}
+	t.Fatalf("resource role %q was not returned", name)
+	return ""
 }
 
 func authorizationEvent(actorID string) audit.Event {

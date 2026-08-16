@@ -7,6 +7,7 @@ import (
 
 type Store interface {
 	ResolveScopes(context.Context, Subject, Permission) (ScopeFilter, error)
+	ResolveResourceAccess(context.Context, Subject, Permission) (ResourceFilter, error)
 	EnsureBootstrapAdmin(context.Context, string) error
 }
 
@@ -23,6 +24,13 @@ func (s *Service) ScopeFilter(ctx context.Context, subject Subject, permission P
 		return ScopeFilter{}, ErrInvalidSubject
 	}
 	return s.store.ResolveScopes(ctx, subject, permission)
+}
+
+func (s *Service) ResourceFilter(ctx context.Context, subject Subject, permission Permission) (ResourceFilter, error) {
+	if strings.TrimSpace(subject.UserID) == "" || strings.TrimSpace(string(permission)) == "" {
+		return ResourceFilter{}, ErrInvalidSubject
+	}
+	return s.store.ResolveResourceAccess(ctx, subject, permission)
 }
 
 func (s *Service) Authorize(ctx context.Context, subject Subject, permission Permission, targetScopeID string) error {

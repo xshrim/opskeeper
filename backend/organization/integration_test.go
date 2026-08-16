@@ -116,6 +116,22 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() Kubernetes discovery migration error = %v", err)
+	}
+	var discoveryTable *string
+	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.discovery_runs')::text").Scan(&discoveryTable); err != nil {
+		t.Fatalf("check discovery runs table: %v", err)
+	}
+	if discoveryTable != nil {
+		t.Fatalf("discovery runs table still exists after discovery rollback: %s", *discoveryTable)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() organization icons migration error = %v", err)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() resource metadata migration error = %v", err)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() resource catalog migration error = %v", err)
 	}
 	var resourceTable *string

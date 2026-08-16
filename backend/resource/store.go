@@ -48,6 +48,34 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Resource, error)
 	return s.Get(ctx, id)
 }
 
+func (s *store) UpsertImported(ctx context.Context, input ImportedInput) (Resource, error) {
+	labels, err := json.Marshal(input.Labels)
+	if err != nil {
+		return Resource{}, fmt.Errorf("encode imported resource labels: %w", err)
+	}
+	config, err := json.Marshal(input.Config)
+	if err != nil {
+		return Resource{}, fmt.Errorf("encode imported resource config: %w", err)
+	}
+	var id string
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO resources (scope_id, kind, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid)
+		ON CONFLICT (scope_id, kind, external_uid, source_resource_id)
+		WHERE deleted_at IS NULL AND external_uid <> '' AND source_resource_id <> ''
+		DO UPDATE SET schema_version = EXCLUDED.schema_version, name = EXCLUDED.name,
+		              labels = EXCLUDED.labels, config = EXCLUDED.config,
+		              status = EXCLUDED.status, credential_id = EXCLUDED.credential_id,
+		              updated_at = now(), deleted_at = NULL
+		RETURNING id::text`, input.ScopeID, input.Kind, input.SchemaVersion, input.Name,
+		input.ExternalUID, input.SourceResourceID, labels, config, input.Status,
+		nullableString(input.CredentialID)).Scan(&id)
+	if err != nil {
+		return Resource{}, mapStoreError(err)
+	}
+	return s.Get(ctx, id)
+}
+
 func (s *store) List(ctx context.Context, pagination Pagination, kind string, labels map[string]string) (Page[Resource], error) {
 	base := " FROM resources resource WHERE resource.deleted_at IS NULL"
 	args := make([]any, 0, 3)
@@ -388,60 +416,75 @@ func visibleQuery(query, alias string, ctx context.Context, args ...any) (string
 }
 
 func exactResourceQuery(query string, ctx context.Context, args ...any) (string, []any) {
-	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	scopeIDs, resourceIDs, restricted := accessFilter(ctx)
 	if !restricted {
 		return query, args
 	}
-	position := len(args) + 1
-	return query + " AND resource.scope_id = ANY($" + strconv.Itoa(position) + ")", append(args, filter.ScopeIDs)
+	scopePosition := len(args) + 1
+	resourcePosition := len(args) + 2
+	query += " AND (resource.scope_id = ANY($" + strconv.Itoa(scopePosition) + "::uuid[]) OR resource.id = ANY($" + strconv.Itoa(resourcePosition) + "::uuid[]))"
+	return query, append(args, scopeIDs, resourceIDs)
 }
 
 func appendResourceVisibility(query string, args []any, ctx context.Context, alias string) (string, []any) {
-	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	scopeIDs, resourceIDs, restricted := accessFilter(ctx)
 	if !restricted {
 		return query, args
 	}
-	position := len(args) + 1
-	clause := fmt.Sprintf(` AND (%s.scope_id = ANY($%d) OR EXISTS (
+	scopePosition := len(args) + 1
+	resourcePosition := len(args) + 2
+	clause := fmt.Sprintf(` AND (%s.id = ANY($%d::uuid[]) OR %s.scope_id = ANY($%d::uuid[]) OR EXISTS (
         WITH RECURSIVE ancestors(id) AS (
-            SELECT unnest($%d)
+            SELECT unnest($%d::uuid[])
             UNION
             SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id = scope.id WHERE scope.parent_scope_id IS NOT NULL
         ) SELECT 1 FROM ancestors WHERE ancestors.id = %s.scope_id
-    ))`, alias, position, position, alias)
-	return query + clause, append(args, filter.ScopeIDs)
+    ))`, alias, resourcePosition, alias, scopePosition, scopePosition, alias)
+	return query + clause, append(args, scopeIDs, resourceIDs)
 }
 
 func visibleRelationQuery(query, sourceAlias string, ctx context.Context, args ...any) (string, []any) {
-	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	scopeIDs, resourceIDs, restricted := accessFilter(ctx)
 	if !restricted {
 		return query, args
 	}
-	position := len(args) + 1
-	clause := fmt.Sprintf(" AND (%s.scope_id = ANY($%d) OR EXISTS (WITH RECURSIVE ancestors(id) AS (SELECT unnest($%d) UNION SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id = scope.id WHERE scope.parent_scope_id IS NOT NULL) SELECT 1 FROM ancestors WHERE ancestors.id = %s.scope_id))", sourceAlias, position, position, sourceAlias)
-	return query + clause, append(args, filter.ScopeIDs)
+	scopePosition := len(args) + 1
+	resourcePosition := len(args) + 2
+	clause := fmt.Sprintf(" AND (%s.id = ANY($%d::uuid[]) OR %s.scope_id = ANY($%d::uuid[]) OR EXISTS (WITH RECURSIVE ancestors(id) AS (SELECT unnest($%d::uuid[]) UNION SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id = scope.id WHERE scope.parent_scope_id IS NOT NULL) SELECT 1 FROM ancestors WHERE ancestors.id = %s.scope_id))", sourceAlias, resourcePosition, sourceAlias, scopePosition, scopePosition, sourceAlias)
+	return query + clause, append(args, scopeIDs, resourceIDs)
 }
 
 func visibleRelationListQuery(query string, args []any, ctx context.Context) (string, []any) {
-	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	scopeIDs, resourceIDs, restricted := accessFilter(ctx)
 	if !restricted {
 		return query, args
 	}
-	position := len(args) + 1
-	clause := fmt.Sprintf(` AND ((source_resource.scope_id = ANY($%d) OR EXISTS (
+	scopePosition := len(args) + 1
+	resourcePosition := len(args) + 2
+	clause := fmt.Sprintf(` AND ((source_resource.id = ANY($%d::uuid[]) OR source_resource.scope_id = ANY($%d::uuid[]) OR EXISTS (
         WITH RECURSIVE ancestors(id) AS (
-            SELECT unnest($%d)
+            SELECT unnest($%d::uuid[])
             UNION
             SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id = scope.id WHERE scope.parent_scope_id IS NOT NULL
         ) SELECT 1 FROM ancestors WHERE ancestors.id = source_resource.scope_id
-    )) OR (target_resource.scope_id = ANY($%d) OR EXISTS (
+	)) OR (target_resource.id = ANY($%d::uuid[]) OR target_resource.scope_id = ANY($%d::uuid[]) OR EXISTS (
         WITH RECURSIVE ancestors(id) AS (
-            SELECT unnest($%d)
+            SELECT unnest($%d::uuid[])
             UNION
             SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id = scope.id WHERE scope.parent_scope_id IS NOT NULL
         ) SELECT 1 FROM ancestors WHERE ancestors.id = target_resource.scope_id
-    )))`, position, position, position, position)
-	return query + clause, append(args, filter.ScopeIDs)
+	)))`, resourcePosition, scopePosition, scopePosition, resourcePosition, scopePosition, scopePosition)
+	return query + clause, append(args, scopeIDs, resourceIDs)
+}
+
+func accessFilter(ctx context.Context) ([]string, []string, bool) {
+	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
+		return filter.ScopeIDs, filter.ResourceIDs, true
+	}
+	if filter, ok := authorization.ScopeFilterFromContext(ctx); ok {
+		return filter.ScopeIDs, nil, true
+	}
+	return nil, nil, false
 }
 
 func nullableString(value *string) any {

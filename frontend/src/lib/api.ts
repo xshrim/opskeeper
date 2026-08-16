@@ -49,6 +49,10 @@ export interface Project {
   icon: string;
   labels: Record<string, string>;
   source: string;
+  source_resource_id?: string;
+  external_uid?: string;
+  source_config: Record<string, unknown>;
+  last_synced_at?: string;
   status: string;
   created_at: string;
   updated_at: string;
@@ -126,6 +130,51 @@ export interface TopologyNode {
   depth: number;
 }
 
+export interface DiscoveryRun {
+  id: string;
+  cluster_resource_id: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  error_message?: string;
+  started_at?: string;
+  completed_at?: string;
+  item_count: number;
+  imported_count: number;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveryItem {
+  id: string;
+  run_id: string;
+  kind: string;
+  namespace?: string;
+  name: string;
+  external_uid: string;
+  resource_version?: string;
+  labels: Record<string, string>;
+  payload: Record<string, unknown>;
+  status: 'pending' | 'imported' | 'ignored' | 'missing';
+  imported_resource_id?: string;
+  imported_project_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveryProjectMapping {
+  project_id?: string;
+  team_id?: string;
+  name?: string;
+  code?: string;
+  ignore?: boolean;
+}
+
+export interface DiscoveryImportResult {
+  run: DiscoveryRun;
+  imported: DiscoveryItem[];
+  ignored: DiscoveryItem[];
+}
+
 export interface Group {
   id: string;
   scope_id: string;
@@ -152,6 +201,26 @@ export interface RoleBinding {
   role_name: string;
   scope_id: string;
   scope_type: string;
+  created_at: string;
+}
+
+export interface ResourceRoleDefinition {
+  id: string;
+  name: string;
+  builtin: boolean;
+  permissions: string[];
+}
+
+export interface ResourceRoleBinding {
+  id: string;
+  subject_type: string;
+  subject_id: string;
+  role_id: string;
+  role_name: string;
+  resource_id: string;
+  resource_name: string;
+  resource_kind: string;
+  scope_id: string;
   created_at: string;
 }
 
@@ -304,6 +373,26 @@ export const api = {
     request<{ items: TopologyNode[] }>(
       `api/v1/resources/${id}/topology?depth=4&max_nodes=40`
     ),
+  discoveryRuns: (clusterId: string) =>
+    request<DiscoveryRun[]>(`api/v1/resources/${clusterId}/discoveries`),
+  startDiscovery: (clusterId: string) =>
+    request<DiscoveryRun>(`api/v1/resources/${clusterId}/discoveries`, {
+      method: 'POST'
+    }),
+  discovery: (id: string) => request<DiscoveryRun>(`api/v1/discoveries/${id}/`),
+  discoveryItems: (id: string) =>
+    request<DiscoveryItem[]>(`api/v1/discoveries/${id}/items`),
+  importDiscovery: (
+    id: string,
+    body: {
+      item_ids: string[];
+      project_mappings: Record<string, DiscoveryProjectMapping>;
+    }
+  ) =>
+    request<DiscoveryImportResult>(
+      `api/v1/discoveries/${id}/imports`,
+      json(body)
+    ),
   users: () => request<User[]>('api/v1/users/'),
   groups: () => request<Group[]>('api/v1/groups/'),
   roles: () => request<RoleDefinition[]>('api/v1/roles/'),
@@ -313,5 +402,15 @@ export const api = {
   createBinding: (body: Record<string, unknown>) =>
     request<RoleBinding>('api/v1/role-bindings/', json(body)),
   deleteBinding: (id: string) =>
-    request<void>(`api/v1/role-bindings/${id}`, { method: 'DELETE' })
+    request<void>(`api/v1/role-bindings/${id}`, { method: 'DELETE' }),
+  resourceRoles: () =>
+    request<ResourceRoleDefinition[]>('api/v1/resource-roles/'),
+  resourceBindings: () =>
+    request<ResourceRoleBinding[]>('api/v1/resource-role-bindings/'),
+  createResourceBinding: (body: Record<string, unknown>) =>
+    request<ResourceRoleBinding>('api/v1/resource-role-bindings/', json(body)),
+  deleteResourceBinding: (id: string) =>
+    request<void>(`api/v1/resource-role-bindings/${id}`, {
+      method: 'DELETE'
+    })
 };

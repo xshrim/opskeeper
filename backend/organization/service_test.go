@@ -57,6 +57,10 @@ func (r *stubStore) UpdateProject(context.Context, string, UpdateProjectInput) (
 	return Project{ID: testUUID}, nil
 }
 
+func (r *stubStore) BindProjectSource(context.Context, string, ProjectSourceInput) (Project, error) {
+	return Project{ID: testUUID, Source: "kubernetes"}, nil
+}
+
 func TestCreateTeamNormalizesInput(t *testing.T) {
 	store := &stubStore{}
 	service := NewService(store)

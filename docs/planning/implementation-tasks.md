@@ -66,7 +66,7 @@ opskeeper/
 | T05 | 身份权限管理与安全审计 | 用户和角色管理、防越权、缓存失效与审计 | 已完成 |
 | T06 | 资源目录与关系模型 | 资源、凭据、关系、拓扑 API | 已完成 |
 | T07 | 管理控制台基础功能 | 作用域导航和组织/资源页面 | 已完成 |
-| T08 | Kubernetes 发现与导入 | 集群接入、预览、项目映射和同步 | 待批准 |
+| T08 | Kubernetes 发现与导入 | 集群接入、预览、项目映射和同步 | 已完成 |
 | T09 | Connector 与监控平台 | 统一查询接口、Prometheus、Loki | 待批准 |
 | T10 | LLM、Skill 与 Runner | Provider、Skill 版本和受控执行 | 待批准 |
 | T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 待批准 |
@@ -355,40 +355,44 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 ## T08 Kubernetes 集群发现与项目导入
 
-**状态：待批准，依赖 T07**
+**状态：已完成，依赖 T07（已完成）**
+
+验收记录：[T08 Kubernetes 集群发现与项目导入验收记录](../acceptance/t08.md)
 
 ### 目标
 
-允许用户添加任意 Scope 的 Kubernetes 集群，预览 Namespace 和工作负载，并按集群作用域安全导入项目资源。
+允许用户登记任意 Scope 的 Kubernetes 资源，预览 Namespace 和工作负载，并按集群作用域将 Namespace 映射为 Project、将工作负载映射为 Application。
 
 ### 实施细节
 
-1. 注册 KubernetesCluster、Namespace、Node、Workload、Pod、Service 和 Ingress Schema。
-2. 使用 `client-go` 建立集群连接、TLS 校验、只读权限检查和客户端缓存。
-3. 创建发现运行、发现项和导入结果表，Worker 异步执行扫描。
-4. 扫描 Namespace 并可配置排除系统命名空间，生成新建项目、映射项目或忽略建议。
-5. 平台集群必须选择目标团队；团队集群只能映射本团队项目；项目集群只能导入当前项目。
-6. 集群、Node、Namespace 保持集群 Scope，Workload、Pod、Service 和 Ingress 归属映射项目。
-7. 使用 Kubernetes UID 和来源集群形成幂等键，支持重复同步和差异预览。
-8. 根据 ownerReference、selector、Service 和 Ingress 建立确定关系；配置推断依赖只生成待确认候选。
-9. 不读取 Kubernetes Secret 内容；删除对象先标记 `missing`，超过宽限期后归档。
-10. 实现前端分步导入向导、进度展示、差异确认和同步历史。
+1. 将集群资源类型统一命名为 `Kubernetes`，保存非敏感连接配置并通过独立加密凭据关联 kubeconfig。
+2. 使用 `client-go` 和 Kubernetes API 分页扫描 Namespace、Deployment、StatefulSet、DaemonSet、Job、CronJob、Pod、Service、Ingress 和 EndpointSlice。
+3. 创建发现运行和发现项表；API 异步执行扫描，前端轮询进度并保留同步历史。
+4. Namespace 只作为 Project 候选，用户可选择新建 Project、绑定已有 Project 或忽略；Namespace 本身不登记为资源。
+5. 工作负载统一导入为项目级 `Application`，通过 `kubernetes.workload_kind` 保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型；Pod 聚合为 `instances`，Service、Ingress 和 EndpointSlice 聚合为 Application 配置字段，均不登记为资源。
+6. 平台级 Kubernetes 可映射到任意团队项目；团队级只能映射本团队项目；项目级只能映射当前项目。
+7. 使用 `source_resource_id + external_uid + scope_id + kind` 形成幂等键，重复导入更新同一 Application；失联 Application 标记为 `unknown`。
+8. 扫描只读取 Kubernetes 元数据和工作负载运行信息，禁止读取 Secret 内容。
+9. 增加 `Repository` 和 `Artifact` 资源类型，并保持连接凭据与非敏感配置分离。
+10. 保持 platform、team、project 三级 Scope；增加通用资源角色绑定，使 ProjectMember 可进入项目但只访问显式授权的具体资源。
+11. 实现集群导入页、项目映射、Application 明细计数、资源角色管理和服务端隔离测试。
 
 ### 预计文件范围
 
-发现迁移、`backend/discovery/`、Kubernetes Connector、Worker 任务和前端导入页面。
+发现迁移、`backend/discovery/`、资源级授权扩展、Kubernetes 客户端和前端导入/授权页面。
 
 ### 验收标准
 
-- 三种 Scope 的集群都遵守各自导入边界。
+- 三种 Scope 的 Kubernetes 资源都遵守各自导入边界。
 - 用户确认前不创建项目或业务资源。
-- 重复导入不产生重复资源，变更和删除能正确反映。
-- 无权限、连接失败、大集群分页和中断恢复均有明确结果。
-- 使用测试集群或模拟 API 完成端到端导入测试。
+- 重复导入不产生重复 Application，失联工作负载变为 `unknown`。
+- Namespace、Pod、Service、Ingress 和 Endpoint 不会出现在资源目录中。
+- ProjectMember 只能看到显式绑定的资源，原有 Scope 角色仍可覆盖整个授权范围。
+- 无权限、连接失败和大集群分页均有明确结果。
 
 ### 不包含
 
-主动修改 Kubernetes 对象、日志采集和 AI 分析。
+周期调度、主动修改 Kubernetes 对象、日志采集、事件查询和 AI 分析。
 
 ---
 

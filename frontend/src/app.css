@@ -287,6 +287,9 @@ h3 {
 .wide-panel {
   grid-column: span 8;
 }
+.resource-binding-form select:nth-of-type(2) {
+  min-width: 220px;
+}
 .recent-panel {
   grid-column: span 4;
 }
@@ -892,6 +895,169 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.discovery-layout {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0 44px;
+}
+.discovery-control,
+.mapping-panel,
+.application-preview-panel {
+  overflow: hidden;
+}
+.discovery-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  padding: 0 22px 20px;
+}
+.discovery-toolbar label {
+  flex: 1;
+}
+.discovery-status {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 22px;
+  color: #68727b;
+  border-top: 1px solid #e5e9eb;
+  font-size: 12px;
+}
+.run-history {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-top: 1px solid #e5e9eb;
+}
+.run-history button {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding: 10px 14px;
+  color: #3d474e;
+  background: #fafbfb;
+  border: 0;
+  border-right: 1px solid #e5e9eb;
+  text-align: left;
+}
+.run-history button.active {
+  background: #edf4f2;
+  box-shadow: inset 0 3px #337a69;
+}
+.run-history button span,
+.run-history button small {
+  font-size: 10px;
+  color: #7a848c;
+}
+.run-history button small {
+  grid-column: 1 / -1;
+}
+.mapping-list,
+.application-preview-list {
+  border-top: 1px solid #e5e9eb;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 0.7fr) minmax(
+      260px,
+      1.5fr
+    );
+  align-items: end;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid #e8ecee;
+}
+.mapping-source {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.mapping-source span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.mapping-source strong,
+.mapping-source small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapping-source small,
+.mapping-note {
+  color: #758088;
+  font-size: 11px;
+}
+.mapping-create-fields {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, 1fr) minmax(
+      120px,
+      1fr
+    );
+  gap: 9px;
+}
+.mapping-row label,
+.discovery-toolbar label,
+.mapping-create-fields label {
+  display: grid;
+  gap: 5px;
+  color: #68727a;
+  font-size: 10px;
+  font-weight: 700;
+}
+.mapping-note {
+  align-self: center;
+  margin: 0;
+}
+.application-preview-row {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 18px 34px minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 22px;
+  border-bottom: 1px solid #e8ecee;
+  cursor: pointer;
+}
+.application-identity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.application-identity small {
+  overflow: hidden;
+  color: #748088;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.application-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.application-facts span {
+  padding: 4px 7px;
+  color: #526069;
+  background: #eef2f3;
+  border: 1px solid #dfe5e7;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+}
+.import-actions p {
+  margin: 0;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 196px minmax(0, 1fr);
@@ -904,6 +1070,15 @@ textarea:focus {
   }
   .wide-panel,
   .recent-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .mapping-row {
+    grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.8fr);
+  }
+  .mapping-row > :last-child {
     grid-column: 1 / -1;
   }
 }
@@ -982,6 +1157,30 @@ textarea:focus {
   .resources-layout {
     display: flex;
     flex-direction: column;
+  }
+  .discovery-toolbar,
+  .discovery-status,
+  .import-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .discovery-status {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .mapping-row,
+  .mapping-create-fields {
+    grid-template-columns: 1fr;
+  }
+  .mapping-row > :last-child {
+    grid-column: auto;
+  }
+  .application-preview-row {
+    grid-template-columns: 18px 32px minmax(0, 1fr);
+  }
+  .application-facts {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
   }
   .resource-type-grid {
     grid-template-columns: 1fr;

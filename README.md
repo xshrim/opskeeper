@@ -73,6 +73,7 @@ make run-front-api
 - [T05 身份权限管理与安全审计验收记录](docs/acceptance/t05.md)
 - [T06 统一资源目录、凭据和关系模型验收记录](docs/acceptance/t06.md)
 - [T07 Svelte 管理控制台基础功能验收记录](docs/acceptance/t07.md)
+- [T08 Kubernetes 集群发现与项目导入验收记录](docs/acceptance/t08.md)
 
 ## 架构决策与运行手册
 

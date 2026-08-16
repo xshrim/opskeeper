@@ -15,6 +15,10 @@ func (s *stubStore) ResolveScopes(context.Context, Subject, Permission) (ScopeFi
 	return s.filter, s.err
 }
 
+func (s *stubStore) ResolveResourceAccess(context.Context, Subject, Permission) (ResourceFilter, error) {
+	return ResourceFilter{SubjectID: s.filter.SubjectID, Permission: s.filter.Permission, ScopeIDs: s.filter.ScopeIDs}, s.err
+}
+
 func (s *stubStore) EnsureBootstrapAdmin(context.Context, string) error { return nil }
 
 func TestAuthorizeUsesServerScopeFilter(t *testing.T) {

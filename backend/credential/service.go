@@ -2,6 +2,7 @@ package credential
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"opskeeper/backend/authorization"
@@ -42,6 +43,43 @@ func (s *Service) Get(ctx context.Context, actorID, id string) (Credential, erro
 		return Credential{}, invalid("credential_id is required")
 	}
 	return s.store.Get(ctx, actorID, id)
+}
+
+// Reveal is intentionally kept out of HTTP handlers. Internal connectors use
+// it only after the caller has passed the normal scope authorization check.
+func (s *Service) Reveal(ctx context.Context, actorID, id string) ([]byte, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, invalid("credential_id is required")
+	}
+	ciphertext, keyVersion, scopeID, err := s.store.Secret(ctx, actorID, id)
+	if err != nil {
+		return nil, err
+	}
+	if !allowsExactScope(ctx, scopeID) {
+		return nil, authorization.ErrForbidden
+	}
+	decryptor, ok := s.encryptor.(Decryptor)
+	if !ok {
+		return nil, errors.New("credential encryptor does not support decryption")
+	}
+	return decryptor.Decrypt(ciphertext, keyVersion)
+}
+
+// RevealLinked decrypts a credential that has already been authorized through
+// its owning resource. It is an internal connector API and is never routed to HTTP.
+func (s *Service) RevealLinked(ctx context.Context, id string) ([]byte, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, invalid("credential_id is required")
+	}
+	ciphertext, keyVersion, err := s.store.SecretByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	decryptor, ok := s.encryptor.(Decryptor)
+	if !ok {
+		return nil, errors.New("credential encryptor does not support decryption")
+	}
+	return decryptor.Decrypt(ciphertext, keyVersion)
 }
 
 func (s *Service) Update(ctx context.Context, actorID, id string, input UpdateInput) (Credential, error) {

@@ -32,7 +32,8 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.icon, p.labels, p.source, p.created_at, p.updated_at
+	       p.icon, p.labels, p.source, p.source_resource_id::text, p.external_uid,
+	       p.source_config, p.last_synced_at, p.created_at, p.updated_at
 	  FROM projects p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -48,6 +49,7 @@ type Store interface {
 	ListProjects(context.Context, string, Pagination) (Page[Project], error)
 	GetProject(context.Context, string) (Project, error)
 	UpdateProject(context.Context, string, UpdateProjectInput) (Project, error)
+	BindProjectSource(context.Context, string, ProjectSourceInput) (Project, error)
 }
 
 type store struct {
@@ -240,11 +242,16 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	if err != nil {
 		return Project{}, fmt.Errorf("encode project labels: %w", err)
 	}
+	sourceConfig, err := json.Marshal(input.SourceConfig)
+	if err != nil {
+		return Project{}, fmt.Errorf("encode project source config: %w", err)
+	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels, source)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
-		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Icon, labels, input.Source).Scan(&projectID); err != nil {
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels, source, source_resource_id, external_uid, source_config, last_synced_at)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::uuid, $10, $11::jsonb,
+		        CASE WHEN $9::uuid IS NULL THEN NULL ELSE now() END)
+		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Icon, labels, input.Source, nullableString(input.SourceResourceID), input.ExternalUID, sourceConfig).Scan(&projectID); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -256,6 +263,26 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 		return Project{}, fmt.Errorf("commit create project: %w", err)
 	}
 	return project, nil
+}
+
+func (s *store) BindProjectSource(ctx context.Context, projectID string, input ProjectSourceInput) (Project, error) {
+	config, err := json.Marshal(input.SourceConfig)
+	if err != nil {
+		return Project{}, fmt.Errorf("encode project source config: %w", err)
+	}
+	query, args := scopedQuery(`
+		UPDATE projects p
+		   SET source = 'kubernetes', source_resource_id = $2::uuid, external_uid = $3,
+		       source_config = $4::jsonb, last_synced_at = now(), updated_at = now()
+		 WHERE p.id = $1::uuid AND p.deleted_at IS NULL`, "p", ctx, projectID, input.SourceResourceID, input.ExternalUID, config)
+	command, err := s.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return Project{}, mapStoreError(err)
+	}
+	if command.RowsAffected() != 1 {
+		return Project{}, ErrNotFound
+	}
+	return s.GetProject(ctx, projectID)
 }
 
 func (s *store) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {
@@ -427,6 +454,7 @@ func scanProject(row scanner) (Project, error) {
 	var project Project
 	var parentID pgtype.Text
 	var labels []byte
+	var sourceConfig []byte
 	if err := row.Scan(
 		&project.ID,
 		&project.PlatformID,
@@ -440,6 +468,10 @@ func scanProject(row scanner) (Project, error) {
 		&project.Icon,
 		&labels,
 		&project.Source,
+		&project.SourceResourceID,
+		&project.ExternalUID,
+		&sourceConfig,
+		&project.LastSyncedAt,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 	); err != nil {
@@ -448,9 +480,19 @@ func scanProject(row scanner) (Project, error) {
 	if err := json.Unmarshal(labels, &project.Labels); err != nil {
 		return Project{}, fmt.Errorf("decode project labels: %w", err)
 	}
+	if err := json.Unmarshal(sourceConfig, &project.SourceConfig); err != nil {
+		return Project{}, fmt.Errorf("decode project source config: %w", err)
+	}
 	project.Scope.ParentID = nullableText(parentID)
 	project.Status = project.Scope.Status
 	return project, nil
+}
+
+func nullableString(value *string) any {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
 }
 
 func nullableText(value pgtype.Text) *string {

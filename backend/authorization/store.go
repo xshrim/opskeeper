@@ -107,8 +107,15 @@ func (s *store) resolveScopes(ctx context.Context, subject Subject, permission P
 			  FROM scopes child
 			  JOIN granted parent ON parent.scope_id = child.parent_scope_id
 			  JOIN eligible ON eligible.scope_id = child.id
+		), visible(scope_id) AS (
+			SELECT scope_id FROM granted
+			 UNION
+			SELECT scope.parent_scope_id
+			  FROM scopes scope
+			  JOIN visible child ON child.scope_id = scope.id
+			 WHERE $2 = 'organization:read' AND scope.parent_scope_id IS NOT NULL
 		)
-		SELECT scope_id::text FROM granted ORDER BY scope_id`, subject.UserID, string(permission))
+		SELECT scope_id::text FROM visible ORDER BY scope_id`, subject.UserID, string(permission))
 	if err != nil {
 		return ScopeFilter{}, fmt.Errorf("resolve authorization scopes: %w", err)
 	}
@@ -123,6 +130,63 @@ func (s *store) resolveScopes(ctx context.Context, subject Subject, permission P
 	}
 	if err := rows.Err(); err != nil {
 		return ScopeFilter{}, fmt.Errorf("iterate authorization scopes: %w", err)
+	}
+	return filter, nil
+}
+
+func (s *store) ResolveResourceAccess(ctx context.Context, subject Subject, permission Permission) (ResourceFilter, error) {
+	scopes, err := s.ResolveScopes(ctx, subject, permission)
+	if err != nil {
+		return ResourceFilter{}, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		WITH RECURSIVE scope_chain(scope_id, ancestor_id, status, deleted_at) AS (
+			SELECT id, id, status, deleted_at FROM scopes
+			 UNION ALL
+			SELECT chain.scope_id, parent.id, parent.status, parent.deleted_at
+			  FROM scope_chain chain
+			  JOIN scopes current_scope ON current_scope.id = chain.ancestor_id
+			  JOIN scopes parent ON parent.id = current_scope.parent_scope_id
+		)
+		SELECT DISTINCT binding.resource_id::text
+		  FROM resource_role_bindings binding
+		  JOIN resource_roles role ON role.id = binding.role_id
+		  JOIN resource_role_permissions role_permission ON role_permission.role_id = role.id
+		  JOIN resources resource ON resource.id = binding.resource_id AND resource.deleted_at IS NULL
+		 WHERE role_permission.permission = $2
+		   AND NOT EXISTS (
+			SELECT 1 FROM scope_chain chain
+			 WHERE chain.scope_id = resource.scope_id
+			   AND (chain.status <> 'active' OR chain.deleted_at IS NOT NULL)
+		   )
+		   AND (
+			(binding.subject_type = 'user' AND binding.subject_id = $1::uuid
+			 AND EXISTS (SELECT 1 FROM users WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL))
+			 OR
+			(binding.subject_type = 'group' AND EXISTS (
+				SELECT 1 FROM group_members member
+				JOIN groups group_record ON group_record.id = member.group_id
+				JOIN users user_record ON user_record.id = member.user_id
+				WHERE member.group_id = binding.subject_id AND member.user_id = $1::uuid
+				  AND group_record.status = 'active' AND group_record.deleted_at IS NULL
+				  AND user_record.status = 'active' AND user_record.deleted_at IS NULL
+			))
+		   )
+		 ORDER BY binding.resource_id::text`, subject.UserID, string(permission))
+	if err != nil {
+		return ResourceFilter{}, fmt.Errorf("resolve resource authorization: %w", err)
+	}
+	defer rows.Close()
+	filter := ResourceFilter{SubjectID: subject.UserID, Permission: permission, ScopeIDs: scopes.ScopeIDs, ResourceIDs: make([]string, 0)}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return ResourceFilter{}, fmt.Errorf("scan resource authorization: %w", err)
+		}
+		filter.ResourceIDs = append(filter.ResourceIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return ResourceFilter{}, fmt.Errorf("iterate resource authorization: %w", err)
 	}
 	return filter, nil
 }

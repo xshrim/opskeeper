@@ -13,14 +13,16 @@ Kubernetes 集群可以归属平台、团队或项目，但导入行为受其作
 导入流程：
 
 ```text
-添加集群 → 连通和权限检查 → 扫描 Namespace
-→ 过滤系统空间 → 生成项目映射建议 → 扫描工作负载
-→ 依赖关系预览 → 用户确认 → 幂等导入 → 周期同步
+登记 Kubernetes → 扫描 Namespace 和工作负载
+→ 生成 Project 映射与 Application 候选
+→ 用户确认 → 幂等导入 → 后续按任务引入周期同步
 ```
 
 团队级集群是默认场景。每个非系统 Namespace 默认建议对应一个项目；用户可以选择新建项目、映射已有项目或忽略。
 
-集群、Node 和 Namespace 等基础设施对象保持与集群相同的作用域。平台根据 Deployment、StatefulSet、DaemonSet、Job、CronJob 创建项目级 Workload 或 BusinessApplication，根据 ownerReference、selector、Service、Ingress 建立确定性关系。项目资源通过 `deployed_on` 向上关联 Namespace 或集群。
+Kubernetes 集群本身登记为 `Kubernetes` 资源，保存 API 连接配置并关联加密 kubeconfig。Namespace 不登记为资源，而是映射到已有或新建 Project。Deployment、StatefulSet、DaemonSet、Job 和 CronJob 统一映射为 Project 下的 `Application`，其原始类型保存在 `kubernetes.workload_kind`。
+
+Pod 不登记为资源，每个 Pod 副本作为 Application 的一个 `Instance`；Service、Ingress 和 EndpointSlice 同样不登记为资源，其端口、访问入口和地址聚合在 Application 配置字段中。由此，页面、AI 问答、诊断和巡检围绕 Project 与 Application 展开，而不是让用户维护 Kubernetes 内部对象目录。
 
 根据环境变量、ConfigMap、Service DNS 和连接地址推断出的中间件依赖仅作为候选关系，必须人工确认。平台禁止读取或导入 Kubernetes Secret 明文。
 
@@ -28,18 +30,19 @@ Kubernetes 集群可以归属平台、团队或项目，但导入行为受其作
 
 ```text
 discovery_runs {
-  id, cluster_id, mode, status,
-  started_at, finished_at, summary, error
+  id, cluster_resource_id, status,
+  started_at, completed_at, item_count, imported_count, error_message
 }
 
 discovery_items {
-  id, run_id, external_uid, kind,
-  suggested_scope, suggested_project_id,
-  action, diff, selected, result_resource_id
+  id, run_id, kind, namespace,
+  external_uid, resource_version,
+  labels, payload, status,
+  imported_project_id, imported_resource_id
 }
 ```
 
-同步使用 Kubernetes UID 作为 `external_uid`。对于删除或失联资源，先标记 `missing`，经过宽限期后再归档，避免短暂 API 故障导致资源被误删。
+导入使用 Kubernetes UID 作为 `external_uid`，并结合来源 Kubernetes 资源、目标 Scope 和资源类型保证幂等。对于删除或失联的 Application，当前先标记 `unknown`，不自动删除；宽限期归档和周期调度属于后续任务。
 
 ## 3. 外部监控平台
 
