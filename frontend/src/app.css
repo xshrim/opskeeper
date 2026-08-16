@@ -425,6 +425,43 @@ h3 {
   font-size: 13px;
   font-weight: 650;
 }
+.entity-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 11px;
+}
+.entity-icon,
+.type-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #345c67;
+  background: #e8f1ef;
+  border: 1px solid #cfe0dc;
+  border-radius: 7px;
+  font-weight: 700;
+}
+.entity-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 17px;
+}
+.team-icon {
+  color: #5c5475;
+  background: #f0edf8;
+  border-color: #ded6f0;
+}
+.project-icon {
+  color: #77602a;
+  background: #fff7dc;
+  border-color: #f1e2ab;
+}
+.resource-icon {
+  color: #315e63;
+  background: #e6f3f1;
+  border-color: #cce3df;
+}
 .list-row small,
 .compact-row small {
   display: block;
@@ -465,8 +502,9 @@ h3 {
   border-top: 1px solid #edf0f2;
 }
 .inline-form input {
+  flex: 1 1 100px;
   min-width: 0;
-  width: 35%;
+  width: auto;
 }
 .compact-form {
   padding: 0 20px 20px;
@@ -571,6 +609,63 @@ textarea:focus {
 }
 .filter-row {
   padding: 0 20px 13px;
+}
+.resource-type-picker {
+  display: grid;
+  gap: 7px;
+}
+.resource-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 1px;
+}
+.resource-type-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 9px;
+  color: #293941;
+  background: #f9fafb;
+  border: 1px solid #dce3e6;
+  border-radius: 5px;
+  text-align: left;
+}
+.resource-type-card:hover,
+.resource-type-card.selected {
+  background: #eef7f4;
+  border-color: #80aaa4;
+  box-shadow: 0 0 0 2px #e1efec;
+}
+.resource-type-card .type-icon {
+  width: 31px;
+  height: 31px;
+  font-size: 16px;
+}
+.resource-type-card strong,
+.resource-type-card small {
+  display: block;
+}
+.resource-type-card strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resource-type-card small {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #75818a;
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .resources-layout {
   display: grid;
@@ -887,6 +982,10 @@ textarea:focus {
   .resources-layout {
     display: flex;
     flex-direction: column;
+  }
+  .resource-type-grid {
+    grid-template-columns: 1fr;
+    max-height: 300px;
   }
   .resource-list-panel {
     min-height: 0;

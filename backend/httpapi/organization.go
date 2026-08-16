@@ -35,18 +35,21 @@ type organizationHandler struct {
 type createTeamRequest struct {
 	Name   string            `json:"name"`
 	Code   string            `json:"code"`
+	Icon   string            `json:"icon"`
 	Labels map[string]string `json:"labels"`
 }
 
 type createProjectRequest struct {
 	Name   string            `json:"name"`
 	Code   string            `json:"code"`
+	Icon   string            `json:"icon"`
 	Labels map[string]string `json:"labels"`
 	Source string            `json:"source,omitempty"`
 }
 
 type updateOrganizationRequest struct {
 	Name   *string            `json:"name"`
+	Icon   *string            `json:"icon"`
 	Labels *map[string]string `json:"labels"`
 	Status *string            `json:"status"`
 }
@@ -93,6 +96,7 @@ func (h organizationHandler) createTeam(writer http.ResponseWriter, request *htt
 	team, err := h.service.CreateTeam(request.Context(), organization.CreateTeamInput{
 		Name:   body.Name,
 		Code:   body.Code,
+		Icon:   body.Icon,
 		Labels: body.Labels,
 	})
 	if err != nil {
@@ -132,6 +136,7 @@ func (h organizationHandler) updateTeam(writer http.ResponseWriter, request *htt
 	}
 	team, err := h.service.UpdateTeam(request.Context(), chi.URLParam(request, "teamID"), organization.UpdateTeamInput{
 		Name:   body.Name,
+		Icon:   body.Icon,
 		Labels: body.Labels,
 		Status: body.Status,
 	})
@@ -151,6 +156,7 @@ func (h organizationHandler) createProject(writer http.ResponseWriter, request *
 		TeamID: chi.URLParam(request, "teamID"),
 		Name:   body.Name,
 		Code:   body.Code,
+		Icon:   body.Icon,
 		Labels: body.Labels,
 		Source: body.Source,
 	})
@@ -191,6 +197,7 @@ func (h organizationHandler) updateProject(writer http.ResponseWriter, request *
 	}
 	project, err := h.service.UpdateProject(request.Context(), chi.URLParam(request, "projectID"), organization.UpdateProjectInput{
 		Name:   body.Name,
+		Icon:   body.Icon,
 		Labels: body.Labels,
 		Status: body.Status,
 	})

@@ -52,19 +52,23 @@
 
   let teamName = '';
   let teamCode = '';
+  let teamIcon = 'team';
   let projectTeamId = '';
   let projectName = '';
   let projectCode = '';
+  let projectIcon = 'project';
   let resourceKind = '';
   let resourceName = '';
   let resourceStatus = 'active';
   let resourceLabels = '';
   let resourceConfig = '{}';
   let resourceConfigValues: Record<string, string> = {};
+  let resourceSensitiveValues: Record<string, string> = {};
   let editResourceName = '';
   let editResourceStatus = 'active';
   let editResourceLabels = '';
   let editResourceConfig = '{}';
+  let editResourceSensitiveValues: Record<string, string> = {};
   let relationTarget = '';
   let relationType = 'depends_on';
   let groupScopeId = '';
@@ -214,11 +218,13 @@
       const created = await api.createTeam({
         name: teamName,
         code: teamCode,
+        icon: teamIcon,
         labels: {}
       });
       teams = [...teams, created];
       teamName = '';
       teamCode = '';
+      teamIcon = 'team';
       notice = `团队“${created.name}”已创建`;
     });
   }
@@ -228,31 +234,36 @@
       const created = await api.createProject(projectTeamId, {
         name: projectName,
         code: projectCode,
+        icon: projectIcon,
         labels: {}
       });
       projects = [...projects, created];
       projectName = '';
       projectCode = '';
+      projectIcon = 'project';
       notice = `项目“${created.name}”已创建`;
     });
   }
 
   async function createResource() {
     await action(async () => {
-      const config = createSchema?.schema.properties
-        ? Object.fromEntries(
-            Object.entries(resourceConfigValues).filter(
-              ([, value]) => value.trim() !== ''
-            )
-          )
-        : (JSON.parse(resourceConfig) as Record<string, unknown>);
+      const config = buildSchemaConfig(
+        createSchema,
+        resourceConfigValues,
+        resourceConfig
+      );
+      const credentialId = await createResourceCredential(
+        createSchema,
+        resourceSensitiveValues
+      );
       const created = await api.createResource({
         scope_id: selectedScopeId,
         kind: resourceKind,
         name: resourceName,
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
-        config
+        config,
+        ...(credentialId ? { credential_id: credentialId } : {})
       });
       resources = [created, ...resources];
       selectedResourceId = created.id;
@@ -260,6 +271,7 @@
       resourceLabels = '';
       resourceConfig = '{}';
       resourceConfigValues = {};
+      resourceSensitiveValues = {};
       notice = `资源“${created.name}”已创建`;
       await loadResourceDetails(created.id);
     });
@@ -298,18 +310,21 @@
   async function updateSelectedResource() {
     if (!selectedResource) return;
     await action(async () => {
-      const config = selectedSchema?.schema.properties
-        ? Object.fromEntries(
-            Object.entries(resourceConfigValues).filter(
-              ([, value]) => value.trim() !== ''
-            )
-          )
-        : (JSON.parse(editResourceConfig) as Record<string, unknown>);
+      const config = buildSchemaConfig(
+        selectedSchema,
+        resourceConfigValues,
+        editResourceConfig
+      );
+      const credentialId = await createResourceCredential(
+        selectedSchema,
+        editResourceSensitiveValues
+      );
       const updated = await api.updateResource(selectedResource.id, {
         name: editResourceName,
         status: editResourceStatus,
         labels: parseLabels(editResourceLabels),
-        config
+        config,
+        ...(credentialId ? { credential_id: credentialId } : {})
       });
       resources = resources.map((resource) =>
         resource.id === updated.id ? updated : resource
@@ -332,11 +347,62 @@
         String(value)
       ])
     );
+    editResourceSensitiveValues = {};
   }
 
   function resetResourceConfig() {
     resourceConfigValues = {};
+    resourceSensitiveValues = {};
     resourceConfig = '{}';
+  }
+
+  function buildSchemaConfig(
+    schema: ResourceSchema | undefined,
+    values: Record<string, string>,
+    raw: string
+  ) {
+    if (!schema?.schema.properties)
+      return JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(schema.schema.properties)
+        .filter(
+          ([key, field]) =>
+            !field.sensitive && (values[key] ?? '').trim() !== ''
+        )
+        .map(([key, field]) => [
+          key,
+          normalizeFieldValue(values[key], field.type)
+        ])
+    );
+  }
+
+  function normalizeFieldValue(value: string, type?: string): unknown {
+    if (type === 'integer' || type === 'number') return Number(value);
+    if (type === 'boolean') return value === 'true';
+    if (type === 'array')
+      return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    return value;
+  }
+
+  async function createResourceCredential(
+    schema: ResourceSchema | undefined,
+    values: Record<string, string>
+  ) {
+    const secret = Object.fromEntries(
+      Object.entries(values).filter(([, value]) => value.trim() !== '')
+    );
+    const scopeId = selectedResource?.scope_id ?? selectedScopeId;
+    if (!scopeId || !schema || Object.keys(secret).length === 0) return '';
+    const credential = await api.createCredential({
+      scope_id: scopeId,
+      name: `${resourceName || selectedResource?.name || schema.display_name} connection`,
+      purpose: `${schema.display_name} 敏感连接信息`,
+      secret: JSON.stringify(secret)
+    });
+    return credential.id;
   }
 
   async function createRelation() {
@@ -479,6 +545,46 @@
       dateStyle: 'medium',
       timeStyle: 'short'
     });
+  }
+
+  function iconGlyph(icon: string | undefined) {
+    const glyphs: Record<string, string> = {
+      platform: '▣',
+      team: '♟',
+      project: '▰',
+      kubernetes: '☸',
+      application: '⌘',
+      endpoint: '↗',
+      schedule: '◷',
+      postgresql: '◉',
+      redis: '◒',
+      kafka: '◫',
+      search: '⌕',
+      middleware: '◇',
+      llm: '✦',
+      mcp: '⌁',
+      skill: '✧',
+      metrics: '▥',
+      logs: '≋',
+      traces: '⌁',
+      observability: '◌',
+      api: '⇄',
+      notification: '♢',
+      runbook: '☷',
+      storage: '▤',
+      credential: '⚿',
+      resource: '◇'
+    };
+    return glyphs[icon ?? 'resource'] ?? icon?.slice(0, 1).toUpperCase() ?? '◇';
+  }
+
+  function schemaName(schema: ResourceSchema) {
+    return schema.display_name || schema.kind;
+  }
+
+  function resourceSchemaName(kind: string) {
+    const schema = schemas.find((item) => item.kind === kind);
+    return schema ? schemaName(schema) : kind;
   }
 </script>
 
@@ -708,9 +814,19 @@
                       chooseView('resources');
                       void loadResourceDetails(resource.id);
                     }}
-                    ><span
-                      ><strong>{resource.name}</strong><small
-                        >{resource.kind} · {scopeName(resource.scope_id)}</small
+                    ><span class="entity-summary"
+                      ><span class="entity-icon resource-icon"
+                        >{iconGlyph(
+                          schemas.find(
+                            (schema) => schema.kind === resource.kind
+                          )?.icon
+                        )}</span
+                      ><span
+                        ><strong>{resource.name}</strong><small
+                          >{resourceSchemaName(resource.kind)} · {scopeName(
+                            resource.scope_id
+                          )}</small
+                        ></span
                       ></span
                     ><span class="status-label {resource.status}"
                       >{resource.status}</span
@@ -737,14 +853,23 @@
                     selectedScopeId = team.scope.id;
                     projectTeamId = team.id;
                   }}
-                  ><span
-                    ><strong>{team.name}</strong><small
-                      >{team.code} · {team.status}</small
+                  ><span class="entity-summary"
+                    ><span class="entity-icon team-icon"
+                      >{iconGlyph(team.icon)}</span
+                    ><span
+                      ><strong>{team.name}</strong><small
+                        >{team.code} · {team.status}</small
+                      ></span
                     ></span
                   ><span class="row-arrow">→</span></button
                 >{:else}<div class="empty-state">暂无团队</div>{/each}
             </div>
             <form class="inline-form" on:submit|preventDefault={createTeam}>
+              <input
+                bind:value={teamIcon}
+                placeholder="图标，如 team 或 ♟"
+                aria-label="团队图标"
+              />
               <input
                 bind:value={teamName}
                 required
@@ -771,9 +896,13 @@
                   class:selected={selectedScopeId === project.scope.id}
                   class="list-row"
                   on:click={() => (selectedScopeId = project.scope.id)}
-                  ><span
-                    ><strong>{project.name}</strong><small
-                      >{project.code} · {scopeName(project.team_id)}</small
+                  ><span class="entity-summary"
+                    ><span class="entity-icon project-icon"
+                      >{iconGlyph(project.icon)}</span
+                    ><span
+                      ><strong>{project.name}</strong><small
+                        >{project.code} · {scopeName(project.team_id)}</small
+                      ></span
                     ></span
                   ><span class="status-label {project.status}"
                     >{project.status}</span
@@ -793,6 +922,11 @@
                 ></label
               >
               <div class="form-row">
+                <input
+                  bind:value={projectIcon}
+                  placeholder="图标，如 project 或 ▰"
+                  aria-label="项目图标"
+                />
                 <input
                   bind:value={projectName}
                   required
@@ -825,7 +959,7 @@
               <select bind:value={resourceKind}
                 ><option value="">全部类型</option
                 >{#each schemas as schema}<option value={schema.kind}
-                    >{schema.kind}</option
+                    >{schemaName(schema)}</option
                   >{/each}</select
               >
             </div>
@@ -834,9 +968,18 @@
                   class:selected={selectedResourceId === resource.id}
                   class="list-row"
                   on:click={() => void loadResourceDetails(resource.id)}
-                  ><span
-                    ><strong>{resource.name}</strong><small
-                      >{resource.kind} · {scopeName(resource.scope_id)}</small
+                  ><span class="entity-summary"
+                    ><span class="entity-icon resource-icon"
+                      >{iconGlyph(
+                        schemas.find((schema) => schema.kind === resource.kind)
+                          ?.icon
+                      )}</span
+                    ><span
+                      ><strong>{resource.name}</strong><small
+                        >{resourceSchemaName(resource.kind)} · {scopeName(
+                          resource.scope_id
+                        )}</small
+                      ></span
                     ></span
                   ><span class="status-label {resource.status}"
                     >{resource.status}</span
@@ -857,14 +1000,30 @@
                 class="stack-form"
                 on:submit|preventDefault={createResource}
               >
+                <div class="resource-type-picker" aria-label="选择资源类型">
+                  <div class="resource-type-grid">
+                    {#each schemas as schema}
+                      <button
+                        type="button"
+                        class="resource-type-card"
+                        class:selected={resourceKind === schema.kind}
+                        on:click={() => {
+                          resourceKind = schema.kind;
+                          resetResourceConfig();
+                        }}
+                      >
+                        <span class="type-icon">{iconGlyph(schema.icon)}</span>
+                        <span>
+                          <strong>{schemaName(schema)}</strong>
+                          <small
+                            >{schema.description || '资源连接与运行信息'}</small
+                          >
+                        </span>
+                      </button>
+                    {/each}
+                  </div>
+                </div>
                 <label
-                  >类型<select bind:value={resourceKind} required
-                    ><option value="" disabled>选择资源类型</option
-                    >{#each schemas as schema}<option value={schema.kind}
-                        >{schema.kind}</option
-                      >{/each}</select
-                  ></label
-                ><label
                   >名称<input
                     bind:value={resourceName}
                     required
@@ -890,7 +1049,11 @@
                     <p class="eyebrow">SCHEMA FIELDS</p>
                     {#each Object.entries(createSchema.schema.properties) as [key, field]}
                       <label
-                        >{field.title || key}{#if field.enum}<select
+                        >{field.title || key}{#if field.sensitive}<input
+                            type="password"
+                            bind:value={resourceSensitiveValues[key]}
+                            placeholder="敏感信息将加密保存"
+                          />{:else if field.enum}<select
                             bind:value={resourceConfigValues[key]}
                             ><option value="">未设置</option
                             >{#each field.enum as option}<option value={option}
@@ -898,6 +1061,12 @@
                               >{/each}</select
                           >{:else}<input
                             bind:value={resourceConfigValues[key]}
+                            type={field.type === 'number' ||
+                            field.type === 'integer'
+                              ? 'number'
+                              : field.type === 'url'
+                                ? 'url'
+                                : 'text'}
                             placeholder={field.description || key}
                           />{/if}</label
                       >
@@ -968,7 +1137,13 @@
                       <p class="eyebrow">SCHEMA FIELDS</p>
                       {#each Object.entries(selectedSchema.schema.properties) as [key, field]}
                         <label
-                          >{field.title || key}{#if field.enum}<select
+                          >{field.title || key}{#if field.sensitive}<input
+                              type="password"
+                              bind:value={editResourceSensitiveValues[key]}
+                              placeholder={selectedResource.credential_id
+                                ? '已有关联凭据，留空保持不变'
+                                : '敏感信息将加密保存'}
+                            />{:else if field.enum}<select
                               bind:value={resourceConfigValues[key]}
                               ><option value="">未设置</option
                               >{#each field.enum as option}<option
@@ -976,6 +1151,12 @@
                                 >{/each}</select
                             >{:else}<input
                               bind:value={resourceConfigValues[key]}
+                              type={field.type === 'number' ||
+                              field.type === 'integer'
+                                ? 'number'
+                                : field.type === 'url'
+                                  ? 'url'
+                                  : 'text'}
                             />{/if}</label
                         >
                       {/each}
@@ -998,9 +1179,13 @@
                     {#each Object.entries(selectedSchema.schema.properties) as [key, field]}<div
                       >
                         <span>{field.title || key}</span><code
-                          >{String(
-                            selectedResource.config[key] ?? '未设置'
-                          )}</code
+                          >{field.sensitive
+                            ? selectedResource.credential_id
+                              ? '已由加密凭据保存'
+                              : '未设置'
+                            : String(
+                                selectedResource.config[key] ?? '未设置'
+                              )}</code
                         >
                       </div>{/each}
                   </div>{:else}<pre class="config-preview">{JSON.stringify(

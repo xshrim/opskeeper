@@ -23,6 +23,7 @@ func (s *Service) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, 
 	if err := validateName(input.Name); err != nil {
 		return Team{}, err
 	}
+	input.Icon = normalizeIcon(input.Icon, "team")
 	if err := validateCode(input.Code); err != nil {
 		return Team{}, err
 	}
@@ -52,7 +53,7 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 	if err := validateID(teamID, "team_id"); err != nil {
 		return Team{}, err
 	}
-	if input.Name == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
 		return Team{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -61,6 +62,10 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 			return Team{}, err
 		}
 		input.Name = &trimmed
+	}
+	if input.Icon != nil {
+		icon := normalizeIcon(*input.Icon, "team")
+		input.Icon = &icon
 	}
 	if input.Labels != nil {
 		if err := validateLabels(*input.Labels); err != nil {
@@ -88,6 +93,7 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	if err := validateName(input.Name); err != nil {
 		return Project{}, err
 	}
+	input.Icon = normalizeIcon(input.Icon, "project")
 	if err := validateCode(input.Code); err != nil {
 		return Project{}, err
 	}
@@ -126,7 +132,7 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 	if err := validateID(projectID, "project_id"); err != nil {
 		return Project{}, err
 	}
-	if input.Name == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
 		return Project{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -135,6 +141,10 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 			return Project{}, err
 		}
 		input.Name = &trimmed
+	}
+	if input.Icon != nil {
+		icon := normalizeIcon(*input.Icon, "project")
+		input.Icon = &icon
 	}
 	if input.Labels != nil {
 		if err := validateLabels(*input.Labels); err != nil {

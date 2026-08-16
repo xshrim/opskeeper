@@ -16,14 +16,14 @@ import (
 
 const platformSelect = `
 	SELECT p.id::text, p.scope_id::text, s.scope_type, s.parent_scope_id::text,
-	       s.status, p.name, p.code, p.created_at, p.updated_at
+	       s.status, p.name, p.code, p.icon, p.created_at, p.updated_at
 	  FROM platforms p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
 
 const teamSelect = `
 	SELECT t.id::text, t.platform_id::text, t.scope_id::text, s.scope_type,
-	       s.parent_scope_id::text, s.status, t.name, t.code, t.labels,
+	       s.parent_scope_id::text, s.status, t.name, t.code, t.icon, t.labels,
 	       t.created_at, t.updated_at
 	  FROM teams t
 	  JOIN scopes s ON s.id = t.scope_id
@@ -32,7 +32,7 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.labels, p.source, p.created_at, p.updated_at
+	       p.icon, p.labels, p.source, p.created_at, p.updated_at
 	  FROM projects p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -101,9 +101,9 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	var teamID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO teams (scope_id, platform_id, name, code, labels)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5)
-		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Code, labels).Scan(&teamID); err != nil {
+		INSERT INTO teams (scope_id, platform_id, name, code, icon, labels)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Code, input.Icon, labels).Scan(&teamID); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -174,6 +174,9 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	if input.Labels != nil {
 		current.Labels = *input.Labels
 	}
+	if input.Icon != nil {
+		current.Icon = *input.Icon
+	}
 	if input.Status != nil {
 		current.Status = *input.Status
 		current.Scope.Status = *input.Status
@@ -192,8 +195,8 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE teams
-		   SET name = $2, labels = $3, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, labels); err != nil {
+		   SET name = $2, icon = $3, labels = $4, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, current.Icon, labels); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -239,9 +242,9 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, labels, source)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
-		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, labels, input.Source).Scan(&projectID); err != nil {
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels, source)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
+		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Icon, labels, input.Source).Scan(&projectID); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -316,6 +319,9 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	if input.Labels != nil {
 		current.Labels = *input.Labels
 	}
+	if input.Icon != nil {
+		current.Icon = *input.Icon
+	}
 	if input.Status != nil {
 		current.Status = *input.Status
 		current.Scope.Status = *input.Status
@@ -334,8 +340,8 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE projects
-		   SET name = $2, labels = $3, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, labels); err != nil {
+		   SET name = $2, icon = $3, labels = $4, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, current.Icon, labels); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -378,6 +384,7 @@ func scanPlatform(row scanner) (Platform, error) {
 		&platform.Scope.Status,
 		&platform.Name,
 		&platform.Code,
+		&platform.Icon,
 		&platform.CreatedAt,
 		&platform.UpdatedAt,
 	); err != nil {
@@ -401,6 +408,7 @@ func scanTeam(row scanner) (Team, error) {
 		&team.Scope.Status,
 		&team.Name,
 		&team.Code,
+		&team.Icon,
 		&labels,
 		&team.CreatedAt,
 		&team.UpdatedAt,
@@ -429,6 +437,7 @@ func scanProject(row scanner) (Project, error) {
 		&project.Scope.Status,
 		&project.Name,
 		&project.Code,
+		&project.Icon,
 		&labels,
 		&project.Source,
 		&project.CreatedAt,

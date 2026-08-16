@@ -32,6 +32,7 @@ export interface Team {
   scope: Scope;
   name: string;
   code: string;
+  icon: string;
   labels: Record<string, string>;
   status: string;
   created_at: string;
@@ -45,6 +46,7 @@ export interface Project {
   scope: Scope;
   name: string;
   code: string;
+  icon: string;
   labels: Record<string, string>;
   source: string;
   status: string;
@@ -82,10 +84,29 @@ export interface ResourceSchema {
   schema: {
     properties?: Record<
       string,
-      { title?: string; type?: string; description?: string; enum?: string[] }
+      {
+        title?: string;
+        type?: string;
+        description?: string;
+        enum?: string[];
+        sensitive?: boolean;
+      }
     >;
   };
   status: string;
+  display_name: string;
+  description: string;
+  icon: string;
+}
+
+export interface Credential {
+  id: string;
+  scope_id: string;
+  name: string;
+  purpose: string;
+  key_version: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Relation {
@@ -230,6 +251,7 @@ export const api = {
   createTeam: (body: {
     name: string;
     code: string;
+    icon: string;
     labels: Record<string, string>;
   }) => request<Team>('api/v1/teams/', json(body)),
   updateTeam: (id: string, body: Record<string, unknown>) =>
@@ -244,6 +266,7 @@ export const api = {
     body: {
       name: string;
       code: string;
+      icon: string;
       labels: Record<string, string>;
       source?: string;
     }
@@ -256,6 +279,13 @@ export const api = {
     ),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),
   schemas: () => request<ResourceSchema[]>('api/v1/resources/schemas'),
+  credentials: () => request<Credential[]>('api/v1/credentials'),
+  createCredential: (body: {
+    scope_id: string;
+    name: string;
+    purpose: string;
+    secret: string;
+  }) => request<Credential>('api/v1/credentials', json(body)),
   createResource: (body: Record<string, unknown>) =>
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
