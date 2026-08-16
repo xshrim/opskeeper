@@ -28,6 +28,8 @@
     type InspectionRun,
     type InspectionFinding,
     type NotificationChannel,
+    type OperationRequest,
+    type MCPSnapshot,
     type SkillExecution,
     type SkillVersion,
     type TopologyNode,
@@ -40,6 +42,7 @@
     | 'discovery'
     | 'resources'
     | 'ai'
+    | 'operations'
     | 'diagnosis'
     | 'inspection'
     | 'access';
@@ -197,11 +200,20 @@
   let diagnosisFollowup = '';
   let selectedEvidence: DiagnosisEvidence | null = null;
   let diagnosisEvents: EventSource | null = null;
-	let inspectionLoaded = false;
-	let inspectionPolicies: InspectionPolicy[] = [];
-	let inspectionRuns: InspectionRun[] = [];
-	let inspectionFindings: InspectionFinding[] = [];
-	let notificationChannels: NotificationChannel[] = [];
+  let inspectionLoaded = false;
+  let inspectionPolicies: InspectionPolicy[] = [];
+  let inspectionRuns: InspectionRun[] = [];
+  let inspectionFindings: InspectionFinding[] = [];
+  let notificationChannels: NotificationChannel[] = [];
+  let operationsLoaded = false;
+  let operationRequests: OperationRequest[] = [];
+  let operationTargetId = '';
+  let operationName = 'kubernetes.restart_workload';
+  let operationRisk: 'low' | 'medium' | 'high' = 'medium';
+  let operationParameters = '{\n  "namespace": "default",\n  "workload": ""\n}';
+  let operationImpact = '';
+  let operationRollback = '';
+  let operationSnapshots: Record<string, MCPSnapshot[]> = {};
   let diagnosisEventCursor = 0;
   let accessLoaded = false;
   let discoveryLoaded = false;
@@ -381,18 +393,128 @@
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
     if (nextView === 'ai' && !aiLoaded) void loadAI();
     if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
-	if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
+    if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
+    if (nextView === 'operations' && !operationsLoaded) void loadOperations();
     if (nextView !== 'diagnosis') closeDiagnosisEvents();
   }
 
-	async function loadInspection() {
-		if (!selectedScopeId) return;
-		inspectionLoaded = true;
-		try { [inspectionPolicies, inspectionRuns, inspectionFindings, notificationChannels] = await Promise.all([api.inspectionPolicies(selectedScopeId), api.inspectionRuns(selectedScopeId), api.inspectionFindings(selectedScopeId), api.notificationChannels(selectedScopeId)]); }
-		catch (error) { errorMessage = describeError(error, '巡检数据加载失败'); }
-	}
-	async function rerunInspection(policyID: string) { busy=true; try { await api.startInspectionRun(policyID, selectedScopeId); notice='已创建手动巡检任务。'; await loadInspection(); } catch (error) { errorMessage=describeError(error,'创建巡检任务失败'); } finally { busy=false; } }
-	async function setInspectionPolicyStatus(policyID: string, status: string) { busy=true; try { await api.setInspectionPolicyStatus(policyID,selectedScopeId,status); notice=status==='disabled'?'已停止周期巡检。':'已恢复周期巡检。'; await loadInspection(); } catch (error) { errorMessage=describeError(error,'更新巡检策略失败'); } finally { busy=false; } }
+  async function loadInspection() {
+    if (!selectedScopeId) return;
+    inspectionLoaded = true;
+    try {
+      [
+        inspectionPolicies,
+        inspectionRuns,
+        inspectionFindings,
+        notificationChannels
+      ] = await Promise.all([
+        api.inspectionPolicies(selectedScopeId),
+        api.inspectionRuns(selectedScopeId),
+        api.inspectionFindings(selectedScopeId),
+        api.notificationChannels(selectedScopeId)
+      ]);
+    } catch (error) {
+      errorMessage = describeError(error, '巡检数据加载失败');
+    }
+  }
+  async function rerunInspection(policyID: string) {
+    busy = true;
+    try {
+      await api.startInspectionRun(policyID, selectedScopeId);
+      notice = '已创建手动巡检任务。';
+      await loadInspection();
+    } catch (error) {
+      errorMessage = describeError(error, '创建巡检任务失败');
+    } finally {
+      busy = false;
+    }
+  }
+  async function setInspectionPolicyStatus(policyID: string, status: string) {
+    busy = true;
+    try {
+      await api.setInspectionPolicyStatus(policyID, selectedScopeId, status);
+      notice = status === 'disabled' ? '已停止周期巡检。' : '已恢复周期巡检。';
+      await loadInspection();
+    } catch (error) {
+      errorMessage = describeError(error, '更新巡检策略失败');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function loadOperations() {
+    if (!selectedScopeId) return;
+    operationsLoaded = true;
+    try {
+      operationRequests = await api.operationRequests(selectedScopeId);
+      const mcpServers = resources.filter(
+        (item) => item.kind === 'MCPServer' && item.scope_id === selectedScopeId
+      );
+      operationSnapshots = Object.fromEntries(
+        await Promise.all(
+          mcpServers.map(async (server) => [
+            server.id,
+            await api.mcpSnapshots(server.id)
+          ])
+        )
+      );
+    } catch (error) {
+      errorMessage = describeError(error, '受控操作数据加载失败');
+    }
+  }
+  async function createOperationRequest() {
+    await action(async () => {
+      const created = await api.createOperationRequest({
+        scope_id: selectedScopeId,
+        target_resource_id: operationTargetId,
+        operation_name: operationName,
+        risk_level: operationRisk,
+        parameters: JSON.parse(operationParameters),
+        impact_summary: operationImpact,
+        rollback_summary: operationRollback,
+        dry_run: { requested: true },
+        idempotency_key: crypto.randomUUID()
+      });
+      operationRequests = [created, ...operationRequests];
+      notice = '已创建操作请求；中高风险操作等待另一位有权限的审批人处理。';
+    });
+  }
+  async function approveOperation(
+    item: OperationRequest,
+    decision: 'approved' | 'rejected'
+  ) {
+    await action(async () => {
+      const updated = await api.approveOperation(item.id, {
+        decision,
+        parameters_hash: item.parameters_hash
+      });
+      operationRequests = operationRequests.map((current) =>
+        current.id === updated.id ? updated : current
+      );
+      notice =
+        decision === 'approved' ? '操作请求已批准。' : '操作请求已拒绝。';
+    });
+  }
+  async function startOperation(item: OperationRequest) {
+    await action(async () => {
+      await api.startOperation(item.id, crypto.randomUUID());
+      operationRequests = await api.operationRequests(selectedScopeId);
+      notice = '执行已排队；实际变更只能由受限 Kubernetes Job 完成。';
+    });
+  }
+  async function discoverMCP(resourceId: string) {
+    await action(async () => {
+      const snapshot = await api.discoverMCP(resourceId);
+      operationSnapshots = {
+        ...operationSnapshots,
+        [resourceId]: [snapshot, ...(operationSnapshots[resourceId] ?? [])]
+      };
+      notice =
+        snapshot.status === 'succeeded'
+          ? '已发现并保存 MCP 工具快照。'
+          : 'MCP 健康检查失败，已保存受限错误信息。';
+    });
+  }
 
   async function loadDiagnosis() {
     diagnosisLoaded = true;
@@ -1416,7 +1538,18 @@
           on:click={() => chooseView('diagnosis')}
           ><span aria-hidden="true">⌁</span>AI 诊断</button
         >
-		<button class:active={view === 'inspection'} class="nav-item" on:click={() => chooseView('inspection')}><span aria-hidden="true">◴</span>自动巡检</button>
+        <button
+          class:active={view === 'inspection'}
+          class="nav-item"
+          on:click={() => chooseView('inspection')}
+          ><span aria-hidden="true">◴</span>自动巡检</button
+        >
+        <button
+          class:active={view === 'operations'}
+          class="nav-item"
+          on:click={() => chooseView('operations')}
+          ><span aria-hidden="true">✓</span>受控操作</button
+        >
         <button
           class:active={view === 'access'}
           class="nav-item"
@@ -1447,9 +1580,11 @@
                       ? 'AI Runtime'
                       : view === 'diagnosis'
                         ? 'AI Diagnosis'
-						: view === 'inspection'
-							? 'Inspection'
-                        : 'Access'}
+                        : view === 'inspection'
+                          ? 'Inspection'
+                          : view === 'operations'
+                            ? 'Controlled Operations'
+                            : 'Access'}
           </p>
           <h1>
             {view === 'overview'
@@ -1464,9 +1599,11 @@
                       ? '模型与 Skill'
                       : view === 'diagnosis'
                         ? 'AI 诊断工作台'
-						: view === 'inspection'
-							? '自动巡检与健康'
-                        : '成员与角色'}
+                        : view === 'inspection'
+                          ? '自动巡检与健康'
+                          : view === 'operations'
+                            ? '受控操作与 MCP'
+                            : '成员与角色'}
           </h1>
         </div>
         <div class="topbar-actions">
@@ -2296,13 +2433,273 @@
           </section>
         </section>
       {:else if view === 'inspection'}
-		<section class="content-grid">
-			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">POLICIES</p><h2>巡检策略</h2></div><span class="count">{inspectionPolicies.length}</span></div>
-				<div class="table-list">{#each inspectionPolicies as policy}<article class="list-row"><div><strong>{policy.name}</strong><p>{policy.cron} · {policy.timezone} · {policy.target_resource_ids.length} 个目标 · {policy.status}</p></div><div class="inline-actions"><button class="quiet-button" disabled={busy || policy.status !== 'active'} on:click={() => rerunInspection(policy.id)}>立即运行</button><button class="quiet-button" disabled={busy} on:click={() => setInspectionPolicyStatus(policy.id, policy.status === 'active' ? 'disabled' : 'active')}>{policy.status === 'active' ? '停止' : '恢复'}</button></div></article>{:else}<p class="empty-state">当前作用域还没有巡检策略。</p>{/each}</div></section>
-			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">HEALTH</p><h2>最近运行</h2></div><span class="count">{inspectionRuns.length}</span></div><div class="table-list">{#each inspectionRuns as run}<article class="list-row"><div><strong>{run.score ?? '—'} 分 · {run.status}</strong><p>{new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}</p></div></article>{:else}<p class="empty-state">尚无运行记录。</p>{/each}</div></section>
-			<section class="panel wide-panel"><div class="panel-heading"><div><p class="eyebrow">FINDINGS</p><h2>异常与恢复</h2></div><span class="count">{inspectionFindings.length}</span></div><div class="table-list">{#each inspectionFindings as finding}<article class="list-row"><div><strong>{finding.severity} · {finding.rule}</strong><p>{finding.message || '无补充说明'} · {finding.status}</p></div></article>{:else}<p class="empty-state">没有已记录的异常。</p>{/each}</div></section>
-			<section class="panel"><div class="panel-heading"><div><p class="eyebrow">WEBHOOKS</p><h2>通知渠道</h2></div><span class="count">{notificationChannels.length}</span></div><div class="table-list">{#each notificationChannels as channel}<article class="list-row"><div><strong>{channel.name}</strong><p>{channel.kind} · {channel.status} · 每分钟 {channel.rate_limit_per_minute} 次</p></div></article>{:else}<p class="empty-state">当前作用域没有启用的通知渠道。</p>{/each}</div></section>
-		</section>
+        <section class="content-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">POLICIES</p>
+                <h2>巡检策略</h2>
+              </div>
+              <span class="count">{inspectionPolicies.length}</span>
+            </div>
+            <div class="table-list">
+              {#each inspectionPolicies as policy}<article class="list-row">
+                  <div>
+                    <strong>{policy.name}</strong>
+                    <p>
+                      {policy.cron} · {policy.timezone} · {policy
+                        .target_resource_ids.length} 个目标 · {policy.status}
+                    </p>
+                  </div>
+                  <div class="inline-actions">
+                    <button
+                      class="quiet-button"
+                      disabled={busy || policy.status !== 'active'}
+                      on:click={() => rerunInspection(policy.id)}
+                      >立即运行</button
+                    ><button
+                      class="quiet-button"
+                      disabled={busy}
+                      on:click={() =>
+                        setInspectionPolicyStatus(
+                          policy.id,
+                          policy.status === 'active' ? 'disabled' : 'active'
+                        )}
+                      >{policy.status === 'active' ? '停止' : '恢复'}</button
+                    >
+                  </div>
+                </article>{:else}<p class="empty-state">
+                  当前作用域还没有巡检策略。
+                </p>{/each}
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">HEALTH</p>
+                <h2>最近运行</h2>
+              </div>
+              <span class="count">{inspectionRuns.length}</span>
+            </div>
+            <div class="table-list">
+              {#each inspectionRuns as run}<article class="list-row">
+                  <div>
+                    <strong>{run.score ?? '—'} 分 · {run.status}</strong>
+                    <p>
+                      {new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}
+                    </p>
+                  </div>
+                </article>{:else}<p class="empty-state">
+                  尚无运行记录。
+                </p>{/each}
+            </div>
+          </section>
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">FINDINGS</p>
+                <h2>异常与恢复</h2>
+              </div>
+              <span class="count">{inspectionFindings.length}</span>
+            </div>
+            <div class="table-list">
+              {#each inspectionFindings as finding}<article class="list-row">
+                  <div>
+                    <strong>{finding.severity} · {finding.rule}</strong>
+                    <p>{finding.message || '无补充说明'} · {finding.status}</p>
+                  </div>
+                </article>{:else}<p class="empty-state">
+                  没有已记录的异常。
+                </p>{/each}
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">WEBHOOKS</p>
+                <h2>通知渠道</h2>
+              </div>
+              <span class="count">{notificationChannels.length}</span>
+            </div>
+            <div class="table-list">
+              {#each notificationChannels as channel}<article class="list-row">
+                  <div>
+                    <strong>{channel.name}</strong>
+                    <p>
+                      {channel.kind} · {channel.status} · 每分钟 {channel.rate_limit_per_minute}
+                      次
+                    </p>
+                  </div>
+                </article>{:else}<p class="empty-state">
+                  当前作用域没有启用的通知渠道。
+                </p>{/each}
+            </div>
+          </section>
+        </section>
+      {:else if view === 'operations'}
+        <section class="content-grid two-column">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">APPROVAL WORKFLOW</p>
+                <h2>创建受控操作</h2>
+              </div>
+              <span class="scope-type">Medium+ 需人工审批</span>
+            </div>
+            <form
+              class="stack-form compact-form"
+              on:submit|preventDefault={createOperationRequest}
+            >
+              <label
+                >目标资源<select bind:value={operationTargetId} required
+                  ><option value="" disabled>选择可访问资源</option
+                  >{#each resources.filter((item) => item.scope_id === selectedScopeId && item.status === 'active') as item}<option
+                      value={item.id}
+                      >{item.name} · {resourceSchemaName(item.kind)}</option
+                    >{/each}</select
+                ></label
+              >
+              <div class="form-row">
+                <label
+                  >操作<select bind:value={operationName}
+                    ><option value="kubernetes.restart_workload"
+                      >重启 Kubernetes 工作负载</option
+                    ><option value="kubernetes.scale_workload"
+                      >扩缩容 Kubernetes 工作负载</option
+                    ></select
+                  ></label
+                ><label
+                  >风险<select bind:value={operationRisk}
+                    ><option value="low">Low</option><option value="medium"
+                      >Medium（默认审批）</option
+                    ><option value="high">High（默认审批）</option></select
+                  ></label
+                >
+              </div>
+              <label
+                >精确参数 JSON<textarea
+                  bind:value={operationParameters}
+                  rows="5"
+                  spellcheck="false"
+                  required
+                ></textarea></label
+              >
+              <label
+                >影响范围<input
+                  bind:value={operationImpact}
+                  placeholder="说明可能影响的应用、副本或访问窗口"
+                /></label
+              >
+              <label
+                >回滚建议<input
+                  bind:value={operationRollback}
+                  placeholder="例如恢复到原副本数"
+                /></label
+              >
+              <p class="form-hint">
+                提交会生成参数哈希；参数变更后原审批自动无效。删除和写 SQL
+                被系统永久拒绝。
+              </p>
+              <button class="primary" disabled={busy || !operationTargetId}
+                >创建 dry-run 请求</button
+              >
+            </form>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">MCP SERVERS</p>
+                <h2>MCP 工具快照</h2>
+              </div>
+              <span class="scope-type">外部内容不可信</span>
+            </div>
+            <div class="table-list">
+              {#each resources.filter((item) => item.kind === 'MCPServer' && item.scope_id === selectedScopeId) as server}<article
+                  class="list-row"
+                >
+                  <div>
+                    <strong>{server.name}</strong>
+                    <p>
+                      {(operationSnapshots[server.id] ?? [])[0]?.tools
+                        ?.length ?? 0} 个已发现且允许的工具；描述和响应一律按不可信文本处理。
+                    </p>
+                    {#if (operationSnapshots[server.id] ?? [])[0]}<small
+                        >快照 {(operationSnapshots[server.id] ??
+                          [])[0].content_hash.slice(0, 12)} · {(operationSnapshots[
+                          server.id
+                        ] ?? [])[0].status}</small
+                      >{/if}
+                  </div>
+                  <button
+                    class="quiet-button"
+                    disabled={busy}
+                    on:click={() => discoverMCP(server.id)}
+                    >发现 / 健康检查</button
+                  >
+                </article>{:else}<p class="empty-state">
+                  当前作用域没有 MCPServer 资源。先在资源目录以 HTTPS URL
+                  和工具白名单登记。
+                </p>{/each}
+            </div>
+          </section>
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">AUDITABLE REQUESTS</p>
+                <h2>操作请求与审批</h2>
+              </div>
+              <span class="count">{operationRequests.length}</span>
+            </div>
+            <div class="table-list">
+              {#each operationRequests as item}<article class="list-row">
+                  <div>
+                    <strong
+                      >{item.operation_name} · {item.risk_level} · {item.status}</strong
+                    >
+                    <p>
+                      目标 {resources.find(
+                        (resource) => resource.id === item.target_resource_id
+                      )?.name ?? item.target_resource_id.slice(0, 8)} · 参数哈希 {item.parameters_hash.slice(
+                        0,
+                        12
+                      )} · {item.expires_at
+                        ? `有效至 ${formatDate(item.expires_at)}`
+                        : '无需人工审批'}
+                    </p>
+                    <small
+                      >影响：{item.impact_summary ||
+                        '未填写'}；回滚：{item.rollback_summary ||
+                        '未填写'}</small
+                    >
+                    <pre class="config-preview">{JSON.stringify(
+                        item.parameters,
+                        null,
+                        2
+                      )}</pre>
+                  </div>
+                  <div class="inline-actions">
+                    {#if item.status === 'pending'}<button
+                        class="quiet-button"
+                        disabled={busy}
+                        on:click={() => approveOperation(item, 'approved')}
+                        >批准</button
+                      ><button
+                        class="quiet-button"
+                        disabled={busy}
+                        on:click={() => approveOperation(item, 'rejected')}
+                        >拒绝</button
+                      >{:else if item.status === 'approved'}<button
+                        class="primary"
+                        disabled={busy}
+                        on:click={() => startOperation(item)}>开始执行</button
+                      >{/if}
+                  </div>
+                </article>{:else}<p class="empty-state">
+                  尚无操作请求。所有请求、审批和执行结果都会进入审计记录。
+                </p>{/each}
+            </div>
+          </section>
+        </section>
       {:else if view === 'diagnosis'}
         <section class="content-grid diagnosis-workbench">
           <section class="panel diagnosis-start">

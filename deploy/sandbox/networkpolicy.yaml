@@ -1,0 +1,14 @@
+# Default deny: custom Skill Jobs have no network path unless the deployment
+# supplies a narrowly scoped, separately reviewed egress policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opskeeper-sandbox-default-deny-egress
+  namespace: opskeeper
+spec:
+  podSelector:
+    matchLabels:
+      opskeeper.io/sandbox: "true"
+  policyTypes:
+    - Egress
+  egress: []

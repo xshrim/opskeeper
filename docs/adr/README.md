@@ -17,6 +17,7 @@
 | [0009](0009-kubernetes-project-application-and-resource-rbac.md) | Kubernetes 映射到 Project/Application 并使用通用资源级授权 | 已接受 |
 | [0010](0010-connector-capability-and-runtime-boundary.md) | Connector 使用能力接口、资源配置和受控运行边界 | 已接受 |
 | [0011](0011-adk-and-mcp-runtime-dependencies.md) | Agent、Runner 与 MCP 使用指定官方运行时 | 已接受 |
+| [0012](0012-mcp-approval-and-sandbox-boundary.md) | MCP、操作审批与自定义代码隔离边界 | 已接受 |
 
 现行架构事实仍以 [`design/`](../design/) 为准。ADR 解释为什么形成当前决策，不替代操作指南、工程规范或实施计划。
 
