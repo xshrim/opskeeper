@@ -43,6 +43,14 @@ type RunInput struct {
 	MaxOutputBytes                     int
 	Timeout                            time.Duration
 	Stream                             bool
+	EvidenceObserver                   func(ObservedEvidence)
+}
+
+// ObservedEvidence is emitted only after a Connector has returned a typed,
+// read-only result through the same policy-checked Tool invocation.
+type ObservedEvidence struct {
+	ToolName, TargetResourceID string
+	Evidence                   connector.Evidence
 }
 
 type RunResult struct {
@@ -420,6 +428,9 @@ func (p *policy) execute(ctx context.Context, name, targetID string, args any, r
 	if runErr != nil {
 		_, _ = p.runner.Executions.FinishToolCall(context.Background(), call.ID, "failed", "", "connector", publicError(runErr))
 		return nil, runErr
+	}
+	if p.input.EvidenceObserver != nil {
+		p.input.EvidenceObserver(ObservedEvidence{ToolName: name, TargetResourceID: targetID, Evidence: evidence})
 	}
 	result, err := evidenceMap(evidence, nil)
 	preview, _ := json.Marshal(result)

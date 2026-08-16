@@ -208,6 +208,120 @@ export interface SkillRunResult {
   events: number;
 }
 
+export type DiagnosisStatus =
+  | 'queued'
+  | 'planning'
+  | 'collecting'
+  | 'analyzing'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+
+export interface DiagnosisSession {
+  id: string;
+  scope_id: string;
+  actor_user_id?: string;
+  status: DiagnosisStatus;
+  title: string;
+  error_code: string;
+  error_message: string;
+  started_at: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiagnosisTarget {
+  session_id: string;
+  resource_id: string;
+  created_at: string;
+}
+
+export interface DiagnosisMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at: string;
+}
+
+export interface DiagnosisPlanStep {
+  id: string;
+  plan_id: string;
+  sequence: number;
+  phase: 'plan' | 'collect' | 'verify' | 'summarize';
+  status: string;
+  title: string;
+  detail: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiagnosisPlan {
+  id: string;
+  session_id: string;
+  summary: string;
+  steps: DiagnosisPlanStep[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiagnosisEvidence {
+  id: string;
+  session_id: string;
+  target_resource_id?: string;
+  source_resource_id?: string;
+  capability: string;
+  collected_at: string;
+  window_start?: string;
+  window_end?: string;
+  content_hash: string;
+  summary: Record<string, unknown>;
+  content: unknown;
+  partial: boolean;
+  untrusted: boolean;
+  created_at: string;
+}
+
+export interface DiagnosisHypothesis {
+  id: string;
+  session_id: string;
+  statement: string;
+  status: string;
+  confidence: number;
+  evidence_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiagnosisReport {
+  id: string;
+  session_id: string;
+  status: string;
+  conclusion: string;
+  recommendations: string[];
+  evidence_ids: string[];
+  created_at: string;
+}
+
+export interface DiagnosisSnapshot {
+  session: DiagnosisSession;
+  targets: DiagnosisTarget[];
+  messages: DiagnosisMessage[];
+  plan?: DiagnosisPlan;
+  evidence: DiagnosisEvidence[];
+  hypotheses: DiagnosisHypothesis[];
+  report?: DiagnosisReport;
+}
+
+export interface DiagnosisEvent {
+  id: number;
+  session_id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface DiscoveryRun {
   id: string;
   cluster_resource_id: string;
@@ -475,6 +589,32 @@ export const api = {
     ),
   executeSkill: (body: Record<string, unknown>) =>
     request<SkillRunResult>('api/v1/skill-executions', json(body)),
+  diagnosisSessions: (scopeId: string) =>
+    request<DiagnosisSession[]>(
+      `api/v1/diagnosis-sessions?scope_id=${encodeURIComponent(scopeId)}&limit=50`
+    ),
+  diagnosisSession: (id: string) =>
+    request<DiagnosisSnapshot>(`api/v1/diagnosis-sessions/${id}/`),
+  startDiagnosis: (body: {
+    scope_id: string;
+    title?: string;
+    question: string;
+    target_resource_ids: string[];
+  }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
+  addDiagnosisTarget: (sessionId: string, resourceId: string) =>
+    request<DiagnosisTarget>(
+      `api/v1/diagnosis-sessions/${sessionId}/targets`,
+      json({ resource_id: resourceId })
+    ),
+  askDiagnosis: (sessionId: string, content: string) =>
+    request<DiagnosisMessage>(
+      `api/v1/diagnosis-sessions/${sessionId}/messages`,
+      json({ content })
+    ),
+  diagnosisEventsURL: (sessionId: string, after = 0) =>
+    appURL(
+      `api/v1/diagnosis-sessions/${sessionId}/events?after=${encodeURIComponent(String(after))}`
+    ),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

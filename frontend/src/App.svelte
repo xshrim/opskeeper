@@ -6,6 +6,9 @@
     ApiError,
     type ConnectionCheck,
     type ConnectorCapability,
+    type DiagnosisEvidence,
+    type DiagnosisSession,
+    type DiagnosisSnapshot,
     type DiscoveryItem,
     type DiscoveryProjectMapping,
     type DiscoveryRun,
@@ -28,7 +31,13 @@
   } from './lib/api';
 
   type View =
-    'overview' | 'organization' | 'discovery' | 'resources' | 'ai' | 'access';
+    | 'overview'
+    | 'organization'
+    | 'discovery'
+    | 'resources'
+    | 'ai'
+    | 'diagnosis'
+    | 'access';
   type ProjectMappingDraft = DiscoveryProjectMapping & {
     mode: 'existing' | 'create' | 'ignore';
   };
@@ -174,6 +183,16 @@
   let skillTargetResourceId = '';
   let skillOutput = '';
   let selectedSkillToolNames: string[] = [];
+  let diagnosisLoaded = false;
+  let diagnosisSessions: DiagnosisSession[] = [];
+  let selectedDiagnosisId = '';
+  let diagnosisSnapshot: DiagnosisSnapshot | null = null;
+  let diagnosisQuestion = '';
+  let diagnosisTargetIds: string[] = [];
+  let diagnosisFollowup = '';
+  let selectedEvidence: DiagnosisEvidence | null = null;
+  let diagnosisEvents: EventSource | null = null;
+  let diagnosisEventCursor = 0;
   let accessLoaded = false;
   let discoveryLoaded = false;
   let selectedClusterId = '';
@@ -255,6 +274,9 @@
   $: executableTargets = visibleResources.filter(
     (item) => item.kind !== 'LLMProvider' && item.kind !== 'Skill'
   );
+  $: diagnosisTargets = visibleResources.filter(
+    (item) => item.status === 'active'
+  );
 
   onMount(() => {
     void bootstrap();
@@ -271,6 +293,7 @@
     return () => {
       controller.abort();
       window.clearInterval(interval);
+      closeDiagnosisEvents();
     };
   });
 
@@ -347,6 +370,126 @@
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
     if (nextView === 'ai' && !aiLoaded) void loadAI();
+    if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
+    if (nextView !== 'diagnosis') closeDiagnosisEvents();
+  }
+
+  async function loadDiagnosis() {
+    diagnosisLoaded = true;
+    await loadDiagnosisSessions();
+  }
+
+  async function loadDiagnosisSessions() {
+    if (!selectedScopeId) return;
+    try {
+      diagnosisSessions = await api.diagnosisSessions(selectedScopeId);
+      if (!selectedDiagnosisId && diagnosisSessions[0]) {
+        await openDiagnosis(diagnosisSessions[0].id);
+      }
+    } catch (error) {
+      errorMessage = describeError(error, '诊断会话历史加载失败');
+    }
+  }
+
+  async function openDiagnosis(id: string) {
+    closeDiagnosisEvents();
+    selectedDiagnosisId = id;
+    selectedEvidence = null;
+    try {
+      diagnosisSnapshot = await api.diagnosisSession(id);
+      diagnosisEventCursor = 0;
+      openDiagnosisEvents(id);
+    } catch (error) {
+      errorMessage = describeError(error, '诊断详情加载失败');
+    }
+  }
+
+  function openDiagnosisEvents(id: string) {
+    closeDiagnosisEvents();
+    const stream = new EventSource(
+      api.diagnosisEventsURL(id, diagnosisEventCursor)
+    );
+    diagnosisEvents = stream;
+    stream.onmessage = () => void refreshDiagnosis(id);
+    for (const type of [
+      'session.created',
+      'phase.changed',
+      'plan.created',
+      'tool.completed',
+      'evidence.collected',
+      'report.ready',
+      'diagnosis.failed',
+      'message.created',
+      'target.added'
+    ]) {
+      stream.addEventListener(type, (event) => {
+        diagnosisEventCursor =
+          Number((event as MessageEvent).lastEventId) || diagnosisEventCursor;
+        void refreshDiagnosis(id);
+      });
+    }
+    stream.onerror = () => {
+      // Native EventSource reconnects with the last received event id.
+    };
+  }
+
+  function closeDiagnosisEvents() {
+    diagnosisEvents?.close();
+    diagnosisEvents = null;
+  }
+
+  async function refreshDiagnosis(id = selectedDiagnosisId) {
+    if (!id || id !== selectedDiagnosisId) return;
+    try {
+      diagnosisSnapshot = await api.diagnosisSession(id);
+      diagnosisSessions = diagnosisSessions.map((item) =>
+        item.id === diagnosisSnapshot?.session.id
+          ? diagnosisSnapshot.session
+          : item
+      );
+      if (
+        diagnosisSnapshot.session.status === 'succeeded' ||
+        diagnosisSnapshot.session.status === 'failed' ||
+        diagnosisSnapshot.session.status === 'cancelled'
+      ) {
+        closeDiagnosisEvents();
+      }
+    } catch (error) {
+      errorMessage = describeError(error, '诊断状态刷新失败');
+    }
+  }
+
+  function toggleDiagnosisTarget(resourceID: string) {
+    diagnosisTargetIds = diagnosisTargetIds.includes(resourceID)
+      ? diagnosisTargetIds.filter((id) => id !== resourceID)
+      : [...diagnosisTargetIds, resourceID];
+  }
+
+  async function startDiagnosis() {
+    if (!selectedScopeId || diagnosisTargetIds.length === 0) return;
+    await action(async () => {
+      const session = await api.startDiagnosis({
+        scope_id: selectedScopeId,
+        question: diagnosisQuestion,
+        target_resource_ids: diagnosisTargetIds
+      });
+      diagnosisSessions = [session, ...diagnosisSessions];
+      diagnosisQuestion = '';
+      diagnosisTargetIds = [];
+      notice = '诊断会话已创建，正在建立受控证据链。';
+      await openDiagnosis(session.id);
+    });
+  }
+
+  async function sendDiagnosisFollowup() {
+    if (!selectedDiagnosisId || !diagnosisFollowup.trim()) return;
+    await action(async () => {
+      await api.askDiagnosis(selectedDiagnosisId, diagnosisFollowup);
+      diagnosisFollowup = '';
+      notice = '追问已提交，正在重新诊断。';
+      await refreshDiagnosis();
+      openDiagnosisEvents(selectedDiagnosisId);
+    });
   }
 
   async function loadAI() {
@@ -1154,6 +1297,10 @@
     const schema = schemas.find((item) => item.kind === kind);
     return schema ? schemaName(schema) : kind;
   }
+
+  function resourceIcon(kind: string) {
+    return iconGlyph(schemas.find((item) => item.kind === kind)?.icon);
+  }
 </script>
 
 <svelte:head>
@@ -1244,6 +1391,12 @@
           ><span aria-hidden="true">✦</span>模型与 Skill</button
         >
         <button
+          class:active={view === 'diagnosis'}
+          class="nav-item"
+          on:click={() => chooseView('diagnosis')}
+          ><span aria-hidden="true">⌁</span>AI 诊断</button
+        >
+        <button
           class:active={view === 'access'}
           class="nav-item"
           on:click={() => chooseView('access')}
@@ -1271,7 +1424,9 @@
                     ? 'Kubernetes Import'
                     : view === 'ai'
                       ? 'AI Runtime'
-                      : 'Access'}
+                      : view === 'diagnosis'
+                        ? 'AI Diagnosis'
+                        : 'Access'}
           </p>
           <h1>
             {view === 'overview'
@@ -1284,7 +1439,9 @@
                     ? '集群项目与应用导入'
                     : view === 'ai'
                       ? '模型与 Skill'
-                      : '成员与角色'}
+                      : view === 'diagnosis'
+                        ? 'AI 诊断工作台'
+                        : '成员与角色'}
           </h1>
         </div>
         <div class="topbar-actions">
@@ -1307,6 +1464,11 @@
             bind:value={selectedScopeId}
             on:change={() => {
               selectedResourceId = '';
+              if (view === 'diagnosis') {
+                selectedDiagnosisId = '';
+                diagnosisSnapshot = null;
+                void loadDiagnosisSessions();
+              }
             }}
             ><option value="" disabled>选择作用域</option
             >{#each scopeChoices as scope}<option value={scope.id}
@@ -2107,6 +2269,262 @@
                 </div>
               </section>{/if}
           </section>
+        </section>
+      {:else if view === 'diagnosis'}
+        <section class="content-grid diagnosis-workbench">
+          <section class="panel diagnosis-start">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">READ-ONLY INVESTIGATION</p>
+                <h2>开始诊断</h2>
+              </div>
+              <span class="scope-type">{activeScope?.name ?? 'Scope'}</span>
+            </div>
+            <form class="stack-form" on:submit|preventDefault={startDiagnosis}>
+              <label
+                >诊断问题<textarea
+                  bind:value={diagnosisQuestion}
+                  rows="4"
+                  required
+                  placeholder="例如：为什么该应用在最近一小时的错误率升高？"
+                ></textarea></label
+              >
+              <fieldset class="diagnosis-target-picker">
+                <legend>目标资源（最多 20 个）</legend>
+                <p>
+                  只会调用已发布 Skill 中声明的只读 Connector
+                  工具；外部返回内容均按不可信证据处理。
+                </p>
+                <div class="diagnosis-target-list">
+                  {#each diagnosisTargets as resource}
+                    <label
+                      class:selected={diagnosisTargetIds.includes(resource.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={diagnosisTargetIds.includes(resource.id)}
+                        on:change={() => toggleDiagnosisTarget(resource.id)}
+                      />
+                      <span class="resource-kind-icon"
+                        >{resourceIcon(resource.kind)}</span
+                      >
+                      <span
+                        ><strong>{resource.name}</strong><small
+                          >{resourceSchemaName(resource.kind)} · {scopeName(
+                            resource.scope_id
+                          )}</small
+                        ></span
+                      >
+                    </label>
+                  {:else}
+                    <div class="empty-state">
+                      当前作用域没有可用于诊断的活动资源。
+                    </div>
+                  {/each}
+                </div>
+              </fieldset>
+              <button
+                class="primary"
+                disabled={busy || diagnosisTargetIds.length === 0}
+                >建立诊断证据链</button
+              >
+            </form>
+          </section>
+
+          <section class="panel diagnosis-history">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">SESSION HISTORY</p>
+                <h2>会话历史</h2>
+              </div>
+              <span class="count">{diagnosisSessions.length}</span>
+            </div>
+            <div class="table-list diagnosis-session-list">
+              {#each diagnosisSessions as session}
+                <button
+                  class:active={selectedDiagnosisId === session.id}
+                  class="list-row diagnosis-session-row"
+                  on:click={() => void openDiagnosis(session.id)}
+                >
+                  <span
+                    ><strong>{session.title || '未命名诊断'}</strong><small
+                      >{formatDate(session.created_at)}</small
+                    ></span
+                  >
+                  <span class="status-label {session.status}"
+                    >{session.status}</span
+                  >
+                </button>
+              {:else}<div class="empty-state">还没有诊断会话。</div>{/each}
+            </div>
+          </section>
+
+          {#if diagnosisSnapshot}
+            <section class="panel wide-panel diagnosis-timeline">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">PLAN · EXECUTE · VERIFY · SUMMARIZE</p>
+                  <h2>{diagnosisSnapshot.session.title}</h2>
+                </div>
+                <span class="status-label {diagnosisSnapshot.session.status}"
+                  >{diagnosisSnapshot.session.status}</span
+                >
+              </div>
+              {#if diagnosisSnapshot.plan}
+                <p class="plan-summary">{diagnosisSnapshot.plan.summary}</p>
+                <ol class="plan-steps">
+                  {#each diagnosisSnapshot.plan.steps as step}
+                    <li class={step.status}>
+                      <span>{step.sequence}</span>
+                      <div>
+                        <strong>{step.title}</strong><small>{step.detail}</small
+                        >
+                      </div>
+                      <em>{step.phase} · {step.status}</em>
+                    </li>
+                  {/each}
+                </ol>
+              {:else}<div class="empty-state">
+                  诊断正在排定受控执行计划…
+                </div>{/if}
+            </section>
+
+            <section class="panel diagnosis-conversation">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">CONVERSATION</p>
+                  <h2>诊断对话</h2>
+                </div>
+              </div>
+              <div class="diagnosis-messages">
+                {#each diagnosisSnapshot.messages as message}
+                  <article class="diagnosis-message {message.role}">
+                    <span>{message.role === 'assistant' ? 'AI' : '你'}</span>
+                    <div>
+                      <p>{message.content}</p>
+                      <small>{formatDate(message.created_at)}</small>
+                    </div>
+                  </article>
+                {/each}
+              </div>
+              <form
+                class="followup-form"
+                on:submit|preventDefault={sendDiagnosisFollowup}
+              >
+                <input
+                  bind:value={diagnosisFollowup}
+                  placeholder="补充问题或继续追问…"
+                  maxlength="16000"
+                />
+                <button
+                  class="primary"
+                  disabled={busy || !diagnosisFollowup.trim()}>发送</button
+                >
+              </form>
+            </section>
+
+            <section class="panel diagnosis-evidence">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">EVIDENCE DRAWER</p>
+                  <h2>证据</h2>
+                </div>
+                <span class="count">{diagnosisSnapshot.evidence.length}</span>
+              </div>
+              <div class="evidence-list">
+                {#each diagnosisSnapshot.evidence as evidence}
+                  <button
+                    class:active={selectedEvidence?.id === evidence.id}
+                    class="evidence-row"
+                    on:click={() => (selectedEvidence = evidence)}
+                  >
+                    <span class="evidence-id">#{evidence.id.slice(0, 8)}</span
+                    ><span
+                      ><strong
+                        >{evidence.capability || 'connector result'}</strong
+                      ><small
+                        >{formatDate(evidence.collected_at)} · {evidence.partial
+                          ? '部分结果'
+                          : '完整结果'} · 不可信输入</small
+                      ></span
+                    >
+                  </button>
+                {:else}<div class="empty-state">
+                    执行完成后，Connector 返回的只读结果会作为 Evidence
+                    保存到这里。
+                  </div>{/each}
+              </div>
+              {#if selectedEvidence}
+                <div class="evidence-detail">
+                  <div class="detail-meta">
+                    <span
+                      >Hash <code>{selectedEvidence.content_hash}</code></span
+                    ><span
+                      >来源 {selectedEvidence.source_resource_id || '—'}</span
+                    >
+                  </div>
+                  <pre class="config-preview">{JSON.stringify(
+                      selectedEvidence.content,
+                      null,
+                      2
+                    )}</pre>
+                </div>
+              {/if}
+            </section>
+
+            <section class="panel wide-panel diagnosis-report">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">TRACEABLE REPORT</p>
+                  <h2>诊断报告</h2>
+                </div>
+                {#if diagnosisSnapshot.report}<span
+                    class="status-label {diagnosisSnapshot.report.status}"
+                    >{diagnosisSnapshot.report.status}</span
+                  >{/if}
+              </div>
+              {#if diagnosisSnapshot.report}
+                <p class="report-conclusion">
+                  {diagnosisSnapshot.report.conclusion}
+                </p>
+                <div class="evidence-references">
+                  <strong>Evidence 引用：</strong
+                  >{#each diagnosisSnapshot.report.evidence_ids as evidenceID}<button
+                      class="text-button"
+                      on:click={() =>
+                        (selectedEvidence =
+                          diagnosisSnapshot?.evidence.find(
+                            (item) => item.id === evidenceID
+                          ) ?? null)}>#{evidenceID.slice(0, 8)}</button
+                    >{:else}<span>无。报告中的内容仅为待验证假设。</span>{/each}
+                </div>
+                {#if diagnosisSnapshot.hypotheses.length}<div
+                    class="hypothesis-list"
+                  >
+                    {#each diagnosisSnapshot.hypotheses as hypothesis}<div>
+                        <span class="status-label {hypothesis.status}"
+                          >{hypothesis.status}</span
+                        >
+                        <p>{hypothesis.statement}</p>
+                      </div>{/each}
+                  </div>{/if}
+              {:else if diagnosisSnapshot.session.status === 'failed'}<div
+                  class="alert error"
+                >
+                  {diagnosisSnapshot.session.error_message || '诊断执行失败。'}
+                </div>{:else}<div class="empty-state">
+                  正在归纳结果；没有 Evidence 引用时不会生成确定性结论。
+                </div>{/if}
+            </section>
+          {:else}
+            <section class="panel wide-panel empty-detail">
+              <div class="empty-state">
+                <span class="empty-icon">⌁</span>
+                <h2>选择或创建诊断会话</h2>
+                <p>会话将固定目标资源和作用域，并通过流式事件展示执行进度。</p>
+              </div>
+            </section>
+          {/if}
         </section>
       {:else if view === 'ai'}
         <section class="content-grid two-column ai-runtime">

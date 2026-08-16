@@ -93,4 +93,21 @@ describe('request', () => {
     );
     document.querySelector('base')?.remove();
   });
+
+  it('uses scoped diagnosis endpoints and preserves the application base path', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(
+        async () => new Response(JSON.stringify([]), { status: 200 })
+      );
+
+    await api.diagnosisSessions('scope one');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/diagnosis-sessions?scope_id=scope%20one&limit=50'
+    );
+    expect(String(api.diagnosisEventsURL('session-1', 42))).toBe(
+      'http://localhost:5173/opskeeper/api/v1/diagnosis-sessions/session-1/events?after=42'
+    );
+    document.querySelector('base')?.remove();
+  });
 });

@@ -69,8 +69,8 @@ opskeeper/
 | T08 | Kubernetes 发现与导入 | 集群接入、预览、项目映射和同步 | 已完成 |
 | T09 | Connector 与监控平台 | 统一查询接口、Prometheus、Loki | 已完成 |
 | T10 | LLM、Skill 与 Runner | Provider、Skill 版本和受控执行 | 已完成 |
-| T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 待批准 |
-| T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 待批准 |
+| T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 已完成 |
+| T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 实施中 |
 | T13 | 自动巡检与通知 | 调度、执行、评分、异常和 Webhook | 待批准 |
 | T14 | MCP、沙箱与操作审批 | MCP、自定义 Skill 和风险审批 | 待批准 |
 | T15 | 生产化与端到端验收 | 安全、审计、可观测、部署和验收 | 待批准 |
@@ -476,7 +476,9 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 ## T11 AI 诊断编排、证据链与对话工作台
 
-**状态：待批准，依赖 T10**
+**状态：已完成，依赖 T10（已完成）**
+
+验收记录：[T11 AI 诊断编排、证据链与对话工作台验收记录](../acceptance/t11.md)
 
 ### 目标
 
@@ -516,7 +518,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 ## T12 Kubernetes 与中间件内置 Skill
 
-**状态：待批准，依赖 T11**
+**状态：实施中，依赖 T11（已完成）**
 
 ### 目标
 
