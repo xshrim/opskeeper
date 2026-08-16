@@ -72,6 +72,8 @@ flowchart LR
 | 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T09 | REST API、健康检查、迁移和模块化业务能力 |
 | 查询生成 | `sqlc` | 候选，按真实复杂度引入 | 不作为所有 Store 的强制前置条件 |
 | Kubernetes 客户端 | `client-go` | 已实现，T08 | 集群发现、Project/Application 导入 |
+| Agent 与 Runner | Google ADK Go 最新稳定 v2 | 目标，T10-T13 | Agent、Skill Tool 调用和 Runner 执行内核；外层保留 OpsKeeper 权限、预算和审计 |
+| MCP | Model Context Protocol 官方 Go SDK | 目标，T14 | MCP 连接、能力发现和 Tool 调用，不自行实现协议栈 |
 | 数据库 | PostgreSQL 16 | 已实现，T01-T09 | 当前保存组织、身份、授权、审计、资源、凭据、关系、发现和连接检查数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
 | 实时交互 | SSE | 目标，T11 | 推送诊断过程、工具调用和巡检进度 |
@@ -94,8 +96,8 @@ flowchart LR
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 LLM Provider 在 T10-T12 扩展 |
-| Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10 |
-| AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11 |
+| Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10；执行使用 ADK v2 Tool 与 Runner |
+| AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11；Agent 内核使用 ADK v2 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
 | Inspection | 巡检策略、调度、执行、评分和异常项 | 目标，T13 |
 | Notification | Webhook、邮件及其他通知渠道 | 目标，T13 |
