@@ -116,6 +116,16 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() connector runtime migration error = %v", err)
+	}
+	var connectionChecksTable *string
+	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.resource_connection_checks')::text").Scan(&connectionChecksTable); err != nil {
+		t.Fatalf("check resource connection checks table: %v", err)
+	}
+	if connectionChecksTable != nil {
+		t.Fatalf("resource connection checks table still exists after connector rollback: %s", *connectionChecksTable)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() Kubernetes discovery migration error = %v", err)
 	}
 	var discoveryTable *string

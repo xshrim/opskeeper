@@ -77,8 +77,8 @@ backend-test:
 backend-embedded-test: webui-assets
 	cd backend && go test -tags=embed_webui ./webui ./httpapi
 
-backend-integration-test: ## Run PostgreSQL migration, organization, identity, authorization, and resource integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource
+backend-integration-test: ## Run PostgreSQL-backed integration tests.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector
 
 frontend-test:
 	cd frontend && npm run test

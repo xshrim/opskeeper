@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权。
+T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已实现 Kubernetes、Prometheus、Loki Connector 和连接检查，当前待验收。
 
 ## 1. 设计原则
 
@@ -90,8 +90,12 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 | LLMProvider | URL、Model | Token |
 | Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
 | Artifact | URL、Provider、Namespace | Username、Password、Token |
+| Prometheus | URL | Username、Password、Token |
+| Loki | URL、Tenant ID | Username、Password、Token |
 
 登录用户的 `credentials` 表与外部资源凭据严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段写入加密凭据并保存 `credential_id`；用户不需要手写配置 JSON。
+
+Connector 不是新的资源类型。它根据资源 `kind + schema_version` 解析适配器，读取资源配置和关联的加密凭据，并声明该资源支持的查询能力。连接测试结果独立保存在 `resource_connection_checks`，资源本身仍是配置和授权的权威对象。
 
 ## 4. 可见性与引用规则
 

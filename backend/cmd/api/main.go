@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
+	"opskeeper/backend/connector"
 	"opskeeper/backend/credential"
 	"opskeeper/backend/discovery"
 	"opskeeper/backend/health"
@@ -96,6 +98,15 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
 	resourceService := resource.NewService(resource.NewStore(pool))
 	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, resourceService, organizationService, credentialService, discovery.NewKubernetesScanner())
+	connectorLimits := connector.DefaultLimits()
+	connectorLimits.Timeout = cfg.ConnectorTimeout
+	connectorLimits.MaxConcurrent = cfg.ConnectorMaxConcurrency
+	connectorLimits.MaxResponseBytes = cfg.ConnectorMaxResponseBytes
+	connectorRegistry, err := connector.DefaultRegistry(connectorLimits)
+	if err != nil {
+		return fmt.Errorf("build connector registry: %w", err)
+	}
+	connectorService := connector.NewService(connectorRegistry, resourceService, credentialService, connector.NewStore(pool), connectorLimits)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -111,6 +122,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Resources:      resourceService,
 			Credentials:    credentialService,
 			Discovery:      discoveryService,
+			Connectors:     connectorService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

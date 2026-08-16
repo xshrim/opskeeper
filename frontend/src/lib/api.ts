@@ -91,6 +91,7 @@ export interface ResourceSchema {
       {
         title?: string;
         type?: string;
+        format?: string;
         description?: string;
         enum?: string[];
         sensitive?: boolean;
@@ -101,6 +102,25 @@ export interface ResourceSchema {
   display_name: string;
   description: string;
   icon: string;
+}
+
+export type ConnectorCapability =
+  | 'kubernetes_read'
+  | 'query_metrics'
+  | 'query_logs'
+  | 'query_traces'
+  | 'get_alerts';
+
+export interface ConnectionCheck {
+  id: string;
+  resource_id: string;
+  status: 'succeeded' | 'failed';
+  error_category?: string;
+  message: string;
+  latency_ms: number;
+  capabilities: ConnectorCapability[];
+  checked_by?: string;
+  checked_at: string;
 }
 
 export interface Credential {
@@ -361,6 +381,12 @@ export const api = {
     request<Resource>(`api/v1/resources/${id}/`, patch(body)),
   deleteResource: (id: string) =>
     request<void>(`api/v1/resources/${id}/`, { method: 'DELETE' }),
+  testResourceConnection: (id: string) =>
+    request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests`, {
+      method: 'POST'
+    }),
+  latestResourceConnectionCheck: (id: string) =>
+    request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

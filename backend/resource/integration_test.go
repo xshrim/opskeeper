@@ -46,7 +46,7 @@ func TestResourceScopeRelationsDefaultsAndCredentialBoundary(t *testing.T) {
 	}
 
 	service := resource.NewService(resource.NewStore(pool))
-	platformResource, err := service.Create(ctx, resource.CreateInput{ScopeID: platform.Scope.ID, Kind: "Prometheus", Name: "main", Config: map[string]any{"endpoint": "https://prometheus.example"}})
+	platformResource, err := service.Create(ctx, resource.CreateInput{ScopeID: platform.Scope.ID, Kind: "Prometheus", Name: "main", Config: map[string]any{"url": "https://prometheus.example"}})
 	if err != nil {
 		t.Fatalf("Create(platform resource) error = %v", err)
 	}
