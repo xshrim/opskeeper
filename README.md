@@ -70,6 +70,8 @@ make run-front-api
 - [T02 Scope 与组织模型验收记录](docs/acceptance/t02.md)
 - [T03 本地身份与会话验收记录](docs/acceptance/t03.md)
 - [T04 三级 RBAC 与数据隔离验收记录](docs/acceptance/t04.md)
+- [T05 身份权限管理与安全审计验收记录](docs/acceptance/t05.md)
+- [T06 统一资源目录、凭据和关系模型验收记录](docs/acceptance/t06.md)
 
 ## 架构决策与运行手册
 

@@ -4,7 +4,7 @@
 
 本文同时维护已经验收的架构事实和已经确定的目标边界，但二者必须明确区分：
 
-- **当前实现**：截至 T02 验收后，仓库中已经存在并通过验收的能力。
+- **当前实现**：截至最近一次已完成任务，仓库中已经存在并通过验收的能力。
 - **目标设计**：尚未实现的设计约束，必须标注对应任务编号；任务获批前不代表已经交付。
 - 任务状态、实施细节和验收边界以[分阶段实施任务书](../planning/implementation-tasks.md)为准。
 
@@ -91,7 +91,7 @@ flowchart LR
 | Organization | 平台、团队、项目及 Scope 关系 | 已实现，T02 |
 | Identity | 用户、凭据、登录、会话和身份同步 | 已实现基础登录与会话，T05 负责用户组和同步 |
 | Authorization | 三级 RBAC、权限继承和数据范围校验 | T04 正在实施内置角色和数据范围过滤；管理与审计为 T05 |
-| Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 目标，T06 |
+| Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 实施中，T06 |
 | Discovery | Kubernetes 发现、差异预览、导入和周期同步 | 目标，T08 |
 | Connector | Kubernetes、中间件、监控平台和 LLM Provider 适配 | 目标，T09-T10 |
 | Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10 |
@@ -138,7 +138,7 @@ flowchart LR
 | `/opskeeper/api/v1/teams`、`/opskeeper/api/v1/teams/{teamId}/projects` | 已实现，T02 |
 | `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 已实现，T03 |
 | `/opskeeper/api/v1/users`、`/opskeeper/api/v1/groups`、`/opskeeper/api/v1/roles`、`/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 已实现基础管理能力，T05 |
-| `/opskeeper/api/v1/platform/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations` | 目标，T06 |
+| `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 实施中，T06 |
 | `/opskeeper/api/v1/kubernetes-clusters/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 目标，T08 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |

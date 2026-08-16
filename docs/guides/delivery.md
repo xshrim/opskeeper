@@ -59,6 +59,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | `OPSK_BASE_PATH` | 运行 | 设置 API 的 HTTP 路径前缀，默认 `/opskeeper`，根路径使用 `/` |
 | `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `text` 或 `json`，默认 `text` |
 | `OPSK_TRUSTED_PROXIES` | API 运行 | 允许提供客户端转发头的直接代理 IP/CIDR；默认空，不信任任何代理头 |
+| `OPSK_CREDENTIAL_KEY` | API/Worker 运行 | 资源凭据密文加密密钥；生产环境必须设置为 32 字节原值或 Base64 编码值 |
 
 镜像内文件名和四个应用的服务名称固定为：
 

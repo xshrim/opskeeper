@@ -116,6 +116,7 @@ make run-scheduler
 | `OPSK_SESSION_REFRESH_TTL` | `168h` | 刷新会话有效期，必须长于访问会话 |
 | `OPSK_HTTP_ADDRESS` | `:8080` | API 监听地址 |
 | `OPSK_TRUSTED_PROXIES` | 空 | 允许提供客户端转发头的反向代理 IP 或 CIDR，逗号分隔 |
+| `OPSK_CREDENTIAL_KEY` | 开发环境使用内置本地密钥；生产环境必须设置 | 资源凭据密文加密密钥，支持 32 字节原值或 Base64 编码值 |
 | `OPSK_DATABASE_URL` | 本地 `opskeeper` 连接串 | 业务数据库连接 |
 | `OPSK_REDIS_URL` | `redis://localhost:6379/0` | Redis 连接 |
 | `OPSK_SHUTDOWN_TIMEOUT` | `10s` | 优雅退出期限 |

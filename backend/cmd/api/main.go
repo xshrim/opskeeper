@@ -14,11 +14,13 @@ import (
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
+	"opskeeper/backend/credential"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
 	"opskeeper/backend/identity"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/organization"
+	"opskeeper/backend/resource"
 	"opskeeper/backend/version"
 	"opskeeper/backend/webui"
 )
@@ -86,6 +88,12 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	authorizationService := authorization.NewService(authorizationStore)
 	managementStore := authorization.NewManagementStore(pool)
 	managementService := authorization.NewManagementService(managementStore, authorizationService, auditService)
+	credentialEncryptor, err := credential.FromEnvironment(cfg.Environment)
+	if err != nil {
+		return errors.Join(errors.New("configure credential encryption"), err)
+	}
+	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
+	resourceService := resource.NewService(resource.NewStore(pool))
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -98,6 +106,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Access:         managementService,
 			Auditor:        auditService,
 			AuditLog:       auditService,
+			Resources:      resourceService,
+			Credentials:    credentialService,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

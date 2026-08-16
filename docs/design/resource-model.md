@@ -1,5 +1,9 @@
 # 组织、资源与拓扑模型
 
+## 文档状态
+
+T06 正在实施资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询。具体连接器、Kubernetes 自动发现和资源管理前端不属于 T06。
+
 ## 1. 设计原则
 
 资源的类型和作用域是两个独立维度。例如：
@@ -49,6 +53,7 @@ resources {
   external_uid,
   source_resource_id,
   labels,
+  schema_version,
   config,
   status,
   credential_id,
@@ -67,7 +72,7 @@ resources {
 | 可观测平台 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、GenericAPI |
 | 运维支撑 | Credential、NotificationChannel、Runbook、ArtifactStore |
 
-`config` 使用 JSONB 保存类型特有字段，并由每种资源的版本化 JSON Schema 校验。Credential 资源只保存名称、作用域和用途等元数据，密文载荷单独存入 `credentials`，普通资源配置仅保存凭据引用。
+`config` 使用 JSONB 保存类型特有字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。Credential 资源只保存名称、作用域和用途等元数据，密文载荷单独存入 `resource_credentials`，普通资源配置仅保存凭据引用。登录用户的 `credentials` 表与外部资源凭据严格分开。
 
 ## 4. 可见性与引用规则
 
@@ -151,7 +156,7 @@ scopes
 resources
 resource_relations
 resource_schemas
-credentials
+resource_credentials
 resource_sync_states
 discovery_runs
 discovery_items

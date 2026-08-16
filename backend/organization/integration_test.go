@@ -116,6 +116,16 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+		t.Fatalf("RollbackLast() resource catalog migration error = %v", err)
+	}
+	var resourceTable *string
+	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.resources')::text").Scan(&resourceTable); err != nil {
+		t.Fatalf("check resources table: %v", err)
+	}
+	if resourceTable != nil {
+		t.Fatalf("resources table still exists after resource catalog rollback: %s", *resourceTable)
+	}
+	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() access and audit migration error = %v", err)
 	}
 	var groupsTable *string

@@ -13,6 +13,7 @@
 | [0005](0005-identity-session-baseline.md) | 本地身份使用 Argon2id 和不透明双 Token 会话 | 已接受 |
 | [0006](0006-rbac-scope-filtering-baseline.md) | T04 采用内置角色、向下继承和服务端 Scope 过滤 | 已接受 |
 | [0007](0007-access-management-audit-baseline.md) | T05 使用 Scope 组、权限子集授权、revision 缓存和追加式审计 | 已接受 |
+| [0008](0008-resource-catalog-and-relation-boundaries.md) | T06 使用统一资源目录、Scope 关系约束和密文凭据边界 | 已接受 |
 
 现行架构事实仍以 [`design/`](../design/) 为准。ADR 解释为什么形成当前决策，不替代操作指南、工程规范或实施计划。
 

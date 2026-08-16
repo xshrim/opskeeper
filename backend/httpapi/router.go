@@ -24,6 +24,8 @@ type Options struct {
 	Access         accessManagementService
 	Auditor        audit.Logger
 	AuditLog       auditQueryService
+	Resources      resourceService
+	Credentials    credentialService
 	CookieSecure   bool
 }
 
@@ -71,6 +73,14 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 			if options.Identity != nil && options.Authorization != nil && options.AuditLog != nil {
 				auditRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
+			}
+			if options.Identity != nil && (options.Resources != nil || options.Credentials != nil) {
+				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
+				if options.Authorization != nil {
+					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
+				}
+				registerResourceRoutes(resourceRouter, options.Resources, options.Credentials, options.Auditor, requirePermission)
 			}
 		})
 	}
