@@ -150,7 +150,7 @@ Skill 声明所需能力和风险级别：
 | Medium | 重启 Pod、调整副本 | 必须人工审批 |
 | High | 删除资源、执行写 SQL | 默认禁止，需特权审批策略 |
 
-LLM 本身无权直接访问基础设施。所有调用都必须通过 Skill Runner 和 Policy Enforcement Point，模型提出的操作参数需要结构化校验。
+LLM 本身无权直接访问基础设施。Agent、Skill Tool 调用和 Runner 执行内核统一使用 ADK Go v2；所有调用仍必须经过 OpsKeeper Policy Enforcement Point，模型提出的操作参数需要结构化校验。ADK 负责通用编排，不替代 Scope、资源权限、预算、审批和审计。
 
 ## 9. 审计要求
 

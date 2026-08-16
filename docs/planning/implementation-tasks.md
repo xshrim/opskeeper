@@ -444,15 +444,16 @@ Tempo/Jaeger/Elastic 实现、AI 诊断编排和自动巡检。
 
 ### 实施细节
 
-1. 注册 LLMProvider、Model、Skill 和 MCPServer 资源 Schema。
-2. 建立 LLM Provider 接口，首版实现 OpenAI-compatible Chat/Tool Calling 适配器。
-3. 实现模型能力、上下文窗口、Token 价格、超时和 Scope 默认模型配置。
-4. 创建 Skill 和 SkillVersion 表，保存 Manifest、输入/输出 Schema、工具、风险等级和状态。
-5. 实现 Skill 发布、停用、版本固定、适用资源检查和配置校验。
-6. 实现 Runner：参数校验、目标授权、工具白名单、超时、取消、输出限制和执行记录。
-7. LLM 不能直接访问 Connector，所有外部访问必须通过 Runner 暴露的结构化 Tool。
-8. 增加模型连接测试、Token 用量统计和输入输出脱敏。
-9. 使用模拟 LLM 和 Connector 验证 Tool Calling、错误恢复和越权阻断。
+1. 注册 LLMProvider、Skill 和 MCPServer 资源 Schema；Model 是 LLMProvider 的版本化配置，不作为独立资源登记。
+2. 使用 `google/adk-go` 最新稳定 v2 作为 Agent、Skill Tool 调用和 Runner 执行内核；对应任务开始时核对并固定最新版本。
+3. 支持主流大模型，首版必须实现 OpenAI-compatible Chat/Tool Calling；若 ADK 缺少所需适配器，参考 `achetronic/adk-utils-go` 将必要实现纳入本仓库，但禁止 import 或依赖该项目。
+4. 实现模型能力、上下文窗口、Token 价格、超时和 Scope 默认模型配置。
+5. 创建 Skill 和 SkillVersion 表，保存 Manifest、输入/输出 Schema、工具、风险等级和状态。
+6. 实现 Skill 发布、停用、版本固定、适用资源检查和配置校验。
+7. 在 ADK Runner 外实现 OpsKeeper Policy Enforcement：参数校验、目标授权、工具白名单、超时、取消、调用与 Token 预算、输出限制和执行记录。
+8. LLM 不能直接访问 Connector，所有外部访问必须通过 ADK Tool 和 OpsKeeper Policy Enforcement。
+9. 增加模型连接测试、Token 用量统计和输入输出脱敏。
+10. 使用模拟 OpenAI-compatible LLM 和 Connector 验证多轮 Tool Calling、错误恢复、预算限制和越权阻断。
 
 ### 预计文件范围
 
@@ -464,6 +465,8 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 - 项目能按显式绑定及项目 > 团队 > 平台顺序解析默认模型和 Skill。
 - Runner 能拒绝未声明工具、无权资源、非法参数和超时调用。
 - 每次执行都固定 Skill 和模型版本并记录用量。
+- Agent、Runner 和 Tool Calling 实际使用 ADK v2，仓库不 import `achetronic/adk-utils-go`。
+- OpenAI-compatible 模拟服务通过连接、普通对话、流式输出和多轮 Tool Calling 验收。
 
 ### 不包含
 
@@ -597,7 +600,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 ### 实施细节
 
-1. 实现 MCP Server 连接、能力发现、版本快照、健康检查和 Tool 白名单。
+1. 使用 `modelcontextprotocol/go-sdk` 最新稳定版本实现 MCP Server 连接、能力发现、版本快照、健康检查、Tool 白名单和调用。
 2. 对 MCP 请求实施 Scope 权限、网络出口、超时、响应大小和内容不可信标记。
 3. 自定义声明式 Skill 继续使用 Runner；需要执行代码的 Skill 运行在独立 Kubernetes Job 沙箱。
 4. 沙箱默认只读文件系统、非 root、资源配额、最小 ServiceAccount、禁用特权和受限网络出口。
@@ -614,6 +617,7 @@ MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审�
 ### 验收标准
 
 - MCP Tool 不能突破调用用户和目标 Scope 权限。
+- MCP 连接、发现和调用均通过官方 Go SDK 完成，不自行实现 JSON-RPC 协议栈。
 - 自定义代码不能直接运行在 API 或 Worker 主进程中。
 - 未批准、过期或参数变更的操作不能执行。
 - 所有操作请求、审批、执行和结果均可审计。
