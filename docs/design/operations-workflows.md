@@ -67,13 +67,13 @@ T09 已实现并通过验收的能力边界如下：
 | Prometheus | `query_metrics`、`get_alerts` | Range Query、告警和连接测试 |
 | Loki | `query_logs` | Range Query、Tenant Header 和连接测试 |
 
-对外 HTTP 只开放资源连接测试和最近一次结果；实际指标、日志、告警和 Kubernetes 查询暂时只提供类型化 Go 接口，待 T10 Runner 统一执行授权、工具白名单和预算控制后再作为 Tool 使用。任何 LLM、Skill 或前端都不能绕过 Runner 直接拼接 Connector 查询。
+对外 HTTP 只开放资源连接测试和最近一次结果；实际指标、日志、告警和 Kubernetes 查询不提供公共查询 API。T10 将这些类型化能力包装为 ADK Function Tool，并在调用前统一检查 Skill 工具白名单、参数 Schema、目标资源 `resource:use` 权限、调用预算和超时。任何 LLM、Skill 或前端都不能绕过 Runner 直接拼接 Connector 查询。
 
 当前硬限制包括单次 10 秒超时、最多 1 次临时错误重试、全局 8 个并发、4 MiB 响应、24 小时时间窗、Prometheus 最小 15 秒步长、Loki 最多 1000 条和 Kubernetes 最多 500 个对象。超时、并发和响应大小可通过受限环境变量调整；查询语义限制保留在服务端。Kubernetes 返回续页标记时证据标记为 `partial`，不会在一次调用中绕过对象上限继续拉取。
 
 失败统一分类为 `configuration`、`authentication`、`timeout`、`rate_limited`、`response_too_large`、`upstream`、`unsupported` 或 `internal`。公开结果和审计只记录安全消息、分类、耗时与能力，不记录上游响应正文、查询凭据或 kubeconfig。
 
-## 4. Skill 模型
+## 4. Skill 模型与受控执行
 
 Skill 本身是资源，支持平台、团队、项目三级归属和版本管理：
 
@@ -101,6 +101,22 @@ SkillManifest {
 - 指标异常、日志聚类、Trace 延迟和跨资源关联分析。
 
 团队可以基于自身环境创建扩展 Skill，项目可以创建面向特定业务的 Runbook Skill。项目 Skill 可使用本项目、所属团队和平台提供的资源及工具。
+
+T10 的执行链路固定为：
+
+```text
+解析已发布 SkillVersion 与 Provider/Model
+    -> 校验 Skill 输入 Schema 和适用资源类型
+    -> 检查 skill:execute 与目标 resource:use
+    -> 创建 running 执行记录
+    -> ADK llmagent + Runner 驱动模型与 Function Tool
+    -> 每次 Tool 调用检查白名单、参数 Schema、目标授权和预算
+    -> Connector 返回类型化 Evidence
+    -> 校验最终输出 Schema
+    -> 固定 Token、Tool 次数、状态和安全预览
+```
+
+Model 不是资源。OpenAI 原生 Provider 可使用 ADK Responses API；广泛的 OpenAI-compatible Provider 通过项目内 ADK `model.LLM` Chat Completions Adapter 接入。两条路径都必须经过相同的 ADK Agent/Runner 与 OpsKeeper Policy Enforcement，不能把协议适配器变成另一套 Agent 循环。
 
 ## 5. AI 诊断流程
 

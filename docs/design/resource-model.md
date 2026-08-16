@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已完成 Kubernetes、Prometheus、Loki Connector 和连接检查并通过验收。
+T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已完成 Kubernetes、Prometheus、Loki Connector 和连接检查；T10 已实现 LLM Provider 模型配置、不可变 SkillVersion、作用域默认解析和受控执行记录。
 
 ## 1. 设计原则
 
@@ -87,7 +87,7 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 | PostgreSQL | Host、Port、Database、Username | Password |
 | Redis | Host、Port、Database、Username | Password |
 | Kafka | Brokers、TLS | Username、Password |
-| LLMProvider | URL、Model | Token |
+| LLMProvider | Provider 类型、Base URL、Model 列表、能力、上下文窗口和价格 | API Token |
 | Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
 | Artifact | URL、Provider、Namespace | Username、Password、Token |
 | Prometheus | URL | Username、Password、Token |
@@ -166,7 +166,7 @@ redis-shared [团队: 支付团队]
 prometheus-main [平台]
 ```
 
-Skill 选择遵循显式绑定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。默认配置只能有一个生效项，并保留最终解析结果供审计。
+模型与 Skill 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。LLM 默认项固定 Provider 资源 ID 和 Model 名；Skill 默认项固定 Skill 资源 ID 和已发布 SkillVersion ID。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
 
 ## 7. 主要数据表
 
@@ -182,8 +182,11 @@ resource_credentials
 resource_sync_states
 discovery_runs
 discovery_items
-skills
 skill_versions
+llm_scope_defaults
+skill_scope_defaults
+skill_executions
+skill_tool_calls
 scope_defaults
 ```
 

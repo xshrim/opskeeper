@@ -95,6 +95,7 @@ export interface ResourceSchema {
         description?: string;
         enum?: string[];
         sensitive?: boolean;
+        items?: unknown;
       }
     >;
   };
@@ -148,6 +149,63 @@ export interface Relation {
 export interface TopologyNode {
   resource: Resource;
   depth: number;
+}
+
+export interface LLMConnectionResult {
+  provider_resource_id: string;
+  model_name: string;
+  status: string;
+  latency_ms: number;
+  message: string;
+}
+
+export interface SkillVersion {
+  id: string;
+  skill_resource_id: string;
+  version: number;
+  manifest: {
+    name: string;
+    description: string;
+    instruction: string;
+    target_kinds: string[];
+  };
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  tools: Array<{
+    name: string;
+    description: string;
+    input_schema: Record<string, unknown>;
+  }>;
+  risk_level: string;
+  status: string;
+  created_at: string;
+  published_at?: string;
+}
+
+export interface SkillExecution {
+  id: string;
+  scope_id: string;
+  target_resource_id?: string;
+  skill_resource_id: string;
+  skill_version_id: string;
+  provider_resource_id: string;
+  model_name: string;
+  status: string;
+  output_preview?: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  tool_call_count: number;
+  error_code?: string;
+  error_message?: string;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface SkillRunResult {
+  execution: SkillExecution;
+  output: string;
+  events: number;
 }
 
 export interface DiscoveryRun {
@@ -387,6 +445,36 @@ export const api = {
     }),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
+  testLLMProvider: (
+    id: string,
+    body: { scope_id: string; model_name: string; stream: boolean }
+  ) =>
+    request<LLMConnectionResult>(`api/v1/llm-providers/${id}/test`, json(body)),
+  setLLMDefault: (body: {
+    scope_id: string;
+    provider_resource_id: string;
+    model_name: string;
+  }) => request('api/v1/llm-defaults', { ...json(body), method: 'PUT' }),
+  skillVersions: (skillId: string) =>
+    request<SkillVersion[]>(`api/v1/skills/${skillId}/versions`),
+  createSkillVersion: (skillId: string, body: Record<string, unknown>) =>
+    request<SkillVersion>(`api/v1/skills/${skillId}/versions`, json(body)),
+  publishSkillVersion: (skillId: string, versionId: string) =>
+    request<SkillVersion>(
+      `api/v1/skills/${skillId}/versions/${versionId}/publish`,
+      { method: 'POST' }
+    ),
+  setSkillDefault: (body: {
+    scope_id: string;
+    skill_resource_id: string;
+    skill_version_id: string;
+  }) => request('api/v1/skill-defaults', { ...json(body), method: 'PUT' }),
+  skillExecutions: (scopeId: string) =>
+    request<SkillExecution[]>(
+      `api/v1/skill-executions?scope_id=${encodeURIComponent(scopeId)}&limit=50`
+    ),
+  executeSkill: (body: Record<string, unknown>) =>
+    request<SkillRunResult>('api/v1/skill-executions', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

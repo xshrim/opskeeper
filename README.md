@@ -6,7 +6,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 
 ## 快速开始
 
-前置软件：Go 1.26、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立 `docker-compose`。
+前置软件：Go 1.26.5 或更高版本、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立 `docker-compose`。
 
 ```bash
 # 1. 生成应用本地配置
@@ -75,6 +75,7 @@ make run-front-api
 - [T07 Svelte 管理控制台基础功能验收记录](docs/acceptance/t07.md)
 - [T08 Kubernetes 集群发现与项目导入验收记录](docs/acceptance/t08.md)
 - [T09 Connector 框架与外部监控平台验收记录](docs/acceptance/t09.md)
+- [T10 LLM Provider、Skill 注册表与受控 Runner 验收记录](docs/acceptance/t10.md)
 
 ## 架构决策与运行手册
 

@@ -21,9 +21,11 @@ import (
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
 	"opskeeper/backend/identity"
+	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/resource"
+	"opskeeper/backend/skill"
 	"opskeeper/backend/version"
 	"opskeeper/backend/webui"
 )
@@ -107,6 +109,10 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		return fmt.Errorf("build connector registry: %w", err)
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, credentialService, connector.NewStore(pool), connectorLimits)
+	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentialService)
+	skillStore := skill.NewStore(pool)
+	skillService := skill.NewService(skillStore, resourceService)
+	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -123,6 +129,9 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Credentials:    credentialService,
 			Discovery:      discoveryService,
 			Connectors:     connectorService,
+			LLMs:           llmService,
+			Skills:         skillService,
+			SkillRunner:    skillRunner,
 			CookieSecure:   cfg.CookieSecure,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

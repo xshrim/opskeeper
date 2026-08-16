@@ -4,7 +4,7 @@
 
 ## 1. 快速开始
 
-前置软件：Go 1.26、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立的 `docker-compose`。
+前置软件：Go 1.26.5 或更高版本、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立的 `docker-compose`。ADK Go v2.2.0 的模块要求为 Go 1.26.5。
 
 首次初始化：
 
@@ -46,6 +46,7 @@ make run-front-api
 | `make run-front-api` | 构建并嵌入前端，然后通过一个 API 进程提供完整应用 |
 | `make test` | 运行前后端单元测试 |
 | `make backend-integration-test` | 运行数据库集成测试 |
+| `make llm-provider-test` | 使用 `.env` 中的外部 Provider 配置，经 ADK Runner 验证非流式和 SSE 调用 |
 | `make quality` | 执行完整本地质量门禁 |
 | `make build` | 构建生产二进制制品 |
 | `make image` | 构建最终应用镜像 |
@@ -124,6 +125,9 @@ make run-scheduler
 | `OPSK_CONNECTOR_TIMEOUT` | `10s` | 单次 Connector 执行总超时，必须为正数 |
 | `OPSK_CONNECTOR_MAX_CONCURRENCY` | `8` | 单个进程允许同时执行的 Connector 数，范围 1-128 |
 | `OPSK_CONNECTOR_MAX_RESPONSE_BYTES` | `4194304` | 单次 Connector 响应上限，范围 1 KiB-64 MiB |
+| `OPSK_TEST_LLM_BASE_URL` | 空 | 仅供 `make llm-provider-test` 使用的 OpenAI-compatible `/v1` 地址 |
+| `OPSK_TEST_LLM_MODEL` | 空 | 仅供外部 Provider 验证使用的模型名 |
+| `OPSK_TEST_LLM_API_KEY` | 空 | 仅保存在 Git 忽略的 `.env` 中的测试 Token；不得写入样例、日志或验收文档 |
 
 ### 4.1 HTTP Base Path
 
@@ -174,6 +178,26 @@ OPSK_LOG_FORMAT=json make run-api
 - 其他值会在应用启动时被拒绝。
 
 格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段；API 请求日志还写入经过可信代理规则解析的 `client_ip`。
+
+### 4.4 外部 LLM Provider 验证
+
+在本地 `.env` 配置测试 Provider：
+
+```dotenv
+OPSK_TEST_LLM_BASE_URL=https://provider.example/v1
+OPSK_TEST_LLM_MODEL=provider/model-name
+OPSK_TEST_LLM_API_KEY=<local-secret>
+```
+
+执行：
+
+```bash
+make llm-provider-test
+```
+
+该入口通过项目内 OpenAI-compatible Adapter、ADK `llmagent` 和 ADK Runner 分别执行非流式与 SSE 请求，并验证响应非空及 Token usage。它会访问外部服务并可能产生费用，因此不并入默认 `make test` 或 `make quality`。测试只输出模式、字符数和 Token 数，不输出 Token 或模型正文。
+
+应用中登记 `LLMProvider` 时，Base URL、Provider 类型和模型能力保存在资源配置；API Token 必须通过资源凭据加密保存。Model 是 Provider 内的版本化配置，不登记成独立资源。
 
 ## 5. PostgreSQL 与 Redis
 

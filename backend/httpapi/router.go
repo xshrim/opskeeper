@@ -28,6 +28,9 @@ type Options struct {
 	Credentials    credentialService
 	Discovery      discoveryService
 	Connectors     connectorService
+	LLMs           llmService
+	Skills         skillService
+	SkillRunner    skillRunner
 	CookieSecure   bool
 }
 
@@ -85,6 +88,14 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerResourceRoutes(resourceRouter, options.Resources, options.Credentials, options.Auditor, requirePermission)
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
+			}
+			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.SkillRunner != nil) {
+				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
+				if options.Authorization != nil {
+					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
+				}
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.SkillRunner, options.Authorization, options.Auditor, requirePermission)
 			}
 		})
 	}

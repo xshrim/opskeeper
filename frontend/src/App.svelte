@@ -20,12 +20,15 @@
     type RoleBinding,
     type RoleDefinition,
     type Team,
+    type LLMConnectionResult,
+    type SkillExecution,
+    type SkillVersion,
     type TopologyNode,
     type User
   } from './lib/api';
 
   type View =
-    'overview' | 'organization' | 'discovery' | 'resources' | 'access';
+    'overview' | 'organization' | 'discovery' | 'resources' | 'ai' | 'access';
   type ProjectMappingDraft = DiscoveryProjectMapping & {
     mode: 'existing' | 'create' | 'ignore';
   };
@@ -35,6 +38,98 @@
     name: string;
     parentId?: string;
   };
+  type SkillToolOption = {
+    name: string;
+    title: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  };
+
+  const skillToolOptions: SkillToolOption[] = [
+    {
+      name: 'connector_kubernetes_read',
+      title: 'Kubernetes 只读查询',
+      description: '查询目标 Kubernetes 资源；不会修改集群。',
+      inputSchema: {
+        type: 'object',
+        required: ['resource'],
+        properties: {
+          target_resource_id: { type: 'string' },
+          resource: { type: 'string' },
+          namespace: { type: 'string' },
+          name: { type: 'string' },
+          label_selector: { type: 'string' },
+          limit: { type: 'integer' }
+        },
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'connector_metrics_query',
+      title: '指标查询',
+      description: '通过已关联的 Prometheus 查询时间序列指标。',
+      inputSchema: {
+        type: 'object',
+        required: ['query', 'start', 'end', 'step_seconds'],
+        properties: {
+          target_resource_id: { type: 'string' },
+          query: { type: 'string' },
+          start: { type: 'string', format: 'date-time' },
+          end: { type: 'string', format: 'date-time' },
+          step_seconds: { type: 'integer' }
+        },
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'connector_logs_query',
+      title: '日志查询',
+      description: '通过已关联的 Loki 查询限定范围内的日志。',
+      inputSchema: {
+        type: 'object',
+        required: ['query', 'start', 'end', 'limit'],
+        properties: {
+          target_resource_id: { type: 'string' },
+          query: { type: 'string' },
+          start: { type: 'string', format: 'date-time' },
+          end: { type: 'string', format: 'date-time' },
+          limit: { type: 'integer' }
+        },
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'connector_traces_query',
+      title: '链路查询',
+      description: '通过已关联的追踪平台查询服务调用链。',
+      inputSchema: {
+        type: 'object',
+        required: ['service', 'start', 'end', 'limit'],
+        properties: {
+          target_resource_id: { type: 'string' },
+          service: { type: 'string' },
+          operation: { type: 'string' },
+          start: { type: 'string', format: 'date-time' },
+          end: { type: 'string', format: 'date-time' },
+          limit: { type: 'integer' }
+        },
+        additionalProperties: false
+      }
+    },
+    {
+      name: 'connector_alerts_get',
+      title: '告警查询',
+      description: '查询目标关联监控平台中的当前告警。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          target_resource_id: { type: 'string' },
+          active_only: { type: 'boolean' }
+        },
+        additionalProperties: false
+      }
+    }
+  ];
 
   let authState: 'loading' | 'login' | 'ready' = 'loading';
   let currentUser: User | null = null;
@@ -63,6 +158,22 @@
   let bindings: RoleBinding[] = [];
   let resourceRoles: ResourceRoleDefinition[] = [];
   let resourceBindings: ResourceRoleBinding[] = [];
+  let aiLoaded = false;
+  let selectedProviderId = '';
+  let selectedSkillId = '';
+  let selectedSkillVersionId = '';
+  let llmModelName = '';
+  let llmConnection: LLMConnectionResult | null = null;
+  let skillVersions: SkillVersion[] = [];
+  let skillExecutions: SkillExecution[] = [];
+  let skillInstruction = '';
+  let skillTargetKinds = 'Application';
+  let skillInputSchema = '{"type":"object","additionalProperties":true}';
+  let skillOutputSchema = '{"type":"object","additionalProperties":true}';
+  let skillInput = '{}';
+  let skillTargetResourceId = '';
+  let skillOutput = '';
+  let selectedSkillToolNames: string[] = [];
   let accessLoaded = false;
   let discoveryLoaded = false;
   let selectedClusterId = '';
@@ -138,6 +249,11 @@
   );
   $: applicationCandidates = discoveryItems.filter(
     (item) => item.kind === 'Application'
+  );
+  $: llmProviders = resources.filter((item) => item.kind === 'LLMProvider');
+  $: skillResources = resources.filter((item) => item.kind === 'Skill');
+  $: executableTargets = visibleResources.filter(
+    (item) => item.kind !== 'LLMProvider' && item.kind !== 'Skill'
   );
 
   onMount(() => {
@@ -230,6 +346,146 @@
     errorMessage = '';
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
+    if (nextView === 'ai' && !aiLoaded) void loadAI();
+  }
+
+  async function loadAI() {
+    aiLoaded = true;
+    selectedProviderId = selectedProviderId || llmProviders[0]?.id || '';
+    selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
+    llmModelName =
+      llmModelName ||
+      String(
+        (
+          llmProviders.find((item) => item.id === selectedProviderId)?.config
+            .models as Array<{ name?: string }> | undefined
+        )?.[0]?.name || ''
+      );
+    if (selectedSkillId) await loadSkillVersions();
+    if (selectedScopeId) {
+      try {
+        skillExecutions = await api.skillExecutions(selectedScopeId);
+      } catch {
+        skillExecutions = [];
+      }
+    }
+  }
+
+  async function loadSkillVersions() {
+    if (!selectedSkillId) return;
+    try {
+      skillVersions = await api.skillVersions(selectedSkillId);
+      selectedSkillVersionId =
+        skillVersions.find((item) => item.status === 'published')?.id ||
+        skillVersions[0]?.id ||
+        '';
+    } catch (error) {
+      errorMessage = describeError(error, 'Skill 版本加载失败');
+    }
+  }
+
+  async function testLLMProvider() {
+    if (!selectedProviderId || !selectedScopeId || !llmModelName) return;
+    await action(async () => {
+      llmConnection = await api.testLLMProvider(selectedProviderId, {
+        scope_id: selectedScopeId,
+        model_name: llmModelName,
+        stream: true
+      });
+      notice = `${llmConnection.message}，耗时 ${llmConnection.latency_ms} ms`;
+    });
+  }
+
+  async function setLLMDefault() {
+    if (!selectedProviderId || !selectedScopeId || !llmModelName) return;
+    await action(async () => {
+      await api.setLLMDefault({
+        scope_id: selectedScopeId,
+        provider_resource_id: selectedProviderId,
+        model_name: llmModelName
+      });
+      notice = '默认模型已更新';
+    });
+  }
+
+  async function createSkillVersion() {
+    if (!selectedSkillId) return;
+    await action(async () => {
+      const version = await api.createSkillVersion(selectedSkillId, {
+        manifest: {
+          name:
+            skillResources.find((item) => item.id === selectedSkillId)?.name ||
+            'Skill',
+          description: '由 OpsKeeper 管理的声明式 Skill',
+          instruction: skillInstruction,
+          target_kinds: skillTargetKinds
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        },
+        input_schema: JSON.parse(skillInputSchema),
+        output_schema: JSON.parse(skillOutputSchema),
+        tools: skillToolOptions
+          .filter((tool) => selectedSkillToolNames.includes(tool.name))
+          .map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            input_schema: tool.inputSchema
+          })),
+        risk_level: 'read_only'
+      });
+      skillVersions = [version, ...skillVersions];
+      selectedSkillVersionId = version.id;
+      notice = `Skill v${version.version} 草稿已创建`;
+    });
+  }
+
+  function toggleSkillTool(name: string) {
+    selectedSkillToolNames = selectedSkillToolNames.includes(name)
+      ? selectedSkillToolNames.filter((item) => item !== name)
+      : [...selectedSkillToolNames, name];
+  }
+
+  async function publishSkillVersion() {
+    if (!selectedSkillId || !selectedSkillVersionId) return;
+    await action(async () => {
+      await api.publishSkillVersion(selectedSkillId, selectedSkillVersionId);
+      await loadSkillVersions();
+      notice = 'Skill 版本已发布';
+    });
+  }
+
+  async function setSkillDefault() {
+    if (!selectedScopeId || !selectedSkillId || !selectedSkillVersionId) return;
+    await action(async () => {
+      await api.setSkillDefault({
+        scope_id: selectedScopeId,
+        skill_resource_id: selectedSkillId,
+        skill_version_id: selectedSkillVersionId
+      });
+      notice = '默认 Skill 已更新';
+    });
+  }
+
+  async function executeSkill() {
+    if (!selectedScopeId || !selectedSkillId || !selectedSkillVersionId) return;
+    await action(async () => {
+      const result = await api.executeSkill({
+        scope_id: selectedScopeId,
+        target_resource_id: skillTargetResourceId || undefined,
+        skill_resource_id: selectedSkillId,
+        skill_version_id: selectedSkillVersionId,
+        provider_resource_id: selectedProviderId || undefined,
+        model_name: llmModelName || undefined,
+        input: JSON.parse(skillInput),
+        max_tool_calls: 8,
+        max_tokens: 12000,
+        timeout_seconds: 120
+      });
+      skillOutput = result.output;
+      skillExecutions = [result.execution, ...skillExecutions];
+      notice = 'Skill 执行完成';
+    });
   }
 
   async function loadDiscovery() {
@@ -650,11 +906,18 @@
   function normalizeFieldValue(value: string, type?: string): unknown {
     if (type === 'integer' || type === 'number') return Number(value);
     if (type === 'boolean') return value === 'true';
-    if (type === 'array')
+    if (type === 'array') {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Comma-separated values remain convenient for simple string arrays.
+      }
       return value
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+    }
     return value;
   }
 
@@ -975,6 +1238,12 @@
           ><span aria-hidden="true">☸</span>集群导入</button
         >
         <button
+          class:active={view === 'ai'}
+          class="nav-item"
+          on:click={() => chooseView('ai')}
+          ><span aria-hidden="true">✦</span>模型与 Skill</button
+        >
+        <button
           class:active={view === 'access'}
           class="nav-item"
           on:click={() => chooseView('access')}
@@ -1000,7 +1269,9 @@
                   ? 'Resources'
                   : view === 'discovery'
                     ? 'Kubernetes Import'
-                    : 'Access'}
+                    : view === 'ai'
+                      ? 'AI Runtime'
+                      : 'Access'}
           </p>
           <h1>
             {view === 'overview'
@@ -1011,7 +1282,9 @@
                   ? '资源目录'
                   : view === 'discovery'
                     ? '集群项目与应用导入'
-                    : '成员与角色'}
+                    : view === 'ai'
+                      ? '模型与 Skill'
+                      : '成员与角色'}
           </h1>
         </div>
         <div class="topbar-actions">
@@ -1583,7 +1856,12 @@
                             >{#each field.enum as option}<option value={option}
                                 >{option}</option
                               >{/each}</select
-                          >{:else}<input
+                          >{:else if field.type === 'array'}<textarea
+                            bind:value={resourceConfigValues[key]}
+                            rows="4"
+                            placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
+                            spellcheck="false"
+                          ></textarea>{:else}<input
                             bind:value={resourceConfigValues[key]}
                             type={field.type === 'number' ||
                             field.type === 'integer'
@@ -1717,7 +1995,12 @@
                               >{#each field.enum as option}<option
                                   value={option}>{option}</option
                                 >{/each}</select
-                            >{:else}<input
+                            >{:else if field.type === 'array'}<textarea
+                              bind:value={resourceConfigValues[key]}
+                              rows="4"
+                              placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
+                              spellcheck="false"
+                            ></textarea>{:else}<input
                               bind:value={resourceConfigValues[key]}
                               type={field.type === 'number' ||
                               field.type === 'integer'
@@ -1823,6 +2106,241 @@
                   <p>从左侧目录选择资源查看作用域、配置和关系。</p>
                 </div>
               </section>{/if}
+          </section>
+        </section>
+      {:else if view === 'ai'}
+        <section class="content-grid two-column ai-runtime">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">MODEL PROVIDER</p>
+                <h2>模型连接</h2>
+              </div>
+              <span class="count">{llmProviders.length}</span>
+            </div>
+            <form
+              class="stack-form compact-form"
+              on:submit|preventDefault={testLLMProvider}
+            >
+              <label
+                >Provider<select
+                  bind:value={selectedProviderId}
+                  required
+                  on:change={() => {
+                    const models = llmProviders.find(
+                      (item) => item.id === selectedProviderId
+                    )?.config.models as Array<{ name?: string }> | undefined;
+                    llmModelName = models?.[0]?.name || '';
+                    llmConnection = null;
+                  }}
+                  ><option value="" disabled>选择 LLM Provider</option
+                  >{#each llmProviders as provider}<option value={provider.id}
+                      >{provider.name} · {scopeName(provider.scope_id)}</option
+                    >{/each}</select
+                ></label
+              >
+              <label
+                >Model<input
+                  bind:value={llmModelName}
+                  required
+                  placeholder="模型配置中的名称"
+                /></label
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary"
+                  type="button"
+                  on:click={setLLMDefault}
+                  disabled={busy || !selectedScopeId}
+                  >设为当前 Scope 默认</button
+                >
+                <button class="primary" disabled={busy || !selectedProviderId}
+                  >测试连接</button
+                >
+              </div>
+            </form>
+            {#if llmConnection}<div class="detail-meta">
+                <span>状态 <strong>{llmConnection.status}</strong></span><span
+                  >{llmConnection.latency_ms} ms</span
+                ><span>{llmConnection.model_name}</span>
+              </div>{/if}
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">SKILL REGISTRY</p>
+                <h2>Skill 版本</h2>
+              </div>
+              <span class="count">{skillVersions.length}</span>
+            </div>
+            <div class="stack-form compact-form">
+              <label
+                >Skill<select
+                  bind:value={selectedSkillId}
+                  required
+                  on:change={loadSkillVersions}
+                  ><option value="" disabled>选择 Skill 资源</option
+                  >{#each skillResources as item}<option value={item.id}
+                      >{item.name} · {scopeName(item.scope_id)}</option
+                    >{/each}</select
+                ></label
+              >
+              <label
+                >版本<select bind:value={selectedSkillVersionId}
+                  ><option value="" disabled>选择版本</option
+                  >{#each skillVersions as version}<option value={version.id}
+                      >v{version.version} · {version.status} · {version.risk_level}</option
+                    >{/each}</select
+                ></label
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary"
+                  type="button"
+                  on:click={setSkillDefault}
+                  disabled={busy || !selectedSkillVersionId}
+                  >设为当前 Scope 默认</button
+                >
+                <button
+                  class="primary"
+                  type="button"
+                  on:click={publishSkillVersion}
+                  disabled={busy || !selectedSkillVersionId}>发布版本</button
+                >
+              </div>
+            </div>
+          </section>
+
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NEW VERSION</p>
+                <h2>创建 Skill 草稿</h2>
+              </div>
+              <span class="scope-type">不可变版本</span>
+            </div>
+            <form
+              class="stack-form"
+              on:submit|preventDefault={createSkillVersion}
+            >
+              <label
+                >Agent Instruction<textarea
+                  bind:value={skillInstruction}
+                  rows="5"
+                  required
+                  placeholder="明确目标、边界与输出 JSON 结构"
+                ></textarea></label
+              >
+              <label
+                >适用资源类型<input
+                  bind:value={skillTargetKinds}
+                  required
+                  placeholder="Application, Kubernetes"
+                /></label
+              >
+              <fieldset class="skill-tool-picker">
+                <legend>允许调用的 Connector 工具</legend>
+                <p>仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。</p>
+                <div class="skill-tool-grid">
+                  {#each skillToolOptions as tool}
+                    <label
+                      class:selected={selectedSkillToolNames.includes(
+                        tool.name
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSkillToolNames.includes(tool.name)}
+                        on:change={() => toggleSkillTool(tool.name)}
+                      />
+                      <span
+                        ><strong>{tool.title}</strong><small
+                          >{tool.description}</small
+                        ></span
+                      >
+                    </label>
+                  {/each}
+                </div>
+              </fieldset>
+              <div class="form-row">
+                <label
+                  >输入 Schema<textarea
+                    bind:value={skillInputSchema}
+                    rows="5"
+                    spellcheck="false"
+                  ></textarea></label
+                >
+                <label
+                  >输出 Schema<textarea
+                    bind:value={skillOutputSchema}
+                    rows="5"
+                    spellcheck="false"
+                  ></textarea></label
+                >
+              </div>
+              <button class="primary" disabled={busy || !selectedSkillId}
+                >创建版本</button
+              >
+            </form>
+          </section>
+
+          <section class="panel recent-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">CONTROLLED RUNNER</p>
+                <h2>执行 Skill</h2>
+              </div>
+            </div>
+            <form
+              class="stack-form compact-form"
+              on:submit|preventDefault={executeSkill}
+            >
+              <label
+                >目标资源<select bind:value={skillTargetResourceId}
+                  ><option value="">无目标资源</option
+                  >{#each executableTargets as item}<option value={item.id}
+                      >{item.name} · {resourceSchemaName(item.kind)}</option
+                    >{/each}</select
+                ></label
+              >
+              <label
+                >输入 JSON<textarea
+                  bind:value={skillInput}
+                  rows="5"
+                  spellcheck="false"
+                ></textarea></label
+              >
+              <button class="primary" disabled={busy || !selectedSkillVersionId}
+                >执行</button
+              >
+            </form>
+            {#if skillOutput}<pre
+                class="config-preview">{skillOutput}</pre>{/if}
+          </section>
+
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">EXECUTIONS</p>
+                <h2>执行记录</h2>
+              </div>
+              <span class="count">{skillExecutions.length}</span>
+            </div>
+            <div class="table-list">
+              {#each skillExecutions as execution}<div class="list-row static">
+                  <span
+                    ><strong>{execution.model_name}</strong><small
+                      >{formatDate(execution.started_at)} · {execution.total_tokens}
+                      tokens · {execution.tool_call_count} tools</small
+                    ></span
+                  ><span class="status-label {execution.status}"
+                    >{execution.status}</span
+                  >
+                </div>{:else}<div class="empty-state">
+                  当前 Scope 暂无执行记录。
+                </div>{/each}
+            </div>
           </section>
         </section>
       {:else}

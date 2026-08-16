@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog、Kubernetes Discovery 和首批 Connector；AI、巡检与生产运维能力按 T10-T15 逐步交付。
+下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog、Kubernetes Discovery、首批 Connector，以及 T10 的 LLM Provider、Skill Registry 和受控 ADK Runner；完整诊断、巡检与生产运维能力按 T11-T15 逐步交付。
 
 ```mermaid
 flowchart LR
@@ -67,12 +67,13 @@ flowchart LR
 
 | 层次 | 技术选型 | 状态 | 说明 |
 |---|---|---|---|
-| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T09 | 独立开发，生产时嵌入 Go API |
-| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T09 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
-| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T09 | REST API、健康检查、迁移和模块化业务能力 |
+| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T10 | 独立开发，生产时嵌入 Go API |
+| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T10 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
+| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T10 | REST API、健康检查、迁移和模块化业务能力 |
 | 查询生成 | `sqlc` | 候选，按真实复杂度引入 | 不作为所有 Store 的强制前置条件 |
 | Kubernetes 客户端 | `client-go` | 已实现，T08 | 集群发现、Project/Application 导入 |
-| Agent 与 Runner | Google ADK Go 最新稳定 v2 | 目标，T10-T13 | Agent、Skill Tool 调用和 Runner 执行内核；外层保留 OpsKeeper 权限、预算和审计 |
+| Agent 与 Runner | Google ADK Go `v2.2.0` | 已实现基础能力，T10；T11-T13 扩展 | `llmagent`、Runner 和 Function Tool 为执行内核；外层保留 OpsKeeper 权限、预算和审计 |
+| OpenAI-compatible | 项目内 Chat Completions Adapter | 已实现，T10 | 实现 ADK `model.LLM`，支持文本、SSE、usage 和 Tool Calling；来源归属见根目录 `THIRD_PARTY_NOTICES.md` |
 | MCP | Model Context Protocol 官方 Go SDK | 目标，T14 | MCP 连接、能力发现和 Tool 调用，不自行实现协议栈 |
 | 数据库 | PostgreSQL 16 | 已实现，T01-T09 | 当前保存组织、身份、授权、审计、资源、凭据、关系、发现和连接检查数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
@@ -96,8 +97,8 @@ flowchart LR
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 LLM Provider 在 T10-T12 扩展 |
-| Skill Registry | Skill 定义、版本、能力要求和权限声明 | 目标，T10；执行使用 ADK v2 Tool 与 Runner |
-| AI Orchestrator | 上下文构建、Skill 选择、工具编排和证据归纳 | 目标，T10-T11；Agent 内核使用 ADK v2 |
+| Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现基础能力，T10 |
+| AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算和执行记录 | 已实现执行基线，T10；诊断计划与证据归纳在 T11 |
 | Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
 | Inspection | 巡检策略、调度、执行、评分和异常项 | 目标，T13 |
 | Notification | Webhook、邮件及其他通知渠道 | 目标，T13 |
@@ -146,7 +147,8 @@ flowchart LR
 | `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 目标，T13 |
-| `/opskeeper/api/v1/skills` | 目标，T10 |
+| `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults`、`/opskeeper/api/v1/skill-executions` | 已实现，T10 |
+| `/opskeeper/api/v1/llm-defaults`、`/opskeeper/api/v1/llm-providers/{id}/test` | 已实现，T10 |
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。
 

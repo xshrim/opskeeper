@@ -162,6 +162,43 @@ func TestApplyRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	assertT10Tables := func(want int) {
+		t.Helper()
+		var count int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM information_schema.tables
+			 WHERE table_schema = current_schema()
+			   AND table_name IN ('llm_scope_defaults', 'skill_versions', 'skill_scope_defaults', 'skill_executions', 'skill_tool_calls')`).Scan(&count); err != nil {
+			t.Fatalf("count T10 tables: %v", err)
+		}
+		if count != want {
+			t.Fatalf("T10 table count = %d, want %d", count, want)
+		}
+	}
+	assertT10Tables(5)
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	assertT10Tables(0)
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("second Apply() error = %v", err)
+	}
+	assertT10Tables(5)
+	var schemas int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM resource_schemas WHERE kind IN ('LLMProvider', 'Skill', 'MCPServer') AND version = 2`).Scan(&schemas); err != nil {
+		t.Fatalf("count T10 schemas: %v", err)
+	}
+	if schemas != 3 {
+		t.Fatalf("T10 resource schemas = %d, want 3", schemas)
+	}
+}
+
 func integrationPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("OPSK_TEST_DATABASE_URL")

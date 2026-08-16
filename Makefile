@@ -29,7 +29,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -79,6 +79,9 @@ backend-embedded-test: webui-assets
 
 backend-integration-test: ## Run PostgreSQL-backed integration tests.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector
+
+llm-provider-test: ## Test the configured external LLM through the ADK Runner.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./llm -run TestSiliconFlowThroughADKRunner -v
 
 frontend-test:
 	cd frontend && npm run test

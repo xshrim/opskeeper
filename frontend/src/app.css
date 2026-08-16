@@ -543,6 +543,60 @@ h3 {
 .schema-inputs label {
   color: #59656e;
 }
+.skill-tool-picker {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin: 0;
+  border: 1px solid #e6eaec;
+  border-radius: 4px;
+  background: #f7f9fa;
+}
+.skill-tool-picker legend {
+  padding: 0 4px;
+  color: #263038;
+  font-size: 13px;
+  font-weight: 700;
+}
+.skill-tool-picker p {
+  margin: 0;
+  color: #59656e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.skill-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.skill-tool-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid #dce3e6;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.skill-tool-grid label.selected {
+  border-color: #087e8b;
+  background: #eefafa;
+}
+.skill-tool-grid input {
+  width: auto;
+  min-height: auto;
+  margin-top: 2px;
+}
+.skill-tool-grid span {
+  display: grid;
+  gap: 3px;
+}
+.skill-tool-grid small {
+  color: #59656e;
+  font-weight: 400;
+  line-height: 1.4;
+}
 .stack-form label,
 .compact-form label {
   display: grid;
