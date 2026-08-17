@@ -19,13 +19,15 @@ type stubIdentityService struct {
 	user               identity.User
 	tokens             identity.SessionTokens
 	loginError         error
+	loginIdentifier    string
 	refreshError       error
 	authenticateError  error
 	authenticatedToken string
 	logoutAllUserID    string
 }
 
-func (s *stubIdentityService) Login(context.Context, string, string, identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
+func (s *stubIdentityService) Login(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
+	s.loginIdentifier = identifier
 	return s.user, s.tokens, s.loginError
 }
 
@@ -67,13 +69,16 @@ func TestLoginSetsSecureHTTPOnlyCookiesWithoutReturningTokens(t *testing.T) {
 			RefreshExpiresAt: now.Add(24 * time.Hour),
 		},
 	}
-	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.com","password":"secret password"}`))
+	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/login", strings.NewReader(`{"identifier":"admin","password":"secret password"}`))
 	response := httptest.NewRecorder()
 
 	newAuthTestRouter(service, true).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("login status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if service.loginIdentifier != "admin" {
+		t.Fatalf("login identifier = %q, want admin", service.loginIdentifier)
 	}
 	if strings.Contains(response.Body.String(), "access-secret") || strings.Contains(response.Body.String(), "refresh-secret") || strings.Contains(response.Body.String(), "secret password") {
 		t.Fatalf("login response leaked a secret: %s", response.Body.String())

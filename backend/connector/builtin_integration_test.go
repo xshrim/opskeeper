@@ -51,4 +51,22 @@ func TestBuiltinPostgreSQLAndRedisSnapshots(t *testing.T) {
 	}
 }
 
+func TestBuiltinKafkaSnapshot(t *testing.T) {
+	broker := os.Getenv("OPSK_TEST_KAFKA_BROKERS")
+	if broker == "" {
+		t.Skip("OPSK_TEST_KAFKA_BROKERS is required")
+	}
+	adapter, err := newKafkaAdapter(Target{Resource: resource.Resource{Kind: "Kafka", Config: map[string]any{"brokers": []any{broker}}}}, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := adapter.(KafkaInspector).InspectKafka(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Kind != "Kafka" || snapshot.Facts["broker_count"] == nil || snapshot.Facts["topic_count"] == nil {
+		t.Fatalf("Kafka snapshot=%#v", snapshot)
+	}
+}
+
 func password(value *url.URL) string { result, _ := value.User.Password(); return result }

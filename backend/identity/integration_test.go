@@ -23,7 +23,7 @@ func TestIdentityLifecycle(t *testing.T) {
 	service := NewService(NewStore(pool), 15*time.Minute, 7*24*time.Hour)
 	admin := bootstrapTestAdmin(t, service, "admin@example.com")
 
-	if _, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Email: "other@example.com", Password: integrationPassword}); !errors.Is(err, ErrBootstrapComplete) {
+	if _, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Username: "other", Email: "other@example.com", Password: integrationPassword}); !errors.Is(err, ErrBootstrapComplete) {
 		t.Fatalf("second BootstrapAdmin() error = %v, want ErrBootstrapComplete", err)
 	}
 	var passwordHash string
@@ -37,7 +37,7 @@ func TestIdentityLifecycle(t *testing.T) {
 	if _, _, err := service.Login(context.Background(), admin.Email, "wrong password value", SessionMetadata{}); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("Login(wrong password) error = %v", err)
 	}
-	_, tokens, err := service.Login(context.Background(), strings.ToUpper(admin.Email), integrationPassword, SessionMetadata{UserAgent: "integration-test", ClientIP: "192.0.2.10"})
+	_, tokens, err := service.Login(context.Background(), strings.ToUpper(admin.Username), integrationPassword, SessionMetadata{UserAgent: "integration-test", ClientIP: "192.0.2.10"})
 	if err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
@@ -73,7 +73,7 @@ func TestIdentityLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, second, err := service.Login(context.Background(), admin.Email, integrationPassword, SessionMetadata{})
+	_, second, err := service.Login(context.Background(), admin.Phone, integrationPassword, SessionMetadata{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +84,34 @@ func TestIdentityLifecycle(t *testing.T) {
 		if _, err := service.Authenticate(context.Background(), token); !errors.Is(err, ErrInvalidSession) {
 			t.Fatalf("Authenticate(after logout-all) error = %v", err)
 		}
+	}
+}
+
+func TestOptionalProfileIdentifiersRemainUnique(t *testing.T) {
+	pool := identityIntegrationPool(t)
+	service := NewService(NewStore(pool), 15*time.Minute, 7*24*time.Hour)
+	admin, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Username: "admin", Password: integrationPassword})
+	if err != nil {
+		t.Fatalf("BootstrapAdmin() error = %v", err)
+	}
+	if admin.DisplayName != "admin" || admin.Email != "" || admin.Phone != "" {
+		t.Fatalf("bootstrap profile = %#v", admin)
+	}
+
+	_, err = service.CreateUser(context.Background(), CreateUserInput{
+		Username: "operator-one",
+		Email:    "operator@example.com",
+		Phone:    "+86 138-0013-8000",
+		Password: integrationPassword,
+	})
+	if err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+	if _, err := service.CreateUser(context.Background(), CreateUserInput{Username: "operator-two", Email: "OPERATOR@example.com", Password: integrationPassword}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("CreateUser(duplicate email) error = %v, want ErrConflict", err)
+	}
+	if _, err := service.CreateUser(context.Background(), CreateUserInput{Username: "operator-three", Phone: "+8613800138000", Password: integrationPassword}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("CreateUser(duplicate phone) error = %v, want ErrConflict", err)
 	}
 }
 
@@ -99,6 +127,7 @@ func TestConcurrentBootstrapCreatesOneAdministrator(t *testing.T) {
 			defer wait.Done()
 			<-start
 			_, err := service.BootstrapAdmin(context.Background(), BootstrapInput{
+				Username:    fmt.Sprintf("admin-%d", index),
 				Email:       fmt.Sprintf("admin-%d@example.com", index),
 				DisplayName: "Concurrent Admin",
 				Password:    integrationPassword,
@@ -229,7 +258,8 @@ func TestConcurrentRefreshAllowsOneWinner(t *testing.T) {
 
 func bootstrapTestAdmin(t *testing.T, service *Service, email string) User {
 	t.Helper()
-	user, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Email: email, DisplayName: "Test Admin", Password: integrationPassword})
+	username, _, _ := strings.Cut(email, "@")
+	user, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Username: username, Email: email, Phone: "+8613800138000", DisplayName: "Test Admin", Password: integrationPassword})
 	if err != nil {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}

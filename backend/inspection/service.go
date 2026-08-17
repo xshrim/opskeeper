@@ -58,6 +58,7 @@ func (s *Service) ListPolicies(ctx context.Context, scopeID string) ([]Policy, e
 
 type operationalStore interface {
 	policyStore
+	ResolveTargets(context.Context, Policy) ([]string, error)
 	CreateManualRun(context.Context, Policy, time.Time, []string) (string, error)
 	ListRuns(context.Context, string, int) ([]Run, error)
 	ListFindings(context.Context, string, int) ([]Finding, error)
@@ -82,7 +83,15 @@ func (s *Service) StartManualRun(ctx context.Context, scopeID, policyID string, 
 			if item.Status != PolicyActive {
 				return "", ErrConflict
 			}
-			return store.CreateManualRun(ctx, item, now, item.TargetResourceIDs)
+			targets, err := store.ResolveTargets(ctx, item)
+			if err != nil {
+				return "", err
+			}
+			if len(targets) == 0 {
+				return "", ErrConflict
+			}
+			item.TargetResourceIDs = targets
+			return store.CreateManualRun(ctx, item, now, targets)
 		}
 	}
 	return "", ErrNotFound

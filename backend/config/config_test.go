@@ -39,6 +39,42 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ConnectorTimeout != 10*time.Second || cfg.ConnectorMaxConcurrency != 8 || cfg.ConnectorMaxResponseBytes != 4<<20 {
 		t.Fatalf("Load() returned unexpected connector config: %#v", cfg)
 	}
+	if cfg.HTTPMaxBodyBytes != 2<<20 || cfg.HTTPRateLimitPerMinute != 600 || len(cfg.AllowedOrigins) != 0 {
+		t.Fatalf("Load() returned unexpected HTTP security config: %#v", cfg)
+	}
+}
+
+func TestLoadAcceptsHTTPSOriginsAndHTTPLimits(t *testing.T) {
+	t.Setenv("OPSK_ALLOWED_ORIGINS", "https://ops.example.com, http://localhost:5173, https://OPS.EXAMPLE.COM")
+	t.Setenv("OPSK_HTTP_MAX_BODY_BYTES", "4096")
+	t.Setenv("OPSK_HTTP_RATE_LIMIT_PER_MINUTE", "120")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://otel.example.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.AllowedOrigins) != 2 || cfg.HTTPMaxBodyBytes != 4096 || cfg.HTTPRateLimitPerMinute != 120 {
+		t.Fatalf("Load() HTTP config = %#v", cfg)
+	}
+	if cfg.OTLPExporterEndpoint != "https://otel.example.com" {
+		t.Fatalf("Load() telemetry endpoint = %q", cfg.OTLPExporterEndpoint)
+	}
+}
+
+func TestLoadRejectsInvalidOriginsAndHTTPLimits(t *testing.T) {
+	for _, test := range []struct{ key, value string }{
+		{key: "OPSK_ALLOWED_ORIGINS", value: "https://example.com/path"},
+		{key: "OPSK_ALLOWED_ORIGINS", value: "javascript:alert(1)"},
+		{key: "OPSK_HTTP_MAX_BODY_BYTES", value: "100"},
+		{key: "OPSK_HTTP_RATE_LIMIT_PER_MINUTE", value: "0"},
+	} {
+		t.Run(test.key+test.value, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
+			}
+		})
+	}
 }
 
 func TestLoadAcceptsConnectorLimits(t *testing.T) {
@@ -140,6 +176,8 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 
 func TestLoadRequiresSecureCookiesInProduction(t *testing.T) {
 	t.Setenv("OPSK_ENVIRONMENT", "production")
+	t.Setenv("OPSK_DATABASE_URL", "postgres://production-db/opskeeper")
+	t.Setenv("OPSK_REDIS_URL", "rediss://production-redis/0")
 	t.Setenv("OPSK_COOKIE_SECURE", "false")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil for insecure production cookies")
@@ -149,6 +187,21 @@ func TestLoadRequiresSecureCookiesInProduction(t *testing.T) {
 	cfg, err := Load()
 	if err != nil || !cfg.CookieSecure {
 		t.Fatalf("Load() = %#v, %v", cfg, err)
+	}
+}
+
+func TestLoadRejectsDevelopmentDefaultsInProduction(t *testing.T) {
+	t.Setenv("OPSK_ENVIRONMENT", "production")
+	t.Setenv("OPSK_COOKIE_SECURE", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil for production development database defaults")
+	}
+
+	t.Setenv("OPSK_DATABASE_URL", "postgres://production-db/opskeeper")
+	t.Setenv("OPSK_REDIS_URL", "rediss://production-redis/0")
+	t.Setenv("OPSK_ALLOWED_ORIGINS", "http://ops.example.com")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil for production HTTP origin")
 	}
 }
 

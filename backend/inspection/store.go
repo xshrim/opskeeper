@@ -14,6 +14,7 @@ import (
 type Store interface {
 	CreatePolicy(context.Context, Policy, string) (Policy, error)
 	ListPolicies(context.Context, string) ([]Policy, error)
+	ResolveTargets(context.Context, Policy) ([]string, error)
 	ScheduleDue(context.Context, time.Time) (int, error)
 	CreateScheduledRun(context.Context, Policy, time.Time, time.Time, []string) (string, bool, error)
 	ClaimJob(context.Context, string, time.Duration) (Job, bool, error)
@@ -28,6 +29,7 @@ type Store interface {
 	CreateChannel(context.Context, NotificationChannel) (NotificationChannel, error)
 	ListChannels(context.Context, string) ([]NotificationChannel, error)
 	MarkLLMStatus(context.Context, string, string) error
+	RecordExplanation(context.Context, string, string) error
 	EnqueueDeliveries(context.Context, string, []Finding) error
 	ClaimDelivery(context.Context) (Delivery, NotificationChannel, bool, error)
 	FinishDelivery(context.Context, Delivery, int, string, error) error
@@ -90,6 +92,7 @@ func (s *store) ListPolicies(ctx context.Context, scopeID string) ([]Policy, err
 			return nil, err
 		}
 		item.Timeout = time.Duration(seconds) * time.Second
+		item.TimeoutSeconds = seconds
 		_ = json.Unmarshal(labels, &item.TargetLabels)
 		_ = json.Unmarshal(windows, &item.Maintenance)
 		if err := s.pool.QueryRow(ctx, `SELECT COALESCE(array_agg(resource_id::text ORDER BY resource_id::text),'{}') FROM inspection_policy_targets WHERE policy_id=$1::uuid`, item.ID).Scan(&item.TargetResourceIDs); err != nil {
@@ -98,6 +101,54 @@ func (s *store) ListPolicies(ctx context.Context, scopeID string) ([]Policy, err
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// ResolveTargets freezes the union of explicit targets and active resources
+// matching the policy label selector. Scope and active-state checks happen in
+// the database so a target disabled after policy creation is not inspected.
+func (s *store) ResolveTargets(ctx context.Context, policy Policy) ([]string, error) {
+	return resolveTargets(ctx, s.pool, policy)
+}
+
+type queryer interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func resolveTargets(ctx context.Context, db queryer, policy Policy) ([]string, error) {
+	if policy.TargetLabels == nil {
+		policy.TargetLabels = map[string]string{}
+	}
+	labels, err := json.Marshal(policy.TargetLabels)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.Query(ctx, `
+		SELECT resource.id::text
+		  FROM resources resource
+		 WHERE resource.scope_id=$1::uuid
+		   AND resource.status='active'
+		   AND resource.deleted_at IS NULL
+		   AND (($2::jsonb = '{}'::jsonb AND resource.id IN (
+		          SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid
+		        )) OR ($2::jsonb <> '{}'::jsonb AND (
+		          resource.labels @> $2::jsonb OR resource.id IN (
+		            SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid
+		          )
+		        )))
+		 ORDER BY resource.id::text`, policy.ScopeID, string(labels), policy.ID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	defer rows.Close()
+	targets := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		targets = append(targets, id)
+	}
+	return targets, rows.Err()
 }
 
 // ScheduleDue is protected by a PostgreSQL advisory lock, so multiple
@@ -119,13 +170,22 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 	if err != nil {
 		return 0, mapError(err)
 	}
-	defer rows.Close()
-	created := 0
+	policies := []Policy{}
 	for rows.Next() {
-		policy, err := scanPolicy(rows)
-		if err != nil {
-			return created, err
+		policy, scanErr := scanPolicy(rows)
+		if scanErr != nil {
+			rows.Close()
+			return 0, scanErr
 		}
+		policies = append(policies, policy)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	created := 0
+	for _, policy := range policies {
 		location, err := time.LoadLocation(policy.Timezone)
 		if err != nil {
 			continue
@@ -138,7 +198,8 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 		if next := schedule.Next(localNow.Add(-time.Minute)); next.After(localNow) || next.Before(localNow) || IsMaintenance(policy.Maintenance, localNow) {
 			continue
 		}
-		if err := conn.QueryRow(ctx, `SELECT COALESCE(array_agg(resource_id::text ORDER BY resource_id::text),'{}') FROM inspection_policy_targets WHERE policy_id=$1::uuid`, policy.ID).Scan(&policy.TargetResourceIDs); err != nil {
+		policy.TargetResourceIDs, err = resolveTargets(ctx, conn, policy)
+		if err != nil {
 			return created, err
 		}
 		if len(policy.TargetResourceIDs) == 0 {
@@ -150,7 +211,7 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 			created++
 		}
 	}
-	return created, rows.Err()
+	return created, nil
 }
 
 type policyScanner interface{ Scan(...any) error }
@@ -163,6 +224,7 @@ func scanPolicy(row policyScanner) (Policy, error) {
 		return Policy{}, err
 	}
 	item.Timeout = time.Duration(seconds) * time.Second
+	item.TimeoutSeconds = seconds
 	_ = json.Unmarshal(labels, &item.TargetLabels)
 	_ = json.Unmarshal(windows, &item.Maintenance)
 	return item, nil
@@ -445,6 +507,13 @@ func (s *store) MarkLLMStatus(ctx context.Context, runID, status string) error {
 		return invalid("invalid LLM status")
 	}
 	_, err := s.pool.Exec(ctx, `UPDATE inspection_runs SET llm_status=$2,updated_at=now() WHERE id=$1::uuid`, runID, status)
+	return mapError(err)
+}
+
+func (s *store) RecordExplanation(ctx context.Context, runID, detail string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO inspection_run_steps(run_id,sequence,kind,status,detail,started_at,completed_at)
+		VALUES ($1::uuid,COALESCE((SELECT max(sequence)+1 FROM inspection_run_steps WHERE run_id=$1::uuid),1),'ai_explanation','succeeded',$2,now(),now())`, runID, detail)
 	return mapError(err)
 }
 

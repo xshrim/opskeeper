@@ -103,8 +103,12 @@ func TestResourceScopeRelationsDefaultsAndCredentialBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List(filtered) error = %v", err)
 	}
-	if visible.Total != 4 {
-		t.Fatalf("List(filtered) total = %d, want project resources plus team/platform ancestors", visible.Total)
+	var builtinSkills int64
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM resources WHERE kind='Skill' AND config->>'owner'='OpsKeeper builtin'`).Scan(&builtinSkills); err != nil {
+		t.Fatalf("count builtin Skills: %v", err)
+	}
+	if visible.Total != 4+builtinSkills {
+		t.Fatalf("List(filtered) total = %d, want project resources, ancestors and %d builtin Skills", visible.Total, builtinSkills)
 	}
 
 	var userID string

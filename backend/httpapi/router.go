@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/health"
@@ -16,26 +17,30 @@ import (
 )
 
 type Options struct {
-	BasePath       string
-	TrustedProxies []netip.Prefix
-	Identity       identityService
-	Users          userManagementService
-	Authorization  authorizationService
-	Access         accessManagementService
-	Auditor        audit.Logger
-	AuditLog       auditQueryService
-	Resources      resourceService
-	Credentials    credentialService
-	Discovery      discoveryService
-	Connectors     connectorService
-	LLMs           llmService
-	Skills         skillService
-	SkillRunner    skillRunner
-	Diagnosis      diagnosisService
-	Inspection     inspectionService
-	MCP            mcpService
-	Operations     operationService
-	CookieSecure   bool
+	BasePath           string
+	TrustedProxies     []netip.Prefix
+	Identity           identityService
+	Users              userManagementService
+	Authorization      authorizationService
+	Access             accessManagementService
+	Auditor            audit.Logger
+	AuditLog           auditQueryService
+	Resources          resourceService
+	Credentials        credentialService
+	Discovery          discoveryService
+	Connectors         connectorService
+	LLMs               llmService
+	Skills             skillService
+	SkillRunner        skillRunner
+	Diagnosis          diagnosisService
+	Inspection         inspectionService
+	MCP                mcpService
+	Operations         operationService
+	CookieSecure       bool
+	Production         bool
+	AllowedOrigins     []string
+	MaxBodyBytes       int64
+	RateLimitPerMinute int
 }
 
 func NewRouter(logger *slog.Logger, healthService *health.Service, build version.Info, options Options, organizationService organizationService, webUI http.Handler) http.Handler {
@@ -44,6 +49,11 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 	router.Use(middleware.RequestID)
 	router.Use(trustedProxyClientIP(options.TrustedProxies))
 	router.Use(recoverer(logger))
+	router.Use(securityHeaders(options.Production))
+	router.Use(corsPolicy(options.AllowedOrigins))
+	router.Use(csrfProtection(options.AllowedOrigins))
+	router.Use(requestBodyLimit(options.MaxBodyBytes))
+	router.Use(newClientRateLimiter(options.RateLimitPerMinute).middleware)
 	router.Use(requestLogger(logger))
 
 	app := chi.NewRouter()
@@ -148,7 +158,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 		writeError(writer, request, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 	})
 
-	return router
+	return otelhttp.NewHandler(router, "opskeeper.http")
 }
 
 func canServeWebUI(request *http.Request, basePath string) bool {

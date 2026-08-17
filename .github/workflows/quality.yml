@@ -1,0 +1,81 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.5
+      - run: cd frontend && npm ci
+      - run: make quality
+      - name: Verify dependency manifests are stable
+        run: |
+          cd backend
+          go mod tidy -diff
+          cd ../frontend
+          npm install --package-lock-only --ignore-scripts
+          git diff --exit-code -- ../backend/go.mod ../backend/go.sum package-lock.json
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: opskeeper
+          POSTGRES_USER: opskeeper
+          POSTGRES_PASSWORD: opskeeper-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opskeeper -d opskeeper"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      OPSK_TEST_DATABASE_URL: postgres://opskeeper:opskeeper-ci@127.0.0.1:5432/opskeeper?sslmode=disable
+      OPSK_DATABASE_URL: postgres://opskeeper:opskeeper-ci@127.0.0.1:5432/opskeeper?sslmode=disable
+      OPSK_REDIS_URL: redis://127.0.0.1:6379/0
+      OPSK_ENVIRONMENT: test
+      OPSK_CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.6'
+          cache-dependency-path: backend/go.sum
+      - run: make backend-integration-test

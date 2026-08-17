@@ -28,7 +28,7 @@ type PolicyStore interface {
 }
 type store struct{ pool *pgxpool.Pool }
 
-func NewStore(pool *pgxpool.Pool) Store { return &store{pool} }
+func NewStore(pool *pgxpool.Pool) *store { return &store{pool} }
 func (s *store) Create(ctx context.Context, r Request) (Request, error) {
 	params, _ := json.Marshal(r.Parameters)
 	dry, _ := json.Marshal(r.DryRun)
@@ -156,6 +156,79 @@ func (s *store) GetExecution(ctx context.Context, id string) (Execution, error) 
 		_ = json.Unmarshal(result, &item.Result)
 	}
 	return item, err
+}
+
+func (s *store) MarkExecutionRunning(ctx context.Context, id, jobName string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE operation_executions SET status='running',started_at=COALESCE(started_at,now()),result=result||jsonb_build_object('job_name',$2),updated_at=now() WHERE id=$1::uuid AND status='queued'`, id, jobName)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrConflict
+	}
+	return nil
+}
+
+func (s *store) FailExecution(ctx context.Context, id, message string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var requestID string
+	if err = tx.QueryRow(ctx, `UPDATE operation_executions SET status='failed',error_message=$2,completed_at=now(),updated_at=now() WHERE id=$1::uuid AND status IN ('queued','running') RETURNING operation_request_id::text`, id, message).Scan(&requestID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE operation_requests SET status='failed',updated_at=now() WHERE id=$1::uuid`, requestID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *store) ListActiveExecutions(ctx context.Context, limit int) ([]Execution, error) {
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id::text,operation_request_id::text,executor,idempotency_key,status,result,error_message,started_at,completed_at,created_at,updated_at FROM operation_executions WHERE executor='kubernetes_job' AND status IN ('queued','running') AND result ? 'job_name' ORDER BY created_at LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Execution{}
+	for rows.Next() {
+		var item Execution
+		var result []byte
+		if err := rows.Scan(&item.ID, &item.OperationRequestID, &item.Executor, &item.IdempotencyKey, &item.Status, &result, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(result, &item.Result)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) CompleteExecution(ctx context.Context, id string, succeeded bool, result map[string]any, message string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	status := Failed
+	if succeeded {
+		status = Succeeded
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	var requestID string
+	if err = tx.QueryRow(ctx, `UPDATE operation_executions SET status=$2,result=result||$3::jsonb,error_message=$4,completed_at=now(),updated_at=now() WHERE id=$1::uuid AND status IN ('queued','running') RETURNING operation_request_id::text`, id, status, string(raw), message).Scan(&requestID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE operation_requests SET status=$2,updated_at=now() WHERE id=$1::uuid`, requestID, status); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *store) CreatePolicy(ctx context.Context, item Policy) (Policy, error) {

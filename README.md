@@ -9,41 +9,22 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 前置软件：Go 1.26.5 或更高版本、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立 `docker-compose`。
 
 ```bash
-# 1. 生成应用本地配置
-cp .env.example .env
-
-# 2. 生成 PostgreSQL 和 Redis 本地配置
-cp deploy/compose/.env.example deploy/compose/.env
-
-# 3. 安装 Go 和前端依赖
-make deps
-
-# 4. 启动 PostgreSQL 和 Redis
-make infra-up
-
-# 5. 执行数据库迁移
-make migrate
-
-# 6. 通过交互式受控流程创建首个管理员
-make admin-create
-
-# 7. 构建并嵌入前端，然后运行 API
-make run-front-api
+make start
 ```
 
-默认访问地址：`http://localhost:8080/opskeeper/`。完整的环境要求、分离开发方式、配置项和常用命令见[本地开发](docs/guides/development.md)。
+该命令自动生成缺失的本地配置、安装依赖、启动并等待 PostgreSQL/Redis、执行迁移、按需创建首个管理员，最后构建嵌入式前端并启动 API。首次执行会打印 `admin` 的随机密码，请立即保存。默认访问地址：`http://localhost:8080/opskeeper/`；按 `Ctrl+C` 停止 API，使用 `make infra-down` 停止中间件。完整的环境要求、分离开发方式、配置项和常用命令见[本地开发](docs/guides/development.md)。
 
 ## 文档分类
 
-| 目录 | 内容 | 使用场景 |
-|---|---|---|
-| `docs/design/` | 已实现事实、目标设计、领域模型和架构边界 | 理解系统现在是什么以及将如何演进 |
-| `docs/standards/` | 必须遵守的编码、Git 和工程约束 | 开发、重构和代码评审 |
-| `docs/guides/` | 本地开发、测试、迁移和自动化发布步骤 | 执行具体工程操作 |
-| `docs/planning/` | 阶段规划、任务拆分、未决事项和审批状态 | 确认当前进度和后续范围 |
-| `docs/acceptance/` | 已完成阶段的验收步骤、结果和证据 | 复核已交付能力 |
-| `docs/adr/` | 重要技术决策的背景、选项和结论 | 追溯为什么采用当前方案 |
-| `docs/runbooks/` | 生产故障处置、恢复和巡检操作 | 处理运行事件 |
+| 目录                 | 内容                                     | 使用场景                         |
+| -------------------- | ---------------------------------------- | -------------------------------- |
+| `docs/design/`     | 已实现事实、目标设计、领域模型和架构边界 | 理解系统现在是什么以及将如何演进 |
+| `docs/standards/`  | 必须遵守的编码、Git 和工程约束           | 开发、重构和代码评审             |
+| `docs/guides/`     | 本地开发、测试、迁移和自动化发布步骤     | 执行具体工程操作                 |
+| `docs/planning/`   | 阶段规划、任务拆分、未决事项和审批状态   | 确认当前进度和后续范围           |
+| `docs/acceptance/` | 已完成阶段的验收步骤、结果和证据         | 复核已交付能力                   |
+| `docs/adr/`        | 重要技术决策的背景、选项和结论           | 追溯为什么采用当前方案           |
+| `docs/runbooks/`   | 生产故障处置、恢复和巡检操作             | 处理运行事件                     |
 
 ## 设计
 
@@ -64,6 +45,10 @@ make run-front-api
 - [内置诊断 Skill 与最小权限](docs/guides/builtin-skills.md)
 - [自动巡检、健康评分和通知](docs/guides/inspection.md)
 - [MCP、受控操作与自定义 Skill 沙箱](docs/guides/mcp-operations.md)
+- [生产环境 Helm 部署](docs/guides/production-deployment.md)
+- [管理员手册](docs/guides/administration.md)
+- [用户手册](docs/guides/user-guide.md)
+- [已知限制与容量边界](docs/known-limitations.md)
 
 ## 计划与验收
 

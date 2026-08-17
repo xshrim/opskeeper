@@ -14,11 +14,16 @@ type ResourceReader interface {
 type Service struct {
 	store     Store
 	resources ResourceReader
+	submitter JobSubmitter
 	now       func() time.Time
 }
 
 func NewService(store Store, resources ResourceReader) *Service {
 	return &Service{store: store, resources: resources, now: time.Now}
+}
+
+func NewServiceWithSubmitter(store Store, resources ResourceReader, submitter JobSubmitter) *Service {
+	return &Service{store: store, resources: resources, submitter: submitter, now: time.Now}
 }
 func (s *Service) Request(ctx context.Context, r Request) (Request, error) {
 	if err := ValidateRequest(r); err != nil {
@@ -132,7 +137,42 @@ func (s *Service) Start(ctx context.Context, id, key string) (string, error) {
 	if target.ScopeID != r.ScopeID || !allowsResource(ctx, target.ScopeID, target.ID) {
 		return "", authorization.ErrForbidden
 	}
-	return s.store.StartExecution(ctx, id, key, s.now())
+	executionID, err := s.store.StartExecution(ctx, id, key, s.now())
+	if err != nil {
+		return "", err
+	}
+	if s.submitter == nil {
+		return executionID, nil
+	}
+	execution, err := s.store.GetExecution(ctx, executionID)
+	if err != nil {
+		return "", err
+	}
+	if execution.Status != "queued" {
+		return executionID, nil
+	}
+	jobName, err := s.submitter.Submit(ctx, r, executionID)
+	if err != nil {
+		if status, ok := s.store.(interface {
+			FailExecution(context.Context, string, string) error
+		}); ok {
+			_ = status.FailExecution(context.Background(), executionID, err.Error())
+		}
+		return "", err
+	}
+	if status, ok := s.store.(interface {
+		MarkExecutionRunning(context.Context, string, string) error
+	}); ok {
+		if err := status.MarkExecutionRunning(ctx, executionID, jobName); err != nil {
+			if fail, ok := s.store.(interface {
+				FailExecution(context.Context, string, string) error
+			}); ok {
+				_ = fail.FailExecution(context.Background(), executionID, err.Error())
+			}
+			return "", err
+		}
+	}
+	return executionID, nil
 }
 
 func (s *Service) Get(ctx context.Context, id string) (Request, error) {

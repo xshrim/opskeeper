@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"opskeeper/backend/migrations"
 )
 
 // TestOperationTablesExist verifies the applied migration in the configured
@@ -23,6 +24,9 @@ func TestOperationTablesExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	if err := migrations.Apply(context.Background(), pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	var count int
 	err = pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY(ARRAY['mcp_server_snapshots','operation_policies','operation_requests','operation_approvals','operation_executions'])`).Scan(&count)
 	if err != nil {

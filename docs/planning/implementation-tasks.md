@@ -73,7 +73,7 @@ opskeeper/
 | T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 已完成 |
 | T13 | 自动巡检与通知 | 调度、执行、评分、异常和 Webhook | 已完成 |
 | T14 | MCP、沙箱与操作审批 | MCP、自定义 Skill 和风险审批 | 已完成 |
-| T15 | 生产化与端到端验收 | 安全、审计、可观测、部署和验收 | 待批准 |
+| T15 | 生产化与端到端验收 | 安全、审计、可观测、部署和验收 | 验收通过 |
 
 ---
 
@@ -438,6 +438,8 @@ Tempo/Jaeger/Elastic 实现、AI 诊断编排和自动巡检。
 
 **状态：已完成，依赖 T09（已完成）**
 
+验收记录：[T10 LLM Provider、Skill 注册表与受控 Runner 验收记录](../acceptance/t10.md)
+
 ### 目标
 
 建立可配置的大模型接入、版本化 Skill 管理以及不绕过权限的 Skill 执行环境。
@@ -520,6 +522,8 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 **状态：已完成，依赖 T11（已完成）**
 
+验收记录：[T12 Kubernetes 与中间件内置 Skill 验收记录](../acceptance/t12.md)
+
 ### 目标
 
 提供可投入实际只读诊断的内置 Skill，覆盖 Kubernetes、PostgreSQL、Redis 和 Kafka 常见故障。
@@ -556,6 +560,8 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 ## T13 自动巡检、健康评分和通知
 
 **状态：已完成，依赖 T12（已完成）**
+
+验收记录：[T13 自动巡检、健康评分和通知验收记录](../acceptance/t13.md)
 
 ### 目标
 
@@ -634,7 +640,9 @@ MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审�
 
 ## T15 生产化、安全加固与端到端验收
 
-**状态：待批准，依赖 T14**
+**状态：验收通过，依赖 T14（已完成）**
+
+验收记录：[T15 生产化、安全加固与端到端验收记录](../acceptance/t15.md)
 
 ### 目标
 

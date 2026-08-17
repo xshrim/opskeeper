@@ -1,0 +1,73 @@
+{{- $root := . -}}
+{{- range $component := list "api" "worker" "scheduler" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opskeeper.fullname" $root }}-{{ $component }}
+  labels:
+    {{- include "opskeeper.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: {{ (index $root.Values $component).replicas }}
+  selector:
+    matchLabels:
+      {{- include "opskeeper.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "opskeeper.selectorLabels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+        {{- with $root.Values.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        checksum/config: {{ toJson (dict "basePath" $root.Values.basePath "trustedProxies" $root.Values.trustedProxies "otel" $root.Values.otelExporterEndpoint) | sha256sum }}
+        {{- with $root.Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
+    spec:
+      serviceAccountName: {{ include "opskeeper.fullname" $root }}
+      automountServiceAccountToken: {{ and $root.Values.operation.enabled (ne $component "scheduler") }}
+      securityContext:
+        {{- include "opskeeper.podSecurityContext" $root | nindent 8 }}
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "opskeeper.image" $root }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          command: ["/app/opskeeper-{{ $component }}"]
+          securityContext:
+            {{- include "opskeeper.containerSecurityContext" $root | nindent 12 }}
+          env:
+            {{- include "opskeeper.commonEnv" $root | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ $root.Values.existingSecret | required "existingSecret is required" }}
+          resources:
+            {{- toYaml (index $root.Values $component).resources | nindent 12 }}
+          {{- if eq $component "api" }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: {{ printf "%s/health/live" (trimSuffix "/" $root.Values.basePath) }}, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: {{ printf "%s/health/live" (trimSuffix "/" $root.Values.basePath) }}, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: {{ printf "%s/health/ready" (trimSuffix "/" $root.Values.basePath) }}, port: http}
+            periodSeconds: 5
+          {{- end }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

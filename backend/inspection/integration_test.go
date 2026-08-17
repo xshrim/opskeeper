@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"opskeeper/backend/migrations"
 )
 
 // TestInspectionTablesExist verifies the deployed T13 schema directly. The
@@ -24,6 +25,9 @@ func TestInspectionTablesExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	if err := migrations.Apply(context.Background(), pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	var count int
 	err = pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name = ANY(ARRAY['inspection_policies','inspection_runs','inspection_jobs','inspection_findings','inspection_health_snapshots','notification_channels','notification_deliveries'])`).Scan(&count)
 	if err != nil {
@@ -31,6 +35,45 @@ func TestInspectionTablesExist(t *testing.T) {
 	}
 	if count != 7 {
 		t.Fatalf("T13 table count = %d, want 7", count)
+	}
+}
+
+func TestLabelSelectorResolvesOnlyMatchingActiveTargets(t *testing.T) {
+	url := os.Getenv("OPSK_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("OPSK_TEST_DATABASE_URL is required")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := migrations.Apply(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var scope, matching, wrong, policy string
+	if err = pool.QueryRow(ctx, `INSERT INTO scopes(scope_type) VALUES('platform') RETURNING id::text`).Scan(&scope); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM inspection_policy_targets WHERE policy_id IN (SELECT id FROM inspection_policies WHERE scope_id=$1::uuid); DELETE FROM inspection_jobs WHERE run_id IN (SELECT id FROM inspection_runs WHERE scope_id=$1::uuid); DELETE FROM inspection_runs WHERE scope_id=$1::uuid; DELETE FROM inspection_policies WHERE scope_id=$1::uuid; DELETE FROM resources WHERE scope_id=$1::uuid; DELETE FROM scopes WHERE id=$1::uuid`, scope)
+	})
+	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels) VALUES($1::uuid,'Application','matching', '{"env":"prod","team":"payments"}') RETURNING id::text`, scope).Scan(&matching); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels,status) VALUES($1::uuid,'Application','wrong', '{"env":"dev"}','active') RETURNING id::text`, scope).Scan(&wrong); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,target_labels,skill_resource_ids) VALUES($1::uuid,'label-'||gen_random_uuid()::text,'* * * * *','UTC','{"env":"prod"}','{}') RETURNING id::text`, scope).Scan(&policy); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := NewStore(pool).ResolveTargets(ctx, Policy{ID: policy, ScopeID: scope, TargetLabels: map[string]string{"env": "prod"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0] != matching || targets[0] == wrong {
+		t.Fatalf("resolved targets=%v, want [%s]", targets, matching)
 	}
 }
 
@@ -46,6 +89,9 @@ func TestJobLeaseRecoveryAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	if err := migrations.Apply(ctx, pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	s := NewStore(pool)
 	var scope, policy, run string
 	if err = pool.QueryRow(ctx, `INSERT INTO scopes(scope_type) VALUES('platform') RETURNING id::text`).Scan(&scope); err != nil {
@@ -127,6 +173,9 @@ func TestFindingIsResolvedWhenRuleDisappears(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	if err := migrations.Apply(ctx, pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 	s := NewStore(pool)
 	var scope, target, policy, run1, run2 string
 	if err = pool.QueryRow(ctx, `INSERT INTO scopes(scope_type) VALUES('platform') RETURNING id::text`).Scan(&scope); err != nil {

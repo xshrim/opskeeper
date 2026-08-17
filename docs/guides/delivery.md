@@ -6,7 +6,7 @@
 
 1. 应用临时运行、二进制构建和最终镜像打包只通过根目录 `Makefile` 暴露和编排，不使用独立包装脚本。
 2. 前后端源码保持独立；生产构建将 Vite 制品嵌入 Go API。
-3. API、Worker、Scheduler 和 Migration 使用同一个不可变镜像及同一个 digest。
+3. API、Worker、Scheduler、Migration 和 Admin 使用同一个不可变镜像及同一个 digest。
 4. 长期运行的应用进程永不自动执行数据库迁移。
 5. 每次部署先运行一个独立 Migration Job；成功后才能滚动发布应用。
 6. 迁移失败立即阻断发布；应用回滚不自动执行数据库 `down`。
@@ -26,7 +26,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | 入口 | 结果 |
 |---|---|
 | `make quality` | 格式、静态检查、测试、嵌入式前端验证和生产构建全部通过 |
-| `make build` | 在 `backend/bin/` 生成四个本地二进制 |
+| `make build` | 在 `backend/bin/` 生成五个本地二进制 |
 | `make image` | 使用 `deploy/Dockerfile` 生成最终不可变镜像 |
 
 `deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。Node Builder 调用 Make 的前端构建目标，Go Builder 接收前端制品后调用 Make 的后端构建目标；Dockerfile 不重复维护 npm 构建命令、Go Build Tag、版本注入或二进制清单。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
@@ -40,6 +40,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 /app/opskeeper-worker
 /app/opskeeper-scheduler
 /app/opskeeper-migrate
+/app/opskeeper-admin
 ```
 
 `opskeeper-api` 内嵌经过构建和检查的 Vite 制品。最终镜像不包含 Node.js，不依赖独立静态文件服务器，也不读取构建机器的 `.env`。
@@ -61,18 +62,19 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | `OPSK_TRUSTED_PROXIES` | API 运行 | 允许提供客户端转发头的直接代理 IP/CIDR；默认空，不信任任何代理头 |
 | `OPSK_CREDENTIAL_KEY` | API/Worker 运行 | 资源凭据密文加密密钥；生产环境必须设置为 32 字节原值或 Base64 编码值 |
 
-镜像内文件名和四个应用的服务名称固定为：
+镜像内文件名和五个应用的服务名称固定为：
 
 ```text
 opskeeper-api
 opskeeper-worker
 opskeeper-scheduler
 opskeeper-migrate
+opskeeper-admin
 ```
 
-`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入四个二进制。API 健康响应返回这三个字段，所有 Go 进程日志也携带相同字段，使运行实例能够关联到发布版本、源码提交和构建批次。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
+`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入五个二进制。API 健康响应返回这三个字段，所有 Go 进程日志也携带相同字段，使运行实例能够关联到发布版本、源码提交和构建批次。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
 
-`OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。四个进程使用相同格式，并写入固定的 `service` 字段。
+`OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。所有 Go 进程使用相同格式，并写入固定的 `service` 字段。
 
 ## 4. 流水线顺序
 
@@ -202,7 +204,7 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 
 - [ ] 流水线只通过 Makefile 运行、构建和打包应用。
 - [ ] `make quality` 通过。
-- [ ] 镜像包含四个固定名称的二进制，API 已嵌入前端。
+- [ ] 镜像包含五个固定名称的二进制，API 已嵌入前端。
 - [ ] 运行时不依赖 Node.js 或外部静态文件目录。
 - [ ] `OPSK_BASE_PATH` 与 Ingress 和健康探针路径一致。
 - [ ] `OPSK_LOG_FORMAT` 已按环境设为 `text` 或 `json`。

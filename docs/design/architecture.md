@@ -4,7 +4,7 @@
 
 本文同时维护已经验收的架构事实和已经确定的目标边界，但二者必须明确区分：
 
-- **当前实现**：截至最近一次已完成任务，仓库中已经存在并通过验收的能力。
+- **当前实现**：截至最近一次已完成任务，仓库中已经存在并通过验收的能力；T15 已实现但仍等待真实 Kubernetes 环境验收的内容会单独标注。
 - **目标设计**：尚未实现的设计约束，必须标注对应任务编号；任务获批前不代表已经交付。
 - 任务状态、实施细节和验收边界以[分阶段实施任务书](../planning/implementation-tasks.md)为准。
 
@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述完整目标形态。当前已经实现 Browser、嵌入式 Web、Go API、PostgreSQL、Redis、Organization、Identity、Authorization、Resource Catalog、Kubernetes Discovery、首批 Connector，以及 T10 的 LLM Provider、Skill Registry 和受控 ADK Runner；完整诊断、巡检与生产运维能力按 T11-T15 逐步交付。
+下图描述当前系统形态。Browser、嵌入式 Web、Go API、PostgreSQL、Redis、组织与授权、资源目录、发现、Connector、诊断、巡检、MCP、受控执行和审批均已实现；T15 的生产部署与可观测配置已经入库，仍需在干净 Kubernetes 环境完成部署验收。
 
 ```mermaid
 flowchart LR
@@ -67,21 +67,21 @@ flowchart LR
 
 | 层次 | 技术选型 | 状态 | 说明 |
 |---|---|---|---|
-| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T10 | 独立开发，生产时嵌入 Go API |
-| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T10 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
-| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T10 | REST API、健康检查、迁移和模块化业务能力 |
+| 前端基础 | Svelte 5、TypeScript、Vite | 已实现，T01-T14 | 独立开发，生产时嵌入 Go API |
+| 前端数据访问 | 类型化 API 客户端 | 已实现，T07-T14 | 统一处理 base path、会话刷新和结构化错误；查询库按实际复杂度引入 |
+| 后端基础 | Go、`chi`、`pgx` | 已实现，T01-T15 | REST API、健康检查、迁移和模块化业务能力 |
 | 查询生成 | `sqlc` | 候选，按真实复杂度引入 | 不作为所有 Store 的强制前置条件 |
 | Kubernetes 客户端 | `client-go` | 已实现，T08 | 集群发现、Project/Application 导入 |
-| Agent 与 Runner | Google ADK Go `v2.2.0` | 已实现基础能力，T10；T11-T13 扩展 | `llmagent`、Runner 和 Function Tool 为执行内核；外层保留 OpsKeeper 权限、预算和审计 |
+| Agent 与 Runner | Google ADK Go `v2.2.0` | 已实现，T10-T14 | `llmagent`、Runner 和 Function Tool 为执行内核；外层保留 OpsKeeper 权限、预算、审批和审计 |
 | OpenAI-compatible | 项目内 Chat Completions Adapter | 已实现，T10 | 实现 ADK `model.LLM`，支持文本、SSE、usage 和 Tool Calling；来源归属见根目录 `THIRD_PARTY_NOTICES.md` |
-| MCP | Model Context Protocol 官方 Go SDK | 目标，T14 | MCP 连接、能力发现和 Tool 调用，不自行实现协议栈 |
-| 数据库 | PostgreSQL 16 | 已实现，T01-T09 | 当前保存组织、身份、授权、审计、资源、凭据、关系、发现和连接检查数据 |
+| MCP | Model Context Protocol 官方 Go SDK | 已实现，T14 | MCP 连接、能力发现和 Tool 调用，不自行实现协议栈 |
+| 数据库 | PostgreSQL 16 | 已实现，T01-T15 | 保存组织、身份、授权、审计、资源、诊断、巡检、审批和任务数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
-| 实时交互 | SSE | 目标，T11 | 推送诊断过程、工具调用和巡检进度 |
+| 实时交互 | SSE | 已实现，T11 | 推送诊断过程和工具调用事件 |
 | 日志 | `slog` text/json | 已实现，T01 | 全部 Go 进程统一结构化字段 |
-| 指标和链路 | OpenTelemetry | 目标，随业务增量接入，T15 完整验收 | 平台自身日志、指标和链路 |
+| 指标和链路 | OpenTelemetry OTLP/HTTP | 已实现，T15，待环境验收 | HTTP 链路以及任务、Connector、LLM Token 和错误等低基数指标；未配置端点时本地无外部依赖 |
 | 本地部署 | Docker Compose | 已实现，T01 | PostgreSQL 和 Redis 开发环境 |
-| 生产部署 | 单镜像、Kubernetes、Helm、Ingress | 单镜像已实现；集群部署目标为 T15 | API 和 Worker 可独立扩容 |
+| 生产部署 | 单镜像、Kubernetes、Helm、Ingress | Chart 已实现，T15，待干净集群验收 | API、Worker 可独立扩容；Scheduler 单副本；Migration 使用发布前 Hook |
 
 目标任务引擎使用 PostgreSQL Job 表和 `FOR UPDATE SKIP LOCKED`，确保 Redis 故障不会造成任务丢失，在 T10-T13 实施。规模确实超过数据库任务队列边界后，再评估 Temporal，不将其作为当前预设依赖。
 
@@ -97,12 +97,12 @@ flowchart LR
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 LLM Provider 在 T10-T12 扩展 |
-| Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现基础能力，T10 |
-| AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算和执行记录 | 已实现执行基线，T10；诊断计划与证据归纳在 T11 |
-| Diagnosis | 对话会话、消息、工具调用、假设和诊断报告 | 目标，T11 |
+| Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现，T10-T14；Markdown Skill 编辑体验见 OI-006 |
+| AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算、执行记录和高风险审批 | 已实现，T10-T14 |
+| Diagnosis | 对话会话、消息、工具调用、证据和诊断报告 | 已实现，T11-T12 |
 | Inspection | 巡检策略、调度、执行、评分和异常项 | 已实现，T13 |
 | Notification | HTTPS Webhook、签名、限流、重试和投递记录 | 已实现，T13；邮件等渠道后续扩展 |
-| Audit | 管理操作、模型调用、工具调用和审批记录 | 管理操作审计已实现，T05；完整目标 T15 |
+| Audit | 管理操作、模型调用、工具调用、审批和保留记录 | 已实现，T05-T15；敏感字段脱敏，普通角色不能修改或删除，清理要求先导出并记录批次 |
 
 后端代码默认按业务特性组织。每个特性包拥有自身的类型、业务规则、持久化实现和测试，并在同包内通过文件划分职责；不会把所有业务的数据库实现集中到全局 adapter 层。数据库连接生命周期、缓存客户端、消息传输和外部平台协议等真正跨特性的能力，才建立独立基础设施包。
 
@@ -112,7 +112,7 @@ flowchart LR
 
 ## 6. 目标前端信息架构
 
-当前前端已实现登录、三级 Scope 导航、组织、资源、成员与角色、资源关系、拓扑及 Kubernetes 集群导入页面。AI 诊断、Skill、巡检和完整审计页面按后续任务交付。
+当前前端已实现登录、三级 Scope 导航、组织、资源、成员与角色、资源关系、拓扑、Kubernetes 集群导入、AI 诊断、Skill、巡检、审批和审计页面。
 
 | 页面 | 主要能力 |
 |---|---|
@@ -145,7 +145,7 @@ flowchart LR
 | `/opskeeper/api/v1/resources/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 已实现，T08 |
 | `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
 | `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
-| `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 目标，T11 |
+| `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 已实现，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 已实现，T13 |
 | `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults`、`/opskeeper/api/v1/skill-executions` | 已实现，T10 |
 | `/opskeeper/api/v1/llm-defaults`、`/opskeeper/api/v1/llm-providers/{id}/test` | 已实现，T10 |
@@ -163,15 +163,19 @@ flowchart LR
 - API 默认不信任客户端转发头；只有 `OPSK_TRUSTED_PROXIES` 明确列出的直连代理才能提供客户端 IP，解析结果写入请求日志并供后续审计使用。
 - 数据库迁移由滚动发布前的单实例 Migration Job 执行，使用 PostgreSQL advisory lock 防止并发；应用进程不自动迁移，Schema 演进遵循 Expand/Contract。
 - Connector 调用统一使用超时、全局并发、有限重试、查询范围和最大响应大小限制；连接检查只持久化安全分类、公开消息、耗时和能力，不保存上游响应正文或凭据。
+- T15 Helm Chart 已包含 API、Worker、Scheduler、Migration Hook、探针、资源限制、非 root 安全上下文、PDB、可选 HPA 和 NetworkPolicy；Chart 不生成或接管运行时 Secret。
+- API 在生产环境启用 HSTS，并统一设置 CSP、点击劫持与内容嗅探防护、Permissions Policy；状态变更请求经过 Origin/Fetch Metadata 校验，并有 CORS、请求体上限和按客户端 IP 的进程内限流。
+- API、Worker、Scheduler 和 Migration 可通过 OTLP/HTTP 导出链路与指标；审计事件及保留批次采用数据库追加写保护，保留清理必须携带已验证导出引用和变更单。
+- 生产配置拒绝开发数据库/Redis 默认地址、不安全 Cookie 以及非 HTTPS 跨域 Origin。
 
 ### 目标设计
 
-- API Server 保持无状态，生产环境至少两个副本，在 T15 完成集群部署验收。
+- API Server 保持无状态，Chart 默认两个副本；真实环境副本可用性仍需在 T15 集群验收确认。
 - Scheduler 在 T13 使用 PostgreSQL advisory lock 保证单一调度主节点。
 - Worker 在 T10-T13 使用任务租约、心跳和幂等键恢复中断任务。
 - Connector 熔断和按目标隔离的配额在真实负载出现后评估；当前已经具备超时、全局并发、有限重试、查询范围和最大响应大小限制。
-- PostgreSQL 备份、PITR 和高可用以及 Redis 可恢复数据边界在 T15 验收。
-- 诊断、巡检和工具执行从 T11 起保存输入摘要、证据、版本和结果，支持复现。
+- PostgreSQL 备份、PITR 和高可用由部署环境提供，仓库提供恢复 Runbook；恢复目标和演练结果必须由每个生产环境单独验收。
+- 诊断、巡检和工具执行保存输入摘要、证据、版本和结果，支持复现。
 
 ### 数据库权限边界
 

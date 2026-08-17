@@ -2,7 +2,9 @@ import { appURL } from './health';
 
 export interface User {
   id: string;
+  username: string;
   email: string;
+  phone: string;
   display_name: string;
   status: string;
   created_at: string;
@@ -210,8 +212,10 @@ export interface InspectionPolicy {
   timezone: string;
   status: string;
   target_resource_ids: string[];
+  target_labels: Record<string, string>;
   skill_resource_ids: string[];
   timeout: number;
+  timeout_seconds?: number;
   retries: number;
   max_concurrent: number;
   max_tool_calls: number;
@@ -600,8 +604,8 @@ const patch = (body: unknown): RequestInit => ({
 
 export const api = {
   me: () => request<User>('api/v1/auth/me'),
-  login: (email: string, password: string) =>
-    request<User>('api/v1/auth/login', json({ email, password }), false),
+  login: (identifier: string, password: string) =>
+    request<User>('api/v1/auth/login', json({ identifier, password }), false),
   logout: () => request<void>('api/v1/auth/logout', { method: 'POST' }, false),
   platform: () => request<Platform>('api/v1/platform'),
   teams: () => request<Page<Team>>('api/v1/teams/?page=1&page_size=100'),
@@ -742,6 +746,10 @@ export const api = {
     request<NotificationChannel[]>(
       `api/v1/notification-channels?scope_id=${encodeURIComponent(scopeId)}`
     ),
+  createInspectionPolicy: (body: Record<string, unknown>) =>
+    request<InspectionPolicy>('api/v1/inspection-policies', json(body)),
+  createNotificationChannel: (body: Record<string, unknown>) =>
+    request<NotificationChannel>('api/v1/notification-channels', json(body)),
   operationRequests: (scopeId: string) =>
     request<OperationRequest[]>(
       `api/v1/operation-requests?scope_id=${encodeURIComponent(scopeId)}&limit=50`

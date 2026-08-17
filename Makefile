@@ -2,6 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE_FILE := deploy/compose/docker-compose.yml
 APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
+ADMIN_CREATE_ARGS ?=
 COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
 WEBUI_DIST := backend/webui/dist
 IMAGE_REPOSITORY ?= opskeeper
@@ -29,10 +30,19 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+start: ## Prepare and start the complete local development environment.
+	@test -f .env || cp .env.example .env
+	@test -f deploy/compose/.env || cp deploy/compose/.env.example deploy/compose/.env
+	$(MAKE) deps
+	$(MAKE) infra-up
+	$(MAKE) migrate
+	$(MAKE) admin-create ADMIN_CREATE_ARGS="$(ADMIN_CREATE_ARGS) --if-needed"
+	$(MAKE) run-front-api
 
 deps: ## Download backend and frontend dependencies.
 	cd backend && go mod download
@@ -45,10 +55,10 @@ migrate-down: ## Roll back the latest PostgreSQL migration.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/migrate down
 
 admin-create: ## Create the first administrator through the controlled bootstrap flow.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create
+	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
 
 infra-up: ## Start PostgreSQL and Redis.
-	$(call run-compose,up -d)
+	$(call run-compose,up -d --wait --wait-timeout 60)
 
 infra-down: ## Stop PostgreSQL and Redis.
 	$(call run-compose,down)
@@ -78,7 +88,7 @@ backend-embedded-test: webui-assets
 	cd backend && go test -tags=embed_webui ./webui ./httpapi
 
 backend-integration-test: ## Run PostgreSQL-backed integration tests.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector ./diagnosis ./inspection
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./migrations ./organization ./identity ./authorization ./resource ./discovery ./connector ./diagnosis ./inspection ./operation ./e2e
 
 llm-provider-test: ## Test the configured external LLM through the ADK Runner.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go test -tags=integration ./llm -run TestSiliconFlowThroughADKRunner -v
@@ -97,7 +107,11 @@ frontend-lint:
 deploy-lint:
 	sh -n deploy/compose/postgres/check-ready.sh deploy/compose/postgres/init/001-create-opskeeper.sh
 
-lint: backend-lint frontend-lint deploy-lint ## Run backend, frontend, and deployment static checks.
+helm-lint: ## Validate and render the production Helm chart.
+	helm lint deploy/helm/opskeeper
+	helm template opskeeper deploy/helm/opskeeper >/dev/null
+
+lint: backend-lint frontend-lint deploy-lint helm-lint ## Run backend, frontend, and deployment static checks.
 
 format: ## Format source files.
 	cd backend && gofmt -w .
@@ -122,6 +136,7 @@ backend-build:
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-scheduler ./cmd/scheduler
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-migrate ./cmd/migrate
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-admin ./cmd/admin
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-operation-runner ./cmd/operation-runner
 
 build: webui-assets ## Build production binaries with the embedded frontend.
 	$(MAKE) backend-build

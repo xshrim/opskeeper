@@ -19,12 +19,12 @@ type stubStore struct {
 	bootstrapInput      BootstrapInput
 }
 
-func (s *stubStore) BootstrapAdmin(_ context.Context, email, displayName, passwordHash string) (User, error) {
-	s.bootstrapInput = BootstrapInput{Email: email, DisplayName: displayName, Password: passwordHash}
+func (s *stubStore) BootstrapAdmin(_ context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
+	s.bootstrapInput = BootstrapInput{Username: username, Email: email, Phone: phone, DisplayName: displayName, Password: passwordHash}
 	return s.user, nil
 }
 
-func (s *stubStore) FindByEmail(context.Context, string) (User, string, error) {
+func (s *stubStore) FindByIdentifier(context.Context, string, string) (User, string, error) {
 	return s.user, s.passwordHash, s.findError
 }
 
@@ -60,6 +60,7 @@ func TestBootstrapAdminNormalizesInputAndHashesPassword(t *testing.T) {
 	service := NewService(store, 15*time.Minute, 24*time.Hour)
 
 	_, err := service.BootstrapAdmin(context.Background(), BootstrapInput{
+		Username:    " Platform.Admin ",
 		Email:       "  ADMIN@Example.COM ",
 		DisplayName: "  Platform Admin  ",
 		Password:    "strong password value",
@@ -67,7 +68,7 @@ func TestBootstrapAdminNormalizesInputAndHashesPassword(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}
-	if store.bootstrapInput.Email != "admin@example.com" || store.bootstrapInput.DisplayName != "Platform Admin" {
+	if store.bootstrapInput.Username != "platform.admin" || store.bootstrapInput.Email != "admin@example.com" || store.bootstrapInput.DisplayName != "Platform Admin" {
 		t.Fatalf("BootstrapAdmin() input = %#v", store.bootstrapInput)
 	}
 	if store.bootstrapInput.Password == "strong password value" || !verifyPassword(store.bootstrapInput.Password, "strong password value") {
@@ -77,7 +78,7 @@ func TestBootstrapAdminNormalizesInputAndHashesPassword(t *testing.T) {
 
 func TestBootstrapAdminRejectsWeakPassword(t *testing.T) {
 	service := NewService(&stubStore{}, 15*time.Minute, 24*time.Hour)
-	_, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Email: "admin@example.com", Password: "short"})
+	_, err := service.BootstrapAdmin(context.Background(), BootstrapInput{Username: "admin", Password: "short"})
 	var validationError *ValidationError
 	if !errors.As(err, &validationError) {
 		t.Fatalf("BootstrapAdmin() error = %v, want ValidationError", err)
@@ -101,6 +102,19 @@ func TestLoginIssuesOpaqueTokens(t *testing.T) {
 	}
 	if string(store.createdAccessHash) == tokens.AccessToken || string(store.createdRefreshHash) == tokens.RefreshToken {
 		t.Fatal("Store received plaintext session token")
+	}
+}
+
+func TestLoginAcceptsUsername(t *testing.T) {
+	hash, err := hashPassword("strong password value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &stubStore{user: User{ID: "user-1", Username: "admin", Email: "admin@example.com", Status: StatusActive}, passwordHash: hash}
+	service := NewService(store, 15*time.Minute, 24*time.Hour)
+
+	if _, _, err := service.Login(context.Background(), "admin", "strong password value", SessionMetadata{}); err != nil {
+		t.Fatalf("Login(username) error = %v", err)
 	}
 }
 

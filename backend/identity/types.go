@@ -10,7 +10,9 @@ const (
 
 type User struct {
 	ID          string    `json:"id"`
+	Username    string    `json:"username"`
 	Email       string    `json:"email"`
+	Phone       string    `json:"phone"`
 	DisplayName string    `json:"display_name"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -31,18 +33,24 @@ type SessionTokens struct {
 }
 
 type BootstrapInput struct {
+	Username    string
 	Email       string
+	Phone       string
 	DisplayName string
 	Password    string
 }
 
 type UpdateUserInput struct {
 	DisplayName *string
+	Email       *string
+	Phone       *string
 	Status      *string
 }
 
 type CreateUserInput struct {
+	Username    string
 	Email       string
+	Phone       string
 	DisplayName string
 	Password    string
 }

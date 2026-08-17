@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"opskeeper/backend/observability"
 	"opskeeper/backend/resource"
 )
 
@@ -40,6 +41,7 @@ func NewService(registry *Registry, resources ResourceReader, credentials Creden
 }
 
 func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, error) {
+	metricStarted := time.Now()
 	resourceID = strings.TrimSpace(resourceID)
 	if resourceID == "" {
 		return Check{}, invalid("resource_id is required")
@@ -70,6 +72,12 @@ func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, 
 		check.ErrorCategory, _ = classify(err)
 		check.Message = publicMessage(err)
 	}
+	metricResult := "success"
+	if err != nil {
+		metricResult = string(check.ErrorCategory)
+		observability.RecordError(ctx, "connector", metricResult)
+	}
+	observability.RecordConnector(ctx, "test", metricResult, time.Since(metricStarted))
 	saved, saveErr := s.checks.Save(ctx, check)
 	if saveErr != nil {
 		return Check{}, saveErr
@@ -277,8 +285,18 @@ func (s *Service) prepare(ctx context.Context, item resource.Resource) (Adapter,
 	return s.registry.Resolve(target)
 }
 
-func (s *Service) collect(ctx context.Context, resourceID string, capability Capability, run func(context.Context) (Evidence, error)) (Evidence, error) {
-	result, err := executeValue(s, ctx, run)
+func (s *Service) collect(ctx context.Context, resourceID string, capability Capability, run func(context.Context) (Evidence, error)) (result Evidence, err error) {
+	started := time.Now()
+	defer func() {
+		metricResult := "success"
+		if err != nil {
+			category, _ := classify(err)
+			metricResult = string(category)
+			observability.RecordError(ctx, "connector", metricResult)
+		}
+		observability.RecordConnector(ctx, string(capability), metricResult, time.Since(started))
+	}()
+	result, err = executeValue(s, ctx, run)
 	if err != nil {
 		return Evidence{}, err
 	}

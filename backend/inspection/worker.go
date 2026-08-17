@@ -79,19 +79,50 @@ func (w *Worker) run(ctx context.Context, job Job) error {
 	if w.checker == nil {
 		return fmt.Errorf("deterministic checker is unavailable")
 	}
-	results := []RuleResult{}
+	maxConcurrent := policy.MaxConcurrent
+	if maxConcurrent < 1 {
+		maxConcurrent = 1
+	}
+	type targetResult struct {
+		target string
+		values []RuleResult
+		err    error
+	}
+	semaphore := make(chan struct{}, maxConcurrent)
+	completed := make(chan targetResult, len(targets))
+	var checks sync.WaitGroup
 	for _, target := range targets {
-		values, checkErr := w.checker.Check(ctx, target)
-		if checkErr != nil {
-			values = []RuleResult{{TargetResourceID: target, Rule: "connector.connectivity", Severity: "critical", Weight: 50, Message: "确定性连接检查失败：" + errorText(checkErr)}}
+		target := target
+		checks.Add(1)
+		go func() {
+			defer checks.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				completed <- targetResult{target: target, err: ctx.Err()}
+				return
+			}
+			values, checkErr := w.checker.Check(ctx, target)
+			completed <- targetResult{target: target, values: values, err: checkErr}
+		}()
+	}
+	checks.Wait()
+	close(completed)
+	results := []RuleResult{}
+	for result := range completed {
+		values := result.values
+		if result.err != nil {
+			values = []RuleResult{{TargetResourceID: result.target, Rule: "connector.connectivity", Severity: "critical", Weight: 50, Message: "确定性连接检查失败：" + errorText(result.err)}}
 		}
 		for i := range values {
 			if values[i].TargetResourceID == "" {
-				values[i].TargetResourceID = target
+				values[i].TargetResourceID = result.target
 			}
 		}
 		results = append(results, values...)
 	}
+	policy.TargetResourceIDs = targets
 	findings, _, err := w.store.SaveResults(ctx, run, policy, results)
 	if err != nil {
 		return err

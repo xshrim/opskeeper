@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "opskeeper.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "opskeeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "opskeeper.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "opskeeper.fullname" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "opskeeper.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "opskeeper.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/app/opskeeper-migrate", "up"]
+          securityContext:
+            {{- include "opskeeper.containerSecurityContext" . | nindent 12 }}
+          env:
+            {{- include "opskeeper.commonEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.migrationSecret | required "migrationSecret is required" }}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/mcp"
+	"opskeeper/backend/observability"
 	"opskeeper/backend/operation"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/resource"
@@ -64,6 +66,18 @@ func run(logger *slog.Logger, cfg config.Config) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	build := version.Current()
+	shutdownTelemetry, err := observability.Setup(ctx, serviceName, cfg.Environment, cfg.OTLPExporterEndpoint, observability.Build{Version: build.Version, Commit: build.Commit})
+	if err != nil {
+		return errors.Join(errors.New("configure telemetry"), err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(shutdownCtx); err != nil {
+			logger.Warn("shutdown telemetry", "error", err)
+		}
+	}()
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -121,31 +135,41 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
 	mcpService := mcp.NewService(resourceService, mcp.NewStore(pool))
-	operationService := operation.NewService(operation.NewStore(pool), resourceService)
+	operationStore := operation.NewStore(pool)
+	var operationService *operation.Service
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
+		operationService = operation.NewServiceWithSubmitter(operationStore, resourceService, operation.NewInClusterSubmitter(resourceService, envOrDefault("OPSK_OPERATION_RUNNER_IMAGE", "opskeeper:local")))
+	} else {
+		operationService = operation.NewService(operationStore, resourceService)
+	}
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
-		Handler: httpapi.NewRouter(logger, healthService, version.Current(), httpapi.Options{
-			BasePath:       cfg.BasePath,
-			TrustedProxies: cfg.TrustedProxies,
-			Identity:       identityService,
-			Users:          identityService,
-			Authorization:  authorizationService,
-			Access:         managementService,
-			Auditor:        auditService,
-			AuditLog:       auditService,
-			Resources:      resourceService,
-			Credentials:    credentialService,
-			Discovery:      discoveryService,
-			Connectors:     connectorService,
-			LLMs:           llmService,
-			Skills:         skillService,
-			SkillRunner:    skillRunner,
-			Diagnosis:      diagnosisService,
-			Inspection:     inspectionService,
-			MCP:            mcpService,
-			Operations:     operationService,
-			CookieSecure:   cfg.CookieSecure,
+		Handler: httpapi.NewRouter(logger, healthService, build, httpapi.Options{
+			BasePath:           cfg.BasePath,
+			TrustedProxies:     cfg.TrustedProxies,
+			Identity:           identityService,
+			Users:              identityService,
+			Authorization:      authorizationService,
+			Access:             managementService,
+			Auditor:            auditService,
+			AuditLog:           auditService,
+			Resources:          resourceService,
+			Credentials:        credentialService,
+			Discovery:          discoveryService,
+			Connectors:         connectorService,
+			LLMs:               llmService,
+			Skills:             skillService,
+			SkillRunner:        skillRunner,
+			Diagnosis:          diagnosisService,
+			Inspection:         inspectionService,
+			MCP:                mcpService,
+			Operations:         operationService,
+			CookieSecure:       cfg.CookieSecure,
+			Production:         cfg.Environment == "production",
+			AllowedOrigins:     cfg.AllowedOrigins,
+			MaxBodyBytes:       cfg.HTTPMaxBodyBytes,
+			RateLimitPerMinute: cfg.HTTPRateLimitPerMinute,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
@@ -173,4 +197,11 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		}
 		return err
 	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
 }

@@ -56,7 +56,7 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	}
 
 	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
-	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Email: "t05-platform@example.com", Password: "T05 integration password"})
+	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Username: "t05-platform", Email: "t05-platform@example.com", Password: "T05 integration password"})
 	if err != nil {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}
@@ -162,7 +162,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	}
 
 	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
-	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Email: "resource-admin@example.com", Password: "T08 integration password"})
+	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Username: "resource-admin", Email: "resource-admin@example.com", Password: "T08 integration password"})
 	if err != nil {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}

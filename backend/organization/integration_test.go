@@ -115,6 +115,11 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 
 func TestMigrationRollback(t *testing.T) {
 	pool := integrationPool(t)
+	for version := 19; version >= 11; version-- {
+		if err := migrations.RollbackLast(context.Background(), pool); err != nil {
+			t.Fatalf("RollbackLast() migration %04d error = %v", version, err)
+		}
+	}
 	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
 		t.Fatalf("RollbackLast() connector runtime migration error = %v", err)
 	}

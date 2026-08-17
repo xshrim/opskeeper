@@ -34,6 +34,7 @@ func normalizePolicy(input Policy) (Policy, error) {
 	if input.Timeout <= 0 || input.Timeout > time.Hour {
 		return Policy{}, invalid("policy timeout must be between 1 second and 1 hour")
 	}
+	input.TimeoutSeconds = int(input.Timeout / time.Second)
 	if input.Retries < 0 || input.Retries > 10 || input.MaxConcurrent < 1 || input.MaxConcurrent > 64 || input.MaxToolCalls < 1 || input.MaxToolCalls > 100 || input.MaxTokens < 1 || input.MaxTokens > 200000 {
 		return Policy{}, invalid("policy retries, concurrency or budget is out of range")
 	}

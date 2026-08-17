@@ -32,8 +32,9 @@ type authHandler struct {
 }
 
 type authRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Identifier string `json:"identifier"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
 }
 
 type authenticatedUserContextKey struct{}
@@ -54,7 +55,11 @@ func (h authHandler) login(writer http.ResponseWriter, request *http.Request) {
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	user, tokens, err := h.service.Login(request.Context(), body.Email, body.Password, sessionMetadata(request))
+	identifier := strings.TrimSpace(body.Identifier)
+	if identifier == "" {
+		identifier = body.Email
+	}
+	user, tokens, err := h.service.Login(request.Context(), identifier, body.Password, sessionMetadata(request))
 	if err != nil {
 		writeIdentityError(writer, request, err)
 		return

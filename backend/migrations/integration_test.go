@@ -144,6 +144,41 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAuditRetentionIsAppendOnlyAndRecorded(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	var eventID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO audit_events (action, result, details, created_at)
+		VALUES ('retention.test', 'success', '{}'::jsonb, now() - interval '90 days')
+		RETURNING id::text`).Scan(&eventID); err != nil {
+		t.Fatalf("insert audit event: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audit_events SET action = 'tampered' WHERE id = $1::uuid`, eventID); err == nil {
+		t.Fatal("UPDATE audit_events succeeded, want append-only rejection")
+	}
+	var removed int64
+	if err := pool.QueryRow(ctx, `SELECT prune_audit_events(now() - interval '60 days', 's3://audit/export-001', 'integration-test')`).Scan(&removed); err != nil {
+		t.Fatalf("prune audit events: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("prune removed = %d, want 1", removed)
+	}
+	var runs int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_retention_runs WHERE export_reference = 's3://audit/export-001' AND deleted_count = 1`).Scan(&runs); err != nil {
+		t.Fatalf("count retention runs: %v", err)
+	}
+	if runs != 1 {
+		t.Fatalf("retention runs = %d, want 1", runs)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM audit_retention_runs`); err == nil {
+		t.Fatal("DELETE audit_retention_runs succeeded, want append-only rejection")
+	}
+}
+
 func TestApplyRejectsChecksumMismatch(t *testing.T) {
 	pool := integrationPool(t)
 	if err := Apply(context.Background(), pool); err != nil {
@@ -182,6 +217,11 @@ func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT10Tables(5)
+	for range 3 { // 0019 usernames, 0018 audit retention, and 0017 MCP schema.
+		if err := RollbackLast(ctx, pool); err != nil {
+			t.Fatalf("RollbackLast() error = %v", err)
+		}
+	}
 	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract. 0013 has historical data-only rollback constraints.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
@@ -221,6 +261,11 @@ func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
 		}
 	}
 	assertT11Tables(9)
+	for range 3 { // 0019 usernames, 0018 audit retention, and 0017 MCP schema.
+		if err := RollbackLast(ctx, pool); err != nil {
+			t.Fatalf("RollbackLast() error = %v", err)
+		}
+	}
 	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract.
 		if err := RollbackLast(ctx, pool); err != nil {
 			t.Fatalf("RollbackLast() error = %v", err)
@@ -297,6 +342,12 @@ func TestBuiltinSkillsMigrationRollsBackAndReapplies(t *testing.T) {
 	}
 	if structuredOutputs != 4 {
 		t.Fatalf("built-in structured outputs = %d, want 4", structuredOutputs)
+	}
+	if err := RollbackLast(ctx, pool); err != nil { // 0019 usernames
+		t.Fatalf("RollbackLast() error = %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil { // 0018 audit retention
+		t.Fatalf("RollbackLast() error = %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil { // 0017 MCP schema
 		t.Fatalf("RollbackLast() error = %v", err)

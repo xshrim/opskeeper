@@ -1,0 +1,71 @@
+image:
+  repository: opskeeper
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+basePath: /opskeeper
+existingSecret: opskeeper-runtime
+migrationSecret: opskeeper-migration
+trustedProxies: ""
+otelExporterEndpoint: ""
+
+operation:
+  enabled: false
+  runnerImage: ""
+
+api:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+worker:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+scheduler:
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+service:
+  type: ClusterIP
+  port: 80
+ingress:
+  enabled: false
+  className: ""
+  host: opskeeper.example.com
+  tlsSecretName: ""
+  annotations: {}
+
+pdb:
+  enabled: true
+  minAvailable: 1
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector: {}
+  databaseCIDR: 10.0.0.0/8
+  databasePort: 5432
+  redisCIDR: 10.0.0.0/8
+  redisPort: 6379
+  allowExternalHTTPS: true
+
+migration:
+  activeDeadlineSeconds: 600
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

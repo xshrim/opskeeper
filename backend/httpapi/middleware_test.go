@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,6 +18,99 @@ func TestTrustedProxyClientIPIgnoresUntrustedPeerHeaders(t *testing.T) {
 	got := serveClientIP(request, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
 	if got != "192.0.2.20" {
 		t.Fatalf("client IP = %q, want direct peer", got)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	handler := securityHeaders(true)(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "https://ops.example.com/", nil))
+	for _, name := range []string{"Content-Security-Policy", "Permissions-Policy", "Referrer-Policy", "X-Content-Type-Options", "X-Frame-Options", "Strict-Transport-Security"} {
+		if response.Header().Get(name) == "" {
+			t.Fatalf("security header %s is empty", name)
+		}
+	}
+}
+
+func TestCORSPolicyAllowsConfiguredOriginAndRejectsUnknown(t *testing.T) {
+	handler := corsPolicy([]string{"https://console.example.com"})(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	allowed := httptest.NewRequest(http.MethodOptions, "https://api.example.com/", nil)
+	allowed.Host = "api.example.com"
+	allowed.Header.Set("Origin", "https://console.example.com")
+	allowed.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	allowedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(allowedResponse, allowed)
+	if allowedResponse.Code != http.StatusNoContent || allowedResponse.Header().Get("Access-Control-Allow-Origin") != "https://console.example.com" {
+		t.Fatalf("allowed CORS response = %d %#v", allowedResponse.Code, allowedResponse.Header())
+	}
+
+	denied := httptest.NewRequest(http.MethodPost, "https://api.example.com/", nil)
+	denied.Host = "api.example.com"
+	denied.Header.Set("Origin", "https://attacker.example.com")
+	deniedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(deniedResponse, denied)
+	if deniedResponse.Code != http.StatusForbidden {
+		t.Fatalf("denied CORS response = %d, want 403", deniedResponse.Code)
+	}
+}
+
+func TestCSRFProtectionRejectsCrossSiteWrite(t *testing.T) {
+	handler := csrfProtection(nil)(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodPost, "https://ops.example.com/api", nil)
+	request.Header.Set("Sec-Fetch-Site", "cross-site")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("cross-site response = %d, want 403", response.Code)
+	}
+}
+
+func TestRequestBodyLimit(t *testing.T) {
+	handler := requestBodyLimit(4)(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, err := io.ReadAll(request.Body)
+		if err != nil {
+			writeError(writer, request, http.StatusRequestEntityTooLarge, "request_too_large", "Request body is too large")
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("12345")))
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized response = %d, want 413", response.Code)
+	}
+}
+
+func TestClientRateLimiterRejectsBurst(t *testing.T) {
+	limiter := newClientRateLimiter(1)
+	handler := limiter.middleware(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	for index, want := range []int{http.StatusNoContent, http.StatusTooManyRequests} {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.RemoteAddr = "192.0.2.10:1234"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("request %d status = %d, want %d", index, response.Code, want)
+		}
+	}
+}
+
+func BenchmarkSecurityMiddleware(b *testing.B) {
+	handler := securityHeaders(true)(corsPolicy(nil)(csrfProtection(nil)(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))))
+	b.ReportAllocs()
+	for b.Loop() {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "https://ops.example.com/", nil))
 	}
 }
 

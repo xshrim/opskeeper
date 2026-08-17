@@ -53,11 +53,15 @@ type accessHandler struct {
 
 type updateUserRequest struct {
 	DisplayName *string `json:"display_name"`
+	Email       *string `json:"email"`
+	Phone       *string `json:"phone"`
 	Status      *string `json:"status"`
 }
 
 type createUserRequest struct {
+	Username    string `json:"username"`
 	Email       string `json:"email"`
+	Phone       string `json:"phone"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
 }
@@ -151,7 +155,7 @@ func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Requ
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	user, err := h.users.CreateUser(request.Context(), identity.CreateUserInput{Email: body.Email, DisplayName: body.DisplayName, Password: body.Password})
+	user, err := h.users.CreateUser(request.Context(), identity.CreateUserInput{Username: body.Username, Email: body.Email, Phone: body.Phone, DisplayName: body.DisplayName, Password: body.Password})
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
@@ -184,7 +188,7 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	userID := chi.URLParam(request, "userID")
-	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{DisplayName: body.DisplayName, Status: body.Status})
+	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{DisplayName: body.DisplayName, Email: body.Email, Phone: body.Phone, Status: body.Status})
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return

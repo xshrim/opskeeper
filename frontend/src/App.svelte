@@ -150,7 +150,7 @@
 
   let authState: 'loading' | 'login' | 'ready' = 'loading';
   let currentUser: User | null = null;
-  let email = '';
+  let loginIdentifier = '';
   let password = '';
   let loginError = '';
   let notice = '';
@@ -205,6 +205,21 @@
   let inspectionRuns: InspectionRun[] = [];
   let inspectionFindings: InspectionFinding[] = [];
   let notificationChannels: NotificationChannel[] = [];
+  let inspectionPolicyName = '';
+  let inspectionCron = '0 * * * *';
+  let inspectionTimezone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let inspectionTargetIds: string[] = [];
+  let inspectionSkillIds: string[] = [];
+  let inspectionTargetLabels = '{}';
+  let inspectionTimeoutSeconds = 120;
+  let inspectionRetries = 1;
+  let inspectionMaxConcurrent = 2;
+  let inspectionMaxToolCalls = 12;
+  let inspectionMaxTokens = 20000;
+  let channelName = '';
+  let channelWebhookURL = '';
+  let channelRateLimit = 30;
   let operationsLoaded = false;
   let operationRequests: OperationRequest[] = [];
   let operationTargetId = '';
@@ -362,12 +377,15 @@
     busy = true;
     loginError = '';
     try {
-      currentUser = await api.login(email.trim(), password);
+      currentUser = await api.login(loginIdentifier.trim(), password);
       password = '';
       authState = 'ready';
       await loadWorkspace();
     } catch (error) {
-      loginError = describeError(error, '登录失败，请检查邮箱和密码');
+      loginError = describeError(
+        error,
+        '登录失败，请检查用户名、邮箱、手机号和密码'
+      );
     } finally {
       busy = false;
     }
@@ -440,6 +458,51 @@
     } finally {
       busy = false;
     }
+  }
+
+  function toggleInspectionSelection(list: string[], id: string) {
+    return list.includes(id)
+      ? list.filter((item) => item !== id)
+      : [...list, id];
+  }
+
+  async function createInspectionPolicy() {
+    await action(async () => {
+      const created = await api.createInspectionPolicy({
+        scope_id: selectedScopeId,
+        name: inspectionPolicyName,
+        cron: inspectionCron,
+        timezone: inspectionTimezone,
+        target_resource_ids: inspectionTargetIds,
+        target_labels: JSON.parse(inspectionTargetLabels),
+        skill_resource_ids: inspectionSkillIds,
+        timeout_seconds: inspectionTimeoutSeconds,
+        retries: inspectionRetries,
+        max_concurrent: inspectionMaxConcurrent,
+        max_tool_calls: inspectionMaxToolCalls,
+        max_tokens: inspectionMaxTokens,
+        maintenance: []
+      });
+      inspectionPolicies = [created, ...inspectionPolicies];
+      inspectionPolicyName = '';
+      notice = '巡检策略已创建。';
+    });
+  }
+
+  async function createNotificationChannel() {
+    await action(async () => {
+      const created = await api.createNotificationChannel({
+        scope_id: selectedScopeId,
+        name: channelName,
+        webhook_url: channelWebhookURL,
+        status: 'active',
+        rate_limit_per_minute: channelRateLimit
+      });
+      notificationChannels = [created, ...notificationChannels];
+      channelName = '';
+      channelWebhookURL = '';
+      notice = 'Webhook 通知渠道已创建。';
+    });
   }
 
   async function loadOperations() {
@@ -1470,12 +1533,12 @@
         </div>{/if}
       <form class="stack-form" on:submit|preventDefault={login}>
         <label
-          >邮箱<input
-            type="email"
-            bind:value={email}
+          >用户名、邮箱或手机号<input
+            type="text"
+            bind:value={loginIdentifier}
             autocomplete="username"
             required
-            placeholder="admin@example.com"
+            placeholder="admin、admin@example.com 或 +8613800138000"
           /></label
         >
         <label
@@ -1609,10 +1672,10 @@
         <div class="topbar-actions">
           <span class="user-chip"
             ><span class="avatar"
-              >{(currentUser?.display_name || currentUser?.email || 'U')
+              >{(currentUser?.display_name || currentUser?.username || 'U')
                 .slice(0, 1)
                 .toUpperCase()}</span
-            ><span>{currentUser?.display_name || currentUser?.email}</span
+            ><span>{currentUser?.display_name || currentUser?.username}</span
             ></span
           ><button class="quiet-button" on:click={logout} disabled={busy}
             >退出</button
@@ -2434,6 +2497,123 @@
         </section>
       {:else if view === 'inspection'}
         <section class="content-grid">
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NEW POLICY</p>
+                <h2>创建巡检策略</h2>
+              </div>
+            </div>
+            <form
+              class="stack-form"
+              on:submit|preventDefault={createInspectionPolicy}
+            >
+              <div class="form-grid">
+                <label
+                  >名称<input
+                    bind:value={inspectionPolicyName}
+                    required
+                    maxlength="200"
+                  /></label
+                >
+                <label>Cron<input bind:value={inspectionCron} required /></label
+                >
+                <label
+                  >时区<input bind:value={inspectionTimezone} required /></label
+                >
+                <label
+                  >超时（秒）<input
+                    type="number"
+                    min="1"
+                    max="3600"
+                    bind:value={inspectionTimeoutSeconds}
+                  /></label
+                >
+                <label
+                  >重试次数<input
+                    type="number"
+                    min="0"
+                    max="10"
+                    bind:value={inspectionRetries}
+                  /></label
+                >
+                <label
+                  >目标并发<input
+                    type="number"
+                    min="1"
+                    max="64"
+                    bind:value={inspectionMaxConcurrent}
+                  /></label
+                >
+                <label
+                  >Tool 预算<input
+                    type="number"
+                    min="1"
+                    max="100"
+                    bind:value={inspectionMaxToolCalls}
+                  /></label
+                >
+                <label
+                  >Token 预算<input
+                    type="number"
+                    min="1"
+                    max="200000"
+                    bind:value={inspectionMaxTokens}
+                  /></label
+                >
+              </div>
+              <label
+                >标签选择器（JSON 对象）<textarea
+                  rows="3"
+                  bind:value={inspectionTargetLabels}
+                ></textarea></label
+              >
+              <fieldset>
+                <legend>目标资源</legend>
+                <div class="check-grid">
+                  {#each executableTargets as target}
+                    <label class="check-row"
+                      ><input
+                        type="checkbox"
+                        checked={inspectionTargetIds.includes(target.id)}
+                        on:change={() =>
+                          (inspectionTargetIds = toggleInspectionSelection(
+                            inspectionTargetIds,
+                            target.id
+                          ))}
+                      />{target.name} · {target.kind}</label
+                    >
+                  {/each}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend>诊断 Skill</legend>
+                <div class="check-grid">
+                  {#each skillResources.filter((item) => item.scope_id === selectedScopeId) as skill}
+                    <label class="check-row"
+                      ><input
+                        type="checkbox"
+                        checked={inspectionSkillIds.includes(skill.id)}
+                        on:change={() =>
+                          (inspectionSkillIds = toggleInspectionSelection(
+                            inspectionSkillIds,
+                            skill.id
+                          ))}
+                      />{skill.name}</label
+                    >
+                  {/each}
+                </div>
+              </fieldset>
+              <button
+                class="primary"
+                disabled={busy ||
+                  !inspectionPolicyName ||
+                  inspectionSkillIds.length === 0 ||
+                  (inspectionTargetIds.length === 0 &&
+                    inspectionTargetLabels.trim() === '{}')}>创建策略</button
+              >
+            </form>
+          </section>
           <section class="panel">
             <div class="panel-heading">
               <div>
@@ -2534,6 +2714,35 @@
                   当前作用域没有启用的通知渠道。
                 </p>{/each}
             </div>
+            <form
+              class="stack-form compact-form"
+              on:submit|preventDefault={createNotificationChannel}
+            >
+              <label
+                >名称<input
+                  bind:value={channelName}
+                  required
+                  maxlength="120"
+                /></label
+              >
+              <label
+                >HTTPS Webhook<input
+                  type="url"
+                  pattern="https://.*"
+                  bind:value={channelWebhookURL}
+                  required
+                /></label
+              >
+              <label
+                >每分钟上限<input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  bind:value={channelRateLimit}
+                /></label
+              >
+              <button class="primary" disabled={busy}>添加渠道</button>
+            </form>
           </section>
         </section>
       {:else if view === 'operations'}
@@ -3204,8 +3413,10 @@
             <div class="table-list">
               {#each users as user}<div class="list-row static">
                   <span
-                    ><strong>{user.display_name || user.email}</strong><small
-                      >{user.email}</small
+                    ><strong>{user.display_name || user.username}</strong><small
+                      >@{user.username}{user.email
+                        ? ` · ${user.email}`
+                        : ''}{user.phone ? ` · ${user.phone}` : ''}</small
                     ></span
                   ><span class="status-label {user.status}">{user.status}</span>
                 </div>{:else}<div class="empty-state">

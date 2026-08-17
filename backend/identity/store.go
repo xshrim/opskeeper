@@ -23,7 +23,7 @@ func NewStore(pool *pgxpool.Pool) Store {
 	return &store{pool: pool}
 }
 
-func (s *store) BootstrapAdmin(ctx context.Context, email, displayName, passwordHash string) (User, error) {
+func (s *store) BootstrapAdmin(ctx context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return User{}, fmt.Errorf("begin bootstrap administrator: %w", err)
@@ -41,7 +41,7 @@ func (s *store) BootstrapAdmin(ctx context.Context, email, displayName, password
 		return User{}, ErrBootstrapComplete
 	}
 
-	user, err := insertUser(ctx, tx, email, displayName)
+	user, err := insertUser(ctx, tx, username, email, phone, displayName)
 	if err != nil {
 		return User{}, mapBootstrapStoreError(err)
 	}
@@ -54,20 +54,22 @@ func (s *store) BootstrapAdmin(ctx context.Context, email, displayName, password
 	return user, nil
 }
 
-func (s *store) FindByEmail(ctx context.Context, email string) (User, string, error) {
+func (s *store) FindByIdentifier(ctx context.Context, identifier, phone string) (User, string, error) {
 	var user User
 	var passwordHash string
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id::text, u.email, u.display_name, u.status, u.created_at, u.updated_at, c.password_hash
+		SELECT u.id::text, u.username, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.display_name, u.status, u.created_at, u.updated_at, c.password_hash
 		  FROM users u
 		  JOIN credentials c ON c.user_id = u.id
-		 WHERE u.deleted_at IS NULL AND lower(u.email) = lower($1)`, email).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt, &passwordHash)
+		 WHERE u.deleted_at IS NULL AND (lower(u.username) = lower($1) OR lower(u.email) = lower($1) OR ($2 <> '' AND u.phone = $2))
+		 ORDER BY CASE WHEN lower(u.username) = lower($1) THEN 0 WHEN lower(u.email) = lower($1) THEN 1 ELSE 2 END
+		 LIMIT 1`, identifier, phone).
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt, &passwordHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, "", ErrInvalidCredentials
 		}
-		return User{}, "", fmt.Errorf("find user by email: %w", err)
+		return User{}, "", fmt.Errorf("find user by identifier: %w", err)
 	}
 	return user, passwordHash, nil
 }
@@ -119,9 +121,9 @@ func (s *store) RotateSession(ctx context.Context, oldRefreshHash, accessHash, r
 		   AND session.refresh_expires_at > $4
 		   AND usr.status = 'active'
 		   AND usr.deleted_at IS NULL
-		RETURNING usr.id::text, usr.email, usr.display_name, usr.status, usr.created_at, usr.updated_at`,
+		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, usr.created_at, usr.updated_at`,
 		oldRefreshHash, accessHash, refreshHash, now, accessExpiresAt, refreshExpiresAt, lastSeenAt, metadata.UserAgent, metadata.ClientIP).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrInvalidSession
@@ -143,9 +145,9 @@ func (s *store) Authenticate(ctx context.Context, accessHash []byte, now time.Ti
 		   AND session.access_expires_at > $2
 		   AND usr.status = 'active'
 		   AND usr.deleted_at IS NULL
-		RETURNING usr.id::text, usr.email, usr.display_name, usr.status, usr.created_at, usr.updated_at`,
+		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, usr.created_at, usr.updated_at`,
 		accessHash, now).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrInvalidSession
@@ -179,7 +181,7 @@ func (s *store) RevokeAllSessions(ctx context.Context, userID string, now time.T
 
 func (s *store) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, email, display_name, status, created_at, updated_at
+		SELECT id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at
 		  FROM users WHERE deleted_at IS NULL ORDER BY created_at, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
@@ -188,7 +190,7 @@ func (s *store) ListUsers(ctx context.Context) ([]User, error) {
 	users := make([]User, 0)
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, user)
@@ -196,13 +198,13 @@ func (s *store) ListUsers(ctx context.Context) ([]User, error) {
 	return users, rows.Err()
 }
 
-func (s *store) CreateUser(ctx context.Context, email, displayName, passwordHash string) (User, error) {
+func (s *store) CreateUser(ctx context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return User{}, fmt.Errorf("begin create user: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	user, err := insertUser(ctx, tx, email, displayName)
+	user, err := insertUser(ctx, tx, username, email, phone, displayName)
 	if err != nil {
 		return User{}, mapStoreError(err)
 	}
@@ -218,9 +220,9 @@ func (s *store) CreateUser(ctx context.Context, email, displayName, passwordHash
 func (s *store) GetUser(ctx context.Context, userID string) (User, error) {
 	var user User
 	err := s.pool.QueryRow(ctx, `
-		SELECT id::text, email, display_name, status, created_at, updated_at
+		SELECT id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at
 		  FROM users WHERE id = $1::uuid AND deleted_at IS NULL`, userID).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -238,18 +240,24 @@ func (s *store) UpdateUser(ctx context.Context, userID string, input UpdateUserI
 	if input.DisplayName != nil {
 		current.DisplayName = *input.DisplayName
 	}
+	if input.Email != nil {
+		current.Email = *input.Email
+	}
+	if input.Phone != nil {
+		current.Phone = *input.Phone
+	}
 	if input.Status != nil {
 		current.Status = *input.Status
 	}
 	var user User
 	err = s.pool.QueryRow(ctx, `
-		UPDATE users SET display_name = $2, status = $3, updated_at = now()
+		UPDATE users SET display_name = $2, email = NULLIF($3, ''), phone = NULLIF($4, ''), status = $5, updated_at = now()
 		 WHERE id = $1::uuid AND deleted_at IS NULL
-		RETURNING id::text, email, display_name, status, created_at, updated_at`,
-		userID, current.DisplayName, current.Status).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+		RETURNING id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at`,
+		userID, current.DisplayName, current.Email, current.Phone, current.Status).
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
-		return User{}, fmt.Errorf("update user: %w", err)
+		return User{}, mapStoreError(err)
 	}
 	return user, nil
 }
@@ -259,13 +267,13 @@ type queryer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func insertUser(ctx context.Context, query queryer, email, displayName string) (User, error) {
+func insertUser(ctx context.Context, query queryer, username, email, phone, displayName string) (User, error) {
 	var user User
 	err := query.QueryRow(ctx, `
-		INSERT INTO users (email, display_name)
-		VALUES ($1, $2)
-		RETURNING id::text, email, display_name, status, created_at, updated_at`, email, displayName).
-		Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+		INSERT INTO users (username, email, phone, display_name)
+		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4)
+		RETURNING id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at`, username, email, phone, displayName).
+		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 

@@ -23,6 +23,7 @@ import (
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/llm"
+	"opskeeper/backend/observability"
 )
 
 type Connector interface {
@@ -118,6 +119,10 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		return RunResult{}, err
 	}
 	finish := func(result FinishExecutionInput) (RunResult, error) {
+		observability.RecordLLM(context.Background(), result.Status, result.TotalTokens)
+		if result.Status != "succeeded" {
+			observability.RecordError(context.Background(), "llm", result.ErrorCode)
+		}
 		completed, finishErr := r.Executions.FinishExecution(context.Background(), execution.ID, result)
 		if finishErr != nil {
 			return RunResult{}, finishErr

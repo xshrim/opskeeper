@@ -103,7 +103,7 @@ func TestBootstrapAdminReceivesPlatformAdminBinding(t *testing.T) {
 	pool := authorizationIntegrationPool(t)
 	ctx := context.Background()
 	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
-	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Email: "bootstrap@example.com", Password: "T04 integration password"})
+	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Username: "bootstrap", Email: "bootstrap@example.com", Password: "T04 integration password"})
 	if err != nil {
 		t.Fatalf("BootstrapAdmin() error = %v", err)
 	}

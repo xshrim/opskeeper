@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -35,7 +36,11 @@ type Config struct {
 	ReadTimeout                  time.Duration
 	WriteTimeout                 time.Duration
 	IdleTimeout                  time.Duration
+	AllowedOrigins               []string
+	HTTPMaxBodyBytes             int64
+	HTTPRateLimitPerMinute       int
 	CookieSecure                 bool
+	OTLPExporterEndpoint         string
 	SessionAccessTTL             time.Duration
 	SessionRefreshTTL            time.Duration
 	ConnectorTimeout             time.Duration
@@ -48,16 +53,17 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		BasePath:          envOrDefault("OPSK_BASE_PATH", defaultBasePath),
-		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
-		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
-		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
-		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:          envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		BasePath:             envOrDefault("OPSK_BASE_PATH", defaultBasePath),
+		Environment:          envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:            envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
+		HTTPAddress:          envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
+		DatabaseURL:          envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
+		RedisURL:             envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
+		ReadHeaderTimeout:    5 * time.Second,
+		ReadTimeout:          15 * time.Second,
+		WriteTimeout:         30 * time.Second,
+		IdleTimeout:          60 * time.Second,
+		OTLPExporterEndpoint: strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
 	}
 
 	var err error
@@ -71,6 +77,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.CookieSecure, err = boolFromEnv("OPSK_COOKIE_SECURE", cfg.Environment == "production"); err != nil {
+		return Config{}, err
+	}
+	if cfg.AllowedOrigins, err = originsFromEnv("OPSK_ALLOWED_ORIGINS"); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPMaxBodyBytes, err = int64FromEnv("OPSK_HTTP_MAX_BODY_BYTES", 2<<20, 1024, 64<<20); err != nil {
+		return Config{}, err
+	}
+	if cfg.HTTPRateLimitPerMinute, err = intFromEnv("OPSK_HTTP_RATE_LIMIT_PER_MINUTE", 600, 1, 100000); err != nil {
 		return Config{}, err
 	}
 	if cfg.SessionAccessTTL, err = durationFromEnv("OPSK_SESSION_ACCESS_TTL", 15*time.Minute); err != nil {
@@ -116,11 +131,48 @@ func Load() (Config, error) {
 	if cfg.Environment == "production" && !cfg.CookieSecure {
 		return Config{}, errors.New("OPSK_COOKIE_SECURE must be true in production")
 	}
+	if cfg.Environment == "production" {
+		if cfg.DatabaseURL == defaultDatabaseURL {
+			return Config{}, errors.New("OPSK_DATABASE_URL must not use the development default in production")
+		}
+		if cfg.RedisURL == defaultRedisURL {
+			return Config{}, errors.New("OPSK_REDIS_URL must not use the development default in production")
+		}
+		for _, origin := range cfg.AllowedOrigins {
+			if !strings.HasPrefix(origin, "https://") {
+				return Config{}, errors.New("OPSK_ALLOWED_ORIGINS must use https in production")
+			}
+		}
+	}
 	if cfg.SessionRefreshTTL <= cfg.SessionAccessTTL {
 		return Config{}, errors.New("OPSK_SESSION_REFRESH_TTL must be greater than OPSK_SESSION_ACCESS_TTL")
 	}
 
 	return cfg, nil
+}
+
+func originsFromEnv(key string) ([]string, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil, nil
+	}
+	origins := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, raw := range strings.Split(value, ",") {
+		parsed, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("%s entries must be origins such as https://ops.example.com", key)
+		}
+		if parsed.Scheme != "https" && parsed.Scheme != "http" {
+			return nil, fmt.Errorf("%s entries must use http or https", key)
+		}
+		origin := strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+		if _, exists := seen[origin]; !exists {
+			seen[origin] = struct{}{}
+			origins = append(origins, origin)
+		}
+	}
+	return origins, nil
 }
 
 func prefixesFromEnv(key string) ([]netip.Prefix, error) {
