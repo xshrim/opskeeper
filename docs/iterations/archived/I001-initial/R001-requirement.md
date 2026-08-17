@@ -1,10 +1,14 @@
-# OpsKeeper 分阶段实施任务书
+# I001-R001 需求文档：平台首个迭代交付
+
+**迭代：** I001-initial
+**需求状态：** 已完成
+**需求验收报告：** [R001-requirement-acceptance.md](R001-requirement-acceptance.md)
 
 ## 1. 文档目的
 
-本文将 OpsKeeper 的建设过程拆分为 15 个可独立审批、实施和验收的任务。任务按依赖关系顺序执行，后续任务默认依赖所有前置任务已经验收通过。身份、授权、管理与审计分别安排在 T03、T04、T05，避免将安全关键能力集中在一次实施和验收中。
+本文定义 OpsKeeper 首个迭代的完整交付需求，并将需求拆分为 15 个可独立实施和验收的任务。任务按依赖关系顺序执行，后续任务默认依赖所有前置任务已经验收通过。身份、授权、管理与审计分别安排在 T03、T04、T05，避免将安全关键能力集中在一次实施和验收中。
 
-本文只定义实施计划，不代表任何任务已经获得实施授权。
+本需求已经完成实施和验收；本文作为 I001 封板后的不可变需求记录保存。后续迭代不得直接修改本文件，新增范围应建立新的需求文档。
 
 ## 2. 执行与审批规则
 
@@ -53,27 +57,27 @@ opskeeper/
 └── Makefile
 ```
 
-后端首版使用模块化单体并按业务特性建包。业务类型、Service、特性专属 Store 和测试留在同一特性包，通过文件划分职责；共享基础设施包只在出现真实的跨特性需求时创建，不预建空目录或全局 adapter 层。HTTP 作为协议边界独立，API、Worker、Scheduler 是独立运行单元。详细规则见 [Go 编码与工程组织通用规范](../standards/go-coding-conventions.md)。
+后端首版使用模块化单体并按业务特性建包。业务类型、Service、特性专属 Store 和测试留在同一特性包，通过文件划分职责；共享基础设施包只在出现真实的跨特性需求时创建，不预建空目录或全局 adapter 层。HTTP 作为协议边界独立，API、Worker、Scheduler 是独立运行单元。详细规则见 [Go 编码与工程组织通用规范](../../../standards/go-coding-conventions.md)。
 
 ## 4. 任务总览
 
-| 编号 | 任务 | 主要产出 | 状态 |
-|---|---|---|---|
-| T01 | 工程初始化与质量基线 | 可启动的 Go/Svelte 工程和本地依赖 | 已完成 |
-| T02 | Scope 与组织模型 | 平台、团队、项目的数据库及 API | 已完成 |
-| T03 | 本地身份与会话 | 用户、初始管理员、登录与会话生命周期 | 已完成 |
-| T04 | 三级 RBAC 与数据隔离 | 权限判定、Scope 继承和查询范围控制 | 已完成 |
-| T05 | 身份权限管理与安全审计 | 用户和角色管理、防越权、缓存失效与审计 | 已完成 |
-| T06 | 资源目录与关系模型 | 资源、凭据、关系、拓扑 API | 已完成 |
-| T07 | 管理控制台基础功能 | 作用域导航和组织/资源页面 | 已完成 |
-| T08 | Kubernetes 发现与导入 | 集群接入、预览、项目映射和同步 | 已完成 |
-| T09 | Connector 与监控平台 | 统一查询接口、Prometheus、Loki | 已完成 |
-| T10 | LLM、Skill 与 Runner | Provider、Skill 版本和受控执行 | 已完成 |
-| T11 | AI 诊断与证据链 | 流式诊断、工具调用和报告 | 已完成 |
-| T12 | 内置诊断 Skill | K8s、PostgreSQL、Redis、Kafka Skill | 已完成 |
-| T13 | 自动巡检与通知 | 调度、执行、评分、异常和 Webhook | 已完成 |
-| T14 | MCP、沙箱与操作审批 | MCP、自定义 Skill 和风险审批 | 已完成 |
-| T15 | 生产化与端到端验收 | 安全、审计、可观测、部署和验收 | 验收通过 |
+| 编号 | 任务                   | 主要产出                               | 状态    |
+| ---- | ---------------------- | -------------------------------------- | ------- |
+| T01  | 工程初始化与质量基线   | 可启动的 Go/Svelte 工程和本地依赖      | 已完成  |
+| T02  | Scope 与组织模型       | 平台、团队、项目的数据库及 API         | 已完成  |
+| T03  | 本地身份与会话         | 用户、初始管理员、登录与会话生命周期   | 已完成  |
+| T04  | 三级 RBAC 与数据隔离   | 权限判定、Scope 继承和查询范围控制     | 已完成  |
+| T05  | 身份权限管理与安全审计 | 用户和角色管理、防越权、缓存失效与审计 | 已完成  |
+| T06  | 资源目录与关系模型     | 资源、凭据、关系、拓扑 API             | 已完成  |
+| T07  | 管理控制台基础功能     | 作用域导航和组织/资源页面              | 已完成  |
+| T08  | Kubernetes 发现与导入  | 集群接入、预览、项目映射和同步         | 已完成  |
+| T09  | Connector 与监控平台   | 统一查询接口、Prometheus、Loki         | 已完成  |
+| T10  | LLM、Skill 与 Runner   | Provider、Skill 版本和受控执行         | 已完成  |
+| T11  | AI 诊断与证据链        | 流式诊断、工具调用和报告               | 已完成  |
+| T12  | 内置诊断 Skill         | K8s、PostgreSQL、Redis、Kafka Skill    | 已完成  |
+| T13  | 自动巡检与通知         | 调度、执行、评分、异常和 Webhook       | 已完成  |
+| T14  | MCP、沙箱与操作审批    | MCP、自定义 Skill 和风险审批           | 已完成  |
+| T15  | 生产化与端到端验收     | 安全、审计、可观测、部署和验收         | 已完成  |
 
 ---
 
@@ -81,7 +85,7 @@ opskeeper/
 
 **状态：已完成**
 
-验收记录：[T01 工程初始化与质量基线验收记录](../acceptance/t01.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -125,7 +129,7 @@ opskeeper/
 
 **状态：已完成，依赖 T01（已完成）**
 
-验收记录：[T02 Scope 与组织模型验收记录](../acceptance/t02.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -163,7 +167,7 @@ opskeeper/
 
 **状态：已完成，依赖 T02**
 
-验收记录：[T03 本地身份与会话验收记录](../acceptance/t03.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -201,7 +205,7 @@ opskeeper/
 
 **状态：已完成，依赖 T03**
 
-验收记录：[T04 三级 RBAC 与数据隔离验收记录](../acceptance/t04.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -241,7 +245,7 @@ opskeeper/
 
 当前实施分支：`feat/t05-access-management-audit`
 
-验收记录：[T05 身份权限管理与安全审计验收记录](../acceptance/t05.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -318,7 +322,7 @@ opskeeper/
 
 **状态：已完成，依赖 T06**
 
-验收记录：[T07 Svelte 管理控制台基础功能验收记录](../acceptance/t07.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -357,7 +361,7 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 **状态：已完成，依赖 T07（已完成）**
 
-验收记录：[T08 Kubernetes 集群发现与项目导入验收记录](../acceptance/t08.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -400,7 +404,7 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 **状态：已完成，依赖 T08（已完成）**
 
-验收记录：[T09 Connector 框架与外部监控平台验收记录](../acceptance/t09.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -438,7 +442,7 @@ Tempo/Jaeger/Elastic 实现、AI 诊断编排和自动巡检。
 
 **状态：已完成，依赖 T09（已完成）**
 
-验收记录：[T10 LLM Provider、Skill 注册表与受控 Runner 验收记录](../acceptance/t10.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -480,7 +484,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 **状态：已完成，依赖 T10（已完成）**
 
-验收记录：[T11 AI 诊断编排、证据链与对话工作台验收记录](../acceptance/t11.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -522,7 +526,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 **状态：已完成，依赖 T11（已完成）**
 
-验收记录：[T12 Kubernetes 与中间件内置 Skill 验收记录](../acceptance/t12.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -561,7 +565,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 **状态：已完成，依赖 T12（已完成）**
 
-验收记录：[T13 自动巡检、健康评分和通知验收记录](../acceptance/t13.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -602,7 +606,7 @@ AI/Skill 迁移、`backend/llm/`、`backend/skill/`、Runner、Provider/Skill �
 
 **状态：已完成，依赖 T13**
 
-验收记录：[T14 MCP、自定义 Skill 沙箱与高风险操作审批验收记录](../acceptance/t14.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
@@ -642,7 +646,7 @@ MCP/审批迁移、`backend/mcp/`、沙箱执行器、Policy Enforcement、审�
 
 **状态：验收通过，依赖 T14（已完成）**
 
-验收记录：[T15 生产化、安全加固与端到端验收记录](../acceptance/t15.md)
+验收报告：见 [R001 需求验收报告](R001-requirement-acceptance.md)
 
 ### 目标
 
