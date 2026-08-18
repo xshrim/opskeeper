@@ -1,6 +1,28 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Eye, EyeOff } from 'lucide-svelte';
+  import {
+    Boxes,
+    Building2,
+    ChevronDown,
+    ClipboardCheck,
+    CloudDownload,
+    Eye,
+    EyeOff,
+    LayoutDashboard,
+    LogOut,
+    Monitor,
+    Moon,
+    PanelLeftClose,
+    PanelLeftOpen,
+    ScanSearch,
+    ShieldCheck,
+    Sparkles,
+    Stethoscope,
+    Sun,
+    Upload,
+    UserRound,
+    UsersRound
+  } from 'lucide-svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import {
     api,
@@ -34,7 +56,8 @@
     type SkillExecution,
     type SkillVersion,
     type TopologyNode,
-    type User
+    type User,
+    type UserPreferences
   } from './lib/api';
 
   type View =
@@ -46,7 +69,10 @@
     | 'operations'
     | 'diagnosis'
     | 'inspection'
-    | 'access';
+    | 'access'
+    | 'profile';
+  type Theme = UserPreferences['theme'];
+  type SidebarMode = UserPreferences['sidebar_mode'];
   type ProjectMappingDraft = DiscoveryProjectMapping & {
     mode: 'existing' | 'create' | 'ignore';
   };
@@ -159,6 +185,21 @@
   let errorMessage = '';
   let busy = false;
   let view: View = 'overview';
+  let preferences: UserPreferences = {
+    theme: 'auto',
+    sidebar_mode: 'fixed',
+    sidebar_collapsed: false
+  };
+  let sidebarHovered = false;
+  let userMenuOpen = false;
+  let teamMenuOpen = false;
+  let isPlatformAdmin = false;
+  let selectedTeamId = '';
+  let selectedProjectId = '';
+  let profileDisplayName = '';
+  let profileEmail = '';
+  let profilePhone = '';
+  let avatarBusy = false;
   let platform: Platform | null = null;
   let teams: Team[] = [];
   let projects: Project[] = [];
@@ -280,15 +321,22 @@
   $: activeScope =
     scopeChoices.find((scope) => scope.id === selectedScopeId) ??
     scopeChoices[0];
+  $: selectedTeam = teams.find((team) => team.id === selectedTeamId) ?? null;
+  $: selectedTeamProjects = projects.filter(
+    (project) => project.team_id === selectedTeamId
+  );
+  $: selectedProject =
+    selectedTeamProjects.find((project) => project.id === selectedProjectId) ??
+    null;
   $: visibleProjects = selectedScopeId
-    ? projects.filter(
-        (project) =>
-          project.scope.id === selectedScopeId ||
-          project.team_id === selectedScopeId
-      )
+    ? activeScope?.type === 'platform'
+      ? projects
+      : activeScope?.type === 'team'
+        ? selectedTeamProjects
+        : projects.filter((project) => project.scope.id === selectedScopeId)
     : projects;
   $: visibleResources = selectedScopeId
-    ? resources.filter((resource) => resource.scope_id === selectedScopeId)
+    ? resources.filter((resource) => resourceInActiveWorkspace(resource))
     : resources;
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
@@ -318,12 +366,25 @@
   $: diagnosisTargets = visibleResources.filter(
     (item) => item.status === 'active'
   );
+  $: sidebarCompact =
+    preferences.sidebar_mode === 'hover'
+      ? !sidebarHovered
+      : preferences.sidebar_collapsed;
+  $: avatarURL = preferences.avatar_updated_at
+    ? api.avatarURL(preferences.avatar_updated_at)
+    : '';
 
   onMount(() => {
     void bootstrap();
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const refreshTheme = () => applyTheme();
+    media.addEventListener('change', refreshTheme);
+    document.addEventListener('pointerdown', handleDocumentPointerDown);
     return () => {
       stopHealthPolling();
       closeDiagnosisEvents();
+      media.removeEventListener('change', refreshTheme);
+      document.removeEventListener('pointerdown', handleDocumentPointerDown);
     };
   });
 
@@ -354,8 +415,14 @@
 
   async function bootstrap() {
     try {
-      currentUser = await api.me();
+      const [user, sessionContext] = await Promise.all([
+        api.me(),
+        api.sessionContext()
+      ]);
+      currentUser = user;
+      isPlatformAdmin = sessionContext.platform_admin;
       authState = 'ready';
+      await loadPreferences();
       startHealthPolling();
       await loadWorkspace();
     } catch (error) {
@@ -386,7 +453,15 @@
         teams.map((team) => api.projects(team.id))
       );
       projects = projectPages.flatMap((page) => page.items);
-      selectedScopeId = selectedScopeId || platform.scope.id;
+      if (isPlatformAdmin) {
+        selectedTeamId = '';
+        selectedProjectId = '';
+        selectedScopeId = platform.scope.id;
+      } else if (teams.length > 0) {
+        chooseTeam(selectedTeamId || teams[0].id);
+      } else {
+        selectedScopeId = platform.scope.id;
+      }
     } catch (error) {
       errorMessage = describeError(error, '工作区数据加载失败');
     }
@@ -397,9 +472,12 @@
     loginError = '';
     try {
       currentUser = await api.login(loginIdentifier.trim(), password);
+      const sessionContext = await api.sessionContext();
+      isPlatformAdmin = sessionContext.platform_admin;
       password = '';
       passwordVisible = false;
       authState = 'ready';
+      await loadPreferences();
       startHealthPolling();
       await loadWorkspace();
     } catch (error) {
@@ -418,9 +496,13 @@
       await api.logout();
     } finally {
       currentUser = null;
+      isPlatformAdmin = false;
+      selectedTeamId = '';
+      selectedProjectId = '';
       authState = 'login';
       stopHealthPolling();
       view = 'overview';
+      userMenuOpen = false;
       busy = false;
     }
   }
@@ -429,6 +511,8 @@
     view = nextView;
     notice = '';
     errorMessage = '';
+    userMenuOpen = false;
+    teamMenuOpen = false;
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
     if (nextView === 'ai' && !aiLoaded) void loadAI();
@@ -436,6 +520,138 @@
     if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
     if (nextView === 'operations' && !operationsLoaded) void loadOperations();
     if (nextView !== 'diagnosis') closeDiagnosisEvents();
+  }
+
+  async function loadPreferences() {
+    try {
+      preferences = await api.preferences();
+      applyTheme();
+    } catch (error) {
+      errorMessage = describeError(error, '个人偏好加载失败');
+    }
+  }
+
+  function applyTheme() {
+    if (typeof window === 'undefined') return;
+    const isDark =
+      preferences.theme === 'dark' ||
+      (preferences.theme === 'auto' &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+  }
+
+  function openProfile() {
+    profileDisplayName = currentUser?.display_name ?? '';
+    profileEmail = currentUser?.email ?? '';
+    profilePhone = currentUser?.phone ?? '';
+    chooseView('profile');
+  }
+
+  async function saveProfile() {
+    await action(async () => {
+      currentUser = await api.updateProfile({
+        display_name: profileDisplayName,
+        email: profileEmail,
+        phone: profilePhone
+      });
+      preferences = await api.updatePreferences({
+        theme: preferences.theme,
+        sidebar_mode: preferences.sidebar_mode,
+        sidebar_collapsed: preferences.sidebar_collapsed
+      });
+      applyTheme();
+      notice = '个人中心配置已保存';
+    });
+  }
+
+  async function uploadAvatar(event: Event) {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 1 << 20) {
+      errorMessage = '头像仅支持不超过 1 MiB 的 PNG 或 JPEG 图片。';
+      return;
+    }
+    avatarBusy = true;
+    errorMessage = '';
+    try {
+      preferences = await api.updateAvatar(file);
+      notice = '头像已更新';
+    } catch (error) {
+      errorMessage = describeError(error, '头像上传失败');
+    } finally {
+      avatarBusy = false;
+      (event.currentTarget as HTMLInputElement).value = '';
+    }
+  }
+
+  async function toggleSidebar() {
+    if (preferences.sidebar_mode === 'hover') {
+      preferences = { ...preferences, sidebar_mode: 'fixed', sidebar_collapsed: true };
+    } else {
+      preferences = { ...preferences, sidebar_collapsed: !preferences.sidebar_collapsed };
+    }
+    try {
+      preferences = await api.updatePreferences({
+        theme: preferences.theme,
+        sidebar_mode: preferences.sidebar_mode,
+        sidebar_collapsed: preferences.sidebar_collapsed
+      });
+    } catch (error) {
+      errorMessage = describeError(error, '侧边导航设置保存失败');
+    }
+  }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      userMenuOpen = false;
+      teamMenuOpen = false;
+    }
+  }
+
+  function handleDocumentPointerDown(event: PointerEvent) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (userMenuOpen && !target.closest('.sidebar-user-menu')) {
+      userMenuOpen = false;
+    }
+    if (teamMenuOpen && !target.closest('.workspace-team-wrap')) {
+      teamMenuOpen = false;
+    }
+  }
+
+  function chooseTeam(teamID: string) {
+    const team = teams.find((item) => item.id === teamID);
+    if (!team) return;
+    selectedTeamId = team.id;
+    projectTeamId = team.id;
+    selectedProjectId = '';
+    selectedScopeId = team.scope.id;
+    selectedResourceId = '';
+    teamMenuOpen = false;
+  }
+
+  function chooseProject(projectID: string) {
+    const project = selectedTeamProjects.find((item) => item.id === projectID);
+    selectedProjectId = project?.id ?? '';
+    selectedScopeId = project?.scope.id ?? selectedTeam?.scope.id ?? '';
+    selectedResourceId = '';
+  }
+
+  function resourceInActiveWorkspace(resource: Resource) {
+    if (activeScope?.type === 'platform') return true;
+    const selectedTeamScopeID = selectedTeam?.scope.id;
+    if (activeScope?.type === 'team') {
+      return (
+        resource.scope_id === platform?.scope.id ||
+        resource.scope_id === selectedTeamScopeID ||
+        selectedTeamProjects.some((project) => project.scope.id === resource.scope_id)
+      );
+    }
+    return (
+      resource.scope_id === platform?.scope.id ||
+      resource.scope_id === selectedTeamScopeID ||
+      resource.scope_id === selectedProject?.scope.id
+    );
   }
 
   async function loadInspection() {
@@ -1450,6 +1666,38 @@
     );
   }
 
+  function viewTitle(currentView: View) {
+    const titles: Record<View, string> = {
+      overview: '平台总览',
+      organization: '组织管理',
+      discovery: '集群项目与应用导入',
+      resources: '资源目录',
+      ai: '模型与 Skill',
+      operations: '受控操作与 MCP',
+      diagnosis: 'AI 诊断工作台',
+      inspection: '自动巡检与健康',
+      access: '成员与角色',
+      profile: '个人中心'
+    };
+    return titles[currentView];
+  }
+
+  function viewBreadcrumb(currentView: View) {
+    const titles: Record<View, string> = {
+      overview: 'Overview',
+      organization: 'Organization',
+      discovery: 'Kubernetes Import',
+      resources: 'Resources',
+      ai: 'AI Runtime',
+      operations: 'Controlled Operations',
+      diagnosis: 'AI Diagnosis',
+      inspection: 'Inspection',
+      access: 'Access',
+      profile: 'Profile'
+    };
+    return titles[currentView];
+  }
+
   function scopeType(id: string) {
     return scopeChoices.find((scope) => scope.id === id)?.type ?? 'scope';
   }
@@ -1537,6 +1785,8 @@
 <svelte:head>
   <meta name="description" content="OpsKeeper platform control plane" />
 </svelte:head>
+
+<svelte:window on:keydown={handleGlobalKeydown} />
 
 {#if authState === 'loading'}
   <div class="loading-screen">
@@ -1628,161 +1878,74 @@
     </section>
   </main>
 {:else}
-  <div class="app-shell">
-    <aside class="sidebar">
+  <div
+    class="app-shell"
+    class:sidebar-compact={sidebarCompact}
+    class:sidebar-hover-mode={preferences.sidebar_mode === 'hover'}
+  >
+    <aside
+      class="sidebar"
+      class:sidebar-compact={sidebarCompact}
+      on:mouseenter={() => (sidebarHovered = true)}
+      on:mouseleave={() => (sidebarHovered = false)}
+    >
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">O</span><span
-          >OpsKeeper</span
+        <span class="brand-mark" aria-hidden="true">O</span><span class="brand-copy"
+          >OpsKeeper<small>智能值守平台</small></span
         >
       </div>
       <div class="workspace-label">WORKSPACE</div>
       <nav aria-label="主导航">
-        <button
-          class:active={view === 'overview'}
-          class="nav-item"
-          on:click={() => chooseView('overview')}
-          ><span aria-hidden="true">⌂</span>总览</button
-        >
-        <button
-          class:active={view === 'organization'}
-          class="nav-item"
-          on:click={() => chooseView('organization')}
-          ><span aria-hidden="true">▦</span>组织</button
-        >
-        <button
-          class:active={view === 'resources'}
-          class="nav-item"
-          on:click={() => chooseView('resources')}
-          ><span aria-hidden="true">◇</span>资源</button
-        >
-        <button
-          class:active={view === 'discovery'}
-          class="nav-item"
-          on:click={() => chooseView('discovery')}
-          ><span aria-hidden="true">☸</span>集群导入</button
-        >
-        <button
-          class:active={view === 'ai'}
-          class="nav-item"
-          on:click={() => chooseView('ai')}
-          ><span aria-hidden="true">✦</span>模型与 Skill</button
-        >
-        <button
-          class:active={view === 'diagnosis'}
-          class="nav-item"
-          on:click={() => chooseView('diagnosis')}
-          ><span aria-hidden="true">⌁</span>AI 诊断</button
-        >
-        <button
-          class:active={view === 'inspection'}
-          class="nav-item"
-          on:click={() => chooseView('inspection')}
-          ><span aria-hidden="true">◴</span>自动巡检</button
-        >
-        <button
-          class:active={view === 'operations'}
-          class="nav-item"
-          on:click={() => chooseView('operations')}
-          ><span aria-hidden="true">✓</span>受控操作</button
-        >
-        <button
-          class:active={view === 'access'}
-          class="nav-item"
-          on:click={() => chooseView('access')}
-          ><span aria-hidden="true">♙</span>成员与角色</button
-        >
+        <button aria-label="总览" class:active={view === 'overview'} class="nav-item" on:click={() => chooseView('overview')} title={sidebarCompact ? '总览' : undefined}><LayoutDashboard size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">总览</span></button>
+        <button aria-label="组织" class:active={view === 'organization'} class="nav-item" on:click={() => chooseView('organization')} title={sidebarCompact ? '组织' : undefined}><Building2 size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">组织</span></button>
+        <button aria-label="资源" class:active={view === 'resources'} class="nav-item" on:click={() => chooseView('resources')} title={sidebarCompact ? '资源' : undefined}><Boxes size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">资源</span></button>
+        <button aria-label="集群导入" class:active={view === 'discovery'} class="nav-item" on:click={() => chooseView('discovery')} title={sidebarCompact ? '集群导入' : undefined}><CloudDownload size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">集群导入</span></button>
+        <button aria-label="模型与 Skill" class:active={view === 'ai'} class="nav-item" on:click={() => chooseView('ai')} title={sidebarCompact ? '模型与 Skill' : undefined}><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">模型与 Skill</span></button>
+        <button aria-label="AI 诊断" class:active={view === 'diagnosis'} class="nav-item" on:click={() => chooseView('diagnosis')} title={sidebarCompact ? 'AI 诊断' : undefined}><ScanSearch size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">AI 诊断</span></button>
+        <button aria-label="自动巡检" class:active={view === 'inspection'} class="nav-item" on:click={() => chooseView('inspection')} title={sidebarCompact ? '自动巡检' : undefined}><Stethoscope size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">自动巡检</span></button>
+        <button aria-label="受控操作" class:active={view === 'operations'} class="nav-item" on:click={() => chooseView('operations')} title={sidebarCompact ? '受控操作' : undefined}><ClipboardCheck size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">受控操作</span></button>
+        <button aria-label="成员与角色" class:active={view === 'access'} class="nav-item" on:click={() => chooseView('access')} title={sidebarCompact ? '成员与角色' : undefined}><UsersRound size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">成员与角色</span></button>
       </nav>
       <div class="sidebar-footer">
-        <span class="status-dot"></span><span
-          >{health?.status === 'ready' ? '服务正常' : '检查服务状态'}</span
-        >
+        <div class="user-menu-wrap sidebar-user-menu">
+          <button class="user-menu-trigger" aria-label="打开用户菜单" aria-expanded={userMenuOpen} on:click={() => (userMenuOpen = !userMenuOpen)}>
+            {#if avatarURL}<img src={avatarURL} alt="" class="avatar avatar-image" />{:else}<span class="avatar">{(currentUser?.display_name || currentUser?.username || 'U').slice(0, 1).toUpperCase()}</span>{/if}<span class="user-menu-name">{currentUser?.display_name || currentUser?.username}</span>
+          </button>
+          {#if userMenuOpen}<div class="user-menu" role="menu"><button role="menuitem" on:click={openProfile}><UserRound size={16} strokeWidth={1.8} aria-hidden="true" />个人中心</button><button role="menuitem" on:click={logout} disabled={busy}><LogOut size={16} strokeWidth={1.8} aria-hidden="true" />退出登录</button></div>{/if}
+        </div>
+        <button class="sidebar-toggle" aria-label={sidebarCompact ? '展开导航栏' : '折叠导航栏'} title={sidebarCompact ? '展开导航栏' : '折叠导航栏'} on:click={toggleSidebar}>
+          {#if sidebarCompact}<PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<PanelLeftClose size={18} strokeWidth={1.8} aria-hidden="true" />{/if}
+        </button>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="topbar">
         <div>
-          <p class="breadcrumb">
-            {activeScope?.name ?? 'Platform'} / {view === 'overview'
-              ? 'Overview'
-              : view === 'organization'
-                ? 'Organization'
-                : view === 'resources'
-                  ? 'Resources'
-                  : view === 'discovery'
-                    ? 'Kubernetes Import'
-                    : view === 'ai'
-                      ? 'AI Runtime'
-                      : view === 'diagnosis'
-                        ? 'AI Diagnosis'
-                        : view === 'inspection'
-                          ? 'Inspection'
-                          : view === 'operations'
-                            ? 'Controlled Operations'
-                            : 'Access'}
-          </p>
-          <h1>
-            {view === 'overview'
-              ? '平台总览'
-              : view === 'organization'
-                ? '组织管理'
-                : view === 'resources'
-                  ? '资源目录'
-                  : view === 'discovery'
-                    ? '集群项目与应用导入'
-                    : view === 'ai'
-                      ? '模型与 Skill'
-                      : view === 'diagnosis'
-                        ? 'AI 诊断工作台'
-                        : view === 'inspection'
-                          ? '自动巡检与健康'
-                          : view === 'operations'
-                            ? '受控操作与 MCP'
-                            : '成员与角色'}
-          </h1>
+          <p class="breadcrumb">{activeScope?.name ?? 'Platform'} / {viewBreadcrumb(view)}</p>
+          <h1>{viewTitle(view)}</h1>
         </div>
         <div class="topbar-actions">
-          <span class="user-chip"
-            ><span class="avatar"
-              >{(currentUser?.display_name || currentUser?.username || 'U')
-                .slice(0, 1)
-                .toUpperCase()}</span
-            ><span>{currentUser?.display_name || currentUser?.username}</span
-            ></span
-          ><button class="quiet-button" on:click={logout} disabled={busy}
-            >退出</button
-          >
+          {#if !isPlatformAdmin}<div class="workspace-switcher topbar-workspace-switcher">
+            <div class="workspace-team-wrap">
+              {#if teams.length > 1}
+                <button class="workspace-team" aria-label="切换团队" aria-expanded={teamMenuOpen} on:click={() => (teamMenuOpen = !teamMenuOpen)}>
+                  <span>{selectedTeam?.name ?? '未分配团队'}</span><ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
+                </button>
+              {:else}
+                <span class="workspace-team workspace-team-static">{selectedTeam?.name ?? '未分配团队'}</span>
+              {/if}
+              {#if teamMenuOpen}<div class="team-menu" role="menu">
+                {#each teams as team}<button role="menuitem" class:selected={team.id === selectedTeamId} on:click={() => chooseTeam(team.id)}>{team.name}</button>{/each}
+              </div>{/if}
+            </div>
+            <label class="workspace-project"><span>项目</span><select aria-label="切换项目" value={selectedProjectId} disabled={!selectedTeamProjects.length} on:change={(event) => chooseProject((event.currentTarget as HTMLSelectElement).value)}>
+              <option value="">{selectedTeamProjects.length ? '全部项目' : '暂无项目'}</option>
+              {#each selectedTeamProjects as project}<option value={project.id}>{project.name}</option>{/each}
+            </select></label>
+          </div>{/if}
         </div>
       </header>
-
-      <div class="scope-bar">
-        <label class="scope-picker"
-          ><span>当前作用域</span><select
-            bind:value={selectedScopeId}
-            on:change={() => {
-              selectedResourceId = '';
-              if (view === 'diagnosis') {
-                selectedDiagnosisId = '';
-                diagnosisSnapshot = null;
-                void loadDiagnosisSessions();
-              }
-            }}
-            ><option value="" disabled>选择作用域</option
-            >{#each scopeChoices as scope}<option value={scope.id}
-                >{scope.type === 'platform'
-                  ? '平台'
-                  : scope.type === 'team'
-                    ? '团队'
-                    : '项目'} · {scope.name}</option
-              >{/each}</select
-          ></label
-        >
-        <div class="scope-trail">
-          <span class="scope-type">{activeScope?.type ?? 'scope'}</span><span
-            >{activeScope?.name ?? '未选择'}</span
-          >
-        </div>
-      </div>
 
       {#if notice}<div class="alert success" role="status">{notice}</div>{/if}
       {#if errorMessage}<div class="alert error" role="alert">
@@ -1881,6 +2044,61 @@
                   >{/each}
               </div>{/if}
           </section>
+        </section>
+      {:else if view === 'profile'}
+        <section class="profile-layout">
+          <form class="profile-form" on:submit|preventDefault={saveProfile}>
+            <section class="panel profile-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">PROFILE</p>
+                  <h2>个人资料</h2>
+                </div>
+              </div>
+              <div class="profile-avatar-row">
+                {#if avatarURL}<img src={avatarURL} alt="当前头像" class="profile-avatar avatar-image" />{:else}<span class="profile-avatar">{(currentUser?.display_name || currentUser?.username || 'U').slice(0, 1).toUpperCase()}</span>{/if}
+                <div>
+                  <strong>{currentUser?.username}</strong>
+                  <p>PNG 或 JPEG，最大 1 MiB。</p>
+                  <label class="secondary-button upload-button" for="profile-avatar-upload"><Upload size={15} strokeWidth={1.8} aria-hidden="true" />{avatarBusy ? '正在上传' : '更换头像'}</label>
+                  <input id="profile-avatar-upload" class="visually-hidden" type="file" accept="image/png,image/jpeg" disabled={avatarBusy} on:change={uploadAvatar} />
+                </div>
+              </div>
+              <div class="profile-fields">
+                <label>用户名<input value={currentUser?.username ?? ''} disabled aria-label="用户名" /></label>
+                <label>显示名<input bind:value={profileDisplayName} required maxlength="120" placeholder="请输入显示名" aria-label="显示名" /></label>
+                <label>邮箱<input type="email" bind:value={profileEmail} placeholder="例如：name@example.com" aria-label="邮箱" /></label>
+                <label>电话<input type="tel" bind:value={profilePhone} placeholder="例如：13800138000" aria-label="电话" /></label>
+              </div>
+              <div class="profile-team"><UsersRound size={17} strokeWidth={1.8} aria-hidden="true" /><span><strong>所属团队</strong><small>当前未配置团队成员关系</small></span></div>
+            </section>
+
+            <section class="panel profile-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">PREFERENCES</p>
+                  <h2>界面偏好</h2>
+                </div>
+              </div>
+              <fieldset class="preference-group">
+                <legend>系统主题</legend>
+                <div class="segmented-control" role="radiogroup" aria-label="系统主题">
+                  <button type="button" class:active={preferences.theme === 'auto'} role="radio" aria-checked={preferences.theme === 'auto'} on:click={() => { preferences = { ...preferences, theme: 'auto' }; applyTheme(); }}><Monitor size={16} strokeWidth={1.8} aria-hidden="true" />自动</button>
+                  <button type="button" class:active={preferences.theme === 'light'} role="radio" aria-checked={preferences.theme === 'light'} on:click={() => { preferences = { ...preferences, theme: 'light' }; applyTheme(); }}><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button>
+                  <button type="button" class:active={preferences.theme === 'dark'} role="radio" aria-checked={preferences.theme === 'dark'} on:click={() => { preferences = { ...preferences, theme: 'dark' }; applyTheme(); }}><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button>
+                </div>
+              </fieldset>
+              <fieldset class="preference-group">
+                <legend>侧边导航栏</legend>
+                <div class="segmented-control" role="radiogroup" aria-label="侧边导航栏模式">
+                  <button type="button" class:active={preferences.sidebar_mode === 'fixed'} role="radio" aria-checked={preferences.sidebar_mode === 'fixed'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'fixed' })}>固定模式</button>
+                  <button type="button" class:active={preferences.sidebar_mode === 'hover'} role="radio" aria-checked={preferences.sidebar_mode === 'hover'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'hover', sidebar_collapsed: true })}>窄栏悬浮展开</button>
+                </div>
+                <p class="preference-help">固定模式可通过侧栏右下角图标展开或收起；悬浮模式默认显示图标，鼠标移入后展开。</p>
+              </fieldset>
+              <div class="profile-actions"><button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在保存' : '保存配置'}</button></div>
+            </section>
+          </form>
         </section>
       {:else if view === 'organization'}
         <section class="content-grid two-column">
@@ -2661,7 +2879,7 @@
               <fieldset>
                 <legend>诊断 Skill</legend>
                 <div class="check-grid">
-                  {#each skillResources.filter((item) => item.scope_id === selectedScopeId) as skill}
+                  {#each skillResources.filter((item) => resourceInActiveWorkspace(item)) as skill}
                     <label class="check-row"
                       ><input
                         type="checkbox"

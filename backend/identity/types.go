@@ -47,6 +47,19 @@ type UpdateUserInput struct {
 	Status      *string
 }
 
+type Preferences struct {
+	Theme            string     `json:"theme"`
+	SidebarMode      string     `json:"sidebar_mode"`
+	SidebarCollapsed bool       `json:"sidebar_collapsed"`
+	AvatarUpdatedAt  *time.Time `json:"avatar_updated_at,omitempty"`
+}
+
+type UpdatePreferencesInput struct {
+	Theme            string
+	SidebarMode      string
+	SidebarCollapsed bool
+}
+
 type CreateUserInput struct {
 	Username    string
 	Email       string

@@ -11,6 +11,17 @@ export interface User {
   updated_at: string;
 }
 
+export interface UserPreferences {
+  theme: 'auto' | 'light' | 'dark';
+  sidebar_mode: 'fixed' | 'hover';
+  sidebar_collapsed: boolean;
+  avatar_updated_at?: string;
+}
+
+export interface SessionContext {
+  platform_admin: boolean;
+}
+
 export interface Scope {
   id: string;
   type: string;
@@ -604,6 +615,26 @@ const patch = (body: unknown): RequestInit => ({
 
 export const api = {
   me: () => request<User>('api/v1/auth/me'),
+  sessionContext: () => request<SessionContext>('api/v1/auth/me/context'),
+  updateProfile: (body: {
+    display_name: string;
+    email: string;
+    phone: string;
+  }) => request<User>('api/v1/auth/me', patch(body)),
+  preferences: () => request<UserPreferences>('api/v1/auth/me/preferences'),
+  updatePreferences: (body: Omit<UserPreferences, 'avatar_updated_at'>) =>
+    request<UserPreferences>('api/v1/auth/me/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    }),
+  updateAvatar: (file: File) =>
+    request<UserPreferences>('api/v1/auth/me/avatar', {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file
+    }),
+  avatarURL: (updatedAt: string) =>
+    appURL(`api/v1/auth/me/avatar?updated_at=${encodeURIComponent(updatedAt)}`).toString(),
   login: (identifier: string, password: string) =>
     request<User>('api/v1/auth/login', json({ identifier, password }), false),
   logout: () => request<void>('api/v1/auth/logout', { method: 'POST' }, false),

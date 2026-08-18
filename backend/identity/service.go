@@ -40,6 +40,13 @@ type UserManagementStore interface {
 	UpdateUser(context.Context, string, UpdateUserInput) (User, error)
 }
 
+type PreferencesStore interface {
+	GetPreferences(context.Context, string) (Preferences, error)
+	UpdatePreferences(context.Context, string, UpdatePreferencesInput) (Preferences, error)
+	UpdateAvatar(context.Context, string, string, []byte) (Preferences, error)
+	GetAvatar(context.Context, string) ([]byte, string, time.Time, error)
+}
+
 type Service struct {
 	store      Store
 	accessTTL  time.Duration
@@ -283,6 +290,70 @@ func (s *Service) UpdateUser(ctx context.Context, userID string, input UpdateUse
 		return User{}, errors.New("user management is unavailable")
 	}
 	return store.UpdateUser(ctx, userID, input)
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, userID string, input UpdateUserInput) (User, error) {
+	input.Status = nil
+	user, err := s.UpdateUser(ctx, userID, input)
+	if err != nil {
+		return User{}, err
+	}
+	if err := s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "profile.update", Result: "success", Details: map[string]any{}}); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) Preferences(ctx context.Context, userID string) (Preferences, error) {
+	store, ok := s.store.(PreferencesStore)
+	if !ok {
+		return Preferences{}, errors.New("user preferences are unavailable")
+	}
+	return store.GetPreferences(ctx, userID)
+}
+
+func (s *Service) UpdatePreferences(ctx context.Context, userID string, input UpdatePreferencesInput) (Preferences, error) {
+	if input.Theme != "auto" && input.Theme != "light" && input.Theme != "dark" {
+		return Preferences{}, invalid("theme must be auto, light, or dark")
+	}
+	if input.SidebarMode != "fixed" && input.SidebarMode != "hover" {
+		return Preferences{}, invalid("sidebar_mode must be fixed or hover")
+	}
+	store, ok := s.store.(PreferencesStore)
+	if !ok {
+		return Preferences{}, errors.New("user preferences are unavailable")
+	}
+	preferences, err := store.UpdatePreferences(ctx, userID, input)
+	if err != nil {
+		return Preferences{}, err
+	}
+	if err := s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "profile.preferences.update", Result: "success", Details: map[string]any{}}); err != nil {
+		return Preferences{}, err
+	}
+	return preferences, nil
+}
+
+func (s *Service) UpdateAvatar(ctx context.Context, userID, contentType string, content []byte) (Preferences, error) {
+	store, ok := s.store.(PreferencesStore)
+	if !ok {
+		return Preferences{}, errors.New("user preferences are unavailable")
+	}
+	preferences, err := store.UpdateAvatar(ctx, userID, contentType, content)
+	if err != nil {
+		return Preferences{}, err
+	}
+	if err := s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "profile.avatar.update", Result: "success", Details: map[string]any{}}); err != nil {
+		return Preferences{}, err
+	}
+	return preferences, nil
+}
+
+func (s *Service) Avatar(ctx context.Context, userID string) ([]byte, string, time.Time, error) {
+	store, ok := s.store.(PreferencesStore)
+	if !ok {
+		return nil, "", time.Time{}, errors.New("user preferences are unavailable")
+	}
+	return store.GetAvatar(ctx, userID)
 }
 
 func (s *Service) issueSession(ctx context.Context, user User, metadata SessionMetadata) (User, SessionTokens, error) {
