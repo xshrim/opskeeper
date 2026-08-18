@@ -6,6 +6,15 @@
 
 前置软件：Go 1.26.5 或更高版本、Node.js 22、npm 11、Docker、Helm 3.18，以及 Docker Compose v2 或独立的 `docker-compose`。ADK Go v2.2.0 的模块要求为 Go 1.26.5。
 
+前端 npm 依赖安装统一使用 Makefile 变量 `NPM_REGISTRY` 指定的镜像，默认值为国内镜像 `https://registry.npmmirror.com`。执行 `make deps` 或 `make image` 时会自动把该变量传给 npm；需要切换镜像时直接覆盖变量：
+
+```bash
+make deps NPM_REGISTRY=https://registry.npmmirror.com
+make image NPM_REGISTRY=https://registry.npmmirror.com
+```
+
+如需单独安装或更新包，也必须使用同一个变量值：`npm install <package> --registry="${NPM_REGISTRY}"`。不要在 `package.json` 或业务代码中写入临时 registry 配置。
+
 首次初始化：
 
 ```bash
@@ -109,6 +118,7 @@ make run-scheduler
 | `OPSK_BASE_PATH`                       | `/opskeeper`                             | 页面、静态资源、健康检查和业务 API 的路径前缀                            |
 | `OPSK_ENVIRONMENT`                     | `development`                            | 标识运行环境                                                             |
 | `OPSK_LOG_FORMAT`                      | `text`                                   | Go 应用日志格式，可选`text` 或 `json`                                |
+| `OPSK_LOG_HEALTH_IGNORE`               | `true`                                   | 是否忽略`/health/live`与`/health/ready`的 API 访问日志；设为`false`可恢复记录 |
 | `OPSK_COOKIE_SECURE`                   | 开发环境`false`，生产环境 `true`       | 会话 Cookie 是否只允许 HTTPS，生产环境不能关闭                           |
 | `OPSK_SESSION_ACCESS_TTL`              | `15m`                                    | 短期访问会话有效期                                                       |
 | `OPSK_SESSION_REFRESH_TTL`             | `168h`                                   | 刷新会话有效期，必须长于访问会话                                         |
@@ -189,6 +199,8 @@ OPSK_LOG_FORMAT=json make run-api
 - 其他值会在应用启动时被拒绝。
 
 格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段；API 请求日志还写入经过可信代理规则解析的 `client_ip`。
+
+默认 `OPSK_LOG_HEALTH_IGNORE=true`，API 不记录 `GET /health/live` 和 `GET /health/ready` 访问日志，避免 Kubernetes 探针和前端状态刷新淹没业务日志。接口仍会正常执行；需要排查健康检查访问时设为 `false` 后重启 API。
 
 ### 4.4 外部 LLM Provider 验证
 

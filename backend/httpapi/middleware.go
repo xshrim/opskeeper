@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"path"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -119,12 +120,15 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
-func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+func requestLogger(logger *slog.Logger, basePath string, ignoreHealthLogs bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			started := time.Now()
 			recorder := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 			next.ServeHTTP(recorder, request)
+			if ignoreHealthLogs && isHealthCheckRequest(request, basePath) {
+				return
+			}
 			logger.Info("http request",
 				"request_id", middleware.GetReqID(request.Context()),
 				"method", request.Method,
@@ -135,6 +139,13 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+func isHealthCheckRequest(request *http.Request, basePath string) bool {
+	if request.Method != http.MethodGet {
+		return false
+	}
+	return request.URL.Path == path.Join(basePath, "health/live") || request.URL.Path == path.Join(basePath, "health/ready")
 }
 
 func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {

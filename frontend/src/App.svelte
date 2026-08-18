@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Eye, EyeOff } from 'lucide-svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import {
     api,
@@ -152,6 +153,7 @@
   let currentUser: User | null = null;
   let loginIdentifier = '';
   let password = '';
+  let passwordVisible = false;
   let loginError = '';
   let notice = '';
   let errorMessage = '';
@@ -163,6 +165,8 @@
   let resources: Resource[] = [];
   let schemas: ResourceSchema[] = [];
   let health: HealthReport | null = null;
+  let healthController: AbortController | null = null;
+  let healthInterval: number | null = null;
   let selectedScopeId = '';
   let selectedResourceId = '';
   let relations: Relation[] = [];
@@ -317,27 +321,42 @@
 
   onMount(() => {
     void bootstrap();
+    return () => {
+      stopHealthPolling();
+      closeDiagnosisEvents();
+    };
+  });
+
+  function startHealthPolling() {
+    if (healthInterval !== null) return;
     const controller = new AbortController();
+    healthController = controller;
     const checkHealth = async () => {
       try {
         health = await fetchHealth(controller.signal);
       } catch {
-        health = null;
+        if (healthController === controller) health = null;
       }
     };
     void checkHealth();
-    const interval = window.setInterval(checkHealth, 15_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-      closeDiagnosisEvents();
-    };
-  });
+    healthInterval = window.setInterval(checkHealth, 15_000);
+  }
+
+  function stopHealthPolling() {
+    healthController?.abort();
+    healthController = null;
+    if (healthInterval !== null) {
+      window.clearInterval(healthInterval);
+      healthInterval = null;
+    }
+    health = null;
+  }
 
   async function bootstrap() {
     try {
       currentUser = await api.me();
       authState = 'ready';
+      startHealthPolling();
       await loadWorkspace();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -379,7 +398,9 @@
     try {
       currentUser = await api.login(loginIdentifier.trim(), password);
       password = '';
+      passwordVisible = false;
       authState = 'ready';
+      startHealthPolling();
       await loadWorkspace();
     } catch (error) {
       loginError = describeError(
@@ -398,6 +419,7 @@
     } finally {
       currentUser = null;
       authState = 'login';
+      stopHealthPolling();
       view = 'overview';
       busy = false;
     }
@@ -1506,6 +1528,10 @@
   function resourceIcon(kind: string) {
     return iconGlyph(schemas.find((item) => item.kind === kind)?.icon);
   }
+
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
+  }
 </script>
 
 <svelte:head>
@@ -1514,45 +1540,91 @@
 
 {#if authState === 'loading'}
   <div class="loading-screen">
-    <span class="spinner"></span>
-    <p>正在恢复工作区会话…</p>
+    <div class="loading-state">
+      <span class="spinner"></span>
+      <p>正在恢复工作区会话…</p>
+    </div>
   </div>
 {:else if authState === 'login'}
   <main class="login-shell">
+    <div class="login-brand" aria-label="OpsKeeper 智能值守平台">
+      <span class="login-logo" aria-hidden="true">O</span>
+      <span class="login-brand-copy">
+        <strong>OpsKeeper</strong>
+        <small>智能值守平台</small>
+      </span>
+    </div>
     <section class="login-panel" aria-labelledby="login-heading">
-      <div class="brand large">
-        <span class="brand-mark" aria-hidden="true">O</span><span
-          >OpsKeeper</span
-        >
-      </div>
-      <p class="eyebrow">CONTROL PLANE</p>
-      <h1 id="login-heading">登录管理控制台</h1>
-      <p class="muted">使用本地账号访问组织、权限和资源工作区。</p>
+      <header class="login-panel-header">
+        <p class="login-kicker">账号登录</p>
+        <h1 id="login-heading">欢迎回来</h1>
+        <p class="login-intro">使用平台账号继续访问 OpsKeeper。</p>
+      </header>
       {#if loginError}<div class="alert error" role="alert">
           {loginError}
         </div>{/if}
-      <form class="stack-form" on:submit|preventDefault={login}>
-        <label
-          >用户名、邮箱或手机号<input
+      <form class="stack-form login-form" on:submit|preventDefault={login}>
+        <div class="login-field">
+          <label for="login-identifier">账号</label>
+          <input
+            id="login-identifier"
             type="text"
             bind:value={loginIdentifier}
             autocomplete="username"
             required
-            placeholder="admin、admin@example.com 或 +8613800138000"
-          /></label
+            use:focusOnMount
+            placeholder="用户名、邮箱或手机号"
+          />
+        </div>
+        <div class="login-field">
+          <label for="login-password">密码</label>
+          <span class="password-control">
+            <input
+              id="login-password"
+              type={passwordVisible ? 'text' : 'password'}
+              bind:value={password}
+              autocomplete="current-password"
+              required
+              placeholder="请输入登录密码"
+            />
+            <button
+              class="password-toggle"
+              type="button"
+              aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+              aria-pressed={passwordVisible}
+              title={passwordVisible ? '隐藏密码' : '显示密码'}
+              on:click={() => (passwordVisible = !passwordVisible)}
+              >{#if passwordVisible}<EyeOff
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Eye
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{/if}</button
+            >
+          </span>
+        </div>
+        <span
+          class="login-submit-wrap"
+          title={!loginIdentifier.trim() || !password
+            ? '请先填写账号和密码'
+            : undefined}
         >
-        <label
-          >密码<input
-            type="password"
-            bind:value={password}
-            autocomplete="current-password"
-            required
-          /></label
-        >
-        <button class="primary full" type="submit" disabled={busy}
-          >{busy ? '登录中…' : '登录'}</button
-        >
+          <button
+            class="login-submit"
+            type="submit"
+            disabled={busy || !loginIdentifier.trim() || !password}
+            aria-busy={busy}
+          >
+            {#if busy}<span class="button-spinner" aria-hidden="true"
+              ></span>{/if}
+            <span>{busy ? '正在登录' : '登录'}</span>
+          </button>
+        </span>
       </form>
+      <p class="login-footnote">账号权限由平台管理员统一配置</p>
     </section>
   </main>
 {:else}

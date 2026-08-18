@@ -41,6 +41,7 @@ type Options struct {
 	AllowedOrigins     []string
 	MaxBodyBytes       int64
 	RateLimitPerMinute int
+	LogHealthIgnore    bool
 }
 
 func NewRouter(logger *slog.Logger, healthService *health.Service, build version.Info, options Options, organizationService organizationService, webUI http.Handler) http.Handler {
@@ -54,7 +55,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 	router.Use(csrfProtection(options.AllowedOrigins))
 	router.Use(requestBodyLimit(options.MaxBodyBytes))
 	router.Use(newClientRateLimiter(options.RateLimitPerMinute).middleware)
-	router.Use(requestLogger(logger))
+	router.Use(requestLogger(logger, basePath, options.LogHealthIgnore))
 
 	app := chi.NewRouter()
 	app.Get("/health/live", func(writer http.ResponseWriter, _ *http.Request) {

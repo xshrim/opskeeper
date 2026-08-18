@@ -21,7 +21,7 @@ spec:
         app.kubernetes.io/component: {{ $component }}
         {{- with $root.Values.podLabels }}{{ toYaml . | nindent 8 }}{{- end }}
       annotations:
-        checksum/config: {{ toJson (dict "basePath" $root.Values.basePath "trustedProxies" $root.Values.trustedProxies "otel" $root.Values.otelExporterEndpoint) | sha256sum }}
+        checksum/config: {{ toJson (dict "basePath" $root.Values.basePath "logHealthIgnore" $root.Values.logHealthIgnore "trustedProxies" $root.Values.trustedProxies "otel" $root.Values.otelExporterEndpoint) | sha256sum }}
         {{- with $root.Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{- end }}
     spec:
       serviceAccountName: {{ include "opskeeper.fullname" $root }}

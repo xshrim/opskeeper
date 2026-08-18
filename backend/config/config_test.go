@@ -24,6 +24,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogFormat != "text" {
 		t.Fatalf("Load() LogFormat = %q, want text", cfg.LogFormat)
 	}
+	if !cfg.LogHealthIgnore {
+		t.Fatalf("Load() LogHealthIgnore = false, want true")
+	}
 	if cfg.ShutdownTimeout != 10*time.Second || cfg.DependencyTimeout != 2*time.Second {
 		t.Fatalf("Load() returned unexpected timeouts: %#v", cfg)
 	}
@@ -163,6 +166,22 @@ func TestLoadRejectsInvalidLogFormat(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid log format error")
+	}
+}
+
+func TestLoadHealthRequestLogging(t *testing.T) {
+	t.Setenv("OPSK_LOG_HEALTH_IGNORE", "false")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LogHealthIgnore {
+		t.Fatal("Load() LogHealthIgnore = true, want false")
+	}
+
+	t.Setenv("OPSK_LOG_HEALTH_IGNORE", "sometimes")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil for invalid OPSK_LOG_HEALTH_IGNORE")
 	}
 }
 

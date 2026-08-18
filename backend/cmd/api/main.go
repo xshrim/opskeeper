@@ -170,6 +170,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			AllowedOrigins:     cfg.AllowedOrigins,
 			MaxBodyBytes:       cfg.HTTPMaxBodyBytes,
 			RateLimitPerMinute: cfg.HTTPRateLimitPerMinute,
+			LogHealthIgnore:    cfg.LogHealthIgnore,
 		}, organizationService, webUI),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,

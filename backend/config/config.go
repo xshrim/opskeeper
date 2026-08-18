@@ -26,6 +26,7 @@ type Config struct {
 	BasePath                     string
 	Environment                  string
 	LogFormat                    string
+	LogHealthIgnore              bool
 	HTTPAddress                  string
 	TrustedProxies               []netip.Prefix
 	DatabaseURL                  string
@@ -77,6 +78,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.CookieSecure, err = boolFromEnv("OPSK_COOKIE_SECURE", cfg.Environment == "production"); err != nil {
+		return Config{}, err
+	}
+	if cfg.LogHealthIgnore, err = boolFromEnv("OPSK_LOG_HEALTH_IGNORE", true); err != nil {
 		return Config{}, err
 	}
 	if cfg.AllowedOrigins, err = originsFromEnv("OPSK_ALLOWED_ORIGINS"); err != nil {

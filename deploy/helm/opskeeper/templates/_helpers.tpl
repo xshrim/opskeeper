@@ -36,6 +36,8 @@ capabilities:
   value: production
 - name: OPSK_LOG_FORMAT
   value: json
+- name: OPSK_LOG_HEALTH_IGNORE
+  value: {{ .Values.logHealthIgnore | quote }}
 - name: OPSK_BASE_PATH
   value: {{ .Values.basePath | quote }}
 - name: OPSK_COOKIE_SECURE

@@ -257,15 +257,52 @@ function pageData(page: Page, requireLogin = false) {
 
 test.describe('T07 console', () => {
   test('logs in and restores the workspace session', async ({ page }) => {
+    let healthRequests = 0;
+    await page.route('**/health/ready', (route) => {
+      healthRequests += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'ready',
+          service: 'opskeeper-api',
+          version: 'test',
+          commit: 'test',
+          build_time: '2026-01-01T00:00:00Z',
+          timestamp: '2026-01-01T00:00:00Z',
+          checks: {}
+        })
+      });
+    });
     await pageData(page, true);
     await page.goto('/');
-    await expect(
-      page.getByRole('heading', { name: '登录管理控制台' })
-    ).toBeVisible();
-    await page.getByLabel('邮箱').fill('admin@example.test');
-    await page.getByLabel('密码').fill('test-password');
+    await expect(page.getByLabel('OpsKeeper 智能值守平台')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible();
+    expect(healthRequests).toBe(0);
+    expect(
+      await page
+        .locator('.login-shell')
+        .evaluate((node) => getComputedStyle(node).backgroundImage)
+    ).toContain('login-background');
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    ).toBeTruthy();
+    await page.getByLabel('账号', { exact: true }).fill('admin@example.test');
+    const passwordInput = page.getByLabel('密码', { exact: true });
+    await passwordInput.fill('test-password');
+    const showPassword = page.getByRole('button', { name: '显示密码' });
+    await expect(showPassword.locator('svg')).toBeVisible();
+    await showPassword.click();
+    await expect(passwordInput).toHaveAttribute('type', 'text');
+    const hidePassword = page.getByRole('button', { name: '隐藏密码' });
+    await expect(hidePassword.locator('svg')).toBeVisible();
+    await hidePassword.click();
     await page.getByRole('button', { name: '登录' }).click();
-    await expect(page.getByText('验收管理员')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '平台总览' })).toBeVisible();
+    await expect.poll(() => healthRequests).toBe(1);
   });
 
   test('switches scope and renders resources on desktop and mobile', async ({

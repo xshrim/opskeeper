@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -9,6 +11,37 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRequestLoggerSkipsHealthChecksByDefault(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	handler := requestLogger(logger, "/opskeeper", true)(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/opskeeper/health/ready", nil))
+	if output.Len() != 0 {
+		t.Fatalf("health check log = %q, want none", output.String())
+	}
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/opskeeper/api/v1/teams", nil))
+	if !strings.Contains(output.String(), "http request") {
+		t.Fatalf("application request log = %q, want access log", output.String())
+	}
+}
+
+func TestRequestLoggerCanLogHealthChecks(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	handler := requestLogger(logger, "/", false)(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	if !strings.Contains(output.String(), "http request") {
+		t.Fatalf("health check log = %q, want access log", output.String())
+	}
+}
 
 func TestTrustedProxyClientIPIgnoresUntrustedPeerHeaders(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)

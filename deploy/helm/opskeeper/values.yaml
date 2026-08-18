@@ -6,6 +6,7 @@ image:
 imagePullSecrets: []
 
 basePath: /opskeeper
+logHealthIgnore: true
 existingSecret: opskeeper-runtime
 migrationSecret: opskeeper-migration
 trustedProxies: ""

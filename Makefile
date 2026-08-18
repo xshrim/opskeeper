@@ -46,7 +46,7 @@ start: ## Prepare and start the complete local development environment.
 
 deps: ## Download backend and frontend dependencies.
 	cd backend && go mod download
-	cd frontend && npm install
+	cd frontend && npm install --registry="$(NPM_REGISTRY)"
 
 migrate: ## Apply pending PostgreSQL migrations.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/migrate
