@@ -30,7 +30,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -62,6 +62,9 @@ infra-up: ## Start PostgreSQL and Redis.
 
 infra-down: ## Stop PostgreSQL and Redis.
 	$(call run-compose,down)
+
+infra-clean: ## Delete middleware containers, network, and data volumes.
+	$(call run-compose,down --volumes --remove-orphans)
 
 infra-logs: ## Follow PostgreSQL and Redis logs.
 	$(call run-compose,logs -f)

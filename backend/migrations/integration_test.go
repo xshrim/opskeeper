@@ -197,178 +197,54 @@ func TestApplyRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
-func TestLLMSkillMigrationRollsBackAndReapplies(t *testing.T) {
+func TestBaselineMigrationRollsBackAndReapplies(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	assertT10Tables := func(want int) {
-		t.Helper()
-		var count int
-		if err := pool.QueryRow(ctx, `
-			SELECT count(*) FROM information_schema.tables
-			 WHERE table_schema = current_schema()
-			   AND table_name IN ('llm_scope_defaults', 'skill_versions', 'skill_scope_defaults', 'skill_executions', 'skill_tool_calls')`).Scan(&count); err != nil {
-			t.Fatalf("count T10 tables: %v", err)
-		}
-		if count != want {
-			t.Fatalf("T10 table count = %d, want %d", count, want)
-		}
+	var applied int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
+		t.Fatalf("count applied migrations: %v", err)
 	}
-	assertT10Tables(5)
-	for range 3 { // 0019 usernames, 0018 audit retention, and 0017 MCP schema.
-		if err := RollbackLast(ctx, pool); err != nil {
-			t.Fatalf("RollbackLast() error = %v", err)
-		}
+	if applied != 1 {
+		t.Fatalf("applied migrations = %d, want 1", applied)
 	}
-	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract. 0013 has historical data-only rollback constraints.
-		if err := RollbackLast(ctx, pool); err != nil {
-			t.Fatalf("RollbackLast() error = %v", err)
-		}
-	}
-	assertT10Tables(5)
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("second Apply() error = %v", err)
-	}
-	assertT10Tables(5)
-	var schemas int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM resource_schemas WHERE kind IN ('LLMProvider', 'Skill', 'MCPServer') AND version = 2`).Scan(&schemas); err != nil {
-		t.Fatalf("count T10 schemas: %v", err)
-	}
-	if schemas != 3 {
-		t.Fatalf("T10 resource schemas = %d, want 3", schemas)
-	}
-}
-
-func TestDiagnosisMigrationRollsBackAndReapplies(t *testing.T) {
-	pool := integrationPool(t)
-	ctx := context.Background()
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
-	assertT11Tables := func(want int) {
-		t.Helper()
-		var count int
-		if err := pool.QueryRow(ctx, `
-			SELECT count(*) FROM information_schema.tables
-			 WHERE table_schema = current_schema()
-			   AND table_name IN ('diagnosis_sessions', 'diagnosis_targets', 'diagnosis_messages', 'diagnosis_plans', 'diagnosis_plan_steps', 'diagnosis_events', 'diagnosis_evidence', 'diagnosis_hypotheses', 'diagnosis_reports')`).Scan(&count); err != nil {
-			t.Fatalf("count T11 tables: %v", err)
-		}
-		if count != want {
-			t.Fatalf("T11 table count = %d, want %d", count, want)
-		}
-	}
-	assertT11Tables(9)
-	for range 3 { // 0019 usernames, 0018 audit retention, and 0017 MCP schema.
-		if err := RollbackLast(ctx, pool); err != nil {
-			t.Fatalf("RollbackLast() error = %v", err)
-		}
-	}
-	for range 3 { // 0016 operations, 0015 inspection, then 0014 contract.
-		if err := RollbackLast(ctx, pool); err != nil {
-			t.Fatalf("RollbackLast() error = %v", err)
-		}
-	}
-	assertT11Tables(9)
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("second Apply() error = %v", err)
-	}
-	assertT11Tables(9)
-}
-
-func TestBuiltinSkillsMigrationRollsBackAndReapplies(t *testing.T) {
-	pool := integrationPool(t)
-	ctx := context.Background()
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
-	assertBuiltins := func(want, version int) {
-		t.Helper()
-		var resources, versions int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM resources WHERE kind = 'Skill' AND config->>'owner' = 'OpsKeeper builtin'`).Scan(&resources); err != nil {
-			t.Fatalf("count built-in skill resources: %v", err)
-		}
-		if err := pool.QueryRow(ctx, `
-			SELECT count(*)
-			  FROM skill_versions version
-			  JOIN resources resource ON resource.id = version.skill_resource_id
-			 WHERE resource.kind = 'Skill'
-			   AND resource.config->>'owner' = 'OpsKeeper builtin'
-			   AND version.version = $1
-			   AND version.status = 'published'`, version).Scan(&versions); err != nil {
-			t.Fatalf("count built-in skill versions: %v", err)
-		}
-		if resources != want || versions != want {
-			t.Fatalf("built-in resources/versions = %d/%d, want %d/%d", resources, versions, want, want)
-		}
-	}
-	assertBuiltins(4, 2)
-	var legacyPublished int
+	var tables int
 	if err := pool.QueryRow(ctx, `
-		SELECT count(*)
-		  FROM skill_versions version
-		  JOIN resources resource ON resource.id = version.skill_resource_id
-		 WHERE resource.config->>'owner' = 'OpsKeeper builtin'
-		   AND version.version = 1
-		   AND version.status = 'published'`).Scan(&legacyPublished); err != nil {
-		t.Fatalf("count built-in legacy versions: %v", err)
+		SELECT count(*) FROM information_schema.tables
+		 WHERE table_schema = current_schema()
+		   AND table_name IN ('resources', 'skill_versions', 'diagnosis_sessions')`).Scan(&tables); err != nil {
+		t.Fatalf("count baseline tables: %v", err)
 	}
-	if legacyPublished != 0 {
-		t.Fatalf("published built-in v1 versions = %d, want 0", legacyPublished)
+	if tables != 3 {
+		t.Fatalf("baseline table count = %d, want 3", tables)
 	}
-	var middlewareTools int
-	if err := pool.QueryRow(ctx, `
-		SELECT count(*) FROM skill_versions
-		 WHERE version = 2
-		   AND (tools @> '[{"name":"connector_postgresql_inspect"}]'::jsonb
-		     OR tools @> '[{"name":"connector_redis_inspect"}]'::jsonb
-		     OR tools @> '[{"name":"connector_kafka_inspect"}]'::jsonb)`).Scan(&middlewareTools); err != nil {
-		t.Fatalf("count built-in middleware tools: %v", err)
-	}
-	if middlewareTools != 3 {
-		t.Fatalf("built-in middleware tools = %d, want 3", middlewareTools)
-	}
-	var structuredOutputs int
-	if err := pool.QueryRow(ctx, `
-		SELECT count(*)
-		  FROM skill_versions version
-		  JOIN resources resource ON resource.id = version.skill_resource_id
-		 WHERE resource.config->>'owner' = 'OpsKeeper builtin'
-		   AND version.version = 2
-		   AND (version.output_schema->'required') ?& ARRAY['facts', 'findings', 'evidence', 'hypotheses', 'confidence', 'recommendations']`).Scan(&structuredOutputs); err != nil {
-		t.Fatalf("count built-in structured outputs: %v", err)
-	}
-	if structuredOutputs != 4 {
-		t.Fatalf("built-in structured outputs = %d, want 4", structuredOutputs)
-	}
-	if err := RollbackLast(ctx, pool); err != nil { // 0019 usernames
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("RollbackLast() error = %v", err)
 	}
-	if err := RollbackLast(ctx, pool); err != nil { // 0018 audit retention
-		t.Fatalf("RollbackLast() error = %v", err)
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
+		t.Fatalf("count migrations after rollback: %v", err)
 	}
-	if err := RollbackLast(ctx, pool); err != nil { // 0017 MCP schema
-		t.Fatalf("RollbackLast() error = %v", err)
+	if applied != 0 {
+		t.Fatalf("migrations after rollback = %d, want 0", applied)
 	}
-	assertBuiltins(4, 2)
-	if err := RollbackLast(ctx, pool); err != nil { // 0016 operations
-		t.Fatalf("RollbackLast() error = %v", err)
+	var scopesTable *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass(current_schema() || '.scopes')::text").Scan(&scopesTable); err != nil {
+		t.Fatalf("check scopes table after rollback: %v", err)
 	}
-	assertBuiltins(4, 2)
-	if err := RollbackLast(ctx, pool); err != nil { // 0015 inspection
-		t.Fatalf("RollbackLast() error = %v", err)
+	if scopesTable != nil {
+		t.Fatalf("scopes table still exists after rollback: %s", *scopesTable)
 	}
-	assertBuiltins(4, 2)
-	if err := RollbackLast(ctx, pool); err != nil { // 0014 contract
-		t.Fatalf("RollbackLast() error = %v", err)
-	}
-	assertBuiltins(4, 1)
 	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("second Apply() error = %v", err)
+		t.Fatalf("reapply baseline error = %v", err)
 	}
-	assertBuiltins(4, 2)
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
+		t.Fatalf("count migrations after reapply: %v", err)
+	}
+	if applied != 1 {
+		t.Fatalf("migrations after reapply = %d, want 1", applied)
+	}
 }
 
 func integrationPool(t *testing.T) *pgxpool.Pool {

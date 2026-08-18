@@ -24,7 +24,7 @@ func TestDefinitionsAreReadOnlyAndBounded(t *testing.T) {
 }
 
 func TestDefinitionsMatchBuiltinMigrationNamesAndTools(t *testing.T) {
-	migration, err := os.ReadFile("../../migrations/sql/0013_builtin_skills.sql")
+	migration, err := os.ReadFile("../../migrations/sql/0001_initial.sql")
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}

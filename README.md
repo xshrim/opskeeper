@@ -20,6 +20,9 @@ cp deploy/compose/.env.example deploy/compose/.env
 # 3. 安装 Go 和前端依赖
 make deps
 
+# 预先清理本地中间件容器、网络和数据卷（按需执行）
+# make infra-clean
+
 # 4. 启动并等待 PostgreSQL 和 Redis
 make infra-up
 
@@ -45,15 +48,15 @@ make start
 
 ## 文档分类
 
-| 目录                 | 内容                                     | 使用场景                         |
-| -------------------- | ---------------------------------------- | -------------------------------- |
-| `docs/design/`     | 项目级当前设计事实和架构边界             | 理解系统现在是什么               |
-| `docs/standards/`  | 必须遵守的编码、文档、Git 和工程约束     | 开发、重构和代码评审             |
-| `docs/guides/`     | 本地开发、使用、测试和交付步骤           | 执行具体工程操作                 |
-| `docs/runbooks/`   | 生产故障处置、恢复和应急步骤             | 处理运行事件                     |
-| `docs/iterations/` | 当前迭代、需求、任务和验收；封板后归档   | 管理版本范围和交付证据           |
-| `docs/adr/`        | 重要技术决策的背景、选项和结论           | 追溯长期架构决策                 |
-| `docs/backlog.md`  | 跨迭代待规划事项和技术债                 | 规划后续需求                     |
+| 目录                 | 内容                                   | 使用场景               |
+| -------------------- | -------------------------------------- | ---------------------- |
+| `docs/design/`     | 项目级当前设计事实和架构边界           | 理解系统现在是什么     |
+| `docs/standards/`  | 必须遵守的编码、文档、Git 和工程约束   | 开发、重构和代码评审   |
+| `docs/guides/`     | 本地开发、使用、测试和交付步骤         | 执行具体工程操作       |
+| `docs/runbooks/`   | 生产故障处置、恢复和应急步骤           | 处理运行事件           |
+| `docs/iterations/` | 当前迭代、需求、任务和验收；封板后归档 | 管理版本范围和交付证据 |
+| `docs/adr/`        | 重要技术决策的背景、选项和结论         | 追溯长期架构决策       |
+| `docs/backlog.md`  | 跨迭代待规划事项和技术债               | 规划后续需求           |
 
 ## 设计
 
@@ -66,6 +69,7 @@ make start
 ## 工程规范
 
 - [文档组织、模板与归档规范](docs/standards/documentation.md)
+- [前端 UI 与交互规范](docs/standards/frontend-ui.md)
 - [Go 编码与工程组织通用规范](docs/standards/go-coding-conventions.md)
 - [Git 版本控制与开发模式](docs/standards/version-control.md)
 
@@ -84,6 +88,9 @@ make start
 ## 计划与验收
 
 - [跨迭代 backlog](docs/backlog.md)
+- [I002 UI 与功能优化迭代](docs/iterations/I002-ui-function-optimization/iteration.md)
+- [I002-R001 需求文档](docs/iterations/I002-ui-function-optimization/R001-requirement.md)
+- [I002-R001 需求验收报告](docs/iterations/I002-ui-function-optimization/R001-requirement-acceptance.md)
 - [I001 迭代封板说明](docs/iterations/archived/I001-initial/iteration.md)
 - [I001-R001 需求文档](docs/iterations/archived/I001-initial/R001-requirement.md)
 - [I001-R001 需求验收报告](docs/iterations/archived/I001-initial/R001-requirement-acceptance.md)

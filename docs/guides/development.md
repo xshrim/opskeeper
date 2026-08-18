@@ -32,6 +32,7 @@ make start
 | `make infra-up`                 | 启动 PostgreSQL 和 Redis                                                 |
 | `make infra-logs`               | 持续查看中间件日志                                                       |
 | `make infra-down`               | 停止中间件，保留数据卷                                                   |
+| `make infra-clean`             | 删除中间件容器、网络和全部数据卷                                         |
 | `make migrate`                  | 应用待执行迁移                                                           |
 | `make migrate-down`             | 回滚最近一条迁移，仅用于开发和测试                                       |
 | `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
@@ -221,6 +222,8 @@ make infra-down
 
 `make infra-down` 不删除持久化数据卷，再次启动会复用已有数据。PostgreSQL 初始化变量和初始化脚本仅在数据目录为空时生效；修改环境变量不会更新已有数据卷中的用户、密码或数据库所有权。
 
+需要彻底清理当前 Compose 项目的本地中间件环境时，使用 `make infra-clean`。该命令会删除 PostgreSQL、Redis 及其他 Compose 中间件容器、网络和数据卷，数据不可恢复，仅适用于明确确认的本地环境。
+
 ### 5.1 管理员与业务角色
 
 默认开发凭据：
@@ -256,14 +259,17 @@ make migrate
 
 没有新迁移时，日常重启应用无需重复执行。长期运行的应用进程永不自动迁移数据库。
 
-迁移文件位于 `backend/migrations/sql/`：
+当前迁移基线位于 `backend/migrations/sql/0001_initial.sql`，对应回滚脚本为 `0001_initial.down.sql`。历史版本 SQL 保存在 `backend/migrations/sql/archive/`，仅用于追溯和生成新的基线，不会被迁移器加载。
 
 ```text
-NNNN_description.sql
-NNNN_description.down.sql
+0001_initial.sql
+0001_initial.down.sql
+archive/                 # 历史迁移，仅供追溯
 ```
 
-迁移器通过 `go:embed` 将 SQL 编译进 `opskeeper-migrate`。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，校验全部已执行版本的名称和前滚 SQL SHA-256，按版本顺序跳过已执行项，并在独立事务中执行每条待处理迁移和版本记录。失败会回滚当前迁移并返回非零状态。由旧版本迁移器创建且尚无校验和的记录，会在首次升级时于同一把锁内补录；后续发现文件被修改、重命名或数据库存在当前二进制未知版本时立即失败。
+当前基线文件作为已审核的迁移输入直接维护；如需重新整合归档 SQL，必须在变更中重新生成并审查顶层 `0001_initial.sql` 和 `0001_initial.down.sql`，不能依赖运行时脚本。
+
+迁移器通过 `go:embed` 将顶层 SQL 编译进 `opskeeper-migrate`，不会读取 `archive/` 子目录。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，校验已执行版本的名称和前滚 SQL SHA-256，按版本顺序跳过已执行项，并在独立事务中执行每条待处理迁移和版本记录。失败会回滚当前迁移并返回非零状态；数据库存在当前二进制未知版本或历史迁移名称时立即失败。当前基线只有 `0001_initial`，历史 `0001`-`0019` 数据库需要按环境执行重建或专门的数据迁移，不能依赖 `archive/` 自动升级。
 
 执行 `make migrate-down` 时，迁移器使用同一把锁，在一个事务中回滚最新版本并删除其版本记录。生产发布回滚应用时不得自动执行 `down`；自动化发布流程见[自动化发布](delivery.md)。
 

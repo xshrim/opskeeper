@@ -102,7 +102,7 @@ Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应
 
 ## 5. Migration Job
 
-每次测试、预发布和生产部署固定执行一次 `opskeeper-migrate up`。即使没有待处理迁移也照常运行，因为迁移器读取 `schema_migrations` 并跳过已应用版本，外部流水线无需解析 SQL 判断是否需要迁移。
+每次测试、预发布和生产部署固定执行一次 `opskeeper-migrate up`。即使没有待处理迁移也照常运行，因为迁移器读取 `schema_migrations` 并跳过已应用版本，外部流水线无需解析 SQL 判断是否需要迁移。当前发布基线为单一的 `0001_initial`；历史迁移仅存档，不会被新迁移器自动读取，已有历史数据库必须在发布前完成受控重建或专项数据迁移。
 
 迁移器使用 PostgreSQL session advisory lock 保护整个迁移过程：
 
