@@ -19,8 +19,13 @@ const user = {
   updated_at: '2026-01-01T00:00:00Z'
 };
 
-function pageData(page: Page, requireLogin = false) {
+function pageData(page: Page, requireLogin = false, platformAdmin = false) {
   let authenticated = !requireLogin;
+  let preferences = {
+    theme: 'auto',
+    sidebar_mode: 'fixed',
+    sidebar_collapsed: false
+  };
   return page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -31,6 +36,8 @@ function pageData(page: Page, requireLogin = false) {
         contentType: 'application/json',
         body: JSON.stringify(body)
       });
+    if (path.endsWith('/auth/me/context'))
+      return json({ platform_admin: platformAdmin });
     if (path.endsWith('/auth/me'))
       return authenticated
         ? json(user)
@@ -40,6 +47,12 @@ function pageData(page: Page, requireLogin = false) {
       return json(user);
     }
     if (path.endsWith('/auth/logout')) return json({}, 204);
+    if (path.endsWith('/auth/me/preferences')) {
+      if (request.method() === 'PUT') {
+        preferences = JSON.parse(request.postData() || '{}');
+      }
+      return json(preferences);
+    }
     if (path.endsWith('/platform'))
       return json({
         id: 'platform-1',
@@ -310,8 +323,8 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page);
     await page.goto('/');
-    await expect(page.getByText('验收管理员')).toBeVisible();
-    await page.getByLabel('当前作用域').selectOption(ids.team);
+    await expect(page.getByText('平台工程', { exact: true })).toBeVisible();
+    await page.getByLabel('切换项目').selectOption('project-1');
     await page.getByRole('button', { name: '资源' }).click();
     await expect(
       page.getByRole('heading', { name: '资源目录' }).first()
@@ -325,6 +338,42 @@ test.describe('T07 console', () => {
         () => document.documentElement.scrollWidth <= window.innerWidth
       )
     ).toBeTruthy();
+  });
+
+  test('hides team and project selectors for a platform administrator', async ({
+    page
+  }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+
+    await expect(page.getByLabel('切换项目')).toHaveCount(0);
+    await expect(page.getByLabel('打开用户菜单')).toBeVisible();
+  });
+
+  test('opens the personal center and saves user display preferences', async ({
+    page
+  }) => {
+    await pageData(page);
+    await page.goto('/');
+
+    await page.getByLabel('打开用户菜单').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await page.getByRole('heading', { name: '平台总览' }).click();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await page.getByLabel('打开用户菜单').click();
+    await page.getByRole('menuitem', { name: '个人中心' }).click();
+    await expect(page.getByRole('heading', { name: '个人中心' })).toBeVisible();
+    await page.getByLabel('显示名').fill('值守管理员');
+    await page.getByRole('radio', { name: '深色' }).click();
+    await page
+      .getByRole('radio', { name: '窄栏悬浮展开' })
+      .click();
+    await page.getByRole('button', { name: '保存配置' }).click();
+    await expect(page.getByText('个人中心配置已保存')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await page.getByLabel('展开导航栏').hover();
+    await expect(page.getByRole('button', { name: '总览' })).toBeVisible();
   });
 });
 

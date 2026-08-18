@@ -18,6 +18,7 @@ type store struct {
 }
 
 var _ Store = (*store)(nil)
+var _ PreferencesStore = (*store)(nil)
 
 func NewStore(pool *pgxpool.Pool) Store {
 	return &store{pool: pool}
@@ -260,6 +261,76 @@ func (s *store) UpdateUser(ctx context.Context, userID string, input UpdateUserI
 		return User{}, mapStoreError(err)
 	}
 	return user, nil
+}
+
+func (s *store) GetPreferences(ctx context.Context, userID string) (Preferences, error) {
+	preferences := Preferences{Theme: "auto", SidebarMode: "fixed"}
+	err := s.pool.QueryRow(ctx, `
+		SELECT theme, sidebar_mode, sidebar_collapsed, avatar_updated_at
+		  FROM users
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, userID).
+		Scan(&preferences.Theme, &preferences.SidebarMode, &preferences.SidebarCollapsed, &preferences.AvatarUpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Preferences{}, ErrNotFound
+	}
+	if err != nil {
+		return Preferences{}, fmt.Errorf("get user preferences: %w", err)
+	}
+	return preferences, nil
+}
+
+func (s *store) UpdatePreferences(ctx context.Context, userID string, input UpdatePreferencesInput) (Preferences, error) {
+	preferences := Preferences{}
+	err := s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET theme = $2,
+		       sidebar_mode = $3,
+		       sidebar_collapsed = $4,
+		       updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL
+		RETURNING theme, sidebar_mode, sidebar_collapsed, avatar_updated_at`,
+		userID, input.Theme, input.SidebarMode, input.SidebarCollapsed).
+		Scan(&preferences.Theme, &preferences.SidebarMode, &preferences.SidebarCollapsed, &preferences.AvatarUpdatedAt)
+	if err != nil {
+		return Preferences{}, fmt.Errorf("update user preferences: %w", err)
+	}
+	return preferences, nil
+}
+
+func (s *store) UpdateAvatar(ctx context.Context, userID, contentType string, content []byte) (Preferences, error) {
+	preferences := Preferences{}
+	err := s.pool.QueryRow(ctx, `
+		UPDATE users
+		   SET avatar_content_type = $2,
+		       avatar_data = $3,
+		       avatar_updated_at = now(),
+		       updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL
+		RETURNING theme, sidebar_mode, sidebar_collapsed, avatar_updated_at`,
+		userID, contentType, content).
+		Scan(&preferences.Theme, &preferences.SidebarMode, &preferences.SidebarCollapsed, &preferences.AvatarUpdatedAt)
+	if err != nil {
+		return Preferences{}, fmt.Errorf("update user avatar: %w", err)
+	}
+	return preferences, nil
+}
+
+func (s *store) GetAvatar(ctx context.Context, userID string) ([]byte, string, time.Time, error) {
+	var content []byte
+	var contentType string
+	var updatedAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT avatar_data, avatar_content_type, avatar_updated_at
+		  FROM users
+		 WHERE id = $1::uuid AND deleted_at IS NULL AND avatar_data IS NOT NULL`, userID).
+		Scan(&content, &contentType, &updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", time.Time{}, ErrNotFound
+	}
+	if err != nil {
+		return nil, "", time.Time{}, fmt.Errorf("get user avatar: %w", err)
+	}
+	return content, contentType, updatedAt, nil
 }
 
 type queryer interface {

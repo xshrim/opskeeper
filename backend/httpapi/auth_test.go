@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"opskeeper/backend/health"
 	"opskeeper/backend/identity"
 )
@@ -24,6 +25,8 @@ type stubIdentityService struct {
 	authenticateError  error
 	authenticatedToken string
 	logoutAllUserID    string
+	profileInput       identity.UpdateUserInput
+	preferences        identity.Preferences
 }
 
 func (s *stubIdentityService) Login(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
@@ -49,6 +52,43 @@ func (s *stubIdentityService) LogoutAll(_ context.Context, userID string) error 
 	return nil
 }
 
+func (s *stubIdentityService) UpdateProfile(_ context.Context, userID string, input identity.UpdateUserInput) (identity.User, error) {
+	s.profileInput = input
+	s.user.ID = userID
+	if input.DisplayName != nil {
+		s.user.DisplayName = *input.DisplayName
+	}
+	if input.Email != nil {
+		s.user.Email = *input.Email
+	}
+	if input.Phone != nil {
+		s.user.Phone = *input.Phone
+	}
+	return s.user, nil
+}
+
+func (s *stubIdentityService) Preferences(context.Context, string) (identity.Preferences, error) {
+	if s.preferences.Theme == "" {
+		s.preferences = identity.Preferences{Theme: "auto", SidebarMode: "fixed"}
+	}
+	return s.preferences, nil
+}
+
+func (s *stubIdentityService) UpdatePreferences(_ context.Context, _ string, input identity.UpdatePreferencesInput) (identity.Preferences, error) {
+	s.preferences.Theme = input.Theme
+	s.preferences.SidebarMode = input.SidebarMode
+	s.preferences.SidebarCollapsed = input.SidebarCollapsed
+	return s.preferences, nil
+}
+
+func (s *stubIdentityService) UpdateAvatar(context.Context, string, string, []byte) (identity.Preferences, error) {
+	return s.Preferences(context.Background(), "")
+}
+
+func (s *stubIdentityService) Avatar(context.Context, string) ([]byte, string, time.Time, error) {
+	return nil, "", time.Time{}, identity.ErrNotFound
+}
+
 func newAuthTestRouter(service identityService, secure bool) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{
@@ -56,6 +96,23 @@ func newAuthTestRouter(service identityService, secure bool) http.Handler {
 		Identity:     service,
 		CookieSecure: secure,
 	}, nil, nil)
+}
+
+type stubPlatformAdminService struct {
+	allowed bool
+	err     error
+}
+
+func (s stubPlatformAdminService) IsPlatformAdmin(context.Context, string) (bool, error) {
+	return s.allowed, s.err
+}
+
+func newAuthContextTestRouter(service identityService, platformAdmin platformAdminService) http.Handler {
+	router := chi.NewRouter()
+	router.Route("/test/api/v1", func(router chi.Router) {
+		registerAuthRoutes(router, service, "/test", false, platformAdmin)
+	})
+	return router
 }
 
 func TestLoginSetsSecureHTTPOnlyCookiesWithoutReturningTokens(t *testing.T) {
@@ -127,6 +184,19 @@ func TestAuthenticationMiddlewareRejectsInvalidSession(t *testing.T) {
 	}
 }
 
+func TestSessionContextReportsPlatformAdministrator(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID}}
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/auth/me/context", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthContextTestRouter(service, stubPlatformAdminService{allowed: true}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"platform_admin":true`) {
+		t.Fatalf("session context response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestRefreshRejectsReplayAndClearsCookies(t *testing.T) {
 	service := &stubIdentityService{refreshError: identity.ErrInvalidSession}
 	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/refresh", nil)
@@ -155,6 +225,32 @@ func TestLogoutAllUsesAuthenticatedUser(t *testing.T) {
 
 	if response.Code != http.StatusNoContent || service.logoutAllUserID != handlerTestUUID {
 		t.Fatalf("logout-all response = %d user=%q", response.Code, service.logoutAllUserID)
+	}
+}
+
+func TestProfileUpdateUsesAuthenticatedUser(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, Username: "admin", DisplayName: "管理员"}}
+	request := httptest.NewRequest(http.MethodPatch, "/test/api/v1/auth/me", strings.NewReader(`{"display_name":"值守管理员","email":"admin@example.com","phone":"13800138000"}`))
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || service.profileInput.DisplayName == nil || *service.profileInput.DisplayName != "值守管理员" || service.user.ID != handlerTestUUID {
+		t.Fatalf("profile update response = %d input=%#v user=%#v", response.Code, service.profileInput, service.user)
+	}
+}
+
+func TestPreferencesUpdateUsesAuthenticatedUser(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID}}
+	request := httptest.NewRequest(http.MethodPut, "/test/api/v1/auth/me/preferences", strings.NewReader(`{"theme":"dark","sidebar_mode":"hover","sidebar_collapsed":true}`))
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || service.preferences.Theme != "dark" || service.preferences.SidebarMode != "hover" || !service.preferences.SidebarCollapsed {
+		t.Fatalf("preferences response = %d preferences=%#v", response.Code, service.preferences)
 	}
 }
 
