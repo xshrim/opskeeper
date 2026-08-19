@@ -110,6 +110,20 @@ func (s *store) ChangePassword(ctx context.Context, userID, currentPassword, new
 	return nil
 }
 
+func (s *store) ChangeOneTimePassword(ctx context.Context, userID, newHash string) error {
+	command, err := s.pool.Exec(ctx, `
+		UPDATE credentials
+		   SET password_hash = $2, password_changed_at = now(), must_change_password = false, updated_at = now()
+		 WHERE user_id = $1::uuid AND must_change_password = true`, userID, newHash)
+	if err != nil {
+		return fmt.Errorf("change one-time password: %w", err)
+	}
+	if command.RowsAffected() != 1 {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
 func (s *store) ResetPassword(ctx context.Context, userID, newHash string) error {
 	command, err := s.pool.Exec(ctx, `UPDATE credentials SET password_hash = $2, password_changed_at = now(), must_change_password = true, updated_at = now() WHERE user_id = $1::uuid`, userID, newHash)
 	if err != nil {

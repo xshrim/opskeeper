@@ -922,7 +922,6 @@ h3 {
 .access-table input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  accent-color: var(--color-primary);
 }
 .access-team-trigger {
   display: grid;
@@ -1321,11 +1320,9 @@ h3 {
   font-size: 11px;
 }
 .created-credentials-inline span {
-  overflow: hidden;
-  max-width: 156px;
+  overflow-wrap: anywhere;
+  max-width: min(100%, 420px);
   padding: 6px 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   background: #fffaf7;
   border: 1px solid #eadfd9;
   border-radius: 5px;
@@ -1373,7 +1370,7 @@ h3 {
 .new-user-resource-grant-row {
   grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 32px;
 }
-.participant-resource-access {
+.scope-viewer-resource-access {
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -1381,35 +1378,35 @@ h3 {
   border: 1px solid #ead9ce;
   border-radius: 6px;
 }
-.participant-resource-heading,
-.participant-resource-item {
+.scope-viewer-resource-heading,
+.scope-viewer-resource-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
-.participant-resource-heading strong,
-.participant-resource-item strong {
+.scope-viewer-resource-heading strong,
+.scope-viewer-resource-item strong {
   color: #2f2926;
   font-size: 13px;
 }
-.participant-resource-heading p,
-.participant-resource-item small {
+.scope-viewer-resource-heading p,
+.scope-viewer-resource-item small {
   display: block;
   margin: 3px 0 0;
   color: #887a73;
   font-size: 11px;
   line-height: 1.5;
 }
-.participant-resource-heading > svg {
+.scope-viewer-resource-heading > svg {
   flex: 0 0 auto;
   color: var(--color-primary);
 }
-.participant-resource-list {
+.scope-viewer-resource-list {
   display: grid;
   gap: 6px;
 }
-.participant-resource-item {
+.scope-viewer-resource-item {
   min-height: 42px;
   padding: 7px 9px;
   background: #fff;
@@ -1727,6 +1724,41 @@ h3 {
 .stack-form .check-row input {
   width: auto;
   min-height: auto;
+}
+input[type='checkbox'] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  color: var(--color-primary);
+  background: #fff;
+  border: 1px solid #aeb8be;
+  border-radius: 3px;
+  cursor: pointer;
+}
+input[type='checkbox']:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.2 8.2 3 3 6.6-6.6' fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 13px;
+}
+input[type='checkbox']:focus-visible {
+  outline: 3px solid var(--color-primary-focus-strong);
+  outline-offset: 2px;
+}
+input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  background-color: #edf0f1;
+  border-color: #d6dde0;
+}
+input[type='checkbox']:disabled:checked {
+  background-color: #aeb8be;
+  border-color: #aeb8be;
 }
 .editor-form {
   padding-top: 15px;
@@ -3000,24 +3032,26 @@ button.workspace-team:hover {
   flex: 0 0 auto;
 }
 .workspace-project {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 4px;
-  color: #887a73;
-  font-size: 11px;
+  min-width: 0;
+  padding: 0;
 }
 .workspace-project select {
-  min-width: 0;
-  height: 24px;
-  padding: 0 20px 0 0;
+  min-width: 132px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 28px 0 9px;
   color: #5d514b;
-  background-color: transparent;
-  border: 0;
-  border-radius: 0;
+  background-color: #faf5f2;
+  border: 1px solid #eaded8;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
+}
+.workspace-project select:hover {
+  background: #fff0e9;
+  border-color: #e1bca8;
 }
 .workspace-project select:focus-visible,
 .workspace-team:focus-visible {
@@ -3152,12 +3186,12 @@ button.workspace-team:hover {
   padding: 0 7px;
 }
 .topbar-workspace-switcher .workspace-project {
-  min-width: 190px;
-  min-height: 34px;
-  padding: 0 8px;
-  border: 1px solid #e5dcd8;
-  border-radius: 6px;
-  background: #fffdfa;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .topbar-workspace-switcher .workspace-project select {
   height: 30px;
@@ -3318,6 +3352,24 @@ button.workspace-team:hover {
 .profile-fields input {
   width: 100%;
 }
+.profile-password-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 20px;
+}
+.profile-password-row label {
+  display: block;
+  min-width: 0;
+}
+.profile-password-row input {
+  width: 100%;
+}
+.profile-password-row button {
+  min-height: 38px;
+  white-space: nowrap;
+}
 .profile-team {
   display: flex;
   align-items: center;
@@ -3445,6 +3497,20 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .profile-fields label {
   color: #cdbfb8;
 }
+:root[data-theme='dark'] .workspace-project select {
+  color: #e8ddd7;
+  background: #342e2a;
+  border-color: #514740;
+}
+:root[data-theme='dark'] .workspace-project select:hover {
+  color: #d7f4ea;
+  background: #173e35;
+  border-color: #2c8d72;
+}
+:root[data-theme='dark'] .workspace-project select option {
+  color: #e8ddd7;
+  background: #342e2a;
+}
 :root[data-theme='dark'] .nav-item:hover,
 :root[data-theme='dark'] .nav-item.active,
 :root[data-theme='dark'] .user-menu-trigger:hover,
@@ -3525,6 +3591,12 @@ button.workspace-team:hover {
   }
   .profile-fields {
     grid-template-columns: 1fr;
+  }
+  .profile-password-row {
+    grid-template-columns: 1fr;
+  }
+  .profile-password-row button {
+    width: 100%;
   }
   .segmented-control {
     max-width: 100%;
@@ -3757,6 +3829,54 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .segmented-control button:hover {
   color: #d7f4ea;
 }
+
+/* Theme-aware tooltips replace browser-native title bubbles throughout the console. */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 9px;
+  color: #fffaf7;
+  background: #3b302b;
+  border: 1px solid #55443c;
+  border-radius: 5px;
+  box-shadow: 0 6px 16px rgb(47 41 38 / 18%);
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: normal;
+}
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.sidebar.sidebar-compact [data-tooltip]::after {
+  top: 50%;
+  left: calc(100% + 10px);
+  transform: translate(0, -50%);
+}
+.sidebar.sidebar-compact [data-tooltip]:hover::after,
+.sidebar.sidebar-compact [data-tooltip]:focus-visible::after {
+  transform: translate(0, -50%);
+}
+:root[data-theme='dark'] [data-tooltip]::after {
+  color: #e6f8f1;
+  background: #173e35;
+  border-color: #2c8d72;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 32%);
+}
 :root[data-theme='dark'] .profile-panel .secondary,
 :root[data-theme='dark'] .profile-actions .secondary,
 :root[data-theme='dark'] .user-menu .secondary,
@@ -3794,8 +3914,8 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .dialog .stack-form label,
 :root[data-theme='dark'] .new-user-grants-heading strong,
 :root[data-theme='dark'] .new-user-resource-grants strong,
-:root[data-theme='dark'] .participant-resource-heading strong,
-:root[data-theme='dark'] .participant-resource-item strong,
+:root[data-theme='dark'] .scope-viewer-resource-heading strong,
+:root[data-theme='dark'] .scope-viewer-resource-item strong,
 :root[data-theme='dark'] .created-credentials-inline strong {
   color: #f5ece7;
 }
@@ -3816,6 +3936,41 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .icon-search input::placeholder {
   color: #9d8f87;
 }
+:root[data-theme='dark'] .workspace-project select,
+:root[data-theme='dark'] .workspace-project select option {
+  color: #f1e8e3;
+  background: #302b28;
+}
+:root[data-theme='dark'] .workspace-project select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-focus);
+}
+:root[data-theme='dark'] .password-toggle {
+  color: #cdbfb8;
+}
+:root[data-theme='dark'] .password-toggle:hover {
+  color: #9fe4cf;
+  background: #173e35;
+}
+:root[data-theme='dark'] input[type='checkbox'] {
+  background-color: #211e1c;
+  border-color: #887b73;
+}
+:root[data-theme='dark'] input[type='checkbox']:hover:not(:disabled) {
+  border-color: #9fe4cf;
+}
+:root[data-theme='dark'] input[type='checkbox']:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+:root[data-theme='dark'] input[type='checkbox']:disabled {
+  background-color: #342e2a;
+  border-color: #5c504a;
+}
+:root[data-theme='dark'] input[type='checkbox']:disabled:checked {
+  background-color: #5c756c;
+  border-color: #5c756c;
+}
 :root[data-theme='dark'] .dialog .secondary,
 :root[data-theme='dark'] .created-credentials-inline .icon-button,
 :root[data-theme='dark'] .team-icon-picker-trigger {
@@ -3831,22 +3986,40 @@ button.workspace-team:hover {
   border-color: var(--color-primary);
 }
 :root[data-theme='dark'] .new-user-grants,
-:root[data-theme='dark'] .participant-resource-access,
+:root[data-theme='dark'] .scope-viewer-resource-access,
 :root[data-theme='dark'] .role-preview,
 :root[data-theme='dark'] .created-credentials-inline span {
   background: #342e2a;
   border-color: #514740;
 }
+:root[data-theme='dark'] .dialog .preference-group,
+:root[data-theme='dark'] .dialog .preference-group legend {
+  color: #f1e8e3;
+  background: #2a2623;
+  border-color: #514740;
+}
+:root[data-theme='dark'] .dialog .preference-group .segmented-control {
+  background: #342e2a;
+  border-color: #514740;
+}
+:root[data-theme='dark'] .dialog .preference-group .segmented-control button {
+  color: #cdbfb8;
+}
+:root[data-theme='dark'] .dialog .preference-group .segmented-control button:hover,
+:root[data-theme='dark'] .dialog .preference-group .segmented-control button.active {
+  color: #9fe4cf;
+  background: #173e35;
+}
 :root[data-theme='dark'] .new-user-grant-row,
 :root[data-theme='dark'] .new-user-resource-grants,
-:root[data-theme='dark'] .participant-resource-item {
+:root[data-theme='dark'] .scope-viewer-resource-item {
   background: #2a2623;
   border-color: #514740;
 }
 :root[data-theme='dark'] .new-user-grants-heading p,
 :root[data-theme='dark'] .new-user-resource-grants small,
-:root[data-theme='dark'] .participant-resource-heading p,
-:root[data-theme='dark'] .participant-resource-item small,
+:root[data-theme='dark'] .scope-viewer-resource-heading p,
+:root[data-theme='dark'] .scope-viewer-resource-item small,
 :root[data-theme='dark'] .new-user-grant-header,
 :root[data-theme='dark'] .confirm-copy,
 :root[data-theme='dark'] .form-help,
@@ -3863,6 +4036,18 @@ button.workspace-team:hover {
   color: #9fe4cf;
   background: #173e35;
   border-color: var(--color-primary);
+}
+:root[data-theme='dark'] .entity-icon,
+:root[data-theme='dark'] .type-icon,
+:root[data-theme='dark'] .resource-kind-icon {
+  color: #aee8d7;
+  background: #173e35;
+  border-color: #23735e;
+}
+:root[data-theme='dark'] .project-icon {
+  color: #f4d18a;
+  background: #46371e;
+  border-color: #6e572b;
 }
 :root[data-theme='dark'] .icon-picker-empty {
   color: #bfb3ac;

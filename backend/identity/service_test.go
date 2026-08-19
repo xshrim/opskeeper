@@ -19,6 +19,7 @@ type stubStore struct {
 	bootstrapInput      BootstrapInput
 	changedCurrent      string
 	changedHash         string
+	oneTimeChangedHash  string
 }
 
 func (s *stubStore) BootstrapAdmin(_ context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
@@ -60,6 +61,11 @@ func (s *stubStore) RevokeAllSessions(context.Context, string, time.Time) error 
 func (s *stubStore) ChangePassword(_ context.Context, _ string, currentPassword, newHash string) error {
 	s.changedCurrent = currentPassword
 	s.changedHash = newHash
+	return nil
+}
+
+func (s *stubStore) ChangeOneTimePassword(_ context.Context, _ string, newHash string) error {
+	s.oneTimeChangedHash = newHash
 	return nil
 }
 
@@ -174,6 +180,17 @@ func TestChangePasswordValidatesAndHashesNewPassword(t *testing.T) {
 	}
 	if store.changedCurrent != "old password" || !verifyPassword(store.changedHash, "new strong password") {
 		t.Fatalf("ChangePassword() store values = current=%q hash=%q", store.changedCurrent, store.changedHash)
+	}
+}
+
+func TestChangeOneTimePasswordValidatesAndHashesNewPassword(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store, 15*time.Minute, 24*time.Hour)
+	if err := service.ChangeOneTimePassword(context.Background(), "user-1", "new pass"); err != nil {
+		t.Fatalf("ChangeOneTimePassword() error = %v", err)
+	}
+	if !verifyPassword(store.oneTimeChangedHash, "new pass") {
+		t.Fatalf("ChangeOneTimePassword() hash = %q", store.oneTimeChangedHash)
 	}
 }
 

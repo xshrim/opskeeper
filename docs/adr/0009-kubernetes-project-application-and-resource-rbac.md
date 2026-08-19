@@ -15,7 +15,7 @@ Kubernetes 中存在 Namespace、Workload、Pod、Service、Ingress、Endpoint �
 4. Pod 副本映射为 Application 配置中的 `instances`；Service、Ingress 和 EndpointSlice 聚合为 Application 的访问与运行信息，不创建独立资源记录。
 5. 导入使用 Kubernetes UID、来源 Kubernetes 资源、目标 Scope 和资源类型形成幂等身份；重复发现更新同一 Application，失联对象先标记 `unknown`。
 6. 组织权限保持 platform、team、project 三级 Scope，不增加 application Scope。
-7. 增加通用 `resource_roles` 和 `resource_role_bindings`。ProjectMember 只获得组织导航权限，具体 Application 或其他资源权限由 ResourceViewer、ResourceOperator、ResourceAdmin 显式授予。
+7. 增加通用 `resource_roles` 和 `resource_role_bindings`。项目观察员默认只获得项目及祖先范围的资源可见性；具体 Application 或其他资源的使用权限由 `ResourceViewer` 或 `ResourceOperator` 显式追加，资源管理仍由 Scope 管理员或操作员角色负责。
 8. Scope 角色和资源角色采用允许权限并集；拥有原有 ProjectViewer/Operator/Admin 的用户仍按整个项目授权。
 
 ## 后果

@@ -2,6 +2,7 @@ package authorization
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -116,7 +117,7 @@ type ManagementStore interface {
 	GetResourceRoleBinding(context.Context, string) (ResourceRoleBinding, error)
 	DeleteResourceRoleBinding(context.Context, string) error
 	ResourceScope(context.Context, string) (string, error)
-	SubjectHasScopePermission(context.Context, string, string, Permission, string) (bool, error)
+	SubjectHasScopeViewerRole(context.Context, string, string, string) (bool, error)
 }
 
 type ManagementService struct {
@@ -280,21 +281,44 @@ func (s *ManagementService) ListRoles(ctx context.Context, actorID string) ([]Ro
 	if err != nil {
 		return nil, err
 	}
-	scopeTypes := make(map[string]struct{})
-	for _, scopeID := range filter.ScopeIDs {
-		scopeType, scopeErr := s.store.ScopeType(ctx, scopeID)
-		if scopeErr != nil {
-			return nil, scopeErr
+	// Role catalog visibility follows the actor's directly effective role
+	// bindings, rather than the readable resource hierarchy. A project member
+	// can read its parent team metadata, but must not receive team roles in the
+	// role-management catalog.
+	bindings, err := s.store.ListUserRoleBindings(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	maxScopeRank := 0
+	for _, binding := range bindings {
+		rank := roleScopeRank(binding.ScopeType)
+		if rank > maxScopeRank {
+			maxScopeRank = rank
 		}
-		scopeTypes[scopeType] = struct{}{}
+	}
+	if maxScopeRank == 0 {
+		return nil, ErrForbidden
 	}
 	visible := make([]RoleDefinition, 0, len(roles))
 	for _, role := range roles {
-		if _, ok := scopeTypes[role.ScopeType]; ok {
+		if rank := roleScopeRank(role.ScopeType); rank > 0 && rank <= maxScopeRank {
 			visible = append(visible, role)
 		}
 	}
 	return visible, nil
+}
+
+func roleScopeRank(scopeType string) int {
+	switch scopeType {
+	case "platform":
+		return 3
+	case "team":
+		return 2
+	case "project":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (s *ManagementService) CanManageUser(ctx context.Context, actorID, userID string) (bool, error) {
@@ -421,6 +445,16 @@ func (s *ManagementService) DeleteRoleBinding(ctx context.Context, actorID, bind
 
 func (s *ManagementService) IsPlatformAdmin(ctx context.Context, userID string) (bool, error) {
 	return s.store.IsPlatformAdmin(ctx, userID)
+}
+
+func (s *ManagementService) HasPlatformRole(ctx context.Context, userID string) (bool, error) {
+	store, ok := s.store.(interface {
+		HasPlatformRole(context.Context, string) (bool, error)
+	})
+	if !ok {
+		return false, errors.New("platform role lookup is unavailable")
+	}
+	return store.HasPlatformRole(ctx, userID)
 }
 
 // memberVisibilityFilter keeps people data aligned with the readable resource

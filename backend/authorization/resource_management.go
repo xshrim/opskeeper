@@ -34,6 +34,14 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 	if err != nil {
 		return ResourceRoleBinding{}, err
 	}
+	if err := RequireResourceGrantViewer(s.store, ctx, input.SubjectType, input.SubjectID, scopeID); err != nil {
+		return ResourceRoleBinding{}, err
+	}
+	for _, permission := range role.Permissions {
+		if permission == ResourceCreate || permission == ResourceUpdate || permission == ResourceDelete {
+			return ResourceRoleBinding{}, ErrGrantNotAllowed
+		}
+	}
 	if err := s.authorizeScope(ctx, actorID, MemberGrant, scopeID); err != nil {
 		return ResourceRoleBinding{}, ErrGrantNotAllowed
 	}
@@ -41,13 +49,6 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 		if err := s.authorizeScope(ctx, actorID, permission, scopeID); err != nil {
 			return ResourceRoleBinding{}, ErrGrantNotAllowed
 		}
-	}
-	eligible, err := s.store.SubjectHasScopePermission(ctx, input.SubjectType, input.SubjectID, OrganizationRead, scopeID)
-	if err != nil {
-		return ResourceRoleBinding{}, err
-	}
-	if !eligible {
-		return ResourceRoleBinding{}, ErrInvalidInput
 	}
 	binding, err := s.store.CreateResourceRoleBinding(ctx, input, actorID)
 	if err != nil {
@@ -59,8 +60,44 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 	})
 }
 
-// ValidateResourceGrantScope confirms that a resource selected for a project
-// participant belongs to that participant's project scope.
+// ResourceGrantViewerRole returns the only scope role that may receive
+// per-resource supplemental permissions for the given resource scope.
+func ResourceGrantViewerRole(scopeType string) (string, bool) {
+	switch scopeType {
+	case "platform":
+		return "PlatformViewer", true
+	case "team":
+		return "TeamViewer", true
+	case "project":
+		return "ProjectViewer", true
+	default:
+		return "", false
+	}
+}
+
+// RequireResourceGrantViewer ensures supplemental resource roles remain bound
+// to the corresponding scope-level viewer role rather than becoming a second,
+// bypassable access hierarchy.
+func RequireResourceGrantViewer(store ManagementStore, ctx context.Context, subjectType, subjectID, scopeID string) error {
+	scopeType, err := store.ScopeType(ctx, scopeID)
+	if err != nil {
+		return err
+	}
+	if _, ok := ResourceGrantViewerRole(scopeType); !ok {
+		return ErrInvalidInput
+	}
+	eligible, err := store.SubjectHasScopeViewerRole(ctx, subjectType, subjectID, scopeID)
+	if err != nil {
+		return err
+	}
+	if !eligible {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+// ValidateResourceGrantScope confirms that a resource selected for a scope
+// viewer belongs to the selected scope.
 func (s *ManagementService) ValidateResourceGrantScope(ctx context.Context, resourceID, scopeID string) error {
 	resourceScopeID, err := s.store.ResourceScope(ctx, strings.TrimSpace(resourceID))
 	if err != nil {

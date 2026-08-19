@@ -188,6 +188,35 @@ func (s *store) ResolveResourceAccess(ctx context.Context, subject Subject, perm
 	if err := rows.Err(); err != nil {
 		return ResourceFilter{}, fmt.Errorf("iterate resource authorization: %w", err)
 	}
+	if permission == ResourceRead || permission == ResourceUse {
+		ancestorRows, ancestorErr := s.pool.Query(ctx, `
+			WITH RECURSIVE ancestors(id) AS (
+				SELECT unnest($1::uuid[])
+				UNION
+				SELECT scope.parent_scope_id
+				  FROM scopes scope
+				  JOIN ancestors child ON child.id = scope.id
+				 WHERE scope.parent_scope_id IS NOT NULL
+				   AND scope.deleted_at IS NULL
+			)
+			SELECT DISTINCT id::text FROM ancestors ORDER BY id::text`, scopes.ScopeIDs)
+		if ancestorErr != nil {
+			return ResourceFilter{}, fmt.Errorf("resolve resource ancestor scopes: %w", ancestorErr)
+		}
+		defer ancestorRows.Close()
+		ancestorScopeIDs := make([]string, 0, len(scopes.ScopeIDs))
+		for ancestorRows.Next() {
+			var scopeID string
+			if scanErr := ancestorRows.Scan(&scopeID); scanErr != nil {
+				return ResourceFilter{}, fmt.Errorf("scan resource ancestor scope: %w", scanErr)
+			}
+			ancestorScopeIDs = append(ancestorScopeIDs, scopeID)
+		}
+		if scanErr := ancestorRows.Err(); scanErr != nil {
+			return ResourceFilter{}, fmt.Errorf("iterate resource ancestor scopes: %w", scanErr)
+		}
+		filter.ScopeIDs = ancestorScopeIDs
+	}
 	return filter, nil
 }
 

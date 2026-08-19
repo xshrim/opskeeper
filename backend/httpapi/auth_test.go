@@ -30,6 +30,7 @@ type stubIdentityService struct {
 	changePasswordErr  error
 	changeCurrent      string
 	changeNew          string
+	oneTimeChangeNew   string
 }
 
 func (s *stubIdentityService) Login(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
@@ -58,6 +59,11 @@ func (s *stubIdentityService) LogoutAll(_ context.Context, userID string) error 
 func (s *stubIdentityService) ChangePassword(_ context.Context, _ string, currentPassword, newPassword string) error {
 	s.changeCurrent = currentPassword
 	s.changeNew = newPassword
+	return s.changePasswordErr
+}
+
+func (s *stubIdentityService) ChangeOneTimePassword(_ context.Context, _ string, newPassword string) error {
+	s.oneTimeChangeNew = newPassword
 	return s.changePasswordErr
 }
 
@@ -108,12 +114,17 @@ func newAuthTestRouter(service identityService, secure bool) http.Handler {
 }
 
 type stubPlatformAdminService struct {
-	allowed bool
-	err     error
+	allowed      bool
+	platformRole bool
+	err          error
 }
 
 func (s stubPlatformAdminService) IsPlatformAdmin(context.Context, string) (bool, error) {
 	return s.allowed, s.err
+}
+
+func (s stubPlatformAdminService) HasPlatformRole(context.Context, string) (bool, error) {
+	return s.platformRole || s.allowed, s.err
 }
 
 func newAuthContextTestRouter(service identityService, platformAdmin platformAdminService) http.Handler {
@@ -173,6 +184,19 @@ func TestChangePasswordRequiresAuthenticationAndForwardsCredentials(t *testing.T
 	}
 }
 
+func TestChangeOneTimePasswordDoesNotRequireCurrentPassword(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, Status: identity.StatusActive, MustChangePassword: true}}
+	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/me/password", strings.NewReader(`{"new_password":"new strong password"}`))
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || service.oneTimeChangeNew != "new strong password" || service.changeCurrent != "" {
+		t.Fatalf("change one-time password response = %d current=%q new=%q", response.Code, service.changeCurrent, service.oneTimeChangeNew)
+	}
+}
+
 func TestAuthenticationMiddlewareRestrictsOneTimePasswordSessions(t *testing.T) {
 	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, MustChangePassword: true}}
 	router := newAuthTestRouter(service, false)
@@ -226,7 +250,20 @@ func TestSessionContextReportsPlatformAdministrator(t *testing.T) {
 
 	newAuthContextTestRouter(service, stubPlatformAdminService{allowed: true}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"platform_admin":true`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"platform_admin":true`) || !strings.Contains(response.Body.String(), `"platform_role":true`) {
+		t.Fatalf("session context response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSessionContextReportsPlatformOperatorRole(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID}}
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/auth/me/context", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthContextTestRouter(service, stubPlatformAdminService{platformRole: true}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"platform_admin":false`) || !strings.Contains(response.Body.String(), `"platform_role":true`) {
 		t.Fatalf("session context response = %d %s", response.Code, response.Body.String())
 	}
 }

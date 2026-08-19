@@ -39,7 +39,6 @@ Permission = Subject + Role + Scope + Conditions
 | ProjectAdmin | 项目 | 项目成员、项目资源和项目策略管理 |
 | ProjectOperator | 项目 | 项目诊断、巡检和低风险工具执行 |
 | ProjectViewer | 项目 | 项目资源和报告只读 |
-| ProjectMember | 项目 | 只获得项目及祖先导航可见性，具体资源权限另行绑定 |
 
 平台还应支持自定义角色，但自定义角色只能组合系统定义的权限点，不能创建任意脚本权限。
 
@@ -74,8 +73,6 @@ discovery:run
 discovery:import
 diagnosis:start
 diagnosis:read
-skill:execute
-skill:manage
 inspection:manage
 inspection:execute
 operation:approve
@@ -100,7 +97,9 @@ resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 
 `scope_id` 指向统一 Scope 树。角色绑定、资源、诊断会话和巡检策略使用同一种祖先关系判断，不分别实现三套鉴权逻辑。
 
-资源读取与操作的最终过滤结果是“Scope 角色允许的全部资源”与“资源角色显式允许的资源”的并集。`ProjectMember` 只提供 `organization:read`，因此不会隐式获得项目内所有资源；`ResourceViewer`、`ResourceOperator` 和 `ResourceAdmin` 分别授予具体资源的只读、使用/执行和管理能力。资源授权仍由资源所属 Scope 中具备 `member:grant` 的管理员创建，不能绕过项目边界。
+资源读取与操作的最终过滤结果是“Scope 角色允许的全部资源”与“资源角色显式允许的资源”的并集。平台、团队和项目观察员默认只能读取自己可见的资源：平台资源向团队和项目可见，团队资源向项目可见；观察员不因可见而自动获得 `resource:use`。只有对具体资源追加 `ResourceViewer`、`ResourceOperator` 或 `ResourceAdmin` 后，主体才获得该资源对应的附加权限。观察员可追加自己可见范围内的资源，包括来自上级 Scope 的资源；服务端要求目标主体在与资源存在祖先/后代关系的 Scope 上拥有对应的 `PlatformViewer`、`TeamViewer` 或 `ProjectViewer`。
+
+管理员和操作员默认具有本级及上级可见资源的读取/使用权限。资源编辑和删除只允许资源所在 Scope 及其上级 Scope 的相应管理员权限，项目级权限不能修改团队或平台资源。资源授权仍由具备 `member:grant` 的管理员创建，不能绕过 Scope 边界。
 
 鉴权过程：
 
@@ -150,7 +149,7 @@ Skill 声明所需能力和风险级别：
 | Medium | 重启 Pod、调整副本 | 必须人工审批 |
 | High | 删除资源、执行写 SQL | 默认禁止，需特权审批策略 |
 
-LLM 本身无权直接访问基础设施。Agent、Skill Tool 调用和 Runner 执行内核统一使用 ADK Go v2；所有调用仍必须经过 OpsKeeper Policy Enforcement Point，模型提出的操作参数需要结构化校验。ADK 负责通用编排，不替代 Scope、资源权限、预算、审批和审计。
+LLM 本身无权直接访问基础设施。Skill 是统一资源目录中的一种资源，读取、执行、版本发布和管理分别使用 `resource:read`、`resource:use`、`resource:update` 和 `resource:delete` 等通用权限；SkillVersion 从属于 Skill，不单独作为授权主体。Agent、Skill Tool 调用和 Runner 执行内核统一使用 ADK Go v2；所有调用仍必须经过 OpsKeeper Policy Enforcement Point，模型提出的操作参数需要结构化校验。ADK 负责通用编排，不替代 Scope、资源权限、预算、审批和审计。
 
 ## 9. 审计要求
 

@@ -44,6 +44,7 @@ type accessManagementService interface {
 	ListResourceRoleBindings(context.Context, string) ([]authorization.ResourceRoleBinding, error)
 	DeleteResourceRoleBinding(context.Context, string, string, audit.Event) error
 	IsPlatformAdmin(context.Context, string) (bool, error)
+	HasPlatformRole(context.Context, string) (bool, error)
 }
 
 type auditQueryService interface {
@@ -248,10 +249,11 @@ func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Requ
 		}
 		bindings = append(bindings, binding)
 		for _, resourceGrant := range grant.ResourceGrants {
-			if binding.RoleName != "ProjectMember" {
+			requiredRole, validScope := authorization.ResourceGrantViewerRole(binding.ScopeType)
+			if !validScope || binding.RoleName != requiredRole {
 				disabled := identity.StatusDisabled
 				_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
-				writeError(writer, request, http.StatusBadRequest, "invalid_request", "resource grants require the project member role")
+				writeError(writer, request, http.StatusBadRequest, "invalid_request", "resource grants require the matching scope viewer role")
 				return
 			}
 			if scopeErr := h.access.ValidateResourceGrantScope(request.Context(), resourceGrant.ResourceID, grant.ScopeID); scopeErr != nil {

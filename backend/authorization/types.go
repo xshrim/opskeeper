@@ -21,8 +21,6 @@ const (
 	DiscoveryImport   Permission = "discovery:import"
 	DiagnosisStart    Permission = "diagnosis:start"
 	DiagnosisRead     Permission = "diagnosis:read"
-	SkillExecute      Permission = "skill:execute"
-	SkillManage       Permission = "skill:manage"
 	InspectionManage  Permission = "inspection:manage"
 	InspectionExecute Permission = "inspection:execute"
 	OperationApprove  Permission = "operation:approve"

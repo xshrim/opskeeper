@@ -136,7 +136,7 @@ func TestResourceScopeRelationsDefaultsAndCredentialBoundary(t *testing.T) {
 	}
 }
 
-func TestProjectMemberOnlySeesExplicitlyGrantedResources(t *testing.T) {
+func TestProjectViewerReadsProjectResourcesAndResourceRolesAddOperations(t *testing.T) {
 	pool := resourceIntegrationPool(t)
 	ctx := context.Background()
 	organizations := organization.NewService(organization.NewStore(pool))
@@ -154,6 +154,14 @@ func TestProjectMemberOnlySeesExplicitlyGrantedResources(t *testing.T) {
 	}
 
 	resources := resource.NewService(resource.NewStore(pool))
+	platformResource, err := resources.Create(ctx, resource.CreateInput{ScopeID: platform.Scope.ID, Kind: "Application", Name: "platform-application", Config: map[string]any{}})
+	if err != nil {
+		t.Fatalf("Create(platform resource) error = %v", err)
+	}
+	teamResource, err := resources.Create(ctx, resource.CreateInput{ScopeID: team.Scope.ID, Kind: "Application", Name: "team-application", Config: map[string]any{}})
+	if err != nil {
+		t.Fatalf("Create(team resource) error = %v", err)
+	}
 	allowed, err := resources.Create(ctx, resource.CreateInput{ScopeID: project.Scope.ID, Kind: "Application", Name: "allowed-application", Config: map[string]any{}})
 	if err != nil {
 		t.Fatalf("Create(allowed resource) error = %v", err)
@@ -164,15 +172,27 @@ func TestProjectMemberOnlySeesExplicitlyGrantedResources(t *testing.T) {
 	}
 
 	userID := insertResourceUser(t, pool, "resource-restricted@example.com")
+	projectOperatorID := insertResourceUser(t, pool, "resource-project-operator@example.com")
+	projectAdminID := insertResourceUser(t, pool, "resource-project-admin@example.com")
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO role_bindings (subject_type, subject_id, role_id, scope_id)
-		SELECT 'user', $1::uuid, id, $2::uuid FROM roles WHERE name = 'ProjectMember'`, userID, project.Scope.ID); err != nil {
-		t.Fatalf("bind ProjectMember: %v", err)
+		SELECT 'user', $1::uuid, id, $2::uuid FROM roles WHERE name = 'ProjectViewer'`, userID, project.Scope.ID); err != nil {
+		t.Fatalf("bind ProjectViewer: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO resource_role_bindings (subject_type, subject_id, role_id, resource_id)
-		SELECT 'user', $1::uuid, id, $2::uuid FROM resource_roles WHERE name = 'ResourceViewer'`, userID, allowed.ID); err != nil {
-		t.Fatalf("bind ResourceViewer: %v", err)
+		SELECT 'user', $1::uuid, id, $2::uuid FROM resource_roles WHERE name = 'ResourceOperator'`, userID, allowed.ID); err != nil {
+		t.Fatalf("bind ResourceOperator: %v", err)
+	}
+	for _, grant := range []struct {
+		userID   string
+		roleName string
+	}{{projectOperatorID, "ProjectOperator"}, {projectAdminID, "ProjectAdmin"}} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO role_bindings (subject_type, subject_id, role_id, scope_id)
+			SELECT 'user', $1::uuid, id, $2::uuid FROM roles WHERE name = $3`, grant.userID, project.Scope.ID, grant.roleName); err != nil {
+			t.Fatalf("bind %s: %v", grant.roleName, err)
+		}
 	}
 
 	authorizationService := authorization.NewService(authorization.NewStore(pool))
@@ -187,8 +207,20 @@ func TestProjectMemberOnlySeesExplicitlyGrantedResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResourceFilter(resource:read) error = %v", err)
 	}
-	if len(resourceFilter.ScopeIDs) != 0 || !resourceFilter.Allows(project.Scope.ID, allowed.ID) || resourceFilter.Allows(project.Scope.ID, denied.ID) {
+	if !resourceFilter.Allows(platform.Scope.ID, platformResource.ID) || !resourceFilter.Allows(team.Scope.ID, teamResource.ID) || !resourceFilter.Allows(project.Scope.ID, allowed.ID) || !resourceFilter.Allows(project.Scope.ID, denied.ID) {
 		t.Fatalf("resource filter = %#v", resourceFilter)
+	}
+	useFilter, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: userID}, authorization.ResourceUse)
+	if err != nil || len(useFilter.ScopeIDs) != 0 || !useFilter.Allows(project.Scope.ID, allowed.ID) || useFilter.Allows(platform.Scope.ID, platformResource.ID) || useFilter.Allows(team.Scope.ID, teamResource.ID) || useFilter.Allows(project.Scope.ID, denied.ID) {
+		t.Fatalf("resource use filter = %#v, %v", useFilter, err)
+	}
+	operatorUseFilter, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: projectOperatorID}, authorization.ResourceUse)
+	if err != nil || !operatorUseFilter.Allows(platform.Scope.ID, platformResource.ID) || !operatorUseFilter.Allows(team.Scope.ID, teamResource.ID) || !operatorUseFilter.Allows(project.Scope.ID, allowed.ID) {
+		t.Fatalf("project operator resource use filter = %#v, %v", operatorUseFilter, err)
+	}
+	adminUpdateFilter, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: projectAdminID}, authorization.ResourceUpdate)
+	if err != nil || adminUpdateFilter.Allows(platform.Scope.ID, platformResource.ID) || adminUpdateFilter.Allows(team.Scope.ID, teamResource.ID) || !adminUpdateFilter.Allows(project.Scope.ID, allowed.ID) {
+		t.Fatalf("project administrator resource update filter = %#v, %v", adminUpdateFilter, err)
 	}
 
 	filteredContext := authorization.WithResourceFilter(ctx, resourceFilter)
@@ -196,11 +228,15 @@ func TestProjectMemberOnlySeesExplicitlyGrantedResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List(resource filtered) error = %v", err)
 	}
-	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].ID != allowed.ID {
+	found := make(map[string]bool, len(page.Items))
+	for _, item := range page.Items {
+		found[item.ID] = true
+	}
+	if !found[platformResource.ID] || !found[teamResource.ID] || !found[allowed.ID] || !found[denied.ID] {
 		t.Fatalf("resource filtered page = %#v", page)
 	}
-	if _, err := resources.Get(filteredContext, denied.ID); !errors.Is(err, resource.ErrNotFound) {
-		t.Fatalf("Get(denied resource) error = %v, want ErrNotFound", err)
+	if _, err := resources.Get(filteredContext, denied.ID); err != nil {
+		t.Fatalf("Get(project viewer resource) error = %v", err)
 	}
 }
 

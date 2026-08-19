@@ -38,7 +38,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         body: JSON.stringify(body)
       });
     if (path.endsWith('/auth/me/context'))
-      return json({ platform_admin: platformAdmin });
+      return json({ platform_admin: platformAdmin, platform_role: platformAdmin });
     if (path.endsWith('/auth/me'))
       return authenticated
         ? json(user)
@@ -302,6 +302,27 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           scope_type: 'team',
           builtin: true,
           permissions: ['organization:read', 'member:grant', 'project:manage']
+        },
+        {
+          id: 'role-platform-viewer',
+          name: 'PlatformViewer',
+          scope_type: 'platform',
+          builtin: true,
+          permissions: ['organization:read', 'resource:read']
+        },
+        {
+          id: 'role-team-viewer',
+          name: 'TeamViewer',
+          scope_type: 'team',
+          builtin: true,
+          permissions: ['organization:read', 'resource:read']
+        },
+        {
+          id: 'role-project-viewer',
+          name: 'ProjectViewer',
+          scope_type: 'project',
+          builtin: true,
+          permissions: ['organization:read', 'resource:read']
         }
       ]);
     if (path.endsWith('/role-bindings/'))
@@ -422,7 +443,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page);
     await page.goto('/');
-    await page.getByRole('button', { name: '组织' }).click();
+    await page.getByRole('button', { name: '项目' }).click();
     await page.getByRole('button', { name: /平台工程/ }).click();
     await page.getByLabel('切换项目').selectOption('project-1');
     await page.getByRole('button', { name: '资源' }).click();
@@ -445,7 +466,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '展开成员菜单' }).click();
     await page.getByRole('button', { name: '团队管理' }).click();
     await expect(
       page.getByRole('heading', { name: '团队管理', level: 1 })
@@ -464,11 +485,10 @@ test.describe('T07 console', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: '添加用户' }).click();
     await expect(page.getByRole('dialog', { name: '新增用户' })).toBeVisible();
-    await page.getByLabel('授权 Scope').selectOption(ids.team);
-    await page.getByLabel('TeamOwner').check();
-    await expect(
-      page.getByRole('dialog').getByText('member:grant', { exact: true })
-    ).toBeVisible();
+    await page.getByLabel('授权级别').selectOption('team');
+    await page.getByLabel('授权对象').selectOption(ids.team);
+    await page.getByLabel('角色').selectOption('role-team-owner');
+    await expect(page.getByLabel('角色')).toHaveValue('role-team-owner');
     await page.getByRole('button', { name: '关闭' }).click();
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -544,7 +564,7 @@ test.describe('T07 console', () => {
   test('creates a team with a searchable icon picker', async ({ page }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '展开成员菜单' }).click();
     await page.getByRole('button', { name: '团队管理' }).click();
     await page.getByRole('button', { name: '添加团队' }).click();
 
@@ -555,6 +575,10 @@ test.describe('T07 console', () => {
     const picker = page.getByRole('dialog', { name: '选择团队图标' });
     await picker.getByLabel('搜索图标').fill('PostgreSQL');
     await picker.getByRole('button', { name: '选择图标 PostgreSQL' }).click();
+    await dialog.getByLabel('选择团队图标').click();
+    await picker.getByLabel('搜索图标').fill('Activity');
+    await expect(picker.getByRole('button', { name: '选择图标 Activity' })).toBeVisible();
+    await picker.getByRole('button', { name: '选择图标 Activity' }).click();
     await dialog.getByLabel('名称').fill('数据库平台');
     await dialog.getByLabel('团队编码').fill('database');
     await dialog.getByRole('button', { name: '创建团队' }).click();
@@ -566,7 +590,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '展开成员菜单' }).click();
     await page.getByRole('button', { name: '用户管理' }).click();
     await page.getByRole('button', { name: '添加用户' }).click();
 
@@ -581,18 +605,34 @@ test.describe('T07 console', () => {
     await dialog.getByLabel('角色').selectOption('role-team-owner');
     await dialog.getByRole('button', { name: '创建用户并授权' }).click();
     await expect(dialog.locator('.created-credentials-inline')).toContainText(
-      'database-operator'
-    );
-    await expect(dialog.locator('.created-credentials-inline')).toContainText(
       'GeneratedPassword123!'
     );
+    await expect(dialog.locator('.created-credentials-inline')).not.toContainText(
+      'database-operator'
+    );
     await expect(dialog.getByLabel('复制一次性密码')).toBeVisible();
+  });
+
+  test('offers same-scope resource grants for viewer roles', async ({ page }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '用户管理' }).click();
+    await page.getByRole('button', { name: '添加用户' }).click();
+
+    const dialog = page.getByRole('dialog', { name: '新增用户' });
+    await dialog.getByLabel('用户名').fill('project-viewer');
+    await dialog.getByLabel('授权级别').selectOption('project');
+    await dialog.getByLabel('授权对象').selectOption(ids.project);
+    await dialog.getByLabel('角色').selectOption('role-project-viewer');
+    await expect(dialog.getByText('项目观察员默认可读取该范围资源')).toBeVisible();
+    await expect(dialog.getByText('范围资源权限')).toBeVisible();
   });
 
   test('does not allow an administrator to edit a username', async ({ page }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '展开成员菜单' }).click();
     await page.getByRole('button', { name: '用户管理' }).click();
     await page.getByLabel('编辑用户 支付负责人').click();
 
