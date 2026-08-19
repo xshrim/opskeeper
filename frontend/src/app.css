@@ -1,4 +1,9 @@
 :root {
+  --color-primary: #e7601b;
+  --color-primary-hover: #d95716;
+  --color-primary-active: #c94e10;
+  --color-primary-focus: rgba(231, 96, 27, 0.14);
+  --color-primary-focus-strong: rgba(231, 96, 27, 0.24);
   font-family:
     Inter,
     ui-sans-serif,
@@ -819,12 +824,12 @@ h3 {
 }
 .access-page .primary {
   color: #fff;
-  background: #e7601b;
-  border-color: #e7601b;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   border-radius: 6px;
 }
 .access-page .primary:hover {
-  background: #c94e12;
+  background: var(--color-primary-hover);
 }
 .access-page .secondary {
   color: #5f514a;
@@ -859,8 +864,8 @@ h3 {
   border-radius: 6px;
 }
 .access-search:focus-within {
-  border-color: #e7601b;
-  box-shadow: 0 0 0 3px rgba(231, 96, 27, 0.14);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-focus);
 }
 .access-search > svg {
   margin-left: 10px;
@@ -917,7 +922,7 @@ h3 {
 .access-table input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  accent-color: #e7601b;
+  accent-color: var(--color-primary);
 }
 .access-team-trigger {
   display: grid;
@@ -963,7 +968,7 @@ h3 {
   border-top: 1px solid #eee7e3;
 }
 .directory-user:hover {
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .access-user-row {
   grid-template-columns: 20px minmax(220px, 1.1fr) minmax(130px, 0.65fr) minmax(240px, 1.25fr) 76px 74px;
@@ -1007,7 +1012,7 @@ h3 {
   border-radius: 6px;
 }
 .access-row-actions .icon-button:hover {
-  color: #e7601b;
+  color: var(--color-primary);
   border-color: #e3ae91;
 }
 .access-state {
@@ -1131,8 +1136,8 @@ h3 {
 .dialog input:focus,
 .dialog select:focus,
 .dialog textarea:focus {
-  border-color: #e7601b;
-  box-shadow: 0 0 0 3px rgba(231, 96, 27, 0.14);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-focus);
 }
 .dialog .secondary {
   color: #5f514a;
@@ -1146,11 +1151,11 @@ h3 {
 }
 .dialog .primary {
   color: #fff;
-  background: #e7601b;
-  border-color: #e7601b;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 .dialog .primary:hover {
-  background: #c94e12;
+  background: var(--color-primary-hover);
 }
 .role-preview {
   display: grid;
@@ -1261,7 +1266,7 @@ h3 {
 }
 .participant-resource-heading > svg {
   flex: 0 0 auto;
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .participant-resource-list {
   display: grid;
@@ -2087,7 +2092,7 @@ textarea:focus {
   height: 56px;
   place-items: center;
   color: #fff;
-  background: #e7601b;
+  background: var(--color-primary);
   border: 1px solid #d85513;
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(157, 69, 24, 0.18);
@@ -2172,8 +2177,8 @@ textarea:focus {
   border-color: #bea89b;
 }
 .login-form input:focus {
-  border-color: #e7601b;
-  box-shadow: 0 0 0 3px rgba(231, 96, 27, 0.14);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-focus);
 }
 .password-control {
   position: relative;
@@ -2204,7 +2209,7 @@ textarea:focus {
 }
 .password-toggle:focus-visible,
 .login-submit:focus-visible {
-  outline: 3px solid rgba(231, 96, 27, 0.24);
+  outline: 3px solid var(--color-primary-focus-strong);
   outline-offset: 2px;
 }
 .login-submit-wrap {
@@ -2219,7 +2224,7 @@ textarea:focus {
   justify-content: center;
   gap: 9px;
   color: #fff;
-  background: #e7601b;
+  background: var(--color-primary);
   border: 1px solid #d85513;
   border-radius: 6px;
   box-shadow: 0 5px 14px rgba(178, 74, 20, 0.18);
@@ -2227,10 +2232,10 @@ textarea:focus {
   font-weight: 700;
 }
 .login-submit:hover:not(:disabled) {
-  background: #d95716;
+  background: var(--color-primary-hover);
 }
 .login-submit:active:not(:disabled) {
-  background: #c94e10;
+  background: var(--color-primary-active);
   box-shadow: 0 2px 7px rgba(178, 74, 20, 0.18);
 }
 .button-spinner {
@@ -2693,7 +2698,7 @@ body {
   width: 30px;
   height: 30px;
   color: #fff;
-  background: #e7601b;
+  background: var(--color-primary);
   border-radius: 6px;
 }
 .brand-copy {
@@ -2733,13 +2738,13 @@ body {
   background: #fff0e9;
 }
 .nav-item.active svg {
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .nav-item.active {
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .nav-item.active .nav-item-label {
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .nav-item-label {
   width: auto;
@@ -2787,11 +2792,11 @@ body {
 }
 .nav-submenu button:hover,
 .nav-submenu button.active {
-  color: #e7601b;
+  color: var(--color-primary);
   background: #fff0e9;
 }
 .nav-submenu button.active svg {
-  color: #e7601b;
+  color: var(--color-primary);
 }
 .sidebar.sidebar-compact .nav-group-chevron {
   display: none;
@@ -2879,7 +2884,7 @@ button.workspace-team:hover {
 }
 .workspace-project select:focus-visible,
 .workspace-team:focus-visible {
-  outline: 2px solid #e7601b;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 .team-menu {
@@ -3253,6 +3258,11 @@ button.workspace-team:hover {
   border-top: 1px solid #f0e9e6;
 }
 :root[data-theme='dark'] {
+  --color-primary: #18a27d;
+  --color-primary-hover: #158c6c;
+  --color-primary-active: #117557;
+  --color-primary-focus: rgba(24, 162, 125, 0.18);
+  --color-primary-focus-strong: rgba(24, 162, 125, 0.3);
   color: #f1e8e3;
   background: #211e1c;
 }
