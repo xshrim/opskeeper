@@ -28,50 +28,50 @@ import (
 const serviceName = "opskeeper-worker"
 
 func main() {
-	logger := logging.NewText(os.Stdout)
+	logger := logging.NewRaw(os.Stdout).With("service", serviceName)
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("load configuration", "error", err)
+		logger.Error("load configuration", "kind", "error", "error_type", "configuration", "error", err)
 		os.Exit(1)
 	}
 	logger, err = logging.New(os.Stdout, cfg.LogFormat)
 	if err != nil {
-		logger.Error("configure logging", "error", err)
+		logger.Error("configure logging", "kind", "error", "error_type", "logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
+	logger = logger.With("service", serviceName)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	build := version.Current()
 	shutdownTelemetry, err := observability.Setup(ctx, serviceName, cfg.Environment, cfg.OTLPExporterEndpoint, observability.Build{Version: build.Version, Commit: build.Commit})
 	if err != nil {
-		logger.Error("configure telemetry", "error", err)
+		logger.Error("configure telemetry", "kind", "error", "error_type", "telemetry", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logger.Warn("shutdown telemetry", "error", err)
+			logger.Warn("shutdown telemetry", "kind", "error", "error_type", "telemetry-shutdown", "error", err)
 		}
 	}()
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		logger.Error("configure PostgreSQL client", "error", err)
+		logger.Error("configure PostgreSQL client", "kind", "error", "error_type", "postgres-client", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 	encryptor, err := credential.FromEnvironment(cfg.Environment)
 	if err != nil {
-		logger.Error("configure credential encryption", "error", err)
+		logger.Error("configure credential encryption", "kind", "error", "error_type", "credential-encryption", "error", err)
 		os.Exit(1)
 	}
 	limits := connector.DefaultLimits()
 	limits.Timeout, limits.MaxConcurrent, limits.MaxResponseBytes = cfg.ConnectorTimeout, cfg.ConnectorMaxConcurrency, cfg.ConnectorMaxResponseBytes
 	registry, err := connector.DefaultRegistry(limits)
 	if err != nil {
-		logger.Error("configure connector registry", "error", err)
+		logger.Error("configure connector registry", "kind", "error", "error_type", "connector-registry", "error", err)
 		os.Exit(1)
 	}
 	credentials := credential.NewService(credential.NewStore(pool), encryptor)
@@ -86,23 +86,23 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
 		operationReconciler, err = operation.NewInClusterReconciler(operation.NewStore(pool))
 		if err != nil {
-			logger.Warn("operation reconciler unavailable", "error", err)
+			logger.Warn("operation reconciler unavailable", "kind", "error", "error_type", "operation-reconciler", "error", err)
 		}
 	}
 	notifier := inspection.NotificationWorker{Store: store, Credentials: credentials}
 	ticker := time.NewTicker(cfg.InspectionWorkerPollInterval)
 	defer ticker.Stop()
-	logger.Info("worker started", "poll_interval", cfg.InspectionWorkerPollInterval)
+	logger.Info("worker started", "kind", "service-start", "poll_interval", cfg.InspectionWorkerPollInterval)
 	for {
 		if operationReconciler != nil {
 			if _, reconcileErr := operationReconciler.RunOnce(ctx); reconcileErr != nil {
-				logger.Error("reconcile operation job", "error", reconcileErr)
+				logger.Error("reconcile operation job", "kind", "job", "error_type", "operation-reconcile", "error", reconcileErr)
 			}
 		}
 		started := time.Now()
 		claimed, runErr := worker.RunOnce(ctx)
 		if runErr != nil {
-			logger.Error("run inspection job", "error", runErr)
+			logger.Error("run inspection job", "kind", "job", "error_type", "inspection-run", "error", runErr)
 			observability.RecordError(ctx, "worker", "inspection")
 		}
 		if claimed {
@@ -111,7 +111,7 @@ func main() {
 		started = time.Now()
 		notified, notifyErr := notifier.RunOnce(ctx)
 		if notifyErr != nil {
-			logger.Error("deliver inspection notification", "error", notifyErr)
+			logger.Error("deliver inspection notification", "kind", "job", "error_type", "notification-delivery", "error", notifyErr)
 			observability.RecordError(ctx, "worker", "notification")
 		}
 		if notified {
@@ -122,7 +122,7 @@ func main() {
 		}
 		select {
 		case <-ctx.Done():
-			logger.Info("worker stopped")
+			logger.Info("worker stopped", "kind", "service-stop")
 			return
 		case <-ticker.C:
 		}

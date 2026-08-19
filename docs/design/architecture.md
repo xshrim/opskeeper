@@ -78,7 +78,7 @@ flowchart LR
 | 数据库 | PostgreSQL 16 | 已实现，T01-T15 | 保存组织、身份、授权、审计、资源、诊断、巡检、审批和任务数据 |
 | 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
 | 实时交互 | SSE | 已实现，T11 | 推送诊断过程和工具调用事件 |
-| 日志 | `slog` text/json | 已实现，T01 | 全部 Go 进程统一结构化字段 |
+| 日志 | `slog` + 项目日志 Handler（`json`/`text`/`raw`） | 规范已确定，待统一接入 | 全部 Go 进程遵循[后端日志规范](../standards/backend-logging.md) |
 | 指标和链路 | OpenTelemetry OTLP/HTTP | 已实现，T15，待环境验收 | HTTP 链路以及任务、Connector、LLM Token 和错误等低基数指标；未配置端点时本地无外部依赖 |
 | 本地部署 | Docker Compose | 已实现，T01 | PostgreSQL 和 Redis 开发环境 |
 | 生产部署 | 单镜像、Kubernetes、Helm、Ingress | Chart 已实现，T15，待干净集群验收 | API、Worker 可独立扩容；Scheduler 单副本；Migration 使用发布前 Hook |
@@ -159,7 +159,7 @@ flowchart LR
 - 前后端源码和依赖保持独立；本地既可使用 Go API 与 Vite 分离热更新，也可通过 `make run-front-api` 构建并嵌入前端后只运行 API。生产构建同样将 Vite 静态制品嵌入 `opskeeper-api`，由一个进程提供页面、静态资源和业务 API。
 - 应用临时运行、二进制构建和最终镜像打包统一由根目录 Makefile 提供入口，不使用独立包装脚本。
 - API、Worker、Scheduler 和 Migration 的服务名称及镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`；`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
-- API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `text` 和 `json`，默认使用 `text`。
+- API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `json`、`text` 和 `raw`，默认使用 `raw`；字段顺序、Trace/Span 和 ReqID 规则遵循[后端日志规范](../standards/backend-logging.md)。
 - API 默认不信任客户端转发头；只有 `OPSK_TRUSTED_PROXIES` 明确列出的直连代理才能提供客户端 IP，解析结果写入请求日志并供后续审计使用。
 - 数据库迁移由滚动发布前的单实例 Migration Job 执行，使用 PostgreSQL advisory lock 防止并发；应用进程不自动迁移，Schema 演进遵循 Expand/Contract。
 - Connector 调用统一使用超时、全局并发、有限重试、查询范围和最大响应大小限制；连接检查只持久化安全分类、公开消息、耗时和能力，不保存上游响应正文或凭据。

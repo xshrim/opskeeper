@@ -21,6 +21,27 @@ func TestNewTextLogger(t *testing.T) {
 	}
 }
 
+func TestNewRawLoggerUsesStableHeaderAndSanitizesControlCharacters(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := New(&output, FormatRaw)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	logger.With("service", "opskeeper-api", "kind", "service-start").Info("started\nnext")
+
+	line := strings.TrimSuffix(output.String(), "\n")
+	fields := strings.SplitN(line, " ", 9)
+	if len(fields) != 9 {
+		t.Fatalf("raw log fields = %d, output = %q", len(fields), line)
+	}
+	if fields[0] == "" || fields[1] != "INFO" || fields[2] != "opskeeper-api" || fields[3] != "service-start" || fields[4] != "-" || fields[5] != "-" {
+		t.Fatalf("raw log header = %q", fields[:6])
+	}
+	if strings.ContainsAny(line, "\r\n\t") || fields[8] != "started next" {
+		t.Fatalf("raw log message = %q", fields[8])
+	}
+}
+
 func TestNewJSONLogger(t *testing.T) {
 	var output bytes.Buffer
 	logger, err := New(&output, FormatJSON)

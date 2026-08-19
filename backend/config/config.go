@@ -16,7 +16,7 @@ const (
 	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
 	defaultRedisURL    = "redis://localhost:6379/0"
 	defaultBasePath    = "/opskeeper"
-	defaultLogFormat   = "text"
+	defaultLogFormat   = "raw"
 	maxBasePathLength  = 128
 )
 
@@ -123,8 +123,8 @@ func Load() (Config, error) {
 	if !validBasePath(cfg.BasePath) {
 		return Config{}, fmt.Errorf("OPSK_BASE_PATH must be / or a slash-prefixed path of lowercase letters, digits, or internal hyphens (maximum %d characters)", maxBasePathLength)
 	}
-	if cfg.LogFormat != "text" && cfg.LogFormat != "json" {
-		return Config{}, errors.New("OPSK_LOG_FORMAT must be text or json")
+	if cfg.LogFormat != "raw" && cfg.LogFormat != "text" && cfg.LogFormat != "json" {
+		return Config{}, errors.New("OPSK_LOG_FORMAT must be raw, text, or json")
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")

@@ -58,7 +58,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | `COMMIT` | 构建 | 完整 Git Commit；默认读取当前工作树 HEAD |
 | `BUILD_TIME` | 构建 | UTC 构建时间；流水线应传入 RFC 3339 时间 |
 | `OPSK_BASE_PATH` | 运行 | 设置 API 的 HTTP 路径前缀，默认 `/opskeeper`，根路径使用 `/` |
-| `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `text` 或 `json`，默认 `text` |
+| `OPSK_LOG_FORMAT` | 运行 | 设置全部 Go 应用日志为 `json`、`text` 或 `raw`，默认 `raw`；详见[后端日志规范](../standards/backend-logging.md) |
 | `OPSK_LOG_HEALTH_IGNORE` | API 运行 | 是否忽略 `/health/live`、`/health/ready` 的访问日志，默认 `true` |
 | `OPSK_TRUSTED_PROXIES` | API 运行 | 允许提供客户端转发头的直接代理 IP/CIDR；默认空，不信任任何代理头 |
 | `OPSK_CREDENTIAL_KEY` | API/Worker 运行 | 资源凭据密文加密密钥；生产环境必须设置为 32 字节原值或 Base64 编码值 |
@@ -73,9 +73,9 @@ opskeeper-migrate
 opskeeper-admin
 ```
 
-`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入五个二进制。API 健康响应返回这三个字段，所有 Go 进程日志也携带相同字段，使运行实例能够关联到发布版本、源码提交和构建批次。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
+`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入五个二进制，API 健康响应可以返回这三个字段。普通日志遵循后端日志规范，不把这些发布元数据放入固定日志头；需要关联发布版本时使用部署标签、指标或日志平台元数据。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
 
-`OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时仍输出适合终端阅读的 TEXT 日志。`OPSK_LOG_HEALTH_IGNORE` 默认 `true`，用于忽略 API 健康检查访问日志；设为 `false` 可在排障时恢复记录，接口本身和健康探针不受影响。
+`OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时输出默认的 `raw` 日志。`OPSK_LOG_HEALTH_IGNORE` 默认 `true`，用于忽略 API 健康检查访问日志；设为 `false` 可在排障时恢复记录，接口本身和健康探针不受影响。
 
 ## 4. 流水线顺序
 
@@ -208,7 +208,7 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 - [ ] 镜像包含五个固定名称的二进制，API 已嵌入前端。
 - [ ] 运行时不依赖 Node.js 或外部静态文件目录。
 - [ ] `OPSK_BASE_PATH` 与 Ingress 和健康探针路径一致。
-- [ ] `OPSK_LOG_FORMAT` 已按环境设为 `text` 或 `json`。
+- [ ] `OPSK_LOG_FORMAT` 已按环境设为 `json`、`text` 或 `raw`，并符合[后端日志规范](../standards/backend-logging.md)。
 - [ ] Migration Job 与应用使用同一镜像 digest。
 - [ ] Migration Job 成功后才滚动发布应用，失败会阻断发布。
 - [ ] 数据库迁移通过幂等、回滚、重放和并发互斥验证。

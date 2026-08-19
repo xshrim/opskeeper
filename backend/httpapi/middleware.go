@@ -129,13 +129,13 @@ func requestLogger(logger *slog.Logger, basePath string, ignoreHealthLogs bool) 
 			if ignoreHealthLogs && isHealthCheckRequest(request, basePath) {
 				return
 			}
-			logger.Info("http request",
-				"request_id", middleware.GetReqID(request.Context()),
+			logger.Info("http request", "kind", "http-request",
+				"reqid", middleware.GetReqID(request.Context()),
 				"method", request.Method,
 				"path", request.URL.Path,
-				"client_ip", requestClientIP(request),
+				"clientip", requestClientIP(request),
 				"status", recorder.status,
-				"duration_ms", time.Since(started).Milliseconds(),
+				"duration", time.Since(started).Round(time.Millisecond),
 			)
 		})
 	}
@@ -154,8 +154,9 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					observability.RecordError(request.Context(), "http", "panic")
-					logger.Error("http panic",
-						"request_id", middleware.GetReqID(request.Context()),
+					logger.Error("http panic", "kind", "error",
+						"reqid", middleware.GetReqID(request.Context()),
+						"error_type", "panic",
 						"panic", recovered,
 						"stack", string(debug.Stack()),
 					)

@@ -21,8 +21,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Environment != "test" || cfg.HTTPAddress != ":9090" {
 		t.Fatalf("Load() returned unexpected config: %#v", cfg)
 	}
-	if cfg.LogFormat != "text" {
-		t.Fatalf("Load() LogFormat = %q, want text", cfg.LogFormat)
+	if cfg.LogFormat != "raw" {
+		t.Fatalf("Load() LogFormat = %q, want raw", cfg.LogFormat)
 	}
 	if !cfg.LogHealthIgnore {
 		t.Fatalf("Load() LogHealthIgnore = false, want true")
@@ -147,7 +147,7 @@ func TestLoadRejectsInvalidTrustedProxy(t *testing.T) {
 }
 
 func TestLoadAcceptsLogFormats(t *testing.T) {
-	for _, format := range []string{"text", "json"} {
+	for _, format := range []string{"raw", "text", "json"} {
 		t.Run(format, func(t *testing.T) {
 			t.Setenv("OPSK_LOG_FORMAT", format)
 			cfg, err := Load()

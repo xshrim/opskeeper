@@ -70,6 +70,7 @@ make start
 
 - [文档组织、模板与归档规范](docs/standards/documentation.md)
 - [前端 UI 与交互规范](docs/standards/frontend-ui.md)
+- [后端日志规范](docs/standards/backend-logging.md)
 - [Go 编码与工程组织通用规范](docs/standards/go-coding-conventions.md)
 - [Git 版本控制与开发模式](docs/standards/version-control.md)
 

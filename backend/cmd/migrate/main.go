@@ -19,31 +19,31 @@ import (
 const serviceName = "opskeeper-migrate"
 
 func main() {
-	logger := logging.NewText(os.Stdout)
+	logger := logging.NewRaw(os.Stdout).With("service", serviceName)
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("load configuration", "error", err)
+		logger.Error("load configuration", "kind", "error", "error_type", "configuration", "error", err)
 		os.Exit(1)
 	}
 	logger, err = logging.New(os.Stdout, cfg.LogFormat)
 	if err != nil {
-		logger.Error("configure logging", "error", err)
+		logger.Error("configure logging", "kind", "error", "error_type", "logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
+	logger = logger.With("service", serviceName)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	build := version.Current()
 	shutdownTelemetry, err := observability.Setup(ctx, serviceName, cfg.Environment, cfg.OTLPExporterEndpoint, observability.Build{Version: build.Version, Commit: build.Commit})
 	if err != nil {
-		logger.Error("configure telemetry", "error", err)
+		logger.Error("configure telemetry", "kind", "error", "error_type", "telemetry", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logger.Warn("shutdown telemetry", "error", err)
+			logger.Warn("shutdown telemetry", "kind", "error", "error_type", "telemetry-shutdown", "error", err)
 		}
 	}()
 
@@ -54,11 +54,11 @@ func main() {
 	started := time.Now()
 	if err := run(ctx, direction, cfg); err != nil {
 		observability.RecordTask(ctx, "migration", "failure", time.Since(started))
-		logger.Error("migration failed", "error", err)
+		logger.Error("migration failed", "kind", "error", "error_type", "migration", "error", err)
 		os.Exit(1)
 	}
 	observability.RecordTask(ctx, "migration", "success", time.Since(started))
-	logger.Info("migration command completed", "direction", direction)
+	logger.Info("migration command completed", "kind", "job", "direction", direction)
 }
 
 func run(ctx context.Context, direction string, cfg config.Config) error {

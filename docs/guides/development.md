@@ -117,7 +117,7 @@ make run-scheduler
 | ---------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------ |
 | `OPSK_BASE_PATH`                       | `/opskeeper`                             | 页面、静态资源、健康检查和业务 API 的路径前缀                            |
 | `OPSK_ENVIRONMENT`                     | `development`                            | 标识运行环境                                                             |
-| `OPSK_LOG_FORMAT`                      | `text`                                   | Go 应用日志格式，可选`text` 或 `json`                                |
+| `OPSK_LOG_FORMAT`                      | `raw`                                    | Go 应用日志格式，可选 `json`、`text` 或 `raw`；详见[后端日志规范](../standards/backend-logging.md) |
 | `OPSK_LOG_HEALTH_IGNORE`               | `true`                                   | 是否忽略`/health/live`与`/health/ready`的 API 访问日志；设为`false`可恢复记录 |
 | `OPSK_COOKIE_SECURE`                   | 开发环境`false`，生产环境 `true`       | 会话 Cookie 是否只允许 HTTPS，生产环境不能关闭                           |
 | `OPSK_SESSION_ACCESS_TTL`              | `15m`                                    | 短期访问会话有效期                                                       |
@@ -187,18 +187,20 @@ API 只在 TCP 直连来源属于该列表时解析转发头。对于 `X-Forward
 
 ### 4.3 日志格式
 
-所有 Go 应用使用相同的 `OPSK_LOG_FORMAT`：
+所有 Go 应用使用相同的 `OPSK_LOG_FORMAT`，字段和消息约定见[后端日志规范](../standards/backend-logging.md)：
 
 ```bash
-OPSK_LOG_FORMAT=text make run-api
 OPSK_LOG_FORMAT=json make run-api
+OPSK_LOG_FORMAT=text make run-api
+OPSK_LOG_FORMAT=raw make run-api
 ```
 
-- `text`：默认值，适合本地终端阅读。
-- `json`：适合容器平台和日志采集系统解析。
+- `raw`：默认值，按固定字段顺序输出纯值文本，适合本地终端和简单采集器。
+- `text`：键值文本，适合需要保留字段名的终端工具。
+- `json`：单行 JSON，适合容器平台和日志采集系统解析。
 - 其他值会在应用启动时被拒绝。
 
-格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段；API 请求日志还写入经过可信代理规则解析的 `client_ip`。
+格式切换不改变日志字段。API、Worker、Scheduler 和 Migration 分别写入固定的 `service` 字段；API 请求日志按规范在消息中写入 `reqid`、经过可信代理规则解析的 `clientip` 及请求结果。
 
 默认 `OPSK_LOG_HEALTH_IGNORE=true`，API 不记录 `GET /health/live` 和 `GET /health/ready` 访问日志，避免 Kubernetes 探针和前端状态刷新淹没业务日志。接口仍会正常执行；需要排查健康检查访问时设为 `false` 后重启 API。
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -40,20 +41,20 @@ import (
 const serviceName = "opskeeper-api"
 
 func main() {
-	logger := logging.NewText(os.Stdout)
+	logger := logging.NewRaw(os.Stdout).With("service", serviceName)
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("load configuration", "error", err)
+		logger.Error("load configuration", "kind", "error", "error_type", "configuration", "error", err)
 		os.Exit(1)
 	}
 	logger, err = logging.New(os.Stdout, cfg.LogFormat)
 	if err != nil {
-		logger.Error("configure logging", "error", err)
+		logger.Error("configure logging", "kind", "error", "error_type", "logging", "error", err)
 		os.Exit(1)
 	}
-	logger = logger.With(append([]any{"service", serviceName}, version.LogAttributes()...)...)
+	logger = logger.With("service", serviceName)
 	if err := run(logger, cfg); err != nil {
-		logger.Error("api stopped", "error", err)
+		logger.Error("api stopped", "kind", "error", "error_type", "api-stopped", "error", err)
 		os.Exit(1)
 	}
 }
@@ -75,7 +76,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logger.Warn("shutdown telemetry", "error", err)
+			logger.Warn("shutdown telemetry", "kind", "error", "error_type", "telemetry-shutdown", "error", err)
 		}
 	}()
 
@@ -92,7 +93,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	redisClient := redis.NewClient(redisOptions)
 	defer func() {
 		if closeErr := redisClient.Close(); closeErr != nil {
-			logger.Warn("close Redis client", "error", closeErr)
+			logger.Warn("close Redis client", "kind", "error", "error_type", "redis-close", "error", closeErr)
 		}
 	}()
 
@@ -177,11 +178,16 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
-
+	listener, err := net.Listen("tcp", cfg.HTTPAddress)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", cfg.HTTPAddress, err)
+	}
+	defer listener.Close()
+	listenAddress := listener.Addr().String()
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "address", cfg.HTTPAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
-		serverErr <- server.ListenAndServe()
+		logger.Info("api listening", "kind", "service-start", "listen", listenAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
+		serverErr <- server.Serve(listener)
 	}()
 
 	select {
