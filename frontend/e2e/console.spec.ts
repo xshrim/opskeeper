@@ -465,9 +465,30 @@ test.describe('T07 console', () => {
     await page.getByRole('button', { name: '保存配置' }).click();
     await expect(page.getByText('个人中心配置已保存')).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect
+      .poll(() =>
+        page.locator('html').evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--color-primary').trim()
+        )
+      )
+      .toBe('#18a27d');
 
     await page.getByLabel('展开导航栏').hover();
     await expect(page.getByRole('button', { name: '总览' })).toBeVisible();
+  });
+
+  test('keeps the orange primary color in light mode', async ({ page }) => {
+    await pageData(page);
+    await page.goto('/');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect
+      .poll(() =>
+        page.locator('html').evaluate((element) =>
+          getComputedStyle(element).getPropertyValue('--color-primary').trim()
+        )
+      )
+      .toBe('#e7601b');
   });
 });
 
