@@ -6,6 +6,7 @@
     ChevronDown,
     ClipboardCheck,
     CloudDownload,
+    Copy,
     Eye,
     EyeOff,
     LayoutDashboard,
@@ -98,12 +99,47 @@
     roleID: string;
     resourceGrants: NewUserResourceGrant[];
   };
+  type TeamIconOption = {
+    value: string;
+    label: string;
+    keywords: string;
+  };
   type SkillToolOption = {
     name: string;
     title: string;
     description: string;
     inputSchema: Record<string, unknown>;
   };
+
+  const teamIconOptions: TeamIconOption[] = [
+    { value: 'platform', label: '平台', keywords: 'platform 平台' },
+    { value: 'team', label: '团队', keywords: 'team group users 协作 团队' },
+    { value: 'project', label: '项目', keywords: 'project 项目' },
+    { value: 'application', label: '应用', keywords: 'application app 服务 应用' },
+    { value: 'api', label: '接口', keywords: 'api interface 接口' },
+    { value: 'building', label: '组织', keywords: 'building organization 企业 组织' },
+    { value: 'cloud', label: '云服务', keywords: 'cloud 云 服务' },
+    { value: 'kubernetes', label: 'Kubernetes', keywords: 'kubernetes k8s 集群' },
+    { value: 'endpoint', label: '访问入口', keywords: 'endpoint ingress service 访问 入口' },
+    { value: 'middleware', label: '中间件', keywords: 'middleware 中间件' },
+    { value: 'postgresql', label: 'PostgreSQL', keywords: 'postgresql database 数据库' },
+    { value: 'redis', label: 'Redis', keywords: 'redis cache 缓存' },
+    { value: 'kafka', label: 'Kafka', keywords: 'kafka message 消息' },
+    { value: 'metrics', label: '指标', keywords: 'metrics metric 指标' },
+    { value: 'logs', label: '日志', keywords: 'logs log 日志' },
+    { value: 'traces', label: '链路', keywords: 'traces trace 链路' },
+    { value: 'observability', label: '可观测', keywords: 'observability 可观测' },
+    { value: 'notification', label: '通知', keywords: 'notification alert 通知 告警' },
+    { value: 'schedule', label: '计划', keywords: 'schedule cron 计划' },
+    { value: 'search', label: '检索', keywords: 'search 查询 检索' },
+    { value: 'runbook', label: '手册', keywords: 'runbook 手册 操作' },
+    { value: 'skill', label: 'Skill', keywords: 'skill 技能' },
+    { value: 'llm', label: '大模型', keywords: 'llm ai model 大模型' },
+    { value: 'mcp', label: 'MCP', keywords: 'mcp model context protocol' },
+    { value: 'storage', label: '存储', keywords: 'storage 存储' },
+    { value: 'credential', label: '凭据', keywords: 'credential secret 凭据' },
+    { value: 'resource', label: '资源', keywords: 'resource 资源' }
+  ];
 
   const skillToolOptions: SkillToolOption[] = [
     {
@@ -349,12 +385,15 @@
   let selectedAccessTeamIds: string[] = [];
   let selectedAccessUserIds: string[] = [];
   let teamDialogOpen = false;
+  let iconPickerTarget: 'create' | 'edit' | null = null;
+  let teamIconSearch = '';
   let userDialogOpen = false;
   let editingTeam: Team | null = null;
   let editTeamName = '';
   let editTeamIcon = '';
   let editTeamStatus = 'active';
   let editingUser: User | null = null;
+  let editUserDisplayName = '';
   let editUserScopeId = '';
   let editUserRoleIds: string[] = [];
   let editUserResourceRoleId = '';
@@ -439,6 +478,10 @@
     return [team.name, team.code, team.status].some((value) =>
       value.toLowerCase().includes(query)
     );
+  });
+  $: filteredTeamIconOptions = teamIconOptions.filter((option) => {
+    const query = teamIconSearch.trim().toLowerCase();
+    return !query || `${option.label} ${option.keywords}`.toLowerCase().includes(query);
   });
   $: manageableScopeChoices = isPlatformAdmin
     ? scopeChoices
@@ -739,16 +782,13 @@
     });
   }
 
-  async function copyCredentials(includePassword: boolean) {
+  async function copyOneTimePassword() {
     if (!createdUserCredentials) return;
-    const value = includePassword
-      ? `用户名：${createdUserCredentials.username}\n一次性密码：${createdUserCredentials.password}`
-      : createdUserCredentials.username;
     try {
-      await navigator.clipboard.writeText(value);
-      notice = includePassword ? '用户名和一次性密码已复制' : '用户名已复制';
+      await navigator.clipboard.writeText(createdUserCredentials.password);
+      notice = '一次性密码已复制';
     } catch {
-      errorMessage = '无法访问剪贴板，请手动复制凭据。';
+      errorMessage = '无法访问剪贴板，请手动复制一次性密码。';
     }
   }
 
@@ -1541,6 +1581,36 @@
     });
   }
 
+  function openTeamDialog() {
+    teamName = '';
+    teamCode = '';
+    teamIcon = randomTeamIcon();
+    teamDialogOpen = true;
+  }
+
+  function randomTeamIcon() {
+    return teamIconOptions[Math.floor(Math.random() * teamIconOptions.length)]?.value ?? 'team';
+  }
+
+  function openTeamIconPicker(target: 'create' | 'edit') {
+    teamIconSearch = '';
+    iconPickerTarget = target;
+  }
+
+  function selectTeamIcon(icon: string) {
+    if (iconPickerTarget === 'create') teamIcon = icon;
+    if (iconPickerTarget === 'edit') editTeamIcon = icon;
+    iconPickerTarget = null;
+    teamIconSearch = '';
+  }
+
+  function updateNewUserUsername(value: string) {
+    if (!newUserDisplayName || newUserDisplayName === newUserUsername) {
+      newUserDisplayName = value;
+    }
+    newUserUsername = value;
+  }
+
   async function createUser() {
     await action(async () => {
       const result = await api.createUser({
@@ -2219,6 +2289,7 @@
 
   function openEditUser(user: User) {
     editingUser = user;
+    editUserDisplayName = user.display_name || user.username;
     passwordResetCredentials = null;
     editUserResourceRoleId = '';
     editUserResourceId = '';
@@ -2255,8 +2326,16 @@
 
   async function saveUser() {
     if (!editingUser || !editUserScopeId) return;
-    const userID = editingUser.id;
+    const user = editingUser;
+    const userID = user.id;
     await action(async () => {
+      if (editUserDisplayName.trim() !== user.display_name) {
+        const updatedUser = await api.updateUser(userID, {
+          display_name: editUserDisplayName.trim()
+        });
+        users = users.map((user) => (user.id === userID ? updatedUser : user));
+        editingUser = updatedUser;
+      }
       const existing = bindings.filter(
         (binding) =>
           binding.subject_type === 'user' &&
@@ -2438,6 +2517,8 @@
     const glyphs: Record<string, string> = {
       platform: '▣',
       team: '♟',
+      building: '▦',
+      cloud: '☁',
       project: '▰',
       kubernetes: '☸',
       application: '⌘',
@@ -3203,24 +3284,11 @@
                   ><span class="row-arrow">→</span></button
                 >{:else}<div class="empty-state">暂无团队</div>{/each}
             </div>
-            <form class="inline-form" on:submit|preventDefault={createTeam}>
-              <input
-                bind:value={teamIcon}
-                placeholder="图标，如 team 或 ♟"
-                aria-label="团队图标"
-              />
-              <input
-                bind:value={teamName}
-                required
-                placeholder="团队名称"
-                aria-label="团队名称"
-              /><input
-                bind:value={teamCode}
-                required
-                placeholder="编码"
-                aria-label="团队编码"
-              /><button class="primary" disabled={busy}>新增团队</button>
-            </form>
+            <div class="inline-form">
+              <button class="primary" type="button" disabled={busy} on:click={openTeamDialog}
+                ><Plus size={15} aria-hidden="true" />添加团队</button
+              >
+            </div>
           </section>
           <section class="panel">
             <div class="panel-heading">
@@ -4805,7 +4873,7 @@
                   {#if accessCanCreateTeam}<button
                       class="primary"
                       type="button"
-                      on:click={() => (teamDialogOpen = true)}
+                      on:click={openTeamDialog}
                       ><Plus size={15} aria-hidden="true" />添加团队</button
                     >{/if}
                 {:else if accessTab === 'users'}
@@ -5124,13 +5192,24 @@
                 >
               </div>
               <form class="stack-form" on:submit|preventDefault={createTeam}>
+                <div class="team-identity-field">
+                  <button
+                    class="team-icon-picker-trigger"
+                    type="button"
+                    aria-label="选择团队图标"
+                    title="选择团队图标"
+                    on:click={() => openTeamIconPicker('create')}
+                    ><span class="entity-icon team-icon">{iconGlyph(teamIcon)}</span></button
+                  ><label
+                    >名称<input
+                      bind:value={teamName}
+                      required
+                      maxlength="120"
+                      placeholder="例如：支付平台"
+                    /></label
+                  >
+                </div>
                 <label
-                  >团队名称<input
-                    bind:value={teamName}
-                    required
-                    placeholder="例如：支付平台"
-                  /></label
-                ><label
                   >团队编码<input
                     bind:value={teamCode}
                     required
@@ -5174,16 +5253,16 @@
               <form class="stack-form" on:submit|preventDefault={createUser}>
                 <div class="form-row">
                   <label
-                    >显示名称<input
-                      bind:value={newUserDisplayName}
-                      required
-                      placeholder="姓名或称呼"
-                    /></label
-                  ><label
-                    >用户名<input
-                      bind:value={newUserUsername}
+                    ><span>用户名<span class="required-mark" aria-hidden="true">*</span></span><input
+                      value={newUserUsername}
+                      on:input={(event) => updateNewUserUsername(event.currentTarget.value)}
                       required
                       placeholder="登录用户名"
+                    /></label
+                  ><label
+                    >显示名<input
+                      bind:value={newUserDisplayName}
+                      placeholder="默认使用用户名"
                     /></label
                   >
                 </div>
@@ -5217,16 +5296,18 @@
                   <div class="new-user-grants-heading">
                     <div>
                       <strong>授权配置</strong>
-                      <p>每行定义一个授权范围。只能授予当前账号拥有的同级或下级权限。</p>
                     </div>
                     <button class="secondary" type="button" on:click={addNewUserGrant} disabled={busy || manageableScopeChoices.length === 0}
                       ><Plus size={15} aria-hidden="true" />添加授权</button
                     >
                   </div>
+                  <div class="new-user-grant-header" aria-hidden="true">
+                    <span>级别</span><span>对象</span><span>角色</span><span>操作</span>
+                  </div>
                   {#each newUserGrants as grant, grantIndex}
                     <section class="new-user-grant-row">
                       <div class="new-user-grant-fields">
-                        <label>级别<select
+                        <label><span class="sr-only">授权级别</span><select
                           value={grant.scopeType}
                           on:change={(event) =>
                             chooseNewUserGrantType(
@@ -5239,7 +5320,7 @@
                             {/if}
                           {/each}</select
                         ></label>
-                        <label>对象
+                        <label><span class="sr-only">授权对象</span>
                           {#if grant.scopeType === 'platform'}
                             <span class="new-user-no-object">无需选择</span>
                           {:else}
@@ -5258,7 +5339,7 @@
                             >
                           {/if}
                         </label>
-                        <label>角色<select
+                        <label><span class="sr-only">角色</span><select
                           value={grant.roleID}
                           disabled={!grant.scopeID}
                           on:change={(event) =>
@@ -5317,6 +5398,20 @@
                   {/each}
                 </section>
                 <div class="form-actions">
+                  {#if createdUserCredentials}
+                    <div class="created-credentials-inline" aria-live="polite">
+                      <span>用户名：<strong>{createdUserCredentials.username}</strong></span>
+                      <span>密码：<strong>{createdUserCredentials.password}</strong></span>
+                      <button
+                        class="icon-button"
+                        type="button"
+                        aria-label="复制一次性密码"
+                        title="复制一次性密码"
+                        on:click={copyOneTimePassword}
+                        ><Copy size={15} aria-hidden="true" /></button
+                      >
+                    </div>
+                  {/if}
                   <button
                     class="secondary"
                     type="button"
@@ -5338,19 +5433,6 @@
                   >
                 </div>
               </form>
-              {#if createdUserCredentials}
-                <section class="role-preview" aria-live="polite">
-                  <strong>账号已创建</strong>
-                  <p>请立即安全交付以下一次性凭据。用户首次登录后必须修改密码。</p>
-                  <label>用户名<input value={createdUserCredentials.username} readonly /></label>
-                  <label>一次性密码<input value={createdUserCredentials.password} readonly /></label>
-                  <div class="form-actions">
-                    <button class="secondary" type="button" on:click={() => copyCredentials(false)}>复制用户名</button>
-                    <button class="primary" type="button" on:click={() => copyCredentials(true)}>复制用户名和密码</button>
-                    <button class="secondary" type="button" on:click={() => { userDialogOpen = false; resetUserDialog(); }}>完成</button>
-                  </div>
-                </section>
-              {/if}
             </dialog>
           </div>
         {/if}
@@ -5376,20 +5458,24 @@
                 >
               </div>
               <form class="stack-form" on:submit|preventDefault={saveTeam}>
+                <div class="team-identity-field">
+                  <button
+                    class="team-icon-picker-trigger"
+                    type="button"
+                    aria-label="选择团队图标"
+                    title="选择团队图标"
+                    on:click={() => openTeamIconPicker('edit')}
+                    ><span class="entity-icon team-icon">{iconGlyph(editTeamIcon)}</span></button
+                  ><label
+                    >名称<input
+                      bind:value={editTeamName}
+                      required
+                      maxlength="120"
+                      placeholder="例如：支付平台"
+                    /></label
+                  >
+                </div>
                 <label
-                  >团队名称<input
-                    bind:value={editTeamName}
-                    required
-                    maxlength="120"
-                    placeholder="例如：支付平台"
-                  /></label
-                ><label
-                  >图标<input
-                    bind:value={editTeamIcon}
-                    required
-                    placeholder="例如：team"
-                  /></label
-                ><label
                   >状态<select bind:value={editTeamStatus}
                     ><option value="active">启用</option><option value="disabled"
                       >禁用</option
@@ -5404,6 +5490,46 @@
                   ><button class="primary" disabled={busy}>保存团队</button>
                 </div>
               </form>
+            </dialog>
+          </div>
+        {/if}
+        {#if iconPickerTarget}
+          <div
+            class="dialog-backdrop"
+            role="presentation"
+            on:click={(event) => {
+              if (event.currentTarget === event.target) iconPickerTarget = null;
+            }}
+          >
+            <dialog open class="dialog icon-picker-dialog" aria-labelledby="icon-picker-title">
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">TEAM ICON</p>
+                  <h2 id="icon-picker-title">选择团队图标</h2>
+                </div>
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="关闭"
+                  on:click={() => (iconPickerTarget = null)}>×</button
+                >
+              </div>
+              <div class="icon-picker-body">
+                <label class="icon-search"><Search size={16} aria-hidden="true" /><span class="sr-only">搜索图标</span><input bind:value={teamIconSearch} placeholder="搜索图标，如 Kubernetes、数据库" aria-label="搜索图标" /></label>
+                <div class="team-icon-grid" aria-label="团队图标列表">
+                  {#each filteredTeamIconOptions as option}
+                    <button
+                      class:active={(iconPickerTarget === 'create' ? teamIcon : editTeamIcon) === option.value}
+                      type="button"
+                      on:click={() => selectTeamIcon(option.value)}
+                      aria-label={`选择图标 ${option.label}`}
+                      ><span class="entity-icon team-icon">{iconGlyph(option.value)}</span><span>{option.label}</span></button
+                    >
+                  {:else}
+                    <p class="icon-picker-empty">没有匹配的图标。</p>
+                  {/each}
+                </div>
+              </div>
             </dialog>
           </div>
         {/if}
@@ -5431,17 +5557,18 @@
               <form class="stack-form" on:submit|preventDefault={saveUser}>
                 <div class="form-row">
                   <label>用户名<input value={editingUser.username} disabled aria-label="用户名不可修改" /></label>
-                  <label
-                    >授权 Scope<select
-                      value={editUserScopeId}
-                      on:change={(event) =>
-                        chooseEditUserScope(event.currentTarget.value)}
-                      >{#each manageableScopeChoices as scope}<option
-                          value={scope.id}>{scope.name} · {scope.type}</option
-                        >{/each}</select
-                    ></label
-                  >
+                  <label>显示名<input bind:value={editUserDisplayName} required maxlength="120" placeholder="默认使用用户名" /></label>
                 </div>
+                <label
+                  >授权 Scope<select
+                    value={editUserScopeId}
+                    on:change={(event) =>
+                      chooseEditUserScope(event.currentTarget.value)}
+                    >{#each manageableScopeChoices as scope}<option
+                        value={scope.id}>{scope.name} · {scope.type}</option
+                      >{/each}</select
+                  ></label
+                >
                 <fieldset class="role-picker" disabled={!editUserScopeId}>
                   <legend>直接授权角色</legend>
                   {#each availableEditUserRoles as role}<label class="check-row"

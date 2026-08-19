@@ -64,6 +64,29 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         created_at: user.created_at,
         updated_at: user.updated_at
       });
+    if (path.endsWith('/teams/') && request.method() === 'POST') {
+      const body = JSON.parse(request.postData() || '{}');
+      return json(
+        {
+          id: 'team-created',
+          platform_id: 'platform-1',
+          scope: {
+            id: 'scope-team-created',
+            type: 'team',
+            parent_id: ids.platform,
+            status: 'active'
+          },
+          name: body.name,
+          code: body.code,
+          icon: body.icon,
+          labels: body.labels ?? {},
+          status: 'active',
+          created_at: user.created_at,
+          updated_at: user.updated_at
+        },
+        201
+      );
+    }
     if (path.endsWith('/teams/'))
       return json({
         items: [
@@ -224,6 +247,25 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         hypotheses: [],
         report: null
       });
+    if (path.endsWith('/users/') && request.method() === 'POST') {
+      const body = JSON.parse(request.postData() || '{}');
+      return json(
+        {
+          user: {
+            ...user,
+            id: 'user-created',
+            username: body.username,
+            display_name: body.display_name || body.username,
+            email: body.email,
+            phone: body.phone,
+            can_manage: true
+          },
+          bindings: [],
+          one_time_password: 'GeneratedPassword123!'
+        },
+        201
+      );
+    }
     if (path.endsWith('/users/'))
       return json([
         { ...user, can_manage: false },
@@ -380,7 +422,8 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page);
     await page.goto('/');
-    await expect(page.getByText('平台工程', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '组织' }).click();
+    await page.getByRole('button', { name: /平台工程/ }).click();
     await page.getByLabel('切换项目').selectOption('project-1');
     await page.getByRole('button', { name: '资源' }).click();
     await expect(
@@ -407,7 +450,7 @@ test.describe('T07 console', () => {
     await expect(
       page.getByRole('heading', { name: '团队管理', level: 1 })
     ).toBeVisible();
-    await page.getByRole('button', { name: /平台工程/ }).click();
+    await page.locator('.access-team-trigger').filter({ hasText: '平台工程' }).click();
     await expect(
       page.getByText('支付负责人', { exact: true }).first()
     ).toBeVisible();
@@ -475,6 +518,87 @@ test.describe('T07 console', () => {
 
     await page.getByLabel('展开导航栏').hover();
     await expect(page.getByRole('button', { name: '总览' })).toBeVisible();
+  });
+
+  test('uses the selected dark theme for navigation and management surfaces', async ({
+    page
+  }) => {
+    await pageData(page);
+    await page.goto('/');
+    await page.getByLabel('打开用户菜单').click();
+    await page.getByRole('menuitem', { name: '个人中心' }).click();
+    await page.getByRole('radio', { name: '深色' }).click();
+    await page.getByRole('button', { name: '保存配置' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await expect(page.getByRole('radio', { name: '深色' })).toHaveCSS(
+      'background-color',
+      'rgb(23, 62, 53)'
+    );
+    await expect(page.locator('.profile-panel').first()).toHaveCSS(
+      'background-color',
+      'rgb(42, 38, 35)'
+    );
+  });
+
+  test('creates a team with a searchable icon picker', async ({ page }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '团队管理' }).click();
+    await page.getByRole('button', { name: '添加团队' }).click();
+
+    const dialog = page.getByRole('dialog', { name: '新增团队' });
+    await expect(dialog.getByLabel('名称')).toBeVisible();
+    await expect(dialog.getByLabel('团队名称')).toHaveCount(0);
+    await dialog.getByLabel('选择团队图标').click();
+    const picker = page.getByRole('dialog', { name: '选择团队图标' });
+    await picker.getByLabel('搜索图标').fill('PostgreSQL');
+    await picker.getByRole('button', { name: '选择图标 PostgreSQL' }).click();
+    await dialog.getByLabel('名称').fill('数据库平台');
+    await dialog.getByLabel('团队编码').fill('database');
+    await dialog.getByRole('button', { name: '创建团队' }).click();
+    await expect(page.getByText('团队“数据库平台”已创建')).toBeVisible();
+  });
+
+  test('creates a user with an auto-filled display name and inline password', async ({
+    page
+  }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '用户管理' }).click();
+    await page.getByRole('button', { name: '添加用户' }).click();
+
+    const dialog = page.getByRole('dialog', { name: '新增用户' });
+    await dialog.getByLabel('用户名').fill('database-operator');
+    await expect(dialog.getByLabel('显示名')).toHaveValue('database-operator');
+    await expect(dialog.locator('.new-user-grant-header')).toContainText('级别');
+    await expect(dialog.locator('.new-user-grant-header')).toContainText('对象');
+    await expect(dialog.locator('.new-user-grant-header')).toContainText('角色');
+    await dialog.getByLabel('授权级别').selectOption('team');
+    await dialog.getByLabel('授权对象').selectOption(ids.team);
+    await dialog.getByLabel('角色').selectOption('role-team-owner');
+    await dialog.getByRole('button', { name: '创建用户并授权' }).click();
+    await expect(dialog.locator('.created-credentials-inline')).toContainText(
+      'database-operator'
+    );
+    await expect(dialog.locator('.created-credentials-inline')).toContainText(
+      'GeneratedPassword123!'
+    );
+    await expect(dialog.getByLabel('复制一次性密码')).toBeVisible();
+  });
+
+  test('does not allow an administrator to edit a username', async ({ page }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '用户管理' }).click();
+    await page.getByLabel('编辑用户 支付负责人').click();
+
+    const dialog = page.getByRole('dialog', { name: '编辑用户与授权' });
+    await expect(dialog.getByLabel('用户名不可修改')).toBeDisabled();
+    await expect(dialog.getByLabel('显示名')).toBeEditable();
   });
 
   test('keeps the orange primary color in light mode', async ({ page }) => {

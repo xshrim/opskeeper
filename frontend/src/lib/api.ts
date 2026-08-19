@@ -877,6 +877,7 @@ export const api = {
     id: string,
     body: {
       status?: string;
+      display_name?: string;
     }
   ) => request<User>(`api/v1/users/${id}`, patch(body)),
   groups: () => request<Group[]>('api/v1/groups/'),
