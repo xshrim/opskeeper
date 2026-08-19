@@ -123,6 +123,31 @@ func TestPolicyBuildsOnlyDeclaredMiddlewareInspectionTools(t *testing.T) {
 	}
 }
 
+func TestServiceRequiresAccessToTheSkillResource(t *testing.T) {
+	resources := fakeResourceReader{items: map[string]resource.Resource{
+		"skill-1": {ID: "skill-1", ScopeID: "scope-1", Kind: Kind, Name: "allowed skill", Status: resource.StatusActive},
+		"skill-2": {ID: "skill-2", ScopeID: "scope-1", Kind: Kind, Name: "other skill", Status: resource.StatusActive},
+	}}
+	store := &memoryStore{version: Version{ID: "version-1", SkillResourceID: "skill-1", Status: "published"}}
+	service := NewService(store, resources)
+
+	denied := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"skill-2"}})
+	if _, err := service.ListVersions(denied, "skill-1"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("ListVersions() error = %v, want ErrForbidden", err)
+	}
+	if _, err := service.Resolve(denied, "scope-1", "skill-1", "version-1"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("Resolve() error = %v, want ErrForbidden", err)
+	}
+
+	allowed := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"skill-1"}})
+	if _, err := service.ListVersions(allowed, "skill-1"); err != nil {
+		t.Fatalf("ListVersions() allowed error = %v", err)
+	}
+	if _, err := service.Resolve(allowed, "scope-1", "skill-1", "version-1"); err != nil {
+		t.Fatalf("Resolve() allowed error = %v", err)
+	}
+}
+
 type fakeResourceReader struct{ items map[string]resource.Resource }
 
 func (f fakeResourceReader) Get(_ context.Context, id string) (resource.Resource, error) {

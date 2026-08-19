@@ -30,6 +30,7 @@ type identityService interface {
 	Logout(context.Context, string, string) error
 	LogoutAll(context.Context, string) error
 	ChangePassword(context.Context, string, string, string) error
+	ChangeOneTimePassword(context.Context, string, string) error
 }
 
 type authHandler struct {
@@ -41,10 +42,12 @@ type authHandler struct {
 
 type platformAdminService interface {
 	IsPlatformAdmin(context.Context, string) (bool, error)
+	HasPlatformRole(context.Context, string) (bool, error)
 }
 
 type sessionContextResponse struct {
 	PlatformAdmin bool `json:"platform_admin"`
+	PlatformRole  bool `json:"platform_role"`
 }
 
 type authRequest struct {
@@ -164,7 +167,12 @@ func (h authHandler) sessionContext(writer http.ResponseWriter, request *http.Re
 		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to load session context")
 		return
 	}
-	writeJSON(writer, http.StatusOK, sessionContextResponse{PlatformAdmin: isPlatformAdmin})
+	hasPlatformRole, err := h.platformAdmin.HasPlatformRole(request.Context(), user.ID)
+	if err != nil {
+		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to load session context")
+		return
+	}
+	writeJSON(writer, http.StatusOK, sessionContextResponse{PlatformAdmin: isPlatformAdmin, PlatformRole: hasPlatformRole})
 }
 
 func (h authHandler) updateProfile(writer http.ResponseWriter, request *http.Request) {
@@ -204,7 +212,13 @@ func (h authHandler) changePassword(writer http.ResponseWriter, request *http.Re
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	if err := h.service.ChangePassword(request.Context(), user.ID, body.CurrentPassword, body.NewPassword); err != nil {
+	var err error
+	if user.MustChangePassword {
+		err = h.service.ChangeOneTimePassword(request.Context(), user.ID, body.NewPassword)
+	} else {
+		err = h.service.ChangePassword(request.Context(), user.ID, body.CurrentPassword, body.NewPassword)
+	}
+	if err != nil {
 		writeIdentityError(writer, request, err)
 		return
 	}

@@ -44,6 +44,7 @@ type accessManagementService interface {
 	ListResourceRoleBindings(context.Context, string) ([]authorization.ResourceRoleBinding, error)
 	DeleteResourceRoleBinding(context.Context, string, string, audit.Event) error
 	IsPlatformAdmin(context.Context, string) (bool, error)
+	HasPlatformRole(context.Context, string) (bool, error)
 }
 
 type auditQueryService interface {
@@ -58,7 +59,8 @@ type accessHandler struct {
 }
 
 type updateUserRequest struct {
-	Status *string `json:"status"`
+	Status      *string `json:"status"`
+	DisplayName *string `json:"display_name"`
 }
 
 type createUserRequest struct {
@@ -247,10 +249,11 @@ func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Requ
 		}
 		bindings = append(bindings, binding)
 		for _, resourceGrant := range grant.ResourceGrants {
-			if binding.RoleName != "ProjectMember" {
+			requiredRole, validScope := authorization.ResourceGrantViewerRole(binding.ScopeType)
+			if !validScope || binding.RoleName != requiredRole {
 				disabled := identity.StatusDisabled
 				_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
-				writeError(writer, request, http.StatusBadRequest, "invalid_request", "resource grants require the project member role")
+				writeError(writer, request, http.StatusBadRequest, "invalid_request", "resource grants require the matching scope viewer role")
 				return
 			}
 			if scopeErr := h.access.ValidateResourceGrantScope(request.Context(), resourceGrant.ResourceID, grant.ScopeID); scopeErr != nil {
@@ -306,11 +309,11 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusForbidden, "forbidden", "Administrators cannot manage their own account from this page")
 		return
 	}
-	if body.Status == nil {
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Only account status can be updated from user management")
+	if body.Status == nil && body.DisplayName == nil {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "At least one user field must be updated")
 		return
 	}
-	if *body.Status != identity.StatusDisabled {
+	if body.Status != nil && *body.Status != identity.StatusDisabled {
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Only user deletion is supported from user management")
 		return
 	}
@@ -318,7 +321,10 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", "You cannot disable or lock your own account")
 		return
 	}
-	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{Status: body.Status})
+	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{
+		Status:      body.Status,
+		DisplayName: body.DisplayName,
+	})
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
@@ -326,7 +332,7 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 	event := h.event(request)
 	event.TargetType = "user"
 	event.TargetID = userID
-	event.Details = map[string]any{"status": user.Status}
+	event.Details = map[string]any{"status": user.Status, "display_name_updated": body.DisplayName != nil}
 	_ = h.record(request, event, "user.update")
 	writeJSON(writer, http.StatusOK, user)
 }

@@ -347,6 +347,14 @@ func (s *managementStore) DeleteRoleBinding(ctx context.Context, bindingID strin
 }
 
 func (s *managementStore) IsPlatformAdmin(ctx context.Context, userID string) (bool, error) {
+	return s.hasPlatformRole(ctx, userID, []string{"PlatformAdmin"})
+}
+
+func (s *managementStore) HasPlatformRole(ctx context.Context, userID string) (bool, error) {
+	return s.hasPlatformRole(ctx, userID, []string{"PlatformAdmin", "PlatformOperator", "PlatformViewer"})
+}
+
+func (s *managementStore) hasPlatformRole(ctx context.Context, userID string, roleNames []string) (bool, error) {
 	var allowed bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
@@ -356,7 +364,7 @@ func (s *managementStore) IsPlatformAdmin(ctx context.Context, userID string) (b
 			  JOIN scopes scope ON scope.id = binding.scope_id
 			 WHERE binding.subject_type = 'user'
 			   AND binding.subject_id = $1::uuid
-			   AND role.name = 'PlatformAdmin'
+			   AND role.name = ANY($2::text[])
 			   AND scope.scope_type = 'platform'
 			   AND scope.status = 'active' AND scope.deleted_at IS NULL
 			   AND EXISTS (SELECT 1 FROM users WHERE users.id = $1::uuid AND users.status = 'active' AND users.deleted_at IS NULL)
@@ -369,12 +377,12 @@ func (s *managementStore) IsPlatformAdmin(ctx context.Context, userID string) (b
 			  JOIN groups group_record ON group_record.id = member.group_id
 			 WHERE binding.subject_type = 'group'
 			   AND member.user_id = $1::uuid
-			   AND role.name = 'PlatformAdmin'
+			   AND role.name = ANY($2::text[])
 			   AND scope.scope_type = 'platform'
 			   AND scope.status = 'active' AND scope.deleted_at IS NULL
 			   AND group_record.status = 'active' AND group_record.deleted_at IS NULL
 			   AND EXISTS (SELECT 1 FROM users WHERE users.id = $1::uuid AND users.status = 'active' AND users.deleted_at IS NULL)
-		)`, userID).Scan(&allowed)
+		)`, userID, roleNames).Scan(&allowed)
 	return allowed, err
 }
 

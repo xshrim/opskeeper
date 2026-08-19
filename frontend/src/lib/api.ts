@@ -22,6 +22,7 @@ export interface UserPreferences {
 
 export interface SessionContext {
   platform_admin: boolean;
+  platform_role: boolean;
 }
 
 export interface Scope {
@@ -629,7 +630,7 @@ export const api = {
     email: string;
     phone: string;
   }) => request<User>('api/v1/auth/me', patch(body)),
-  changePassword: (body: { current_password: string; new_password: string }) =>
+  changePassword: (body: { current_password?: string; new_password: string }) =>
     request<User>('api/v1/auth/me/password', json(body)),
   preferences: () => request<UserPreferences>('api/v1/auth/me/preferences'),
   updatePreferences: (body: Omit<UserPreferences, 'avatar_updated_at'>) =>
@@ -877,6 +878,7 @@ export const api = {
     id: string,
     body: {
       status?: string;
+      display_name?: string;
     }
   ) => request<User>(`api/v1/users/${id}`, patch(body)),
   groups: () => request<Group[]>('api/v1/groups/'),

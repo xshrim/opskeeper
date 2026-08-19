@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	minimumPasswordLength = 12
+	minimumPasswordLength = 8
 	minimumUsernameLength = 1
 	maximumUsernameLength = 64
 	minimumEmailLength    = 3
@@ -35,6 +35,10 @@ type Store interface {
 
 type passwordChangeStore interface {
 	ChangePassword(context.Context, string, string, string) error
+}
+
+type oneTimePasswordChangeStore interface {
+	ChangeOneTimePassword(context.Context, string, string) error
 }
 
 type passwordResetStore interface {
@@ -307,6 +311,24 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 		return err
 	}
 	return s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "auth.password.change", Result: "success", Details: map[string]any{}})
+}
+
+func (s *Service) ChangeOneTimePassword(ctx context.Context, userID, newPassword string) error {
+	if len([]rune(newPassword)) < minimumPasswordLength {
+		return invalid(fmt.Sprintf("password must be at least %d characters", minimumPasswordLength))
+	}
+	store, ok := s.store.(oneTimePasswordChangeStore)
+	if !ok {
+		return errors.New("one-time password changes are unavailable")
+	}
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := store.ChangeOneTimePassword(ctx, userID, hash); err != nil {
+		return err
+	}
+	return s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "auth.password.change", Result: "success", Details: map[string]any{"one_time_password": true}})
 }
 
 func (s *Service) ResetUserPassword(ctx context.Context, userID string) (string, error) {

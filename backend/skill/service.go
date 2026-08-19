@@ -36,7 +36,7 @@ func (s *Service) CreateVersion(ctx context.Context, actorID string, input Creat
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	if !allowsSkillResource(ctx, item) {
 		return Version{}, authorization.ErrForbidden
 	}
 	if len(input.Manifest.TargetKinds) == 0 || len(input.Manifest.TargetKinds) > 50 {
@@ -76,7 +76,7 @@ func (s *Service) ListVersions(ctx context.Context, skillID string) ([]Version, 
 	if err != nil {
 		return nil, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	if !allowsSkillResource(ctx, item) {
 		return nil, authorization.ErrForbidden
 	}
 	return s.store.ListVersions(ctx, item.ID)
@@ -91,7 +91,7 @@ func (s *Service) GetVersion(ctx context.Context, versionID string) (Version, er
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	if !allowsSkillResource(ctx, item) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return version, nil
@@ -102,7 +102,7 @@ func (s *Service) Publish(ctx context.Context, skillID, versionID string) (Versi
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	if !allowsSkillResource(ctx, item) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return s.store.PublishVersion(ctx, item.ID, strings.TrimSpace(versionID))
@@ -113,7 +113,7 @@ func (s *Service) Disable(ctx context.Context, skillID, versionID string) (Versi
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	if !allowsSkillResource(ctx, item) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return s.store.DisableVersion(ctx, item.ID, strings.TrimSpace(versionID))
@@ -139,7 +139,7 @@ func (s *Service) SetDefault(ctx context.Context, actorID, scopeID, skillID, ver
 
 func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explicitVersionID string) (Version, error) {
 	scopeID = strings.TrimSpace(scopeID)
-	if scopeID == "" || !allowsScope(ctx, scopeID) {
+	if scopeID == "" {
 		return Version{}, authorization.ErrForbidden
 	}
 	versionID := strings.TrimSpace(explicitVersionID)
@@ -162,6 +162,13 @@ func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explici
 	}
 	if version.Status != "published" {
 		return Version{}, invalid("Skill version is not published")
+	}
+	item, err := s.skillResource(ctx, version.SkillResourceID)
+	if err != nil {
+		return Version{}, err
+	}
+	if !allowsSkillResource(ctx, item) {
+		return Version{}, authorization.ErrForbidden
 	}
 	return version, nil
 }
@@ -189,7 +196,11 @@ func (s *Service) GetExecution(ctx context.Context, id string) (Execution, error
 	if err != nil {
 		return Execution{}, err
 	}
-	if !allowsScope(ctx, item.ScopeID) {
+	skillResource, err := s.skillResource(ctx, item.SkillResourceID)
+	if err != nil {
+		return Execution{}, err
+	}
+	if !allowsSkillResource(ctx, skillResource) {
 		return Execution{}, authorization.ErrForbidden
 	}
 	return item, nil
@@ -248,4 +259,11 @@ func allowedToolName(name string) bool {
 func allowsScope(ctx context.Context, scopeID string) bool {
 	filter, ok := authorization.ScopeFilterFromContext(ctx)
 	return !ok || filter.Allows(scopeID)
+}
+
+func allowsSkillResource(ctx context.Context, item resource.Resource) bool {
+	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
+		return filter.Allows(item.ScopeID, item.ID)
+	}
+	return allowsScope(ctx, item.ScopeID)
 }

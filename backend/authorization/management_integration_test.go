@@ -166,6 +166,28 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create(Application) error = %v", err)
 	}
+	platform, err := organizations.GetPlatform(ctx)
+	if err != nil {
+		t.Fatalf("GetPlatform() error = %v", err)
+	}
+	platformResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+		ScopeID: platform.Scope.ID,
+		Kind:    "Application",
+		Name:    "platform-tooling",
+		Config:  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Create(platform Application) error = %v", err)
+	}
+	teamResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+		ScopeID: team.Scope.ID,
+		Kind:    "Application",
+		Name:    "team-tooling",
+		Config:  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("Create(team Application) error = %v", err)
+	}
 
 	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
 	admin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Username: "resource-admin", Email: "resource-admin@example.com", Password: "T08 integration password"})
@@ -177,46 +199,94 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 		t.Fatalf("EnsureBootstrapAdmin() error = %v", err)
 	}
 	memberID := insertUser(t, pool, "resource-member@example.com")
+	platformViewerID := insertUser(t, pool, "resource-platform-viewer@example.com")
+	teamViewerID := insertUser(t, pool, "resource-team-viewer@example.com")
 	management := authorization.NewManagementService(authorization.NewManagementStore(pool), authorizationService, audit.NewService(audit.NewStore(pool)))
 
 	resourceRoles, err := management.ListResourceRoles(ctx, admin.ID)
 	if err != nil {
 		t.Fatalf("ListResourceRoles() error = %v", err)
 	}
-	resourceViewerID := findResourceRoleID(t, resourceRoles, "ResourceViewer")
-	grant := authorization.GrantResourceRoleInput{SubjectType: "user", SubjectID: memberID, RoleID: resourceViewerID, ResourceID: application.ID}
+	resourceOperatorID := findResourceRoleID(t, resourceRoles, "ResourceOperator")
+	grant := authorization.GrantResourceRoleInput{SubjectType: "user", SubjectID: memberID, RoleID: resourceOperatorID, ResourceID: application.ID}
 	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, grant, authorizationEvent(admin.ID)); !errors.Is(err, authorization.ErrInvalidInput) {
-		t.Fatalf("resource grant without project access error = %v, want ErrInvalidInput", err)
+		t.Fatalf("resource grant without project viewer error = %v, want ErrInvalidInput", err)
 	}
 
 	roles, err := management.ListRoles(ctx, admin.ID)
 	if err != nil {
 		t.Fatalf("ListRoles() error = %v", err)
 	}
-	projectMemberID := findRoleID(t, roles, "ProjectMember")
-	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{
-		SubjectType: "user", SubjectID: memberID, RoleID: projectMemberID, ScopeID: project.Scope.ID,
-	}, authorizationEvent(admin.ID)); err != nil {
-		t.Fatalf("CreateRoleBinding(ProjectMember) error = %v", err)
+	for _, role := range roles {
+		if role.Name == "ProjectMember" {
+			t.Fatal("ProjectMember role was returned after migration")
+		}
 	}
-	before, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	projectViewerID := findRoleID(t, roles, "ProjectViewer")
+	platformViewerRoleID := findRoleID(t, roles, "PlatformViewer")
+	teamViewerRoleID := findRoleID(t, roles, "TeamViewer")
+	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{
+		SubjectType: "user", SubjectID: memberID, RoleID: projectViewerID, ScopeID: project.Scope.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateRoleBinding(ProjectViewer) error = %v", err)
+	}
+	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{
+		SubjectType: "user", SubjectID: platformViewerID, RoleID: platformViewerRoleID, ScopeID: platform.Scope.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateRoleBinding(PlatformViewer) error = %v", err)
+	}
+	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{
+		SubjectType: "user", SubjectID: teamViewerID, RoleID: teamViewerRoleID, ScopeID: team.Scope.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateRoleBinding(TeamViewer) error = %v", err)
+	}
+	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, authorization.GrantResourceRoleInput{
+		SubjectType: "user", SubjectID: platformViewerID, RoleID: resourceOperatorID, ResourceID: platformResource.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateResourceRoleBinding(platform viewer) error = %v", err)
+	}
+	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, authorization.GrantResourceRoleInput{
+		SubjectType: "user", SubjectID: teamViewerID, RoleID: resourceOperatorID, ResourceID: teamResource.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("CreateResourceRoleBinding(team viewer) error = %v", err)
+	}
+	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, authorization.GrantResourceRoleInput{
+		SubjectType: "user", SubjectID: memberID, RoleID: resourceOperatorID, ResourceID: platformResource.ID,
+	}, authorizationEvent(admin.ID)); err != nil {
+		t.Fatalf("platform resource grant to project viewer error = %v", err)
+	}
+	before, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUpdate)
 	if err != nil || len(before.ScopeIDs) != 0 || len(before.ResourceIDs) != 0 {
-		t.Fatalf("resource filter before explicit grant = %#v, %v", before, err)
+		t.Fatalf("resource update filter before explicit grant = %#v, %v", before, err)
 	}
 	binding, err := management.CreateResourceRoleBinding(ctx, admin.ID, grant, authorizationEvent(admin.ID))
 	if err != nil {
 		t.Fatalf("CreateResourceRoleBinding() error = %v", err)
 	}
-	afterCreate, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
-	if err != nil || !afterCreate.Allows(project.Scope.ID, application.ID) {
-		t.Fatalf("resource filter after grant = %#v, %v", afterCreate, err)
+	readFilter, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	if err != nil || !readFilter.Allows(project.Scope.ID, application.ID) {
+		t.Fatalf("project viewer read filter = %#v, %v", readFilter, err)
+	}
+	afterCreate, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUpdate)
+	if err != nil || len(afterCreate.ScopeIDs) != 0 || len(afterCreate.ResourceIDs) != 0 {
+		t.Fatalf("resource update filter after operator grant = %#v, %v", afterCreate, err)
+	}
+	viewerUse, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUse)
+	if err != nil || !viewerUse.Allows(platform.Scope.ID, platformResource.ID) || !viewerUse.Allows(project.Scope.ID, application.ID) {
+		t.Fatalf("project viewer resource use filter = %#v, %v", viewerUse, err)
+	}
+	resourceAdminID := findResourceRoleID(t, resourceRoles, "ResourceAdmin")
+	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, authorization.GrantResourceRoleInput{
+		SubjectType: "user", SubjectID: memberID, RoleID: resourceAdminID, ResourceID: application.ID,
+	}, authorizationEvent(admin.ID)); !errors.Is(err, authorization.ErrGrantNotAllowed) {
+		t.Fatalf("project viewer resource admin grant = %v, want ErrGrantNotAllowed", err)
 	}
 	if err := management.DeleteResourceRoleBinding(ctx, admin.ID, binding.ID, authorizationEvent(admin.ID)); err != nil {
 		t.Fatalf("DeleteResourceRoleBinding() error = %v", err)
 	}
-	afterDelete, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
+	afterDelete, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUpdate)
 	if err != nil || len(afterDelete.ScopeIDs) != 0 || len(afterDelete.ResourceIDs) != 0 {
-		t.Fatalf("resource filter after delete = %#v, %v", afterDelete, err)
+		t.Fatalf("resource update filter after delete = %#v, %v", afterDelete, err)
 	}
 }
 
@@ -258,7 +328,6 @@ func TestRoleGrantHierarchy(t *testing.T) {
 	platformViewer := findRoleID(t, roles, "PlatformViewer")
 	teamViewer := findRoleID(t, roles, "TeamViewer")
 	projectViewer := findRoleID(t, roles, "ProjectViewer")
-	projectMember := findRoleID(t, roles, "ProjectMember")
 
 	for _, grant := range []struct {
 		roleID  string
@@ -277,8 +346,8 @@ func TestRoleGrantHierarchy(t *testing.T) {
 	if err := management.ValidateRoleGrants(ctx, teamAdmin, platform.Scope.ID, []string{platformViewer}); !errors.Is(err, authorization.ErrGrantNotAllowed) {
 		t.Fatalf("team administrator platform grant = %v, want ErrGrantNotAllowed", err)
 	}
-	if err := management.ValidateRoleGrants(ctx, projectAdmin, project.Scope.ID, []string{projectMember}); err != nil {
-		t.Fatalf("project administrator participant grant = %v", err)
+	if err := management.ValidateRoleGrants(ctx, projectAdmin, project.Scope.ID, []string{projectViewer}); err != nil {
+		t.Fatalf("project administrator viewer grant = %v", err)
 	}
 	if err := management.ValidateRoleGrants(ctx, projectAdmin, team.Scope.ID, []string{teamViewer}); !errors.Is(err, authorization.ErrGrantNotAllowed) {
 		t.Fatalf("project administrator team grant = %v, want ErrGrantNotAllowed", err)
@@ -358,19 +427,50 @@ func TestReadableHierarchyIncludesAllRoleLevels(t *testing.T) {
 	}
 
 	management := authorization.NewManagementService(authorization.NewManagementStore(pool), authorizationService, nil)
+	for _, actorID := range platformActors {
+		roles, roleErr := management.ListRoles(ctx, actorID)
+		if roleErr != nil || !hasRoleNamed(roles, "PlatformViewer") || !hasRoleNamed(roles, "TeamViewer") || !hasRoleNamed(roles, "ProjectViewer") {
+			t.Fatalf("platform role catalog = %#v, %v", roles, roleErr)
+		}
+	}
+	for _, actorID := range teamActors {
+		roles, roleErr := management.ListRoles(ctx, actorID)
+		if roleErr != nil || hasRoleNamed(roles, "PlatformViewer") || !hasRoleNamed(roles, "TeamViewer") || !hasRoleNamed(roles, "ProjectViewer") {
+			t.Fatalf("team role catalog = %#v, %v", roles, roleErr)
+		}
+	}
+	for _, actorID := range projectActors {
+		roles, roleErr := management.ListRoles(ctx, actorID)
+		if roleErr != nil || hasRoleNamed(roles, "PlatformViewer") || hasRoleNamed(roles, "TeamViewer") || !hasRoleNamed(roles, "ProjectViewer") {
+			t.Fatalf("project role catalog = %#v, %v", roles, roleErr)
+		}
+	}
 	visibleUsers, err := management.ListVisibleUserIDs(ctx, platformActors[2])
 	if err != nil || !containsUserID(visibleUsers, teamBMember) {
 		t.Fatalf("platform viewer visible users = %#v, %v", visibleUsers, err)
 	}
 	visibleUsers, err = management.ListVisibleUserIDs(ctx, teamActors[2])
-	if err != nil || containsUserID(visibleUsers, teamBMember) {
+	if err != nil || containsUserID(visibleUsers, teamBMember) || containsUserID(visibleUsers, platformActors[2]) {
 		t.Fatalf("team viewer visible users = %#v, %v", visibleUsers, err)
+	}
+	visibleUsers, err = management.ListVisibleUserIDs(ctx, projectActors[2])
+	if err != nil || containsUserID(visibleUsers, teamActors[2]) || containsUserID(visibleUsers, platformActors[2]) {
+		t.Fatalf("project viewer visible users = %#v, %v", visibleUsers, err)
 	}
 }
 
 func containsUserID(userIDs []string, target string) bool {
 	for _, userID := range userIDs {
 		if userID == target {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRoleNamed(roles []authorization.RoleDefinition, target string) bool {
+	for _, role := range roles {
+		if role.Name == target {
 			return true
 		}
 	}

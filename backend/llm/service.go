@@ -161,6 +161,9 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 	if item.Kind != ProviderKind {
 		return Provider{}, invalid("resource is not an LLMProvider")
 	}
+	if !allowsProviderResource(ctx, item) {
+		return Provider{}, authorization.ErrForbidden
+	}
 	if requireActive && item.Status != resource.StatusActive {
 		return Provider{}, invalid("LLMProvider is not active")
 	}
@@ -221,4 +224,11 @@ func findModel(models []ModelConfig, name string) (ModelConfig, bool) {
 func allowsScope(ctx context.Context, scopeID string) bool {
 	filter, ok := authorization.ScopeFilterFromContext(ctx)
 	return !ok || filter.Allows(scopeID)
+}
+
+func allowsProviderResource(ctx context.Context, item resource.Resource) bool {
+	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
+		return filter.Allows(item.ScopeID, item.ID)
+	}
+	return allowsScope(ctx, item.ScopeID)
 }

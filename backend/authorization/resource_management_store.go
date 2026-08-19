@@ -120,15 +120,22 @@ func (s *managementStore) ResourceScope(ctx context.Context, resourceID string) 
 	return scopeID, nil
 }
 
-func (s *managementStore) SubjectHasScopePermission(ctx context.Context, subjectType, subjectID string, permission Permission, scopeID string) (bool, error) {
+func (s *managementStore) SubjectHasScopeViewerRole(ctx context.Context, subjectType, subjectID, scopeID string) (bool, error) {
 	var allowed bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			  FROM role_bindings binding
-			  JOIN role_permissions role_permission ON role_permission.role_id = binding.role_id
-			 WHERE role_permission.permission = $3
-			   AND resource_scope_contains(binding.scope_id, $4::uuid)
+			  JOIN roles role ON role.id = binding.role_id
+			  JOIN scopes binding_scope ON binding_scope.id = binding.scope_id
+			 WHERE role.name = CASE binding_scope.scope_type
+				WHEN 'platform' THEN 'PlatformViewer'
+				WHEN 'team' THEN 'TeamViewer'
+				WHEN 'project' THEN 'ProjectViewer'
+				ELSE ''
+			 END
+			   AND (resource_scope_contains(binding.scope_id, $3::uuid)
+				OR resource_scope_contains($3::uuid, binding.scope_id))
 			   AND (
 				($1 = 'user' AND (
 					(binding.subject_type = 'user' AND binding.subject_id = $2::uuid)
@@ -141,9 +148,9 @@ func (s *managementStore) SubjectHasScopePermission(ctx context.Context, subject
 				))
 				OR ($1 = 'group' AND binding.subject_type = 'group' AND binding.subject_id = $2::uuid)
 			   )
-		)`, subjectType, subjectID, string(permission), scopeID).Scan(&allowed)
+		)`, subjectType, subjectID, scopeID).Scan(&allowed)
 	if err != nil {
-		return false, fmt.Errorf("check resource role subject scope permission: %w", err)
+		return false, fmt.Errorf("check resource role subject scope viewer: %w", err)
 	}
 	return allowed, nil
 }

@@ -127,8 +127,8 @@ func TestRoleSeedAndBindingScopeConstraint(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM roles WHERE builtin").Scan(&roleCount); err != nil {
 		t.Fatalf("count builtin roles: %v", err)
 	}
-	if roleCount != 10 {
-		t.Fatalf("builtin roles = %d, want 10", roleCount)
+	if roleCount != 9 {
+		t.Fatalf("builtin roles = %d, want 9", roleCount)
 	}
 	var permissionCount int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM role_permissions").Scan(&permissionCount); err != nil {

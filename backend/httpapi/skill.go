@@ -92,19 +92,19 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, r
 		return requirePermission(permission)
 	}
 	if llms != nil {
-		router.With(guard(authorization.SkillManage)).Put("/llm-defaults", h.setLLMDefault)
-		router.With(guard(authorization.SkillExecute)).Get("/llm-defaults", h.resolveLLMDefault)
+		router.With(guard(authorization.ResourceUpdate)).Put("/llm-defaults", h.setLLMDefault)
+		router.With(guard(authorization.ResourceRead)).Get("/llm-defaults", h.resolveLLMDefault)
 		router.With(guard(authorization.ResourceUse)).Post("/llm-providers/{providerID}/test", h.testLLM)
 	}
 	if skills != nil {
-		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions", h.createVersion)
-		router.With(guard(authorization.SkillExecute)).Get("/skills/{skillID}/versions", h.listVersions)
-		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions/{versionID}/publish", h.publishVersion)
-		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions/{versionID}/disable", h.disableVersion)
-		router.With(guard(authorization.SkillManage)).Put("/skill-defaults", h.setSkillDefault)
-		router.With(guard(authorization.SkillExecute)).Get("/skill-defaults", h.resolveSkillDefault)
-		router.With(guard(authorization.SkillExecute)).Get("/skill-executions", h.listExecutions)
-		router.With(guard(authorization.SkillExecute)).Get("/skill-executions/{executionID}", h.getExecution)
+		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions", h.createVersion)
+		router.With(guard(authorization.ResourceRead)).Get("/skills/{skillID}/versions", h.listVersions)
+		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions/{versionID}/publish", h.publishVersion)
+		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions/{versionID}/disable", h.disableVersion)
+		router.With(guard(authorization.ResourceUpdate)).Put("/skill-defaults", h.setSkillDefault)
+		router.With(guard(authorization.ResourceRead)).Get("/skill-defaults", h.resolveSkillDefault)
+		router.With(guard(authorization.ResourceRead)).Get("/skill-executions", h.listExecutions)
+		router.With(guard(authorization.ResourceRead)).Get("/skill-executions/{executionID}", h.getExecution)
 	}
 	if runnerService != nil {
 		router.Post("/skill-executions", h.executeSkill)
@@ -218,22 +218,12 @@ func (h aiHandler) executeSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	user := currentUser(r)
 	subject := authorization.Subject{UserID: user.ID}
-	skillFilter, err := h.authorization.ScopeFilter(r.Context(), subject, authorization.SkillExecute)
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	if !skillFilter.Allows(body.ScopeID) {
-		writeError(w, r, http.StatusForbidden, "forbidden", "You do not have permission to execute a Skill in this scope")
-		return
-	}
 	resourceFilter, err := h.authorization.ResourceFilter(r.Context(), subject, authorization.ResourceUse)
 	if err != nil {
 		writeAIError(w, r, err)
 		return
 	}
 	ctx := authorization.WithResourceFilter(r.Context(), resourceFilter)
-	ctx = authorization.WithScopeFilter(ctx, skillFilter)
 	result, err := h.runner.Run(ctx, skill.RunInput{ActorID: user.ID, ScopeID: body.ScopeID, TargetResourceID: body.TargetResourceID, SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID, ProviderResourceID: body.ProviderResourceID, ModelName: body.ModelName, Input: body.Input, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Stream: body.Stream})
 	if err != nil {
 		writeAIError(w, r, err)

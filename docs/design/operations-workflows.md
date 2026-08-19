@@ -107,7 +107,7 @@ T10 的执行链路固定为：
 ```text
 解析已发布 SkillVersion 与 Provider/Model
     -> 校验 Skill 输入 Schema 和适用资源类型
-    -> 检查 skill:execute 与目标 resource:use
+    -> 检查 Skill 资源的 resource:use 与目标 resource:use
     -> 创建 running 执行记录
     -> ADK llmagent + Runner 驱动模型与 Function Tool
     -> 每次 Tool 调用检查白名单、参数 Schema、目标授权和预算
