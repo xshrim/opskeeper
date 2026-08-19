@@ -15,9 +15,11 @@ import (
 
 type userManagementService interface {
 	CreateUser(context.Context, identity.CreateUserInput) (identity.User, error)
+	CreateUserWithOneTimePassword(context.Context, identity.CreateUserInput) (identity.CreateUserResult, error)
 	ListUsers(context.Context) ([]identity.User, error)
 	GetUser(context.Context, string) (identity.User, error)
 	UpdateUser(context.Context, string, identity.UpdateUserInput) (identity.User, error)
+	ResetUserPassword(context.Context, string) (string, error)
 }
 
 type accessManagementService interface {
@@ -29,11 +31,15 @@ type accessManagementService interface {
 	AddGroupMember(context.Context, string, string, string, audit.Event) (authorization.GroupMember, error)
 	RemoveGroupMember(context.Context, string, string, string, audit.Event) error
 	ListGroupMembers(context.Context, string, string) ([]authorization.GroupMember, error)
+	ListVisibleUserIDs(context.Context, string) ([]string, error)
 	ListRoles(context.Context, string) ([]authorization.RoleDefinition, error)
+	ValidateRoleGrants(context.Context, string, string, []string) error
+	CanManageUser(context.Context, string, string) (bool, error)
 	CreateRoleBinding(context.Context, string, authorization.GrantRoleInput, audit.Event) (authorization.RoleBinding, error)
 	ListRoleBindings(context.Context, string) ([]authorization.RoleBinding, error)
 	DeleteRoleBinding(context.Context, string, string, audit.Event) error
 	ListResourceRoles(context.Context, string) ([]authorization.ResourceRoleDefinition, error)
+	ValidateResourceGrantScope(context.Context, string, string) error
 	CreateResourceRoleBinding(context.Context, string, authorization.GrantResourceRoleInput, audit.Event) (authorization.ResourceRoleBinding, error)
 	ListResourceRoleBindings(context.Context, string) ([]authorization.ResourceRoleBinding, error)
 	DeleteResourceRoleBinding(context.Context, string, string, audit.Event) error
@@ -52,18 +58,39 @@ type accessHandler struct {
 }
 
 type updateUserRequest struct {
-	DisplayName *string `json:"display_name"`
-	Email       *string `json:"email"`
-	Phone       *string `json:"phone"`
-	Status      *string `json:"status"`
+	Status *string `json:"status"`
 }
 
 type createUserRequest struct {
-	Username    string `json:"username"`
-	Email       string `json:"email"`
-	Phone       string `json:"phone"`
-	DisplayName string `json:"display_name"`
-	Password    string `json:"password"`
+	Username     string            `json:"username"`
+	Email        string            `json:"email"`
+	Phone        string            `json:"phone"`
+	DisplayName  string            `json:"display_name"`
+	Password     string            `json:"password"`
+	PasswordMode string            `json:"password_mode"`
+	Grants       []createUserGrant `json:"grants"`
+}
+
+type createUserGrant struct {
+	ScopeID        string                    `json:"scope_id"`
+	RoleID         string                    `json:"role_id"`
+	ResourceGrants []createUserResourceGrant `json:"resource_grants"`
+}
+
+type createUserResourceGrant struct {
+	ResourceID string `json:"resource_id"`
+	RoleID     string `json:"role_id"`
+}
+
+type createUserResponse struct {
+	User            identity.User               `json:"user"`
+	Bindings        []authorization.RoleBinding `json:"bindings"`
+	OneTimePassword string                      `json:"one_time_password"`
+}
+
+type managedUserResponse struct {
+	identity.User
+	CanManage bool `json:"can_manage"`
 }
 
 type createGroupRequest struct {
@@ -103,6 +130,7 @@ func registerAccessRoutes(router chi.Router, users userManagementService, access
 		router.Post("/", handler.createUser)
 		router.Get("/{userID}", handler.getUser)
 		router.Patch("/{userID}", handler.updateUser)
+		router.Post("/{userID}/password-reset", handler.resetUserPassword)
 	})
 	router.Route("/groups", func(router chi.Router) {
 		router.Get("/", handler.listGroups)
@@ -136,42 +164,128 @@ func registerAuditAuthorizationRoutes(router chi.Router, service authorizationSe
 }
 
 func (h accessHandler) listUsers(writer http.ResponseWriter, request *http.Request) {
-	if !h.requirePlatformAdmin(writer, request) {
-		return
-	}
 	users, err := h.users.ListUsers(request.Context())
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, users)
+	if allowed, checkErr := h.access.IsPlatformAdmin(request.Context(), currentUser(request).ID); checkErr != nil {
+		writeAccessError(writer, request, checkErr)
+		return
+	} else if !allowed {
+		visibleIDs, visibleErr := h.access.ListVisibleUserIDs(request.Context(), currentUser(request).ID)
+		if visibleErr != nil {
+			writeAccessError(writer, request, visibleErr)
+			return
+		}
+		visible := make(map[string]struct{}, len(visibleIDs))
+		for _, userID := range visibleIDs {
+			visible[userID] = struct{}{}
+		}
+		filtered := users[:0]
+		for _, user := range users {
+			if _, ok := visible[user.ID]; ok {
+				filtered = append(filtered, user)
+			}
+		}
+		users = filtered
+	}
+	response := make([]managedUserResponse, 0, len(users))
+	for _, user := range users {
+		canManage, manageErr := h.access.CanManageUser(request.Context(), currentUser(request).ID, user.ID)
+		if manageErr != nil {
+			writeAccessError(writer, request, manageErr)
+			return
+		}
+		response = append(response, managedUserResponse{User: user, CanManage: canManage})
+	}
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Request) {
-	if !h.requirePlatformAdmin(writer, request) {
-		return
-	}
 	var body createUserRequest
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	user, err := h.users.CreateUser(request.Context(), identity.CreateUserInput{Username: body.Username, Email: body.Email, Phone: body.Phone, DisplayName: body.DisplayName, Password: body.Password})
+	actorID := currentUser(request).ID
+	if len(body.Grants) == 0 {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "at least one grant is required")
+		return
+	}
+	for _, grant := range body.Grants {
+		if err := h.access.ValidateRoleGrants(request.Context(), actorID, grant.ScopeID, []string{grant.RoleID}); err != nil {
+			writeAccessError(writer, request, err)
+			return
+		}
+	}
+	if body.PasswordMode != "" && body.PasswordMode != "manual" && body.PasswordMode != "generated" {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "password_mode must be manual or generated")
+		return
+	}
+	if body.PasswordMode == "generated" {
+		body.Password = ""
+	}
+	userResult, err := h.users.CreateUserWithOneTimePassword(request.Context(), identity.CreateUserInput{Username: body.Username, Email: body.Email, Phone: body.Phone, DisplayName: body.DisplayName, Password: body.Password})
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
 	}
+	user := userResult.User
+	bindings := make([]authorization.RoleBinding, 0, len(body.Grants))
+	for _, grant := range body.Grants {
+		binding, bindingErr := h.access.CreateRoleBinding(request.Context(), actorID, authorization.GrantRoleInput{
+			SubjectType: "user",
+			SubjectID:   user.ID,
+			RoleID:      grant.RoleID,
+			ScopeID:     grant.ScopeID,
+		}, h.event(request))
+		if bindingErr != nil {
+			disabled := identity.StatusDisabled
+			_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
+			writeAccessError(writer, request, bindingErr)
+			return
+		}
+		bindings = append(bindings, binding)
+		for _, resourceGrant := range grant.ResourceGrants {
+			if binding.RoleName != "ProjectMember" {
+				disabled := identity.StatusDisabled
+				_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
+				writeError(writer, request, http.StatusBadRequest, "invalid_request", "resource grants require the project member role")
+				return
+			}
+			if scopeErr := h.access.ValidateResourceGrantScope(request.Context(), resourceGrant.ResourceID, grant.ScopeID); scopeErr != nil {
+				disabled := identity.StatusDisabled
+				_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
+				writeAccessError(writer, request, scopeErr)
+				return
+			}
+			if _, resourceErr := h.access.CreateResourceRoleBinding(request.Context(), actorID, authorization.GrantResourceRoleInput{
+				SubjectType: "user",
+				SubjectID:   user.ID,
+				RoleID:      resourceGrant.RoleID,
+				ResourceID:  resourceGrant.ResourceID,
+			}, h.event(request)); resourceErr != nil {
+				disabled := identity.StatusDisabled
+				_, _ = h.users.UpdateUser(request.Context(), user.ID, identity.UpdateUserInput{Status: &disabled})
+				writeAccessError(writer, request, resourceErr)
+				return
+			}
+		}
+	}
 	event := h.event(request)
 	event.TargetType = "user"
 	event.TargetID = user.ID
+	event.ScopeID = body.Grants[0].ScopeID
 	_ = h.record(request, event, "user.create")
-	writeJSON(writer, http.StatusCreated, user)
+	writeJSON(writer, http.StatusCreated, createUserResponse{User: user, Bindings: bindings, OneTimePassword: userResult.OneTimePassword})
 }
 
 func (h accessHandler) getUser(writer http.ResponseWriter, request *http.Request) {
-	if !h.requirePlatformAdmin(writer, request) {
+	userID := chi.URLParam(request, "userID")
+	if !h.requireManagedUser(writer, request, userID) {
 		return
 	}
-	user, err := h.users.GetUser(request.Context(), chi.URLParam(request, "userID"))
+	user, err := h.users.GetUser(request.Context(), userID)
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
@@ -180,15 +294,31 @@ func (h accessHandler) getUser(writer http.ResponseWriter, request *http.Request
 }
 
 func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Request) {
-	if !h.requirePlatformAdmin(writer, request) {
-		return
-	}
 	var body updateUserRequest
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
 	userID := chi.URLParam(request, "userID")
-	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{DisplayName: body.DisplayName, Email: body.Email, Phone: body.Phone, Status: body.Status})
+	if !h.requireManagedUser(writer, request, userID) {
+		return
+	}
+	if userID == currentUser(request).ID {
+		writeError(writer, request, http.StatusForbidden, "forbidden", "Administrators cannot manage their own account from this page")
+		return
+	}
+	if body.Status == nil {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Only account status can be updated from user management")
+		return
+	}
+	if *body.Status != identity.StatusDisabled {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Only user deletion is supported from user management")
+		return
+	}
+	if userID == currentUser(request).ID && body.Status != nil && *body.Status != identity.StatusActive {
+		writeError(writer, request, http.StatusBadRequest, "invalid_request", "You cannot disable or lock your own account")
+		return
+	}
+	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{Status: body.Status})
 	if err != nil {
 		writeAccessError(writer, request, err)
 		return
@@ -199,6 +329,23 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 	event.Details = map[string]any{"status": user.Status}
 	_ = h.record(request, event, "user.update")
 	writeJSON(writer, http.StatusOK, user)
+}
+
+func (h accessHandler) resetUserPassword(writer http.ResponseWriter, request *http.Request) {
+	userID := chi.URLParam(request, "userID")
+	if !h.requireManagedUser(writer, request, userID) {
+		return
+	}
+	password, err := h.users.ResetUserPassword(request.Context(), userID)
+	if err != nil {
+		writeAccessError(writer, request, err)
+		return
+	}
+	event := h.event(request)
+	event.TargetType = "user"
+	event.TargetID = userID
+	_ = h.record(request, event, "user.password.reset")
+	writeJSON(writer, http.StatusOK, map[string]string{"one_time_password": password})
 }
 
 func (h accessHandler) listGroups(writer http.ResponseWriter, request *http.Request) {
@@ -392,6 +539,20 @@ func (h accessHandler) requirePlatformAdmin(writer http.ResponseWriter, request 
 		return false
 	}
 	return true
+}
+
+func (h accessHandler) requireManagedUser(writer http.ResponseWriter, request *http.Request, userID string) bool {
+	actorID := currentUser(request).ID
+	allowed, err := h.access.CanManageUser(request.Context(), actorID, userID)
+	if err != nil {
+		writeAccessError(writer, request, err)
+		return false
+	}
+	if allowed {
+		return true
+	}
+	writeError(writer, request, http.StatusForbidden, "forbidden", "You do not have permission for this operation")
+	return false
 }
 
 func (h accessHandler) event(request *http.Request) audit.Event {

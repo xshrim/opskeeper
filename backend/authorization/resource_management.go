@@ -8,7 +8,7 @@ import (
 )
 
 func (s *ManagementService) ListResourceRoles(ctx context.Context, actorID string) ([]ResourceRoleDefinition, error) {
-	filter, err := s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, MemberGrant)
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +59,21 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 	})
 }
 
+// ValidateResourceGrantScope confirms that a resource selected for a project
+// participant belongs to that participant's project scope.
+func (s *ManagementService) ValidateResourceGrantScope(ctx context.Context, resourceID, scopeID string) error {
+	resourceScopeID, err := s.store.ResourceScope(ctx, strings.TrimSpace(resourceID))
+	if err != nil {
+		return err
+	}
+	if resourceScopeID != strings.TrimSpace(scopeID) {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
 func (s *ManagementService) ListResourceRoleBindings(ctx context.Context, actorID string) ([]ResourceRoleBinding, error) {
-	filter, err := s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, MemberGrant)
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}

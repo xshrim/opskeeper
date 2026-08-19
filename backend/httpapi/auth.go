@@ -29,6 +29,7 @@ type identityService interface {
 	Authenticate(context.Context, string) (identity.User, error)
 	Logout(context.Context, string, string) error
 	LogoutAll(context.Context, string) error
+	ChangePassword(context.Context, string, string, string) error
 }
 
 type authHandler struct {
@@ -56,6 +57,11 @@ type updateProfileRequest struct {
 	DisplayName *string `json:"display_name"`
 	Email       *string `json:"email"`
 	Phone       *string `json:"phone"`
+}
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 type profileService interface {
@@ -86,6 +92,7 @@ func registerAuthRoutes(router chi.Router, service identityService, basePath str
 		router.With(handler.requireAuth).Get("/me", handler.me)
 		router.With(handler.requireAuth).Get("/me/context", handler.sessionContext)
 		router.With(handler.requireAuth).Patch("/me", handler.updateProfile)
+		router.With(handler.requireAuth).Post("/me/password", handler.changePassword)
 		router.With(handler.requireAuth).Get("/me/preferences", handler.preferences)
 		router.With(handler.requireAuth).Put("/me/preferences", handler.updatePreferences)
 		router.With(handler.requireAuth).Get("/me/avatar", handler.avatar)
@@ -185,6 +192,24 @@ func (h authHandler) updateProfile(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	writeJSON(writer, http.StatusOK, updated)
+}
+
+func (h authHandler) changePassword(writer http.ResponseWriter, request *http.Request) {
+	user, ok := request.Context().Value(authenticatedUserContextKey{}).(identity.User)
+	if !ok {
+		writeError(writer, request, http.StatusUnauthorized, "invalid_session", "Authentication is required")
+		return
+	}
+	var body changePasswordRequest
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	if err := h.service.ChangePassword(request.Context(), user.ID, body.CurrentPassword, body.NewPassword); err != nil {
+		writeIdentityError(writer, request, err)
+		return
+	}
+	user.MustChangePassword = false
+	writeJSON(writer, http.StatusOK, user)
 }
 
 func (h authHandler) preferences(writer http.ResponseWriter, request *http.Request) {
@@ -324,9 +349,19 @@ func (h authHandler) requireAuth(next http.Handler) http.Handler {
 			writeIdentityError(writer, request, err)
 			return
 		}
+		if user.MustChangePassword && !passwordChangeAllowed(request) {
+			writeError(writer, request, http.StatusForbidden, "password_change_required", "You must change your one-time password before continuing")
+			return
+		}
 		ctx := context.WithValue(request.Context(), authenticatedUserContextKey{}, user)
 		next.ServeHTTP(writer, request.WithContext(ctx))
 	})
+}
+
+func passwordChangeAllowed(request *http.Request) bool {
+	path := strings.TrimSuffix(request.URL.Path, "/")
+	return request.Method == http.MethodGet && strings.HasSuffix(path, "/api/v1/auth/me") ||
+		request.Method == http.MethodPost && (strings.HasSuffix(path, "/api/v1/auth/me/password") || strings.HasSuffix(path, "/api/v1/auth/logout"))
 }
 
 func sessionMetadata(request *http.Request) identity.SessionMetadata {

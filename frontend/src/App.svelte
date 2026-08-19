@@ -14,11 +14,15 @@
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
+    Pencil,
+    Plus,
     ScanSearch,
+    Search,
     ShieldCheck,
     Sparkles,
     Stethoscope,
     Sun,
+    Trash2,
     Upload,
     UserRound,
     UsersRound
@@ -73,6 +77,8 @@
     | 'profile';
   type Theme = UserPreferences['theme'];
   type SidebarMode = UserPreferences['sidebar_mode'];
+  type AccessTab = 'teams' | 'users' | 'roles';
+  type DisableTarget = { kind: 'team' | 'user'; ids: string[] };
   type ProjectMappingDraft = DiscoveryProjectMapping & {
     mode: 'existing' | 'create' | 'ignore';
   };
@@ -81,6 +87,16 @@
     type: string;
     name: string;
     parentId?: string;
+  };
+  type NewUserResourceGrant = {
+    resourceID: string;
+    roleID: string;
+  };
+  type NewUserGrant = {
+    scopeType: 'platform' | 'team' | 'project';
+    scopeID: string;
+    roleID: string;
+    resourceGrants: NewUserResourceGrant[];
   };
   type SkillToolOption = {
     name: string;
@@ -182,6 +198,7 @@
   let passwordVisible = false;
   let loginError = '';
   let notice = '';
+  let noticeTimer: number | null = null;
   let errorMessage = '';
   let busy = false;
   let view: View = 'overview';
@@ -193,12 +210,19 @@
   let sidebarHovered = false;
   let userMenuOpen = false;
   let teamMenuOpen = false;
+  let accessMenuOpen = false;
   let isPlatformAdmin = false;
   let selectedTeamId = '';
   let selectedProjectId = '';
   let profileDisplayName = '';
   let profileEmail = '';
   let profilePhone = '';
+  let profileCurrentPassword = '';
+  let profileNewPassword = '';
+  let profileConfirmPassword = '';
+  let requiredCurrentPassword = '';
+  let requiredNewPassword = '';
+  let requiredConfirmPassword = '';
   let avatarBusy = false;
   let platform: Platform | null = null;
   let teams: Team[] = [];
@@ -216,6 +240,7 @@
   let connectionBusy = false;
   let users: User[] = [];
   let groups: Group[] = [];
+  let groupMembers: Record<string, string[]> = {};
   let roles: RoleDefinition[] = [];
   let bindings: RoleBinding[] = [];
   let resourceRoles: ResourceRoleDefinition[] = [];
@@ -316,6 +341,34 @@
   let resourceBindingSubjectId = '';
   let resourceBindingRoleId = '';
   let resourceBindingResourceId = '';
+  let accessSearch = '';
+  let accessTab: AccessTab = 'teams';
+  let accessLoading = false;
+  let accessLoadError = '';
+  let teamAccessExpanded: Record<string, boolean> = {};
+  let selectedAccessTeamIds: string[] = [];
+  let selectedAccessUserIds: string[] = [];
+  let teamDialogOpen = false;
+  let userDialogOpen = false;
+  let editingTeam: Team | null = null;
+  let editTeamName = '';
+  let editTeamIcon = '';
+  let editTeamStatus = 'active';
+  let editingUser: User | null = null;
+  let editUserScopeId = '';
+  let editUserRoleIds: string[] = [];
+  let editUserResourceRoleId = '';
+  let editUserResourceId = '';
+  let disableTarget: DisableTarget | null = null;
+  let newUserUsername = '';
+  let newUserEmail = '';
+  let newUserPhone = '';
+  let newUserDisplayName = '';
+  let newUserPassword = '';
+  let newUserPasswordMode: 'manual' | 'generated' = 'generated';
+  let createdUserCredentials: { username: string; password: string } | null = null;
+  let passwordResetCredentials: { username: string; password: string } | null = null;
+  let newUserGrants: NewUserGrant[] = [];
 
   $: scopeChoices = buildScopeChoices(platform, teams, projects);
   $: activeScope =
@@ -373,6 +426,79 @@
   $: avatarURL = preferences.avatar_updated_at
     ? api.avatarURL(preferences.avatar_updated_at)
     : '';
+  $: visibleAccessUsers = users.filter((user) => {
+    const query = accessSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [user.display_name, user.username, user.email, user.phone]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(query));
+  });
+  $: visibleAccessTeams = teams.filter((team) => {
+    const query = accessSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [team.name, team.code, team.status].some((value) =>
+      value.toLowerCase().includes(query)
+    );
+  });
+  $: manageableScopeChoices = isPlatformAdmin
+    ? scopeChoices
+    : scopeChoices.filter((scope) =>
+        actorPermissionsAtScope(scope.id).includes('member:grant')
+      );
+  $: availableEditUserRoles = grantableRolesForScope(editUserScopeId);
+  $: editingProjectParticipant = Boolean(
+    editingUser &&
+      scopeType(editUserScopeId) === 'project' &&
+      editUserRoleIds.some(
+        (roleID) => roles.find((role) => role.id === roleID)?.name === 'ProjectMember'
+      )
+  );
+  $: participantResources = resources.filter(
+    (resource) => resource.scope_id === editUserScopeId && resource.status === 'active'
+  );
+  $: availableParticipantResourceRoles = resourceRoles.filter((resourceRole) =>
+    resourceRole.permissions.every((permission) =>
+      actorPermissionsAtScope(editUserScopeId).includes(String(permission))
+    )
+  );
+  $: participantResourceBindings = editingUser
+    ? resourceBindings.filter(
+        (binding) =>
+          binding.subject_type === 'user' &&
+          binding.subject_id === editingUser?.id &&
+          binding.scope_id === editUserScopeId
+      )
+    : [];
+  $: accessCanManageUsers = manageableScopeChoices.length > 0;
+  $: accessCanCreateUser =
+    isPlatformAdmin ||
+    accessCanManageUsers ||
+    userRoleBindings(currentUser?.id ?? '').some((binding) =>
+      ['PlatformAdmin', 'TeamAdmin', 'ProjectAdmin'].includes(binding.role_name)
+    );
+  $: accessCanCreateTeam = isPlatformAdmin;
+  $: accessTeamUsers = Object.fromEntries(
+    teams.map((team) => {
+      const teamScopeIDs = new Set([
+        team.scope.id,
+        ...projects
+          .filter((project) => project.team_id === team.id)
+          .map((project) => project.scope.id)
+      ]);
+      const memberIDs = groups
+        .filter((group) => teamScopeIDs.has(group.scope_id))
+        .flatMap((group) => groupMembers[group.id] ?? []);
+      const roleIDs = bindings
+        .filter(
+          (binding) =>
+            teamScopeIDs.has(binding.scope_id) &&
+            binding.subject_type === 'user'
+        )
+        .map((binding) => binding.subject_id);
+      const visibleIDs = new Set([...memberIDs, ...roleIDs]);
+      return [team.id, users.filter((user) => visibleIDs.has(user.id))];
+    })
+  ) as Record<string, User[]>;
 
   onMount(() => {
     void bootstrap();
@@ -381,12 +507,21 @@
     media.addEventListener('change', refreshTheme);
     document.addEventListener('pointerdown', handleDocumentPointerDown);
     return () => {
+      if (noticeTimer !== null) window.clearTimeout(noticeTimer);
       stopHealthPolling();
       closeDiagnosisEvents();
       media.removeEventListener('change', refreshTheme);
       document.removeEventListener('pointerdown', handleDocumentPointerDown);
     };
   });
+
+  $: if (notice) {
+    if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => {
+      notice = '';
+      noticeTimer = null;
+    }, 5_000);
+  }
 
   function startHealthPolling() {
     if (healthInterval !== null) return;
@@ -420,6 +555,10 @@
         api.sessionContext()
       ]);
       currentUser = user;
+      if (user.must_change_password) {
+        authState = 'ready';
+        return;
+      }
       isPlatformAdmin = sessionContext.platform_admin;
       authState = 'ready';
       await loadPreferences();
@@ -453,15 +592,9 @@
         teams.map((team) => api.projects(team.id))
       );
       projects = projectPages.flatMap((page) => page.items);
-      if (isPlatformAdmin) {
-        selectedTeamId = '';
-        selectedProjectId = '';
-        selectedScopeId = platform.scope.id;
-      } else if (teams.length > 0) {
-        chooseTeam(selectedTeamId || teams[0].id);
-      } else {
-        selectedScopeId = platform.scope.id;
-      }
+      selectedTeamId = '';
+      selectedProjectId = '';
+      selectedScopeId = platform.scope.id;
     } catch (error) {
       errorMessage = describeError(error, '工作区数据加载失败');
     }
@@ -472,6 +605,12 @@
     loginError = '';
     try {
       currentUser = await api.login(loginIdentifier.trim(), password);
+      if (currentUser.must_change_password) {
+        password = '';
+        passwordVisible = false;
+        authState = 'ready';
+        return;
+      }
       const sessionContext = await api.sessionContext();
       isPlatformAdmin = sessionContext.platform_admin;
       password = '';
@@ -522,6 +661,13 @@
     if (nextView !== 'diagnosis') closeDiagnosisEvents();
   }
 
+  function chooseAccessTab(tab: AccessTab) {
+    accessTab = tab;
+    accessSearch = '';
+    accessMenuOpen = true;
+    chooseView('access');
+  }
+
   async function loadPreferences() {
     try {
       preferences = await api.preferences();
@@ -564,10 +710,68 @@
     });
   }
 
+  async function changeOwnPassword(required = false) {
+    const currentPassword = required ? requiredCurrentPassword : profileCurrentPassword;
+    const newPassword = required ? requiredNewPassword : profileNewPassword;
+    const confirmPassword = required ? requiredConfirmPassword : profileConfirmPassword;
+    if (newPassword !== confirmPassword) {
+      errorMessage = '两次输入的新密码不一致。';
+      return;
+    }
+    await action(async () => {
+      currentUser = await api.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword
+      });
+      requiredCurrentPassword = '';
+      requiredNewPassword = '';
+      requiredConfirmPassword = '';
+      profileCurrentPassword = '';
+      profileNewPassword = '';
+      profileConfirmPassword = '';
+      notice = '密码已更新';
+      if (!required) return;
+      const sessionContext = await api.sessionContext();
+      isPlatformAdmin = sessionContext.platform_admin;
+      await loadPreferences();
+      startHealthPolling();
+      await loadWorkspace();
+    });
+  }
+
+  async function copyCredentials(includePassword: boolean) {
+    if (!createdUserCredentials) return;
+    const value = includePassword
+      ? `用户名：${createdUserCredentials.username}\n一次性密码：${createdUserCredentials.password}`
+      : createdUserCredentials.username;
+    try {
+      await navigator.clipboard.writeText(value);
+      notice = includePassword ? '用户名和一次性密码已复制' : '用户名已复制';
+    } catch {
+      errorMessage = '无法访问剪贴板，请手动复制凭据。';
+    }
+  }
+
+  async function copyPasswordResetCredentials(includePassword: boolean) {
+    if (!passwordResetCredentials) return;
+    const value = includePassword
+      ? `用户名：${passwordResetCredentials.username}\n一次性密码：${passwordResetCredentials.password}`
+      : passwordResetCredentials.username;
+    try {
+      await navigator.clipboard.writeText(value);
+      notice = includePassword ? '用户名和一次性密码已复制' : '用户名已复制';
+    } catch {
+      errorMessage = '无法访问剪贴板，请手动复制凭据。';
+    }
+  }
+
   async function uploadAvatar(event: Event) {
     const file = (event.currentTarget as HTMLInputElement).files?.[0];
     if (!file) return;
-    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 1 << 20) {
+    if (
+      !['image/jpeg', 'image/png'].includes(file.type) ||
+      file.size > 1 << 20
+    ) {
       errorMessage = '头像仅支持不超过 1 MiB 的 PNG 或 JPEG 图片。';
       return;
     }
@@ -586,9 +790,16 @@
 
   async function toggleSidebar() {
     if (preferences.sidebar_mode === 'hover') {
-      preferences = { ...preferences, sidebar_mode: 'fixed', sidebar_collapsed: true };
+      preferences = {
+        ...preferences,
+        sidebar_mode: 'fixed',
+        sidebar_collapsed: true
+      };
     } else {
-      preferences = { ...preferences, sidebar_collapsed: !preferences.sidebar_collapsed };
+      preferences = {
+        ...preferences,
+        sidebar_collapsed: !preferences.sidebar_collapsed
+      };
     }
     try {
       preferences = await api.updatePreferences({
@@ -605,6 +816,7 @@
     if (event.key === 'Escape') {
       userMenuOpen = false;
       teamMenuOpen = false;
+      accessMenuOpen = false;
     }
   }
 
@@ -644,7 +856,9 @@
       return (
         resource.scope_id === platform?.scope.id ||
         resource.scope_id === selectedTeamScopeID ||
-        selectedTeamProjects.some((project) => project.scope.id === resource.scope_id)
+        selectedTeamProjects.some(
+          (project) => project.scope.id === resource.scope_id
+        )
       );
     }
     return (
@@ -1266,6 +1480,8 @@
 
   async function loadAccess() {
     accessLoaded = true;
+    accessLoading = true;
+    accessLoadError = '';
     try {
       const result = await Promise.allSettled([
         api.users(),
@@ -1282,11 +1498,29 @@
       resourceRoles = result[4].status === 'fulfilled' ? result[4].value : [];
       resourceBindings =
         result[5].status === 'fulfilled' ? result[5].value : [];
-      if (result.every((item) => item.status === 'rejected')) {
-        errorMessage = '当前账号没有成员与角色管理权限。';
+      const memberResults = await Promise.allSettled(
+        groups.map((group) => api.groupMembers(group.id))
+      );
+      groupMembers = Object.fromEntries(
+        groups.map((group, index) => [
+          group.id,
+          memberResults[index]?.status === 'fulfilled'
+            ? memberResults[index].value.map((member) => member.user_id)
+            : []
+        ])
+      );
+      const rejectedItems = result
+        .map((item, index) => (item.status === 'rejected' ? index : -1))
+        .filter((index) => index >= 0);
+      if (rejectedItems.length > 0) {
+        const names = ['用户', '成员组', '角色', '角色授权', '资源角色', '资源授权'];
+        accessLoadError = `管理数据加载不完整：${rejectedItems.map((index) => names[index]).join('、')}。`;
       }
+      if (newUserGrants.length === 0) resetUserDialog();
     } catch {
-      errorMessage = '成员和角色数据加载失败。';
+      accessLoadError = '成员和角色数据加载失败，请重试。';
+    } finally {
+      accessLoading = false;
     }
   }
 
@@ -1303,6 +1537,36 @@
       teamCode = '';
       teamIcon = 'team';
       notice = `团队“${created.name}”已创建`;
+      teamDialogOpen = false;
+    });
+  }
+
+  async function createUser() {
+    await action(async () => {
+      const result = await api.createUser({
+        username: newUserUsername,
+        email: newUserEmail,
+        phone: newUserPhone,
+        display_name: newUserDisplayName,
+        password: newUserPassword,
+        password_mode: newUserPasswordMode,
+        grants: newUserGrants.map((grant) => ({
+          scope_id: grant.scopeID,
+          role_id: grant.roleID,
+          resource_grants: grant.resourceGrants.map((resourceGrant) => ({
+            resource_id: resourceGrant.resourceID,
+            role_id: resourceGrant.roleID
+          }))
+        }))
+      });
+      users = [...users, result.user];
+      bindings = [...bindings, ...result.bindings];
+      resetUserDialog();
+      createdUserCredentials = {
+        username: result.user.username,
+        password: result.one_time_password
+      };
+      notice = `用户“${result.user.display_name || result.user.username}”已创建并完成授权`;
     });
   }
 
@@ -1648,14 +1912,15 @@
         id: team.scope.id,
         type: 'team',
         name: team.name,
-        parentId: team.platform_id
+        parentId: currentPlatform?.scope.id
       });
     for (const project of currentProjects)
       choices.push({
         id: project.scope.id,
         type: 'project',
         name: project.name,
-        parentId: project.team_id
+        parentId: currentTeams.find((team) => team.id === project.team_id)?.scope
+          .id
       });
     return choices;
   }
@@ -1666,7 +1931,442 @@
     );
   }
 
+  function userRoleBindings(userID: string) {
+    const groupIDs = groups
+      .filter((group) => groupMembers[group.id]?.includes(userID))
+      .map((group) => group.id);
+    return bindings.filter(
+      (binding) =>
+        (binding.subject_type === 'user' && binding.subject_id === userID) ||
+        (binding.subject_type === 'group' &&
+          groupIDs.includes(binding.subject_id))
+    );
+  }
+
+  function userRoles(userID: string) {
+    const names = userRoleBindings(userID).map((binding) => binding.role_name);
+    return [...new Set(names)];
+  }
+
+  function roleLabel(name: string) {
+    const labels: Record<string, string> = {
+      PlatformAdmin: '平台管理员',
+      PlatformOperator: '平台操作员',
+      PlatformViewer: '平台观察员',
+      TeamAdmin: '团队管理员',
+      TeamOperator: '团队操作员',
+      TeamViewer: '团队观察员',
+      ProjectAdmin: '项目管理员',
+      ProjectOperator: '项目操作员',
+      ProjectViewer: '项目观察员',
+      ProjectMember: '项目参与员',
+      ResourceAdmin: '资源管理员',
+      ResourceOperator: '资源操作员',
+      ResourceViewer: '资源观察员'
+    };
+    return labels[name] ?? name;
+  }
+
+  function grantRoleLabel(name: string) {
+    const labels: Record<string, string> = {
+      PlatformAdmin: '管理员',
+      PlatformOperator: '操作员',
+      PlatformViewer: '观察员',
+      TeamAdmin: '管理员',
+      TeamOperator: '操作员',
+      TeamViewer: '观察员',
+      ProjectAdmin: '管理员',
+      ProjectOperator: '操作员',
+      ProjectViewer: '观察员',
+      ProjectMember: '参与员'
+    };
+    return labels[name] ?? roleLabel(name);
+  }
+
+  function grantScopeLabel(scopeType: NewUserGrant['scopeType']) {
+    const labels: Record<NewUserGrant['scopeType'], string> = {
+      platform: '平台',
+      team: '团队',
+      project: '项目'
+    };
+    return labels[scopeType];
+  }
+
+  function roleScopeLabel(scopeType: string) {
+    const labels: Record<string, string> = {
+      platform: '平台级',
+      team: '团队级',
+      project: '项目级',
+      resource: '资源级'
+    };
+    return labels[scopeType] ?? scopeType;
+  }
+
+  function userPermissions(userID: string) {
+    const roleIDs = new Set(
+      userRoleBindings(userID).map((binding) => binding.role_id)
+    );
+    return [
+      ...new Set(
+        roles
+          .filter((role) => roleIDs.has(role.id))
+          .flatMap((role) => role.permissions.map(String))
+      )
+    ];
+  }
+
+  function scopeContains(ancestorID: string, scopeID: string) {
+    let current = scopeChoices.find((scope) => scope.id === scopeID);
+    while (current) {
+      if (current.id === ancestorID) return true;
+      current = current.parentId
+        ? scopeChoices.find((scope) => scope.id === current?.parentId)
+        : undefined;
+    }
+    return false;
+  }
+
+  function actorPermissionsAtScope(scopeID: string) {
+    if (!currentUser || !scopeID) return [];
+    if (isPlatformAdmin) {
+      return [
+        ...new Set(roles.flatMap((role) => role.permissions.map(String)))
+      ];
+    }
+    const roleIDs = new Set(
+      userRoleBindings(currentUser.id)
+        .filter((binding) => scopeContains(binding.scope_id, scopeID))
+        .map((binding) => binding.role_id)
+    );
+    return [
+      ...new Set(
+        roles
+          .filter((role) => roleIDs.has(role.id))
+          .flatMap((role) => role.permissions.map(String))
+      )
+    ];
+  }
+
+  function grantableRolesForScope(scopeID: string) {
+    if (!scopeID) return [];
+    const permissions = new Set(actorPermissionsAtScope(scopeID));
+    return roles.filter(
+      (role) =>
+        role.scope_type === scopeType(scopeID) &&
+        role.permissions.every((permission) => permissions.has(permission))
+    );
+  }
+
+  function canManageTeam(_team: Team) {
+    return isPlatformAdmin;
+  }
+
+  function canManageUser(user: User) {
+    return (
+      user.can_manage ??
+      (accessCanManageUsers && user.id !== currentUser?.id)
+    );
+  }
+
+  function userScopeNames(userID: string) {
+    return [
+      ...new Set(
+        userRoleBindings(userID).map((binding) => scopeName(binding.scope_id))
+      )
+    ];
+  }
+
+  function toggleTeamAccess(teamID: string) {
+    teamAccessExpanded = {
+      ...teamAccessExpanded,
+      [teamID]: !teamAccessExpanded[teamID]
+    };
+  }
+
+  function resetUserDialog() {
+    newUserUsername = '';
+    newUserEmail = '';
+    newUserPhone = '';
+    newUserDisplayName = '';
+    newUserPassword = '';
+    newUserPasswordMode = 'generated';
+    createdUserCredentials = null;
+    const preferredScopeID = selectedTeam?.scope.id ?? platform?.scope.id ?? '';
+    const preferredScope = manageableScopeChoices.find(
+      (scope) => scope.id === preferredScopeID
+    ) ?? manageableScopeChoices[0];
+    newUserGrants = preferredScope
+      ? [{
+          scopeType: preferredScope.type as NewUserGrant['scopeType'],
+          scopeID: preferredScope.id,
+          roleID: '',
+          resourceGrants: []
+        }]
+      : [];
+  }
+
+  function addNewUserGrant() {
+    const scope = manageableScopeChoices[0];
+    if (!scope) return;
+    newUserGrants = [
+      ...newUserGrants,
+      {
+        scopeType: scope.type as NewUserGrant['scopeType'],
+        scopeID: scope.id,
+        roleID: '',
+        resourceGrants: []
+      }
+    ];
+  }
+
+  function updateNewUserGrant(index: number, updates: Partial<NewUserGrant>) {
+    newUserGrants = newUserGrants.map((grant, grantIndex) =>
+      grantIndex === index ? { ...grant, ...updates } : grant
+    );
+  }
+
+  function chooseNewUserGrantType(index: number, type: NewUserGrant['scopeType']) {
+    const scope = manageableScopeChoices.find((item) => item.type === type);
+    updateNewUserGrant(index, {
+      scopeType: type,
+      scopeID: scope?.id ?? '',
+      roleID: '',
+      resourceGrants: []
+    });
+  }
+
+  function removeNewUserGrant(index: number) {
+    newUserGrants = newUserGrants.filter((_, grantIndex) => grantIndex !== index);
+  }
+
+  function newUserGrantScopes(type: NewUserGrant['scopeType']) {
+    return manageableScopeChoices.filter((scope) => scope.type === type);
+  }
+
+  function newUserGrantRoles(grant: NewUserGrant) {
+    return grantableRolesForScope(grant.scopeID);
+  }
+
+  function newUserGrantIsParticipant(grant: NewUserGrant) {
+    return roles.find((role) => role.id === grant.roleID)?.name === 'ProjectMember';
+  }
+
+  function newUserGrantResources(grant: NewUserGrant) {
+    return resources.filter(
+      (resource) => resource.scope_id === grant.scopeID && resource.status === 'active'
+    );
+  }
+
+  function newUserGrantResourceRoles(grant: NewUserGrant) {
+    return resourceRoles.filter((resourceRole) =>
+      resourceRole.permissions.every((permission) =>
+        actorPermissionsAtScope(grant.scopeID).includes(String(permission))
+      )
+    );
+  }
+
+  function addNewUserResourceGrant(index: number) {
+    const grant = newUserGrants[index];
+    if (!grant) return;
+    updateNewUserGrant(index, {
+      resourceGrants: [...grant.resourceGrants, { resourceID: '', roleID: '' }]
+    });
+  }
+
+  function updateNewUserResourceGrant(
+    grantIndex: number,
+    resourceIndex: number,
+    updates: Partial<NewUserResourceGrant>
+  ) {
+    const grant = newUserGrants[grantIndex];
+    if (!grant) return;
+    updateNewUserGrant(grantIndex, {
+      resourceGrants: grant.resourceGrants.map((resourceGrant, index) =>
+        index === resourceIndex ? { ...resourceGrant, ...updates } : resourceGrant
+      )
+    });
+  }
+
+  function removeNewUserResourceGrant(grantIndex: number, resourceIndex: number) {
+    const grant = newUserGrants[grantIndex];
+    if (!grant) return;
+    updateNewUserGrant(grantIndex, {
+      resourceGrants: grant.resourceGrants.filter((_, index) => index !== resourceIndex)
+    });
+  }
+
+  function openEditTeam(team: Team) {
+    editingTeam = team;
+    editTeamName = team.name;
+    editTeamIcon = team.icon;
+    editTeamStatus = team.status;
+  }
+
+  async function saveTeam() {
+    if (!editingTeam) return;
+    const teamID = editingTeam.id;
+    await action(async () => {
+      const updated = await api.updateTeam(teamID, {
+        name: editTeamName,
+        icon: editTeamIcon,
+        status: editTeamStatus
+      });
+      teams = teams.map((team) => (team.id === teamID ? updated : team));
+      editingTeam = null;
+      notice = `团队“${updated.name}”已更新`;
+    });
+  }
+
+  function openEditUser(user: User) {
+    editingUser = user;
+    passwordResetCredentials = null;
+    editUserResourceRoleId = '';
+    editUserResourceId = '';
+    const directBindings = bindings.filter(
+      (binding) =>
+        binding.subject_type === 'user' && binding.subject_id === user.id
+    );
+    editUserScopeId =
+      directBindings.find((binding) =>
+        manageableScopeChoices.some((scope) => scope.id === binding.scope_id)
+      )?.scope_id ??
+      manageableScopeChoices[0]?.id ??
+      '';
+    editUserRoleIds = directBindings
+      .filter((binding) => binding.scope_id === editUserScopeId)
+      .map((binding) => binding.role_id);
+  }
+
+  function chooseEditUserScope(scopeID: string) {
+    editUserScopeId = scopeID;
+    editUserRoleIds = editingUser
+      ? bindings
+          .filter(
+            (binding) =>
+              binding.subject_type === 'user' &&
+              binding.subject_id === editingUser?.id &&
+              binding.scope_id === scopeID
+          )
+          .map((binding) => binding.role_id)
+      : [];
+    editUserResourceRoleId = '';
+    editUserResourceId = '';
+  }
+
+  async function saveUser() {
+    if (!editingUser || !editUserScopeId) return;
+    const userID = editingUser.id;
+    await action(async () => {
+      const existing = bindings.filter(
+        (binding) =>
+          binding.subject_type === 'user' &&
+          binding.subject_id === userID &&
+          binding.scope_id === editUserScopeId
+      );
+      const desired = new Set(editUserRoleIds);
+      const created: RoleBinding[] = [];
+      for (const roleID of editUserRoleIds) {
+        if (!existing.some((binding) => binding.role_id === roleID)) {
+          created.push(
+            await api.createBinding({
+              subject_type: 'user',
+              subject_id: userID,
+              role_id: roleID,
+              scope_id: editUserScopeId
+            })
+          );
+        }
+      }
+      const removedIDs: string[] = [];
+      for (const binding of existing) {
+        if (!desired.has(binding.role_id)) {
+          await api.deleteBinding(binding.id);
+          removedIDs.push(binding.id);
+        }
+      }
+      bindings = [
+        ...bindings.filter((binding) => !removedIDs.includes(binding.id)),
+        ...created
+      ];
+      editingUser = null;
+      notice = '用户授权已更新';
+    });
+  }
+
+  async function resetManagedUserPassword() {
+    if (!editingUser) return;
+    const user = editingUser;
+    await action(async () => {
+      const result = await api.resetUserPassword(user.id);
+      passwordResetCredentials = {
+        username: user.username,
+        password: result.one_time_password
+      };
+      notice = `已为“${user.display_name || user.username}”生成一次性密码`;
+    });
+  }
+
+  async function grantParticipantResource() {
+    if (!editingUser || !editUserResourceRoleId || !editUserResourceId) return;
+    const userID = editingUser.id;
+    await action(async () => {
+      const binding = await api.createResourceBinding({
+        subject_type: 'user',
+        subject_id: userID,
+        role_id: editUserResourceRoleId,
+        resource_id: editUserResourceId
+      });
+      resourceBindings = [...resourceBindings, binding];
+      editUserResourceRoleId = '';
+      editUserResourceId = '';
+      notice = '参与员资源权限已添加';
+    });
+  }
+
+  async function revokeParticipantResource(binding: ResourceRoleBinding) {
+    await action(async () => {
+      await api.deleteResourceBinding(binding.id);
+      resourceBindings = resourceBindings.filter((item) => item.id !== binding.id);
+      notice = '参与员资源权限已移除';
+    });
+  }
+
+  function requestDisable(kind: DisableTarget['kind'], ids: string[]) {
+    if (ids.length > 0) disableTarget = { kind, ids: [...ids] };
+  }
+
+  async function confirmDisable() {
+    if (!disableTarget) return;
+    const target = disableTarget;
+    await action(async () => {
+      if (target.kind === 'team') {
+        const updated = await Promise.all(
+          target.ids.map((id) => api.updateTeam(id, { status: 'disabled' }))
+        );
+        const byID = new Map(updated.map((team) => [team.id, team]));
+        teams = teams.map((team) => byID.get(team.id) ?? team);
+        selectedAccessTeamIds = [];
+      } else {
+        const updated = await Promise.all(
+          target.ids.map((id) => api.updateUser(id, { status: 'disabled' }))
+        );
+        const byID = new Map(updated.map((user) => [user.id, user]));
+        users = users.map((user) => byID.get(user.id) ?? user);
+        selectedAccessUserIds = [];
+      }
+      disableTarget = null;
+      notice = `${target.ids.length} 个${target.kind === 'team' ? '团队' : '用户'}已禁用`;
+    });
+  }
+
   function viewTitle(currentView: View) {
+    if (currentView === 'access') {
+      return accessTab === 'teams'
+        ? '团队管理'
+        : accessTab === 'users'
+          ? '用户管理'
+          : '角色管理';
+    }
     const titles: Record<View, string> = {
       overview: '平台总览',
       organization: '组织管理',
@@ -1676,13 +2376,14 @@
       operations: '受控操作与 MCP',
       diagnosis: 'AI 诊断工作台',
       inspection: '自动巡检与健康',
-      access: '成员与角色',
+      access: '团队与用户',
       profile: '个人中心'
     };
     return titles[currentView];
   }
 
   function viewBreadcrumb(currentView: View) {
+    if (currentView === 'access') return `Access / ${viewTitle(currentView)}`;
     const titles: Record<View, string> = {
       overview: 'Overview',
       organization: 'Organization',
@@ -1877,6 +2578,23 @@
       <p class="login-footnote">账号权限由平台管理员统一配置</p>
     </section>
   </main>
+{:else if currentUser?.must_change_password}
+  <main class="login-shell">
+    <section class="login-panel" aria-labelledby="required-password-heading">
+      <header class="login-panel-header">
+        <p class="login-kicker">安全验证</p>
+        <h1 id="required-password-heading">请修改一次性密码</h1>
+        <p class="login-intro">为保护账号安全，完成修改前无法访问平台内容。</p>
+      </header>
+      {#if errorMessage}<div class="alert error" role="alert">{errorMessage}</div>{/if}
+      <form class="stack-form login-form" on:submit|preventDefault={() => changeOwnPassword(true)}>
+        <label class="login-field">当前一次性密码<input type="password" bind:value={requiredCurrentPassword} required autocomplete="current-password" /></label>
+        <label class="login-field">新密码<input type="password" bind:value={requiredNewPassword} required minlength="12" autocomplete="new-password" /></label>
+        <label class="login-field">确认新密码<input type="password" bind:value={requiredConfirmPassword} required minlength="12" autocomplete="new-password" /></label>
+        <button class="primary login-submit" disabled={busy}>{busy ? '正在更新' : '更新密码并继续'}</button>
+      </form>
+    </section>
+  </main>
 {:else}
   <div
     class="app-shell"
@@ -1890,31 +2608,194 @@
       on:mouseleave={() => (sidebarHovered = false)}
     >
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">O</span><span class="brand-copy"
-          >OpsKeeper<small>智能值守平台</small></span
+        <span class="brand-mark" aria-hidden="true">O</span><span
+          class="brand-copy">OpsKeeper<small>智能值守平台</small></span
         >
       </div>
       <div class="workspace-label">WORKSPACE</div>
       <nav aria-label="主导航">
-        <button aria-label="总览" class:active={view === 'overview'} class="nav-item" on:click={() => chooseView('overview')} title={sidebarCompact ? '总览' : undefined}><LayoutDashboard size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">总览</span></button>
-        <button aria-label="组织" class:active={view === 'organization'} class="nav-item" on:click={() => chooseView('organization')} title={sidebarCompact ? '组织' : undefined}><Building2 size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">组织</span></button>
-        <button aria-label="资源" class:active={view === 'resources'} class="nav-item" on:click={() => chooseView('resources')} title={sidebarCompact ? '资源' : undefined}><Boxes size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">资源</span></button>
-        <button aria-label="集群导入" class:active={view === 'discovery'} class="nav-item" on:click={() => chooseView('discovery')} title={sidebarCompact ? '集群导入' : undefined}><CloudDownload size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">集群导入</span></button>
-        <button aria-label="模型与 Skill" class:active={view === 'ai'} class="nav-item" on:click={() => chooseView('ai')} title={sidebarCompact ? '模型与 Skill' : undefined}><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">模型与 Skill</span></button>
-        <button aria-label="AI 诊断" class:active={view === 'diagnosis'} class="nav-item" on:click={() => chooseView('diagnosis')} title={sidebarCompact ? 'AI 诊断' : undefined}><ScanSearch size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">AI 诊断</span></button>
-        <button aria-label="自动巡检" class:active={view === 'inspection'} class="nav-item" on:click={() => chooseView('inspection')} title={sidebarCompact ? '自动巡检' : undefined}><Stethoscope size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">自动巡检</span></button>
-        <button aria-label="受控操作" class:active={view === 'operations'} class="nav-item" on:click={() => chooseView('operations')} title={sidebarCompact ? '受控操作' : undefined}><ClipboardCheck size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">受控操作</span></button>
-        <button aria-label="成员与角色" class:active={view === 'access'} class="nav-item" on:click={() => chooseView('access')} title={sidebarCompact ? '成员与角色' : undefined}><UsersRound size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">成员与角色</span></button>
+        <button
+          aria-label="总览"
+          class:active={view === 'overview'}
+          class="nav-item"
+          on:click={() => chooseView('overview')}
+          title={sidebarCompact ? '总览' : undefined}
+          ><LayoutDashboard
+            size={18}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          /><span class="nav-item-label">总览</span></button
+        >
+        <button
+          aria-label="组织"
+          class:active={view === 'organization'}
+          class="nav-item"
+          on:click={() => chooseView('organization')}
+          title={sidebarCompact ? '组织' : undefined}
+          ><Building2 size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">组织</span
+          ></button
+        >
+        <button
+          aria-label="资源"
+          class:active={view === 'resources'}
+          class="nav-item"
+          on:click={() => chooseView('resources')}
+          title={sidebarCompact ? '资源' : undefined}
+          ><Boxes size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">资源</span
+          ></button
+        >
+        <button
+          aria-label="集群导入"
+          class:active={view === 'discovery'}
+          class="nav-item"
+          on:click={() => chooseView('discovery')}
+          title={sidebarCompact ? '集群导入' : undefined}
+          ><CloudDownload size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">集群导入</span
+          ></button
+        >
+        <button
+          aria-label="模型与 Skill"
+          class:active={view === 'ai'}
+          class="nav-item"
+          on:click={() => chooseView('ai')}
+          title={sidebarCompact ? '模型与 Skill' : undefined}
+          ><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">模型与 Skill</span
+          ></button
+        >
+        <button
+          aria-label="AI 诊断"
+          class:active={view === 'diagnosis'}
+          class="nav-item"
+          on:click={() => chooseView('diagnosis')}
+          title={sidebarCompact ? 'AI 诊断' : undefined}
+          ><ScanSearch size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">AI 诊断</span
+          ></button
+        >
+        <button
+          aria-label="自动巡检"
+          class:active={view === 'inspection'}
+          class="nav-item"
+          on:click={() => chooseView('inspection')}
+          title={sidebarCompact ? '自动巡检' : undefined}
+          ><Stethoscope size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">自动巡检</span
+          ></button
+        >
+        <button
+          aria-label="受控操作"
+          class:active={view === 'operations'}
+          class="nav-item"
+          on:click={() => chooseView('operations')}
+          title={sidebarCompact ? '受控操作' : undefined}
+          ><ClipboardCheck
+            size={18}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          /><span class="nav-item-label">受控操作</span></button
+        >
+        <div class="nav-group" class:open={accessMenuOpen}>
+          <button
+            aria-label="展开团队与用户菜单"
+            aria-expanded={accessMenuOpen}
+            class:active={view === 'access'}
+            class="nav-item nav-group-trigger"
+            on:click={() => (accessMenuOpen = !accessMenuOpen)}
+            title={sidebarCompact ? '团队与用户' : undefined}
+            ><UsersRound size={18} strokeWidth={1.8} aria-hidden="true" /><span
+              class="nav-item-label">团队与用户</span
+            ><ChevronDown
+              class="nav-group-chevron"
+              size={14}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            /></button
+          >
+          {#if accessMenuOpen}
+            <div class="nav-submenu" aria-label="团队与用户子菜单">
+              <button
+                type="button"
+                class:active={view === 'access' && accessTab === 'teams'}
+                on:click={() => chooseAccessTab('teams')}
+                ><Building2 size={15} strokeWidth={1.8} aria-hidden="true" /><span
+                  >团队管理</span
+                ></button
+              ><button
+                type="button"
+                class:active={view === 'access' && accessTab === 'users'}
+                on:click={() => chooseAccessTab('users')}
+                ><UserRound size={15} strokeWidth={1.8} aria-hidden="true" /><span
+                  >用户管理</span
+                ></button
+              ><button
+                type="button"
+                class:active={view === 'access' && accessTab === 'roles'}
+                on:click={() => chooseAccessTab('roles')}
+                ><ShieldCheck
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span>角色管理</span></button
+              >
+            </div>
+          {/if}
+        </div>
       </nav>
       <div class="sidebar-footer">
         <div class="user-menu-wrap sidebar-user-menu">
-          <button class="user-menu-trigger" aria-label="打开用户菜单" aria-expanded={userMenuOpen} on:click={() => (userMenuOpen = !userMenuOpen)}>
-            {#if avatarURL}<img src={avatarURL} alt="" class="avatar avatar-image" />{:else}<span class="avatar">{(currentUser?.display_name || currentUser?.username || 'U').slice(0, 1).toUpperCase()}</span>{/if}<span class="user-menu-name">{currentUser?.display_name || currentUser?.username}</span>
+          <button
+            class="user-menu-trigger"
+            aria-label="打开用户菜单"
+            aria-expanded={userMenuOpen}
+            on:click={() => (userMenuOpen = !userMenuOpen)}
+          >
+            {#if avatarURL}<img
+                src={avatarURL}
+                alt=""
+                class="avatar avatar-image"
+              />{:else}<span class="avatar"
+                >{(currentUser?.display_name || currentUser?.username || 'U')
+                  .slice(0, 1)
+                  .toUpperCase()}</span
+              >{/if}<span class="user-menu-name"
+              >{currentUser?.display_name || currentUser?.username}</span
+            >
           </button>
-          {#if userMenuOpen}<div class="user-menu" role="menu"><button role="menuitem" on:click={openProfile}><UserRound size={16} strokeWidth={1.8} aria-hidden="true" />个人中心</button><button role="menuitem" on:click={logout} disabled={busy}><LogOut size={16} strokeWidth={1.8} aria-hidden="true" />退出登录</button></div>{/if}
+          {#if userMenuOpen}<div class="user-menu" role="menu">
+              <button role="menuitem" on:click={openProfile}
+                ><UserRound
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />个人中心</button
+              ><button role="menuitem" on:click={logout} disabled={busy}
+                ><LogOut
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />退出登录</button
+              >
+            </div>{/if}
         </div>
-        <button class="sidebar-toggle" aria-label={sidebarCompact ? '展开导航栏' : '折叠导航栏'} title={sidebarCompact ? '展开导航栏' : '折叠导航栏'} on:click={toggleSidebar}>
-          {#if sidebarCompact}<PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<PanelLeftClose size={18} strokeWidth={1.8} aria-hidden="true" />{/if}
+        <button
+          class="sidebar-toggle"
+          aria-label={sidebarCompact ? '展开导航栏' : '折叠导航栏'}
+          title={sidebarCompact ? '展开导航栏' : '折叠导航栏'}
+          on:click={toggleSidebar}
+        >
+          {#if sidebarCompact}<PanelLeftOpen
+              size={18}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />{:else}<PanelLeftClose
+              size={18}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />{/if}
         </button>
       </div>
     </aside>
@@ -1922,28 +2803,64 @@
     <main class="main-content">
       <header class="topbar">
         <div>
-          <p class="breadcrumb">{activeScope?.name ?? 'Platform'} / {viewBreadcrumb(view)}</p>
+          <p class="breadcrumb">
+            {activeScope?.name ?? 'Platform'} / {viewBreadcrumb(view)}
+          </p>
           <h1>{viewTitle(view)}</h1>
         </div>
         <div class="topbar-actions">
-          {#if !isPlatformAdmin}<div class="workspace-switcher topbar-workspace-switcher">
-            <div class="workspace-team-wrap">
-              {#if teams.length > 1}
-                <button class="workspace-team" aria-label="切换团队" aria-expanded={teamMenuOpen} on:click={() => (teamMenuOpen = !teamMenuOpen)}>
-                  <span>{selectedTeam?.name ?? '未分配团队'}</span><ChevronDown size={15} strokeWidth={1.8} aria-hidden="true" />
-                </button>
-              {:else}
-                <span class="workspace-team workspace-team-static">{selectedTeam?.name ?? '未分配团队'}</span>
-              {/if}
-              {#if teamMenuOpen}<div class="team-menu" role="menu">
-                {#each teams as team}<button role="menuitem" class:selected={team.id === selectedTeamId} on:click={() => chooseTeam(team.id)}>{team.name}</button>{/each}
-              </div>{/if}
-            </div>
-            <label class="workspace-project"><span>项目</span><select aria-label="切换项目" value={selectedProjectId} disabled={!selectedTeamProjects.length} on:change={(event) => chooseProject((event.currentTarget as HTMLSelectElement).value)}>
-              <option value="">{selectedTeamProjects.length ? '全部项目' : '暂无项目'}</option>
-              {#each selectedTeamProjects as project}<option value={project.id}>{project.name}</option>{/each}
-            </select></label>
-          </div>{/if}
+          {#if !isPlatformAdmin}<div
+              class="workspace-switcher topbar-workspace-switcher"
+            >
+              <div class="workspace-team-wrap">
+                {#if teams.length > 1}
+                  <button
+                    class="workspace-team"
+                    aria-label="切换团队"
+                    aria-expanded={teamMenuOpen}
+                    on:click={() => (teamMenuOpen = !teamMenuOpen)}
+                  >
+                    <span>{selectedTeam?.name ?? '全部可见团队'}</span
+                    ><ChevronDown
+                      size={15}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />
+                  </button>
+                {:else}
+                  <span class="workspace-team workspace-team-static"
+                    >{selectedTeam?.name ?? '全部可见团队'}</span
+                  >
+                {/if}
+                {#if teamMenuOpen}<div class="team-menu" role="menu">
+                    {#each teams as team}<button
+                        role="menuitem"
+                        class:selected={team.id === selectedTeamId}
+                        on:click={() => chooseTeam(team.id)}>{team.name}</button
+                      >{/each}
+                  </div>{/if}
+              </div>
+              <label class="workspace-project"
+                ><span>项目</span><select
+                  aria-label="切换项目"
+                  value={selectedProjectId}
+                  disabled={!selectedTeamProjects.length}
+                  on:change={(event) =>
+                    chooseProject(
+                      (event.currentTarget as HTMLSelectElement).value
+                    )}
+                >
+                  <option value=""
+                    >{selectedTeamProjects.length
+                      ? '全部项目'
+                      : '暂无项目'}</option
+                  >
+                  {#each selectedTeamProjects as project}<option
+                      value={project.id}>{project.name}</option
+                    >{/each}
+                </select></label
+              >
+            </div>{/if}
         </div>
       </header>
 
@@ -2056,21 +2973,85 @@
                 </div>
               </div>
               <div class="profile-avatar-row">
-                {#if avatarURL}<img src={avatarURL} alt="当前头像" class="profile-avatar avatar-image" />{:else}<span class="profile-avatar">{(currentUser?.display_name || currentUser?.username || 'U').slice(0, 1).toUpperCase()}</span>{/if}
+                {#if avatarURL}<img
+                    src={avatarURL}
+                    alt="当前头像"
+                    class="profile-avatar avatar-image"
+                  />{:else}<span class="profile-avatar"
+                    >{(
+                      currentUser?.display_name ||
+                      currentUser?.username ||
+                      'U'
+                    )
+                      .slice(0, 1)
+                      .toUpperCase()}</span
+                  >{/if}
                 <div>
                   <strong>{currentUser?.username}</strong>
                   <p>PNG 或 JPEG，最大 1 MiB。</p>
-                  <label class="secondary-button upload-button" for="profile-avatar-upload"><Upload size={15} strokeWidth={1.8} aria-hidden="true" />{avatarBusy ? '正在上传' : '更换头像'}</label>
-                  <input id="profile-avatar-upload" class="visually-hidden" type="file" accept="image/png,image/jpeg" disabled={avatarBusy} on:change={uploadAvatar} />
+                  <label
+                    class="secondary-button upload-button"
+                    for="profile-avatar-upload"
+                    ><Upload
+                      size={15}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />{avatarBusy ? '正在上传' : '更换头像'}</label
+                  >
+                  <input
+                    id="profile-avatar-upload"
+                    class="visually-hidden"
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    disabled={avatarBusy}
+                    on:change={uploadAvatar}
+                  />
                 </div>
               </div>
               <div class="profile-fields">
-                <label>用户名<input value={currentUser?.username ?? ''} disabled aria-label="用户名" /></label>
-                <label>显示名<input bind:value={profileDisplayName} required maxlength="120" placeholder="请输入显示名" aria-label="显示名" /></label>
-                <label>邮箱<input type="email" bind:value={profileEmail} placeholder="例如：name@example.com" aria-label="邮箱" /></label>
-                <label>电话<input type="tel" bind:value={profilePhone} placeholder="例如：13800138000" aria-label="电话" /></label>
+                <label
+                  >用户名<input
+                    value={currentUser?.username ?? ''}
+                    disabled
+                    aria-label="用户名"
+                  /></label
+                >
+                <label
+                  >显示名<input
+                    bind:value={profileDisplayName}
+                    required
+                    maxlength="120"
+                    placeholder="请输入显示名"
+                    aria-label="显示名"
+                  /></label
+                >
+                <label
+                  >邮箱<input
+                    type="email"
+                    bind:value={profileEmail}
+                    placeholder="例如：name@example.com"
+                    aria-label="邮箱"
+                  /></label
+                >
+                <label
+                  >电话<input
+                    type="tel"
+                    bind:value={profilePhone}
+                    placeholder="例如：13800138000"
+                    aria-label="电话"
+                  /></label
+                >
               </div>
-              <div class="profile-team"><UsersRound size={17} strokeWidth={1.8} aria-hidden="true" /><span><strong>所属团队</strong><small>当前未配置团队成员关系</small></span></div>
+              <div class="profile-team">
+                <UsersRound
+                  size={17}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span
+                  ><strong>所属团队</strong><small>当前未配置团队成员关系</small
+                  ></span
+                >
+              </div>
             </section>
 
             <section class="panel profile-panel">
@@ -2082,21 +3063,114 @@
               </div>
               <fieldset class="preference-group">
                 <legend>系统主题</legend>
-                <div class="segmented-control" role="radiogroup" aria-label="系统主题">
-                  <button type="button" class:active={preferences.theme === 'auto'} role="radio" aria-checked={preferences.theme === 'auto'} on:click={() => { preferences = { ...preferences, theme: 'auto' }; applyTheme(); }}><Monitor size={16} strokeWidth={1.8} aria-hidden="true" />自动</button>
-                  <button type="button" class:active={preferences.theme === 'light'} role="radio" aria-checked={preferences.theme === 'light'} on:click={() => { preferences = { ...preferences, theme: 'light' }; applyTheme(); }}><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button>
-                  <button type="button" class:active={preferences.theme === 'dark'} role="radio" aria-checked={preferences.theme === 'dark'} on:click={() => { preferences = { ...preferences, theme: 'dark' }; applyTheme(); }}><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button>
+                <div
+                  class="segmented-control"
+                  role="radiogroup"
+                  aria-label="系统主题"
+                >
+                  <button
+                    type="button"
+                    class:active={preferences.theme === 'auto'}
+                    role="radio"
+                    aria-checked={preferences.theme === 'auto'}
+                    on:click={() => {
+                      preferences = { ...preferences, theme: 'auto' };
+                      applyTheme();
+                    }}
+                    ><Monitor
+                      size={16}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />自动</button
+                  >
+                  <button
+                    type="button"
+                    class:active={preferences.theme === 'light'}
+                    role="radio"
+                    aria-checked={preferences.theme === 'light'}
+                    on:click={() => {
+                      preferences = { ...preferences, theme: 'light' };
+                      applyTheme();
+                    }}
+                    ><Sun
+                      size={16}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />浅色</button
+                  >
+                  <button
+                    type="button"
+                    class:active={preferences.theme === 'dark'}
+                    role="radio"
+                    aria-checked={preferences.theme === 'dark'}
+                    on:click={() => {
+                      preferences = { ...preferences, theme: 'dark' };
+                      applyTheme();
+                    }}
+                    ><Moon
+                      size={16}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />深色</button
+                  >
                 </div>
               </fieldset>
               <fieldset class="preference-group">
                 <legend>侧边导航栏</legend>
-                <div class="segmented-control" role="radiogroup" aria-label="侧边导航栏模式">
-                  <button type="button" class:active={preferences.sidebar_mode === 'fixed'} role="radio" aria-checked={preferences.sidebar_mode === 'fixed'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'fixed' })}>固定模式</button>
-                  <button type="button" class:active={preferences.sidebar_mode === 'hover'} role="radio" aria-checked={preferences.sidebar_mode === 'hover'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'hover', sidebar_collapsed: true })}>窄栏悬浮展开</button>
+                <div
+                  class="segmented-control"
+                  role="radiogroup"
+                  aria-label="侧边导航栏模式"
+                >
+                  <button
+                    type="button"
+                    class:active={preferences.sidebar_mode === 'fixed'}
+                    role="radio"
+                    aria-checked={preferences.sidebar_mode === 'fixed'}
+                    on:click={() =>
+                      (preferences = { ...preferences, sidebar_mode: 'fixed' })}
+                    >固定模式</button
+                  >
+                  <button
+                    type="button"
+                    class:active={preferences.sidebar_mode === 'hover'}
+                    role="radio"
+                    aria-checked={preferences.sidebar_mode === 'hover'}
+                    on:click={() =>
+                      (preferences = {
+                        ...preferences,
+                        sidebar_mode: 'hover',
+                        sidebar_collapsed: true
+                      })}>窄栏悬浮展开</button
+                  >
                 </div>
-                <p class="preference-help">固定模式可通过侧栏右下角图标展开或收起；悬浮模式默认显示图标，鼠标移入后展开。</p>
+                <p class="preference-help">
+                  固定模式可通过侧栏右下角图标展开或收起；悬浮模式默认显示图标，鼠标移入后展开。
+                </p>
               </fieldset>
-              <div class="profile-actions"><button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在保存' : '保存配置'}</button></div>
+              <div class="profile-actions">
+                <button class="primary" disabled={busy} aria-busy={busy}
+                  >{busy ? '正在保存' : '保存配置'}</button
+                >
+              </div>
+            </section>
+          </form>
+          <form class="profile-form" on:submit|preventDefault={() => changeOwnPassword()}>
+            <section class="panel profile-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">SECURITY</p>
+                  <h2>修改密码</h2>
+                </div>
+              </div>
+              <div class="profile-fields">
+                <label>当前密码<input type="password" bind:value={profileCurrentPassword} required autocomplete="current-password" /></label>
+                <label>新密码<input type="password" bind:value={profileNewPassword} required minlength="12" autocomplete="new-password" /></label>
+                <label>确认新密码<input type="password" bind:value={profileConfirmPassword} required minlength="12" autocomplete="new-password" /></label>
+              </div>
+              <div class="profile-actions">
+                <button class="primary" disabled={busy}>{busy ? '正在更新' : '更新密码'}</button>
+              </div>
             </section>
           </form>
         </section>
@@ -2879,7 +3953,7 @@
               <fieldset>
                 <legend>诊断 Skill</legend>
                 <div class="check-grid">
-                  {#each skillResources.filter((item) => resourceInActiveWorkspace(item)) as skill}
+                  {#each skillResources.filter( (item) => resourceInActiveWorkspace(item) ) as skill}
                     <label class="check-row"
                       ><input
                         type="checkbox"
@@ -3690,181 +4764,808 @@
             </div>
           </section>
         </section>
-      {:else}
-        <section class="content-grid two-column">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">PEOPLE</p>
-                <h2>用户</h2>
-              </div>
-              <span class="count">{users.length}</span>
-            </div>
-            <div class="table-list">
-              {#each users as user}<div class="list-row static">
-                  <span
-                    ><strong>{user.display_name || user.username}</strong><small
-                      >@{user.username}{user.email
-                        ? ` · ${user.email}`
-                        : ''}{user.phone ? ` · ${user.phone}` : ''}</small
-                    ></span
-                  ><span class="status-label {user.status}">{user.status}</span>
-                </div>{:else}<div class="empty-state">
-                  没有可见用户，或当前账号没有管理权限。
-                </div>{/each}
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">GROUPS</p>
-                <h2>成员组</h2>
-              </div>
-              <span class="count">{groups.length}</span>
-            </div>
-            <div class="table-list">
-              {#each groups as group}<div class="list-row static">
-                  <span
-                    ><strong>{group.name}</strong><small
-                      >{group.description || '无描述'} · {scopeName(
-                        group.scope_id
-                      )}</small
-                    ></span
-                  ><span class="status-label {group.status}"
-                    >{group.status}</span
+      {:else if view === 'access'}
+        <section class="access-page">
+          <section class="panel access-workbench">
+            {#if accessTab !== 'roles'}
+              <div class="access-filterbar">
+                <div class="access-filter-copy">
+                  <div>
+                    <h2>{accessTab === 'teams' ? '团队列表' : '用户列表'}</h2>
+                    <p>{accessTab === 'teams'
+                      ? '展开团队可查看其成员与项目。仅平台管理员可添加、编辑或删除团队。'
+                      : '角色包含直接授权和成员组继承授权；管理员仅可授权、删除或重置其他用户的密码。'}</p>
+                  </div>
+                  <span class="access-count">{accessTab === 'teams'
+                    ? visibleAccessTeams.length + ' 个团队'
+                    : visibleAccessUsers.length + ' 个用户'}</span>
+                </div>
+                <label class="access-search">
+                  <Search size={15} aria-hidden="true" />
+                  <span class="sr-only">搜索{accessTab === 'teams' ? '团队' : '用户'}</span><input
+                    bind:value={accessSearch}
+                    placeholder={accessTab === 'teams'
+                      ? '搜索团队名称、编码或状态'
+                      : '搜索姓名、用户名、邮箱或手机号'}
+                  />
+                </label>
+                <div class="access-heading-actions">
+                {#if accessTab === 'teams'}
+                  <button
+                    class="secondary danger-action"
+                    type="button"
+                    disabled={selectedAccessTeamIds.length === 0 || busy}
+                    title={selectedAccessTeamIds.length === 0
+                      ? '请先选择可管理的团队'
+                      : '批量禁用所选团队'}
+                    on:click={() =>
+                      requestDisable('team', selectedAccessTeamIds)}
+                    ><Trash2 size={15} aria-hidden="true" />批量删除</button
                   >
-                </div>{:else}<div class="empty-state">暂无成员组</div>{/each}
-            </div>
-            <form
-              class="stack-form compact-form"
-              on:submit|preventDefault={createGroup}
-            >
-              <label
-                >作用域<select bind:value={groupScopeId} required
-                  ><option value="" disabled>选择作用域</option
-                  >{#each scopeChoices as scope}<option value={scope.id}
-                      >{scope.name}</option
-                    >{/each}</select
-                ></label
-              ><input
-                bind:value={groupName}
-                required
-                placeholder="成员组名称"
-              /><input
-                bind:value={groupDescription}
-                placeholder="描述"
-              /><button class="primary" disabled={busy}>新增成员组</button>
-            </form>
-          </section>
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">AUTHORIZATION</p>
-                <h2>角色绑定</h2>
-              </div>
-              <span class="count">{bindings.length}</span>
-            </div>
-            <div class="table-list">
-              {#each bindings as binding}<div class="list-row static">
-                  <span
-                    ><strong>{binding.role_name}</strong><small
-                      >{binding.subject_type} · {binding.subject_id.slice(0, 8)} ·
-                      {scopeName(binding.scope_id)}</small
-                    ></span
-                  ><button
-                    class="icon-button"
-                    title="删除绑定"
-                    aria-label="删除绑定"
-                    on:click={() => deleteBinding(binding)}>×</button
+                  {#if accessCanCreateTeam}<button
+                      class="primary"
+                      type="button"
+                      on:click={() => (teamDialogOpen = true)}
+                      ><Plus size={15} aria-hidden="true" />添加团队</button
+                    >{/if}
+                {:else if accessTab === 'users'}
+                  <button
+                    class="secondary danger-action"
+                    type="button"
+                    disabled={selectedAccessUserIds.length === 0 || busy}
+                    title={selectedAccessUserIds.length === 0
+                      ? '请先选择可管理的用户'
+                      : '批量禁用所选用户'}
+                    on:click={() =>
+                      requestDisable('user', selectedAccessUserIds)}
+                    ><Trash2 size={15} aria-hidden="true" />批量删除</button
                   >
-                </div>{:else}<div class="empty-state">
-                  暂无可见角色绑定
-                </div>{/each}
-            </div>
-            <form class="binding-form" on:submit|preventDefault={createBinding}>
-              <select bind:value={bindingSubjectType}
-                ><option value="user">用户</option><option value="group"
-                  >成员组</option
-                ></select
-              ><input
-                bind:value={bindingSubjectId}
-                required
-                placeholder="主体 ID"
-                aria-label="主体 ID"
-              /><select bind:value={bindingRoleId} required
-                ><option value="" disabled>角色</option
-                >{#each roles as role}<option value={role.id}
-                    >{role.name} · {role.scope_type}</option
-                  >{/each}</select
-              ><select bind:value={bindingScopeId} required
-                ><option value="" disabled>作用域</option
-                >{#each scopeChoices as scope}<option value={scope.id}
-                    >{scope.name}</option
-                  >{/each}</select
-              ><button class="secondary" disabled={busy}>绑定角色</button>
-            </form>
-          </section>
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">RESOURCE ACCESS</p>
-                <h2>具体资源授权</h2>
-                <p class="muted">
-                  在可进入项目的成员中，进一步限定可操作的具体资源。
-                </p>
+                  {#if accessCanCreateUser}<button
+                      class="primary"
+                      type="button"
+                      on:click={() => {
+                        resetUserDialog();
+                        userDialogOpen = true;
+                      }}><Plus size={15} aria-hidden="true" />添加用户</button
+                    >{/if}
+                {/if}
+                </div>
               </div>
-              <span class="count">{resourceBindings.length}</span>
-            </div>
-            <div class="table-list">
-              {#each resourceBindings as binding}<div class="list-row static">
-                  <span
-                    ><strong
-                      >{binding.role_name} · {binding.resource_name}</strong
-                    ><small
-                      >{binding.subject_type} · {binding.subject_id.slice(0, 8)} ·
-                      {resourceSchemaName(binding.resource_kind)} · {scopeName(
-                        binding.scope_id
-                      )}</small
-                    ></span
-                  ><button
-                    class="icon-button"
-                    title="删除资源授权"
-                    aria-label="删除资源授权"
-                    on:click={() => deleteResourceBinding(binding)}>×</button
+            {/if}
+            {#if accessLoading}
+              <div class="access-state" aria-live="polite">正在加载管理数据...</div>
+            {:else if accessLoadError}
+              <div class="access-state access-error">
+                <span>{accessLoadError}</span><button
+                  class="secondary"
+                  type="button"
+                  on:click={loadAccess}>重试</button
+                >
+              </div>
+            {:else if accessTab === 'teams'}
+              <div class="access-table access-team-table">
+                <div class="access-table-header">
+                  <input
+                    type="checkbox"
+                    aria-label="选择全部可管理团队"
+                    checked={visibleAccessTeams.some(canManageTeam) &&
+                      visibleAccessTeams
+                        .filter(canManageTeam)
+                        .every((team) => selectedAccessTeamIds.includes(team.id))}
+                    on:change={(event) => {
+                      selectedAccessTeamIds = event.currentTarget.checked
+                        ? visibleAccessTeams.filter(canManageTeam).map((team) => team.id)
+                        : [];
+                    }}
+                  /><span>团队</span><span>成员</span><span>项目</span
+                  ><span>状态</span><span>操作</span>
+                </div>
+                {#each visibleAccessTeams as team}
+                  {@const teamMembers = accessTeamUsers[team.id] ?? []}
+                  {@const teamProjects = projects.filter(
+                    (project) => project.team_id === team.id
+                  )}
+                  <article class="access-record">
+                    <div class="access-table-row">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择团队 ${team.name}`}
+                        disabled={!canManageTeam(team) || team.status !== 'active'}
+                        bind:group={selectedAccessTeamIds}
+                        value={team.id}
+                      />
+                      <button
+                        class="access-team-trigger"
+                        type="button"
+                        aria-expanded={teamAccessExpanded[team.id]}
+                        on:click={() => toggleTeamAccess(team.id)}
+                      >
+                        <span class="entity-icon team-icon"
+                          >{iconGlyph(team.icon)}</span
+                        ><span><strong>{team.name}</strong><small
+                            >{team.code}</small
+                          ></span
+                        ><ChevronDown
+                          size={16}
+                          class={teamAccessExpanded[team.id]
+                            ? 'expanded'
+                            : undefined}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      <span class="access-metric"
+                        ><strong>{teamMembers.length}</strong><small
+                          >位可见成员</small
+                        ></span
+                      ><span class="access-metric"
+                        ><strong>{teamProjects.length}</strong><small
+                          >个关联项目</small
+                        ></span
+                      ><span class="status-label {team.status}"
+                        >{team.status === 'active' ? '启用' : '已禁用'}</span
+                      >
+                      <div class="access-row-actions">
+                        {#if canManageTeam(team)}
+                          <button
+                            class="icon-button"
+                            type="button"
+                            aria-label={`编辑团队 ${team.name}`}
+                            title="编辑团队"
+                            on:click={() => openEditTeam(team)}
+                            ><Pencil size={15} aria-hidden="true" /></button
+                          ><button
+                            class="icon-button danger-action"
+                            type="button"
+                            aria-label={`删除团队 ${team.name}`}
+                            title="禁用团队"
+                            disabled={team.status !== 'active'}
+                            on:click={() => requestDisable('team', [team.id])}
+                            ><Trash2 size={15} aria-hidden="true" /></button
+                          >
+                        {:else}<span class="read-only-label">只读</span>{/if}
+                      </div>
+                    </div>
+                    {#if teamAccessExpanded[team.id]}
+                      <div class="team-directory-detail">
+                        <div class="directory-subsection">
+                          <span class="directory-label">成员</span>
+                          {#each teamMembers as member}<button
+                              class="directory-user"
+                              type="button"
+                              on:click={() => {
+                                accessTab = 'users';
+                                accessSearch = member.username;
+                              }}
+                              ><span class="avatar tiny-avatar"
+                                >{(member.display_name || member.username)
+                                  .slice(0, 1)
+                                  .toUpperCase()}</span
+                              ><span><strong
+                                  >{member.display_name || member.username}</strong
+                                ><small
+                                  >{userRoles(member.id).map(roleLabel).join(' · ') ||
+                                    '未分配角色'}</small
+                                ></span
+                              ></button
+                            >{:else}<span class="directory-empty"
+                              >当前账号看不到该团队的成员</span
+                            >{/each}
+                        </div>
+                        <div class="directory-subsection">
+                          <span class="directory-label">项目</span>
+                          {#each teamProjects as project}<div
+                              class="directory-project"
+                            ><span class="project-dot"></span><span
+                                ><strong>{project.name}</strong><small
+                                  >{project.code} · {project.status}</small
+                                ></span
+                              ></div
+                            >{:else}<span class="directory-empty"
+                              >暂无项目</span
+                            >{/each}
+                        </div>
+                      </div>
+                    {/if}
+                  </article>
+                {:else}<div class="access-state">
+                    没有匹配的团队。请清除搜索条件后重试。
+                  </div>{/each}
+              </div>
+            {:else if accessTab === 'users'}
+              <div class="access-table access-user-table">
+                <div class="access-table-header">
+                  <input
+                    type="checkbox"
+                    aria-label="选择全部可管理用户"
+                    checked={visibleAccessUsers.some(canManageUser) &&
+                      visibleAccessUsers
+                        .filter(canManageUser)
+                        .every((user) => selectedAccessUserIds.includes(user.id))}
+                    on:change={(event) => {
+                      selectedAccessUserIds = event.currentTarget.checked
+                        ? visibleAccessUsers.filter(canManageUser).map((user) => user.id)
+                        : [];
+                    }}
+                  /><span>用户</span><span>授权范围</span><span>角色与权限</span
+                  ><span>状态</span><span>操作</span>
+                </div>
+                {#each visibleAccessUsers as user}
+                  <article class="access-table-row access-user-row">
+                    <input
+                      type="checkbox"
+                      aria-label={`选择用户 ${user.display_name || user.username}`}
+                      disabled={!canManageUser(user) || user.status !== 'active'}
+                      bind:group={selectedAccessUserIds}
+                      value={user.id}
+                    />
+                    <div class="access-user-main">
+                      <span class="avatar access-avatar"
+                        >{(user.display_name || user.username)
+                          .slice(0, 1)
+                          .toUpperCase()}</span
+                      ><span><strong>{user.display_name || user.username}</strong
+                        ><small>@{user.username}{user.email
+                            ? ` · ${user.email}`
+                            : ''}</small
+                        ></span
+                      >
+                    </div>
+                    <div class="access-user-scopes">
+                      {#each userScopeNames(user.id).slice(0, 2) as scope}<span
+                          >{scope}</span
+                        >{:else}<span class="permission-empty"
+                          >无可见 Scope</span
+                        >{/each}
+                    </div>
+                    <div class="access-user-auth">
+                      <div class="access-user-roles">
+                        {#each userRoles(user.id) as role}<span class="role-chip"
+                            >{roleLabel(role)}</span
+                          >{:else}<span class="role-chip muted-chip"
+                            >未分配角色</span
+                          >{/each}
+                      </div>
+                      <div class="access-user-permissions">
+                        {#each userPermissions(user.id).slice(0, 3) as permission}<span
+                            >{permission}</span
+                          >{:else}<span class="permission-empty"
+                            >暂无权限</span
+                          >{/each}{#if userPermissions(user.id).length > 3}<span
+                            >+{userPermissions(user.id).length - 3}</span
+                          >{/if}
+                      </div>
+                    </div>
+                    <span class="status-label {user.status}"
+                      >{user.status === 'active'
+                        ? '启用'
+                        : user.status === 'locked'
+                          ? '已锁定'
+                          : '已禁用'}</span
+                    >
+                    <div class="access-row-actions">
+                      {#if canManageUser(user)}
+                        <button
+                          class="icon-button"
+                          type="button"
+                          aria-label={`编辑用户 ${user.display_name || user.username}`}
+                          title="编辑用户与授权"
+                          on:click={() => openEditUser(user)}
+                          ><Pencil size={15} aria-hidden="true" /></button
+                        ><button
+                          class="icon-button danger-action"
+                          type="button"
+                          aria-label={`删除用户 ${user.display_name || user.username}`}
+                          title="禁用用户"
+                          disabled={user.status !== 'active'}
+                          on:click={() => requestDisable('user', [user.id])}
+                          ><Trash2 size={15} aria-hidden="true" /></button
+                        >
+                      {:else}<span class="read-only-label"
+                          >{user.id === currentUser?.id ? '当前账号' : '只读'}</span
+                        >{/if}
+                    </div>
+                  </article>
+                {:else}<div class="access-state">
+                    没有匹配的用户，或当前账号没有成员查看权限。
+                  </div>{/each}
+              </div>
+            {:else}
+              <div class="role-catalog-grid">
+                <div class="role-catalog-toolbar">
+                  <div>
+                    <h2>角色权限目录</h2>
+                    <p>角色权限决定用户在对应 Scope 内可以执行的操作；仅管理员可为其他用户授权。</p>
+                  </div>
+                  <span class="access-role-boundary"><ShieldCheck
+                      size={16}
+                      aria-hidden="true"
+                    />授权时只显示当前账号可完整授予的角色</span
                   >
-                </div>{:else}<div class="empty-state">
-                  暂无具体资源授权；Scope 角色仍按原有规则覆盖整个范围。
-                </div>{/each}
-            </div>
-            <form
-              class="binding-form resource-binding-form"
-              on:submit|preventDefault={createResourceBinding}
-            >
-              <select bind:value={resourceBindingSubjectType}
-                ><option value="user">用户</option><option value="group"
-                  >成员组</option
-                ></select
-              ><input
-                bind:value={resourceBindingSubjectId}
-                required
-                placeholder="主体 ID"
-                aria-label="主体 ID"
-              /><select bind:value={resourceBindingRoleId} required
-                ><option value="" disabled>资源角色</option
-                >{#each resourceRoles as role}<option value={role.id}
-                    >{role.name}</option
-                  >{/each}</select
-              ><select bind:value={resourceBindingResourceId} required
-                ><option value="" disabled>具体资源</option
-                >{#each resources as resource}<option value={resource.id}
-                    >{resource.name} · {resourceSchemaName(resource.kind)} · {scopeName(
-                      resource.scope_id
-                    )}</option
-                  >{/each}</select
-              ><button class="secondary" disabled={busy}>绑定资源角色</button>
-            </form>
+                </div>
+                {#each roles as role}<article class="role-catalog-item">
+                    <div>
+                      <strong>{roleLabel(role.name)}</strong><small
+                        >{roleScopeLabel(role.scope_type)}{role.builtin
+                          ? ' · 内置'
+                          : ''}</small
+                      >
+                    </div>
+                    <div class="permission-list">
+                      {#each role.permissions as permission}<span
+                          >{permission}</span
+                        >{/each}
+                    </div>
+                  </article>{:else}<div class="access-state">
+                    当前账号没有角色目录查看权限。
+                  </div>{/each}
+              </div>
+            {/if}
           </section>
         </section>
+        {#if teamDialogOpen}
+          <div
+            class="dialog-backdrop"
+            role="presentation"
+            on:click={(event) => {
+              if (event.currentTarget === event.target) teamDialogOpen = false;
+            }}
+          >
+            <dialog open class="dialog" aria-labelledby="team-dialog-title">
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">TEAM</p>
+                  <h2 id="team-dialog-title">新增团队</h2>
+                </div>
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="关闭"
+                  on:click={() => (teamDialogOpen = false)}>×</button
+                >
+              </div>
+              <form class="stack-form" on:submit|preventDefault={createTeam}>
+                <label
+                  >团队名称<input
+                    bind:value={teamName}
+                    required
+                    placeholder="例如：支付平台"
+                  /></label
+                ><label
+                  >团队编码<input
+                    bind:value={teamCode}
+                    required
+                    placeholder="例如：payments"
+                  /></label
+                ><label
+                  >图标<input bind:value={teamIcon} placeholder="team" /></label
+                >
+                <div class="form-actions">
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={() => (teamDialogOpen = false)}>取消</button
+                  ><button class="primary" disabled={busy}>创建团队</button>
+                </div>
+              </form>
+            </dialog>
+          </div>
+        {/if}
+        {#if userDialogOpen}
+          <div
+            class="dialog-backdrop"
+            role="presentation"
+            on:click={(event) => {
+              if (event.currentTarget === event.target) userDialogOpen = false;
+            }}
+          >
+            <dialog open class="dialog" aria-labelledby="user-dialog-title">
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">USER ACCESS</p>
+                  <h2 id="user-dialog-title">新增用户</h2>
+                </div>
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="关闭"
+                  on:click={() => (userDialogOpen = false)}>×</button
+                >
+              </div>
+              <form class="stack-form" on:submit|preventDefault={createUser}>
+                <div class="form-row">
+                  <label
+                    >显示名称<input
+                      bind:value={newUserDisplayName}
+                      required
+                      placeholder="姓名或称呼"
+                    /></label
+                  ><label
+                    >用户名<input
+                      bind:value={newUserUsername}
+                      required
+                      placeholder="登录用户名"
+                    /></label
+                  >
+                </div>
+                <div class="form-row">
+                  <label
+                    >邮箱<input
+                      type="email"
+                      bind:value={newUserEmail}
+                      placeholder="name@example.com"
+                    /></label
+                  ><label
+                    >手机号<input
+                      bind:value={newUserPhone}
+                      placeholder="+86"
+                    /></label
+                  >
+                </div>
+                <fieldset class="preference-group">
+                  <legend>一次性密码</legend>
+                  <div class="segmented-control" role="radiogroup" aria-label="一次性密码方式">
+                    <button type="button" class:active={newUserPasswordMode === 'generated'} on:click={() => (newUserPasswordMode = 'generated')}>自动生成</button>
+                    <button type="button" class:active={newUserPasswordMode === 'manual'} on:click={() => (newUserPasswordMode = 'manual')}>手动设置</button>
+                  </div>
+                  {#if newUserPasswordMode === 'manual'}
+                    <label>一次性密码<input type="password" bind:value={newUserPassword} required minlength="12" autocomplete="new-password" placeholder="至少 12 位" /></label>
+                  {:else}
+                    <p class="form-help">创建后显示一次性密码，仅可查看和复制一次。</p>
+                  {/if}
+                </fieldset>
+                <section class="new-user-grants" aria-label="用户授权">
+                  <div class="new-user-grants-heading">
+                    <div>
+                      <strong>授权配置</strong>
+                      <p>每行定义一个授权范围。只能授予当前账号拥有的同级或下级权限。</p>
+                    </div>
+                    <button class="secondary" type="button" on:click={addNewUserGrant} disabled={busy || manageableScopeChoices.length === 0}
+                      ><Plus size={15} aria-hidden="true" />添加授权</button
+                    >
+                  </div>
+                  {#each newUserGrants as grant, grantIndex}
+                    <section class="new-user-grant-row">
+                      <div class="new-user-grant-fields">
+                        <label>级别<select
+                          value={grant.scopeType}
+                          on:change={(event) =>
+                            chooseNewUserGrantType(
+                              grantIndex,
+                              event.currentTarget.value as NewUserGrant['scopeType']
+                            )}
+                          >{#each ['platform', 'team', 'project'] as type}
+                            {#if newUserGrantScopes(type as NewUserGrant['scopeType']).length > 0}
+                              <option value={type}>{grantScopeLabel(type as NewUserGrant['scopeType'])}</option>
+                            {/if}
+                          {/each}</select
+                        ></label>
+                        <label>对象
+                          {#if grant.scopeType === 'platform'}
+                            <span class="new-user-no-object">无需选择</span>
+                          {:else}
+                            <select
+                              value={grant.scopeID}
+                              on:change={(event) =>
+                                updateNewUserGrant(grantIndex, {
+                                  scopeID: event.currentTarget.value,
+                                  roleID: '',
+                                  resourceGrants: []
+                                })}
+                              ><option value="">选择{grant.scopeType === 'team' ? '团队' : '项目'}</option
+                              >{#each newUserGrantScopes(grant.scopeType) as scope}
+                                <option value={scope.id}>{scope.name}</option>
+                              {/each}</select
+                            >
+                          {/if}
+                        </label>
+                        <label>角色<select
+                          value={grant.roleID}
+                          disabled={!grant.scopeID}
+                          on:change={(event) =>
+                            updateNewUserGrant(grantIndex, {
+                              roleID: event.currentTarget.value,
+                              resourceGrants: []
+                            })}
+                          ><option value="">选择角色</option
+                          >{#each newUserGrantRoles(grant) as role}
+                            <option value={role.id}>{grantRoleLabel(role.name)}</option>
+                          {/each}</select
+                        ></label>
+                        <button
+                          class="icon-button danger-action"
+                          type="button"
+                          title="移除此授权"
+                          aria-label="移除此授权"
+                          disabled={busy || newUserGrants.length === 1}
+                          on:click={() => removeNewUserGrant(grantIndex)}
+                          ><Trash2 size={15} aria-hidden="true" /></button
+                        >
+                      </div>
+                      {#if newUserGrantIsParticipant(grant)}
+                        <div class="new-user-resource-grants">
+                          <div>
+                            <strong>项目资源权限</strong>
+                            <small>项目参与员默认没有资源权限，请按需添加。</small>
+                          </div>
+                          {#each grant.resourceGrants as resourceGrant, resourceIndex}
+                            <div class="new-user-resource-grant-row">
+                              <label>资源<select
+                                value={resourceGrant.resourceID}
+                                on:change={(event) => updateNewUserResourceGrant(grantIndex, resourceIndex, { resourceID: event.currentTarget.value })}
+                                ><option value="">选择项目资源</option
+                                >{#each newUserGrantResources(grant) as resource}
+                                  <option value={resource.id}>{resource.name} · {resource.kind}</option>
+                                {/each}</select
+                              ></label>
+                              <label>资源权限<select
+                                value={resourceGrant.roleID}
+                                on:change={(event) => updateNewUserResourceGrant(grantIndex, resourceIndex, { roleID: event.currentTarget.value })}
+                                ><option value="">选择资源权限</option
+                                >{#each newUserGrantResourceRoles(grant) as resourceRole}
+                                  <option value={resourceRole.id}>{roleLabel(resourceRole.name)}</option>
+                                {/each}</select
+                              ></label>
+                              <button class="icon-button danger-action" type="button" title="移除资源权限" aria-label="移除资源权限" on:click={() => removeNewUserResourceGrant(grantIndex, resourceIndex)}><Trash2 size={14} aria-hidden="true" /></button>
+                            </div>
+                          {/each}
+                          <button class="secondary" type="button" on:click={() => addNewUserResourceGrant(grantIndex)} disabled={busy}><Plus size={14} aria-hidden="true" />添加资源权限</button>
+                        </div>
+                      {/if}
+                    </section>
+                  {:else}
+                    <p class="form-help">当前账号没有可授权的范围。</p>
+                  {/each}
+                </section>
+                <div class="form-actions">
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={() => (userDialogOpen = false)}>取消</button
+                  ><button
+                    class="primary"
+                    disabled={busy ||
+                      newUserGrants.length === 0 ||
+                      newUserGrants.some(
+                        (grant) =>
+                          !grant.scopeID ||
+                          !grant.roleID ||
+                          grant.resourceGrants.some(
+                            (resourceGrant) =>
+                              !resourceGrant.resourceID || !resourceGrant.roleID
+                          )
+                      )}
+                    >创建用户并授权</button
+                  >
+                </div>
+              </form>
+              {#if createdUserCredentials}
+                <section class="role-preview" aria-live="polite">
+                  <strong>账号已创建</strong>
+                  <p>请立即安全交付以下一次性凭据。用户首次登录后必须修改密码。</p>
+                  <label>用户名<input value={createdUserCredentials.username} readonly /></label>
+                  <label>一次性密码<input value={createdUserCredentials.password} readonly /></label>
+                  <div class="form-actions">
+                    <button class="secondary" type="button" on:click={() => copyCredentials(false)}>复制用户名</button>
+                    <button class="primary" type="button" on:click={() => copyCredentials(true)}>复制用户名和密码</button>
+                    <button class="secondary" type="button" on:click={() => { userDialogOpen = false; resetUserDialog(); }}>完成</button>
+                  </div>
+                </section>
+              {/if}
+            </dialog>
+          </div>
+        {/if}
+        {#if editingTeam}
+          <div
+            class="dialog-backdrop"
+            role="presentation"
+            on:click={(event) => {
+              if (event.currentTarget === event.target) editingTeam = null;
+            }}
+          >
+            <dialog open class="dialog" aria-labelledby="edit-team-dialog-title">
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">TEAM</p>
+                  <h2 id="edit-team-dialog-title">编辑团队</h2>
+                </div>
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="关闭"
+                  on:click={() => (editingTeam = null)}>×</button
+                >
+              </div>
+              <form class="stack-form" on:submit|preventDefault={saveTeam}>
+                <label
+                  >团队名称<input
+                    bind:value={editTeamName}
+                    required
+                    maxlength="120"
+                    placeholder="例如：支付平台"
+                  /></label
+                ><label
+                  >图标<input
+                    bind:value={editTeamIcon}
+                    required
+                    placeholder="例如：team"
+                  /></label
+                ><label
+                  >状态<select bind:value={editTeamStatus}
+                    ><option value="active">启用</option><option value="disabled"
+                      >禁用</option
+                    ></select
+                  ></label
+                >
+                <div class="form-actions">
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={() => (editingTeam = null)}>取消</button
+                  ><button class="primary" disabled={busy}>保存团队</button>
+                </div>
+              </form>
+            </dialog>
+          </div>
+        {/if}
+        {#if editingUser}
+          <div
+            class="dialog-backdrop"
+            role="presentation"
+            on:click={(event) => {
+              if (event.currentTarget === event.target) editingUser = null;
+            }}
+          >
+            <dialog open class="dialog wide-dialog" aria-labelledby="edit-user-dialog-title">
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">USER ACCESS</p>
+                  <h2 id="edit-user-dialog-title">编辑用户与授权</h2>
+                </div>
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="关闭"
+                  on:click={() => (editingUser = null)}>×</button
+                >
+              </div>
+              <form class="stack-form" on:submit|preventDefault={saveUser}>
+                <div class="form-row">
+                  <label>用户名<input value={editingUser.username} disabled aria-label="用户名不可修改" /></label>
+                  <label
+                    >授权 Scope<select
+                      value={editUserScopeId}
+                      on:change={(event) =>
+                        chooseEditUserScope(event.currentTarget.value)}
+                      >{#each manageableScopeChoices as scope}<option
+                          value={scope.id}>{scope.name} · {scope.type}</option
+                        >{/each}</select
+                    ></label
+                  >
+                </div>
+                <fieldset class="role-picker" disabled={!editUserScopeId}>
+                  <legend>直接授权角色</legend>
+                  {#each availableEditUserRoles as role}<label class="check-row"
+                      ><input
+                        type="checkbox"
+                        bind:group={editUserRoleIds}
+                        value={role.id}
+                      /><span><strong>{roleLabel(role.name)}</strong><small
+                          >{role.permissions.length} 项权限</small
+                        ></span
+                      ></label
+                    >{:else}<p class="muted">
+                      当前账号在该 Scope 没有可授予角色。
+                    </p>{/each}
+                </fieldset>
+                <p class="form-help">
+                  成员组继承的角色保持不变；这里只调整所选 Scope 下的直接角色。
+                </p>
+                {#if editingProjectParticipant}
+                  <section class="participant-resource-access">
+                    <div class="participant-resource-heading">
+                      <div>
+                        <strong>项目资源权限</strong>
+                        <p>参与员默认没有项目资源权限，需要逐项手动添加。</p>
+                      </div>
+                      <ShieldCheck size={17} aria-hidden="true" />
+                    </div>
+                    <div class="form-row">
+                      <label>资源角色<select bind:value={editUserResourceRoleId}>
+                        <option value="">选择资源角色</option>
+                        {#each availableParticipantResourceRoles as resourceRole}
+                          <option value={resourceRole.id}>{roleLabel(resourceRole.name)}</option>
+                        {/each}
+                      </select></label>
+                      <label>具体资源<select bind:value={editUserResourceId}>
+                        <option value="">选择项目资源</option>
+                        {#each participantResources as resource}
+                          <option value={resource.id}>{resource.name} · {resource.kind}</option>
+                        {/each}
+                      </select></label>
+                    </div>
+                    <button class="secondary" type="button" disabled={busy || !editUserResourceRoleId || !editUserResourceId} on:click={grantParticipantResource}>
+                      <Plus size={15} aria-hidden="true" />添加资源权限
+                    </button>
+                    <div class="participant-resource-list">
+                      {#each participantResourceBindings as resourceBinding}
+                        <div class="participant-resource-item">
+                          <span><strong>{resourceBinding.resource_name}</strong><small>{roleLabel(resourceBinding.role_name)}</small></span>
+                          <button class="icon-button danger-action" type="button" aria-label="移除资源权限" title="移除资源权限" on:click={() => revokeParticipantResource(resourceBinding)}>
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                      {:else}
+                        <span class="permission-empty">尚未添加具体资源权限</span>
+                      {/each}
+                    </div>
+                  </section>
+                {/if}
+                {#if passwordResetCredentials}
+                  <section class="role-preview" aria-live="polite">
+                    <strong>一次性密码已生成</strong>
+                    <label>用户名<input value={passwordResetCredentials.username} readonly /></label>
+                    <label>一次性密码<input value={passwordResetCredentials.password} readonly /></label>
+                    <div class="form-actions">
+                      <button class="secondary" type="button" on:click={() => copyPasswordResetCredentials(false)}>复制用户名</button>
+                      <button class="primary" type="button" on:click={() => copyPasswordResetCredentials(true)}>复制用户名和密码</button>
+                    </div>
+                  </section>
+                {/if}
+                <div class="form-actions">
+                  <button class="secondary" type="button" disabled={busy} on:click={resetManagedUserPassword}>重置密码</button>
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={() => (editingUser = null)}>取消</button
+                  ><button
+                    class="primary"
+                    disabled={busy || !editUserScopeId}>保存授权</button
+                  >
+                </div>
+              </form>
+            </dialog>
+          </div>
+        {/if}
+        {#if disableTarget}
+          <div class="dialog-backdrop" role="presentation">
+            <dialog
+              open
+              class="dialog confirm-dialog"
+              aria-labelledby="disable-dialog-title"
+            >
+              <div class="dialog-heading">
+                <div>
+                  <p class="eyebrow">CONFIRM ACTION</p>
+                  <h2 id="disable-dialog-title">
+                    删除{disableTarget.ids.length} 个{disableTarget.kind ===
+                    'team'
+                      ? '团队'
+                      : '用户'}？
+                  </h2>
+                </div>
+              </div>
+              <p class="confirm-copy">
+                {disableTarget.kind === 'team'
+                  ? '团队将被禁用，其项目与历史数据会保留。禁用后团队不可继续用于新操作。'
+                  : '用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。'}
+              </p>
+              <div class="form-actions">
+                <button
+                  class="secondary"
+                  type="button"
+                  disabled={busy}
+                  on:click={() => (disableTarget = null)}>取消</button
+                ><button
+                  class="danger-button"
+                  type="button"
+                  disabled={busy}
+                  on:click={confirmDisable}
+                  >{busy ? '正在处理' : '确认删除'}</button
+                >
+              </div>
+            </dialog>
+          </div>
+        {/if}
       {/if}
     </main>
   </div>

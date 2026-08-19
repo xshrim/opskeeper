@@ -33,6 +33,14 @@ type Store interface {
 	RevokeAllSessions(context.Context, string, time.Time) error
 }
 
+type passwordChangeStore interface {
+	ChangePassword(context.Context, string, string, string) error
+}
+
+type passwordResetStore interface {
+	ResetPassword(context.Context, string, string) error
+}
+
 type UserManagementStore interface {
 	CreateUser(context.Context, string, string, string, string, string) (User, error)
 	ListUsers(context.Context) ([]User, error)
@@ -200,6 +208,18 @@ func (s *Service) LogoutAll(ctx context.Context, userID string) error {
 	return s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "auth.logout_all", Result: "success", Details: map[string]any{}})
 }
 
+func generateOneTimePassword() (string, error) {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%"
+	bytes := make([]byte, 18)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate one-time password: %w", err)
+	}
+	for index := range bytes {
+		bytes[index] = alphabet[int(bytes[index])%len(alphabet)]
+	}
+	return string(bytes), nil
+}
+
 func (s *Service) recordAudit(ctx context.Context, event audit.Event) error {
 	if s.auditor == nil {
 		return nil
@@ -250,6 +270,65 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (User, 
 		return User{}, err
 	}
 	return store.CreateUser(ctx, input.Username, input.Email, input.Phone, input.DisplayName, hash)
+}
+
+func (s *Service) CreateUserWithOneTimePassword(ctx context.Context, input CreateUserInput) (CreateUserResult, error) {
+	if input.Password == "" {
+		generated, err := generateOneTimePassword()
+		if err != nil {
+			return CreateUserResult{}, err
+		}
+		input.Password = generated
+	}
+	user, err := s.CreateUser(ctx, input)
+	if err != nil {
+		return CreateUserResult{}, err
+	}
+	user.MustChangePassword = true
+	return CreateUserResult{User: user, OneTimePassword: input.Password}, nil
+}
+
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	if len([]rune(newPassword)) < minimumPasswordLength {
+		return invalid(fmt.Sprintf("password must be at least %d characters", minimumPasswordLength))
+	}
+	if currentPassword == "" || currentPassword == newPassword {
+		return invalid("new password must differ from the current password")
+	}
+	store, ok := s.store.(passwordChangeStore)
+	if !ok {
+		return errors.New("password changes are unavailable")
+	}
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := store.ChangePassword(ctx, userID, currentPassword, hash); err != nil {
+		return err
+	}
+	return s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "auth.password.change", Result: "success", Details: map[string]any{}})
+}
+
+func (s *Service) ResetUserPassword(ctx context.Context, userID string) (string, error) {
+	store, ok := s.store.(passwordResetStore)
+	if !ok {
+		return "", errors.New("password resets are unavailable")
+	}
+	password, err := generateOneTimePassword()
+	if err != nil {
+		return "", err
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	if err := store.ResetPassword(ctx, userID, hash); err != nil {
+		return "", err
+	}
+	if err := s.recordAudit(ctx, audit.Event{ActorUserID: userID, Action: "auth.password.reset", Result: "success", Details: map[string]any{}}); err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 func (s *Service) GetUser(ctx context.Context, userID string) (User, error) {

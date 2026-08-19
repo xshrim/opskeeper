@@ -7,8 +7,10 @@ export interface User {
   phone: string;
   display_name: string;
   status: string;
+  must_change_password: boolean;
   created_at: string;
   updated_at: string;
+  can_manage?: boolean;
 }
 
 export interface UserPreferences {
@@ -508,6 +510,12 @@ export interface RoleBinding {
   created_at: string;
 }
 
+export interface CreateUserResult {
+  user: User;
+  bindings: RoleBinding[];
+  one_time_password: string;
+}
+
 export interface ResourceRoleDefinition {
   id: string;
   name: string;
@@ -621,6 +629,8 @@ export const api = {
     email: string;
     phone: string;
   }) => request<User>('api/v1/auth/me', patch(body)),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<User>('api/v1/auth/me/password', json(body)),
   preferences: () => request<UserPreferences>('api/v1/auth/me/preferences'),
   updatePreferences: (body: Omit<UserPreferences, 'avatar_updated_at'>) =>
     request<UserPreferences>('api/v1/auth/me/preferences', {
@@ -634,7 +644,9 @@ export const api = {
       body: file
     }),
   avatarURL: (updatedAt: string) =>
-    appURL(`api/v1/auth/me/avatar?updated_at=${encodeURIComponent(updatedAt)}`).toString(),
+    appURL(
+      `api/v1/auth/me/avatar?updated_at=${encodeURIComponent(updatedAt)}`
+    ).toString(),
   login: (identifier: string, password: string) =>
     request<User>('api/v1/auth/login', json({ identifier, password }), false),
   logout: () => request<void>('api/v1/auth/logout', { method: 'POST' }, false),
@@ -841,7 +853,37 @@ export const api = {
       json(body)
     ),
   users: () => request<User[]>('api/v1/users/'),
+  createUser: (body: {
+    username: string;
+    email: string;
+    phone: string;
+    display_name: string;
+    password: string;
+    password_mode: 'manual' | 'generated';
+    grants: Array<{
+      scope_id: string;
+      role_id: string;
+      resource_grants: Array<{
+        resource_id: string;
+        role_id: string;
+      }>;
+    }>;
+  }) => request<CreateUserResult>('api/v1/users/', json(body)),
+  resetUserPassword: (id: string) =>
+    request<{ one_time_password: string }>(`api/v1/users/${id}/password-reset`, {
+      method: 'POST'
+    }),
+  updateUser: (
+    id: string,
+    body: {
+      status?: string;
+    }
+  ) => request<User>(`api/v1/users/${id}`, patch(body)),
   groups: () => request<Group[]>('api/v1/groups/'),
+  groupMembers: (id: string) =>
+    request<Array<{ group_id: string; user_id: string; created_at: string }>>(
+      `api/v1/groups/${id}/members`
+    ),
   roles: () => request<RoleDefinition[]>('api/v1/roles/'),
   bindings: () => request<RoleBinding[]>('api/v1/role-bindings/'),
   createGroup: (body: Record<string, unknown>) =>

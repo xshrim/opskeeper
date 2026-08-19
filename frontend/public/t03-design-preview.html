@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T03 团队与用户管理 · 设计预览</title>
+    <style>
+      :root {
+        --ink: #2f2926;
+        --accent: #e7601b;
+        --surface: #ffffff;
+        --wash: #eee8e5;
+        --line: #ded6d1;
+        --muted: #796f69;
+        --soft-accent: #fff0e8;
+        --success: #2f7956;
+        --sidebar: #171b21;
+        --sidebar-muted: #aeb6c0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * { box-sizing: border-box; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+      body { margin: 0; min-width: 320px; background: var(--wash); }
+      button, input, select { font: inherit; }
+      button { cursor: pointer; }
+      .shell { min-height: 100vh; }
+      .app-layout { min-height: 100vh; display: grid; grid-template-columns: 218px minmax(0, 1fr); }
+      .sidebar { display: flex; flex-direction: column; gap: 18px; min-height: 100vh; padding: 22px 14px 18px; color: #f6f8f9; background: var(--sidebar); border-right: 1px solid #2f353d; }
+      .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+      .sidebar-brand .brand-mark { width: 28px; height: 28px; border-radius: 6px; font-size: 14px; }
+      .sidebar-brand strong { display: block; font-size: 15px; }
+      .sidebar-brand small { display: block; margin-top: 2px; color: #7e8995; font-size: 10px; }
+      .nav-label { margin: 10px 8px 0; color: #7e8995; font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+      .side-nav { display: grid; gap: 3px; }
+      .side-nav button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 11px; color: var(--sidebar-muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 13px; }
+      .side-nav button:hover, .side-nav button.active { color: #fff; background: #2a3038; }
+      .side-nav button.active::before { width: 3px; height: 18px; margin-left: -11px; margin-right: 5px; border-radius: 0 3px 3px 0; background: var(--accent); content: ''; }
+      .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 14px 8px 0; color: #8d97a3; border-top: 1px solid #30363e; font-size: 11px; }
+      .sidebar-foot .avatar { width: 26px; height: 26px; color: var(--ink); background: #f1c4a9; }
+      .page { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px clamp(18px, 4vw, 56px); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--surface); background: var(--accent); font-weight: 800; }
+      .brand strong { display: block; font-size: 15px; letter-spacing: .01em; }
+      .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+      .actor { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+      .avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--surface); background: var(--ink); font-size: 12px; font-weight: 700; }
+      main { width: min(1240px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 64px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+      h1 { margin: 0; font-size: clamp(25px, 4vw, 36px); line-height: 1.12; letter-spacing: 0; }
+      .intro p { max-width: 600px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+      .mode-select { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+      select { color: var(--ink); background: transparent; border: 0; outline: 0; font-weight: 700; }
+      .scheme-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+      .scheme-tab { min-height: 62px; padding: 10px 12px; color: var(--muted); background: rgba(255,255,255,.62); border: 1px solid transparent; border-radius: 8px; text-align: left; }
+      .scheme-tab:hover { border-color: var(--accent); }
+      .scheme-tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--accent); box-shadow: 0 2px 8px rgba(47,41,38,.06); }
+      .scheme-tab strong { display: block; font-size: 13px; }
+      .scheme-tab span { display: block; margin-top: 5px; font-size: 11px; }
+      .design-note { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; margin-bottom: 18px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; }
+      .design-note h2 { margin: 0; font-size: 17px; }
+      .design-note p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+      .tradeoffs { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+      .tradeoffs b { color: var(--ink); }
+      .workspace { display: grid; gap: 12px; }
+      .accordion { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 3px rgba(47,41,38,.04); }
+      .accordion summary { display: flex; align-items: center; gap: 14px; min-height: 68px; padding: 14px 18px; list-style: none; cursor: pointer; }
+      .accordion summary::-webkit-details-marker { display: none; }
+      .accordion summary:hover { background: #fffaf7; }
+      .summary-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; color: var(--accent); background: var(--soft-accent); border-radius: 8px; font-weight: 800; }
+      .summary-copy { min-width: 0; flex: 1; }
+      .summary-copy strong { display: block; font-size: 15px; }
+      .summary-copy span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+      .summary-actions { display: flex; align-items: center; gap: 7px; }
+      .summary-actions button, .row-action, .bulk-action { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); font-size: 12px; }
+      .summary-actions button:hover, .row-action:hover, .bulk-action:hover { border-color: var(--accent); color: var(--accent); }
+      .summary-actions .primary, .bulk-action.primary { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+      .summary-actions .primary:hover, .bulk-action.primary:hover { background: #c94e12; color: var(--surface); }
+      .chevron { color: var(--muted); font-size: 19px; transition: transform .18s ease; }
+      details[open] .chevron { transform: rotate(180deg); }
+      .panel { padding: 0 18px 18px; border-top: 1px solid var(--line); }
+      .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; }
+      .toolbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .search { width: min(280px, 100%); min-height: 34px; padding: 0 11px; color: var(--ink); background: #fffaf7; border: 1px solid var(--line); border-radius: 6px; outline: 0; }
+      .search:focus, select:focus, button:focus-visible { outline: 3px solid rgba(231,96,27,.24); outline-offset: 2px; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .list { display: grid; gap: 8px; }
+      .list-row { display: grid; grid-template-columns: auto minmax(190px, 1.4fr) minmax(140px, 1fr) minmax(130px, .8fr) auto; align-items: center; gap: 14px; min-height: 62px; padding: 10px 12px; background: #fffdfc; border: 1px solid #e9e2de; border-radius: 7px; }
+      .list-row:hover { border-color: #d9b39e; }
+      .row-title strong, .cell strong { display: block; font-size: 13px; }
+      .row-title span, .cell span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+      .row-title { min-width: 0; }
+      .row-actions { display: flex; justify-content: end; gap: 6px; }
+      .row-action { min-width: 32px; justify-content: center; padding: 0 8px; }
+      .row-action.danger:hover { color: #b3472c; border-color: #d8a89b; }
+      .check { width: 16px; height: 16px; accent-color: var(--accent); }
+      .pill { display: inline-flex; align-items: center; width: max-content; min-height: 23px; padding: 0 8px; border-radius: 999px; color: var(--ink); background: var(--wash); font-size: 11px; font-weight: 700; }
+      .pill.accent { color: #a83d0d; background: var(--soft-accent); }
+      .pill.success { color: var(--success); background: #eaf4ed; }
+      .permission-set { display: flex; flex-wrap: wrap; gap: 5px; }
+      .role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding-top: 16px; }
+      .role-card { padding: 14px; background: #fffdfc; border: 1px solid #e9e2de; border-radius: 7px; }
+      .role-card h3 { margin: 0; font-size: 13px; }
+      .role-card p { margin: 5px 0 10px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .role-card .permission-set { gap: 4px; }
+      .role-card .pill { font-size: 10px; font-weight: 600; }
+      .matrix { overflow-x: auto; padding-top: 15px; }
+      table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 12px; }
+      th, td { padding: 12px 10px; border-bottom: 1px solid #e9e2de; text-align: left; vertical-align: middle; }
+      th { color: var(--muted); font-size: 11px; font-weight: 700; }
+      td strong { font-size: 13px; }
+      .dot { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--accent); }
+      .dot.off { background: #b8aaa2; }
+      .side-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(250px, .8fr); gap: 14px; }
+      .detail-rail { padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .detail-rail h3 { margin: 0; font-size: 14px; }
+      .detail-rail p { margin: 7px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+      .detail-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid #eee7e3; font-size: 12px; }
+      .detail-line span { color: var(--muted); }
+      .segmented { display: inline-flex; padding: 3px; background: var(--wash); border-radius: 7px; }
+      .segmented button { min-height: 28px; padding: 0 9px; color: var(--muted); background: transparent; border: 0; border-radius: 5px; font-size: 11px; }
+      .segmented button.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(47,41,38,.1); font-weight: 700; }
+      .footer-note { margin-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .variant-b .accordion { border-radius: 16px; }
+      .variant-b .accordion summary { min-height: 82px; background: #fffaf7; border-top: 3px solid var(--accent); }
+      .variant-b .summary-icon { border-radius: 50%; }
+      .variant-b .panel { padding: 0 22px 22px; }
+      .variant-c .workspace { gap: 20px; }
+      .variant-c .accordion { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+      .variant-c .accordion summary { padding: 10px 0; border-bottom: 2px solid var(--ink); }
+      .variant-c .panel { padding: 0; border-top: 0; }
+      .variant-c .list-row { border-radius: 0; background: transparent; border-left: 0; border-right: 0; }
+      .variant-d .accordion { border-left: 4px solid var(--accent); }
+      .variant-d .summary-actions .primary { border-radius: 999px; }
+      .variant-d .panel { background: #fffaf7; }
+      .variant-e .workspace { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+      .variant-e .accordion { grid-column: span 12; }
+      .variant-e .accordion:nth-child(2) { grid-column: span 7; }
+      .variant-e .accordion:nth-child(3) { grid-column: span 5; }
+      .variant-e .role-grid { grid-template-columns: 1fr; }
+      .tabbed-shell { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 3px rgba(47,41,38,.04); }
+      .inner-tabs { display: flex; align-items: center; gap: 4px; padding: 10px 14px 0; border-bottom: 1px solid var(--line); }
+      .inner-tab { position: relative; min-height: 42px; padding: 0 14px; color: var(--muted); background: transparent; border: 0; font-size: 13px; font-weight: 700; }
+      .inner-tab:hover { color: var(--ink); }
+      .inner-tab.active { color: var(--accent); }
+      .inner-tab.active::after { position: absolute; right: 12px; bottom: -1px; left: 12px; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); content: ''; }
+      .tab-panel { padding: 0 18px 18px; }
+      .tab-panel .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 4px; }
+      .tab-panel .panel-heading h2 { margin: 0; font-size: 16px; }
+      .tab-panel .panel-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+      .split-tabs { display: grid; grid-template-columns: 214px minmax(0, 1fr); min-height: 470px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(47,41,38,.04); }
+      .vertical-tabs { padding: 12px; background: #fffaf7; border-right: 1px solid var(--line); }
+      .vertical-tab { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; margin-bottom: 4px; padding: 0 12px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 13px; font-weight: 700; }
+      .vertical-tab:hover { color: var(--ink); background: #f7ebe4; }
+      .vertical-tab.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgba(47,41,38,.08); }
+      .vertical-tab .tab-count { color: var(--muted); font-size: 11px; font-weight: 500; }
+      .detail-panel { min-width: 0; padding: 0 20px 20px; }
+      .detail-panel .detail-header { display: flex; align-items: end; justify-content: space-between; gap: 14px; padding: 20px 0 15px; border-bottom: 1px solid var(--line); }
+      .detail-header h2 { margin: 0; font-size: 18px; }
+      .detail-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+      .permission-boundary { display: flex; gap: 7px; align-items: center; margin-top: 15px; padding: 10px 12px; color: var(--muted); background: #fffaf7; border: 1px solid #eadbd3; border-radius: 6px; font-size: 11px; }
+      @media (max-width: 840px) {
+        .intro, .design-note, .side-layout { grid-template-columns: 1fr; display: grid; align-items: start; }
+        .scheme-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .scheme-tab:last-child { grid-column: span 2; }
+        .list-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+        .list-row .cell:nth-of-type(2), .list-row .cell:nth-of-type(3) { display: none; }
+        .role-grid { grid-template-columns: 1fr; }
+        .variant-e .accordion, .variant-e .accordion:nth-child(2), .variant-e .accordion:nth-child(3) { grid-column: span 12; }
+      }
+      @media (max-width: 560px) {
+        .app-layout { grid-template-columns: 64px minmax(0, 1fr); }
+        .sidebar { padding: 18px 10px; }
+        .sidebar-brand { justify-content: center; padding: 0; }
+        .sidebar-brand > div:last-child, .nav-label, .side-nav button span, .sidebar-foot span { display: none; }
+        .side-nav button { justify-content: center; padding: 0; }
+        .side-nav button.active::before { display: none; }
+        .topbar { align-items: flex-start; }
+        .actor span { display: none; }
+        main { width: min(100% - 24px, 1240px); padding-top: 24px; }
+        .app-layout { grid-template-columns: 1fr; }
+        .sidebar { min-height: auto; flex-direction: row; align-items: center; padding: 10px 12px; }
+        .side-nav { display: flex; margin-left: auto; }
+        .side-nav button { min-height: 32px; padding: 0 8px; }
+        .side-nav button:nth-child(n+4), .sidebar-foot { display: none; }
+        .sidebar-brand > div:last-child { display: block; }
+        .split-tabs { grid-template-columns: 1fr; }
+        .vertical-tabs { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+        .vertical-tab { min-width: 110px; margin: 0 4px 0 0; }
+        .scheme-tabs { gap: 6px; }
+        .scheme-tab { min-height: 56px; padding: 9px; }
+        .scheme-tab:last-child { grid-column: span 1; }
+        .scheme-tabs { grid-template-columns: 1fr; }
+        .accordion summary { align-items: flex-start; flex-wrap: wrap; }
+        .summary-actions { width: 100%; padding-left: 48px; }
+        .toolbar { align-items: stretch; flex-direction: column; }
+        .search { width: 100%; }
+        .list-row { gap: 9px; padding: 9px; }
+        .row-actions { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="app-layout">
+        <aside class="sidebar">
+          <div class="sidebar-brand"><div class="brand-mark">O</div><div><strong>OpsKeeper</strong><small>智能值守平台</small></div></div>
+          <div class="nav-label">WORKSPACE</div>
+          <nav class="side-nav" aria-label="主导航">
+            <button type="button"><b>⌂</b><span>总览</span></button>
+            <button type="button"><b>◇</b><span>组织</span></button>
+            <button type="button"><b>□</b><span>资源</span></button>
+            <button type="button" class="active"><b>♙</b><span>成员与角色</span></button>
+          </nav>
+          <div class="sidebar-foot"><div class="avatar">林</div><span>林晓 · 平台管理员</span></div>
+        </aside>
+        <div class="page">
+          <header class="topbar">
+            <div class="brand"><div><small>Platform / 访问控制</small><strong>成员与角色</strong></div></div>
+            <div class="actor"><span>当前视角：平台管理员</span><button class="row-action" id="role-toggle" type="button" title="切换权限视角">切换视角</button></div>
+          </header>
+          <main>
+        <div class="intro">
+          <div><p class="eyebrow">DESIGN REVIEW / T03</p><h1>团队与用户管理</h1><p>五种纵向折叠栏方案预览。每个方案都包含团队、用户、角色三段结构，以及与当前权限视角匹配的操作示例。</p></div>
+          <label class="mode-select">权限视角<select id="access-select"><option value="admin">平台管理员</option><option value="manager">团队管理员</option><option value="viewer">只读成员</option></select></label>
+        </div>
+        <div class="scheme-tabs" role="tablist" aria-label="设计方案">
+          <button class="scheme-tab" aria-selected="true" data-variant="a" role="tab"><strong>A · 紧凑工作台</strong><span>高频管理 / 快速扫描</span></button>
+          <button class="scheme-tab" aria-selected="false" data-variant="b" role="tab"><strong>B · 控制台摘要</strong><span>统计优先 / 权限审计</span></button>
+          <button class="scheme-tab" aria-selected="false" data-variant="c" role="tab"><strong>C · 表格密度</strong><span>大数据量 / 批量操作</span></button>
+          <button class="scheme-tab" aria-selected="false" data-variant="d" role="tab"><strong>D · 侧边栏二级菜单</strong><span>独立页面 / 导航直达</span></button>
+          <button class="scheme-tab" aria-selected="false" data-variant="e" role="tab"><strong>E · 侧边选项卡</strong><span>目录导航 / 详情工作区</span></button>
+        </div>
+        <section id="design-note" class="design-note" aria-live="polite"></section>
+        <section id="workspace" class="workspace variant-a" aria-label="设计方案预览"></section>
+        <p class="footer-note">预览数据为演示数据。删除、编辑、新增按钮用于展示权限与操作位置；最终方案确认后才会接入真实 API。</p>
+          </main>
+        </div>
+      </div>
+    </div>
+    <script>
+      const data = {
+        teams: [
+          { name: '支付平台', code: 'payments', members: '12 位成员', projects: '4 个项目', state: '运行中' },
+          { name: '客户体验', code: 'cx', members: '8 位成员', projects: '3 个项目', state: '运行中' },
+          { name: '数据基础设施', code: 'data-platform', members: '19 位成员', projects: '7 个项目', state: '运行中' }
+        ],
+        users: [
+          { name: '林晓', handle: 'lin.xiao@example.com', scope: '支付平台', role: '团队管理员', permissions: ['团队管理', '用户授权'], state: '活跃' },
+          { name: '周宁', handle: 'zhou.ning@example.com', scope: '客户体验', role: '项目维护者', permissions: ['项目编辑', '诊断'], state: '活跃' },
+          { name: '陈默', handle: 'chen.mo@example.com', scope: '数据基础设施', role: '只读成员', permissions: ['查看'], state: '邀请中' }
+        ],
+        roles: [
+          { name: '平台管理员', scope: '平台 Scope', desc: '可管理所有团队、用户和角色。', permissions: ['团队管理', '用户授权', '角色管理', '项目管理'] },
+          { name: '团队管理员', scope: '团队 Scope', desc: '仅管理所属团队及其成员。', permissions: ['用户授权', '项目管理'] },
+          { name: '只读成员', scope: '项目 Scope', desc: '查看被授权范围内的资源。', permissions: ['查看'] }
+        ]
+      };
+      const notes = {
+        a: ['A · 紧凑工作台', '三段等宽手风琴，操作距离最短。团队行内保留成员和项目摘要，用户行内直接显示角色与权限。', ['适合：高频管理、成员数量中等', '取舍：审计统计较少，优先效率', '响应式：窄屏转为三列摘要 + 操作菜单']],
+        b: ['B · 控制台摘要', '每个折叠栏先展示统计摘要，再进入列表。橙色状态线和暖白层次强化区域边界，适合平台管理员审计。', ['适合：权限审计、组织规模较大', '取舍：首屏信息更多，操作略深', '响应式：摘要自动换行，列表保持单列']],
+        c: ['C · 表格密度', '三个折叠栏内部使用标准数据表格，字段对齐且批量操作靠近表头。可快速比较团队、用户和角色属性。', ['适合：数据量大、需要排序筛选', '取舍：横向信息多，移动端需卡片化', '响应式：窄屏隐藏次要列，保留名称和操作']],
+        d: ['D · 侧边栏二级菜单', '保留 T02 的“团队与用户”侧边栏父菜单，下设团队管理、用户管理、角色管理三个子菜单。点击子菜单后进入独立页面，主区只聚焦当前管理对象。', ['适合：管理对象边界清晰、需要稳定入口', '取舍：跨对象核对需要切换子菜单', '响应式：窄侧栏和移动端以浮层/横向导航承载子菜单']],
+        e: ['E · 侧边选项卡 + 详情工作区', '左侧提供团队、用户、角色目录，右侧承载当前对象的列表和操作。导航稳定、内容面积大，延续 T02 的侧栏与内容区关系。', ['适合：桌面管理、对象数量较多', '取舍：窄屏需将侧边选项卡转为横向', '响应式：840px 以下目录移至内容顶部']] 
+      };
+      let variant = 'a';
+      let access = 'admin';
+      let entity = 'team';
+      const note = document.getElementById('design-note');
+      const workspace = document.getElementById('workspace');
+      const actionLabels = { admin: true, manager: true, viewer: false };
+      function actions(kind) {
+        if (!actionLabels[access] || (access === 'manager' && kind === 'team')) return '<span class="muted">只读</span>';
+        return '<button class="row-action" title="编辑">✎<span class="sr-only">编辑</span></button><button class="row-action danger" title="删除">×<span class="sr-only">删除</span></button>';
+      }
+      function teamRows(table = false) {
+        return data.teams.map((t) => table ? `<tr><td><input class="check" type="checkbox" /></td><td><strong>${t.name}</strong><span>${t.code}</span></td><td>${t.members}</td><td>${t.projects}</td><td><span class="pill success">${t.state}</span></td><td class="row-actions">${actions('team')}</td></tr>` : `<div class="list-row"><input class="check" type="checkbox" /><div class="row-title"><strong>${t.name}</strong><span>${t.code}</span></div><div class="cell"><strong>${t.members}</strong><span>团队成员</span></div><div class="cell"><strong>${t.projects}</strong><span>关联项目</span></div><span class="pill success">${t.state}</span><div class="row-actions">${actions('team')}</div></div>`).join('');
+      }
+      function userRows(table = false) {
+        return data.users.map((u) => table ? `<tr><td><input class="check" type="checkbox" /></td><td><strong>${u.name}</strong><span>${u.handle}</span></td><td>${u.scope}</td><td><span class="pill accent">${u.role}</span></td><td><div class="permission-set">${u.permissions.map((p) => `<span class="pill">${p}</span>`).join('')}</div></td><td><span class="dot ${u.state === '活跃' ? '' : 'off'}"></span>${u.state}</td><td class="row-actions">${actions('user')}</td></tr>` : `<div class="list-row"><input class="check" type="checkbox" /><div class="row-title"><strong>${u.name}</strong><span>${u.handle}</span></div><div class="cell"><strong>${u.scope}</strong><span>授权范围</span></div><div class="cell"><span class="pill accent">${u.role}</span><div class="permission-set" style="margin-top:5px">${u.permissions.map((p) => `<span class="pill">${p}</span>`).join('')}</div></div><span class="pill ${u.state === '活跃' ? 'success' : ''}">${u.state}</span><div class="row-actions">${actions('user')}</div></div>`).join('');
+      }
+      function rolesCards() { return data.roles.map((r) => `<article class="role-card"><h3>${r.name}</h3><p>${r.scope} · ${r.desc}</p><div class="permission-set">${r.permissions.map((p) => `<span class="pill">${p}</span>`).join('')}</div></article>`).join(''); }
+      function section(kind, title, subtitle, icon, content, primary, extra = '') { return `<details class="accordion" ${kind === 'team' || variant === 'a' ? 'open' : ''}><summary><div class="summary-icon">${icon}</div><div class="summary-copy"><strong>${title}</strong><span>${subtitle}</span></div><div class="summary-actions">${extra}${primary && actionLabels[access] ? `<button class="primary" type="button">+ ${primary}</button>` : ''}<span class="chevron">⌄</span></div></summary><div class="panel">${content}</div></details>`; }
+      function standardContent() { return `<div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="搜索名称、账号或编码" /><span class="muted">已加载演示数据</span></div><button class="bulk-action" type="button">批量删除</button></div><div class="list">${teamRows()}</div>`; }
+      function userContent() { return `<div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="搜索用户或邮箱" /><span class="muted">3 个用户</span></div><button class="bulk-action" type="button">批量删除</button></div><div class="list">${userRows()}</div>`; }
+      function tableContent(kind) { const isTeam = kind === 'team'; return `<div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="${isTeam ? '筛选团队' : '筛选用户'}" /><span class="muted">${isTeam ? '3 个团队' : '3 个用户'}</span></div><button class="bulk-action" type="button">批量删除</button></div><div class="matrix"><table><thead><tr><th><input class="check" type="checkbox" /></th>${isTeam ? '<th>团队</th><th>成员</th><th>项目</th><th>状态</th>' : '<th>用户</th><th>Scope</th><th>角色</th><th>权限</th><th>状态</th>'}<th>操作</th></tr></thead><tbody>${isTeam ? teamRows(true) : userRows(true)}</tbody></table></div>`; }
+      function canCreate(kind) { return access === 'admin' || (access === 'manager' && kind === 'user'); }
+      function entityTitle(kind) { return kind === 'team' ? ['团队', '管理组织单元、成员和关联项目'] : kind === 'user' ? ['用户', '查看用户的角色、权限和授权范围'] : ['角色', '核对可授予角色及其权限边界']; }
+      function entityContent(kind) {
+        if (kind === 'team') return standardContent();
+        if (kind === 'user') return userContent() + `<div class="permission-boundary"><b>授权边界</b><span>${access === 'admin' ? '可授予平台内全部角色。' : access === 'manager' ? '仅可授予团队管理员及以下角色，且 Scope 限于所属团队。' : '当前账号无授权权限。'}</span></div>`;
+        return `<div class="role-grid">${rolesCards()}</div><div class="permission-boundary"><b>权限规则</b><span>角色选择器只展示不高于当前操作者权限等级的角色。</span></div>`;
+      }
+      function entityActions(kind) {
+        if (!canCreate(kind)) return '<span class="muted">当前视角为只读</span>';
+        const label = kind === 'team' ? '添加团队' : kind === 'user' ? '添加用户' : '添加角色';
+        return `<div class="summary-actions"><button type="button">批量删除</button><button type="button" class="primary">+ ${label}</button></div>`;
+      }
+      function horizontalTabs() {
+        const [title, subtitle] = entityTitle(entity);
+        return `<section class="tabbed-shell"><div class="inner-tabs" role="tablist">${['team','user','role'].map((kind) => `<button class="inner-tab ${entity === kind ? 'active' : ''}" data-entity="${kind}" role="tab" aria-selected="${entity === kind}">${entityTitle(kind)[0]} <span class="muted">${kind === 'team' ? '3' : kind === 'user' ? '3' : '3'}</span></button>`).join('')}</div><div class="tab-panel"><div class="panel-heading"><div><h2>${title}</h2><p>${subtitle}</p></div>${entityActions(entity)}</div>${entityContent(entity)}</div></section>`;
+      }
+      function verticalTabs() {
+        const [title, subtitle] = entityTitle(entity);
+        return `<section class="split-tabs"><nav class="vertical-tabs" aria-label="管理对象">${['team','user','role'].map((kind) => `<button class="vertical-tab ${entity === kind ? 'active' : ''}" data-entity="${kind}"><span>${entityTitle(kind)[0]}</span><span class="tab-count">3</span></button>`).join('')}</nav><div class="detail-panel"><div class="detail-header"><div><h2>${title}</h2><p>${subtitle}</p></div>${entityActions(entity)}</div>${entityContent(entity)}</div></section>`;
+      }
+      function render() {
+        document.querySelectorAll('.scheme-tab').forEach((button) => button.setAttribute('aria-selected', button.dataset.variant === variant ? 'true' : 'false'));
+        workspace.className = `workspace variant-${variant}`;
+        const [title, desc, bullets] = notes[variant];
+        note.innerHTML = `<div><h2>${title}</h2><p>${desc}</p></div><div class="tradeoffs">${bullets.map((item) => `<span><b>${item.split('：')[0]}：</b>${item.split('：').slice(1).join('：')}</span>`).join('')}</div>`;
+        let html = '';
+        if (variant === 'c') {
+          html = section('team', '团队', '3 个团队 · 成员与项目概览', 'T', tableContent('team'), '添加团队') + section('user', '用户', '3 个用户 · 角色与权限', 'U', tableContent('user'), '添加用户') + section('role', '角色', '3 个角色 · 权限矩阵', 'R', `<div class="matrix"><table><thead><tr><th>角色</th><th>Scope</th><th>权限数</th><th>绑定用户</th><th>操作</th></tr></thead><tbody>${data.roles.map((r, i) => `<tr><td><strong>${r.name}</strong></td><td>${r.scope}</td><td>${r.permissions.length}</td><td>${[12, 8, 19][i]} 人</td><td class="row-actions">${actions('role')}</td></tr>`).join('')}</tbody></table></div>`, '添加角色');
+        } else if (variant === 'd') {
+          html = horizontalTabs();
+        } else if (variant === 'e') {
+          html = verticalTabs();
+        } else {
+          const extra = variant === 'b' ? '<span class="pill accent">12 项待审</span>' : '';
+          html = section('team', '团队', variant === 'b' ? '3 个团队 · 39 位成员 · 14 个项目' : '3 个团队 · 成员与项目概览', 'T', standardContent(), '添加团队', extra) + section('user', '用户', variant === 'b' ? '3 个用户 · 2 个角色层级' : '3 个用户 · 角色与权限', 'U', userContent(), '添加用户') + section('role', '角色', '3 个角色 · 当前账号可授予范围', 'R', `<div class="role-grid">${rolesCards()}</div>`, '添加角色');
+        }
+        workspace.innerHTML = html;
+        workspace.querySelectorAll('[data-entity]').forEach((button) => button.addEventListener('click', () => { entity = button.dataset.entity; render(); }));
+      }
+      document.querySelectorAll('.scheme-tab').forEach((button) => button.addEventListener('click', () => { variant = button.dataset.variant; render(); }));
+      document.getElementById('access-select').addEventListener('change', (event) => { access = event.target.value; render(); });
+      document.getElementById('role-toggle').addEventListener('click', () => { const select = document.getElementById('access-select'); select.value = select.value === 'admin' ? 'manager' : select.value === 'manager' ? 'viewer' : 'admin'; access = select.value; render(); });
+      render();
+    </script>
+  </body>
+</html>

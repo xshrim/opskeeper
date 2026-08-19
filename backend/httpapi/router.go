@@ -81,7 +81,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 					authorizationMiddleware := authorizationHandler{service: options.Authorization}
 					requirePermission = authorizationMiddleware.requirePermission
 				}
-				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"), requirePermission)
+				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"), requirePermission, options.Access)
 			}
 			if options.Identity != nil {
 				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure, options.Access)

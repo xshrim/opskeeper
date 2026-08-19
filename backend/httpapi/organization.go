@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/identity"
 	"opskeeper/backend/organization"
 )
 
@@ -54,7 +55,7 @@ type updateOrganizationRequest struct {
 	Status *string            `json:"status"`
 }
 
-func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler, platformAdmins ...platformAdminService) {
 	handler := organizationHandler{service: service, apiBasePath: apiBasePath}
 	guard := func(permission authorization.Permission) func(http.Handler) http.Handler {
 		if requirePermission == nil {
@@ -62,13 +63,40 @@ func registerOrganizationRoutes(router chi.Router, service organizationService, 
 		}
 		return requirePermission(permission)
 	}
+	platformGuard := func(next http.Handler) http.Handler {
+		if len(platformAdmins) == 0 {
+			return next
+		}
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			user, ok := request.Context().Value(authenticatedUserContextKey{}).(identity.User)
+			if !ok {
+				next.ServeHTTP(writer, request)
+				return
+			}
+			if platformAdmins[0] == nil {
+				writeError(writer, request, http.StatusForbidden, "forbidden", "Platform administrator permission is required")
+				return
+			}
+			allowed, err := platformAdmins[0].IsPlatformAdmin(request.Context(), user.ID)
+			if err != nil {
+				writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to verify platform administrator permission")
+				return
+			}
+			if !allowed {
+				writeError(writer, request, http.StatusForbidden, "forbidden", "Platform administrator permission is required")
+				return
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
 	router.With(guard(authorization.OrganizationRead)).Get("/platform", handler.getPlatform)
 	router.Route("/teams", func(router chi.Router) {
 		router.With(guard(authorization.OrganizationRead)).Get("/", handler.listTeams)
-		router.With(guard(authorization.TeamManage)).Post("/", handler.createTeam)
+		router.With(platformGuard).Post("/", handler.createTeam)
 		router.Route("/{teamID}", func(router chi.Router) {
 			router.With(guard(authorization.OrganizationRead)).Get("/", handler.getTeam)
-			router.With(guard(authorization.TeamManage)).Patch("/", handler.updateTeam)
+			router.With(platformGuard).Patch("/", handler.updateTeam)
+			router.With(platformGuard).Delete("/", handler.deleteTeam)
 			router.With(guard(authorization.OrganizationRead)).Get("/projects", handler.listProjects)
 			router.With(guard(authorization.ProjectManage)).Post("/projects", handler.createProject)
 		})
@@ -77,6 +105,16 @@ func registerOrganizationRoutes(router chi.Router, service organizationService, 
 		router.With(guard(authorization.OrganizationRead)).Get("/", handler.getProject)
 		router.With(guard(authorization.ProjectManage)).Patch("/", handler.updateProject)
 	})
+}
+
+func (h organizationHandler) deleteTeam(writer http.ResponseWriter, request *http.Request) {
+	status := "disabled"
+	team, err := h.service.UpdateTeam(request.Context(), chi.URLParam(request, "teamID"), organization.UpdateTeamInput{Status: &status})
+	if err != nil {
+		writeOrganizationError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, team)
 }
 
 func (h organizationHandler) getPlatform(writer http.ResponseWriter, request *http.Request) {

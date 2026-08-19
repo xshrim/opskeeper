@@ -27,6 +27,9 @@ type stubIdentityService struct {
 	logoutAllUserID    string
 	profileInput       identity.UpdateUserInput
 	preferences        identity.Preferences
+	changePasswordErr  error
+	changeCurrent      string
+	changeNew          string
 }
 
 func (s *stubIdentityService) Login(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
@@ -50,6 +53,12 @@ func (s *stubIdentityService) Logout(context.Context, string, string) error {
 func (s *stubIdentityService) LogoutAll(_ context.Context, userID string) error {
 	s.logoutAllUserID = userID
 	return nil
+}
+
+func (s *stubIdentityService) ChangePassword(_ context.Context, _ string, currentPassword, newPassword string) error {
+	s.changeCurrent = currentPassword
+	s.changeNew = newPassword
+	return s.changePasswordErr
 }
 
 func (s *stubIdentityService) UpdateProfile(_ context.Context, userID string, input identity.UpdateUserInput) (identity.User, error) {
@@ -148,6 +157,31 @@ func TestLoginSetsSecureHTTPOnlyCookiesWithoutReturningTokens(t *testing.T) {
 		if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/test" || cookie.MaxAge <= 0 {
 			t.Fatalf("login cookie = %#v", cookie)
 		}
+	}
+}
+
+func TestChangePasswordRequiresAuthenticationAndForwardsCredentials(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, Status: identity.StatusActive}}
+	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/me/password", strings.NewReader(`{"current_password":"old password","new_password":"new strong password"}`))
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || service.changeCurrent != "old password" || service.changeNew != "new strong password" {
+		t.Fatalf("change password response = %d current=%q new=%q", response.Code, service.changeCurrent, service.changeNew)
+	}
+}
+
+func TestAuthenticationMiddlewareRestrictsOneTimePasswordSessions(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, MustChangePassword: true}}
+	router := newAuthTestRouter(service, false)
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/auth/me/preferences", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"password_change_required"`) {
+		t.Fatalf("restricted one-time session response = %d body=%s", response.Code, response.Body.String())
 	}
 }
 

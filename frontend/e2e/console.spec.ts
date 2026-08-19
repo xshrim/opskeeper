@@ -12,6 +12,7 @@ const ids = {
 
 const user = {
   id: 'user-1',
+  username: 'acceptance-admin',
   email: 'admin@example.test',
   display_name: '验收管理员',
   status: 'active',
@@ -223,6 +224,62 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         hypotheses: [],
         report: null
       });
+    if (path.endsWith('/users/'))
+      return json([
+        { ...user, can_manage: false },
+        {
+          ...user,
+          id: 'user-2',
+          username: 'payment-owner',
+          email: 'owner@example.test',
+          display_name: '支付负责人',
+          can_manage: true
+        }
+      ]);
+    if (path.endsWith('/groups/'))
+      return json([
+        {
+          id: 'group-1',
+          scope_id: ids.team,
+          name: '平台工程成员',
+          description: '平台工程团队',
+          status: 'active',
+          created_at: user.created_at,
+          updated_at: user.updated_at
+        }
+      ]);
+    if (path.endsWith('/groups/group-1/members'))
+      return json([
+        { group_id: 'group-1', user_id: 'user-2', created_at: user.created_at }
+      ]);
+    if (path.endsWith('/roles/'))
+      return json([
+        {
+          id: 'role-team-owner',
+          name: 'TeamOwner',
+          scope_type: 'team',
+          builtin: true,
+          permissions: ['organization:read', 'member:grant', 'project:manage']
+        }
+      ]);
+    if (path.endsWith('/role-bindings/'))
+      return json([
+        {
+          id: 'binding-1',
+          subject_type: 'user',
+          subject_id: 'user-2',
+          role_id: 'role-team-owner',
+          role_name: 'TeamOwner',
+          scope_id: ids.team,
+          scope_type: 'team',
+          created_at: user.created_at
+        }
+      ]);
+    if (
+      path.endsWith('/resource-roles/') ||
+      path.endsWith('/resource-role-bindings/')
+    )
+      return json([]);
     if (path.endsWith('/inspection-policies') && request.method() === 'POST')
       return json(
         {
@@ -340,6 +397,45 @@ test.describe('T07 console', () => {
     ).toBeTruthy();
   });
 
+  test('shows team members, projects, user roles and permissions', async ({
+    page
+  }) => {
+    await pageData(page, false, true);
+    await page.goto('/');
+    await page.getByRole('button', { name: '展开团队与用户菜单' }).click();
+    await page.getByRole('button', { name: '团队管理' }).click();
+    await expect(
+      page.getByRole('heading', { name: '团队管理', level: 1 })
+    ).toBeVisible();
+    await page.getByRole('button', { name: /平台工程/ }).click();
+    await expect(
+      page.getByText('支付负责人', { exact: true }).first()
+    ).toBeVisible();
+    await expect(page.getByText('支付服务', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '用户管理' }).click();
+    await expect(
+      page.getByText('TeamOwner', { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByText('member:grant', { exact: true }).first()
+    ).toBeVisible();
+    await page.getByRole('button', { name: '添加用户' }).click();
+    await expect(page.getByRole('dialog', { name: '新增用户' })).toBeVisible();
+    await page.getByLabel('授权 Scope').selectOption(ids.team);
+    await page.getByLabel('TeamOwner').check();
+    await expect(
+      page.getByRole('dialog').getByText('member:grant', { exact: true })
+    ).toBeVisible();
+    await page.getByRole('button', { name: '关闭' }).click();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    ).toBeTruthy();
+  });
+
   test('hides team and project selectors for a platform administrator', async ({
     page
   }) => {
@@ -365,9 +461,7 @@ test.describe('T07 console', () => {
     await expect(page.getByRole('heading', { name: '个人中心' })).toBeVisible();
     await page.getByLabel('显示名').fill('值守管理员');
     await page.getByRole('radio', { name: '深色' }).click();
-    await page
-      .getByRole('radio', { name: '窄栏悬浮展开' })
-      .click();
+    await page.getByRole('radio', { name: '窄栏悬浮展开' }).click();
     await page.getByRole('button', { name: '保存配置' }).click();
     await expect(page.getByText('个人中心配置已保存')).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

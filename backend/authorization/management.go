@@ -98,8 +98,12 @@ type ManagementStore interface {
 	AddGroupMember(context.Context, string, string, string) (GroupMember, error)
 	RemoveGroupMember(context.Context, string, string) error
 	ListGroupMembers(context.Context, string) ([]GroupMember, error)
+	ListVisibleUserIDs(context.Context, []string) ([]string, error)
 	ListRoles(context.Context) ([]RoleDefinition, error)
 	GetRole(context.Context, string) (RoleDefinition, error)
+	ScopeType(context.Context, string) (string, error)
+	ListActiveScopeIDs(context.Context) ([]string, error)
+	ListUserRoleBindings(context.Context, string) ([]RoleBinding, error)
 	CreateRoleBinding(context.Context, GrantRoleInput) (RoleBinding, error)
 	ListRoleBindings(context.Context, []string) ([]RoleBinding, error)
 	GetRoleBinding(context.Context, string) (RoleBinding, error)
@@ -142,7 +146,7 @@ func (s *ManagementService) CreateGroup(ctx context.Context, actorID string, inp
 }
 
 func (s *ManagementService) ListGroups(ctx context.Context, actorID string) ([]Group, error) {
-	filter, err := s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, MemberGrant)
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +156,23 @@ func (s *ManagementService) ListGroups(ctx context.Context, actorID string) ([]G
 	return s.store.ListGroups(ctx, filter.ScopeIDs)
 }
 
+func (s *ManagementService) ListVisibleUserIDs(ctx context.Context, actorID string) ([]string, error) {
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if len(filter.ScopeIDs) == 0 {
+		return nil, ErrForbidden
+	}
+	return s.store.ListVisibleUserIDs(ctx, filter.ScopeIDs)
+}
+
 func (s *ManagementService) GetGroup(ctx context.Context, actorID, groupID string) (Group, error) {
 	group, err := s.store.GetGroup(ctx, groupID)
 	if err != nil {
 		return Group{}, err
 	}
-	if err := s.authorizeScope(ctx, actorID, MemberGrant, group.ScopeID); err != nil {
+	if err := s.authorizeScope(ctx, actorID, ResourceRead, group.ScopeID); err != nil {
 		return Group{}, err
 	}
 	return group, nil
@@ -185,6 +200,9 @@ func (s *ManagementService) UpdateGroup(ctx context.Context, actorID, groupID st
 	if err != nil {
 		return Group{}, err
 	}
+	if err := s.authorizeScope(ctx, actorID, MemberGrant, group.ScopeID); err != nil {
+		return Group{}, err
+	}
 	updated, err := s.store.UpdateGroup(ctx, group.ID, input)
 	if err != nil {
 		return Group{}, err
@@ -195,6 +213,9 @@ func (s *ManagementService) UpdateGroup(ctx context.Context, actorID, groupID st
 func (s *ManagementService) DeleteGroup(ctx context.Context, actorID, groupID string, event audit.Event) error {
 	group, err := s.GetGroup(ctx, actorID, groupID)
 	if err != nil {
+		return err
+	}
+	if err := s.authorizeScope(ctx, actorID, MemberGrant, group.ScopeID); err != nil {
 		return err
 	}
 	if err := s.store.DeleteGroup(ctx, group.ID); err != nil {
@@ -208,6 +229,9 @@ func (s *ManagementService) AddGroupMember(ctx context.Context, actorID, groupID
 	if err != nil {
 		return GroupMember{}, err
 	}
+	if err := s.authorizeScope(ctx, actorID, MemberGrant, group.ScopeID); err != nil {
+		return GroupMember{}, err
+	}
 	member, err := s.store.AddGroupMember(ctx, group.ID, userID, actorID)
 	if err != nil {
 		return GroupMember{}, err
@@ -218,6 +242,9 @@ func (s *ManagementService) AddGroupMember(ctx context.Context, actorID, groupID
 func (s *ManagementService) RemoveGroupMember(ctx context.Context, actorID, groupID, userID string, event audit.Event) error {
 	group, err := s.GetGroup(ctx, actorID, groupID)
 	if err != nil {
+		return err
+	}
+	if err := s.authorizeScope(ctx, actorID, MemberGrant, group.ScopeID); err != nil {
 		return err
 	}
 	if err := s.store.RemoveGroupMember(ctx, group.ID, userID); err != nil {
@@ -235,14 +262,113 @@ func (s *ManagementService) ListGroupMembers(ctx context.Context, actorID, group
 }
 
 func (s *ManagementService) ListRoles(ctx context.Context, actorID string) ([]RoleDefinition, error) {
-	filter, err := s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, MemberGrant)
+	platformAdmin, err := s.store.IsPlatformAdmin(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if platformAdmin {
+		return s.store.ListRoles(ctx)
+	}
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
 	if len(filter.ScopeIDs) == 0 {
 		return nil, ErrForbidden
 	}
-	return s.store.ListRoles(ctx)
+	roles, err := s.store.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scopeTypes := make(map[string]struct{})
+	for _, scopeID := range filter.ScopeIDs {
+		scopeType, scopeErr := s.store.ScopeType(ctx, scopeID)
+		if scopeErr != nil {
+			return nil, scopeErr
+		}
+		scopeTypes[scopeType] = struct{}{}
+	}
+	visible := make([]RoleDefinition, 0, len(roles))
+	for _, role := range roles {
+		if _, ok := scopeTypes[role.ScopeType]; ok {
+			visible = append(visible, role)
+		}
+	}
+	return visible, nil
+}
+
+func (s *ManagementService) CanManageUser(ctx context.Context, actorID, userID string) (bool, error) {
+	if strings.TrimSpace(actorID) == "" || strings.TrimSpace(userID) == "" || actorID == userID {
+		return false, nil
+	}
+	platformAdmin, err := s.store.IsPlatformAdmin(ctx, actorID)
+	if err != nil || platformAdmin {
+		return platformAdmin, err
+	}
+	visibleIDs, err := s.ListVisibleUserIDs(ctx, actorID)
+	if err != nil {
+		return false, err
+	}
+	visible := false
+	for _, visibleID := range visibleIDs {
+		if visibleID == userID {
+			visible = true
+			break
+		}
+	}
+	if !visible {
+		return false, nil
+	}
+	bindings, err := s.store.ListUserRoleBindings(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range bindings {
+		if err := s.ValidateRoleGrants(ctx, actorID, binding.ScopeID, []string{binding.RoleID}); err != nil {
+			if err == ErrGrantNotAllowed || err == ErrForbidden {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (s *ManagementService) ValidateRoleGrants(ctx context.Context, actorID, scopeID string, roleIDs []string) error {
+	if strings.TrimSpace(scopeID) == "" || len(roleIDs) == 0 {
+		return ErrInvalidInput
+	}
+	if err := s.authorizeScope(ctx, actorID, MemberGrant, scopeID); err != nil {
+		return ErrGrantNotAllowed
+	}
+	scopeType, err := s.store.ScopeType(ctx, scopeID)
+	if err != nil {
+		return err
+	}
+	seen := make(map[string]struct{}, len(roleIDs))
+	for _, roleID := range roleIDs {
+		roleID = strings.TrimSpace(roleID)
+		if roleID == "" {
+			return ErrInvalidInput
+		}
+		if _, exists := seen[roleID]; exists {
+			continue
+		}
+		seen[roleID] = struct{}{}
+		role, roleErr := s.store.GetRole(ctx, roleID)
+		if roleErr != nil {
+			return roleErr
+		}
+		if role.ScopeType != scopeType {
+			return ErrInvalidRole
+		}
+		for _, permission := range role.Permissions {
+			if permissionErr := s.authorizeScope(ctx, actorID, permission, scopeID); permissionErr != nil {
+				return ErrGrantNotAllowed
+			}
+		}
+	}
+	return nil
 }
 
 func (s *ManagementService) CreateRoleBinding(ctx context.Context, actorID string, input GrantRoleInput, event audit.Event) (RoleBinding, error) {
@@ -256,13 +382,8 @@ func (s *ManagementService) CreateRoleBinding(ctx context.Context, actorID strin
 	if strings.TrimSpace(input.SubjectID) == "" || strings.TrimSpace(input.RoleID) == "" || strings.TrimSpace(input.ScopeID) == "" {
 		return RoleBinding{}, ErrInvalidInput
 	}
-	if err := s.authorizeScope(ctx, actorID, MemberGrant, input.ScopeID); err != nil {
-		return RoleBinding{}, ErrGrantNotAllowed
-	}
-	for _, permission := range role.Permissions {
-		if err := s.authorizeScope(ctx, actorID, permission, input.ScopeID); err != nil {
-			return RoleBinding{}, ErrGrantNotAllowed
-		}
+	if err := s.ValidateRoleGrants(ctx, actorID, input.ScopeID, []string{input.RoleID}); err != nil {
+		return RoleBinding{}, err
 	}
 	binding, err := s.store.CreateRoleBinding(ctx, input)
 	if err != nil {
@@ -274,7 +395,7 @@ func (s *ManagementService) CreateRoleBinding(ctx context.Context, actorID strin
 }
 
 func (s *ManagementService) ListRoleBindings(ctx context.Context, actorID string) ([]RoleBinding, error) {
-	filter, err := s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, MemberGrant)
+	filter, err := s.memberVisibilityFilter(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +410,7 @@ func (s *ManagementService) DeleteRoleBinding(ctx context.Context, actorID, bind
 	if err != nil {
 		return err
 	}
-	if err := s.authorizeScope(ctx, actorID, MemberGrant, binding.ScopeID); err != nil {
+	if err := s.ValidateRoleGrants(ctx, actorID, binding.ScopeID, []string{binding.RoleID}); err != nil {
 		return err
 	}
 	if err := s.store.DeleteRoleBinding(ctx, binding.ID); err != nil {
@@ -302,9 +423,34 @@ func (s *ManagementService) IsPlatformAdmin(ctx context.Context, userID string) 
 	return s.store.IsPlatformAdmin(ctx, userID)
 }
 
+// memberVisibilityFilter keeps people data aligned with the readable resource
+// hierarchy: platform roles see every team and project, while team roles only
+// see their team and its projects. Mutations use MemberGrant separately.
+func (s *ManagementService) memberVisibilityFilter(ctx context.Context, actorID string) (ScopeFilter, error) {
+	platformAdmin, err := s.store.IsPlatformAdmin(ctx, actorID)
+	if err != nil {
+		return ScopeFilter{}, err
+	}
+	if platformAdmin {
+		scopeIDs, listErr := s.store.ListActiveScopeIDs(ctx)
+		if listErr != nil {
+			return ScopeFilter{}, listErr
+		}
+		return ScopeFilter{SubjectID: actorID, Permission: ResourceRead, ScopeIDs: scopeIDs}, nil
+	}
+	return s.authorization.ScopeFilter(ctx, Subject{UserID: actorID}, ResourceRead)
+}
+
 func (s *ManagementService) authorizeScope(ctx context.Context, actorID string, permission Permission, scopeID string) error {
 	if strings.TrimSpace(actorID) == "" || strings.TrimSpace(scopeID) == "" {
 		return ErrInvalidSubject
+	}
+	platformAdmin, err := s.store.IsPlatformAdmin(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if platformAdmin {
+		return nil
 	}
 	return s.authorization.Authorize(ctx, Subject{UserID: actorID}, permission, scopeID)
 }

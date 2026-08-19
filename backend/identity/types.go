@@ -9,14 +9,15 @@ const (
 )
 
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	Email       string    `json:"email"`
-	Phone       string    `json:"phone"`
-	DisplayName string    `json:"display_name"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Username           string    `json:"username"`
+	Email              string    `json:"email"`
+	Phone              string    `json:"phone"`
+	DisplayName        string    `json:"display_name"`
+	Status             string    `json:"status"`
+	MustChangePassword bool      `json:"must_change_password"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type SessionMetadata struct {
@@ -66,4 +67,9 @@ type CreateUserInput struct {
 	Phone       string
 	DisplayName string
 	Password    string
+}
+
+type CreateUserResult struct {
+	User            User
+	OneTimePassword string
 }

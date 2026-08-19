@@ -100,6 +100,12 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	if _, err := management.CreateRoleBinding(ctx, admin.ID, authorization.GrantRoleInput{SubjectType: "group", SubjectID: group.ID, RoleID: teamViewerID, ScopeID: team.Scope.ID}, authorizationEvent(admin.ID)); err != nil {
 		t.Fatalf("CreateRoleBinding() error = %v", err)
 	}
+	if canManage, err := management.CanManageUser(ctx, teamAdmin, managedUser); err != nil || !canManage {
+		t.Fatalf("CanManageUser(team admin, managed user) = %v, %v; want true", canManage, err)
+	}
+	if canManage, err := management.CanManageUser(ctx, teamAdmin, teamAdmin); err != nil || canManage {
+		t.Fatalf("CanManageUser(team admin, self) = %v, %v; want false", canManage, err)
+	}
 	filter, err := authorizationService.ScopeFilter(ctx, authorization.Subject{UserID: managedUser}, authorization.OrganizationRead)
 	if err != nil {
 		t.Fatalf("ScopeFilter(group member) error = %v", err)
@@ -212,6 +218,163 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil || len(afterDelete.ScopeIDs) != 0 || len(afterDelete.ResourceIDs) != 0 {
 		t.Fatalf("resource filter after delete = %#v, %v", afterDelete, err)
 	}
+}
+
+func TestRoleGrantHierarchy(t *testing.T) {
+	pool := authorizationIntegrationPool(t)
+	ctx := context.Background()
+	org := organization.NewService(organization.NewStore(pool))
+	platform, err := org.GetPlatform(ctx)
+	if err != nil {
+		t.Fatalf("GetPlatform() error = %v", err)
+	}
+	team, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Hierarchy Team", Code: "hierarchy-team"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	project, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Hierarchy Project", Code: "hierarchy-project"})
+	if err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+
+	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
+	platformAdmin, err := identityService.BootstrapAdmin(ctx, identity.BootstrapInput{Username: "hierarchy-platform", Email: "hierarchy-platform@example.com", Password: "Hierarchy integration password"})
+	if err != nil {
+		t.Fatalf("BootstrapAdmin() error = %v", err)
+	}
+	authorizationService := authorization.NewService(authorization.NewStore(pool))
+	if err := authorizationService.EnsureBootstrapAdmin(ctx, platformAdmin.ID); err != nil {
+		t.Fatalf("EnsureBootstrapAdmin() error = %v", err)
+	}
+	teamAdmin := insertUser(t, pool, "hierarchy-team@example.com")
+	projectAdmin := insertUser(t, pool, "hierarchy-project@example.com")
+	bindRole(t, pool, teamAdmin, "TeamAdmin", team.Scope.ID)
+	bindRole(t, pool, projectAdmin, "ProjectAdmin", project.Scope.ID)
+	management := authorization.NewManagementService(authorization.NewManagementStore(pool), authorizationService, nil)
+	roles, err := management.ListRoles(ctx, platformAdmin.ID)
+	if err != nil {
+		t.Fatalf("ListRoles() error = %v", err)
+	}
+	platformViewer := findRoleID(t, roles, "PlatformViewer")
+	teamViewer := findRoleID(t, roles, "TeamViewer")
+	projectViewer := findRoleID(t, roles, "ProjectViewer")
+	projectMember := findRoleID(t, roles, "ProjectMember")
+
+	for _, grant := range []struct {
+		roleID  string
+		scopeID string
+	}{{platformViewer, platform.Scope.ID}, {teamViewer, team.Scope.ID}, {projectViewer, project.Scope.ID}} {
+		if err := management.ValidateRoleGrants(ctx, platformAdmin.ID, grant.scopeID, []string{grant.roleID}); err != nil {
+			t.Fatalf("platform administrator grant at %s = %v", grant.scopeID, err)
+		}
+	}
+	if err := management.ValidateRoleGrants(ctx, teamAdmin, team.Scope.ID, []string{teamViewer}); err != nil {
+		t.Fatalf("team administrator team grant = %v", err)
+	}
+	if err := management.ValidateRoleGrants(ctx, teamAdmin, project.Scope.ID, []string{projectViewer}); err != nil {
+		t.Fatalf("team administrator project grant = %v", err)
+	}
+	if err := management.ValidateRoleGrants(ctx, teamAdmin, platform.Scope.ID, []string{platformViewer}); !errors.Is(err, authorization.ErrGrantNotAllowed) {
+		t.Fatalf("team administrator platform grant = %v, want ErrGrantNotAllowed", err)
+	}
+	if err := management.ValidateRoleGrants(ctx, projectAdmin, project.Scope.ID, []string{projectMember}); err != nil {
+		t.Fatalf("project administrator participant grant = %v", err)
+	}
+	if err := management.ValidateRoleGrants(ctx, projectAdmin, team.Scope.ID, []string{teamViewer}); !errors.Is(err, authorization.ErrGrantNotAllowed) {
+		t.Fatalf("project administrator team grant = %v, want ErrGrantNotAllowed", err)
+	}
+}
+
+func TestReadableHierarchyIncludesAllRoleLevels(t *testing.T) {
+	pool := authorizationIntegrationPool(t)
+	ctx := context.Background()
+	org := organization.NewService(organization.NewStore(pool))
+	platform, err := org.GetPlatform(ctx)
+	if err != nil {
+		t.Fatalf("GetPlatform() error = %v", err)
+	}
+	teamA, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team A", Code: "readable-team-a"})
+	if err != nil {
+		t.Fatalf("CreateTeam(A) error = %v", err)
+	}
+	teamB, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team B", Code: "readable-team-b"})
+	if err != nil {
+		t.Fatalf("CreateTeam(B) error = %v", err)
+	}
+	projectA, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamA.ID, Name: "Readable Project A", Code: "readable-project-a"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error = %v", err)
+	}
+	projectB, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamB.ID, Name: "Readable Project B", Code: "readable-project-b"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error = %v", err)
+	}
+
+	platformActors := []string{
+		insertUser(t, pool, "readable-platform-admin@example.com"),
+		insertUser(t, pool, "readable-platform-operator@example.com"),
+		insertUser(t, pool, "readable-platform-viewer@example.com"),
+	}
+	for index, roleName := range []string{"PlatformAdmin", "PlatformOperator", "PlatformViewer"} {
+		bindRole(t, pool, platformActors[index], roleName, platform.Scope.ID)
+	}
+	teamActors := []string{
+		insertUser(t, pool, "readable-team-admin@example.com"),
+		insertUser(t, pool, "readable-team-operator@example.com"),
+		insertUser(t, pool, "readable-team-viewer@example.com"),
+	}
+	for index, roleName := range []string{"TeamAdmin", "TeamOperator", "TeamViewer"} {
+		bindRole(t, pool, teamActors[index], roleName, teamA.Scope.ID)
+	}
+	projectActors := []string{
+		insertUser(t, pool, "readable-project-admin@example.com"),
+		insertUser(t, pool, "readable-project-operator@example.com"),
+		insertUser(t, pool, "readable-project-viewer@example.com"),
+	}
+	for index, roleName := range []string{"ProjectAdmin", "ProjectOperator", "ProjectViewer"} {
+		bindRole(t, pool, projectActors[index], roleName, projectA.Scope.ID)
+	}
+	teamBMember := insertUser(t, pool, "readable-team-b-member@example.com")
+	bindRole(t, pool, teamBMember, "TeamViewer", teamB.Scope.ID)
+
+	authorizationService := authorization.NewService(authorization.NewStore(pool))
+	for _, actorID := range platformActors {
+		filter, filterErr := authorizationService.ScopeFilter(ctx, authorization.Subject{UserID: actorID}, authorization.ResourceRead)
+		if filterErr != nil || !filter.Allows(platform.Scope.ID) || !filter.Allows(teamA.Scope.ID) || !filter.Allows(projectA.Scope.ID) || !filter.Allows(teamB.Scope.ID) || !filter.Allows(projectB.Scope.ID) {
+			t.Fatalf("platform readable scope filter = %#v, %v", filter, filterErr)
+		}
+	}
+	for _, actorID := range teamActors {
+		filter, filterErr := authorizationService.ScopeFilter(ctx, authorization.Subject{UserID: actorID}, authorization.ResourceRead)
+		if filterErr != nil || !filter.Allows(teamA.Scope.ID) || !filter.Allows(projectA.Scope.ID) || filter.Allows(teamB.Scope.ID) || filter.Allows(projectB.Scope.ID) {
+			t.Fatalf("team readable scope filter = %#v, %v", filter, filterErr)
+		}
+	}
+	for _, actorID := range projectActors {
+		filter, filterErr := authorizationService.ScopeFilter(ctx, authorization.Subject{UserID: actorID}, authorization.ResourceRead)
+		if filterErr != nil || !filter.Allows(projectA.Scope.ID) || filter.Allows(teamA.Scope.ID) || filter.Allows(projectB.Scope.ID) {
+			t.Fatalf("project readable scope filter = %#v, %v", filter, filterErr)
+		}
+	}
+
+	management := authorization.NewManagementService(authorization.NewManagementStore(pool), authorizationService, nil)
+	visibleUsers, err := management.ListVisibleUserIDs(ctx, platformActors[2])
+	if err != nil || !containsUserID(visibleUsers, teamBMember) {
+		t.Fatalf("platform viewer visible users = %#v, %v", visibleUsers, err)
+	}
+	visibleUsers, err = management.ListVisibleUserIDs(ctx, teamActors[2])
+	if err != nil || containsUserID(visibleUsers, teamBMember) {
+		t.Fatalf("team viewer visible users = %#v, %v", visibleUsers, err)
+	}
+}
+
+func containsUserID(userIDs []string, target string) bool {
+	for _, userID := range userIDs {
+		if userID == target {
+			return true
+		}
+	}
+	return false
 }
 
 func findRoleID(t *testing.T, roles []authorization.RoleDefinition, name string) string {

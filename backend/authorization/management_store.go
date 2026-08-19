@@ -137,6 +137,38 @@ func (s *managementStore) ListGroupMembers(ctx context.Context, groupID string) 
 	return members, rows.Err()
 }
 
+func (s *managementStore) ListVisibleUserIDs(ctx context.Context, scopeIDs []string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT visible.user_id::text
+		  FROM (
+			SELECT binding.subject_id AS user_id
+			  FROM role_bindings binding
+			 WHERE binding.subject_type = 'user' AND binding.scope_id = ANY($1::uuid[])
+			UNION
+			SELECT member.user_id
+			  FROM groups group_record
+			  JOIN group_members member ON member.group_id = group_record.id
+			 WHERE group_record.scope_id = ANY($1::uuid[])
+			   AND group_record.status = 'active' AND group_record.deleted_at IS NULL
+		  ) visible
+		  JOIN users ON users.id = visible.user_id
+		 WHERE users.deleted_at IS NULL
+		 ORDER BY visible.user_id::text`, scopeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list visible users: %w", err)
+	}
+	defer rows.Close()
+	userIDs := make([]string, 0)
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return nil, fmt.Errorf("scan visible user: %w", err)
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, rows.Err()
+}
+
 func (s *managementStore) ListRoles(ctx context.Context) ([]RoleDefinition, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT role.id::text, role.name, role.scope_type, role.builtin,
@@ -161,6 +193,89 @@ func (s *managementStore) ListRoles(ctx context.Context) ([]RoleDefinition, erro
 		roles = append(roles, role)
 	}
 	return roles, rows.Err()
+}
+
+func (s *managementStore) ScopeType(ctx context.Context, scopeID string) (string, error) {
+	var scopeType string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT scope_type FROM scopes
+		 WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL`, scopeID).Scan(&scopeType); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("get scope type: %w", err)
+	}
+	return scopeType, nil
+}
+
+func (s *managementStore) ListActiveScopeIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH RECURSIVE scope_chain(scope_id, ancestor_id, ancestor_status, ancestor_deleted_at) AS (
+			SELECT id, id, status, deleted_at FROM scopes
+			UNION ALL
+			SELECT chain.scope_id, parent.id, parent.status, parent.deleted_at
+			  FROM scope_chain chain
+			  JOIN scopes current_scope ON current_scope.id = chain.ancestor_id
+			  JOIN scopes parent ON parent.id = current_scope.parent_scope_id
+		)
+		SELECT scope.id::text
+		  FROM scopes scope
+		 WHERE scope.status = 'active' AND scope.deleted_at IS NULL
+		   AND NOT EXISTS (
+			SELECT 1 FROM scope_chain chain
+			 WHERE chain.scope_id = scope.id
+			   AND (chain.ancestor_status <> 'active' OR chain.ancestor_deleted_at IS NOT NULL)
+		 )
+		 ORDER BY scope.id`)
+	if err != nil {
+		return nil, fmt.Errorf("list active scopes: %w", err)
+	}
+	defer rows.Close()
+	scopeIDs := make([]string, 0)
+	for rows.Next() {
+		var scopeID string
+		if err := rows.Scan(&scopeID); err != nil {
+			return nil, fmt.Errorf("scan active scope: %w", err)
+		}
+		scopeIDs = append(scopeIDs, scopeID)
+	}
+	return scopeIDs, rows.Err()
+}
+
+func (s *managementStore) ListUserRoleBindings(ctx context.Context, userID string) ([]RoleBinding, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT binding.id::text, binding.subject_type, binding.subject_id::text,
+		       role.id::text, role.name, binding.scope_id::text, scope.scope_type,
+		       binding.created_at
+		  FROM role_bindings binding
+		  JOIN roles role ON role.id = binding.role_id
+		  JOIN scopes scope ON scope.id = binding.scope_id
+		 WHERE scope.deleted_at IS NULL
+		   AND (
+			(binding.subject_type = 'user' AND binding.subject_id = $1::uuid)
+			OR (binding.subject_type = 'group' AND EXISTS (
+				SELECT 1 FROM group_members member
+				JOIN groups group_record ON group_record.id = member.group_id
+				WHERE member.group_id = binding.subject_id
+				  AND member.user_id = $1::uuid
+				  AND group_record.status = 'active'
+				  AND group_record.deleted_at IS NULL
+			))
+		   )
+		 ORDER BY binding.created_at, binding.id`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user role bindings: %w", err)
+	}
+	defer rows.Close()
+	bindings := make([]RoleBinding, 0)
+	for rows.Next() {
+		var binding RoleBinding
+		if err := rows.Scan(&binding.ID, &binding.SubjectType, &binding.SubjectID, &binding.RoleID, &binding.RoleName, &binding.ScopeID, &binding.ScopeType, &binding.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user role binding: %w", err)
+		}
+		bindings = append(bindings, binding)
+	}
+	return bindings, rows.Err()
 }
 
 func (s *managementStore) GetRole(ctx context.Context, roleID string) (RoleDefinition, error) {
