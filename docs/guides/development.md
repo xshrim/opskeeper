@@ -21,7 +21,7 @@ make image NPM_REGISTRY=https://registry.npmmirror.com
 make start
 ```
 
-`make start` 自动创建缺失的 `.env` 和 `deploy/compose/.env`，安装前后端依赖，启动并等待 PostgreSQL/Redis，执行迁移，在用户表为空时创建默认管理员，最后调用 `make run-front-api`。首次创建管理员时会打印随机密码；后续执行会保留已有管理员和数据。最终只运行一个 Go 进程，由 API 同时提供前端页面、静态资源和业务接口。按 `Ctrl+C` 停止 API 后，中间件仍会运行，可通过 `make infra-down` 停止。
+`make start` 自动创建缺失的 `.env` 和 `deploy/compose/.env`，安装前后端依赖，启动并等待 PostgreSQL/Redis，执行迁移，在用户表为空时创建默认管理员，最后调用 `make front-api-run`。首次创建管理员时会打印随机密码；后续执行会保留已有管理员和数据。最终只运行一个 Go 进程，由 API 同时提供前端页面、静态资源和业务接口。按 `Ctrl+C` 停止 API 后，中间件仍会运行，可通过 `make infra-down` 停止。
 
 默认地址：
 
@@ -45,11 +45,11 @@ make start
 | `make migrate`                  | 应用待执行迁移                                                           |
 | `make migrate-down`             | 回滚最近一条迁移，仅用于开发和测试                                       |
 | `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
-| `make run-api`                  | 临时运行 API                                                             |
-| `make run-worker`               | 临时运行 Worker                                                          |
-| `make run-scheduler`            | 临时运行 Scheduler                                                       |
-| `make run-frontend`             | 临时运行 Vite 前端                                                       |
-| `make run-front-api`            | 构建并嵌入前端，然后通过一个 API 进程提供完整应用                        |
+| `make api-run`                  | 临时运行 API                                                             |
+| `make worker-run`               | 临时运行 Worker                                                          |
+| `make scheduler-run`            | 临时运行 Scheduler                                                       |
+| `make frontend-run`             | 临时运行 Vite 前端                                                       |
+| `make front-api-run`            | 构建并嵌入前端，然后通过一个 API 进程提供完整应用                        |
 | `make test`                     | 运行前后端单元测试                                                       |
 | `make backend-integration-test` | 运行数据库集成测试                                                       |
 | `make llm-provider-test`        | 使用`.env` 中的外部 Provider 配置，经 ADK Runner 验证非流式和 SSE 调用 |
@@ -57,7 +57,7 @@ make start
 | `make build`                    | 构建生产二进制制品                                                       |
 | `make image`                    | 构建最终应用镜像                                                         |
 
-应用临时运行、二进制构建和最终镜像打包的标准入口只能定义在根目录 `Makefile` 中，不得再增加 `scripts/*.sh` 等包装脚本。底层 Go、npm 和 Docker 命令属于 Make recipe 的实现细节；日常开发和流水线统一调用 `make run-*`、`make build` 和 `make image`。
+应用临时运行、二进制构建和最终镜像打包的标准入口只能定义在根目录 `Makefile` 中，不得再增加 `scripts/*.sh` 等包装脚本。底层 Go、npm 和 Docker 命令属于 Make recipe 的实现细节；日常开发和流水线统一调用 `make *-run`、`make build` 和 `make image`。
 
 ## 3. 开发方式
 
@@ -67,10 +67,10 @@ make start
 
 ```bash
 make infra-up
-make run-front-api
+make front-api-run
 ```
 
-`run-front-api` 与生产环境采用相同的前端嵌入和 HTTP 服务方式，但使用 `go run` 临时运行。前端源代码变化后需要重新执行该命令，不提供 Vite 热更新。
+`front-api-run` 与生产环境采用相同的前端嵌入和 HTTP 服务方式，但使用 `go run` 临时运行。前端源代码变化后需要重新执行该命令，不提供 Vite 热更新。
 
 执行链路为：
 
@@ -86,26 +86,26 @@ frontend-build
 
 ```bash
 make infra-up
-make run-api
+make api-run
 ```
 
 需要前端热更新时，在不同终端分开运行 API 和 Vite：
 
 ```bash
-make run-api
-make run-frontend
+make api-run
+make frontend-run
 ```
 
-Vite 默认通过 `http://localhost:5173/<prefix>/` 提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。只执行 `make run-frontend` 时仍可打开页面，但 API 数据不可用。
+ Vite 默认通过 `http://localhost:5173/<prefix>/` 提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。只执行 `make frontend-run` 时仍可打开页面，但 API 数据不可用。
 
 Worker 和 Scheduler 按需在其他终端启动：
 
 ```bash
-make run-worker
-make run-scheduler
+make worker-run
+make scheduler-run
 ```
 
-`make run-front-api` 不生成持久二进制；`make build` 才生成包含相同嵌入前端的生产 `opskeeper-api` 制品。
+`make front-api-run` 不生成持久二进制；`make build` 才生成包含相同嵌入前端的生产 `opskeeper-api` 制品。
 
 ## 4. 应用配置
 
@@ -190,9 +190,9 @@ API 只在 TCP 直连来源属于该列表时解析转发头。对于 `X-Forward
 所有 Go 应用使用相同的 `OPSK_LOG_FORMAT`，字段和消息约定见[后端日志规范](../standards/backend-logging.md)：
 
 ```bash
-OPSK_LOG_FORMAT=json make run-api
-OPSK_LOG_FORMAT=text make run-api
-OPSK_LOG_FORMAT=raw make run-api
+OPSK_LOG_FORMAT=json make api-run
+OPSK_LOG_FORMAT=text make api-run
+OPSK_LOG_FORMAT=raw make api-run
 ```
 
 - `raw`：默认值，按固定字段顺序输出纯值文本，适合本地终端和简单采集器。

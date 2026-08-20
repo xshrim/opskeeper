@@ -27,9 +27,9 @@ Webhook 只应接收并验证通知，不能据此触发无人值守变更。邮
 先在一个终端运行 API，再分别运行 Scheduler 与 Worker：
 
 ```bash
-make run-api
-make run-scheduler
-make run-worker
+make api-run
+make scheduler-run
+make worker-run
 ```
 
 三者均从 `.env` 读取数据库、凭据加密、Connector 限制及 `OPSK_INSPECTION_*` 设置。迁移必须在部署新 API/Worker/Scheduler 前由受控发布流程单实例执行，详见 [自动化发布](delivery.md)。

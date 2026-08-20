@@ -31,7 +31,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 
 `deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。Node Builder 调用 Make 的前端构建目标，Go Builder 接收前端制品后调用 Make 的后端构建目标；Dockerfile 不重复维护 npm 构建命令、Go Build Tag、版本注入或二进制清单。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
 
-本地 `make run-front-api` 使用相同的嵌入链路：先将 Vite 制品从 `frontend/dist` 复制到 `backend/webui/dist`，再通过 `embed_webui` 标签和 `go:embed` 将其编译进临时 API，最终只启动一个同时提供前后端服务的 Go 进程。
+本地 `make front-api-run` 使用相同的嵌入链路：先将 Vite 制品从 `frontend/dist` 复制到 `backend/webui/dist`，再通过 `embed_webui` 标签和 `go:embed` 将其编译进临时 API，最终只启动一个同时提供前后端服务的 Go 进程。
 
 最终镜像包含：
 

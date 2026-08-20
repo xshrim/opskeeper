@@ -17,7 +17,7 @@ BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 VERSION_PACKAGE := opskeeper/backend/version
 GO_LDFLAGS := -s -w -X $(VERSION_PACKAGE).Value=$(VERSION) -X $(VERSION_PACKAGE).Commit=$(COMMIT) -X $(VERSION_PACKAGE).BuildTime=$(BUILD_TIME)
 
-define run-compose
+define compose
 @if docker compose version >/dev/null 2>&1; then \
 	docker compose -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) $(1); \
 elif command -v docker-compose >/dev/null 2>&1; then \
@@ -30,7 +30,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs run-api run-worker run-scheduler run-frontend run-front-api test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -42,7 +42,7 @@ start: ## Prepare and start the complete local development environment.
 	$(MAKE) infra-up
 	$(MAKE) migrate
 	$(MAKE) admin-create ADMIN_CREATE_ARGS="$(ADMIN_CREATE_ARGS) --if-needed"
-	$(MAKE) run-front-api
+	$(MAKE) front-api-run
 
 deps: ## Download backend and frontend dependencies.
 	cd backend && go mod download
@@ -58,31 +58,51 @@ admin-create: ## Create the first administrator through the controlled bootstrap
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
 
 infra-up: ## Start PostgreSQL and Redis.
-	$(call run-compose,up -d --wait --wait-timeout 60)
+	$(call compose,up -d --wait --wait-timeout 60)
 
 infra-down: ## Stop PostgreSQL and Redis.
-	$(call run-compose,down)
+	$(call compose,down)
 
 infra-clean: ## Delete middleware containers, network, and data volumes.
-	$(call run-compose,down --volumes --remove-orphans)
+	$(call compose,down --volumes --remove-orphans)
 
 infra-logs: ## Follow PostgreSQL and Redis logs.
-	$(call run-compose,logs -f)
+	$(call compose,logs -f)
 
-run-api: ## Run the API server.
+api-run: ## Run the API server.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/api
 
-run-worker: ## Run the worker process.
+worker-run: ## Run the worker process.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/worker
 
-run-scheduler: ## Run the scheduler process.
+scheduler-run: ## Run the scheduler process.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/scheduler
 
-run-frontend: ## Run the Svelte development server.
+frontend-run: ## Run the Svelte development server.
 	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
 
-run-front-api: webui-assets ## Build and embed the frontend, then run the API.
+front-api-run: webui-assets ## Build and embed the frontend, then run the API.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
+
+docker-mcp-test: ## Run docker-mcp unit and Docker Engine simulator tests.
+	cd backend && go test ./mcpserver/docker/... ./cmd/docker-mcp
+
+docker-mcp-build: ## Build the standalone Docker MCP server binary.
+	mkdir -p backend/bin
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-docker-mcp ./cmd/docker-mcp
+
+docker-mcp-run: ## Run the standalone Docker MCP server.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/docker-mcp
+
+kubernetes-mcp-test: ## Run Kubernetes MCP unit tests.
+	cd backend && go test ./mcpserver/kubernetes/... ./cmd/kubernetes-mcp
+
+kubernetes-mcp-build: ## Build the standalone Kubernetes MCP server binary.
+	mkdir -p backend/bin
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-kubernetes-mcp ./cmd/kubernetes-mcp
+
+kubernetes-mcp-run: ## Run the standalone Kubernetes MCP server.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/kubernetes-mcp
 
 backend-test:
 	cd backend && go test ./...
@@ -141,8 +161,10 @@ backend-build:
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-admin ./cmd/admin
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-operation-runner ./cmd/operation-runner
 
-build: webui-assets ## Build production binaries with the embedded frontend.
+build: webui-assets ## Build production binaries with the embedded frontend and MCP servers.
 	$(MAKE) backend-build
+	$(MAKE) docker-mcp-build
+	$(MAKE) kubernetes-mcp-build
 
 image: ## Build the final application image.
 	docker build \

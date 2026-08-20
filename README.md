@@ -33,7 +33,7 @@ make migrate
 make admin-create
 
 # 7. 构建并嵌入前端，然后运行 API
-make run-front-api
+make front-api-run
 ```
 
 `make admin-create` 在未提供密码时生成随机密码并打印一次，请立即保存。
@@ -81,6 +81,7 @@ make start
 - [内置诊断 Skill 与最小权限](docs/guides/builtin-skills.md)
 - [自动巡检、健康评分和通知](docs/guides/inspection.md)
 - [MCP、受控操作与自定义 Skill 沙箱](docs/guides/mcp-operations.md)
+- [Docker MCP Server](docs/guides/docker-mcp.md)
 - [生产环境 Helm 部署](docs/guides/production-deployment.md)
 - [管理员手册](docs/guides/administration.md)
 - [用户手册](docs/guides/user-guide.md)

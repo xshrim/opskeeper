@@ -15,7 +15,7 @@
 
 ## 决定
 
-采用方案 3。本地开发可以分别运行 Vite 和 Go API，也可以通过 `make run-front-api` 构建并嵌入前端。生产构建通过 `go:embed` 把 Web 制品编译进 `opskeeper-api`。
+采用方案 3。本地开发可以分别运行 Vite 和 Go API，也可以通过 `make front-api-run` 构建并嵌入前端。生产构建通过 `go:embed` 把 Web 制品编译进 `opskeeper-api`。
 
 最终镜像同时包含 API、Worker、Scheduler 和 Migration 四个固定二进制。部署编排按工作负载选择不同入口，但所有入口来自同一个镜像 Digest。构建入口只由根 Makefile 暴露，Dockerfile 的 Builder 调用 Make 内部构建目标。
 
