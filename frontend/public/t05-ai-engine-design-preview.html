@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 引擎 · 八种设计方案预览</title>
+    <style>
+      :root {
+        --ink: #2f2926;
+        --accent: #e7601b;
+        --surface: #ffffff;
+        --wash: #eee8e5;
+        --line: #ded6d1;
+        --muted: #796f69;
+        --sidebar: #171b21;
+        --sidebar-muted: #aeb6c0;
+        --soft-accent: #fff0e8;
+        --success: #2f7956;
+        --success-bg: #eaf4ed;
+        --warning: #a56411;
+        --warning-bg: #fff5dc;
+        --danger: #b3472c;
+        --danger-bg: #fcebe7;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; background: var(--wash); }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(231,96,27,.25); outline-offset: 2px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+      .app-layout { min-height: 100vh; display: grid; grid-template-columns: 218px minmax(0, 1fr); }
+      .sidebar { display: flex; flex-direction: column; gap: 18px; min-height: 100vh; padding: 22px 14px 18px; color: #f6f8f9; background: var(--sidebar); border-right: 1px solid #2f353d; }
+      .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+      .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--surface); background: var(--accent); font-weight: 800; }
+      .sidebar-brand .brand-mark { width: 28px; height: 28px; border-radius: 6px; font-size: 14px; }
+      .sidebar-brand strong { display: block; font-size: 15px; }
+      .sidebar-brand small { display: block; margin-top: 2px; color: #7e8995; font-size: 10px; }
+      .nav-label { margin: 10px 8px 0; color: #7e8995; font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+      .side-nav { display: grid; gap: 3px; }
+      .side-nav button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 11px; color: var(--sidebar-muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 13px; }
+      .side-nav button:hover, .side-nav button.active { color: #fff; background: #2a3038; }
+      .side-nav button.active::before { width: 3px; height: 18px; margin-left: -11px; margin-right: 5px; border-radius: 0 3px 3px 0; background: var(--accent); content: ''; }
+      .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 14px 8px 0; color: #8d97a3; border-top: 1px solid #30363e; font-size: 11px; }
+      .avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--ink); background: #f1c4a9; font-size: 11px; font-weight: 700; }
+      .page { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px clamp(18px, 4vw, 56px); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .crumb { color: var(--muted); font-size: 12px; }
+      .crumb strong { display: block; margin-top: 3px; color: var(--ink); font-size: 15px; }
+      .actor { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+      .actor .avatar { width: 30px; height: 30px; color: var(--surface); background: var(--ink); }
+      main { width: min(1260px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 64px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+      h1 { margin: 0; font-size: clamp(25px, 4vw, 36px); line-height: 1.12; letter-spacing: 0; }
+      .intro p { max-width: 700px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+      .mode-select { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; white-space: nowrap; }
+      select { color: var(--ink); background: transparent; border: 0; outline: 0; font-weight: 700; }
+      .design-tabs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 7px; margin-bottom: 16px; }
+      .design-tab { min-height: 78px; padding: 10px 9px; color: var(--muted); background: rgba(255,255,255,.62); border: 1px solid transparent; border-radius: 8px; text-align: left; }
+      .design-tab:hover { border-color: var(--accent); }
+      .design-tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--accent); box-shadow: 0 2px 8px rgba(47,41,38,.06); }
+      .design-tab b { display: block; color: var(--accent); font-size: 11px; }
+      .design-tab strong { display: block; margin-top: 5px; font-size: 12px; line-height: 1.25; }
+      .design-tab span { display: block; margin-top: 5px; font-size: 10px; line-height: 1.25; }
+      .review-note { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 20px; align-items: start; margin-bottom: 18px; padding: 17px 20px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; }
+      .review-note h2 { margin: 0; font-size: 16px; }
+      .review-note p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+      .decision { display: grid; gap: 8px; color: var(--muted); font-size: 11px; }
+      .decision span { display: flex; align-items: center; gap: 7px; }
+      .decision i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+      .workspace { display: grid; gap: 14px; }
+      .scheme-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 20px 22px 16px; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; }
+      .scheme-header h2 { margin: 0; font-size: 20px; }
+      .scheme-header p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: end; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 700; }
+      .btn:hover { border-color: var(--accent); color: var(--accent); }
+      .btn.primary { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+      .btn.primary:hover { color: var(--surface); background: #c94e12; }
+      .btn.icon { width: 34px; padding: 0; font-size: 17px; }
+      .btn[disabled] { cursor: not-allowed; opacity: .5; }
+      .status { display: inline-flex; align-items: center; gap: 6px; min-height: 23px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+      .status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }
+      .status.success { color: var(--success); background: var(--success-bg); }
+      .status.warning { color: var(--warning); background: var(--warning-bg); }
+      .status.danger { color: var(--danger); background: var(--danger-bg); }
+      .status.neutral { color: var(--muted); background: var(--wash); }
+      .scope, .capability { display: inline-flex; align-items: center; width: max-content; min-height: 22px; padding: 0 7px; border-radius: 5px; color: #6e4e40; background: #f8eee9; font-size: 10px; font-weight: 700; }
+      .capability { color: #315d52; background: #edf5f0; }
+      .capability.off { color: #8d817a; background: #f4f1ef; }
+      .table-shell { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 0 0 8px 8px; box-shadow: 0 1px 3px rgba(47,41,38,.04); }
+      .table-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+      .search { width: min(270px, 100%); min-height: 34px; padding: 0 11px; color: var(--ink); background: #fffaf7; border: 1px solid var(--line); border-radius: 6px; outline: 0; }
+      .tool-copy { color: var(--muted); font-size: 11px; }
+      .engine-list { display: grid; gap: 8px; padding: 12px; }
+      .engine-row { display: grid; grid-template-columns: minmax(215px, 1.4fr) minmax(90px, .6fr) minmax(220px, 1.3fr) minmax(115px, .7fr) auto; align-items: center; gap: 14px; min-height: 78px; padding: 13px 14px; background: #fffdfc; border: 1px solid #e9e2de; border-radius: 7px; }
+      .engine-row:hover { border-color: #d9b39e; }
+      .engine-name { min-width: 0; }
+      .engine-name strong { display: block; font-size: 14px; }
+      .engine-name span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .cell-title { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+      .cell-value { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 6px; font-size: 12px; }
+      .engine-actions { display: flex; justify-content: end; gap: 6px; }
+      .engine-detail { display: none; grid-column: 1 / -1; padding: 14px 0 2px; border-top: 1px solid #eee7e3; }
+      .engine-row.open { grid-template-rows: auto auto; }
+      .engine-row.open .engine-detail { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, .7fr); gap: 16px; }
+      .endpoint-list { display: grid; gap: 7px; }
+      .endpoint { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 48px; padding: 8px 10px; background: var(--surface); border: 1px solid #eee7e3; border-radius: 6px; }
+      .endpoint-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+      .endpoint-dot.warn { background: var(--warning); }
+      .endpoint-dot.off { background: #b8aaa2; }
+      .endpoint strong { display: block; font-size: 12px; }
+      .endpoint span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+      .endpoint-right { text-align: right; }
+      .endpoint-right b { display: block; font-size: 11px; }
+      .endpoint-right span { margin-top: 3px; }
+      .detail-summary { display: grid; gap: 8px; align-content: start; padding: 11px 13px; background: #fffaf7; border: 1px solid #eadbd3; border-radius: 6px; }
+      .detail-summary h3 { margin: 0; font-size: 12px; }
+      .detail-summary p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .detail-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; border-top: 1px solid #eee0d8; color: var(--muted); font-size: 11px; }
+      .detail-line strong { color: var(--ink); }
+      .empty { display: grid; justify-items: center; gap: 8px; padding: 44px 18px; color: var(--muted); text-align: center; }
+      .empty-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--accent); background: var(--soft-accent); border-radius: 10px; font-size: 21px; }
+      .empty strong { color: var(--ink); font-size: 14px; }
+      .empty p { max-width: 360px; margin: 0; font-size: 12px; line-height: 1.5; }
+      .wizard-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 540px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 3px rgba(47,41,38,.04); }
+      .wizard-steps { padding: 18px 14px; background: #fffaf7; border-right: 1px solid var(--line); }
+      .wizard-steps h3 { margin: 0 10px 15px; font-size: 13px; }
+      .step { display: flex; align-items: flex-start; gap: 9px; width: 100%; min-height: 52px; padding: 8px 10px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; text-align: left; }
+      .step:hover { background: #f7ebe4; }
+      .step.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgba(47,41,38,.08); }
+      .step-num { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; font-size: 10px; font-weight: 800; }
+      .step.active .step-num, .step.done .step-num { color: var(--surface); background: var(--accent); border-color: var(--accent); }
+      .step strong { display: block; font-size: 12px; }
+      .step span { display: block; margin-top: 3px; font-size: 10px; }
+      .wizard-content { min-width: 0; padding: 22px 24px; }
+      .wizard-content h2 { margin: 0; font-size: 18px; }
+      .wizard-content > p { margin: 6px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      .field { display: grid; gap: 6px; }
+      .field.full { grid-column: 1 / -1; }
+      .field label { color: var(--ink); font-size: 12px; font-weight: 700; }
+      .field label span { margin-left: 4px; color: var(--muted); font-size: 10px; font-weight: 500; }
+      .field input, .field select, .field textarea { width: 100%; min-height: 36px; padding: 7px 10px; color: var(--ink); background: #fffdfc; border: 1px solid var(--line); border-radius: 6px; outline: 0; }
+      .field textarea { min-height: 68px; resize: vertical; }
+      .field small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+      .capability-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      .cap-card { position: relative; display: grid; gap: 5px; min-height: 82px; padding: 12px 11px; color: var(--muted); background: #fffdfc; border: 1px solid var(--line); border-radius: 7px; text-align: left; }
+      .cap-card:hover { border-color: var(--accent); }
+      .cap-card[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); background: var(--soft-accent); }
+      .cap-icon { display: grid; place-items: center; width: 25px; height: 25px; color: var(--accent); background: var(--soft-accent); border-radius: 6px; font-weight: 800; font-size: 12px; }
+      .cap-card[aria-pressed="true"] .cap-icon { background: var(--surface); }
+      .cap-card strong { font-size: 12px; }
+      .cap-card span { font-size: 10px; line-height: 1.35; }
+      .choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      .choice { display: grid; gap: 5px; min-height: 86px; padding: 12px; color: var(--muted); background: #fffdfc; border: 1px solid var(--line); border-radius: 7px; text-align: left; }
+      .choice:hover, .choice.selected { color: var(--ink); border-color: var(--accent); background: var(--soft-accent); }
+      .choice strong { font-size: 12px; }
+      .choice span { font-size: 10px; line-height: 1.4; }
+      .wizard-footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+      .wizard-footer > div { display: flex; gap: 7px; }
+      .subtle-callout { display: flex; gap: 8px; align-items: flex-start; margin: 15px 0 0; padding: 11px 12px; color: var(--muted); background: #fffaf7; border: 1px solid #eadbd3; border-radius: 6px; font-size: 11px; line-height: 1.5; }
+      .subtle-callout b { color: var(--accent); }
+      .metric-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-bottom: 14px; }
+      .metric { padding: 12px 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+      .metric span { display: block; color: var(--muted); font-size: 10px; }
+      .metric strong { display: block; margin-top: 5px; font-size: 20px; }
+      .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+      .matrix-shell { overflow: auto; padding: 0 14px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .matrix-shell table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: 11px; }
+      .matrix-shell th, .matrix-shell td { padding: 12px 9px; border-bottom: 1px solid #eee7e3; text-align: left; }
+      .matrix-shell th { color: var(--muted); font-size: 10px; font-weight: 700; }
+      .matrix-shell td strong { font-size: 12px; }
+      .checkmark { color: var(--success); font-size: 15px; font-weight: 800; }
+      .dash { color: #b8aaa2; }
+      .timeline-shell { padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .timeline { display: grid; gap: 0; }
+      .timeline-item { display: grid; grid-template-columns: 122px 24px minmax(0, 1fr); gap: 10px; min-height: 86px; }
+      .timeline-time { padding-top: 3px; color: var(--muted); font-size: 11px; text-align: right; }
+      .timeline-node { position: relative; display: flex; justify-content: center; }
+      .timeline-node::before { width: 9px; height: 9px; margin-top: 5px; border: 3px solid var(--soft-accent); border-radius: 50%; background: var(--accent); content: ''; z-index: 1; }
+      .timeline-node::after { position: absolute; top: 15px; bottom: -1px; width: 1px; background: var(--line); content: ''; }
+      .timeline-item:last-child .timeline-node::after { display: none; }
+      .timeline-copy { padding-bottom: 20px; }
+      .timeline-copy strong { display: block; font-size: 13px; }
+      .timeline-copy p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .variant-b .scheme-header { border-radius: 16px 16px 0 0; border-top: 3px solid var(--accent); }
+      .variant-b .table-shell { border-radius: 0 0 16px 16px; }
+      .variant-c .scheme-header { border: 0; border-bottom: 2px solid var(--ink); border-radius: 0; background: transparent; padding-left: 0; padding-right: 0; }
+      .variant-c .table-shell { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+      .variant-c .engine-row { border-radius: 0; border-left: 0; border-right: 0; background: transparent; }
+      .variant-d .scheme-header { border-left: 4px solid var(--accent); }
+      .variant-d .table-tools { background: #fffaf7; }
+      .variant-e .engine-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .variant-e .engine-row { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+      .variant-e .engine-row > .cell:nth-of-type(1), .variant-e .engine-row > .cell:nth-of-type(2) { grid-column: 1 / -1; }
+      .variant-e .engine-row > .cell:nth-of-type(2) { margin-top: -5px; }
+      .variant-e .engine-actions { grid-column: 2; grid-row: 1 / span 2; }
+      .variant-e .engine-detail { grid-column: 1 / -1; }
+      .variant-f .table-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: 0 0 8px 8px; }
+      .variant-f .table-tools { grid-column: 1 / -1; }
+      .variant-f .engine-list { padding: 12px; border-right: 1px solid var(--line); }
+      .variant-f .engine-row { grid-template-columns: minmax(0, 1fr) auto; min-height: 70px; }
+      .variant-f .engine-row .cell, .variant-f .engine-row .engine-detail { display: none; }
+      .variant-f .engine-row .engine-actions { grid-column: 2; }
+      .variant-f .engine-row.selected { border-color: var(--accent); background: var(--soft-accent); }
+      .variant-f .detail-pane { min-width: 0; padding: 18px; }
+      .variant-g .scheme-header { background: var(--sidebar); border-color: var(--sidebar); color: var(--surface); }
+      .variant-g .scheme-header p { color: #b9c0c8; }
+      .variant-g .table-shell { border-radius: 0 0 8px 8px; }
+      .variant-g .metric { background: var(--surface); }
+      .variant-h .scheme-header { border-bottom: 0; }
+      .variant-h .table-shell { border-top: 1px solid var(--line); border-radius: 8px; }
+      @media (max-width: 1050px) {
+        .design-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .engine-row { grid-template-columns: minmax(190px, 1.3fr) minmax(90px, .7fr) minmax(180px, 1fr) auto; }
+        .engine-row > .cell:nth-of-type(2) { display: none; }
+        .wizard-shell { grid-template-columns: 200px minmax(0, 1fr); }
+      }
+      @media (max-width: 760px) {
+        .app-layout { grid-template-columns: 64px minmax(0, 1fr); }
+        .sidebar { padding: 18px 10px; }
+        .sidebar-brand { justify-content: center; padding: 0; }
+        .sidebar-brand > div:last-child, .nav-label, .side-nav button span, .sidebar-foot span { display: none; }
+        .side-nav button { justify-content: center; padding: 0; }
+        .side-nav button.active::before { display: none; }
+        .intro, .review-note { display: grid; grid-template-columns: 1fr; align-items: start; }
+        .design-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .design-tab { min-height: 66px; }
+        .engine-row { grid-template-columns: minmax(0, 1fr) auto; }
+        .engine-row .cell { display: none; }
+        .engine-row .engine-actions { grid-column: 2; }
+        .engine-row.open .engine-detail { grid-template-columns: 1fr; }
+        .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .wizard-shell { grid-template-columns: 1fr; }
+        .wizard-steps { display: flex; gap: 5px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; }
+        .wizard-steps h3 { display: none; }
+        .step { min-width: 128px; min-height: 45px; padding: 7px 8px; }
+        .step span { display: none; }
+        .field-grid, .capability-grid, .choice-grid { grid-template-columns: 1fr; }
+        .capability-grid .cap-card, .choice-grid .choice { min-height: 62px; }
+        .variant-e .engine-list { grid-template-columns: 1fr; }
+        .variant-f .table-shell { grid-template-columns: 1fr; }
+        .variant-f .engine-list { border-right: 0; border-bottom: 1px solid var(--line); }
+        .variant-f .detail-pane { padding-top: 12px; }
+      }
+      @media (max-width: 560px) {
+        .app-layout { grid-template-columns: 1fr; }
+        .sidebar { min-height: auto; flex-direction: row; align-items: center; padding: 10px 12px; }
+        .side-nav { display: flex; margin-left: auto; }
+        .side-nav button { min-height: 32px; padding: 0 8px; }
+        .side-nav button:nth-child(n+4), .sidebar-foot { display: none; }
+        .sidebar-brand > div:last-child { display: block; }
+        .topbar { align-items: flex-start; padding: 15px 12px; }
+        .actor span { display: none; }
+        main { width: min(100% - 24px, 1260px); padding-top: 24px; }
+        .header-actions { width: 100%; justify-content: start; }
+        .scheme-header { display: grid; align-items: start; }
+        .table-tools { align-items: stretch; flex-direction: column; }
+        .search { width: 100%; }
+        .wizard-content { padding: 18px 14px; }
+        .wizard-footer { align-items: stretch; flex-direction: column; }
+        .wizard-footer > div { justify-content: stretch; }
+        .wizard-footer .btn { flex: 1; }
+        .timeline-item { grid-template-columns: 74px 20px minmax(0, 1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-layout" id="preview-root">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="brand-mark">O</div><div><strong>OpsKeeper</strong><small>智能值守平台</small></div></div>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="side-nav" aria-label="主导航">
+          <button type="button"><b>⌂</b><span>总览</span></button>
+          <button type="button"><b>◇</b><span>组织</span></button>
+          <button type="button" class="active"><b>◎</b><span>AI 引擎</span></button>
+          <button type="button"><b>□</b><span>资源</span></button>
+          <button type="button"><b>≋</b><span>诊断</span></button>
+        </nav>
+        <div class="sidebar-foot"><div class="avatar">林</div><span>林晓 · 平台管理员</span></div>
+      </aside>
+      <div class="page">
+        <header class="topbar">
+          <div class="crumb">Platform / 智能能力<strong>AI 引擎</strong></div>
+          <div class="actor"><span>当前视角：平台管理员</span><div class="avatar">林</div></div>
+        </header>
+        <main>
+          <div class="intro">
+            <div><p class="eyebrow">DESIGN REVIEW / AI ENGINE</p><h1>AI 引擎工作台</h1><p>八种页面编排方案预览。统一展示引擎、内部模型连接、能力交集与健康状态，并提供单页或分步创建路径。此次取消“单模态 / 多模态”子类，媒体能力由连接测试后的能力交集决定。</p></div>
+            <label class="mode-select">预览状态<select id="state-select"><option value="normal">正常数据</option><option value="readonly">只读权限</option><option value="empty">尚未创建</option><option value="error">连接异常</option></select></label>
+          </div>
+          <div class="design-tabs" role="tablist" aria-label="八种设计方案">
+            <button class="design-tab" role="tab" aria-selected="true" data-variant="a"><b>A</b><strong>紧凑工作台</strong><span>列表优先</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="b"><b>B</b><strong>健康摘要</strong><span>状态优先</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="c"><b>C</b><strong>精密表格</strong><span>大规模治理</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="d"><b>D</b><strong>关系展开</strong><span>连接追溯</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="e"><b>E</b><strong>引擎画廊</strong><span>快速选择</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="f"><b>F</b><strong>详情工作区</strong><span>持续录入</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="g"><b>G</b><strong>运营摘要</strong><span>团队值守</span></button>
+            <button class="design-tab" role="tab" aria-selected="false" data-variant="h"><b>H</b><strong>创建向导</strong><span>分步配置</span></button>
+          </div>
+          <section class="review-note" aria-label="设计说明">
+            <div><h2 id="scheme-title">A · 紧凑工作台</h2><p id="scheme-description">以列表为中心，行内查看 Scope、能力交集、成员数量和最新测试结果。适合平台管理员快速扫描大量 AI 引擎，并在展开区检查每个内部 Endpoint。</p></div>
+            <div class="decision"><span><i></i><b>统一入口</b>：业务侧只选择 AIEngine</span><span><i></i><b>能力来源</b>：由启用成员自动计算交集</span><span><i></i><b>敏感信息</b>：凭据与完整连接地址不在此页明文展示</span></div>
+          </section>
+          <div class="workspace" id="workspace"></div>
+        </main>
+      </div>
+    </div>
+    <script>
+      const root = document.getElementById('preview-root');
+      const workspace = document.getElementById('workspace');
+      const title = document.getElementById('scheme-title');
+      const description = document.getElementById('scheme-description');
+      const stateSelect = document.getElementById('state-select');
+      const schemes = {
+        a: { title: 'A · 紧凑工作台', description: '以列表为中心，行内查看 Scope、能力交集、成员数量和最新测试结果。适合平台管理员快速扫描大量 AI 引擎，并在展开区检查每个内部 Endpoint。' },
+        b: { title: 'B · 健康摘要', description: '把可用率、待修复成员和默认引擎放在列表前，让值守人员先判断平台是否可用，再进入具体路由。' },
+        c: { title: 'C · 精密表格', description: '采用高密度表格和能力矩阵，适合需要比较上下文窗口、流式输出、工具调用和视觉能力的资源治理场景。' },
+        d: { title: 'D · 关系展开', description: '以每个引擎为关系入口，连续展开成员、路由优先级、测试事件和权限边界，适合审计和故障追溯。' },
+        e: { title: 'E · 引擎画廊', description: '用两列引擎卡片突出名称、用途和健康状态，适合团队成员从少量可用引擎中快速选择并查看能力。' },
+        f: { title: 'F · 详情工作区', description: '左侧保留引擎清单，右侧固定详情与编辑上下文，适合频繁录入 Endpoint 或连续测试多个连接。' },
+        g: { title: 'G · 运营摘要', description: '深色摘要头承载值守指标，下方展示最近路由和异常时间线，适合运维班次交接与快速确认故障转移。' },
+        h: { title: 'H · 创建向导', description: '将创建拆成基础信息、能力意图、Endpoint 成员、路由策略和发布测试五步；每个字段用卡片、开关、选择器或排序控件表达。' }
+      };
+      const engines = [
+        { name: '生产诊断中枢', desc: '截图诊断与受控 Skill', scope: '平台 · OpsKeeper', status: '正常', statusClass: 'success', members: '3 个成员', caps: ['文本', '视觉', '工具调用'], window: '128k', default: '平台默认', endpoints: [ ['OpenAI / gpt-4.1', '优先级 100 · 连接 2 分钟前', '健康'], ['Azure / gpt-4.1-mini', '优先级 80 · 连接 5 分钟前', '健康'], ['兼容接口 / qwen-vl', '优先级 60 · 连接 1 天前', '待检查'] ] },
+        { name: '文本巡检助手', desc: '日志摘要与巡检报告', scope: '团队 · SRE', status: '正常', statusClass: 'success', members: '2 个成员', caps: ['文本', '流式输出', '结构化输出'], window: '32k', default: '团队默认', endpoints: [ ['OpenAI / gpt-4.1-mini', '优先级 100 · 连接 8 分钟前', '健康'], ['Anthropic / claude-3.7', '优先级 90 · 连接 12 分钟前', '健康'] ] },
+        { name: '项目问答实验场', desc: '项目知识库问答', scope: '项目 · 控制台', status: '需修复', statusClass: 'warning', members: '2 个成员', caps: ['文本', '工具调用'], window: '16k', default: '未设置', endpoints: [ ['兼容接口 / deepseek-chat', '优先级 100 · 超时 3 次', '超时'], ['OpenAI / gpt-4.1-mini', '优先级 80 · 连接 4 小时前', '健康'] ] }
+      ];
+      function statusMarkup(text, cls) { return '<span class="status ' + cls + '">' + text + '</span>'; }
+      function capMarkup(caps) { return caps.map((cap) => '<span class="capability">' + cap + '</span>').join(''); }
+      function endpointMarkup(endpoint, index) {
+        const healthClass = endpoint[2] === '健康' ? '' : endpoint[2] === '待检查' ? ' warn' : ' off';
+        return '<div class="endpoint"><i class="endpoint-dot' + healthClass + '"></i><div><strong>' + endpoint[0] + '</strong><span>' + endpoint[1] + '</span></div><div class="endpoint-right"><b>' + endpoint[2] + '</b><span>成员 ' + (index + 1) + '</span></div></div>';
+      }
+      function rowMarkup(engine, index, extraClass = '') {
+        return '<article class="engine-row ' + extraClass + '" data-engine="' + index + '"><div class="engine-name"><strong>' + engine.name + '</strong><span>' + engine.desc + '</span></div><div class="cell"><span class="cell-title">Scope</span><div class="cell-value"><span class="scope">' + engine.scope + '</span></div></div><div class="cell"><span class="cell-title">能力交集</span><div class="cell-value">' + capMarkup(engine.caps) + '</div></div><div class="cell"><span class="cell-title">状态 · 成员</span><div class="cell-value">' + statusMarkup(engine.status, engine.statusClass) + '<span class="muted">' + engine.members + '</span></div></div><div class="engine-actions"><button class="btn icon toggle-detail" type="button" title="展开成员详情" aria-label="展开成员详情">⌄</button><button class="btn icon" type="button" title="更多操作" aria-label="更多操作">⋯</button></div><div class="engine-detail"><div class="endpoint-list">' + engine.endpoints.map(endpointMarkup).join('') + '</div><div class="detail-summary"><h3>路由与权限</h3><p>按优先级调用，超时、限流和服务端错误允许切换。当前用户可以使用此引擎，但仅具备配置读取权限时不会看到凭据明文。</p><div class="detail-line"><span>上下文窗口</span><strong>' + engine.window + '</strong></div><div class="detail-line"><span>默认状态</span><strong>' + engine.default + '</strong></div><div class="detail-line"><span>最后测试</span><strong>今天 10:42</strong></div></div></div></article>';
+      }
+      function listShell(extraClass = '', toolCopy = '3 个 AI 引擎 · 1 个待修复') {
+        return '<div class="scheme-header"><div><h2>AI 引擎列表</h2><p>一个引擎可以包含一个或多个私有 Endpoint；业务调用只感知引擎，不直接选择具体模型。</p></div><div class="header-actions"><button class="btn" type="button">刷新状态</button><button class="btn primary" type="button" id="create-engine">＋ 创建 AI 引擎</button></div></div><div class="table-shell"><div class="table-tools"><input class="search" aria-label="搜索 AI 引擎" placeholder="搜索名称、Scope 或用途" /><span class="tool-copy">' + toolCopy + '</span></div><div class="engine-list ' + extraClass + '">' + engines.map((e, i) => rowMarkup(e, i)).join('') + '</div></div>';
+      }
+      function renderList(variant) {
+        root.className = 'app-layout variant-' + variant;
+        if (variant === 'a' || variant === 'c' || variant === 'd') workspace.innerHTML = listShell();
+        if (variant === 'b') workspace.innerHTML = '<div class="metric-row"><div class="metric"><span>可用引擎</span><strong>2</strong><small>可被业务调用</small></div><div class="metric"><span>健康 Endpoint</span><strong>4 / 7</strong><small>最近 24 小时</small></div><div class="metric"><span>默认引擎</span><strong>2</strong><small>平台与团队</small></div><div class="metric"><span>待处理</span><strong>1</strong><small>需要重新测试</small></div></div>' + listShell('', '健康视图 · 2 个可用 · 1 个需修复');
+        if (variant === 'e') workspace.innerHTML = listShell('gallery-list');
+        if (variant === 'f') workspace.innerHTML = listShell('detail-list');
+        if (variant === 'g') workspace.innerHTML = '<div class="metric-row"><div class="metric"><span>当前值守</span><strong>稳定</strong><small>所有默认引擎可调用</small></div><div class="metric"><span>今日请求</span><strong>1,284</strong><small>成功率 99.2%</small></div><div class="metric"><span>故障转移</span><strong>18</strong><small>均在输出前完成</small></div><div class="metric"><span>最后检查</span><strong>10:42</strong><small>全量成员测试</small></div></div><div class="timeline-shell"><h2 style="margin:0 0 16px;font-size:16px">最近路由与健康事件</h2><div class="timeline"><div class="timeline-item"><div class="timeline-time">10:42 · 生产诊断中枢</div><div class="timeline-node"></div><div class="timeline-copy"><strong>全量连接测试通过</strong><p>3 个成员均可用，能力交集为文本、视觉、工具调用；上下文窗口取最小值 128k。</p></div></div><div class="timeline-item"><div class="timeline-time">09:58 · 项目问答实验场</div><div class="timeline-node"></div><div class="timeline-copy"><strong>发生一次超时切换</strong><p>deepseek-chat 超时后切换至 gpt-4.1-mini，未产生流式输出，审计记录已写入。</p></div></div><div class="timeline-item"><div class="timeline-time">昨天 · 文本巡检助手</div><div class="timeline-node"></div><div class="timeline-copy"><strong>设为团队默认</strong><p>SRE 团队后台巡检和没有显式偏好的诊断将使用此 AI 引擎。</p></div></div></div></div>';
+        bindRows();
+        if (variant === 'f') bindDetailWorkspace();
+      }
+      function renderEmpty() { workspace.innerHTML = '<div class="scheme-header"><div><h2>AI 引擎列表</h2><p>当前 Scope 还没有可用的 AI 引擎。</p></div><div class="header-actions"><button class="btn primary" type="button" id="create-engine">＋ 创建 AI 引擎</button></div></div><div class="table-shell"><div class="empty"><div class="empty-mark">◎</div><strong>还没有创建 AI 引擎</strong><p>创建后，业务侧只需选择 AI 引擎即可使用已验证的模型连接。</p><button class="btn primary" type="button" id="create-engine-empty">创建第一个 AI 引擎</button></div></div>'; bindCreate(); }
+      function renderReadonly(variant) { renderList(variant); document.querySelectorAll('.btn.primary, .toggle-detail').forEach((el) => { el.disabled = true; el.title = '当前视角只有 resource:use 权限'; }); const note = document.createElement('div'); note.className = 'subtle-callout'; note.innerHTML = '<b>只读提示</b><span>你可以使用和查看脱敏后的能力状态，但没有 resource:update 权限，创建、编辑和成员测试入口已禁用。</span>'; workspace.prepend(note); }
+      function renderError() { renderList('a'); document.querySelectorAll('.status.success').forEach((el) => { el.className = 'status danger'; el.textContent = '连接异常'; }); const note = document.createElement('div'); note.className = 'subtle-callout'; note.innerHTML = '<b>连接检查失败</b><span>部分 Provider 返回 5xx。已有引擎仍保留当前配置；可在成员详情中单独重试，未开始输出前才允许故障切换。</span>'; workspace.prepend(note); }
+      function wizardStepMarkup(step) {
+        const active = step === 1 ? 'active' : step > 1 ? 'done' : '';
+        return '<button class="step ' + active + '" type="button" data-step="' + step + '"><span class="step-num">' + (step < 3 ? step : step === 3 ? '✓' : step) + '</span><span><strong>' + ['基础信息', '能力意图', '连接成员', '路由策略', '测试发布'][step - 1] + '</strong><span>' + ['名称、Scope 和用途', '选择业务需要的能力', 'Provider、模型与凭据', '优先级与切换条件', '验证后再启用'][step - 1] + '</span></span></button>';
+      }
+      function wizardContent(step = 1) {
+        const contents = {
+          1: '<h2>基础信息</h2><p>先定义用户可以识别的统一能力入口；Endpoint 和模型详情在后续步骤配置。</p><div class="field-grid"><div class="field"><label for="engine-name">名称 <span>必填</span></label><input id="engine-name" placeholder="例如：生产诊断中枢" value="生产诊断中枢" /></div><div class="field"><label for="engine-scope">所属 Scope <span>必填</span></label><select id="engine-scope"><option>平台 · OpsKeeper</option><option>团队 · SRE</option><option>项目 · 控制台</option></select></div><div class="field full"><label for="engine-desc">用途说明 <span>帮助使用者选择</span></label><textarea id="engine-desc" placeholder="例如：用于截图诊断、日志分析和受控 Skill">截图诊断与受控 Skill</textarea><small>名称、Scope 和描述会出现在 AI 引擎列表与业务选择器中。</small></div></div><div class="subtle-callout"><b>设计变化</b><span>不再选择“单模态 / 多模态”子类。引擎的实际能力由启用 Endpoint 的交集自动计算，避免手工标签与协议能力不一致。</span></div>',
+          2: '<h2>能力意图</h2><p>选择业务需要的能力，系统将在连接测试后校验成员交集；未满足的能力会在发布前明确提示。</p><div class="capability-grid"><button class="cap-card" type="button" aria-pressed="true"><span class="cap-icon">T</span><strong>文本对话</strong><span>文本消息与流式文本输出</span></button><button class="cap-card" type="button" aria-pressed="true"><span class="cap-icon">V</span><strong>视觉输入</strong><span>图片、截图或图表证据</span></button><button class="cap-card" type="button" aria-pressed="true"><span class="cap-icon">↗</span><strong>工具调用</strong><span>受控 Skill 与结构化动作</span></button><button class="cap-card" type="button" aria-pressed="false"><span class="cap-icon">{ }</span><strong>结构化输出</strong><span>JSON Schema 约束响应</span></button><button class="cap-card" type="button" aria-pressed="true"><span class="cap-icon">≈</span><strong>流式输出</strong><span>实时显示模型响应</span></button><button class="cap-card" type="button" aria-pressed="false"><span class="cap-icon">∞</span><strong>长上下文</strong><span>上下文窗口达到 128k</span></button></div><div class="subtle-callout"><b>计算规则</b><span>最终能力 = 所有启用 Endpoint 的能力交集；上下文窗口 = 成员中的最小值。能力不足会在调用前失败。</span></div>',
+          3: '<h2>连接成员</h2><p>每个成员都是独立的 Provider + 模型 + 凭据组合，凭据只引用加密记录，不在页面显示明文。</p><div class="field-grid"><div class="field"><label for="provider">Provider 类型</label><select id="provider"><option>OpenAI</option><option>OpenAI Compatible</option><option>Azure OpenAI</option></select></div><div class="field"><label for="model">模型名称</label><input id="model" placeholder="例如：gpt-4.1" value="gpt-4.1" /></div><div class="field"><label for="base-url">Base URL <span>非敏感地址</span></label><input id="base-url" placeholder="https://api.example.com/v1" value="https://api.openai.com/v1" /></div><div class="field"><label for="credential">加密凭据</label><select id="credential"><option>platform-openai-prod · 已绑定</option><option>team-sre-openai · 可绑定</option></select></div><div class="field"><label for="context">上下文窗口</label><input id="context" type="number" placeholder="例如：128000" value="128000" /></div><div class="field"><label for="timeout">超时秒数</label><input id="timeout" type="number" placeholder="例如：30" value="30" /></div></div><div class="subtle-callout"><b>连接测试</b><span>保存成员后先测试协议和声明能力；测试失败的成员不会进入可用候选，也不会改变其他 AI 引擎。</span></div>',
+          4: '<h2>路由策略</h2><p>首版固定使用优先级路由，数字越大越先调用；只在可恢复错误时按顺序切换。</p><div class="choice-grid"><button class="choice selected" type="button"><strong>优先级路由</strong><span>按成员优先级从高到低尝试，稳定且可解释。</span></button><button class="choice" type="button"><strong>仅首选成员</strong><span>适合不允许切换的特殊模型连接。</span></button><button class="choice" type="button"><strong>顺序演练</strong><span>预览每次切换原因和最终成员。</span></button></div><div class="field-grid" style="margin-top:14px"><div class="field"><label for="priority">首选成员优先级</label><input id="priority" type="number" placeholder="100" value="100" /></div><div class="field"><label for="fallback">故障切换条件</label><select id="fallback"><option>超时 + 限流 + 5xx</option><option>仅超时</option><option>不自动切换</option></select></div></div><div class="subtle-callout"><b>安全边界</b><span>参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。</span></div>',
+          5: '<h2>测试与发布</h2><p>发布前一次性检查资源、成员协议、能力交集和默认设置；测试不会创建对话或执行 Tool Call。</p><div class="endpoint-list"><div class="endpoint"><i class="endpoint-dot"></i><div><strong>OpenAI / gpt-4.1</strong><span>连接、文本、视觉、工具调用</span></div><div class="endpoint-right"><b style="color:var(--success)">通过</b><span>48 ms</span></div></div><div class="endpoint"><i class="endpoint-dot warn"></i><div><strong>Azure / gpt-4.1-mini</strong><span>连接通过，视觉能力待确认</span></div><div class="endpoint-right"><b style="color:var(--warning)">需确认</b><span>1.2 s</span></div></div></div><div class="subtle-callout"><b>能力交集</b><span>当前可发布能力：文本对话、工具调用、流式输出；视觉输入待第二个成员测试通过后才会纳入。</span></div>'
+        };
+        return contents[step];
+      }
+      function renderWizard() {
+        root.className = 'app-layout variant-h';
+        workspace.innerHTML = '<div class="scheme-header"><div><h2>创建 AI 引擎</h2><p>分步完成配置，任何时候都可以返回修改；未发布前不会影响线上调用。</p></div><div class="header-actions"><button class="btn" type="button" id="cancel-wizard">取消</button></div></div><div class="wizard-shell"><div class="wizard-steps"><h3>创建流程</h3>' + [1,2,3,4,5].map(wizardStepMarkup).join('') + '</div><div class="wizard-content" id="wizard-content">' + wizardContent(1) + '<div class="wizard-footer"><div><button class="btn" type="button" disabled>上一步</button><button class="btn primary" type="button" id="next-step">下一步</button></div><span class="muted" style="align-self:center">第 1 / 5 步</span></div></div></div>'; bindWizard(); }
+      function bindRows() { document.querySelectorAll('.toggle-detail').forEach((button) => button.addEventListener('click', () => { const row = button.closest('.engine-row'); row.classList.toggle('open'); button.textContent = row.classList.contains('open') ? '⌃' : '⌄'; })); bindCreate(); }
+      function bindCreate() { document.querySelectorAll('#create-engine, #create-engine-empty').forEach((button) => button.addEventListener('click', renderWizard)); }
+      function bindDetailWorkspace() { const rows = document.querySelectorAll('.detail-list .engine-row'); const detail = document.createElement('aside'); detail.className = 'detail-pane'; detail.innerHTML = '<h3 style="margin:0;font-size:15px">生产诊断中枢</h3><p class="muted" style="margin:6px 0 16px">平台 · OpsKeeper · 平台默认</p><div class="detail-summary"><h3>能力交集</h3><div class="cell-value">' + capMarkup(engines[0].caps) + '</div><div class="detail-line"><span>成员</span><strong>3 个</strong></div><div class="detail-line"><span>上下文窗口</span><strong>128k</strong></div><div class="detail-line"><span>最后测试</span><strong>今天 10:42</strong></div></div><div class="endpoint-list" style="margin-top:12px">' + engines[0].endpoints.map(endpointMarkup).join('') + '</div><button class="btn primary" type="button" style="margin-top:14px">测试全部成员</button>'; document.querySelector('.detail-list').after(detail); rows[0].classList.add('selected'); rows.forEach((row) => row.addEventListener('click', () => { rows.forEach((r) => r.classList.remove('selected')); row.classList.add('selected'); })); }
+      function bindWizard() { let step = 1; document.getElementById('cancel-wizard').addEventListener('click', () => renderList('a')); const update = (next) => { step = Math.max(1, Math.min(5, next)); document.querySelectorAll('.step').forEach((el) => { el.classList.toggle('active', Number(el.dataset.step) === step); el.classList.toggle('done', Number(el.dataset.step) < step); }); const content = document.getElementById('wizard-content'); content.innerHTML = wizardContent(step) + '<div class="wizard-footer"><div><button class="btn" type="button" id="prev-step" ' + (step === 1 ? 'disabled' : '') + '>上一步</button><button class="btn primary" type="button" id="next-step">' + (step === 5 ? '发布 AI 引擎' : '下一步') + '</button></div><span class="muted" style="align-self:center">第 ' + step + ' / 5 步</span></div>'; document.getElementById('prev-step').addEventListener('click', () => update(step - 1)); document.getElementById('next-step').addEventListener('click', () => step === 5 ? renderList('a') : update(step + 1)); document.querySelectorAll('.cap-card').forEach((card) => card.addEventListener('click', () => card.setAttribute('aria-pressed', card.getAttribute('aria-pressed') !== 'true'))); document.querySelectorAll('.choice').forEach((card) => card.addEventListener('click', () => { document.querySelectorAll('.choice').forEach((c) => c.classList.remove('selected')); card.classList.add('selected'); })); }; document.querySelectorAll('.step').forEach((button) => button.addEventListener('click', () => update(Number(button.dataset.step)))); document.getElementById('next-step').addEventListener('click', () => update(2)); }
+      function render() { const selected = document.querySelector('.design-tab[aria-selected="true"]'); const variant = selected ? selected.dataset.variant : 'a'; const state = stateSelect.value; title.textContent = schemes[variant].title; description.textContent = schemes[variant].description; if (state === 'empty') renderEmpty(); else if (state === 'readonly') renderReadonly(variant); else if (state === 'error') renderError(); else if (variant === 'h') renderWizard(); else renderList(variant); }
+      document.querySelectorAll('.design-tab').forEach((tab) => tab.addEventListener('click', () => { document.querySelectorAll('.design-tab').forEach((t) => t.setAttribute('aria-selected', t === tab ? 'true' : 'false')); render(); }));
+      stateSelect.addEventListener('change', render);
+      render();
+    </script>
+  </body>
+</html>

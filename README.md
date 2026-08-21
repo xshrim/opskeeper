@@ -64,6 +64,7 @@ make start
 - [总体架构设计](docs/design/architecture.md)
 - [三级权限与安全设计](docs/design/authorization.md)
 - [组织、资源与拓扑模型](docs/design/resource-model.md)
+- [AIEngine 与 LLMEndpoint 设计](docs/design/ai-engine.md)
 - [Kubernetes 导入、AI 诊断与自动巡检](docs/design/operations-workflows.md)
 
 ## 工程规范

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -54,11 +55,23 @@ func main() {
 	started := time.Now()
 	if err := run(ctx, direction, cfg); err != nil {
 		observability.RecordTask(ctx, "migration", "failure", time.Since(started))
-		logger.Error("migration failed", "kind", "error", "error_type", "migration", "error", err)
+		logger.Error("migration failed", "kind", "error", "error_type", "migration", "error_summary", migrationErrorSummary(err))
 		os.Exit(1)
 	}
 	observability.RecordTask(ctx, "migration", "success", time.Since(started))
 	logger.Info("migration command completed", "kind", "job", "direction", direction)
+}
+
+func migrationErrorSummary(err error) string {
+	if err == nil {
+		return ""
+	}
+	const maxLength = 500
+	summary := strings.Join(strings.Fields(err.Error()), " ")
+	if len(summary) > maxLength {
+		return summary[:maxLength] + "..."
+	}
+	return summary
 }
 
 func run(ctx context.Context, direction string, cfg config.Config) error {

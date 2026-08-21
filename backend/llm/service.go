@@ -158,21 +158,51 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 	if err != nil {
 		return Provider{}, err
 	}
-	if item.Kind != ProviderKind {
-		return Provider{}, invalid("resource is not an LLMProvider")
+	if item.Kind != ProviderKind && item.Kind != AIEngineKind {
+		return Provider{}, invalid("resource is not an AIEngine or LLMProvider")
 	}
 	if !allowsProviderResource(ctx, item) {
 		return Provider{}, authorization.ErrForbidden
 	}
 	if requireActive && item.Status != resource.StatusActive {
-		return Provider{}, invalid("LLMProvider is not active")
+		return Provider{}, invalid("AIEngine is not active")
 	}
 	encoded, err := json.Marshal(item.Config)
 	if err != nil {
 		return Provider{}, fmt.Errorf("encode LLMProvider config: %w", err)
 	}
 	var config ProviderConfig
-	if err := json.Unmarshal(encoded, &config); err != nil {
+	if item.Kind == AIEngineKind {
+		var engine struct {
+			Endpoints []struct {
+				ProviderType   string   `json:"provider_type"`
+				BaseURL        string   `json:"base_url"`
+				ModelName      string   `json:"model_name"`
+				ContextWindow  int      `json:"context_window"`
+				Capabilities   []string `json:"capabilities"`
+				TimeoutSeconds int      `json:"timeout_seconds"`
+				Enabled        bool     `json:"enabled"`
+			} `json:"endpoints"`
+		}
+		if err := json.Unmarshal(encoded, &engine); err != nil || len(engine.Endpoints) == 0 {
+			return Provider{}, invalid("AIEngine config is invalid")
+		}
+		for _, endpoint := range engine.Endpoints {
+			if !endpoint.Enabled {
+				continue
+			}
+			config = ProviderConfig{
+				ProviderType: endpoint.ProviderType,
+				BaseURL: endpoint.BaseURL,
+				Models: []ModelConfig{{Name: endpoint.ModelName, ContextWindow: endpoint.ContextWindow, Capabilities: endpoint.Capabilities}},
+				TimeoutSeconds: endpoint.TimeoutSeconds,
+			}
+			break
+		}
+		if len(config.Models) == 0 {
+			return Provider{}, invalid("AIEngine has no enabled endpoint")
+		}
+	} else if err := json.Unmarshal(encoded, &config); err != nil {
 		return Provider{}, invalid("LLMProvider config is invalid")
 	}
 	if err := validateProviderConfig(config); err != nil {

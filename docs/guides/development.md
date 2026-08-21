@@ -222,7 +222,7 @@ make llm-provider-test
 
 该入口通过项目内 OpenAI-compatible Adapter、ADK `llmagent` 和 ADK Runner 分别执行非流式与 SSE 请求，并验证响应非空及 Token usage。它会访问外部服务并可能产生费用，因此不并入默认 `make test` 或 `make quality`。测试只输出模式、字符数和 Token 数，不输出 Token 或模型正文。
 
-应用中登记 `LLMProvider` 时，Base URL、Provider 类型和模型能力保存在资源配置；API Token 必须通过资源凭据加密保存。Model 是 Provider 内的版本化配置，不登记成独立资源。
+应用中登记 AIEngine 时，路由配置和能力意图保存在资源配置；Provider 类型、Base URL、模型名称、能力和超时保存在 AIEngine 私有的 LLMEndpoint 中。API Token 必须通过资源凭据加密保存，LLMEndpoint 不登记为独立资源，也不参与独立授权。AIEngine 不再划分单模态和多模态子类，`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段，最终能力由启用成员自动计算交集。
 
 ## 5. PostgreSQL 与 Redis
 

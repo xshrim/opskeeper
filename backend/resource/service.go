@@ -2,6 +2,8 @@ package resource
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"strings"
 
 	"opskeeper/backend/authorization"
@@ -62,6 +64,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	if err := validateConfig(input.Config, schema); err != nil {
 		return Resource{}, err
 	}
+	if input.Kind == "AIEngine" {
+		if err := validateAIEngineConfig(input.Config); err != nil {
+			return Resource{}, err
+		}
+	}
 	input.SchemaVersion = schema.Version
 	return s.store.Create(ctx, input)
 }
@@ -104,6 +111,11 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 	}
 	if err := validateConfig(input.Config, schema); err != nil {
 		return Resource{}, err
+	}
+	if input.Kind == "AIEngine" {
+		if err := validateAIEngineConfig(input.Config); err != nil {
+			return Resource{}, err
+		}
 	}
 	input.SchemaVersion = schema.Version
 	return s.store.UpsertImported(ctx, input)
@@ -174,11 +186,108 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 		if err := validateConfig(*input.Config, schema); err != nil {
 			return Resource{}, err
 		}
+		if current.Kind == "AIEngine" {
+			if err := validateAIEngineConfig(*input.Config); err != nil {
+				return Resource{}, err
+			}
+		}
 	}
 	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.CredentialID == nil {
 		return Resource{}, invalid("at least one field must be provided")
 	}
 	return s.store.Update(ctx, id, input)
+}
+
+// validateAIEngineConfig enforces the semantic contract that cannot be
+// represented by the intentionally simple resource schema validator.
+func validateAIEngineConfig(config map[string]any) error {
+	if strategy, ok := config["strategy"].(string); !ok || strategy != "priority" {
+		return invalid("AIEngine strategy must be priority")
+	}
+	rawEndpoints, ok := aiEngineEndpoints(config["endpoints"])
+	if !ok || len(rawEndpoints) == 0 {
+		return invalid("AIEngine endpoints must contain at least one endpoint")
+	}
+	seenPriority := map[int]bool{}
+	for index, raw := range rawEndpoints {
+		endpoint, ok := raw.(map[string]any)
+		if !ok {
+			return invalid(fmt.Sprintf("AIEngine endpoints[%d] must be an object", index))
+		}
+		providerType, _ := endpoint["provider_type"].(string)
+		baseURL, _ := endpoint["base_url"].(string)
+		modelName, _ := endpoint["model_name"].(string)
+		if strings.TrimSpace(providerType) == "" || strings.TrimSpace(modelName) == "" {
+			return invalid(fmt.Sprintf("AIEngine endpoints[%d] requires provider_type and model_name", index))
+		}
+		parsed, err := url.ParseRequestURI(baseURL)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return invalid(fmt.Sprintf("AIEngine endpoints[%d].base_url must be an absolute HTTP URL", index))
+		}
+		priority, ok := aiEngineInt(endpoint["priority"])
+		if !ok || priority < 0 || priority > 100000 {
+			return invalid(fmt.Sprintf("AIEngine endpoints[%d].priority must be between 0 and 100000", index))
+		}
+		if seenPriority[priority] {
+			return invalid("AIEngine endpoint priorities must be unique")
+		}
+		seenPriority[priority] = true
+		if _, ok := endpoint["enabled"].(bool); !ok {
+			return invalid(fmt.Sprintf("AIEngine endpoints[%d].enabled must be boolean", index))
+		}
+	}
+	return nil
+}
+
+func aiEngineStringSet(value any) map[string]bool {
+	set := map[string]bool{}
+	var items []any
+	switch typed := value.(type) {
+	case []any:
+		items = typed
+	case []string:
+		for _, item := range typed {
+			items = append(items, item)
+		}
+	}
+	for _, item := range items {
+		if text, ok := item.(string); ok {
+			set[strings.ToLower(strings.TrimSpace(text))] = true
+		}
+	}
+	return set
+}
+
+func aiEngineEndpoints(value any) ([]any, bool) {
+	switch typed := value.(type) {
+	case []any:
+		return typed, true
+	case []map[string]any:
+		items := make([]any, len(typed))
+		for index := range typed {
+			items[index] = typed[index]
+		}
+		return items, true
+	default:
+		return nil, false
+	}
+}
+
+func aiEngineInt(value any) (int, bool) {
+	switch number := value.(type) {
+	case int:
+		return number, true
+	case int32:
+		return int(number), true
+	case int64:
+		return int(number), true
+	case float64:
+		return int(number), number == float64(int(number))
+	case float32:
+		return int(number), number == float32(int(number))
+	default:
+		return 0, false
+	}
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {

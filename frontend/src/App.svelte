@@ -19,6 +19,7 @@
     Pencil,
     PlugZap,
     Plus,
+    RefreshCw,
     ScanSearch,
     Search,
     ShieldCheck,
@@ -75,6 +76,7 @@
     | 'discovery'
     | 'resources'
     | 'ai'
+    | 'skill'
     | 'operations'
     | 'diagnosis'
     | 'inspection'
@@ -113,6 +115,29 @@
     title: string;
     description: string;
     inputSchema: Record<string, unknown>;
+  };
+
+  type AIEngineCapability =
+    | 'chat'
+    | 'vision'
+    | 'audio'
+    | 'tool_calling'
+    | 'structured_output'
+    | 'stream'
+    | 'long_context';
+
+  type AIEndpointDraft = {
+    provider_type: string;
+    base_url: string;
+    model_name: string;
+    context_window: number;
+    capabilities: string[];
+    timeout_seconds: number;
+    priority: number;
+    enabled: boolean;
+    testStatus: 'idle' | 'testing' | 'succeeded' | 'failed';
+    testMessage?: string;
+    latencyMs?: number;
   };
 
   const legacyTeamIconNames: Record<string, string> = {
@@ -167,7 +192,7 @@
     Search: '检索',
     BookOpen: '手册',
     Sparkles: 'Skill',
-    BrainCircuit: '大模型',
+    BrainCircuit: 'AI 引擎',
     Bot: 'MCP',
     HardDrive: '存储',
     KeyRound: '凭据',
@@ -330,6 +355,27 @@
   let resourceBindings: ResourceRoleBinding[] = [];
   let aiLoaded = false;
   let selectedProviderId = '';
+  let selectedAIEngineId = '';
+  let selectedAIEngineResource: Resource | null = null;
+  let expandedAIEngineId = '';
+  let aiEngineSearch = '';
+  let aiEngineStatusFilter = 'all';
+  let aiEngineScopeFilter = 'all';
+  let aiEngineCreateOpen = false;
+  let aiEngineCreateStep = 1;
+  let aiEngineCreateDescription = '';
+  let aiEngineCreateCapabilities: AIEngineCapability[] = ['chat', 'stream'];
+  let aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
+  let aiEngineCreateEndpoints: AIEndpointDraft[] = [];
+  let aiEngineCreateCredential = '';
+  let aiEngineEndpointTestBusy = false;
+  let aiEngineName = '';
+  let aiEngineStrategy = 'priority';
+  let aiEngineEditName = '';
+  let aiEngineEditEndpoints = '[]';
+  let aiEngineEditStatus = 'active';
+  let aiEngineEndpoints = '[\n  {\n    "provider_type": "openai_compatible",\n    "base_url": "https://api.example.com/v1",\n    "model_name": "model-name",\n    "context_window": 32768,\n    "capabilities": ["chat", "stream"],\n    "timeout_seconds": 60,\n    "priority": 100,\n    "enabled": true\n  }\n]';
+  let aiEngineToken = '';
   let selectedSkillId = '';
   let selectedSkillVersionId = '';
   let llmModelName = '';
@@ -517,10 +563,25 @@
   $: applicationCandidates = discoveryItems.filter(
     (item) => item.kind === 'Application'
   );
-  $: llmProviders = resources.filter((item) => item.kind === 'LLMProvider');
+  $: aiEngines = resources.filter(
+    (item) => item.kind === 'AIEngine' || item.kind === 'LLMProvider'
+  );
+  $: visibleAIEngines = aiEngines.filter((engine) => {
+    if (aiEngineStatusFilter !== 'all' && engine.status !== aiEngineStatusFilter) return false;
+    if (aiEngineScopeFilter !== 'all' && scopeType(engine.scope_id) !== aiEngineScopeFilter) return false;
+    const query = aiEngineSearch.trim().toLowerCase();
+    return !query || `${engine.name} ${scopeName(engine.scope_id)} ${aiEngineDescription(engine)}`.toLowerCase().includes(query);
+  });
+  $: aiEngineHealthyCount = aiEngines.filter((engine) => aiEngineStatus(engine) === 'healthy').length;
+  $: aiEngineRepairCount = aiEngines.filter((engine) => aiEngineStatus(engine) === 'repair').length;
+  $: aiEngineEndpointCount = aiEngines.reduce((count, engine) => count + aiEngineEndpointsFor(engine).length, 0);
+  $: aiEngineHealthyEndpointCount = aiEngines.reduce((count, engine) => count + aiEngineEndpointsFor(engine).filter((endpoint) => endpointStatus(endpoint) === 'healthy').length, 0);
+  $: selectedAIEngineResource =
+    aiEngines.find((item) => item.id === selectedAIEngineId) ?? null;
+  $: llmProviders = aiEngines;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
   $: executableTargets = visibleResources.filter(
-    (item) => item.kind !== 'LLMProvider' && item.kind !== 'Skill'
+    (item) => item.kind !== 'LLMProvider' && item.kind !== 'AIEngine' && item.kind !== 'Skill'
   );
   $: diagnosisTargets = visibleResources.filter(
     (item) => item.status === 'active'
@@ -776,7 +837,7 @@
     teamMenuOpen = false;
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
-    if (nextView === 'ai' && !aiLoaded) void loadAI();
+    if ((nextView === 'ai' || nextView === 'skill') && !aiLoaded) void loadAI();
     if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
     if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
     if (nextView === 'operations' && !operationsLoaded) void loadOperations();
@@ -1286,16 +1347,18 @@
 
   async function loadAI() {
     aiLoaded = true;
-    selectedProviderId = selectedProviderId || llmProviders[0]?.id || '';
+    selectedAIEngineId = selectedAIEngineId || aiEngines[0]?.id || '';
+    selectedProviderId = selectedAIEngineId;
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
-    llmModelName =
-      llmModelName ||
-      String(
-        (
-          llmProviders.find((item) => item.id === selectedProviderId)?.config
-            .models as Array<{ name?: string }> | undefined
-        )?.[0]?.name || ''
-      );
+    const selectedEngine = aiEngines.find((item) => item.id === selectedAIEngineId);
+    const endpoints = selectedEngine?.config.endpoints as
+      | Array<{ model_name?: string }>
+      | undefined;
+    const legacyModels = selectedEngine?.config.models as
+      | Array<{ name?: string }>
+      | undefined;
+    llmModelName = llmModelName || endpoints?.[0]?.model_name || legacyModels?.[0]?.name || '';
+    syncAIEngineEditor(selectedEngine ?? null);
     if (selectedSkillId) await loadSkillVersions();
     if (selectedScopeId) {
       try {
@@ -1304,6 +1367,239 @@
         skillExecutions = [];
       }
     }
+  }
+
+  async function refreshAIEngines() {
+    await action(async () => {
+      const resourcePage = await api.resources();
+      resources = resourcePage.items;
+      await loadResourceConnectionChecks(resources);
+      notice = 'AI 引擎状态已刷新';
+    });
+  }
+
+  function syncAIEngineEditor(engine: Resource | null) {
+    if (!engine) {
+      aiEngineEditName = '';
+      aiEngineEditEndpoints = '[]';
+      aiEngineEditStatus = 'active';
+      return;
+    }
+    aiEngineEditName = engine.name;
+    aiEngineEditEndpoints = JSON.stringify(engine.config.endpoints ?? engine.config.models ?? [], null, 2);
+    aiEngineEditStatus = engine.status;
+  }
+
+  function aiEngineDescription(engine: Resource) {
+    return String(engine.config.description ?? engine.labels?.description ?? '');
+  }
+
+  function aiEngineEndpointsFor(engine: Resource | null): AIEndpointDraft[] {
+    if (!engine) return [];
+    const raw = Array.isArray(engine.config.endpoints)
+      ? engine.config.endpoints
+      : Array.isArray(engine.config.models)
+        ? engine.config.models
+        : [];
+    return raw.map((value, index) => {
+      const endpoint = (value ?? {}) as Record<string, unknown>;
+      return {
+        provider_type: String(endpoint.provider_type ?? 'openai_compatible'),
+        base_url: String(endpoint.base_url ?? ''),
+        model_name: String(endpoint.model_name ?? endpoint.name ?? ''),
+        context_window: Number(endpoint.context_window ?? 32768),
+        capabilities: Array.isArray(endpoint.capabilities)
+          ? endpoint.capabilities.map(String)
+          : ['chat', 'stream'],
+        timeout_seconds: Number(endpoint.timeout_seconds ?? 60),
+        priority: Number(endpoint.priority ?? 100 - index),
+        enabled: endpoint.enabled !== false,
+        testStatus: 'idle'
+      };
+    });
+  }
+
+  function endpointStatus(endpoint: AIEndpointDraft) {
+    if (!endpoint.enabled) return 'disabled';
+    if (endpoint.testStatus === 'failed') return 'repair';
+    if (endpoint.testStatus === 'succeeded') return 'healthy';
+    return 'pending';
+  }
+
+  function aiEngineStatus(engine: Resource) {
+    if (engine.status !== 'active') return 'disabled';
+    const endpoints = aiEngineEndpointsFor(engine);
+    if (endpoints.length === 0 || endpoints.every((endpoint) => !endpoint.enabled)) return 'repair';
+    return 'healthy';
+  }
+
+  function aiEngineStatusLabel(engine: Resource) {
+    const status = aiEngineStatus(engine);
+    return status === 'healthy' ? '正常' : status === 'repair' ? '需修复' : '已停用';
+  }
+
+  function aiEngineStatusClass(engine: Resource) {
+    const status = aiEngineStatus(engine);
+    return status === 'healthy' ? 'healthy' : status === 'repair' ? 'warning' : 'disabled';
+  }
+
+  function aiEngineCapabilities(engine: Resource) {
+    const endpoints = aiEngineEndpointsFor(engine).filter((endpoint) => endpoint.enabled);
+    if (endpoints.length === 0) return [];
+    return endpoints.reduce<string[]>((intersection, endpoint) =>
+      intersection.filter((capability) => endpoint.capabilities.includes(capability)),
+      [...endpoints[0].capabilities]
+    );
+  }
+
+  function aiCapabilityLabel(capability: string) {
+    const labels: Record<string, string> = {
+      chat: '文本',
+      vision: '视觉',
+      audio: '音频',
+      tool_calling: '工具调用',
+      structured_output: '结构化输出',
+      stream: '流式输出',
+      long_context: '长上下文'
+    };
+    return labels[capability] ?? capability;
+  }
+
+  function aiEndpointHealthLabel(endpoint: AIEndpointDraft) {
+    const status = endpointStatus(endpoint);
+    return status === 'healthy'
+      ? '健康'
+      : status === 'repair'
+        ? '失败'
+        : status === 'disabled'
+          ? '已停用'
+          : '未测试';
+  }
+
+  function aiEndpointHealthClass(endpoint: AIEndpointDraft) {
+    const status = endpointStatus(endpoint);
+    return status === 'healthy' ? 'healthy' : status === 'repair' ? 'warning' : status === 'disabled' ? 'disabled' : 'pending';
+  }
+
+  function defaultAIEndpoint(): AIEndpointDraft {
+    return {
+      provider_type: 'openai_compatible',
+      base_url: 'https://api.example.com/v1',
+      model_name: '',
+      context_window: 32768,
+      capabilities: ['chat', 'stream'],
+      timeout_seconds: 60,
+      priority: 100,
+      enabled: true,
+      testStatus: 'idle'
+    };
+  }
+
+  function openAIEngineCreate() {
+    aiEngineCreateOpen = true;
+    aiEngineCreateStep = 1;
+    aiEngineName = '';
+    aiEngineCreateDescription = '';
+    aiEngineCreateCapabilities = ['chat', 'stream'];
+    aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
+    aiEngineCreateEndpoints = [defaultAIEndpoint()];
+    aiEngineCreateCredential = '';
+  }
+
+  function closeAIEngineCreate() {
+    aiEngineCreateOpen = false;
+    aiEngineCreateStep = 1;
+  }
+
+  function toggleAIEngineCapability(capability: AIEngineCapability) {
+    aiEngineCreateCapabilities = aiEngineCreateCapabilities.includes(capability)
+      ? aiEngineCreateCapabilities.filter((item) => item !== capability)
+      : [...aiEngineCreateCapabilities, capability];
+  }
+
+  function toggleAIEngineFallback(value: string) {
+    aiEngineCreateFallback = aiEngineCreateFallback.includes(value)
+      ? aiEngineCreateFallback.filter((item) => item !== value)
+      : [...aiEngineCreateFallback, value];
+  }
+
+  function addAIEndpoint() {
+    const nextPriority = Math.max(0, ...aiEngineCreateEndpoints.map((endpoint) => endpoint.priority)) + 10;
+    aiEngineCreateEndpoints = [...aiEngineCreateEndpoints, { ...defaultAIEndpoint(), priority: nextPriority }];
+  }
+
+  function removeAIEndpoint(index: number) {
+    if (aiEngineCreateEndpoints.length <= 1) return;
+    aiEngineCreateEndpoints = aiEngineCreateEndpoints.filter((_, itemIndex) => itemIndex !== index);
+  }
+
+  function updateAIEndpoint(index: number, patch: Partial<AIEndpointDraft>) {
+    aiEngineCreateEndpoints = aiEngineCreateEndpoints.map((endpoint, itemIndex) =>
+      itemIndex === index ? { ...endpoint, ...patch, testStatus: 'idle' } : endpoint
+    );
+  }
+
+  function aiEndpointPayload(endpoint: AIEndpointDraft) {
+    return {
+      provider_type: endpoint.provider_type,
+      base_url: endpoint.base_url,
+      model_name: endpoint.model_name,
+      context_window: endpoint.context_window,
+      capabilities: endpoint.capabilities,
+      timeout_seconds: endpoint.timeout_seconds,
+      priority: endpoint.priority,
+      enabled: endpoint.enabled
+    };
+  }
+
+  function editAIEngine(engine: Resource) {
+    selectedAIEngineId = engine.id;
+    selectedAIEngineResource = engine;
+    syncAIEngineEditor(engine);
+    expandedAIEngineId = engine.id;
+  }
+
+  async function testAIEngine(engine: Resource) {
+    const endpoints = aiEngineEndpointsFor(engine).filter((endpoint) => endpoint.enabled);
+    const first = endpoints.sort((left, right) => right.priority - left.priority)[0];
+    if (!first || !selectedScopeId) return;
+    aiEngineEndpointTestBusy = true;
+    try {
+      const result = await api.testLLMProvider(engine.id, {
+        scope_id: selectedScopeId,
+        model_name: first.model_name,
+        stream: true
+      });
+      notice = `${engine.name} 首选模型测试通过，耗时 ${result.latency_ms} ms`;
+    } catch (error) {
+      errorMessage = describeError(error, `${engine.name} 连接测试失败`);
+    } finally {
+      aiEngineEndpointTestBusy = false;
+    }
+  }
+
+  async function saveAIEngine() {
+    if (!selectedAIEngineResource || !selectedScopeId || !aiEngineEditName.trim()) return;
+    await action(async () => {
+      const currentEngine = selectedAIEngineResource as Resource;
+      const endpoints = JSON.parse(aiEngineEditEndpoints) as unknown;
+      if (!Array.isArray(endpoints) || endpoints.length === 0) {
+        throw new Error('至少需要配置一个模型连接');
+      }
+      const updated = await api.updateResource(currentEngine.id, {
+        name: aiEngineEditName.trim(),
+        status: aiEngineEditStatus,
+        config: {
+          ...currentEngine.config,
+          strategy: 'priority',
+          fallback_on: ['timeout', 'rate_limit', 'server_error'],
+          endpoints
+        }
+      });
+      resources = resources.map((resource) => resource.id === updated.id ? updated : resource);
+      syncAIEngineEditor(updated);
+      notice = `AI 引擎“${updated.name}”已更新`;
+    });
   }
 
   async function loadSkillVersions() {
@@ -1320,9 +1616,9 @@
   }
 
   async function testLLMProvider() {
-    if (!selectedProviderId || !selectedScopeId || !llmModelName) return;
+    if (!selectedAIEngineId || !selectedScopeId || !llmModelName) return;
     await action(async () => {
-      llmConnection = await api.testLLMProvider(selectedProviderId, {
+      llmConnection = await api.testLLMProvider(selectedAIEngineId, {
         scope_id: selectedScopeId,
         model_name: llmModelName,
         stream: true
@@ -1331,12 +1627,52 @@
     });
   }
 
+  async function createAIEngine() {
+    if (!selectedScopeId || !aiEngineName.trim()) return;
+    await action(async () => {
+      if (aiEngineCreateEndpoints.length === 0 || aiEngineCreateEndpoints.some((endpoint) => !endpoint.model_name.trim() || !endpoint.base_url.trim())) {
+        throw new Error('至少需要配置一个模型连接');
+      }
+      let credentialId = '';
+      if (aiEngineToken.trim()) {
+        const credential = await api.createCredential({
+          scope_id: selectedScopeId,
+          name: `${aiEngineName.trim()} API Token`,
+          purpose: 'AIEngine LLMEndpoint',
+          secret: JSON.stringify({ token: aiEngineToken.trim() })
+        });
+        credentialId = credential.id;
+      }
+      const created = await api.createResource({
+        scope_id: selectedScopeId,
+        kind: 'AIEngine',
+        name: aiEngineName.trim(),
+        status: 'active',
+        labels: aiEngineCreateDescription.trim() ? { description: aiEngineCreateDescription.trim() } : {},
+        config: {
+          strategy: aiEngineStrategy,
+          fallback_on: aiEngineCreateFallback,
+          endpoints: aiEngineCreateEndpoints.map(aiEndpointPayload)
+        },
+        ...(credentialId ? { credential_id: credentialId } : {})
+      });
+      resources = [created, ...resources];
+      selectedAIEngineId = created.id;
+      selectedProviderId = created.id;
+      aiEngineName = '';
+      aiEngineToken = '';
+      aiEngineCreateOpen = false;
+      aiEngineCreateStep = 1;
+      notice = `AI 引擎“${created.name}”已创建`;
+    });
+  }
+
   async function setLLMDefault() {
-    if (!selectedProviderId || !selectedScopeId || !llmModelName) return;
+    if (!selectedAIEngineId || !selectedScopeId || !llmModelName) return;
     await action(async () => {
       await api.setLLMDefault({
         scope_id: selectedScopeId,
-        provider_resource_id: selectedProviderId,
+        provider_resource_id: selectedAIEngineId,
         model_name: llmModelName
       });
       notice = '默认模型已更新';
@@ -2688,7 +3024,8 @@
       organization: '项目管理',
       discovery: '集群项目与应用导入',
       resources: '资源目录',
-      ai: '模型与 Skill',
+      ai: 'AI 引擎',
+      skill: 'Skill',
       operations: '受控操作与 MCP',
       diagnosis: 'AI 诊断工作台',
       inspection: '自动巡检与健康',
@@ -2705,7 +3042,8 @@
       organization: '项目',
       discovery: '集群导入',
       resources: '资源',
-      ai: '模型与 Skill',
+      ai: 'AI 引擎',
+      skill: 'Skill',
       operations: '受控操作',
       diagnosis: 'AI 诊断',
       inspection: '自动巡检',
@@ -2738,12 +3076,12 @@
     Kubernetes: ['API', 'Agent'],
     MCPServer: ['StreamHTTP', 'SSE'],
     Skill: ['诊断', '监控', '优化', '维护'],
-    大模型: ['OpenAI', 'Anthropic', 'DeepSeek', 'Qwen', 'Ollama'],
+    'AI 引擎': ['统一引擎'],
     监控: ['指标', '日志', '链路', '告警']
   };
 
   function resourceCategoryFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
-    if (resource.kind === 'LLMProvider') return '大模型';
+    if (resource.kind === 'LLMProvider' || resource.kind === 'AIEngine') return 'AI 引擎';
     if (resource.kind === 'MCPServer') return 'MCPServer';
     if (resource.kind === 'GenericAPI') return 'Docker';
     if (resource.kind === 'Application') return '应用';
@@ -2774,12 +3112,17 @@
       MCPServer: 'StreamHTTP',
       GenericAPI: 'API',
       LLMProvider: 'OpenAI',
+      AIEngine: '统一引擎',
       Prometheus: '指标',
       Loki: '日志',
       Tempo: '链路',
       Alertmanager: '告警'
     };
-    return String(resource.subtype || resource.config?.subtype || resource.config?.provider || labelMap[resource.kind] || resource.kind);
+    const explicit = String(resource.subtype || resource.config?.subtype || '');
+    if (resource.kind === 'AIEngine') {
+      return '统一引擎';
+    }
+    return String(explicit || resource.config?.provider || labelMap[resource.kind] || resource.kind);
   }
 
   function resourceCategoryIcon(category: string) {
@@ -2794,7 +3137,7 @@
       Kubernetes: '⬡',
       MCPServer: '⌁',
       Skill: '✧',
-      大模型: '✦',
+      'AI 引擎': '✦',
       监控: '◌'
     };
     return icons[category] ?? '◇';
@@ -3124,13 +3467,23 @@
           ></button
         >
         <button
-          aria-label="模型与 Skill"
+          aria-label="AI 引擎"
           class:active={view === 'ai'}
           class="nav-item"
           on:click={() => chooseView('ai')}
-          data-tooltip={sidebarCompact ? '模型与 Skill' : undefined}
+          data-tooltip={sidebarCompact ? 'AI 引擎' : undefined}
           ><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">模型与 Skill</span
+            class="nav-item-label">AI 引擎</span
+          ></button
+        >
+        <button
+          aria-label="Skill"
+          class:active={view === 'skill'}
+          class="nav-item"
+          on:click={() => chooseView('skill')}
+          data-tooltip={sidebarCompact ? 'Skill' : undefined}
+          ><ClipboardCheck size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">Skill</span
           ></button
         >
         <button
@@ -5027,63 +5380,43 @@
             </section>
           {/if}
         </section>
-      {:else if view === 'ai'}
-        <section class="content-grid two-column ai-runtime">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">MODEL PROVIDER</p>
-                <h2>模型连接</h2>
-              </div>
-              <span class="count">{llmProviders.length}</span>
+      {:else if view === 'ai' || view === 'skill'}
+        {#if view === 'ai'}
+          <section class="ai-health-page">
+            <div class="ai-health-metrics">
+              <div class="ai-health-metric"><span>可用引擎</span><strong>{aiEngineHealthyCount}</strong><small>可被业务调用</small></div>
+              <div class="ai-health-metric"><span>健康 Endpoint</span><strong>{aiEngineHealthyEndpointCount} / {aiEngineEndpointCount}</strong><small>当前 Scope 可见成员</small></div>
+              <div class="ai-health-metric"><span>默认引擎</span><strong>{aiEngines.filter((engine) => Boolean(engine.config.default)).length}</strong><small>平台、团队或项目</small></div>
+              <div class="ai-health-metric"><span>待处理</span><strong>{aiEngineRepairCount}</strong><small>需要重新测试</small></div>
             </div>
-            <form
-              class="stack-form compact-form"
-              on:submit|preventDefault={testLLMProvider}
-            >
-              <label
-                >Provider<select
-                  bind:value={selectedProviderId}
-                  required
-                  on:change={() => {
-                    const models = llmProviders.find(
-                      (item) => item.id === selectedProviderId
-                    )?.config.models as Array<{ name?: string }> | undefined;
-                    llmModelName = models?.[0]?.name || '';
-                    llmConnection = null;
-                  }}
-                  ><option value="" disabled>选择 LLM Provider</option
-                  >{#each llmProviders as provider}<option value={provider.id}
-                      >{provider.name} · {scopeName(provider.scope_id)}</option
-                    >{/each}</select
-                ></label
-              >
-              <label
-                >Model<input
-                  bind:value={llmModelName}
-                  required
-                  placeholder="模型配置中的名称"
-                /></label
-              >
-              <div class="form-actions">
-                <button
-                  class="secondary"
-                  type="button"
-                  on:click={setLLMDefault}
-                  disabled={busy || !selectedScopeId}
-                  >设为当前 Scope 默认</button
-                >
-                <button class="primary" disabled={busy || !selectedProviderId}
-                  >测试连接</button
-                >
+            {#if !aiEngineCreateOpen}
+            <section class="panel ai-engine-list-panel">
+              <div class="ai-engine-toolbar">
+                <div><h2>引擎列表</h2><small>一个引擎可以包含一个或多个私有 Endpoint；业务调用只感知引擎，不直接选择具体模型。</small></div>
+                <div class="ai-engine-toolbar-actions"><div class="ai-engine-filters"><input class="ai-engine-search" bind:value={aiEngineSearch} placeholder="搜索名称、Scope 或用途" aria-label="搜索 AI 引擎" /><select bind:value={aiEngineStatusFilter} aria-label="引擎状态"><option value="all">全部状态</option><option value="active">启用</option><option value="disabled">已停用</option></select><select bind:value={aiEngineScopeFilter} aria-label="引擎 Scope"><option value="all">全部 Scope</option><option value="platform">平台</option><option value="team">团队</option><option value="project">项目</option></select></div><button class="secondary" type="button" on:click={() => void refreshAIEngines()} disabled={busy}><RefreshCw size={14} aria-hidden="true" />刷新状态</button><button class="primary" type="button" on:click={openAIEngineCreate}><Plus size={14} aria-hidden="true" />添加 AI 引擎</button></div>
               </div>
-            </form>
-            {#if llmConnection}<div class="detail-meta">
-                <span>状态 <strong>{llmConnection.status}</strong></span><span
-                  >{llmConnection.latency_ms} ms</span
-                ><span>{llmConnection.model_name}</span>
-              </div>{/if}
+              <div class="ai-engine-list">
+                {#each visibleAIEngines as engine}
+                  {@const endpoints = aiEngineEndpointsFor(engine)}
+                  {@const capabilities = aiEngineCapabilities(engine)}
+                  <article class="ai-engine-row" class:expanded={expandedAIEngineId === engine.id}>
+                    <button class="ai-engine-row-main" type="button" on:click={() => (expandedAIEngineId = expandedAIEngineId === engine.id ? '' : engine.id)} aria-expanded={expandedAIEngineId === engine.id}>
+                      <span class="ai-engine-icon"><Sparkles size={18} aria-hidden="true" /></span><span class="ai-engine-identity"><strong>{engine.name}</strong><small>{aiEngineDescription(engine) || '统一模型调用入口'}</small></span><span class="ai-engine-scope"><b>{scopeName(engine.scope_id)}</b><small>{scopeType(engine.scope_id)}级</small></span><span class="ai-engine-capabilities"><small>能力交集</small><span>{#each capabilities as capability}<em>{aiCapabilityLabel(capability)}</em>{:else}<em class="muted-chip">待计算</em>{/each}</span></span><span class="ai-engine-health"><span class="status-label {aiEngineStatusClass(engine)}">{aiEngineStatusLabel(engine)}</span><small>{endpoints.length} 个成员 · {String(engine.config.strategy || 'priority')} 路由</small></span><ChevronDown size={17} class="ai-engine-chevron" aria-hidden="true" />
+                    </button>
+                    {#if expandedAIEngineId === engine.id}
+                      <div class="ai-engine-row-details"><div class="ai-endpoint-list">{#each endpoints as endpoint, endpointIndex}<div class="ai-endpoint-row"><span class="endpoint-health-dot {aiEndpointHealthClass(endpoint)}"></span><span><strong>{endpoint.provider_type} / {endpoint.model_name}</strong><small>优先级 {endpoint.priority} · {endpoint.context_window.toLocaleString()} 上下文 · {endpoint.base_url}</small></span><span class="ai-endpoint-caps">{#each endpoint.capabilities as capability}<em>{aiCapabilityLabel(capability)}</em>{/each}</span><span class="status-label {aiEndpointHealthClass(endpoint)}">{aiEndpointHealthLabel(endpoint)}</span></div>{/each}</div><aside class="ai-engine-detail-aside"><h3>路由与权限</h3><p>按优先级调用。超时、限流和服务端错误允许切换；已经开始流式输出时不会切换。</p><div><span>默认状态</span><strong>{engine.config.default ? '当前 Scope 默认' : '未设置'}</strong></div><div><span>故障切换</span><strong>受限可恢复错误</strong></div><div><span>凭据</span><strong>加密引用，不展示明文</strong></div><div class="ai-detail-actions"><button class="secondary" type="button" on:click={() => void testAIEngine(engine)} disabled={aiEngineEndpointTestBusy || endpoints.length === 0}><PlugZap size={14} aria-hidden="true" />测试首选成员</button><button class="quiet-button" type="button" on:click={() => editAIEngine(engine)}><Pencil size={14} aria-hidden="true" />编辑配置</button></div></aside></div>
+                    {/if}
+                  </article>
+                {:else}<div class="empty-state"><span class="empty-icon">✦</span><h2>暂无 AI 引擎</h2><p>当前 Scope 还没有可用的统一模型入口。</p></div>{/each}
+              </div>
+            </section>
+            {:else}
+              <section class="panel ai-engine-create-panel" aria-labelledby="ai-engine-create-title"><div class="panel-heading"><div><p class="eyebrow">NEW AI ENGINE</p><h2 id="ai-engine-create-title">创建 AI 引擎</h2></div><button class="quiet-button" type="button" on:click={closeAIEngineCreate}>关闭</button></div><div class="ai-wizard"><nav class="ai-wizard-steps" aria-label="创建步骤">{#each ['基础信息', '能力意图', '连接成员', '路由策略', '测试发布'] as step, index}<button type="button" class:active={aiEngineCreateStep === index + 1} class:done={aiEngineCreateStep > index + 1} on:click={() => (aiEngineCreateStep = index + 1)}><b>{aiEngineCreateStep > index + 1 ? '✓' : index + 1}</b><span>{step}</span></button>{/each}</nav><form class="ai-wizard-content" on:submit|preventDefault={() => aiEngineCreateStep < 5 ? (aiEngineCreateStep += 1) : void createAIEngine()}>
+                {#if aiEngineCreateStep === 1}<h3>基础信息</h3><p>定义用户识别的统一能力入口；不再选择单模态或多模态子类。</p><div class="ai-form-grid"><label>名称<input bind:value={aiEngineName} required placeholder="例如：生产诊断中枢" /></label><label>所属 Scope<select bind:value={selectedScopeId} required>{#each scopeChoices as scope}<option value={scope.id}>{scope.name} · {scope.type}</option>{/each}</select></label><label class="full">用途说明<textarea bind:value={aiEngineCreateDescription} placeholder="例如：截图诊断、日志分析和受控 Skill"></textarea></label></div>{:else if aiEngineCreateStep === 2}<h3>能力意图</h3><p>选择业务需要的能力，发布时会与所有启用 Endpoint 的能力交集进行校验。</p><div class="ai-capability-picker">{#each [['chat','文本对话','文本消息与流式文本输出'],['vision','视觉输入','图片、截图或图表证据'],['audio','音频输入','音频证据与转写'],['tool_calling','工具调用','受控 Skill 与结构化动作'],['structured_output','结构化输出','JSON Schema 约束响应'],['stream','流式输出','实时显示模型响应'],['long_context','长上下文','上下文窗口达到 128k']] as capability}<button type="button" class:active={aiEngineCreateCapabilities.includes(capability[0] as AIEngineCapability)} on:click={() => toggleAIEngineCapability(capability[0] as AIEngineCapability)}><strong>{capability[1]}</strong><small>{capability[2]}</small></button>{/each}</div><div class="ai-form-note">最终能力 = 所有启用 Endpoint 的能力交集；上下文窗口取成员最小值。</div>{:else if aiEngineCreateStep === 3}<h3>连接成员</h3><p>每个成员是独立的 Provider、模型和加密凭据组合。</p><div class="ai-endpoint-editor">{#each aiEngineCreateEndpoints as endpoint, index}<div class="ai-endpoint-card"><div class="ai-endpoint-card-heading"><strong>成员 {index + 1}</strong><button class="icon-button danger-action" type="button" aria-label="移除成员" on:click={() => removeAIEndpoint(index)} disabled={aiEngineCreateEndpoints.length <= 1}><Trash2 size={14} aria-hidden="true" /></button></div><div class="ai-form-grid"><label>Provider<select value={endpoint.provider_type} on:change={(event) => updateAIEndpoint(index, { provider_type: event.currentTarget.value })}><option value="openai">OpenAI</option><option value="openai_compatible">OpenAI Compatible</option><option value="azure_openai">Azure OpenAI</option></select></label><label>模型名称<input value={endpoint.model_name} on:input={(event) => updateAIEndpoint(index, { model_name: event.currentTarget.value })} required placeholder="例如：gpt-4.1" /></label><label>Base URL<input value={endpoint.base_url} on:input={(event) => updateAIEndpoint(index, { base_url: event.currentTarget.value })} required placeholder="https://api.example.com/v1" /></label><label>上下文窗口<input type="number" value={endpoint.context_window} on:input={(event) => updateAIEndpoint(index, { context_window: Number(event.currentTarget.value) })} min="1" required /></label><label>超时秒数<input type="number" value={endpoint.timeout_seconds} on:input={(event) => updateAIEndpoint(index, { timeout_seconds: Number(event.currentTarget.value) })} min="1" max="300" required /></label><label>成员优先级<input type="number" value={endpoint.priority} on:input={(event) => updateAIEndpoint(index, { priority: Number(event.currentTarget.value) })} min="0" required /></label></div><div class="ai-inline-capabilities"><span>成员能力</span>{#each ['chat','vision','audio','tool_calling','structured_output','stream','long_context'] as capability}<button type="button" class:active={endpoint.capabilities.includes(capability)} on:click={() => updateAIEndpoint(index, { capabilities: endpoint.capabilities.includes(capability) ? endpoint.capabilities.filter((item) => item !== capability) : [...endpoint.capabilities, capability] })}>{aiCapabilityLabel(capability)}</button>{/each}</div></div>{/each}<button class="secondary" type="button" on:click={addAIEndpoint}><Plus size={14} aria-hidden="true" />添加成员</button></div>{:else if aiEngineCreateStep === 4}<h3>路由策略</h3><p>首版固定使用优先级路由，数字越大越先调用；仅在可恢复错误时切换。</p><div class="ai-route-choice"><button type="button" class="active"><strong>优先级路由</strong><small>按成员优先级从高到低尝试，稳定且可解释。</small></button></div><fieldset class="ai-fallback-picker"><legend>故障切换条件</legend>{#each [['timeout','连接超时'],['rate_limit','Provider 限流'],['server_error','Provider 5xx']] as fallback}<label><input type="checkbox" checked={aiEngineCreateFallback.includes(fallback[0])} on:change={() => toggleAIEngineFallback(fallback[0])} />{fallback[1]}</label>{/each}</fieldset><div class="ai-form-note">参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。</div>{:else}<h3>测试与发布</h3><p>发布前检查资源、成员协议、能力交集和默认设置。</p><div class="ai-review-list"><div><span>名称</span><strong>{aiEngineName || '未填写'}</strong></div><div><span>成员数</span><strong>{aiEngineCreateEndpoints.length}</strong></div><div><span>能力意图</span><strong>{aiEngineCreateCapabilities.map(aiCapabilityLabel).join('、') || '未选择'}</strong></div><div><span>故障切换</span><strong>{aiEngineCreateFallback.map((item) => item === 'timeout' ? '超时' : item === 'rate_limit' ? '限流' : '5xx').join('、') || '不自动切换'}</strong></div></div><div class="ai-form-note">创建后可以在列表中展开成员，单独测试首选连接；API Token 仅保存到加密凭据。</div>{/if}<div class="ai-wizard-footer"><button class="secondary" type="button" on:click={() => aiEngineCreateStep > 1 ? (aiEngineCreateStep -= 1) : closeAIEngineCreate()}>{aiEngineCreateStep > 1 ? '上一步' : '取消'}</button><button class="primary" type="submit" disabled={busy || (aiEngineCreateStep === 1 && !aiEngineName.trim())}>{aiEngineCreateStep < 5 ? '下一步' : '发布 AI 引擎'}</button></div></form></div></section>
+          {/if}
           </section>
+        {:else}
+          <section class="content-grid two-column ai-runtime">
 
           <section class="panel">
             <div class="panel-heading">
@@ -5262,6 +5595,7 @@
             </div>
           </section>
         </section>
+        {/if}
       {:else if view === 'access'}
         <section class="access-page">
           <section class="panel access-workbench">

@@ -43,6 +43,22 @@ export default defineConfig(({ command }) => {
         [route('/health')]: 'http://localhost:8080'
       }
     },
+    build: {
+      // The complete Lucide registry powers the searchable team icon picker.
+      // It is isolated and cacheable, so use a threshold above that intentional chunk.
+      chunkSizeWarningLimit: 800,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('/node_modules/')) return undefined;
+            if (id.includes('/node_modules/svelte/')) return 'vendor-svelte';
+            if (id.includes('/node_modules/lucide-svelte/')) return 'vendor-icons';
+            if (id.includes('/node_modules/simple-icons/')) return 'vendor-brands';
+            return 'vendor';
+          }
+        }
+      }
+    },
     test: {
       environment: 'jsdom',
       include: ['src/**/*.test.ts']

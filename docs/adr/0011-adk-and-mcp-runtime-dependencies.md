@@ -18,7 +18,7 @@ OpsKeeper 后续需要支持主流大模型、声明式 Skill、受控 Tool Call
 5. 禁止在项目中 import `achetronic/adk-utils-go`，也不将其加入 `go.mod`。复制或改写参考代码时必须核对许可证、保留必要归属，并由 OpsKeeper 自己维护安全修复和兼容性测试。
 6. MCP Client、Server 连接、能力发现和 Tool 调用必须使用 [`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk) 的最新稳定版本。对应任务开始时固定版本；本 ADR 建立时最新稳定标签为 `v1.7.0`。
 7. ADK 和 MCP SDK 类型限制在对应基础设施边界内。组织、资源、授权、Skill 版本、执行记录和诊断模块使用 OpsKeeper 自有领域类型，避免 SDK 升级扩散到业务模型。
-8. T10 实施 ADK Agent、Runner、LLMProvider 和 Skill；T14 才引入 MCP SDK 并实施 MCP 调用。不得为了登记 MCPServer 资源而在 T10 提前加入未使用的 MCP 运行时依赖。
+8. T10 实施 ADK Agent、Runner、AIEngine（内部 LLMEndpoint）和 Skill；历史 LLMProvider 仅保留兼容解析。T14 才引入 MCP SDK 并实施 MCP 调用。不得为了登记 MCPServer 资源而在 T10 提前加入未使用的 MCP 运行时依赖。
 
 ## 验收约束
 

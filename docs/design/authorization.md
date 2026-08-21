@@ -79,7 +79,7 @@ operation:approve
 audit:read
 ```
 
-`resource:use` 与 `resource:read` 分离。例如项目运维人员可以使用团队级 LLM Provider 或监控平台完成诊断，但不能查看其地址、密钥或修改配置。
+`resource:use` 与 `resource:read` 分离。例如项目运维人员可以使用团队级 AIEngine 或监控平台完成诊断，但不能查看 AIEngine 内部 Endpoint 的地址、密钥或修改配置。LLMEndpoint 不作为独立授权主体，所有授权判断都以所属 AIEngine 为准。
 
 ## 5. 授权数据模型
 
