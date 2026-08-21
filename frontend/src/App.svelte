@@ -17,6 +17,7 @@
     PanelLeftClose,
     PanelLeftOpen,
     Pencil,
+    PlugZap,
     Plus,
     ScanSearch,
     Search,
@@ -31,6 +32,7 @@
     icons as lucideIcons
   } from 'lucide-svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
+  import BrandIcon from './lib/BrandIcon.svelte';
   import {
     api,
     ApiError,
@@ -318,6 +320,7 @@
   let topology: TopologyNode[] = [];
   let connectionCheck: ConnectionCheck | null = null;
   let connectionBusy = false;
+  let resourceConnectionChecks: Record<string, ConnectionCheck | null> = {};
   let users: User[] = [];
   let groups: Group[] = [];
   let groupMembers: Record<string, string[]> = {};
@@ -397,6 +400,16 @@
   let projectCode = '';
   let projectIcon = 'project';
   let resourceKind = '';
+  let resourceCategory = '全部';
+  let resourceSubtype = '全部';
+  let resourceSearch = '';
+  let resourceStatusFilter = 'all';
+  let resourceLevelFilter = 'all';
+  let expandedResourceCategory = '';
+  let resourceEditorOpen = false;
+  let resourceAddMenuOpen = false;
+  let resourceAddCategory = '';
+  let resourceAddSubtype = '';
   let resourceName = '';
   let resourceStatus = 'active';
   let resourceLabels = '';
@@ -474,8 +487,18 @@
   $: visibleResources = selectedScopeId
     ? resources.filter((resource) => resourceInActiveWorkspace(resource))
     : resources;
+  $: resourceCatalogItems = visibleResources.filter((resource) => {
+    if (resourceCategory !== '全部' && resourceCategoryFor(resource) !== resourceCategory) return false;
+    if (resourceSubtype !== '全部' && resourceSubtypeFor(resource) !== resourceSubtype) return false;
+    if (resourceStatusFilter !== 'all' && resource.status !== resourceStatusFilter) return false;
+    if (resourceLevelFilter !== 'all' && scopeType(resource.scope_id) !== resourceLevelFilter) return false;
+    const query = resourceSearch.trim().toLowerCase();
+    return !query || `${resource.name} ${resource.kind} ${resourceSchemaName(resource.kind)} ${scopeName(resource.scope_id)}`.toLowerCase().includes(query);
+  });
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
+  $: selectedResourceCanUpdate = selectedResource ? resourceCanManage(selectedResource, 'resource:update') : false;
+  $: selectedResourceCanDelete = selectedResource ? resourceCanManage(selectedResource, 'resource:delete') : false;
   $: rows = toStatusRows(health);
   $: selectedSchema = schemas.find(
     (schema) => schema.kind === selectedResource?.kind
@@ -682,6 +705,7 @@
       teams = teamPage.items;
       schemas = loadedSchemas;
       resources = resourcePage.items;
+      await loadResourceConnectionChecks(resources);
       const projectPages = await Promise.all(
         teams.map((team) => api.projects(team.id))
       );
@@ -1741,6 +1765,7 @@
       const created = await api.createResource({
         scope_id: selectedScopeId,
         kind: resourceKind,
+        subtype: resourceAddSubtype || resourceSubtypeFor({ kind: resourceKind, config }),
         name: resourceName,
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
@@ -1755,6 +1780,7 @@
       resourceConfigValues = {};
       resourceSensitiveValues = {};
       notice = `资源“${created.name}”已创建`;
+      resourceEditorOpen = false;
       await loadResourceDetails(created.id);
     });
   }
@@ -1793,19 +1819,38 @@
 
   async function loadConnectionCheck(id: string) {
     const current = resources.find((item) => item.id === id);
-    if (
-      !current ||
-      !['Kubernetes', 'Prometheus', 'Loki'].includes(current.kind)
-    )
+    if (!current || !resourceHasConnector(current)) {
+      resourceConnectionChecks = { ...resourceConnectionChecks, [id]: null };
       return;
+    }
     try {
       const check = await api.latestResourceConnectionCheck(id);
+      resourceConnectionChecks = { ...resourceConnectionChecks, [id]: check };
       if (selectedResourceId === id) connectionCheck = check;
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return;
+      if (error instanceof ApiError && error.status === 404) {
+        resourceConnectionChecks = { ...resourceConnectionChecks, [id]: null };
+        return;
+      }
       if (selectedResourceId === id)
         errorMessage = describeError(error, '连接状态加载失败');
     }
+  }
+
+  async function loadResourceConnectionChecks(items: Resource[]) {
+    const connectorItems = items.filter(resourceHasConnector);
+    if (!connectorItems.length) return;
+    const checks = await Promise.all(
+      connectorItems.map(async (resource) => {
+        try {
+          return [resource.id, await api.latestResourceConnectionCheck(resource.id)] as const;
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) return [resource.id, null] as const;
+          return [resource.id, null] as const;
+        }
+      })
+    );
+    resourceConnectionChecks = Object.fromEntries(checks);
   }
 
   async function testSelectedResourceConnection() {
@@ -1814,6 +1859,10 @@
     errorMessage = '';
     try {
       connectionCheck = await api.testResourceConnection(selectedResource.id);
+      resourceConnectionChecks = {
+        ...resourceConnectionChecks,
+        [selectedResource.id]: connectionCheck
+      };
       notice =
         connectionCheck.status === 'succeeded'
           ? `资源“${selectedResource.name}”连接测试通过`
@@ -1823,6 +1872,54 @@
     } finally {
       connectionBusy = false;
     }
+  }
+
+  async function testResourceRowConnection(resource: Resource) {
+    await loadResourceDetails(resource.id);
+    await testSelectedResourceConnection();
+  }
+
+  function resourceHasConnector(resource: Resource) {
+    return ['Kubernetes', 'Prometheus', 'Loki'].includes(resource.kind);
+  }
+
+  function resourceEndpointFor(resource: Resource) {
+    return String(
+      resource.config?.url ??
+        resource.config?.endpoint ??
+        resource.config?.host ??
+        '未设置端点'
+    );
+  }
+
+  function resourceConnectionLabel(resource: Resource) {
+    const check = resourceConnectionChecks[resource.id];
+    if (check) {
+      return `${check.status === 'succeeded' ? '正常' : '失败'}·${check.latency_ms}ms`;
+    }
+    if (resource.status === 'active') return '正常';
+    if (resource.status === 'disabled') return '已停用';
+    return '未知';
+  }
+
+  function resourceConnectionClass(resource: Resource) {
+    const check = resourceConnectionChecks[resource.id];
+    if (check) return check.status === 'succeeded' ? 'active' : 'unknown';
+    return resource.status;
+  }
+
+  function resourceScopeLabel(resource: Resource) {
+    const labels: Record<string, string> = {
+      platform: '平台',
+      team: '团队',
+      project: '项目'
+    };
+    return labels[scopeType(resource.scope_id)] ?? '资源';
+  }
+
+  async function openResourceEditor(resource: Resource) {
+    await loadResourceDetails(resource.id);
+    resourceEditorOpen = true;
   }
 
   async function updateSelectedResource() {
@@ -1839,6 +1936,7 @@
       );
       const updated = await api.updateResource(selectedResource.id, {
         name: editResourceName,
+        subtype: resourceSubtypeFor({ kind: selectedResource.kind, config }),
         status: editResourceStatus,
         labels: parseLabels(editResourceLabels),
         config,
@@ -1872,6 +1970,40 @@
     resourceConfigValues = {};
     resourceSensitiveValues = {};
     resourceConfig = '{}';
+  }
+
+  function resourceSchemaForSelection(category: string, subtype: string) {
+    return (
+      schemas.find(
+        (schema) =>
+          resourceCategoryFor(schema as unknown as { kind: string }) === category &&
+          resourceSubtypeFor(schema as unknown as { kind: string }) === subtype
+      ) ??
+      schemas.find(
+        (schema) => resourceCategoryFor(schema as unknown as { kind: string }) === category
+      ) ??
+      schemas[0]
+    );
+  }
+
+  function toggleResourceAddMenu() {
+    resourceAddMenuOpen = !resourceAddMenuOpen;
+    if (resourceAddMenuOpen) {
+      resourceAddCategory = resourceCategory === '全部' ? Object.keys(resourceCategoryOptions).find((item) => item !== '全部') ?? '' : resourceCategory;
+      resourceAddSubtype = '';
+    }
+  }
+
+  function chooseResourceAddSubtype(category: string, subtype: string) {
+    const schema = resourceSchemaForSelection(category, subtype);
+    resourceAddCategory = category;
+    resourceAddSubtype = subtype;
+    resourceKind = schema?.kind ?? '';
+    resourceCategory = category;
+    resourceSubtype = subtype;
+    resetResourceConfig();
+    resourceEditorOpen = true;
+    resourceAddMenuOpen = false;
   }
 
   function buildSchemaConfig(
@@ -2587,6 +2719,94 @@
     return scopeChoices.find((scope) => scope.id === id)?.type ?? 'scope';
   }
 
+  function resourceCanManage(resource: Resource, permission: string) {
+    return (
+      isPlatformAdmin ||
+      (resource.scope_id === selectedScopeId &&
+        actorPermissionsAtScope(resource.scope_id).includes(permission))
+    );
+  }
+
+  const resourceCategoryOptions: Record<string, string[]> = {
+    全部: [],
+    应用: ['虚拟机', '容器化', '云原生'],
+    中间件: ['Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'ElasticSearch'],
+    数据库: ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'],
+    制品库: ['Generic', 'Docker', 'Helm'],
+    代码库: ['Git', 'Bundle'],
+    Docker: ['API', 'Agent'],
+    Kubernetes: ['API', 'Agent'],
+    MCPServer: ['StreamHTTP', 'SSE'],
+    Skill: ['诊断', '监控', '优化', '维护'],
+    大模型: ['OpenAI', 'Anthropic', 'DeepSeek', 'Qwen', 'Ollama'],
+    监控: ['指标', '日志', '链路', '告警']
+  };
+
+  function resourceCategoryFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
+    if (resource.kind === 'LLMProvider') return '大模型';
+    if (resource.kind === 'MCPServer') return 'MCPServer';
+    if (resource.kind === 'GenericAPI') return 'Docker';
+    if (resource.kind === 'Application') return '应用';
+    if (['Redis', 'Kafka', 'Elasticsearch', 'GenericMiddleware', 'RabbitMQ', 'TongRDS'].includes(resource.kind)) return '中间件';
+    if (['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL', 'Database'].includes(resource.kind)) return '数据库';
+    if (['ArtifactRepository', 'ArtifactStore'].includes(resource.kind)) return '制品库';
+    if (['CodeRepository', 'Repository'].includes(resource.kind)) return '代码库';
+    if (resource.kind === 'Docker') return 'Docker';
+    if (resource.kind === 'Kubernetes') return 'Kubernetes';
+    if (resource.kind === 'Skill') return 'Skill';
+    if (['Prometheus', 'Loki', 'Tempo', 'Jaeger', 'Elastic', 'Datadog', 'Alertmanager'].includes(resource.kind)) return '监控';
+    return resourceSchemaName(resource.kind);
+  }
+
+  function resourceSubtypeFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
+    const category = resourceCategoryFor(resource);
+    const labelMap: Record<string, string> = {
+      Application: '虚拟机',
+      Kubernetes: 'API',
+      KubernetesCluster: 'API',
+      Middleware: 'Redis',
+      GenericMiddleware: 'Redis',
+      Database: 'PostgreSQL',
+      ArtifactRepository: 'Generic',
+      ArtifactStore: 'Generic',
+      CodeRepository: 'Git',
+      Repository: 'Git',
+      MCPServer: 'StreamHTTP',
+      GenericAPI: 'API',
+      LLMProvider: 'OpenAI',
+      Prometheus: '指标',
+      Loki: '日志',
+      Tempo: '链路',
+      Alertmanager: '告警'
+    };
+    return String(resource.subtype || resource.config?.subtype || resource.config?.provider || labelMap[resource.kind] || resource.kind);
+  }
+
+  function resourceCategoryIcon(category: string) {
+    const icons: Record<string, string> = {
+      全部: '◇',
+      应用: '⌘',
+      中间件: '◒',
+      数据库: '◉',
+      制品库: '▤',
+      代码库: '⌘',
+      Docker: '◈',
+      Kubernetes: '⬡',
+      MCPServer: '⌁',
+      Skill: '✧',
+      大模型: '✦',
+      监控: '◌'
+    };
+    return icons[category] ?? '◇';
+  }
+
+  function selectResourceCategory(category: string, subtype = '全部') {
+    resourceCategory = category;
+    resourceSubtype = subtype;
+    resourceKind = '';
+    expandedResourceCategory = category === '全部' ? '' : category;
+  }
+
   function parseLabels(value: string): Record<string, string> {
     return Object.fromEntries(
       value
@@ -2673,6 +2893,57 @@
 
   function resourceIcon(kind: string) {
     return iconGlyph(schemas.find((item) => item.kind === kind)?.icon);
+  }
+
+  function brandNameFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
+    const subtype = String(resource.subtype || resource.config?.subtype || resource.config?.provider || resource.config?.provider_type || '');
+    const normalizedSubtype = subtype.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const names: Record<string, string> = {
+      Redis: 'Redis',
+      Kafka: 'Kafka',
+      RabbitMQ: 'RabbitMQ',
+      ElasticSearch: 'ElasticSearch',
+      Elasticsearch: 'ElasticSearch',
+      PostgreSQL: 'PostgreSQL',
+      MySQL: 'MySQL',
+      Docker: 'Docker',
+      Kubernetes: 'Kubernetes',
+      Git: 'Git',
+      GitHub: 'GitHub',
+      GitLab: 'GitLab',
+      Helm: 'Helm',
+      Prometheus: 'Prometheus',
+      Grafana: 'Grafana',
+      OpenAI: 'OpenAI',
+      Anthropic: 'Anthropic',
+      DeepSeek: 'DeepSeek',
+      Qwen: 'Qwen',
+      Ollama: 'Ollama'
+    };
+    if (names[subtype]) return names[subtype];
+    const normalizedNames: Record<string, string> = {
+      openai: 'OpenAI',
+      openaicompatible: 'OpenAI',
+      anthropic: 'Anthropic',
+      deepseek: 'DeepSeek',
+      qwen: 'Qwen',
+      ollama: 'Ollama',
+      postgresql: 'PostgreSQL',
+      mysql: 'MySQL',
+      elasticsearch: 'ElasticSearch',
+      rabbitmq: 'RabbitMQ',
+      apachekafka: 'Kafka'
+    };
+    if (normalizedNames[normalizedSubtype]) return normalizedNames[normalizedSubtype];
+    if (resource.kind === 'Redis') return 'Redis';
+    if (resource.kind === 'Kafka') return 'Kafka';
+    if (resource.kind === 'RabbitMQ') return 'RabbitMQ';
+    if (resource.kind === 'PostgreSQL') return 'PostgreSQL';
+    if (resource.kind === 'MySQL') return 'MySQL';
+    if (resource.kind === 'Docker') return 'Docker';
+    if (resource.kind === 'Kubernetes') return 'Kubernetes';
+    if (resource.kind === 'Prometheus') return 'Prometheus';
+    return '';
   }
 
   function focusOnMount(node: HTMLInputElement) {
@@ -3705,81 +3976,94 @@
       {:else if view === 'resources'}
         <section class="resources-layout">
           <section class="panel resource-list-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">CATALOG</p>
-                <h2>资源目录</h2>
-              </div>
-              <span class="count">{visibleResources.length}</span>
-            </div>
-            <div class="filter-row">
-              <select bind:value={resourceKind}
-                ><option value="">全部类型</option
-                >{#each schemas as schema}<option value={schema.kind}
-                    >{schemaName(schema)}</option
-                  >{/each}</select
-              >
-            </div>
-            <div class="table-list resource-list">
-              {#each visibleResources.filter((item) => !resourceKind || item.kind === resourceKind) as resource}<button
-                  class:selected={selectedResourceId === resource.id}
-                  class="list-row"
-                  on:click={() => void loadResourceDetails(resource.id)}
-                  ><span class="entity-summary"
-                    ><span class="entity-icon resource-icon"
-                      >{iconGlyph(
-                        schemas.find((schema) => schema.kind === resource.kind)
-                          ?.icon
-                      )}</span
-                    ><span
-                      ><strong>{resource.name}</strong><small
-                        >{resourceSchemaName(resource.kind)} · {scopeName(
-                          resource.scope_id
-                        )}</small
-                      ></span
-                    ></span
-                  ><span class="status-label {resource.status}"
-                    >{resource.status}</span
-                  ></button
-                >{:else}<div class="empty-state">没有匹配的资源。</div>{/each}
+            <div class="resource-catalog-rail">
+              <button class:active={resourceCategory === '全部'} class="catalog-root" type="button" on:click={() => selectResourceCategory('全部')}><span class="catalog-icon">{resourceCategoryIcon('全部')}</span><span class="catalog-label">全部资源</span><span>{visibleResources.length}</span></button>
+              {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部') as [category, subtypes]}
+                <div class="catalog-category">
+                  <button class:active={resourceCategory === category && resourceSubtype === '全部'} class="catalog-category-button" type="button" on:click={() => selectResourceCategory(category)}>
+                    <span class="catalog-name"><span class="catalog-icon">{resourceCategoryIcon(category)}</span>{category}</span><span>{visibleResources.filter((item) => resourceCategoryFor(item) === category).length}</span>
+                  </button>
+                  {#if expandedResourceCategory === category}
+                    <div class="catalog-subtypes">
+                      {#each subtypes as subtype}
+                        <button class:active={resourceCategory === category && resourceSubtype === subtype} type="button" on:click={() => selectResourceCategory(category, subtype)}>
+                          <span class="catalog-name"><span class="catalog-icon subtype-icon">{resourceCategoryIcon(subtype)}</span>{subtype}</span><span>{visibleResources.filter((item) => resourceCategoryFor(item) === category && resourceSubtypeFor(item) === subtype).length}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
             </div>
           </section>
           <section class="resource-workspace">
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">NEW RESOURCE</p>
-                  <h2>登记资源</h2>
+            <section class="panel resource-catalog-panel">
+              <div class="resource-catalog-toolbar">
+                <div class="resource-catalog-title">
+                  <h2>{resourceCategory === '全部' ? '全部' : resourceSubtype === '全部' ? resourceCategory : `${resourceCategory} · ${resourceSubtype}`}</h2>
+                  <small>{resourceCatalogItems.length} 个可见资源</small>
                 </div>
-                <span class="scope-type">{activeScope?.type ?? 'scope'}</span>
+                <div class="resource-catalog-filters"><input class="resource-search" bind:value={resourceSearch} placeholder="搜索名称、端点或标签" aria-label="搜索资源" />
+                <select bind:value={resourceStatusFilter} aria-label="连接状态"><option value="all">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option><option value="unknown">未知</option></select>
+                <select bind:value={resourceLevelFilter} aria-label="资源级别"><option value="all">全部级别</option><option value="platform">平台级</option><option value="team">团队级</option><option value="project">项目级</option></select>
+                <button class="primary" type="button" on:click={toggleResourceAddMenu} aria-expanded={resourceAddMenuOpen}><Plus size={15} strokeWidth={2} aria-hidden="true" />添加资源</button></div>
               </div>
-              <form
-                class="stack-form"
-                on:submit|preventDefault={createResource}
-              >
-                <div class="resource-type-picker" aria-label="选择资源类型">
-                  <div class="resource-type-grid">
-                    {#each schemas as schema}
-                      <button
-                        type="button"
-                        class="resource-type-card"
-                        class:selected={resourceKind === schema.kind}
-                        on:click={() => {
-                          resourceKind = schema.kind;
-                          resetResourceConfig();
-                        }}
-                      >
-                        <span class="type-icon">{iconGlyph(schema.icon)}</span>
-                        <span>
-                          <strong>{schemaName(schema)}</strong>
-                          <small
-                            >{schema.description || '资源连接与运行信息'}</small
-                          >
-                        </span>
-                      </button>
-                    {/each}
+              <div class="table-list resource-list">
+                {#each resourceCatalogItems as resource}
+                  <details class:selected={selectedResourceId === resource.id} class="resource-catalog-row" on:toggle={() => void loadResourceDetails(resource.id)}>
+                    <summary>
+                    <span class="entity-summary"><span class="entity-icon resource-icon">{#if brandNameFor(resource)}<BrandIcon name={brandNameFor(resource)} size={18} />{:else}{resourceIcon(resource.kind)}{/if}</span><span><strong>{resource.name}</strong><small>{resourceEndpointFor(resource)}</small></span></span>
+                      <span class="resource-cell resource-category-cell"><strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small></span>
+                      <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>管理范围</small></span>
+                      <span class="resource-tags" aria-label="资源标签">
+                        {#each Object.entries(resource.labels ?? {}) as [key, value]}
+                          <span class="resource-tag">{key}{value ? `=${value}` : ''}</span>
+                        {:else}
+                          <small class="resource-tags-empty">未设置标签</small>
+                        {/each}
+                      </span>
+                      <span class="resource-cell resource-connection-cell"><span class="status-label {resourceConnectionClass(resource)}">{resourceConnectionLabel(resource)}</span><small>连接状态</small></span>
+                      <span class="resource-row-actions" aria-label="资源操作">
+                        <button class="icon-button" type="button" on:click|stopPropagation={() => void testResourceRowConnection(resource)} disabled={busy || connectionBusy || !resourceHasConnector(resource)} title={resourceHasConnector(resource) ? '连接测试' : '此资源暂不支持连接测试'} aria-label="连接测试"><PlugZap size={15} aria-hidden="true" /></button>
+                        <button class="icon-button" type="button" on:click|stopPropagation={() => void openResourceEditor(resource)} disabled={busy || !resourceCanManage(resource, 'resource:update')} title={resourceCanManage(resource, 'resource:update') ? '编辑资源' : '无编辑权限'} aria-label="编辑资源"><Pencil size={15} aria-hidden="true" /></button>
+                        <button class="icon-button danger-action" type="button" on:click|stopPropagation={() => void loadResourceDetails(resource.id).then(deleteSelectedResource)} disabled={busy || !resourceCanManage(resource, 'resource:delete')} title={resourceCanManage(resource, 'resource:delete') ? '删除资源' : '无删除权限'} aria-label="删除资源"><Trash2 size={15} aria-hidden="true" /></button>
+                      </span>
+                    </summary>
+                    <div class="resource-row-details">
+                      <div><span>资源地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
+                      <div><span>连接测试</span><strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? '连接正常' : '连接失败' : '展开后可测试'}</strong></div>
+                      <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
+                    </div>
+                  </details>
+                {:else}<div class="empty-state">没有匹配的资源。</div>{/each}
+              </div>
+            </section>
+            {#if resourceAddMenuOpen}
+              <div class="resource-add-menu" role="menu">
+                <div class="resource-add-menu-heading">选择要添加的资源子类</div>
+                {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部' && (resourceCategory === '全部' || name === resourceCategory)) as [category, subtypes]}
+                  <div class="resource-add-menu-group">
+                    <strong>{category}</strong>
+                    <div>
+                      {#each subtypes as subtype}
+                        <button type="button" on:click={() => chooseResourceAddSubtype(category, subtype)}>{subtype}</button>
+                      {/each}
+                    </div>
                   </div>
-                </div>
+                {/each}
+              </div>
+            {/if}
+            {#if resourceEditorOpen}
+              <div class="resource-add-dialog-backdrop" role="presentation" on:click={() => (resourceEditorOpen = false)}>
+                <section class="panel resource-add-dialog" aria-labelledby="resource-add-title">
+                  <div class="panel-heading">
+                    <div>
+                      <p class="eyebrow">ADD RESOURCE</p>
+                      <h2 id="resource-add-title">添加{resourceAddCategory} · {resourceAddSubtype}</h2>
+                    </div>
+                    <button class="quiet-button" type="button" on:click={() => (resourceEditorOpen = false)}>关闭</button>
+                  </div>
+                  <form class="stack-form" on:submit|preventDefault={createResource}>
                 <label
                   >名称<input
                     bind:value={resourceName}
@@ -3848,8 +4132,10 @@
                 {/if}<button class="primary" disabled={busy || !selectedScopeId}
                   >创建资源</button
                 >
-              </form>
-            </section>
+                  </form>
+                </section>
+              </div>
+            {/if}
             {#if selectedResource}<section class="panel detail-panel">
                 <div class="panel-heading">
                   <div>
@@ -3864,7 +4150,8 @@
                   <button
                     class="danger-button"
                     on:click={deleteSelectedResource}
-                    disabled={busy}>停用</button
+                    disabled={busy || !selectedResourceCanDelete}
+                    title={selectedResourceCanDelete ? '停用资源' : '继承资源仅可查看'}>停用</button
                   >
                 </div>
                 <div class="detail-meta">
@@ -3984,7 +4271,7 @@
                       ></textarea></label
                     >
                   {/if}
-                  <button class="secondary" disabled={busy}>保存修改</button>
+                  <button class="secondary" disabled={busy || !selectedResourceCanUpdate} title={selectedResourceCanUpdate ? '保存资源修改' : '继承资源仅可查看'}>保存修改</button>
                 </form>
                 {#if selectedSchema?.schema.properties}<div
                     class="schema-fields"

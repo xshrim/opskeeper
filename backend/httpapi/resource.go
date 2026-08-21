@@ -46,6 +46,7 @@ type resourceHandler struct {
 type createResourceRequest struct {
 	ScopeID          string            `json:"scope_id"`
 	Kind             string            `json:"kind"`
+	Subtype          string            `json:"subtype,omitempty"`
 	SchemaVersion    int               `json:"schema_version,omitempty"`
 	Name             string            `json:"name"`
 	ExternalUID      string            `json:"external_uid,omitempty"`
@@ -58,6 +59,7 @@ type createResourceRequest struct {
 
 type updateResourceRequest struct {
 	ScopeID          *string            `json:"scope_id"`
+	Subtype          *string            `json:"subtype"`
 	Name             *string            `json:"name"`
 	ExternalUID      *string            `json:"external_uid"`
 	SourceResourceID *string            `json:"source_resource_id"`
@@ -154,7 +156,7 @@ func (h resourceHandler) createResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
@@ -178,7 +180,7 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return

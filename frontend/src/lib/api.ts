@@ -85,6 +85,7 @@ export interface Resource {
   id: string;
   scope_id: string;
   kind: string;
+  subtype?: string;
   schema_version: number;
   name: string;
   external_uid?: string;

@@ -12,6 +12,7 @@ type Resource struct {
 	ID               string            `json:"id"`
 	ScopeID          string            `json:"scope_id"`
 	Kind             string            `json:"kind"`
+	Subtype          string            `json:"subtype,omitempty"`
 	SchemaVersion    int               `json:"schema_version"`
 	Name             string            `json:"name"`
 	ExternalUID      string            `json:"external_uid,omitempty"`
@@ -71,6 +72,7 @@ func (p Pagination) Offset() int { return (p.Page - 1) * p.PageSize }
 type CreateInput struct {
 	ScopeID          string
 	Kind             string
+	Subtype          string
 	SchemaVersion    int
 	Name             string
 	ExternalUID      string
@@ -85,6 +87,7 @@ type ImportedInput = CreateInput
 
 type UpdateInput struct {
 	ScopeID          *string
+	Subtype          *string
 	Name             *string
 	ExternalUID      *string
 	SourceResourceID *string

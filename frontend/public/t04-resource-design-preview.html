@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T04 资源管理页面优化 · 六种设计预览</title>
+    <style>
+      :root {
+        --ink: #2f2926;
+        --muted: #796f69;
+        --accent: #e7601b;
+        --accent-soft: #fff0e8;
+        --surface: #ffffff;
+        --wash: #eee8e5;
+        --line: #ded6d1;
+        --sidebar: #171b21;
+        --sidebar-muted: #aeb6c0;
+        --success: #2f7956;
+        --warning: #a76217;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; background: var(--wash); }
+      button, input, select { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(231, 96, 27, .25); outline-offset: 2px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      .shell { display: grid; grid-template-columns: 218px minmax(0, 1fr); min-height: 100vh; }
+      .sidebar { display: flex; flex-direction: column; min-height: 100vh; padding: 22px 14px 18px; color: #f6f8f9; background: var(--sidebar); border-right: 1px solid #2f353d; }
+      .sidebar-brand, .sidebar-foot { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+      .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; color: var(--surface); background: var(--accent); font-size: 14px; font-weight: 800; }
+      .sidebar-brand strong { display: block; font-size: 15px; }
+      .sidebar-brand small { display: block; margin-top: 2px; color: #7e8995; font-size: 10px; }
+      .nav-label { margin: 34px 8px 10px; color: #7e8995; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+      .side-nav { display: grid; gap: 3px; }
+      .side-nav button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 11px; color: var(--sidebar-muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 13px; }
+      .side-nav button.active, .side-nav button:hover { color: #fff; background: #2a3038; }
+      .side-nav button.active::before { width: 3px; height: 18px; margin-left: -11px; margin-right: 5px; border-radius: 0 3px 3px 0; background: var(--accent); content: ''; }
+      .sidebar-foot { margin-top: auto; padding-top: 14px; color: #8d97a3; border-top: 1px solid #30363e; font-size: 11px; }
+      .avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--ink); background: #f1c4a9; font-weight: 800; }
+      .page { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 76px; padding: 16px clamp(18px, 4vw, 54px); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .topbar small { display: block; color: var(--muted); font-size: 11px; }
+      .topbar strong { display: block; margin-top: 3px; font-size: 17px; }
+      .actor { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+      .top-button, .icon-button, .filter, .primary, .secondary { min-height: 32px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); font-size: 12px; }
+      .top-button, .secondary, .primary { padding: 0 11px; }
+      .primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+      .primary:hover { background: #cb5214; }
+      .icon-button { display: inline-grid; place-items: center; width: 32px; padding: 0; font-weight: 800; }
+      main { width: min(1320px, calc(100% - 36px)); margin: 0 auto; padding: 32px 0 64px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+      h1, h2, h3, p { letter-spacing: 0; }
+      h1 { margin: 0; font-size: 29px; line-height: 1.2; }
+      h2 { margin: 0; font-size: 16px; }
+      .intro p:last-child { max-width: 720px; margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+      .preview-control { display: flex; align-items: center; gap: 8px; padding: 9px 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; white-space: nowrap; }
+      select { color: var(--ink); background: transparent; border: 0; outline: 0; font-weight: 700; }
+      .scheme-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 15px; }
+      .scheme-tab { min-height: 66px; padding: 10px 11px; color: var(--muted); background: rgba(255, 255, 255, .62); border: 1px solid transparent; border-radius: 8px; text-align: left; }
+      .scheme-tab:hover { border-color: #d9b39e; }
+      .scheme-tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--accent); box-shadow: 0 2px 8px rgba(47, 41, 38, .06); }
+      .scheme-tab strong, .scheme-tab span { display: block; }
+      .scheme-tab strong { font-size: 13px; }
+      .scheme-tab span { margin-top: 5px; font-size: 10px; line-height: 1.35; }
+      .design-note { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; margin-bottom: 15px; padding: 17px 20px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; }
+      .design-note p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .tradeoffs { display: grid; align-content: center; gap: 5px; color: var(--muted); font-size: 11px; }
+      .tradeoffs b { color: var(--ink); }
+      .workspace { min-width: 0; }
+      .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .toolbar-left, .toolbar-right, .filter-row, .row-actions, .scope-summary, .resource-title, .tag-list { display: flex; align-items: center; gap: 8px; }
+      .toolbar-left { min-width: 0; flex: 1; }
+      .filter-row { flex-wrap: wrap; }
+      .search { width: min(240px, 100%); min-height: 32px; padding: 0 10px; color: var(--ink); background: #fffaf7; border: 1px solid var(--line); border-radius: 6px; }
+      .filter { padding: 0 9px; color: var(--muted); }
+      .scope-summary { color: var(--muted); font-size: 11px; }
+      .count { color: var(--muted); font-size: 11px; white-space: nowrap; }
+      .resource-list { display: grid; gap: 8px; margin-top: 12px; }
+      .resource-row { display: grid; grid-template-columns: 28px minmax(170px, 1.25fr) minmax(105px, .72fr) minmax(120px, .85fr) minmax(110px, .78fr) minmax(130px, .9fr) auto; align-items: center; gap: 12px; min-height: 66px; padding: 11px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .resource-row:hover { border-color: #d9b39e; }
+      .kind-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; color: #9d400d; background: var(--accent-soft); font-size: 13px; font-weight: 800; }
+      .resource-title { min-width: 0; }
+      .resource-title > div { min-width: 0; }
+      .resource-title strong, .cell strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+      .resource-title small, .cell small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+      .cell { min-width: 0; }
+      .pill { display: inline-flex; align-items: center; width: max-content; min-height: 22px; padding: 0 7px; border-radius: 999px; color: var(--ink); background: var(--wash); font-size: 10px; font-weight: 800; }
+      .pill.platform { color: #6d3c17; background: #f7e6d8; }
+      .pill.team { color: #2c6460; background: #def0ed; }
+      .pill.project { color: #3c5c84; background: #e5eef8; }
+      .pill.good { color: var(--success); background: #eaf4ed; }
+      .pill.warning { color: var(--warning); background: #fbefdc; }
+      .secondary:hover, .icon-button:hover, .filter:hover { color: var(--accent); border-color: var(--accent); }
+      .locked { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 9px; color: var(--muted); background: #f7f3f1; border: 1px solid #e8e0dc; border-radius: 6px; font-size: 11px; white-space: nowrap; }
+      details.resource-details { grid-column: 1 / -1; margin: 0 -14px -11px; padding: 0 14px; border-top: 1px solid transparent; }
+      details.resource-details[open] { padding-top: 10px; border-color: #eee7e3; }
+      details.resource-details summary { color: var(--muted); cursor: pointer; font-size: 11px; list-style: none; }
+      details.resource-details summary::-webkit-details-marker { display: none; }
+      details.resource-details summary::before { margin-right: 5px; color: var(--accent); content: '⌄'; }
+      details.resource-details[open] summary::before { display: inline-block; transform: rotate(180deg); }
+      .details-content { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 10px 0 13px; }
+      .details-content div { min-width: 0; }
+      .details-content span { display: block; color: var(--muted); font-size: 10px; }
+      .details-content strong { display: block; overflow: hidden; margin-top: 4px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .permission-note { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; color: var(--muted); background: #fffaf7; border: 1px solid #eadbd3; border-radius: 7px; font-size: 11px; }
+      .permission-note b { color: var(--ink); }
+      .kind-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+      .kind-button { min-height: 54px; padding: 8px 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; text-align: left; font-size: 11px; font-weight: 700; }
+      .kind-button:hover, .kind-button.active { color: var(--ink); border-color: var(--accent); background: #fffaf7; }
+      .kind-button b { display: inline-grid; place-items: center; width: 19px; height: 19px; margin-right: 7px; border-radius: 5px; color: #9d400d; background: var(--accent-soft); font-size: 10px; }
+      .kind-button span { display: block; margin: 4px 0 0 27px; color: var(--muted); font-size: 10px; font-weight: 500; }
+      .scope-stack { display: grid; gap: 12px; }
+      .scope-section { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .scope-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 50px; padding: 0 15px; background: #fffaf7; border-bottom: 1px solid var(--line); }
+      .scope-header h2 { font-size: 14px; }
+      .scope-header p { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
+      .scope-section .resource-list { margin: 0; padding: 10px; }
+      .scope-section .resource-row { border-color: #eee7e3; box-shadow: none; }
+      .split-workspace { display: grid; grid-template-columns: 208px minmax(0, 1fr); overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .category-rail { padding: 11px; background: #fffaf7; border-right: 1px solid var(--line); }
+      .category-root { display: grid; gap: 3px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+      .category-subtree { display: grid; gap: 3px; margin: 2px 0 8px 14px; padding-left: 9px; border-left: 1px solid #e8ddd7; }
+      .category-subtree button { min-height: 31px; padding: 0 8px; font-size: 11px; }
+      .category-subtree button.active { color: var(--accent); background: var(--accent-soft); box-shadow: none; }
+      .category-rail button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 39px; padding: 0 9px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 12px; }
+      .category-rail button:hover, .category-rail button.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(47, 41, 38, .08); }
+      .category-rail .rail-count { color: var(--muted); font-size: 10px; }
+      .catalog-main { min-width: 0; padding: 16px; }
+      .catalog-header { display: grid; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+      .catalog-title-row { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+      .catalog-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .catalog-filters .search { width: min(250px, 100%); }
+      .catalog-filters select { min-height: 32px; padding: 0 26px 0 9px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 600; }
+      .catalog-filters .primary { margin-left: auto; }
+      .catalog-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+      .gallery { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+      .kind-card { min-height: 104px; padding: 12px; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .kind-card:hover, .kind-card.active { border-color: var(--accent); background: #fffaf7; }
+      .kind-card b { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; color: #9d400d; background: var(--accent-soft); font-size: 12px; }
+      .kind-card strong, .kind-card small { display: block; }
+      .kind-card strong { margin-top: 11px; font-size: 12px; }
+      .kind-card small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+      .gallery-detail { margin-top: 13px; }
+      .relationship-list .resource-row { grid-template-columns: 28px minmax(155px, 1.1fr) minmax(105px, .7fr) minmax(120px, .8fr) minmax(155px, 1fr) minmax(110px, .75fr) minmax(130px, .85fr) auto; }
+      .form-workspace { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(310px, .95fr); gap: 13px; }
+      .form-panel { padding: 17px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .form-panel h2 { font-size: 15px; }
+      .form-panel > p { margin: 5px 0 15px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+      .form-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+      .form-field.full { grid-column: 1 / -1; }
+      .form-field input, .form-field select { width: 100%; min-height: 32px; padding: 0 9px; color: var(--ink); background: #fffaf7; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 500; }
+      .form-field select { outline: 0; }
+      .form-actions { display: flex; justify-content: end; gap: 8px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+      .muted { color: var(--muted); font-size: 11px; }
+      .footer-note { margin: 16px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .variant-a .kind-nav { margin-bottom: 12px; }
+      .variant-b .scope-section[data-scope="team"], .variant-b .scope-section[data-scope="project"] { opacity: .45; }
+      .variant-c .resource-list { margin-top: 0; }
+      .variant-d .gallery-detail { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 13px; }
+      .variant-d .add-guide { padding: 15px; background: #fffaf7; border: 1px solid var(--line); border-radius: 8px; }
+      .variant-d .add-guide h3 { margin: 0; font-size: 13px; }
+      .variant-d .add-guide p { margin: 7px 0 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .variant-e .resource-list { margin-top: 0; }
+      @media (max-width: 1080px) { .scheme-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } .kind-nav, .gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); } .resource-row { grid-template-columns: 28px minmax(150px, 1.2fr) minmax(95px, .7fr) minmax(110px, .75fr) minmax(110px, .75fr) auto; } .resource-row .cell:nth-of-type(3) { display: none; } }
+      @media (max-width: 760px) { .shell { grid-template-columns: 64px minmax(0, 1fr); } .sidebar { padding: 18px 10px; } .sidebar-brand { justify-content: center; padding: 0; } .sidebar-brand > div:last-child, .nav-label, .side-nav button span, .sidebar-foot span { display: none; } .side-nav button { justify-content: center; padding: 0; } .side-nav button.active::before { display: none; } main { width: min(100% - 24px, 1320px); padding-top: 24px; } .intro, .design-note { display: grid; grid-template-columns: 1fr; align-items: start; } .preview-control { justify-self: start; } .toolbar { align-items: stretch; flex-direction: column; } .toolbar-left { align-items: stretch; flex-direction: column; } .search { width: 100%; } .kind-nav, .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } .split-workspace, .form-workspace, .variant-d .gallery-detail { grid-template-columns: 1fr; } .category-rail { display: block; max-height: 360px; overflow-y: auto; border-right: 0; border-bottom: 1px solid var(--line); } .category-rail button { min-width: 115px; } .resource-row, .relationship-list .resource-row { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 9px; padding: 10px; } .resource-row .cell { display: none; } .row-actions { flex-direction: column; gap: 4px; } .details-content { grid-template-columns: repeat(2, minmax(0, 1fr)); } .scope-summary { flex-wrap: wrap; } }
+      @media (max-width: 450px) { .topbar { align-items: flex-start; } .actor span { display: none; } .scheme-tabs { grid-template-columns: 1fr; } .form-grid { grid-template-columns: 1fr; } .form-field.full { grid-column: auto; } }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand"><div class="brand-mark">O</div><div><strong>OpsKeeper</strong><small>智能值守平台</small></div></div>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="side-nav" aria-label="主导航">
+          <button type="button"><b>⌂</b><span>总览</span></button>
+          <button type="button"><b>◇</b><span>项目</span></button>
+          <button type="button" class="active"><b>□</b><span>资源</span></button>
+          <button type="button"><b>⌁</b><span>集群导入</span></button>
+          <button type="button"><b>✦</b><span>模型与 Skill</span></button>
+        </nav>
+        <div class="sidebar-foot"><div class="avatar">林</div><span>林晓 · 平台管理员</span></div>
+      </aside>
+      <div class="page">
+        <header class="topbar">
+          <div><small>平台 / 资源中心</small><strong>资源管理</strong></div>
+          <div class="actor"><span>静态预览 · 不接入 API</span><button class="top-button" type="button" id="access-cycle">切换权限视角</button></div>
+        </header>
+        <main>
+          <div class="intro">
+            <div><p class="eyebrow">DESIGN REVIEW / T04</p><h1>资源管理页面优化</h1><p>六种资源工作区方案。演示数据覆盖十类资源、三级目录、三级 Scope、上级资源只读边界、连接测试、详情展开及类型专属添加字段。</p></div>
+            <label class="preview-control">权限视角<select id="access-select"><option value="platform">平台管理员</option><option value="team">团队操作员</option><option value="project">项目观察员</option></select></label>
+          </div>
+          <div class="scheme-tabs" role="tablist" aria-label="资源管理设计方案">
+            <button class="scheme-tab" type="button" role="tab" aria-selected="true" data-variant="a"><strong>A · 分类工作台</strong><span>筛选优先 / 快速扫描</span></button>
+            <button class="scheme-tab" type="button" role="tab" aria-selected="false" data-variant="b"><strong>B · Scope 时间线</strong><span>继承清晰 / 范围优先</span></button>
+            <button class="scheme-tab" type="button" role="tab" aria-selected="false" data-variant="c"><strong>C · 双栏资源目录</strong><span>分类稳定 / 高密度</span></button>
+            <button class="scheme-tab" type="button" role="tab" aria-selected="false" data-variant="d"><strong>D · 类型画廊</strong><span>添加清晰 / 分类入口</span></button>
+            <button class="scheme-tab" type="button" role="tab" aria-selected="false" data-variant="e"><strong>E · 资源关系清单</strong><span>连接追溯 / 详情优先</span></button>
+            <button class="scheme-tab" type="button" role="tab" aria-selected="false" data-variant="f"><strong>F · 添加优先工作区</strong><span>持续录入 / 配置专属</span></button>
+          </div>
+          <section id="design-note" class="design-note" aria-live="polite"></section>
+          <section id="workspace" class="workspace variant-a" aria-label="资源管理方案预览"></section>
+          <p class="footer-note">所有数据仅用于静态设计预览。编辑、删除、连接测试和保存按钮不发送请求；最终方案确认后，页面将接入现有 Resource Schema、凭据隔离、服务端 Scope/RBAC 和审计边界。</p>
+        </main>
+      </div>
+    </div>
+    <script>
+      const categories = {
+        '全部': [],
+        '应用': ['虚拟机', 'Docker', 'Kubernetes'],
+        '中间件': ['Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'ElasticSearch'],
+        '数据库': ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'],
+        '制品库': ['Generic', 'Docker', 'Helm'],
+        '代码库': ['Git', 'Bundle'],
+        'Docker': ['API', 'MCP'],
+        'Kubernetes': ['API', 'MCP'],
+        'Skill': ['诊断', '监控', '优化', '维护'],
+        '大模型': ['OpenAI', 'Anthropic', 'DeepSeek', 'Qwen', 'Ollama'],
+        '监控平台': ['指标', '日志', '链路', '告警']
+      };
+      const kinds = Object.keys(categories).filter((name) => name !== '全部').map((name) => [name, name.slice(0, 2)]);
+      const resources = [
+        { name: 'checkout-api', kind: '应用', subtype: 'Kubernetes', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'Kubernetes / payments-prod', endpoint: 'checkout-api.payments.svc', test: '通过 · 142ms', capabilities: '拓扑、诊断、巡检', manager: true },
+        { name: 'payments-postgres', kind: '数据库', subtype: 'PostgreSQL', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'PostgreSQL 凭据 / vault', endpoint: 'postgresql://pg-payments:5432/app', test: '通过 · 27ms', capabilities: '连接、只读诊断', manager: true },
+        { name: 'redis-session', kind: '中间件', subtype: 'Redis', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Redis ACL 凭据', endpoint: 'redis://redis-payments:6379/0', test: '失败 · 认证拒绝', capabilities: '连接、只读快照', manager: true },
+        { name: 'prod-kubernetes', kind: 'Kubernetes', subtype: 'API', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Kubeconfig / 平台凭据', endpoint: 'https://cluster.prod.example:6443', test: '通过 · 84ms', capabilities: '发现、导入、只读查询', manager: true },
+        { name: 'ops-docker-mcp', kind: 'Docker', subtype: 'MCP', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Docker MCP / Bearer Token', endpoint: 'http://docker-mcp:8811/mcp', test: '通过 · 36ms', capabilities: '只读容器、镜像、日志', manager: true },
+        { name: 'opskeeper-diagnosis', kind: 'Skill', subtype: 'Kubernetes', platform: '平台', scope: 'platform', scopeName: '平台', source: '已发布版本 v3', endpoint: 'Kubernetes, PostgreSQL, Redis', test: '可用 · 3 个工具', capabilities: '读取、执行', manager: true },
+        { name: 'primary-llm', kind: '大模型', subtype: 'OpenAI', platform: '平台', scope: 'platform', scopeName: '平台', source: 'OpenAI Compatible 凭据', endpoint: 'https://llm.example.com/v1', test: '通过 · 680ms', capabilities: '对话、工具调用', manager: true },
+        { name: 'gitlab-main', kind: '代码库', subtype: 'Git', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Access Token 凭据', endpoint: 'https://gitlab.example.com/payments', test: '通过 · 95ms', capabilities: '提交、Issue、流水线', manager: true },
+        { name: 'harbor-prod', kind: '制品库', subtype: 'Docker', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: '机器人账户凭据', endpoint: 'https://harbor.example.com/payments', test: '通过 · 117ms', capabilities: '镜像、制品索引', manager: true },
+        { name: 'edge-docker', kind: 'Docker', subtype: 'API', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'TLS 远程连接', endpoint: 'tcp://edge-01.example:2376', test: '通过 · 51ms', capabilities: '只读容器、日志', manager: true },
+        { name: 'prometheus-platform', kind: '监控平台', subtype: '指标', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Prometheus 凭据', endpoint: 'https://prometheus.example.com', test: '通过 · 64ms', capabilities: '指标查询、告警', manager: true }
+      ];
+      const notes = {
+        a: ['A · 分类工作台', '顶部十类资源筛选器与紧凑资源清单结合。每行同时展示类型、Scope、连接状态与操作边界，展开后才显示连接地址、来源和能力。', ['适合：高频巡查与跨类型检索', '取舍：添加前需先选资源类型', '窄屏：分类按钮两列，列表保留名称、Scope 与操作']],
+        b: ['B · Scope 时间线', '资源先按平台、团队、项目的可见继承顺序分段，再在段内按类别显示。上级资源为什么可见、为何不可编辑在结构上直接可读。', ['适合：多 Scope 协作与权限核对', '取舍：跨分类资源比较较慢', '窄屏：Scope 段依次纵向排列']],
+        c: ['C · 双栏资源目录', '左侧固定十类分类目录，右侧显示当前类型的列表、Scope 筛选和展开详情。分类数量稳定时，目录不会随着数据增长而变形。', ['适合：资源量大、分类操作频繁', '取舍：Scope 关系在列表中表达', '窄屏：目录变为可横向滚动的分类栏']],
+        d: ['D · 类型画廊', '十种类型作为小型资源入口卡，选中类型后显示同类资源及一个简明的类型字段摘要。新增路径从类别开始，字段差异最容易理解。', ['适合：首次配置和多种连接方式', '取舍：浏览多个类别需要切换', '窄屏：画廊保持两列，详情纵向排列']],
+        e: ['E · 资源关系清单', '清单强调资源的接入来源、实际端点与能力摘要，详情展开后保留最近连接测试和关联对象。适合定位“由什么接入、能做什么”。', ['适合：连接测试、导入来源和能力排查', '取舍：首屏字段更密集', '窄屏：只保留资源、来源与操作，详情展开查看']],
+        f: ['F · 添加优先工作区', '左侧是当前资源列表，右侧始终展示所选类型的专属添加表单。类型变化时，字段与受控来源同步替换，避免通用 JSON 配置。', ['适合：持续导入与集中配置阶段', '取舍：纯浏览时内容区域较窄', '窄屏：列表与表单上下重排']]
+      };
+      const fieldMap = {
+        '应用': [['应用名称', 'checkout-api'], ['部署来源', 'Kubernetes / Docker / Docker MCP'], ['Kubernetes 集群', 'prod-kubernetes'], ['命名空间', 'payments-prod']],
+        '中间件': [['资源名称', 'redis-session'], ['产品类型', 'Redis / Kafka / RabbitMQ'], ['连接地址', 'redis://host:6379/0'], ['访问凭据', '选择已加密凭据']],
+        '数据库': [['资源名称', 'payments-postgres'], ['数据库类型', 'PostgreSQL'], ['连接地址', 'postgresql://host:5432/db'], ['访问凭据', '选择只读凭据']],
+        '制品库': [['资源名称', 'harbor-prod'], ['仓库地址', 'https://harbor.example.com'], ['项目或命名空间', 'payments'], ['机器人账户', '选择已加密凭据']],
+        '代码库': [['资源名称', 'gitlab-main'], ['仓库地址', 'https://gitlab.example.com/group'], ['默认分支', 'main'], ['访问令牌', '选择已加密凭据']],
+        'Docker': [['资源名称', 'edge-docker'], ['连接方式', '远程 Docker / Docker MCP'], ['Docker 地址', 'tcp://edge-01:2376'], ['TLS 或 Token', '选择已加密凭据']],
+        'Kubernetes': [['资源名称', 'prod-kubernetes'], ['连接方式', 'Kubeconfig / 服务器地址'], ['API Server', 'https://cluster:6443'], ['凭据', '选择已加密凭据']],
+        'Skill': [['资源名称', 'opskeeper-diagnosis'], ['适用资源类型', 'Kubernetes, PostgreSQL'], ['发布版本', 'v3'], ['允许工具', '从受控目录选择']],
+        '大模型': [['资源名称', 'primary-llm'], ['Provider 地址', 'https://llm.example.com/v1'], ['模型标识', 'provider/model'], ['API Token', '选择已加密凭据']],
+        '监控平台': [['资源名称', 'prometheus-platform'], ['平台类型', '指标 / 日志 / 链路 / 告警'], ['服务地址', 'https://monitoring.example.com'], ['访问凭据', '选择已加密凭据']]
+      };
+      let variant = 'a';
+      let access = 'platform';
+      let selectedKind = '全部';
+      let selectedSubtype = '全部';
+      const workspace = document.getElementById('workspace');
+      const note = document.getElementById('design-note');
+      const accessLabels = { platform: '平台管理员', team: '团队操作员', project: '项目观察员' };
+      const scopeLabels = { platform: '平台级', team: '团队级', project: '项目级' };
+      const scopeClass = { platform: 'platform', team: 'team', project: 'project' };
+      function visible(item) { return access === 'platform' ? item.scope === 'platform' : access === 'team' ? item.scope !== 'project' : true; }
+      function editable(item) { return access === 'platform' ? item.scope === 'platform' : access === 'team' ? item.scope === 'team' : item.scope === 'project'; }
+      function iconFor(kind) { return kinds.find(([name]) => name === kind)?.[1] || 'R'; }
+      function matchesSelection(item) {
+        if (selectedKind === '全部') return true;
+        if (item.kind !== selectedKind) return false;
+        return selectedSubtype === '全部' || item.subtype === selectedSubtype;
+      }
+      function categoryRail() {
+        const root = `<div class="category-root"><button class="${selectedKind === '全部' ? 'active' : ''}" type="button" data-kind="全部"><span>全部资源</span><span class="rail-count">${resources.filter(visible).length}</span></button></div>`;
+        const groups = kinds.map(([name]) => {
+          const children = categories[name].map((subtype) => `<button class="${selectedKind === name && selectedSubtype === subtype ? 'active' : ''}" type="button" data-kind="${name}" data-subtype="${subtype}"><span>${subtype}</span><span class="rail-count">${resources.filter((item) => visible(item) && item.kind === name && item.subtype === subtype).length}</span></button>`).join('');
+          return `<div class="category-group"><button class="${selectedKind === name && selectedSubtype === '全部' ? 'active' : ''}" type="button" data-kind="${name}"><span>${name}</span><span class="rail-count">${resources.filter((item) => visible(item) && item.kind === name).length}</span></button><div class="category-subtree">${children}</div></div>`;
+        }).join('');
+        return `${root}${groups}`;
+      }
+      function row(item, relation = false) {
+        const isEditable = editable(item);
+        const testClass = item.test.startsWith('通过') || item.test.startsWith('可用') ? 'good' : 'warning';
+        const action = isEditable ? `<div class="row-actions"><button class="icon-button" type="button" title="连接测试">↻<span class="sr-only">连接测试</span></button><button class="icon-button" type="button" title="编辑">✎<span class="sr-only">编辑</span></button><button class="icon-button" type="button" title="删除">×<span class="sr-only">删除</span></button></div>` : `<span class="locked" title="无上级资源管理权">仅查看</span>`;
+        const category = `<div class="cell"><strong>${item.kind}</strong><small>${item.subtype}</small></div>`;
+        const platform = `<div class="cell"><strong>${item.platform}</strong><small>资源平台</small></div>`;
+        const source = relation ? `<div class="cell"><strong>${item.source}</strong><small>接入来源</small></div>` : '';
+        return `<article class="resource-row"><div class="kind-icon">${iconFor(item.kind)}</div><div class="resource-title"><div><strong>${item.name}</strong><small>${item.endpoint}</small></div></div>${category}${platform}${source}<div class="cell"><span class="pill ${scopeClass[item.scope]}">${scopeLabels[item.scope]}</span><small>${item.scopeName}</small></div><div class="cell"><span class="pill ${testClass}">${item.test}</span><small>最近连接测试</small></div>${action}<details class="resource-details"><summary>展开资源信息</summary><div class="details-content"><div><span>连接地址</span><strong>${item.endpoint}</strong></div><div><span>接入来源</span><strong>${item.source}</strong></div><div><span>可用能力</span><strong>${item.capabilities}</strong></div><div><span>管理边界</span><strong>${isEditable ? '当前 Scope 可管理' : '继承可见，仅限查看'}</strong></div></div></details></article>`;
+      }
+      function list(items, relation = false) { return `<div class="resource-list ${relation ? 'relationship-list' : ''}">${items.map((item) => row(item, relation)).join('') || '<div class="permission-note"><b>暂无资源</b><span>当前权限视角下没有此分类资源。</span></div>'}</div>`; }
+      function standardToolbar() { return `<div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="搜索名称、端点或标签" /><div class="filter-row"><button class="filter" type="button">全部状态 ⌄</button><button class="filter" type="button">全部级别 ⌄</button></div></div><div class="toolbar-right"><span class="count">${resources.filter(visible).length} 个可见资源</span><button class="primary" type="button">＋ 添加资源</button></div></div>`; }
+      function catalogToolbar(items) { return `<div class="catalog-filters"><input class="search" id="catalog-search" placeholder="搜索名称、端点或标签" /><select id="catalog-status" aria-label="连接状态"><option value="all">全部状态</option><option value="good">连接正常</option><option value="warning">连接异常</option></select><select id="catalog-scope" aria-label="资源级别"><option value="all">全部级别</option><option value="platform">平台级</option><option value="team">团队级</option><option value="project">项目级</option></select><span class="count">${items.length} 个可见资源</span><button class="primary" type="button">＋ 添加资源</button></div>`; }
+      function bindCatalogFilters() {
+        const search = document.getElementById('catalog-search');
+        const status = document.getElementById('catalog-status');
+        const scope = document.getElementById('catalog-scope');
+        if (!search || !status || !scope) return;
+        const apply = () => {
+          const query = search.value.trim().toLowerCase();
+          const statusValue = status.value;
+          const scopeValue = scope.value;
+          const filtered = resources.filter((item) => visible(item) && matchesSelection(item) && (!query || `${item.name} ${item.endpoint} ${item.platform}`.toLowerCase().includes(query)) && (statusValue === 'all' || (item.test.startsWith('通过') || item.test.startsWith('可用') ? 'good' : 'warning') === statusValue) && (scopeValue === 'all' || item.scope === scopeValue));
+          const listNode = workspace.querySelector('.catalog-main .resource-list');
+          if (listNode) listNode.outerHTML = list(filtered);
+        };
+        search.addEventListener('input', apply);
+        status.addEventListener('change', apply);
+        scope.addEventListener('change', apply);
+      }
+      function formPanel() {
+        const fields = fieldMap[selectedKind];
+        const fieldHTML = fields.map(([label, value], index) => {
+          const full = index === 1 && selectedKind === '应用' ? ' full' : '';
+          const select = label.includes('方式') || label.includes('类型') || label.includes('来源') || label.includes('凭据') || label.includes('Token') || label.includes('工具');
+          const control = select ? `<select><option>${value}</option></select>` : `<input value="${value}" />`;
+          return `<label class="form-field${full}"><span>${label}</span>${control}</label>`;
+        }).join('');
+        const intro = selectedKind === '应用' ? '应用只能通过主机凭据、远程 Docker / Docker MCP 或 Kubernetes / Kubernetes MCP 三类受控来源接入。' : '字段按资源类型显示；凭据只可选择，页面不读取或显示明文。';
+        return `<section class="form-panel"><h2>添加${selectedKind}</h2><p>${intro}</p><div class="form-grid">${fieldHTML}</div><div class="form-actions"><button class="secondary" type="button">取消</button><button class="secondary" type="button">连接测试</button><button class="primary" type="button">保存资源</button></div></section>`;
+      }
+      function bindInteractions() {
+        workspace.querySelectorAll('[data-kind]').forEach((button) => button.addEventListener('click', () => { selectedKind = button.dataset.kind; selectedSubtype = button.dataset.subtype || '全部'; render(); }));
+      }
+      function render() {
+        document.querySelectorAll('.scheme-tab').forEach((button) => button.setAttribute('aria-selected', button.dataset.variant === variant ? 'true' : 'false'));
+        workspace.className = `workspace variant-${variant}`;
+        const [title, description, bullets] = notes[variant];
+        note.innerHTML = `<div><h2>${title}</h2><p>${description}</p></div><div class="tradeoffs">${bullets.map((item) => `<span><b>${item.split('：')[0]}：</b>${item.split('：').slice(1).join('：')}</span>`).join('')}</div>`;
+        const visibleResources = resources.filter(visible);
+        const selectedResources = visibleResources.filter(matchesSelection);
+        let content = '';
+        if (variant === 'a') content = `${kindNav()}${standardToolbar()}${list(visibleResources)}<div class="permission-note"><b>当前视角：${accessLabels[access]}</b><span>${access === 'platform' ? '仅显示平台级资源。' : access === 'team' ? '显示平台与团队级资源；平台资源只读。' : '显示平台、团队与项目级资源；上级资源只读。'}</span></div>`;
+        if (variant === 'b') content = `<div class="scope-stack">${['platform', 'team', 'project'].map((scope) => `<section class="scope-section" data-scope="${scope}"><div class="scope-header"><div><h2>${scopeLabels[scope]}资源</h2><p>${scope === 'platform' ? '平台统一提供的基础设施与能力' : scope === 'team' ? '支付平台共享的资源' : '结算服务专属资源'}</p></div><span class="pill ${scopeClass[scope]}">${resources.filter((item) => visible(item) && item.scope === scope).length} 个可见</span></div>${list(resources.filter((item) => visible(item) && item.scope === scope))}</section>`).join('')}</div><div class="permission-note"><b>操作边界</b><span>当前视角只能管理 ${access === 'platform' ? '平台级' : access === 'team' ? '团队级' : '项目级'}资源；上级 Scope 资源可展开与查看测试状态。</span></div>`;
+        if (variant === 'c') {
+          const title = selectedKind === '全部' ? '全部' : selectedSubtype === '全部' ? selectedKind : `${selectedKind} · ${selectedSubtype}`;
+          content = `<div class="split-workspace"><nav class="category-rail" aria-label="资源分类">${categoryRail()}</nav><section class="catalog-main"><div class="catalog-header"><div class="catalog-title-row"><div><h2>${title}</h2><p>按当前权限范围列出 ${selectedResources.length} 个资源</p></div></div>${catalogToolbar(selectedResources)}</div>${list(selectedResources)}<div class="permission-note"><b>Scope 标记</b><span>平台级、团队级与项目级资源以不同颜色徽标标识；继承资源固定为仅查看。</span></div></section></div>`;
+        }
+        if (variant === 'd') content = `<div class="gallery">${kinds.map(([name, icon]) => `<button class="kind-card ${selectedKind === name ? 'active' : ''}" type="button" data-kind="${name}"><b>${icon}</b><strong>${name}</strong><small>${resources.filter((item) => item.kind === name && visible(item)).length} 个可见资源</small></button>`).join('')}</div><div class="gallery-detail"><div>${standardToolbar()}${list(selectedResources)}</div><aside class="add-guide"><h3>添加${selectedKind}</h3><p>${selectedKind === '应用' ? '先指定受控接入来源，再选择对应的主机、Docker 或 Kubernetes 凭据。' : `使用 ${selectedKind} 专属连接字段与已加密凭据。`}</p><button class="primary" type="button">＋ 添加${selectedKind}</button></aside></div>`;
+        if (variant === 'e') content = `${standardToolbar()}${list(visibleResources, true)}<div class="permission-note"><b>连接测试</b><span>状态标签保留最近一次结果；最终实现中点击测试将展示进行中、成功、失败和重试反馈，且不会暴露凭据。</span></div>`;
+        if (variant === 'f') content = `<div class="form-workspace"><section><div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="搜索当前 Scope 的资源" /></div><div class="scope-summary"><span class="pill ${scopeClass[access === 'platform' ? 'platform' : access === 'team' ? 'team' : 'project']}">${accessLabels[access]}</span><span>仅此 Scope 可管理</span></div></div>${list(visibleResources)}</section><div><div class="kind-nav">${kinds.map(([name, icon]) => `<button class="kind-button ${selectedKind === name ? 'active' : ''}" type="button" data-kind="${name}"><b>${icon}</b>${name}</button>`).join('')}</div>${formPanel()}</div></div>`;
+        workspace.innerHTML = content;
+        bindInteractions();
+        if (variant === 'c') bindCatalogFilters();
+      }
+      document.querySelectorAll('.scheme-tab').forEach((button) => button.addEventListener('click', () => { variant = button.dataset.variant; render(); }));
+      document.getElementById('access-select').addEventListener('change', (event) => { access = event.target.value; render(); });
+      document.getElementById('access-cycle').addEventListener('click', () => { access = access === 'platform' ? 'team' : access === 'team' ? 'project' : 'platform'; document.getElementById('access-select').value = access; render(); });
+      render();
+    </script>
+  </body>
+</html>

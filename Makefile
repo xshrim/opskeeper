@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE_FILE := deploy/compose/docker-compose.yml
 APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
-ADMIN_CREATE_ARGS ?=
+ADMIN_CREATE_ARGS := --username admin --password admin123
 COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
 WEBUI_DIST := backend/webui/dist
 IMAGE_REPOSITORY ?= opskeeper
