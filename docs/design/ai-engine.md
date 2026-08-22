@@ -62,7 +62,7 @@ AIEngine 的用户界面是侧边栏一级菜单，而不是要求用户在通�
 
 资源页面将原“大模型”类型改名为“AI 引擎”，不再设置“单模态”和“多模态”子类。AIEngine 是统一的调用入口，输入媒介和调用能力由启用 Endpoint 的实际能力交集决定。
 
-`tool_calling`、`structured_output`、`vision`、`audio`、`stream`、`long_context` 和上下文窗口都是可叠加能力字段。用户可以在创建向导中选择业务需要的能力意图，但不能手工伪造最终能力；服务端在连接测试和保存时根据成员交集校验。
+`tool_calling`、`structured_output`、`vision`、`audio`、`stream`、`long_context`、`deep_thinking` 和上下文窗口都是可叠加能力字段。模型参数包含温度，默认值为 `0.7`，范围为 `0` 到 `2`。用户可以在创建向导中选择业务需要的能力意图，但不能手工伪造最终能力；服务端在连接测试和保存时根据成员交集校验。
 
 一个只包含文本 Endpoint 的 AIEngine 和一个同时包含文本、视觉或音频 Endpoint 的 AIEngine 使用同一套资源、权限、路由和审计模型。诊断、巡检和 Skill 是业务调用方，也不单独建子类。
 
@@ -93,6 +93,7 @@ LLMEndpoint {
 - `model_name` 是该 Endpoint 的唯一模型名称；
 - `credential_id` 只引用加密凭据，API、日志、模型上下文和前端不返回凭据明文；
 - `context_window` 是该模型可接受的最大上下文窗口；
+- `temperature` 是模型采样温度，默认值为 `0.7`，允许范围为 `0` 到 `2`；
 - `capabilities` 是服务端声明并通过测试验证的能力集合；
 - 不保存 `input_price` 和 `output_price`，第一版不做成本路由；
 - `status` 至少包括 `active`、`disabled` 和 `unavailable`。
@@ -106,6 +107,7 @@ AIEngine 的非敏感资源配置建议为：
 ```json
 {
   "strategy": "priority",
+  "default": false,
   "endpoints": [
     {
       "endpoint_id": "endpoint-a",
@@ -125,6 +127,18 @@ AIEngine 的非敏感资源配置建议为：
   ]
 }
 ```
+
+### 3.1 默认 AIEngine
+
+每个平台、团队和项目 Scope 最多只能有一个默认 AIEngine。`default` 是资源配置中的布尔字段：启用某个引擎的默认开关时，服务端在同一 Scope 内以事务方式先取消其他 AIEngine 的默认状态，再设置当前引擎；关闭开关则该 Scope 暂时没有默认引擎。平台、团队和项目分别维护自己的默认值，父级默认值不会覆盖子级默认值。
+
+默认开关只能由对应 Scope 的管理员操作：平台管理员、团队管理员或项目管理员。普通资源管理员、操作员和查看者即使可以查看或编辑模型连接，也不能改变默认引擎。默认引擎必须处于启用状态；停用引擎前应先取消默认状态。
+
+创建向导在基础信息步骤提供“默认引擎”开关，列表中以独立的开关列展示当前状态。所有默认变更都写入审计日志，业务调用只读取最终解析出的 Scope 默认引擎，不直接选择 Endpoint。
+
+### 3.2 内置模型厂商目录
+
+添加模型步骤使用内置模型厂商目录。下拉菜单以图标和名称展示以下厂商：OpenAI 兼容、OpenAI、Anthropic、Gemini、Grok、DeepSeek、Qwen、Kimi、GLM、MiniMax、MiMo、LongCat、Doubao、OpenRouter、SiliconFlow 和 Ollama。选择厂商后自动填充对应的默认模型地址，用户仍可按实际部署修改地址。厂商选择只提供连接预设，模型连接测试仍以实际 Endpoint 响应为准。
 
 第一版只支持 `priority` 策略：优先级数值越大越先调用；优先级相同时使用稳定的 Endpoint ID 排序，避免配置顺序变化造成不可解释的选择。
 

@@ -697,6 +697,8 @@ export const api = {
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
     request<Resource>(`api/v1/resources/${id}/`, patch(body)),
+  setAIEngineDefault: (id: string, enabled: boolean) =>
+    request<Resource>(`api/v1/resources/${id}/ai-default`, patch({ default: enabled })),
   deleteResource: (id: string) =>
     request<void>(`api/v1/resources/${id}/`, { method: 'DELETE' }),
   testResourceConnection: (id: string) =>
@@ -710,6 +712,18 @@ export const api = {
     body: { scope_id: string; model_name: string; stream: boolean }
   ) =>
     request<LLMConnectionResult>(`api/v1/llm-providers/${id}/test`, json(body)),
+  testDraftLLM: (body: {
+    scope_id: string;
+    provider_type: string;
+    base_url: string;
+    model_name: string;
+    api_key: string;
+    context_window: number;
+    temperature: number;
+    capabilities: string[];
+    stream: boolean;
+  }) =>
+    request<LLMConnectionResult>('api/v1/llm-providers/test-draft', json(body)),
   setLLMDefault: (body: {
     scope_id: string;
     provider_resource_id: string;
@@ -872,9 +886,12 @@ export const api = {
     }>;
   }) => request<CreateUserResult>('api/v1/users/', json(body)),
   resetUserPassword: (id: string) =>
-    request<{ one_time_password: string }>(`api/v1/users/${id}/password-reset`, {
-      method: 'POST'
-    }),
+    request<{ one_time_password: string }>(
+      `api/v1/users/${id}/password-reset`,
+      {
+        method: 'POST'
+      }
+    ),
   updateUser: (
     id: string,
     body: {

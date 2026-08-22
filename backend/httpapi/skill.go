@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +23,7 @@ type llmService interface {
 	SetDefault(context.Context, string, string, string, string) (llm.Default, error)
 	Resolve(context.Context, string, string, string) (llm.ResolvedModel, error)
 	TestConnection(context.Context, string, string, string, bool) (llm.ConnectionResult, error)
+	TestDraftConnection(context.Context, llm.DraftConnection, bool) (llm.ConnectionResult, error)
 }
 
 type skillService interface {
@@ -55,6 +58,17 @@ type testLLMRequest struct {
 	ScopeID   string `json:"scope_id"`
 	ModelName string `json:"model_name"`
 	Stream    bool   `json:"stream"`
+}
+type testDraftLLMRequest struct {
+	ScopeID       string   `json:"scope_id"`
+	ProviderType  string   `json:"provider_type"`
+	BaseURL       string   `json:"base_url"`
+	ModelName     string   `json:"model_name"`
+	APIKey        string   `json:"api_key"`
+	ContextWindow int      `json:"context_window"`
+	Temperature   float64  `json:"temperature"`
+	Capabilities  []string `json:"capabilities"`
+	Stream        bool     `json:"stream"`
 }
 type createSkillVersionRequest struct {
 	Manifest     skill.Manifest   `json:"manifest"`
@@ -95,6 +109,7 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, r
 		router.With(guard(authorization.ResourceUpdate)).Put("/llm-defaults", h.setLLMDefault)
 		router.With(guard(authorization.ResourceRead)).Get("/llm-defaults", h.resolveLLMDefault)
 		router.With(guard(authorization.ResourceUse)).Post("/llm-providers/{providerID}/test", h.testLLM)
+		router.With(guard(authorization.ResourceUpdate)).Post("/llm-providers/test-draft", h.testDraftLLM)
 	}
 	if skills != nil {
 		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions", h.createVersion)
@@ -147,6 +162,66 @@ func (h aiHandler) testLLM(w http.ResponseWriter, r *http.Request) {
 	h.record(r, "llm.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
 	writeJSON(w, http.StatusOK, item)
 }
+func (h aiHandler) testDraftLLM(w http.ResponseWriter, r *http.Request) {
+	var body testDraftLLMRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := h.llms.TestDraftConnection(r.Context(), llm.DraftConnection{
+		ScopeID: body.ScopeID, ProviderType: body.ProviderType, BaseURL: body.BaseURL,
+		ModelName: body.ModelName, APIKey: body.APIKey, ContextWindow: body.ContextWindow,
+		Temperature:  body.Temperature,
+		Capabilities: body.Capabilities,
+	}, body.Stream)
+	if err != nil {
+		writeAIConnectionError(w, r, err)
+		return
+	}
+	h.record(r, "llm.draft.connection.test", "scope", body.ScopeID, body.ScopeID)
+	writeJSON(w, http.StatusOK, item)
+}
+
+// writeAIConnectionError keeps the draft connection check useful to an
+// operator while keeping the broader AI execution endpoints intentionally
+// generic. Upstream providers commonly return the actionable reason in the
+// error value (for example, an invalid model or a 401 response).
+func writeAIConnectionError(w http.ResponseWriter, r *http.Request, err error) {
+	var llmValidation *llm.ValidationError
+	switch {
+	case errors.As(err, &llmValidation):
+		writeError(w, r, http.StatusBadRequest, "invalid_request", llmValidation.Message)
+	case errors.Is(err, authorization.ErrForbidden):
+		writeError(w, r, http.StatusForbidden, "forbidden", "You do not have permission for this operation")
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, r, http.StatusGatewayTimeout, "timeout", "模型连接测试超时，请检查地址和网络")
+	default:
+		message := safeAIConnectionError(err)
+		if message == "" {
+			message = "模型连接测试失败，请检查地址、凭证和模型名称"
+		}
+		writeError(w, r, http.StatusBadGateway, "ai_connection_error", message)
+	}
+}
+
+func safeAIConnectionError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		return ""
+	}
+	// Do not echo credentials if an SDK or provider accidentally includes them
+	// in an error string. The adapter already limits upstream response bodies.
+	message = aiSensitiveValuePattern.ReplaceAllString(message, "$1=<redacted>")
+	if len([]rune(message)) > 600 {
+		message = string([]rune(message)[:600]) + "..."
+	}
+	return message
+}
+
+var aiSensitiveValuePattern = regexp.MustCompile(`(?i)(authorization|api[- ]?key|token|secret|password|bearer)(\s*(?:[:=]|\s)\s*)[^\s,;\)\]}]+`)
+
 func (h aiHandler) createVersion(w http.ResponseWriter, r *http.Request) {
 	var body createSkillVersionRequest
 	if !decodeRequest(w, r, &body) {

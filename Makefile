@@ -84,6 +84,9 @@ frontend-run: ## Run the Svelte development server.
 front-api-run: webui-assets ## Build and embed the frontend, then run the API.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
 
+run: migrate webui-assets ## Build and embed the frontend, then run the API.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
+
 docker-mcp-test: ## Run docker-mcp unit and Docker Engine simulator tests.
 	cd backend && go test ./mcpserver/docker/... ./cmd/docker-mcp
 

@@ -23,6 +23,7 @@ type Store interface {
 	DeleteRelation(context.Context, string, string) error
 	Topology(context.Context, string, int, int) ([]TopologyNode, error)
 	SetDefault(context.Context, string, string, string) (Default, error)
+	SetAIEngineDefault(context.Context, string, bool) (Resource, error)
 	ResolveDefault(context.Context, string, string) (Resource, error)
 }
 
@@ -373,6 +374,27 @@ func (s *Service) SetDefault(ctx context.Context, scopeID, key, resourceID strin
 		return Default{}, authorization.ErrForbidden
 	}
 	return s.store.SetDefault(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(key), strings.TrimSpace(resourceID))
+}
+
+func (s *Service) SetAIEngineDefault(ctx context.Context, resourceID string, enabled bool) (Resource, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return Resource{}, invalid("resource_id is required")
+	}
+	item, err := s.Get(ctx, resourceID)
+	if err != nil {
+		return Resource{}, err
+	}
+	if item.Kind != "AIEngine" {
+		return Resource{}, invalid("resource is not an AIEngine")
+	}
+	if item.Status != StatusActive && enabled {
+		return Resource{}, invalid("only an active AIEngine can be set as default")
+	}
+	if !allowsExactScope(ctx, item.ScopeID) {
+		return Resource{}, authorization.ErrForbidden
+	}
+	return s.store.SetAIEngineDefault(ctx, resourceID, enabled)
 }
 
 func (s *Service) ResolveDefault(ctx context.Context, scopeID, key string) (Resource, error) {

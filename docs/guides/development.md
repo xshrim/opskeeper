@@ -50,6 +50,7 @@ make start
 | `make scheduler-run`            | 临时运行 Scheduler                                                       |
 | `make frontend-run`             | 临时运行 Vite 前端                                                       |
 | `make front-api-run`            | 构建并嵌入前端，然后通过一个 API 进程提供完整应用                        |
+| `make run`                      | 应用迁移、构建并嵌入前端，然后启动完整 API                                |
 | `make test`                     | 运行前后端单元测试                                                       |
 | `make backend-integration-test` | 运行数据库集成测试                                                       |
 | `make llm-provider-test`        | 使用`.env` 中的外部 Provider 配置，经 ADK Runner 验证非流式和 SSE 调用 |
@@ -71,6 +72,23 @@ make front-api-run
 ```
 
 `front-api-run` 与生产环境采用相同的前端嵌入和 HTTP 服务方式，但使用 `go run` 临时运行。前端源代码变化后需要重新执行该命令，不提供 Vite 热更新。
+
+如果依赖、`.env`、中间件和管理员已经准备好，可以使用一条命令完成迁移、前端嵌入和 API 启动：
+
+```bash
+make run
+```
+
+`make run` 的执行顺序是：
+
+```text
+migrate
+    -> frontend-build
+    -> webui-assets 复制到 backend/webui/dist
+    -> go run -tags=embed_webui ./cmd/api
+```
+
+该命令不会启动 PostgreSQL/Redis，也不会创建管理员；首次初始化环境仍应使用 `make start`，或按前面的步骤分别执行 `make infra-up`、`make migrate` 和 `make admin-create`。访问地址为 `http://localhost:8080/opskeeper/`。
 
 执行链路为：
 

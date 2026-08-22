@@ -348,6 +348,36 @@ func (s *store) SetDefault(ctx context.Context, scopeID, key, resourceID string)
 	return item, nil
 }
 
+func (s *store) SetAIEngineDefault(ctx context.Context, resourceID string, enabled bool) (Resource, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Resource{}, fmt.Errorf("begin AIEngine default update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var scopeID string
+	if err := tx.QueryRow(ctx, `SELECT scope_id::text FROM resources WHERE id = $1::uuid AND kind = 'AIEngine' AND deleted_at IS NULL`, resourceID).Scan(&scopeID); err != nil {
+		return Resource{}, mapStoreError(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE resources
+		   SET config = jsonb_set(COALESCE(config, '{}'::jsonb), '{default}', 'false'::jsonb, true), updated_at = now()
+		 WHERE scope_id = $1::uuid AND kind = 'AIEngine' AND deleted_at IS NULL`, scopeID); err != nil {
+		return Resource{}, mapStoreError(err)
+	}
+	if enabled {
+		if _, err := tx.Exec(ctx, `
+			UPDATE resources
+			   SET config = jsonb_set(COALESCE(config, '{}'::jsonb), '{default}', 'true'::jsonb, true), updated_at = now()
+			 WHERE id = $1::uuid AND scope_id = $2::uuid AND kind = 'AIEngine' AND deleted_at IS NULL`, resourceID, scopeID); err != nil {
+			return Resource{}, mapStoreError(err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Resource{}, fmt.Errorf("commit AIEngine default update: %w", err)
+	}
+	return s.Get(ctx, resourceID)
+}
+
 func (s *store) ResolveDefault(ctx context.Context, scopeID, key string) (Resource, error) {
 	query := `
 WITH RECURSIVE chain(id, depth) AS (

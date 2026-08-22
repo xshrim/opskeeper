@@ -46,6 +46,14 @@ make start
 
 该命令依次完成上述步骤，并只在系统尚无用户时创建默认用户名为 `admin` 的管理员。默认访问地址：`http://localhost:8080/opskeeper/`；按 `Ctrl+C` 停止 API，使用 `make infra-down` 停止中间件。完整的环境要求、分离开发方式、配置项和常用命令见[本地开发](docs/guides/development.md)。
 
+如果已经完成依赖安装、配置和中间件启动，只需要重新迁移并运行嵌入式应用，可执行：
+
+```bash
+make run
+```
+
+`make run` 会先应用待执行的数据库迁移，再构建并嵌入前端，最后启动 API；它不会自动启动 PostgreSQL/Redis，也不会创建管理员。访问地址仍为 `http://localhost:8080/opskeeper/`。
+
 ## 文档分类
 
 | 目录                 | 内容                                   | 使用场景               |

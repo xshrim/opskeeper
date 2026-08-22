@@ -150,6 +150,57 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 	return ConnectionResult{ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
 }
 
+func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	draft.ScopeID = strings.TrimSpace(draft.ScopeID)
+	draft.ProviderType = strings.TrimSpace(draft.ProviderType)
+	draft.BaseURL = strings.TrimSpace(draft.BaseURL)
+	draft.ModelName = strings.TrimSpace(draft.ModelName)
+	if draft.ScopeID == "" || !allowsScope(ctx, draft.ScopeID) {
+		return ConnectionResult{}, authorization.ErrForbidden
+	}
+	config := ProviderConfig{
+		ProviderType:   draft.ProviderType,
+		BaseURL:        draft.BaseURL,
+		Models:         []ModelConfig{{Name: draft.ModelName, ContextWindow: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities}},
+		TimeoutSeconds: 60,
+	}
+	if err := validateProviderConfig(config); err != nil {
+		return ConnectionResult{}, err
+	}
+	started := time.Now()
+	var client model.LLM
+	var err error
+	if config.ProviderType == "openai" {
+		client, err = openaimodel.NewModel(ctx, draft.ModelName, &openaimodel.ClientConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL})
+	} else {
+		client, err = NewChatCompletionsModel(ChatCompletionsConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL, ModelName: draft.ModelName})
+	}
+	if err != nil {
+		return ConnectionResult{}, err
+	}
+	temperature := float32(draft.Temperature)
+	request := &model.LLMRequest{Model: draft.ModelName, Config: &genai.GenerateContentConfig{Temperature: &temperature}, Contents: []*genai.Content{genai.NewContentFromText("Reply with OK only.", genai.RoleUser)}}
+	var responseText strings.Builder
+	for response, generateErr := range client.GenerateContent(ctx, request, stream) {
+		if generateErr != nil {
+			return ConnectionResult{}, generateErr
+		}
+		if response != nil && response.Content != nil {
+			for _, part := range response.Content.Parts {
+				if part != nil {
+					responseText.WriteString(part.Text)
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(responseText.String()) == "" {
+		return ConnectionResult{}, fmt.Errorf("LLM connection returned no text")
+	}
+	return ConnectionResult{ModelName: draft.ModelName, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
+}
+
 func (s *Service) readProvider(ctx context.Context, providerID string, requireActive bool) (Provider, error) {
 	if providerID == "" || s.resources == nil {
 		return Provider{}, invalid("provider_resource_id is required")
@@ -179,6 +230,7 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 				BaseURL        string   `json:"base_url"`
 				ModelName      string   `json:"model_name"`
 				ContextWindow  int      `json:"context_window"`
+				Temperature    float64  `json:"temperature"`
 				Capabilities   []string `json:"capabilities"`
 				TimeoutSeconds int      `json:"timeout_seconds"`
 				Enabled        bool     `json:"enabled"`
@@ -192,9 +244,9 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 				continue
 			}
 			config = ProviderConfig{
-				ProviderType: endpoint.ProviderType,
-				BaseURL: endpoint.BaseURL,
-				Models: []ModelConfig{{Name: endpoint.ModelName, ContextWindow: endpoint.ContextWindow, Capabilities: endpoint.Capabilities}},
+				ProviderType:   endpoint.ProviderType,
+				BaseURL:        endpoint.BaseURL,
+				Models:         []ModelConfig{{Name: endpoint.ModelName, ContextWindow: endpoint.ContextWindow, Temperature: endpoint.Temperature, Capabilities: endpoint.Capabilities}},
 				TimeoutSeconds: endpoint.TimeoutSeconds,
 			}
 			break
@@ -216,8 +268,8 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 }
 
 func validateProviderConfig(config ProviderConfig) error {
-	if config.ProviderType != "openai_compatible" && config.ProviderType != "openai" {
-		return invalid("provider_type must be openai_compatible or openai")
+	if !supportedProviderType(config.ProviderType) {
+		return invalid("provider_type is not supported")
 	}
 	parsed, err := url.ParseRequestURI(config.BaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
@@ -228,7 +280,7 @@ func validateProviderConfig(config ProviderConfig) error {
 	}
 	names := make([]string, 0, len(config.Models))
 	for _, model := range config.Models {
-		if strings.TrimSpace(model.Name) == "" || model.ContextWindow <= 0 {
+		if strings.TrimSpace(model.Name) == "" || model.ContextWindow <= 0 || model.Temperature < 0 || model.Temperature > 2 {
 			return invalid("every model requires a name and positive context_window")
 		}
 		if slices.Contains(names, model.Name) {
@@ -240,6 +292,15 @@ func validateProviderConfig(config ProviderConfig) error {
 		return invalid("timeout_seconds must not exceed 300")
 	}
 	return nil
+}
+
+func supportedProviderType(provider string) bool {
+	switch strings.TrimSpace(provider) {
+	case "openai_compatible", "openai", "anthropic", "gemini", "grok", "deepseek", "qwen", "kimi", "glm", "minimax", "mimo", "longcat", "doubao", "openrouter", "siliconflow", "ollama":
+		return true
+	default:
+		return false
+	}
 }
 
 func findModel(models []ModelConfig, name string) (ModelConfig, bool) {

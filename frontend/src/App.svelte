@@ -117,19 +117,12 @@
     inputSchema: Record<string, unknown>;
   };
 
-  type AIEngineCapability =
-    | 'chat'
-    | 'vision'
-    | 'audio'
-    | 'tool_calling'
-    | 'structured_output'
-    | 'stream'
-    | 'long_context';
-
   type AIEndpointDraft = {
     provider_type: string;
     base_url: string;
     model_name: string;
+    credential: string;
+    temperature: number;
     context_window: number;
     capabilities: string[];
     timeout_seconds: number;
@@ -138,6 +131,12 @@
     testStatus: 'idle' | 'testing' | 'succeeded' | 'failed';
     testMessage?: string;
     latencyMs?: number;
+  };
+  type AIProviderOption = {
+    value: string;
+    label: string;
+    icon: string;
+    baseUrl: string;
   };
 
   const legacyTeamIconNames: Record<string, string> = {
@@ -198,6 +197,25 @@
     KeyRound: '凭据',
     Package: '资源'
   };
+
+  const aiProviderOptions: AIProviderOption[] = [
+    { value: 'openai_compatible', label: 'OpenAI 兼容', icon: 'Waypoints', baseUrl: 'https://api.example.com/v1' },
+    { value: 'openai', label: 'OpenAI', icon: 'Sparkles', baseUrl: 'https://api.openai.com/v1' },
+    { value: 'anthropic', label: 'Anthropic', icon: 'BrainCircuit', baseUrl: 'https://api.anthropic.com/v1' },
+    { value: 'gemini', label: 'Gemini', icon: 'Orbit', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+    { value: 'grok', label: 'Grok', icon: 'Bot', baseUrl: 'https://api.x.ai/v1' },
+    { value: 'deepseek', label: 'DeepSeek', icon: 'Search', baseUrl: 'https://api.deepseek.com/v1' },
+    { value: 'qwen', label: 'Qwen', icon: 'Cloud', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+    { value: 'kimi', label: 'Kimi', icon: 'Moon', baseUrl: 'https://api.moonshot.cn/v1' },
+    { value: 'glm', label: 'GLM', icon: 'CircuitBoard', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+    { value: 'minimax', label: 'MiniMax', icon: 'Boxes', baseUrl: 'https://api.minimax.chat/v1' },
+    { value: 'mimo', label: 'MiMo', icon: 'Cpu', baseUrl: 'https://api.xiaomimimo.com/v1' },
+    { value: 'longcat', label: 'LongCat', icon: 'Cat', baseUrl: 'https://api.longcat.chat/v1' },
+    { value: 'doubao', label: 'Doubao', icon: 'CloudCog', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
+    { value: 'openrouter', label: 'OpenRouter', icon: 'Network', baseUrl: 'https://openrouter.ai/api/v1' },
+    { value: 'siliconflow', label: 'SiliconFlow', icon: 'Waves', baseUrl: 'https://api.siliconflow.cn/v1' },
+    { value: 'ollama', label: 'Ollama', icon: 'ServerCog', baseUrl: 'http://localhost:11434/v1' }
+  ];
 
   const teamIconOptions: TeamIconOption[] = Object.keys(lucideIcons)
     .sort((left, right) => left.localeCompare(right))
@@ -328,7 +346,8 @@
   let requiredConfirmPassword = '';
   let requiredNewPasswordVisible = false;
   let requiredConfirmPasswordVisible = false;
-  let copiedControl: 'created-password' | 'reset-username' | 'reset-credentials' | null = null;
+  let copiedControl:
+    'created-password' | 'reset-username' | 'reset-credentials' | null = null;
   let copiedControlTimer: number | null = null;
   let avatarBusy = false;
   let platform: Platform | null = null;
@@ -364,18 +383,26 @@
   let aiEngineCreateOpen = false;
   let aiEngineCreateStep = 1;
   let aiEngineCreateDescription = '';
-  let aiEngineCreateCapabilities: AIEngineCapability[] = ['chat', 'stream'];
   let aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
   let aiEngineCreateEndpoints: AIEndpointDraft[] = [];
-  let aiEngineCreateCredential = '';
+  let aiEngineCreateDraft = defaultAIEndpoint();
+  let aiEngineEditingEndpointIndex = -1;
+  let aiEngineIcon = 'BrainCircuit';
+  let aiModelCredentialVisible = false;
+  let aiProviderMenuOpen = false;
+  let aiEngineCreateDefault = false;
+  let aiEngineModelError = '';
+  let aiEngineModelMissing: string[] = [];
+  let aiEngineModelTesting = false;
+  let aiEngineRefreshing = false;
   let aiEngineEndpointTestBusy = false;
   let aiEngineName = '';
   let aiEngineStrategy = 'priority';
   let aiEngineEditName = '';
   let aiEngineEditEndpoints = '[]';
   let aiEngineEditStatus = 'active';
-  let aiEngineEndpoints = '[\n  {\n    "provider_type": "openai_compatible",\n    "base_url": "https://api.example.com/v1",\n    "model_name": "model-name",\n    "context_window": 32768,\n    "capabilities": ["chat", "stream"],\n    "timeout_seconds": 60,\n    "priority": 100,\n    "enabled": true\n  }\n]';
-  let aiEngineToken = '';
+  let aiEngineEndpoints =
+    '[\n  {\n    "provider_type": "openai_compatible",\n    "base_url": "https://api.example.com/v1",\n    "model_name": "model-name",\n    "context_window": 32768,\n    "capabilities": ["chat", "stream"],\n    "timeout_seconds": 60,\n    "priority": 100,\n    "enabled": true\n  }\n]';
   let selectedSkillId = '';
   let selectedSkillVersionId = '';
   let llmModelName = '';
@@ -488,7 +515,7 @@
   let selectedAccessTeamIds: string[] = [];
   let selectedAccessUserIds: string[] = [];
   let teamDialogOpen = false;
-  let iconPickerTarget: 'create' | 'edit' | null = null;
+  let iconPickerTarget: 'create' | 'edit' | 'ai-engine' | null = null;
   let teamIconSearch = '';
   let userDialogOpen = false;
   let editingTeam: Team | null = null;
@@ -508,8 +535,10 @@
   let newUserDisplayName = '';
   let newUserPassword = '';
   let newUserPasswordMode: 'manual' | 'generated' = 'generated';
-  let createdUserCredentials: { username: string; password: string } | null = null;
-  let passwordResetCredentials: { username: string; password: string } | null = null;
+  let createdUserCredentials: { username: string; password: string } | null =
+    null;
+  let passwordResetCredentials: { username: string; password: string } | null =
+    null;
   let newUserGrants: NewUserGrant[] = [];
 
   $: scopeChoices = buildScopeChoices(platform, teams, projects);
@@ -534,17 +563,42 @@
     ? resources.filter((resource) => resourceInActiveWorkspace(resource))
     : resources;
   $: resourceCatalogItems = visibleResources.filter((resource) => {
-    if (resourceCategory !== '全部' && resourceCategoryFor(resource) !== resourceCategory) return false;
-    if (resourceSubtype !== '全部' && resourceSubtypeFor(resource) !== resourceSubtype) return false;
-    if (resourceStatusFilter !== 'all' && resource.status !== resourceStatusFilter) return false;
-    if (resourceLevelFilter !== 'all' && scopeType(resource.scope_id) !== resourceLevelFilter) return false;
+    if (
+      resourceCategory !== '全部' &&
+      resourceCategoryFor(resource) !== resourceCategory
+    )
+      return false;
+    if (
+      resourceSubtype !== '全部' &&
+      resourceSubtypeFor(resource) !== resourceSubtype
+    )
+      return false;
+    if (
+      resourceStatusFilter !== 'all' &&
+      resource.status !== resourceStatusFilter
+    )
+      return false;
+    if (
+      resourceLevelFilter !== 'all' &&
+      scopeType(resource.scope_id) !== resourceLevelFilter
+    )
+      return false;
     const query = resourceSearch.trim().toLowerCase();
-    return !query || `${resource.name} ${resource.kind} ${resourceSchemaName(resource.kind)} ${scopeName(resource.scope_id)}`.toLowerCase().includes(query);
+    return (
+      !query ||
+      `${resource.name} ${resource.kind} ${resourceSchemaName(resource.kind)} ${scopeName(resource.scope_id)}`
+        .toLowerCase()
+        .includes(query)
+    );
   });
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
-  $: selectedResourceCanUpdate = selectedResource ? resourceCanManage(selectedResource, 'resource:update') : false;
-  $: selectedResourceCanDelete = selectedResource ? resourceCanManage(selectedResource, 'resource:delete') : false;
+  $: selectedResourceCanUpdate = selectedResource
+    ? resourceCanManage(selectedResource, 'resource:update')
+    : false;
+  $: selectedResourceCanDelete = selectedResource
+    ? resourceCanManage(selectedResource, 'resource:delete')
+    : false;
   $: rows = toStatusRows(health);
   $: selectedSchema = schemas.find(
     (schema) => schema.kind === selectedResource?.kind
@@ -567,21 +621,51 @@
     (item) => item.kind === 'AIEngine' || item.kind === 'LLMProvider'
   );
   $: visibleAIEngines = aiEngines.filter((engine) => {
-    if (aiEngineStatusFilter !== 'all' && engine.status !== aiEngineStatusFilter) return false;
-    if (aiEngineScopeFilter !== 'all' && scopeType(engine.scope_id) !== aiEngineScopeFilter) return false;
+    if (
+      aiEngineStatusFilter !== 'all' &&
+      engine.status !== aiEngineStatusFilter
+    )
+      return false;
+    if (
+      aiEngineScopeFilter !== 'all' &&
+      scopeType(engine.scope_id) !== aiEngineScopeFilter
+    )
+      return false;
     const query = aiEngineSearch.trim().toLowerCase();
-    return !query || `${engine.name} ${scopeName(engine.scope_id)} ${aiEngineDescription(engine)}`.toLowerCase().includes(query);
+    return (
+      !query ||
+      `${engine.name} ${scopeName(engine.scope_id)} ${aiEngineDescription(engine)}`
+        .toLowerCase()
+        .includes(query)
+    );
   });
-  $: aiEngineHealthyCount = aiEngines.filter((engine) => aiEngineStatus(engine) === 'healthy').length;
-  $: aiEngineRepairCount = aiEngines.filter((engine) => aiEngineStatus(engine) === 'repair').length;
-  $: aiEngineEndpointCount = aiEngines.reduce((count, engine) => count + aiEngineEndpointsFor(engine).length, 0);
-  $: aiEngineHealthyEndpointCount = aiEngines.reduce((count, engine) => count + aiEngineEndpointsFor(engine).filter((endpoint) => endpointStatus(endpoint) === 'healthy').length, 0);
+  $: aiEngineHealthyCount = aiEngines.filter(
+    (engine) => aiEngineStatus(engine) === 'healthy'
+  ).length;
+  $: aiEngineRepairCount = aiEngines.filter(
+    (engine) => aiEngineStatus(engine) === 'repair'
+  ).length;
+  $: aiEngineEndpointCount = aiEngines.reduce(
+    (count, engine) => count + aiEngineEndpointsFor(engine).length,
+    0
+  );
+  $: aiEngineHealthyEndpointCount = aiEngines.reduce(
+    (count, engine) =>
+      count +
+      aiEngineEndpointsFor(engine).filter(
+        (endpoint) => endpointStatus(endpoint) === 'healthy'
+      ).length,
+    0
+  );
   $: selectedAIEngineResource =
     aiEngines.find((item) => item.id === selectedAIEngineId) ?? null;
   $: llmProviders = aiEngines;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
   $: executableTargets = visibleResources.filter(
-    (item) => item.kind !== 'LLMProvider' && item.kind !== 'AIEngine' && item.kind !== 'Skill'
+    (item) =>
+      item.kind !== 'LLMProvider' &&
+      item.kind !== 'AIEngine' &&
+      item.kind !== 'Skill'
   );
   $: diagnosisTargets = visibleResources.filter(
     (item) => item.status === 'active'
@@ -613,7 +697,10 @@
   });
   $: filteredTeamIconOptions = teamIconOptions.filter((option) => {
     const query = teamIconSearch.trim().toLowerCase();
-    return !query || `${option.label} ${option.keywords}`.toLowerCase().includes(query);
+    return (
+      !query ||
+      `${option.label} ${option.keywords}`.toLowerCase().includes(query)
+    );
   });
   $: manageableScopeChoices = isPlatformAdmin
     ? scopeChoices
@@ -623,20 +710,23 @@
   $: availableEditUserRoles = grantableRolesForScope(editUserScopeId);
   $: editingScopeViewer = Boolean(
     editingUser &&
-      editUserRoleIds.some(
-        (roleID) =>
-          roles.find((role) => role.id === roleID)?.name ===
-          resourceGrantViewerRole(scopeType(editUserScopeId))
-      )
+    editUserRoleIds.some(
+      (roleID) =>
+        roles.find((role) => role.id === roleID)?.name ===
+        resourceGrantViewerRole(scopeType(editUserScopeId))
+    )
   );
   $: scopeViewerResources = resources.filter(
-    (resource) => resourceVisibleToScope(editUserScopeId, resource.scope_id) && resource.status === 'active'
+    (resource) =>
+      resourceVisibleToScope(editUserScopeId, resource.scope_id) &&
+      resource.status === 'active'
   );
-  $: availableScopeViewerResourceRoles = resourceRoles.filter((resourceRole) =>
-    viewerResourceRoleAllowed(resourceRole) &&
-    resourceRole.permissions.every((permission) =>
-      actorPermissionsAtScope(editUserScopeId).includes(String(permission))
-    )
+  $: availableScopeViewerResourceRoles = resourceRoles.filter(
+    (resourceRole) =>
+      viewerResourceRoleAllowed(resourceRole) &&
+      resourceRole.permissions.every((permission) =>
+        actorPermissionsAtScope(editUserScopeId).includes(String(permission))
+      )
   );
   $: scopeViewerResourceBindings = editingUser
     ? resourceBindings.filter(
@@ -896,7 +986,9 @@
   async function changeOwnPassword(required = false) {
     const currentPassword = profileCurrentPassword;
     const newPassword = required ? requiredNewPassword : profileNewPassword;
-    const confirmPassword = required ? requiredConfirmPassword : profileConfirmPassword;
+    const confirmPassword = required
+      ? requiredConfirmPassword
+      : profileConfirmPassword;
     if (newPassword !== confirmPassword) {
       errorMessage = '两次输入的新密码不一致。';
       return;
@@ -1010,6 +1102,7 @@
       userMenuOpen = false;
       teamMenuOpen = false;
       accessMenuOpen = false;
+      resourceAddMenuOpen = false;
     }
   }
 
@@ -1024,6 +1117,12 @@
     }
     if (accessMenuOpen && !target.closest('.nav-group')) {
       accessMenuOpen = false;
+    }
+    if (
+      resourceAddMenuOpen &&
+      !target.closest('.resource-add-menu, .resource-add-menu-trigger')
+    ) {
+      resourceAddMenuOpen = false;
     }
   }
 
@@ -1350,14 +1449,18 @@
     selectedAIEngineId = selectedAIEngineId || aiEngines[0]?.id || '';
     selectedProviderId = selectedAIEngineId;
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
-    const selectedEngine = aiEngines.find((item) => item.id === selectedAIEngineId);
+    const selectedEngine = aiEngines.find(
+      (item) => item.id === selectedAIEngineId
+    );
     const endpoints = selectedEngine?.config.endpoints as
-      | Array<{ model_name?: string }>
-      | undefined;
+      Array<{ model_name?: string }> | undefined;
     const legacyModels = selectedEngine?.config.models as
-      | Array<{ name?: string }>
-      | undefined;
-    llmModelName = llmModelName || endpoints?.[0]?.model_name || legacyModels?.[0]?.name || '';
+      Array<{ name?: string }> | undefined;
+    llmModelName =
+      llmModelName ||
+      endpoints?.[0]?.model_name ||
+      legacyModels?.[0]?.name ||
+      '';
     syncAIEngineEditor(selectedEngine ?? null);
     if (selectedSkillId) await loadSkillVersions();
     if (selectedScopeId) {
@@ -1370,12 +1473,18 @@
   }
 
   async function refreshAIEngines() {
-    await action(async () => {
+    if (aiEngineRefreshing) return;
+    aiEngineRefreshing = true;
+    errorMessage = '';
+    try {
       const resourcePage = await api.resources();
       resources = resourcePage.items;
       await loadResourceConnectionChecks(resources);
-      notice = 'AI 引擎状态已刷新';
-    });
+    } catch (error) {
+      errorMessage = describeError(error, 'AI 引擎状态刷新失败');
+    } finally {
+      aiEngineRefreshing = false;
+    }
   }
 
   function syncAIEngineEditor(engine: Resource | null) {
@@ -1386,12 +1495,22 @@
       return;
     }
     aiEngineEditName = engine.name;
-    aiEngineEditEndpoints = JSON.stringify(engine.config.endpoints ?? engine.config.models ?? [], null, 2);
+    aiEngineEditEndpoints = JSON.stringify(
+      engine.config.endpoints ?? engine.config.models ?? [],
+      null,
+      2
+    );
     aiEngineEditStatus = engine.status;
   }
 
   function aiEngineDescription(engine: Resource) {
-    return String(engine.config.description ?? engine.labels?.description ?? '');
+    return String(
+      engine.config.description ?? engine.labels?.description ?? ''
+    );
+  }
+
+  function aiEngineIconFor(engine: Resource) {
+    return String(engine.config.icon ?? 'BrainCircuit');
   }
 
   function aiEngineEndpointsFor(engine: Resource | null): AIEndpointDraft[] {
@@ -1407,10 +1526,12 @@
         provider_type: String(endpoint.provider_type ?? 'openai_compatible'),
         base_url: String(endpoint.base_url ?? ''),
         model_name: String(endpoint.model_name ?? endpoint.name ?? ''),
-        context_window: Number(endpoint.context_window ?? 32768),
+        credential: '',
+        context_window: Number(endpoint.context_window ?? 128000),
+        temperature: Number(endpoint.temperature ?? 0.7),
         capabilities: Array.isArray(endpoint.capabilities)
           ? endpoint.capabilities.map(String)
-          : ['chat', 'stream'],
+          : ['chat', 'tool_calling', 'structured_output', 'stream', 'deep_thinking'],
         timeout_seconds: Number(endpoint.timeout_seconds ?? 60),
         priority: Number(endpoint.priority ?? 100 - index),
         enabled: endpoint.enabled !== false,
@@ -1429,27 +1550,75 @@
   function aiEngineStatus(engine: Resource) {
     if (engine.status !== 'active') return 'disabled';
     const endpoints = aiEngineEndpointsFor(engine);
-    if (endpoints.length === 0 || endpoints.every((endpoint) => !endpoint.enabled)) return 'repair';
+    if (
+      endpoints.length === 0 ||
+      endpoints.every((endpoint) => !endpoint.enabled)
+    )
+      return 'repair';
     return 'healthy';
   }
 
   function aiEngineStatusLabel(engine: Resource) {
     const status = aiEngineStatus(engine);
-    return status === 'healthy' ? '正常' : status === 'repair' ? '需修复' : '已停用';
+    return status === 'healthy'
+      ? '正常'
+      : status === 'repair'
+        ? '异常'
+        : '已停用';
+  }
+
+  function aiEngineHealthRatio(engine: Resource) {
+    const endpoints = aiEngineEndpointsFor(engine);
+    const healthy =
+      engine.status === 'active'
+        ? endpoints.filter(
+            (endpoint) => endpoint.enabled && endpoint.testStatus !== 'failed'
+          ).length
+        : 0;
+    return `${healthy}/${endpoints.length}`;
   }
 
   function aiEngineStatusClass(engine: Resource) {
     const status = aiEngineStatus(engine);
-    return status === 'healthy' ? 'healthy' : status === 'repair' ? 'warning' : 'disabled';
+    return status === 'healthy'
+      ? 'healthy'
+      : status === 'repair'
+        ? 'warning'
+        : 'disabled';
   }
 
   function aiEngineCapabilities(engine: Resource) {
-    const endpoints = aiEngineEndpointsFor(engine).filter((endpoint) => endpoint.enabled);
+    return aiCapabilitiesForEndpoints(aiEngineEndpointsFor(engine));
+  }
+
+  function aiCapabilitiesForEndpoints(endpoints: AIEndpointDraft[]) {
+    endpoints = endpoints.filter((endpoint) => endpoint.enabled);
     if (endpoints.length === 0) return [];
-    return endpoints.reduce<string[]>((intersection, endpoint) =>
-      intersection.filter((capability) => endpoint.capabilities.includes(capability)),
+    return endpoints.reduce<string[]>(
+      (intersection, endpoint) =>
+        intersection.filter((capability) =>
+          endpoint.capabilities.includes(capability)
+        ),
       [...endpoints[0].capabilities]
     );
+  }
+
+  function deriveAIEndpointCapabilities(endpoint: AIEndpointDraft) {
+    const model =
+      `${endpoint.provider_type} ${endpoint.model_name}`.toLowerCase();
+    const capabilities = new Set<string>(['chat', 'stream']);
+    if (/vision|multimodal|gpt-4o|gpt-4\.1|gemini|claude-3|qwen-vl/.test(model))
+      capabilities.add('vision');
+    if (/audio|omni|gemini|gpt-4o/.test(model)) capabilities.add('audio');
+    if (/tool|function|gpt-|claude|gemini|qwen/.test(model))
+      capabilities.add('tool_calling');
+    if (/json|structured|gpt-|claude|gemini|qwen/.test(model))
+      capabilities.add('structured_output');
+    if (/reason|think|o1|o3|r1|deepseek-r1/.test(model))
+      capabilities.add('deep_thinking');
+    if (endpoint.context_window >= 128000 || /long|128k|200k|1m/.test(model))
+      capabilities.add('long_context');
+    return [...capabilities];
   }
 
   function aiCapabilityLabel(capability: string) {
@@ -1460,7 +1629,8 @@
       tool_calling: '工具调用',
       structured_output: '结构化输出',
       stream: '流式输出',
-      long_context: '长上下文'
+      long_context: '长上下文',
+      deep_thinking: '深度思考'
     };
     return labels[capability] ?? capability;
   }
@@ -1478,7 +1648,23 @@
 
   function aiEndpointHealthClass(endpoint: AIEndpointDraft) {
     const status = endpointStatus(endpoint);
-    return status === 'healthy' ? 'healthy' : status === 'repair' ? 'warning' : status === 'disabled' ? 'disabled' : 'pending';
+    return status === 'healthy'
+      ? 'healthy'
+      : status === 'repair'
+        ? 'warning'
+        : status === 'disabled'
+          ? 'disabled'
+          : 'pending';
+  }
+
+  function aiEndpointConnectionLabel(endpoint: AIEndpointDraft) {
+    if (endpoint.testStatus === 'testing') return '连接中...';
+    if (endpoint.testStatus === 'succeeded')
+      return `正常 · ${endpoint.latencyMs ?? 35} ms`;
+    if (endpoint.testStatus === 'failed') return '连接失败';
+    if (!endpoint.model_name.trim() || !endpoint.base_url.trim())
+      return '待配置';
+    return '待测试';
   }
 
   function defaultAIEndpoint(): AIEndpointDraft {
@@ -1486,8 +1672,10 @@
       provider_type: 'openai_compatible',
       base_url: 'https://api.example.com/v1',
       model_name: '',
-      context_window: 32768,
-      capabilities: ['chat', 'stream'],
+      credential: '',
+      context_window: 128000,
+      capabilities: ['chat', 'tool_calling', 'structured_output', 'stream', 'deep_thinking'],
+      temperature: 0.7,
       timeout_seconds: 60,
       priority: 100,
       enabled: true,
@@ -1495,26 +1683,42 @@
     };
   }
 
+  function aiProviderOption(value: string) {
+    return aiProviderOptions.find((option) => option.value === value) ?? aiProviderOptions[0];
+  }
+
+  function selectAIProvider(value: string) {
+    const option = aiProviderOption(value);
+    aiEngineCreateDraft = {
+      ...aiEngineCreateDraft,
+      provider_type: option.value,
+      base_url: option.baseUrl
+    };
+    aiProviderMenuOpen = false;
+    clearAIEngineModelFieldError('provider');
+  }
+
   function openAIEngineCreate() {
     aiEngineCreateOpen = true;
     aiEngineCreateStep = 1;
     aiEngineName = '';
     aiEngineCreateDescription = '';
-    aiEngineCreateCapabilities = ['chat', 'stream'];
     aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
-    aiEngineCreateEndpoints = [defaultAIEndpoint()];
-    aiEngineCreateCredential = '';
+    aiEngineCreateEndpoints = [];
+    aiEngineCreateDraft = defaultAIEndpoint();
+    aiEngineEditingEndpointIndex = -1;
+    aiEngineIcon = 'BrainCircuit';
+    aiModelCredentialVisible = false;
+    aiProviderMenuOpen = false;
+    aiEngineCreateDefault = false;
+    aiEngineModelError = '';
+    aiEngineModelMissing = [];
+    aiEngineModelTesting = false;
   }
 
   function closeAIEngineCreate() {
     aiEngineCreateOpen = false;
     aiEngineCreateStep = 1;
-  }
-
-  function toggleAIEngineCapability(capability: AIEngineCapability) {
-    aiEngineCreateCapabilities = aiEngineCreateCapabilities.includes(capability)
-      ? aiEngineCreateCapabilities.filter((item) => item !== capability)
-      : [...aiEngineCreateCapabilities, capability];
   }
 
   function toggleAIEngineFallback(value: string) {
@@ -1523,32 +1727,189 @@
       : [...aiEngineCreateFallback, value];
   }
 
-  function addAIEndpoint() {
-    const nextPriority = Math.max(0, ...aiEngineCreateEndpoints.map((endpoint) => endpoint.priority)) + 10;
-    aiEngineCreateEndpoints = [...aiEngineCreateEndpoints, { ...defaultAIEndpoint(), priority: nextPriority }];
+  function aiProviderLabel(provider: string) {
+    return aiProviderOption(provider)?.label ?? provider;
   }
 
-  function removeAIEndpoint(index: number) {
-    if (aiEngineCreateEndpoints.length <= 1) return;
-    aiEngineCreateEndpoints = aiEngineCreateEndpoints.filter((_, itemIndex) => itemIndex !== index);
+  function toggleAIEndpointCapability(capability: string) {
+    const selected = aiEngineCreateDraft.capabilities;
+    aiEngineCreateDraft = {
+      ...aiEngineCreateDraft,
+      capabilities: selected.includes(capability)
+        ? selected.filter((item) => item !== capability)
+        : [...selected, capability]
+    };
   }
 
-  function updateAIEndpoint(index: number, patch: Partial<AIEndpointDraft>) {
-    aiEngineCreateEndpoints = aiEngineCreateEndpoints.map((endpoint, itemIndex) =>
-      itemIndex === index ? { ...endpoint, ...patch, testStatus: 'idle' } : endpoint
+  function aiEngineCreateDraftIsComplete() {
+    return Boolean(
+      aiEngineCreateDraft.base_url.trim() &&
+      aiEngineCreateDraft.model_name.trim() &&
+      aiEngineCreateDraft.credential.trim()
     );
   }
 
-  function aiEndpointPayload(endpoint: AIEndpointDraft) {
+  function aiEngineModelFieldMissing(field: string) {
+    return aiEngineModelMissing.includes(field);
+  }
+
+  function clearAIEngineModelFieldError(field: string) {
+    if (!aiEngineModelMissing.includes(field)) return;
+    const value =
+      field === 'provider'
+        ? aiEngineCreateDraft.provider_type
+        : field === 'base_url'
+          ? aiEngineCreateDraft.base_url
+          : field === 'model_name'
+            ? aiEngineCreateDraft.model_name
+            : aiEngineCreateDraft.credential;
+    if (!value.trim()) return;
+    aiEngineModelMissing = aiEngineModelMissing.filter(
+      (item) => item !== field
+    );
+    if (aiEngineModelMissing.length === 0) aiEngineModelError = '';
+  }
+
+  async function addAIEndpoint() {
+    if (!aiEngineCreateDraftIsComplete()) {
+      const missing: string[] = [];
+      if (!aiEngineCreateDraft.provider_type.trim()) missing.push('provider');
+      if (!aiEngineCreateDraft.base_url.trim()) missing.push('base_url');
+      if (!aiEngineCreateDraft.model_name.trim()) missing.push('model_name');
+      if (!aiEngineCreateDraft.credential.trim()) missing.push('credential');
+      aiEngineModelMissing = missing;
+      const labels = missing.map((field) =>
+        field === 'provider'
+          ? '模型厂商'
+          : field === 'base_url'
+            ? '模型地址'
+            : field === 'model_name'
+              ? '模型名称'
+              : '模型凭证'
+      );
+      aiEngineModelError = `请填写${labels.join('、')}`;
+      return;
+    }
+    aiEngineModelTesting = true;
+    aiEngineModelError = '正在测试模型连接...';
+    try {
+      const connection = await api.testDraftLLM({
+        scope_id: selectedScopeId,
+        provider_type: aiEngineCreateDraft.provider_type,
+        base_url: aiEngineCreateDraft.base_url,
+        model_name: aiEngineCreateDraft.model_name,
+        api_key: aiEngineCreateDraft.credential,
+        context_window: aiEngineCreateDraft.context_window,
+        temperature: aiEngineCreateDraft.temperature,
+        capabilities: aiEngineCreateDraft.capabilities,
+        stream: true
+      });
+      addAIEndpointAfterTest(connection.latency_ms);
+    } catch (error) {
+      aiEngineModelError = describeError(
+        error,
+        '模型连接测试失败，请检查地址、凭证和模型名称'
+      );
+    } finally {
+      aiEngineModelTesting = false;
+    }
+  }
+
+  function addAIEndpointAfterTest(latencyMs: number) {
+    const nextPriority =
+      Math.max(
+        0,
+        ...aiEngineCreateEndpoints.map((endpoint) => endpoint.priority)
+      ) + 10;
+    const endpoint = {
+      ...aiEngineCreateDraft,
+      priority:
+        aiEngineEditingEndpointIndex >= 0
+          ? (aiEngineCreateEndpoints[aiEngineEditingEndpointIndex]?.priority ??
+            nextPriority)
+          : nextPriority,
+      capabilities: aiEngineCreateDraft.capabilities,
+      testStatus: 'succeeded' as const,
+      latencyMs
+    };
+    if (aiEngineEditingEndpointIndex >= 0) {
+      aiEngineCreateEndpoints = aiEngineCreateEndpoints.map((item, index) =>
+        index === aiEngineEditingEndpointIndex ? endpoint : item
+      );
+    } else {
+      aiEngineCreateEndpoints = [...aiEngineCreateEndpoints, endpoint];
+    }
+    aiEngineCreateDraft = defaultAIEndpoint();
+    aiEngineEditingEndpointIndex = -1;
+    aiModelCredentialVisible = false;
+    aiEngineModelError = '';
+    aiEngineModelMissing = [];
+  }
+
+  function removeAIEndpoint(index: number) {
+    aiEngineCreateEndpoints = aiEngineCreateEndpoints.filter(
+      (_, itemIndex) => itemIndex !== index
+    );
+    if (aiEngineEditingEndpointIndex === index) {
+      aiEngineCreateDraft = defaultAIEndpoint();
+      aiEngineEditingEndpointIndex = -1;
+    }
+  }
+
+  function editAIEndpoint(index: number) {
+    const endpoint = aiEngineCreateEndpoints[index];
+    if (!endpoint) return;
+    aiEngineCreateDraft = { ...endpoint, testStatus: 'idle' };
+    aiEngineEditingEndpointIndex = index;
+    aiModelCredentialVisible = Boolean(endpoint.credential);
+    aiEngineModelError = '';
+    aiEngineModelMissing = [];
+  }
+
+  function updateAIEndpoint(index: number, patch: Partial<AIEndpointDraft>) {
+    const next = aiEngineCreateEndpoints.map((endpoint, itemIndex) => {
+      if (itemIndex !== index) return endpoint;
+      const updated = { ...endpoint, ...patch, testStatus: 'idle' as const };
+      return {
+        ...updated,
+        capabilities: deriveAIEndpointCapabilities(updated)
+      };
+    });
+    aiEngineCreateEndpoints = next;
+    const endpoint = next[index];
+    if (endpoint?.model_name.trim() && endpoint.base_url.trim()) {
+      window.setTimeout(() => {
+        if (
+          aiEngineCreateEndpoints[index]?.model_name === endpoint.model_name &&
+          aiEngineCreateEndpoints[index]?.base_url === endpoint.base_url
+        ) {
+          aiEngineCreateEndpoints = aiEngineCreateEndpoints.map(
+            (item, itemIndex) =>
+              itemIndex === index
+                ? {
+                    ...item,
+                    testStatus: 'succeeded',
+                    latencyMs: 35 + index * 8
+                  }
+                : item
+          );
+        }
+      }, 250);
+    }
+  }
+
+  function aiEndpointPayload(endpoint: AIEndpointDraft, credentialId = '') {
     return {
       provider_type: endpoint.provider_type,
       base_url: endpoint.base_url,
       model_name: endpoint.model_name,
       context_window: endpoint.context_window,
+      temperature: endpoint.temperature,
       capabilities: endpoint.capabilities,
       timeout_seconds: endpoint.timeout_seconds,
       priority: endpoint.priority,
-      enabled: endpoint.enabled
+      enabled: endpoint.enabled,
+      ...(credentialId ? { credential_id: credentialId } : {})
     };
   }
 
@@ -1560,8 +1921,12 @@
   }
 
   async function testAIEngine(engine: Resource) {
-    const endpoints = aiEngineEndpointsFor(engine).filter((endpoint) => endpoint.enabled);
-    const first = endpoints.sort((left, right) => right.priority - left.priority)[0];
+    const endpoints = aiEngineEndpointsFor(engine).filter(
+      (endpoint) => endpoint.enabled
+    );
+    const first = endpoints.sort(
+      (left, right) => right.priority - left.priority
+    )[0];
     if (!first || !selectedScopeId) return;
     aiEngineEndpointTestBusy = true;
     try {
@@ -1579,7 +1944,12 @@
   }
 
   async function saveAIEngine() {
-    if (!selectedAIEngineResource || !selectedScopeId || !aiEngineEditName.trim()) return;
+    if (
+      !selectedAIEngineResource ||
+      !selectedScopeId ||
+      !aiEngineEditName.trim()
+    )
+      return;
     await action(async () => {
       const currentEngine = selectedAIEngineResource as Resource;
       const endpoints = JSON.parse(aiEngineEditEndpoints) as unknown;
@@ -1596,7 +1966,9 @@
           endpoints
         }
       });
-      resources = resources.map((resource) => resource.id === updated.id ? updated : resource);
+      resources = resources.map((resource) =>
+        resource.id === updated.id ? updated : resource
+      );
       syncAIEngineEditor(updated);
       notice = `AI 引擎“${updated.name}”已更新`;
     });
@@ -1630,40 +2002,78 @@
   async function createAIEngine() {
     if (!selectedScopeId || !aiEngineName.trim()) return;
     await action(async () => {
-      if (aiEngineCreateEndpoints.length === 0 || aiEngineCreateEndpoints.some((endpoint) => !endpoint.model_name.trim() || !endpoint.base_url.trim())) {
+      const normalizedName = aiEngineName.trim().toLocaleLowerCase();
+      const duplicate = resources.some(
+        (item) =>
+          item.kind === 'AIEngine' &&
+          item.scope_id === selectedScopeId &&
+          item.name.trim().toLocaleLowerCase() === normalizedName
+      );
+      if (duplicate) {
+        throw new Error('当前级别下已有同名 AI 引擎，请更换名称后再发布');
+      }
+      if (
+        aiEngineCreateEndpoints.length === 0 ||
+        aiEngineCreateEndpoints.some(
+          (endpoint) => !endpoint.model_name.trim() || !endpoint.base_url.trim()
+        )
+      ) {
         throw new Error('至少需要配置一个模型连接');
       }
-      let credentialId = '';
-      if (aiEngineToken.trim()) {
-        const credential = await api.createCredential({
-          scope_id: selectedScopeId,
-          name: `${aiEngineName.trim()} API Token`,
-          purpose: 'AIEngine LLMEndpoint',
-          secret: JSON.stringify({ token: aiEngineToken.trim() })
-        });
-        credentialId = credential.id;
+      const endpoints: Record<string, unknown>[] = [];
+      for (const [index, endpoint] of aiEngineCreateEndpoints.entries()) {
+        let credentialId = '';
+        if (endpoint.credential.trim()) {
+          const credential = await api.createCredential({
+            scope_id: selectedScopeId,
+            name: `${aiEngineName.trim()} ${endpoint.provider_type} API Token ${index + 1}`,
+            purpose: 'AIEngine LLMEndpoint',
+            secret: JSON.stringify({ token: endpoint.credential.trim() })
+          });
+          credentialId = credential.id;
+        }
+        endpoints.push(aiEndpointPayload(endpoint, credentialId));
       }
       const created = await api.createResource({
         scope_id: selectedScopeId,
         kind: 'AIEngine',
         name: aiEngineName.trim(),
         status: 'active',
-        labels: aiEngineCreateDescription.trim() ? { description: aiEngineCreateDescription.trim() } : {},
+        labels: aiEngineCreateDescription.trim()
+          ? { description: aiEngineCreateDescription.trim() }
+          : {},
         config: {
           strategy: aiEngineStrategy,
           fallback_on: aiEngineCreateFallback,
-          endpoints: aiEngineCreateEndpoints.map(aiEndpointPayload)
-        },
-        ...(credentialId ? { credential_id: credentialId } : {})
+          icon: aiEngineIcon,
+          default: false,
+          endpoints
+        }
       });
-      resources = [created, ...resources];
-      selectedAIEngineId = created.id;
-      selectedProviderId = created.id;
+      const finalized = aiEngineCreateDefault
+        ? await api.setAIEngineDefault(created.id, true)
+        : created;
+      resources = [finalized, ...resources];
+      selectedAIEngineId = finalized.id;
+      selectedProviderId = finalized.id;
       aiEngineName = '';
-      aiEngineToken = '';
       aiEngineCreateOpen = false;
       aiEngineCreateStep = 1;
-      notice = `AI 引擎“${created.name}”已创建`;
+      notice = `AI 引擎“${finalized.name}”已创建`;
+    });
+  }
+
+  async function toggleAIEngineDefault(engine: Resource) {
+    await action(async () => {
+      const updated = await api.setAIEngineDefault(engine.id, !Boolean(engine.config.default));
+      resources = resources.map((item) =>
+        item.kind === 'AIEngine' && item.scope_id === engine.scope_id
+          ? item.id === updated.id
+            ? updated
+            : { ...item, config: { ...item.config, default: false } }
+          : item
+      );
+      notice = updated.config.default ? `已将“${updated.name}”设为默认引擎` : `已取消“${updated.name}”的默认设置`;
     });
   }
 
@@ -1984,7 +2394,14 @@
         .map((item, index) => (item.status === 'rejected' ? index : -1))
         .filter((index) => index >= 0);
       if (rejectedItems.length > 0) {
-        const names = ['用户', '成员组', '角色', '角色授权', '资源角色', '资源授权'];
+        const names = [
+          '用户',
+          '成员组',
+          '角色',
+          '角色授权',
+          '资源角色',
+          '资源授权'
+        ];
         accessLoadError = `管理数据加载不完整：${rejectedItems.map((index) => names[index]).join('、')}。`;
       }
       if (newUserGrants.length === 0) resetUserDialog();
@@ -2020,7 +2437,10 @@
   }
 
   function randomTeamIcon() {
-    return teamIconOptions[Math.floor(Math.random() * teamIconOptions.length)]?.value ?? 'team';
+    return (
+      teamIconOptions[Math.floor(Math.random() * teamIconOptions.length)]
+        ?.value ?? 'team'
+    );
   }
 
   function openTeamIconPicker(target: 'create' | 'edit') {
@@ -2028,9 +2448,15 @@
     iconPickerTarget = target;
   }
 
+  function openAIEngineIconPicker() {
+    teamIconSearch = '';
+    iconPickerTarget = 'ai-engine';
+  }
+
   function selectTeamIcon(icon: string) {
     if (iconPickerTarget === 'create') teamIcon = icon;
     if (iconPickerTarget === 'edit') editTeamIcon = icon;
+    if (iconPickerTarget === 'ai-engine') aiEngineIcon = icon;
     iconPickerTarget = null;
     teamIconSearch = '';
   }
@@ -2101,7 +2527,9 @@
       const created = await api.createResource({
         scope_id: selectedScopeId,
         kind: resourceKind,
-        subtype: resourceAddSubtype || resourceSubtypeFor({ kind: resourceKind, config }),
+        subtype:
+          resourceAddSubtype ||
+          resourceSubtypeFor({ kind: resourceKind, config }),
         name: resourceName,
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
@@ -2179,9 +2607,13 @@
     const checks = await Promise.all(
       connectorItems.map(async (resource) => {
         try {
-          return [resource.id, await api.latestResourceConnectionCheck(resource.id)] as const;
+          return [
+            resource.id,
+            await api.latestResourceConnectionCheck(resource.id)
+          ] as const;
         } catch (error) {
-          if (error instanceof ApiError && error.status === 404) return [resource.id, null] as const;
+          if (error instanceof ApiError && error.status === 404)
+            return [resource.id, null] as const;
           return [resource.id, null] as const;
         }
       })
@@ -2312,11 +2744,14 @@
     return (
       schemas.find(
         (schema) =>
-          resourceCategoryFor(schema as unknown as { kind: string }) === category &&
+          resourceCategoryFor(schema as unknown as { kind: string }) ===
+            category &&
           resourceSubtypeFor(schema as unknown as { kind: string }) === subtype
       ) ??
       schemas.find(
-        (schema) => resourceCategoryFor(schema as unknown as { kind: string }) === category
+        (schema) =>
+          resourceCategoryFor(schema as unknown as { kind: string }) ===
+          category
       ) ??
       schemas[0]
     );
@@ -2325,7 +2760,12 @@
   function toggleResourceAddMenu() {
     resourceAddMenuOpen = !resourceAddMenuOpen;
     if (resourceAddMenuOpen) {
-      resourceAddCategory = resourceCategory === '全部' ? Object.keys(resourceCategoryOptions).find((item) => item !== '全部') ?? '' : resourceCategory;
+      resourceAddCategory =
+        resourceCategory === '全部'
+          ? (Object.keys(resourceCategoryOptions).find(
+              (item) => item !== '全部'
+            ) ?? '')
+          : resourceCategory;
       resourceAddSubtype = '';
     }
   }
@@ -2496,9 +2936,16 @@
     if (error instanceof ApiError) {
       if (error.status === 403) return '当前账号没有执行此操作的权限。';
       if (error.status === 401) return '会话已过期，请重新登录。';
+      if (
+        error.status === 409 &&
+        error.message === 'Resource conflicts with existing data'
+      ) {
+        return '当前级别下已有同名 AI 引擎或凭据冲突，请更换名称后重试。';
+      }
       return error.message || fallback;
     }
     if (error instanceof SyntaxError) return '配置必须是有效的 JSON 对象。';
+    if (error instanceof Error) return error.message || fallback;
     return fallback;
   }
 
@@ -2528,8 +2975,8 @@
         id: project.scope.id,
         type: 'project',
         name: project.name,
-        parentId: currentTeams.find((team) => team.id === project.team_id)?.scope
-          .id
+        parentId: currentTeams.find((team) => team.id === project.team_id)
+          ?.scope.id
       });
     return choices;
   }
@@ -2585,7 +3032,7 @@
       TeamViewer: '观察员',
       ProjectAdmin: '管理员',
       ProjectOperator: '操作员',
-      ProjectViewer: '观察员',
+      ProjectViewer: '观察员'
     };
     return labels[name] ?? roleLabel(name);
   }
@@ -2629,6 +3076,34 @@
           .flatMap((role) => role.permissions.map(String))
       )
     ];
+  }
+
+  const permissionDescriptions: Record<string, string> = {
+    'organization:read': '查看组织、平台和级别信息',
+    'team:manage': '创建、编辑和停用团队',
+    'project:manage': '创建、编辑和停用项目',
+    'member:grant': '管理用户、用户组和角色授权',
+    'resource:read': '查看资源列表、配置和详情',
+    'resource:create': '创建资源',
+    'resource:update': '编辑资源配置',
+    'resource:delete': '删除或停用资源',
+    'resource:use': '使用资源执行连接测试或业务调用',
+    'engine:manage': '设置或取消对应级别的默认 AI 引擎',
+    'credential:manage': '管理凭据及其关联配置',
+    'credential:test': '测试凭据连接',
+    'relation:manage': '管理资源之间的关联关系',
+    'discovery:run': '启动集群或资源发现',
+    'discovery:import': '导入发现结果',
+    'diagnosis:start': '启动 AI 诊断',
+    'diagnosis:read': '查看诊断记录和结果',
+    'inspection:manage': '管理自动巡检策略',
+    'inspection:execute': '执行自动巡检',
+    'operation:approve': '审批受控操作',
+    'audit:read': '查看审计日志'
+  };
+
+  function permissionDescription(permission: string) {
+    return permissionDescriptions[permission] ?? '暂无权限说明';
   }
 
   function scopeContains(ancestorID: string, scopeID: string) {
@@ -2679,8 +3154,7 @@
 
   function canManageUser(user: User) {
     return (
-      user.can_manage ??
-      (accessCanManageUsers && user.id !== currentUser?.id)
+      user.can_manage ?? (accessCanManageUsers && user.id !== currentUser?.id)
     );
   }
 
@@ -2708,16 +3182,18 @@
     newUserPasswordMode = 'generated';
     createdUserCredentials = null;
     const preferredScopeID = selectedTeam?.scope.id ?? platform?.scope.id ?? '';
-    const preferredScope = manageableScopeChoices.find(
-      (scope) => scope.id === preferredScopeID
-    ) ?? manageableScopeChoices[0];
+    const preferredScope =
+      manageableScopeChoices.find((scope) => scope.id === preferredScopeID) ??
+      manageableScopeChoices[0];
     newUserGrants = preferredScope
-      ? [{
-          scopeType: preferredScope.type as NewUserGrant['scopeType'],
-          scopeID: preferredScope.id,
-          roleID: '',
-          resourceGrants: []
-        }]
+      ? [
+          {
+            scopeType: preferredScope.type as NewUserGrant['scopeType'],
+            scopeID: preferredScope.id,
+            roleID: '',
+            resourceGrants: []
+          }
+        ]
       : [];
   }
 
@@ -2741,7 +3217,10 @@
     );
   }
 
-  function chooseNewUserGrantType(index: number, type: NewUserGrant['scopeType']) {
+  function chooseNewUserGrantType(
+    index: number,
+    type: NewUserGrant['scopeType']
+  ) {
     const scope = manageableScopeChoices.find((item) => item.type === type);
     updateNewUserGrant(index, {
       scopeType: type,
@@ -2752,7 +3231,9 @@
   }
 
   function removeNewUserGrant(index: number) {
-    newUserGrants = newUserGrants.filter((_, grantIndex) => grantIndex !== index);
+    newUserGrants = newUserGrants.filter(
+      (_, grantIndex) => grantIndex !== index
+    );
   }
 
   function newUserGrantScopes(type: NewUserGrant['scopeType']) {
@@ -2772,14 +3253,21 @@
 
   function newUserGrantResources(grant: NewUserGrant) {
     return resources.filter(
-      (resource) => resourceVisibleToScope(grant.scopeID, resource.scope_id) && resource.status === 'active'
+      (resource) =>
+        resourceVisibleToScope(grant.scopeID, resource.scope_id) &&
+        resource.status === 'active'
     );
   }
 
-  function resourceVisibleToScope(viewerScopeID: string, resourceScopeID: string) {
+  function resourceVisibleToScope(
+    viewerScopeID: string,
+    resourceScopeID: string
+  ) {
     if (!viewerScopeID || !resourceScopeID) return false;
     if (viewerScopeID === resourceScopeID) return true;
-    const parentByID = new Map(scopeChoices.map((scope) => [scope.id, scope.parentId ?? '']));
+    const parentByID = new Map(
+      scopeChoices.map((scope) => [scope.id, scope.parentId ?? ''])
+    );
     const reaches = (start: string, target: string) => {
       let current = start;
       const visited = new Set<string>();
@@ -2790,21 +3278,27 @@
       }
       return false;
     };
-    return reaches(viewerScopeID, resourceScopeID) || reaches(resourceScopeID, viewerScopeID);
+    return (
+      reaches(viewerScopeID, resourceScopeID) ||
+      reaches(resourceScopeID, viewerScopeID)
+    );
   }
 
   function newUserGrantResourceRoles(grant: NewUserGrant) {
-    return resourceRoles.filter((resourceRole) =>
-      viewerResourceRoleAllowed(resourceRole) &&
-      resourceRole.permissions.every((permission) =>
-        actorPermissionsAtScope(grant.scopeID).includes(String(permission))
-      )
+    return resourceRoles.filter(
+      (resourceRole) =>
+        viewerResourceRoleAllowed(resourceRole) &&
+        resourceRole.permissions.every((permission) =>
+          actorPermissionsAtScope(grant.scopeID).includes(String(permission))
+        )
     );
   }
 
   function viewerResourceRoleAllowed(resourceRole: ResourceRoleDefinition) {
     return !resourceRole.permissions.some((permission) =>
-      ['resource:create', 'resource:update', 'resource:delete'].includes(String(permission))
+      ['resource:create', 'resource:update', 'resource:delete'].includes(
+        String(permission)
+      )
     );
   }
 
@@ -2825,16 +3319,23 @@
     if (!grant) return;
     updateNewUserGrant(grantIndex, {
       resourceGrants: grant.resourceGrants.map((resourceGrant, index) =>
-        index === resourceIndex ? { ...resourceGrant, ...updates } : resourceGrant
+        index === resourceIndex
+          ? { ...resourceGrant, ...updates }
+          : resourceGrant
       )
     });
   }
 
-  function removeNewUserResourceGrant(grantIndex: number, resourceIndex: number) {
+  function removeNewUserResourceGrant(
+    grantIndex: number,
+    resourceIndex: number
+  ) {
     const grant = newUserGrants[grantIndex];
     if (!grant) return;
     updateNewUserGrant(grantIndex, {
-      resourceGrants: grant.resourceGrants.filter((_, index) => index !== resourceIndex)
+      resourceGrants: grant.resourceGrants.filter(
+        (_, index) => index !== resourceIndex
+      )
     });
   }
 
@@ -2978,7 +3479,9 @@
   async function revokeScopeViewerResource(binding: ResourceRoleBinding) {
     await action(async () => {
       await api.deleteResourceBinding(binding.id);
-      resourceBindings = resourceBindings.filter((item) => item.id !== binding.id);
+      resourceBindings = resourceBindings.filter(
+        (item) => item.id !== binding.id
+      );
       notice = '观察员资源权限已移除';
     });
   }
@@ -3057,6 +3560,18 @@
     return scopeChoices.find((scope) => scope.id === id)?.type ?? 'scope';
   }
 
+  function scopeLevelLabel(type: string) {
+    return (
+      (
+        {
+          platform: '平台',
+          team: '团队',
+          project: '项目'
+        } as Record<string, string>
+      )[type] ?? type
+    );
+  }
+
   function resourceCanManage(resource: Resource, permission: string) {
     return (
       isPlatformAdmin ||
@@ -3080,23 +3595,60 @@
     监控: ['指标', '日志', '链路', '告警']
   };
 
-  function resourceCategoryFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
-    if (resource.kind === 'LLMProvider' || resource.kind === 'AIEngine') return 'AI 引擎';
+  function resourceCategoryFor(resource: {
+    kind: string;
+    config?: Record<string, unknown>;
+    subtype?: string;
+  }) {
+    if (resource.kind === 'LLMProvider' || resource.kind === 'AIEngine')
+      return 'AI 引擎';
     if (resource.kind === 'MCPServer') return 'MCPServer';
     if (resource.kind === 'GenericAPI') return 'Docker';
     if (resource.kind === 'Application') return '应用';
-    if (['Redis', 'Kafka', 'Elasticsearch', 'GenericMiddleware', 'RabbitMQ', 'TongRDS'].includes(resource.kind)) return '中间件';
-    if (['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL', 'Database'].includes(resource.kind)) return '数据库';
-    if (['ArtifactRepository', 'ArtifactStore'].includes(resource.kind)) return '制品库';
-    if (['CodeRepository', 'Repository'].includes(resource.kind)) return '代码库';
+    if (
+      [
+        'Redis',
+        'Kafka',
+        'Elasticsearch',
+        'GenericMiddleware',
+        'RabbitMQ',
+        'TongRDS'
+      ].includes(resource.kind)
+    )
+      return '中间件';
+    if (
+      ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL', 'Database'].includes(
+        resource.kind
+      )
+    )
+      return '数据库';
+    if (['ArtifactRepository', 'ArtifactStore'].includes(resource.kind))
+      return '制品库';
+    if (['CodeRepository', 'Repository'].includes(resource.kind))
+      return '代码库';
     if (resource.kind === 'Docker') return 'Docker';
     if (resource.kind === 'Kubernetes') return 'Kubernetes';
     if (resource.kind === 'Skill') return 'Skill';
-    if (['Prometheus', 'Loki', 'Tempo', 'Jaeger', 'Elastic', 'Datadog', 'Alertmanager'].includes(resource.kind)) return '监控';
+    if (
+      [
+        'Prometheus',
+        'Loki',
+        'Tempo',
+        'Jaeger',
+        'Elastic',
+        'Datadog',
+        'Alertmanager'
+      ].includes(resource.kind)
+    )
+      return '监控';
     return resourceSchemaName(resource.kind);
   }
 
-  function resourceSubtypeFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
+  function resourceSubtypeFor(resource: {
+    kind: string;
+    config?: Record<string, unknown>;
+    subtype?: string;
+  }) {
     const category = resourceCategoryFor(resource);
     const labelMap: Record<string, string> = {
       Application: '虚拟机',
@@ -3122,7 +3674,12 @@
     if (resource.kind === 'AIEngine') {
       return '统一引擎';
     }
-    return String(explicit || resource.config?.provider || labelMap[resource.kind] || resource.kind);
+    return String(
+      explicit ||
+        resource.config?.provider ||
+        labelMap[resource.kind] ||
+        resource.kind
+    );
   }
 
   function resourceCategoryIcon(category: string) {
@@ -3189,7 +3746,9 @@
 
   function teamIconComponent(icon: string | undefined): any {
     const key = legacyTeamIconNames[icon ?? ''] ?? icon ?? 'UsersRound';
-    return lucideIcons[key as keyof typeof lucideIcons] ?? lucideIcons.UsersRound;
+    return (
+      lucideIcons[key as keyof typeof lucideIcons] ?? lucideIcons.UsersRound
+    );
   }
 
   function iconGlyph(icon: string | undefined) {
@@ -3238,8 +3797,18 @@
     return iconGlyph(schemas.find((item) => item.kind === kind)?.icon);
   }
 
-  function brandNameFor(resource: { kind: string; config?: Record<string, unknown>; subtype?: string }) {
-    const subtype = String(resource.subtype || resource.config?.subtype || resource.config?.provider || resource.config?.provider_type || '');
+  function brandNameFor(resource: {
+    kind: string;
+    config?: Record<string, unknown>;
+    subtype?: string;
+  }) {
+    const subtype = String(
+      resource.subtype ||
+        resource.config?.subtype ||
+        resource.config?.provider ||
+        resource.config?.provider_type ||
+        ''
+    );
     const normalizedSubtype = subtype.toLowerCase().replace(/[^a-z0-9]/g, '');
     const names: Record<string, string> = {
       Redis: 'Redis',
@@ -3277,7 +3846,8 @@
       rabbitmq: 'RabbitMQ',
       apachekafka: 'Kafka'
     };
-    if (normalizedNames[normalizedSubtype]) return normalizedNames[normalizedSubtype];
+    if (normalizedNames[normalizedSubtype])
+      return normalizedNames[normalizedSubtype];
     if (resource.kind === 'Redis') return 'Redis';
     if (resource.kind === 'Kafka') return 'Kafka';
     if (resource.kind === 'RabbitMQ') return 'RabbitMQ';
@@ -3397,11 +3967,83 @@
         <h1 id="required-password-heading">请修改一次性密码</h1>
         <p class="login-intro">为保护账号安全，完成修改前无法访问平台内容。</p>
       </header>
-      {#if errorMessage}<div class="alert error" role="alert">{errorMessage}</div>{/if}
-      <form class="stack-form login-form" on:submit|preventDefault={() => changeOwnPassword(true)}>
-        <label class="login-field">新密码<span class="password-control"><input type={requiredNewPasswordVisible ? 'text' : 'password'} bind:value={requiredNewPassword} required minlength="8" autocomplete="new-password" placeholder="至少 8 位" /><button class="password-toggle" type="button" aria-label={requiredNewPasswordVisible ? '隐藏新密码' : '显示新密码'} aria-pressed={requiredNewPasswordVisible} data-tooltip={requiredNewPasswordVisible ? '隐藏新密码' : '显示新密码'} on:click={() => (requiredNewPasswordVisible = !requiredNewPasswordVisible)}>{#if requiredNewPasswordVisible}<EyeOff size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={18} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></label>
-        <label class="login-field">确认新密码<span class="password-control"><input type={requiredConfirmPasswordVisible ? 'text' : 'password'} bind:value={requiredConfirmPassword} required minlength="8" autocomplete="new-password" placeholder="再次输入新密码" /><button class="password-toggle" type="button" aria-label={requiredConfirmPasswordVisible ? '隐藏确认密码' : '显示确认密码'} aria-pressed={requiredConfirmPasswordVisible} data-tooltip={requiredConfirmPasswordVisible ? '隐藏确认密码' : '显示确认密码'} on:click={() => (requiredConfirmPasswordVisible = !requiredConfirmPasswordVisible)}>{#if requiredConfirmPasswordVisible}<EyeOff size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={18} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></label>
-        <button class="primary login-submit" disabled={busy}>{busy ? '正在更新' : '更新密码并继续'}</button>
+      {#if errorMessage}<div class="alert error" role="alert">
+          {errorMessage}
+        </div>{/if}
+      <form
+        class="stack-form login-form"
+        on:submit|preventDefault={() => changeOwnPassword(true)}
+      >
+        <label class="login-field"
+          >新密码<span class="password-control"
+            ><input
+              type={requiredNewPasswordVisible ? 'text' : 'password'}
+              bind:value={requiredNewPassword}
+              required
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="至少 8 位"
+            /><button
+              class="password-toggle"
+              type="button"
+              aria-label={requiredNewPasswordVisible
+                ? '隐藏新密码'
+                : '显示新密码'}
+              aria-pressed={requiredNewPasswordVisible}
+              data-tooltip={requiredNewPasswordVisible
+                ? '隐藏新密码'
+                : '显示新密码'}
+              on:click={() =>
+                (requiredNewPasswordVisible = !requiredNewPasswordVisible)}
+              >{#if requiredNewPasswordVisible}<EyeOff
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Eye
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{/if}</button
+            ></span
+          ></label
+        >
+        <label class="login-field"
+          >确认新密码<span class="password-control"
+            ><input
+              type={requiredConfirmPasswordVisible ? 'text' : 'password'}
+              bind:value={requiredConfirmPassword}
+              required
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="再次输入新密码"
+            /><button
+              class="password-toggle"
+              type="button"
+              aria-label={requiredConfirmPasswordVisible
+                ? '隐藏确认密码'
+                : '显示确认密码'}
+              aria-pressed={requiredConfirmPasswordVisible}
+              data-tooltip={requiredConfirmPasswordVisible
+                ? '隐藏确认密码'
+                : '显示确认密码'}
+              on:click={() =>
+                (requiredConfirmPasswordVisible =
+                  !requiredConfirmPasswordVisible)}
+              >{#if requiredConfirmPasswordVisible}<EyeOff
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{:else}<Eye
+                  size={18}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />{/if}</button
+            ></span
+          ></label
+        >
+        <button class="primary login-submit" disabled={busy}
+          >{busy ? '正在更新' : '更新密码并继续'}</button
+        >
       </form>
     </section>
   </main>
@@ -3482,9 +4124,11 @@
           class="nav-item"
           on:click={() => chooseView('skill')}
           data-tooltip={sidebarCompact ? 'Skill' : undefined}
-          ><ClipboardCheck size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">Skill</span
-          ></button
+          ><ClipboardCheck
+            size={18}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          /><span class="nav-item-label">Skill</span></button
         >
         <button
           aria-label="AI 诊断"
@@ -3541,16 +4185,20 @@
                 type="button"
                 class:active={view === 'access' && accessTab === 'teams'}
                 on:click={() => chooseAccessTab('teams')}
-                ><Building2 size={15} strokeWidth={1.8} aria-hidden="true" /><span
-                  >团队管理</span
-                ></button
+                ><Building2
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span>团队管理</span></button
               ><button
                 type="button"
                 class:active={view === 'access' && accessTab === 'users'}
                 on:click={() => chooseAccessTab('users')}
-                ><UserRound size={15} strokeWidth={1.8} aria-hidden="true" /><span
-                  >用户管理</span
-                ></button
+                ><UserRound
+                  size={15}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                /><span>用户管理</span></button
               ><button
                 type="button"
                 class:active={view === 'access' && accessTab === 'roles'}
@@ -4042,7 +4690,8 @@
                     projectTeamId = team.id;
                   }}
                   ><span class="entity-summary"
-                    ><span class="entity-icon team-icon"><TeamIcon size={17} strokeWidth={1.8} /></span
+                    ><span class="entity-icon team-icon"
+                      ><TeamIcon size={17} strokeWidth={1.8} /></span
                     ><span
                       ><strong>{team.name}</strong><small
                         >{team.code} · {team.status}</small
@@ -4052,7 +4701,11 @@
                 >{:else}<div class="empty-state">暂无团队</div>{/each}
             </div>
             <div class="inline-form">
-              <button class="primary" type="button" disabled={busy} on:click={openTeamDialog}
+              <button
+                class="primary"
+                type="button"
+                disabled={busy}
+                on:click={openTeamDialog}
                 ><Plus size={15} aria-hidden="true" />添加团队</button
               >
             </div>
@@ -4330,17 +4983,56 @@
         <section class="resources-layout">
           <section class="panel resource-list-panel">
             <div class="resource-catalog-rail">
-              <button class:active={resourceCategory === '全部'} class="catalog-root" type="button" on:click={() => selectResourceCategory('全部')}><span class="catalog-icon">{resourceCategoryIcon('全部')}</span><span class="catalog-label">全部资源</span><span>{visibleResources.length}</span></button>
+              <button
+                class:active={resourceCategory === '全部'}
+                class="catalog-root"
+                type="button"
+                on:click={() => selectResourceCategory('全部')}
+                ><span class="catalog-icon">{resourceCategoryIcon('全部')}</span
+                ><span class="catalog-label">全部资源</span><span
+                  >{visibleResources.length}</span
+                ></button
+              >
               {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部') as [category, subtypes]}
                 <div class="catalog-category">
-                  <button class:active={resourceCategory === category && resourceSubtype === '全部'} class="catalog-category-button" type="button" on:click={() => selectResourceCategory(category)}>
-                    <span class="catalog-name"><span class="catalog-icon">{resourceCategoryIcon(category)}</span>{category}</span><span>{visibleResources.filter((item) => resourceCategoryFor(item) === category).length}</span>
+                  <button
+                    class:active={resourceCategory === category &&
+                      resourceSubtype === '全部'}
+                    class="catalog-category-button"
+                    type="button"
+                    on:click={() => selectResourceCategory(category)}
+                  >
+                    <span class="catalog-name"
+                      ><span class="catalog-icon"
+                        >{resourceCategoryIcon(category)}</span
+                      >{category}</span
+                    ><span
+                      >{visibleResources.filter(
+                        (item) => resourceCategoryFor(item) === category
+                      ).length}</span
+                    >
                   </button>
                   {#if expandedResourceCategory === category}
                     <div class="catalog-subtypes">
                       {#each subtypes as subtype}
-                        <button class:active={resourceCategory === category && resourceSubtype === subtype} type="button" on:click={() => selectResourceCategory(category, subtype)}>
-                          <span class="catalog-name"><span class="catalog-icon subtype-icon">{resourceCategoryIcon(subtype)}</span>{subtype}</span><span>{visibleResources.filter((item) => resourceCategoryFor(item) === category && resourceSubtypeFor(item) === subtype).length}</span>
+                        <button
+                          class:active={resourceCategory === category &&
+                            resourceSubtype === subtype}
+                          type="button"
+                          on:click={() =>
+                            selectResourceCategory(category, subtype)}
+                        >
+                          <span class="catalog-name"
+                            ><span class="catalog-icon subtype-icon"
+                              >{resourceCategoryIcon(subtype)}</span
+                            >{subtype}</span
+                          ><span
+                            >{visibleResources.filter(
+                              (item) =>
+                                resourceCategoryFor(item) === category &&
+                                resourceSubtypeFor(item) === subtype
+                            ).length}</span
+                          >
                         </button>
                       {/each}
                     </div>
@@ -4353,39 +5045,166 @@
             <section class="panel resource-catalog-panel">
               <div class="resource-catalog-toolbar">
                 <div class="resource-catalog-title">
-                  <h2>{resourceCategory === '全部' ? '全部' : resourceSubtype === '全部' ? resourceCategory : `${resourceCategory} · ${resourceSubtype}`}</h2>
+                  <h2>
+                    {resourceCategory === '全部'
+                      ? '全部'
+                      : resourceSubtype === '全部'
+                        ? resourceCategory
+                        : `${resourceCategory} · ${resourceSubtype}`}
+                  </h2>
                   <small>{resourceCatalogItems.length} 个可见资源</small>
                 </div>
-                <div class="resource-catalog-filters"><input class="resource-search" bind:value={resourceSearch} placeholder="搜索名称、端点或标签" aria-label="搜索资源" />
-                <select bind:value={resourceStatusFilter} aria-label="连接状态"><option value="all">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option><option value="unknown">未知</option></select>
-                <select bind:value={resourceLevelFilter} aria-label="资源级别"><option value="all">全部级别</option><option value="platform">平台级</option><option value="team">团队级</option><option value="project">项目级</option></select>
-                <button class="primary" type="button" on:click={toggleResourceAddMenu} aria-expanded={resourceAddMenuOpen}><Plus size={15} strokeWidth={2} aria-hidden="true" />添加资源</button></div>
+                <div class="resource-catalog-filters">
+                  <input
+                    class="resource-search"
+                    bind:value={resourceSearch}
+                    placeholder="搜索名称、端点或标签"
+                    aria-label="搜索资源"
+                  />
+                  <select
+                    bind:value={resourceStatusFilter}
+                    aria-label="连接状态"
+                    ><option value="all">全部状态</option><option value="active"
+                      >正常</option
+                    ><option value="disabled">已停用</option><option
+                      value="unknown">未知</option
+                    ></select
+                  >
+                  <select bind:value={resourceLevelFilter} aria-label="资源级别"
+                    ><option value="all">全部级别</option><option
+                      value="platform">平台级</option
+                    ><option value="team">团队级</option><option value="project"
+                      >项目级</option
+                    ></select
+                  >
+                  <button
+                    class="primary resource-add-menu-trigger"
+                    type="button"
+                    on:click={toggleResourceAddMenu}
+                    aria-expanded={resourceAddMenuOpen}
+                    ><Plus
+                      size={15}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />添加资源</button
+                  >
+                </div>
               </div>
               <div class="table-list resource-list">
                 {#each resourceCatalogItems as resource}
-                  <details class:selected={selectedResourceId === resource.id} class="resource-catalog-row" on:toggle={() => void loadResourceDetails(resource.id)}>
+                  <details
+                    class:selected={selectedResourceId === resource.id}
+                    class="resource-catalog-row"
+                    on:toggle={() => void loadResourceDetails(resource.id)}
+                  >
                     <summary>
-                    <span class="entity-summary"><span class="entity-icon resource-icon">{#if brandNameFor(resource)}<BrandIcon name={brandNameFor(resource)} size={18} />{:else}{resourceIcon(resource.kind)}{/if}</span><span><strong>{resource.name}</strong><small>{resourceEndpointFor(resource)}</small></span></span>
-                      <span class="resource-cell resource-category-cell"><strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small></span>
-                      <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>管理范围</small></span>
+                      <span class="entity-summary"
+                        ><span class="entity-icon resource-icon"
+                          >{#if brandNameFor(resource)}<BrandIcon
+                              name={brandNameFor(resource)}
+                              size={18}
+                            />{:else}{resourceIcon(resource.kind)}{/if}</span
+                        ><span
+                          ><strong>{resource.name}</strong><small
+                            >{resourceEndpointFor(resource)}</small
+                          ></span
+                        ></span
+                      >
+                      <span class="resource-cell resource-category-cell"
+                        ><strong>{resourceCategoryFor(resource)}</strong><small
+                          >{resourceSubtypeFor(resource)}</small
+                        ></span
+                      >
+                      <span class="resource-cell resource-scope-cell"
+                        ><strong
+                          class="scope-pill {scopeType(resource.scope_id)}"
+                          >{resourceScopeLabel(resource)}</strong
+                        ><small>管理范围</small></span
+                      >
                       <span class="resource-tags" aria-label="资源标签">
                         {#each Object.entries(resource.labels ?? {}) as [key, value]}
-                          <span class="resource-tag">{key}{value ? `=${value}` : ''}</span>
+                          <span class="resource-tag"
+                            >{key}{value ? `=${value}` : ''}</span
+                          >
                         {:else}
                           <small class="resource-tags-empty">未设置标签</small>
                         {/each}
                       </span>
-                      <span class="resource-cell resource-connection-cell"><span class="status-label {resourceConnectionClass(resource)}">{resourceConnectionLabel(resource)}</span><small>连接状态</small></span>
+                      <span class="resource-cell resource-connection-cell"
+                        ><span
+                          class="status-label {resourceConnectionClass(
+                            resource
+                          )}">{resourceConnectionLabel(resource)}</span
+                        ><small>连接状态</small></span
+                      >
                       <span class="resource-row-actions" aria-label="资源操作">
-                        <button class="icon-button" type="button" on:click|stopPropagation={() => void testResourceRowConnection(resource)} disabled={busy || connectionBusy || !resourceHasConnector(resource)} title={resourceHasConnector(resource) ? '连接测试' : '此资源暂不支持连接测试'} aria-label="连接测试"><PlugZap size={15} aria-hidden="true" /></button>
-                        <button class="icon-button" type="button" on:click|stopPropagation={() => void openResourceEditor(resource)} disabled={busy || !resourceCanManage(resource, 'resource:update')} title={resourceCanManage(resource, 'resource:update') ? '编辑资源' : '无编辑权限'} aria-label="编辑资源"><Pencil size={15} aria-hidden="true" /></button>
-                        <button class="icon-button danger-action" type="button" on:click|stopPropagation={() => void loadResourceDetails(resource.id).then(deleteSelectedResource)} disabled={busy || !resourceCanManage(resource, 'resource:delete')} title={resourceCanManage(resource, 'resource:delete') ? '删除资源' : '无删除权限'} aria-label="删除资源"><Trash2 size={15} aria-hidden="true" /></button>
+                        <button
+                          class="icon-button"
+                          type="button"
+                          on:click|stopPropagation={() =>
+                            void testResourceRowConnection(resource)}
+                          disabled={busy ||
+                            connectionBusy ||
+                            !resourceHasConnector(resource)}
+                          title={resourceHasConnector(resource)
+                            ? '连接测试'
+                            : '此资源暂不支持连接测试'}
+                          aria-label="连接测试"
+                          ><PlugZap size={15} aria-hidden="true" /></button
+                        >
+                        <button
+                          class="icon-button"
+                          type="button"
+                          on:click|stopPropagation={() =>
+                            void openResourceEditor(resource)}
+                          disabled={busy ||
+                            !resourceCanManage(resource, 'resource:update')}
+                          title={resourceCanManage(resource, 'resource:update')
+                            ? '编辑资源'
+                            : '无编辑权限'}
+                          aria-label="编辑资源"
+                          ><Pencil size={15} aria-hidden="true" /></button
+                        >
+                        <button
+                          class="icon-button danger-action"
+                          type="button"
+                          on:click|stopPropagation={() =>
+                            void loadResourceDetails(resource.id).then(
+                              deleteSelectedResource
+                            )}
+                          disabled={busy ||
+                            !resourceCanManage(resource, 'resource:delete')}
+                          title={resourceCanManage(resource, 'resource:delete')
+                            ? '删除资源'
+                            : '无删除权限'}
+                          aria-label="删除资源"
+                          ><Trash2 size={15} aria-hidden="true" /></button
+                        >
                       </span>
                     </summary>
                     <div class="resource-row-details">
-                      <div><span>资源地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
-                      <div><span>连接测试</span><strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? '连接正常' : '连接失败' : '展开后可测试'}</strong></div>
-                      <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
+                      <div>
+                        <span>资源地址</span><strong
+                          >{resourceEndpointFor(resource)}</strong
+                        >
+                      </div>
+                      <div>
+                        <span>连接测试</span><strong
+                          >{selectedResourceId === resource.id &&
+                          connectionCheck
+                            ? connectionCheck.status === 'succeeded'
+                              ? '连接正常'
+                              : '连接失败'
+                            : '展开后可测试'}</strong
+                        >
+                      </div>
+                      <div>
+                        <span>管理范围</span><strong
+                          >{resourceCanManage(resource, 'resource:update')
+                            ? '当前 Scope 可管理'
+                            : '继承资源，仅限查看'}</strong
+                        >
+                      </div>
                     </div>
                   </details>
                 {:else}<div class="empty-state">没有匹配的资源。</div>{/each}
@@ -4393,13 +5212,20 @@
             </section>
             {#if resourceAddMenuOpen}
               <div class="resource-add-menu" role="menu">
-                <div class="resource-add-menu-heading">选择要添加的资源子类</div>
+                <div class="resource-add-menu-heading">
+                  选择要添加的资源子类
+                </div>
                 {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部' && (resourceCategory === '全部' || name === resourceCategory)) as [category, subtypes]}
                   <div class="resource-add-menu-group">
                     <strong>{category}</strong>
                     <div>
                       {#each subtypes as subtype}
-                        <button type="button" on:click={() => chooseResourceAddSubtype(category, subtype)}>{subtype}</button>
+                        <button
+                          type="button"
+                          on:click={() =>
+                            chooseResourceAddSubtype(category, subtype)}
+                          >{subtype}</button
+                        >
                       {/each}
                     </div>
                   </div>
@@ -4407,84 +5233,102 @@
               </div>
             {/if}
             {#if resourceEditorOpen}
-              <div class="resource-add-dialog-backdrop" role="presentation" on:click={() => (resourceEditorOpen = false)}>
-                <section class="panel resource-add-dialog" aria-labelledby="resource-add-title">
+              <div
+                class="resource-add-dialog-backdrop"
+                role="presentation"
+                on:click={() => (resourceEditorOpen = false)}
+              >
+                <section
+                  class="panel resource-add-dialog"
+                  aria-labelledby="resource-add-title"
+                >
                   <div class="panel-heading">
                     <div>
                       <p class="eyebrow">ADD RESOURCE</p>
-                      <h2 id="resource-add-title">添加{resourceAddCategory} · {resourceAddSubtype}</h2>
+                      <h2 id="resource-add-title">
+                        添加{resourceAddCategory} · {resourceAddSubtype}
+                      </h2>
                     </div>
-                    <button class="quiet-button" type="button" on:click={() => (resourceEditorOpen = false)}>关闭</button>
+                    <button
+                      class="quiet-button"
+                      type="button"
+                      on:click={() => (resourceEditorOpen = false)}>关闭</button
+                    >
                   </div>
-                  <form class="stack-form" on:submit|preventDefault={createResource}>
-                <label
-                  >名称<input
-                    bind:value={resourceName}
-                    required
-                    placeholder="例如 production-postgres"
-                  /></label
-                >
-                <div class="form-row">
-                  <label
-                    >状态<select bind:value={resourceStatus}
-                      ><option value="active">active</option><option
-                        value="disabled">disabled</option
-                      ><option value="unknown">unknown</option></select
-                    ></label
-                  ><label
-                    >标签<input
-                      bind:value={resourceLabels}
-                      placeholder="env=prod, owner=platform"
-                      autocomplete="off"
-                    /></label
+                  <form
+                    class="stack-form"
+                    on:submit|preventDefault={createResource}
                   >
-                </div>
-                {#if createSchema?.schema.properties}
-                  <div class="schema-inputs">
-                    <p class="eyebrow">SCHEMA FIELDS</p>
-                    {#each Object.entries(createSchema.schema.properties) as [key, field]}
+                    <label
+                      >名称<input
+                        bind:value={resourceName}
+                        required
+                        placeholder="例如 production-postgres"
+                      /></label
+                    >
+                    <div class="form-row">
                       <label
-                        >{field.title || key}{#if field.sensitive}<input
-                            type="password"
-                            bind:value={resourceSensitiveValues[key]}
-                            placeholder="敏感信息将加密保存"
-                            autocomplete="new-password"
-                          />{:else if field.enum}<select
-                            bind:value={resourceConfigValues[key]}
-                            ><option value="">未设置</option
-                            >{#each field.enum as option}<option value={option}
-                                >{option}</option
-                              >{/each}</select
-                          >{:else if field.type === 'array'}<textarea
-                            bind:value={resourceConfigValues[key]}
-                            rows="4"
-                            placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
-                            spellcheck="false"
-                          ></textarea>{:else}<input
-                            bind:value={resourceConfigValues[key]}
-                            type={field.type === 'number' ||
-                            field.type === 'integer'
-                              ? 'number'
-                              : field.type === 'url' || field.format === 'uri'
-                                ? 'url'
-                                : 'text'}
-                            placeholder={field.description || key}
-                            autocomplete="off"
-                          />{/if}</label
+                        >状态<select bind:value={resourceStatus}
+                          ><option value="active">active</option><option
+                            value="disabled">disabled</option
+                          ><option value="unknown">unknown</option></select
+                        ></label
+                      ><label
+                        >标签<input
+                          bind:value={resourceLabels}
+                          placeholder="env=prod, owner=platform"
+                          autocomplete="off"
+                        /></label
                       >
-                    {/each}
-                  </div>
-                {:else}
-                  <label
-                    >配置 JSON<textarea
-                      bind:value={resourceConfig}
-                      rows="4"
-                      spellcheck="false"
-                    ></textarea></label
-                  >
-                {/if}<button class="primary" disabled={busy || !selectedScopeId}
-                  >创建资源</button
-                >
+                    </div>
+                    {#if createSchema?.schema.properties}
+                      <div class="schema-inputs">
+                        <p class="eyebrow">SCHEMA FIELDS</p>
+                        {#each Object.entries(createSchema.schema.properties) as [key, field]}
+                          <label
+                            >{field.title || key}{#if field.sensitive}<input
+                                type="password"
+                                bind:value={resourceSensitiveValues[key]}
+                                placeholder="敏感信息将加密保存"
+                                autocomplete="new-password"
+                              />{:else if field.enum}<select
+                                bind:value={resourceConfigValues[key]}
+                                ><option value="">未设置</option
+                                >{#each field.enum as option}<option
+                                    value={option}>{option}</option
+                                  >{/each}</select
+                              >{:else if field.type === 'array'}<textarea
+                                bind:value={resourceConfigValues[key]}
+                                rows="4"
+                                placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
+                                spellcheck="false"
+                              ></textarea>{:else}<input
+                                bind:value={resourceConfigValues[key]}
+                                type={field.type === 'number' ||
+                                field.type === 'integer'
+                                  ? 'number'
+                                  : field.type === 'url' ||
+                                      field.format === 'uri'
+                                    ? 'url'
+                                    : 'text'}
+                                placeholder={field.description || key}
+                                autocomplete="off"
+                              />{/if}</label
+                          >
+                        {/each}
+                      </div>
+                    {:else}
+                      <label
+                        >配置 JSON<textarea
+                          bind:value={resourceConfig}
+                          rows="4"
+                          spellcheck="false"
+                        ></textarea></label
+                      >
+                    {/if}<button
+                      class="primary"
+                      disabled={busy || !selectedScopeId}>创建资源</button
+                    >
                   </form>
                 </section>
               </div>
@@ -4504,7 +5348,9 @@
                     class="danger-button"
                     on:click={deleteSelectedResource}
                     disabled={busy || !selectedResourceCanDelete}
-                    title={selectedResourceCanDelete ? '停用资源' : '继承资源仅可查看'}>停用</button
+                    title={selectedResourceCanDelete
+                      ? '停用资源'
+                      : '继承资源仅可查看'}>停用</button
                   >
                 </div>
                 <div class="detail-meta">
@@ -4624,7 +5470,13 @@
                       ></textarea></label
                     >
                   {/if}
-                  <button class="secondary" disabled={busy || !selectedResourceCanUpdate} title={selectedResourceCanUpdate ? '保存资源修改' : '继承资源仅可查看'}>保存修改</button>
+                  <button
+                    class="secondary"
+                    disabled={busy || !selectedResourceCanUpdate}
+                    title={selectedResourceCanUpdate
+                      ? '保存资源修改'
+                      : '继承资源仅可查看'}>保存修改</button
+                  >
                 </form>
                 {#if selectedSchema?.schema.properties}<div
                     class="schema-fields"
@@ -5384,217 +6236,945 @@
         {#if view === 'ai'}
           <section class="ai-health-page">
             <div class="ai-health-metrics">
-              <div class="ai-health-metric"><span>可用引擎</span><strong>{aiEngineHealthyCount}</strong><small>可被业务调用</small></div>
-              <div class="ai-health-metric"><span>健康 Endpoint</span><strong>{aiEngineHealthyEndpointCount} / {aiEngineEndpointCount}</strong><small>当前 Scope 可见成员</small></div>
-              <div class="ai-health-metric"><span>默认引擎</span><strong>{aiEngines.filter((engine) => Boolean(engine.config.default)).length}</strong><small>平台、团队或项目</small></div>
-              <div class="ai-health-metric"><span>待处理</span><strong>{aiEngineRepairCount}</strong><small>需要重新测试</small></div>
+              <div class="ai-health-metric">
+                <span>可用引擎</span><strong>{aiEngineHealthyCount}</strong
+                ><small>可被业务调用</small>
+              </div>
+              <div class="ai-health-metric">
+                <span>健康 Endpoint</span><strong
+                  >{aiEngineHealthyEndpointCount} / {aiEngineEndpointCount}</strong
+                ><small>当前 Scope 可见成员</small>
+              </div>
+              <div class="ai-health-metric">
+                <span>默认引擎</span><strong
+                  >{aiEngines.filter((engine) => Boolean(engine.config.default))
+                    .length}</strong
+                ><small>平台、团队或项目</small>
+              </div>
+              <div class="ai-health-metric">
+                <span>待处理</span><strong>{aiEngineRepairCount}</strong><small
+                  >需要重新测试</small
+                >
+              </div>
             </div>
             {#if !aiEngineCreateOpen}
-            <section class="panel ai-engine-list-panel">
-              <div class="ai-engine-toolbar">
-                <div><h2>引擎列表</h2><small>一个引擎可以包含一个或多个私有 Endpoint；业务调用只感知引擎，不直接选择具体模型。</small></div>
-                <div class="ai-engine-toolbar-actions"><div class="ai-engine-filters"><input class="ai-engine-search" bind:value={aiEngineSearch} placeholder="搜索名称、Scope 或用途" aria-label="搜索 AI 引擎" /><select bind:value={aiEngineStatusFilter} aria-label="引擎状态"><option value="all">全部状态</option><option value="active">启用</option><option value="disabled">已停用</option></select><select bind:value={aiEngineScopeFilter} aria-label="引擎 Scope"><option value="all">全部 Scope</option><option value="platform">平台</option><option value="team">团队</option><option value="project">项目</option></select></div><button class="secondary" type="button" on:click={() => void refreshAIEngines()} disabled={busy}><RefreshCw size={14} aria-hidden="true" />刷新状态</button><button class="primary" type="button" on:click={openAIEngineCreate}><Plus size={14} aria-hidden="true" />添加 AI 引擎</button></div>
-              </div>
-              <div class="ai-engine-list">
-                {#each visibleAIEngines as engine}
-                  {@const endpoints = aiEngineEndpointsFor(engine)}
-                  {@const capabilities = aiEngineCapabilities(engine)}
-                  <article class="ai-engine-row" class:expanded={expandedAIEngineId === engine.id}>
-                    <button class="ai-engine-row-main" type="button" on:click={() => (expandedAIEngineId = expandedAIEngineId === engine.id ? '' : engine.id)} aria-expanded={expandedAIEngineId === engine.id}>
-                      <span class="ai-engine-icon"><Sparkles size={18} aria-hidden="true" /></span><span class="ai-engine-identity"><strong>{engine.name}</strong><small>{aiEngineDescription(engine) || '统一模型调用入口'}</small></span><span class="ai-engine-scope"><b>{scopeName(engine.scope_id)}</b><small>{scopeType(engine.scope_id)}级</small></span><span class="ai-engine-capabilities"><small>能力交集</small><span>{#each capabilities as capability}<em>{aiCapabilityLabel(capability)}</em>{:else}<em class="muted-chip">待计算</em>{/each}</span></span><span class="ai-engine-health"><span class="status-label {aiEngineStatusClass(engine)}">{aiEngineStatusLabel(engine)}</span><small>{endpoints.length} 个成员 · {String(engine.config.strategy || 'priority')} 路由</small></span><ChevronDown size={17} class="ai-engine-chevron" aria-hidden="true" />
-                    </button>
-                    {#if expandedAIEngineId === engine.id}
-                      <div class="ai-engine-row-details"><div class="ai-endpoint-list">{#each endpoints as endpoint, endpointIndex}<div class="ai-endpoint-row"><span class="endpoint-health-dot {aiEndpointHealthClass(endpoint)}"></span><span><strong>{endpoint.provider_type} / {endpoint.model_name}</strong><small>优先级 {endpoint.priority} · {endpoint.context_window.toLocaleString()} 上下文 · {endpoint.base_url}</small></span><span class="ai-endpoint-caps">{#each endpoint.capabilities as capability}<em>{aiCapabilityLabel(capability)}</em>{/each}</span><span class="status-label {aiEndpointHealthClass(endpoint)}">{aiEndpointHealthLabel(endpoint)}</span></div>{/each}</div><aside class="ai-engine-detail-aside"><h3>路由与权限</h3><p>按优先级调用。超时、限流和服务端错误允许切换；已经开始流式输出时不会切换。</p><div><span>默认状态</span><strong>{engine.config.default ? '当前 Scope 默认' : '未设置'}</strong></div><div><span>故障切换</span><strong>受限可恢复错误</strong></div><div><span>凭据</span><strong>加密引用，不展示明文</strong></div><div class="ai-detail-actions"><button class="secondary" type="button" on:click={() => void testAIEngine(engine)} disabled={aiEngineEndpointTestBusy || endpoints.length === 0}><PlugZap size={14} aria-hidden="true" />测试首选成员</button><button class="quiet-button" type="button" on:click={() => editAIEngine(engine)}><Pencil size={14} aria-hidden="true" />编辑配置</button></div></aside></div>
-                    {/if}
-                  </article>
-                {:else}<div class="empty-state"><span class="empty-icon">✦</span><h2>暂无 AI 引擎</h2><p>当前 Scope 还没有可用的统一模型入口。</p></div>{/each}
-              </div>
-            </section>
+              <section class="panel ai-engine-list-panel">
+                <div class="ai-engine-toolbar">
+                  <div>
+                    <h2>引擎列表</h2>
+                    <small
+                      >AI 引擎是可包含多个大模型Endpoint的统一能力入口.</small
+                    >
+                  </div>
+                  <div class="ai-engine-toolbar-actions">
+                    <div class="ai-engine-filters">
+                      <input
+                        class="ai-engine-search"
+                        bind:value={aiEngineSearch}
+                        placeholder="搜索名称、级别或用途"
+                        aria-label="搜索 AI 引擎"
+                      /><select
+                        bind:value={aiEngineStatusFilter}
+                        aria-label="引擎状态"
+                        ><option value="all">全部状态</option><option
+                          value="active">启用</option
+                        ><option value="disabled">已停用</option></select
+                      ><select
+                        bind:value={aiEngineScopeFilter}
+                        aria-label="引擎级别"
+                        ><option value="all">全部级别</option><option
+                          value="platform">平台</option
+                        ><option value="team">团队</option><option
+                          value="project">项目</option
+                        ></select
+                      >
+                    </div>
+                    <button
+                      class="secondary"
+                      type="button"
+                      on:click={() => void refreshAIEngines()}
+                      disabled={busy || aiEngineRefreshing}
+                      ><RefreshCw
+                        size={14}
+                        aria-hidden="true"
+                      />刷新状态</button
+                    ><button
+                      class="primary"
+                      type="button"
+                      on:click={openAIEngineCreate}
+                      ><Plus size={14} aria-hidden="true" />添加 AI 引擎</button
+                    >
+                  </div>
+                </div>
+                <div class="ai-engine-list">
+                  {#each visibleAIEngines as engine}
+                    {@const endpoints = aiEngineEndpointsFor(engine)}
+                    {@const capabilities = aiEngineCapabilities(engine)}
+                    <article
+                      class="ai-engine-row"
+                      class:expanded={expandedAIEngineId === engine.id}
+                    >
+                      <div
+                        class="ai-engine-row-main"
+                        role="button"
+                        tabindex="0"
+                        on:click={() =>
+                          (expandedAIEngineId =
+                            expandedAIEngineId === engine.id ? '' : engine.id)}
+                        on:keydown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            expandedAIEngineId =
+                              expandedAIEngineId === engine.id ? '' : engine.id;
+                          }
+                        }}
+                        aria-expanded={expandedAIEngineId === engine.id}
+                      >
+                        <span class="ai-engine-icon"
+                          ><svelte:component
+                            this={teamIconComponent(aiEngineIconFor(engine))}
+                            size={18}
+                            aria-hidden="true"
+                          /></span
+                        ><span class="ai-engine-identity"
+                          ><small class="ai-engine-column-label">引擎</small><strong
+                            >{engine.name}</strong
+                          ><small class="ai-engine-description"
+                            >大模型统一能力入口</small
+                          ></span
+                        ><span class="ai-engine-scope"
+                          ><small class="ai-engine-column-label">级别</small><b
+                            class="ai-scope-badge {scopeType(engine.scope_id)}"
+                            >{scopeLevelLabel(scopeType(engine.scope_id))}</b
+                          ><span class="ai-engine-scope-name"
+                            >{scopeName(engine.scope_id)}</span
+                          ></span
+                        ><span class="ai-engine-default"
+                          ><small class="ai-engine-column-label">默认</small><button
+                            class="ai-switch"
+                            class:on={Boolean(engine.config.default)}
+                            type="button"
+                            role="switch"
+                            aria-checked={Boolean(engine.config.default)}
+                            aria-label={engine.config.default ? `取消 ${engine.name} 默认` : `设为 ${engine.name} 默认`}
+                            on:click={(event) => {
+                              event.stopPropagation();
+                              void toggleAIEngineDefault(engine);
+                            }}
+                            ><span></span></button><small
+                            class="ai-engine-column-hint">级别内唯一</small></span
+                        ><span class="ai-engine-capabilities"
+                          ><small class="ai-engine-column-label">能力</small><span
+                            >{#each capabilities as capability}<em
+                                >{aiCapabilityLabel(capability)}</em
+                              >{:else}<em class="muted-chip">待计算</em
+                              >{/each}</span><small
+                            class="ai-engine-column-hint"
+                            >大模型Endpoint能力交集</small
+                          ></span
+                        ><span class="ai-engine-health">
+                          <small class="ai-engine-column-label">状态</small>
+                          {#if aiEngineRefreshing}
+                            <span class="ai-engine-refreshing-state">
+                              <RefreshCw
+                                class="ai-refreshing-icon"
+                                size={15}
+                                aria-label="正在刷新"
+                              /><span class="sr-only">正在刷新</span>
+                            </span>
+                          {:else}
+                            <span class="status-label {aiEngineStatusClass(engine)}">
+                              {aiEngineStatusLabel(engine)} {aiEngineHealthRatio(engine)}
+                            </span>
+                          {/if}
+                          <span class="ai-engine-health-meta">
+                            {endpoints.length} 个成员 · {String(engine.config.strategy || 'priority')} 路由
+                          </span>
+                        </span>
+                        <span
+                          class="ai-engine-chevron"
+                          data-tooltip={expandedAIEngineId === engine.id
+                            ? '收起模型详情'
+                            : '展开模型详情'}
+                        >
+                          <ChevronDown size={17} aria-hidden="true" />
+                          <span class="sr-only">
+                            {expandedAIEngineId === engine.id
+                              ? '收起模型详情'
+                              : '展开模型详情'}
+                          </span>
+                        </span>
+                      </div>
+                      {#if expandedAIEngineId === engine.id}
+                        <div class="ai-engine-row-details">
+                          <div class="ai-endpoint-list">
+                            {#each endpoints as endpoint, endpointIndex}<div
+                                class="ai-endpoint-row"
+                              >
+                                <span
+                                  class="endpoint-health-dot {aiEndpointHealthClass(
+                                    endpoint
+                                  )}"
+                                ></span><span
+                                  ><strong
+                                    >{endpoint.provider_type} / {endpoint.model_name}</strong
+                                  ><small
+                                    >优先级 {endpoint.priority} · {endpoint.context_window.toLocaleString()}
+                                    上下文 · {endpoint.base_url}</small
+                                  ></span
+                                ><span class="ai-endpoint-caps"
+                                  >{#each endpoint.capabilities as capability}<em
+                                      >{aiCapabilityLabel(capability)}</em
+                                    >{/each}</span
+                                ><span
+                                  class="status-label {aiEndpointHealthClass(
+                                    endpoint
+                                  )}">{aiEndpointHealthLabel(endpoint)}</span
+                                >
+                              </div>{/each}
+                          </div>
+                          <aside class="ai-engine-detail-aside">
+                            <h3>路由与权限</h3>
+                            <p>
+                              按优先级调用。超时、限流和服务端错误允许切换；已经开始流式输出时不会切换。
+                            </p>
+                            <div>
+                              <span>默认状态</span><strong
+                                >{engine.config.default
+                                  ? '当前 Scope 默认'
+                                  : '未设置'}</strong
+                              >
+                            </div>
+                            <div>
+                              <span>故障切换</span><strong
+                                >受限可恢复错误</strong
+                              >
+                            </div>
+                            <div>
+                              <span>凭据</span><strong
+                                >加密引用，不展示明文</strong
+                              >
+                            </div>
+                            <div class="ai-detail-actions">
+                              <button
+                                class="secondary"
+                                type="button"
+                                on:click={() => void testAIEngine(engine)}
+                                disabled={aiEngineEndpointTestBusy ||
+                                  endpoints.length === 0}
+                                ><PlugZap
+                                  size={14}
+                                  aria-hidden="true"
+                                />测试首选成员</button
+                              ><button
+                                class="quiet-button"
+                                type="button"
+                                on:click={() => editAIEngine(engine)}
+                                ><Pencil
+                                  size={14}
+                                  aria-hidden="true"
+                                />编辑配置</button
+                              >
+                            </div>
+                          </aside>
+                        </div>
+                      {/if}
+                    </article>
+                  {:else}<div class="empty-state">
+                      <span class="empty-icon">✦</span>
+                      <h2>暂无 AI 引擎</h2>
+                      <p>当前 Scope 还没有可用的统一模型入口。</p>
+                    </div>{/each}
+                </div>
+              </section>
             {:else}
-              <section class="panel ai-engine-create-panel" aria-labelledby="ai-engine-create-title"><div class="panel-heading"><div><p class="eyebrow">NEW AI ENGINE</p><h2 id="ai-engine-create-title">创建 AI 引擎</h2></div><button class="quiet-button" type="button" on:click={closeAIEngineCreate}>关闭</button></div><div class="ai-wizard"><nav class="ai-wizard-steps" aria-label="创建步骤">{#each ['基础信息', '能力意图', '连接成员', '路由策略', '测试发布'] as step, index}<button type="button" class:active={aiEngineCreateStep === index + 1} class:done={aiEngineCreateStep > index + 1} on:click={() => (aiEngineCreateStep = index + 1)}><b>{aiEngineCreateStep > index + 1 ? '✓' : index + 1}</b><span>{step}</span></button>{/each}</nav><form class="ai-wizard-content" on:submit|preventDefault={() => aiEngineCreateStep < 5 ? (aiEngineCreateStep += 1) : void createAIEngine()}>
-                {#if aiEngineCreateStep === 1}<h3>基础信息</h3><p>定义用户识别的统一能力入口；不再选择单模态或多模态子类。</p><div class="ai-form-grid"><label>名称<input bind:value={aiEngineName} required placeholder="例如：生产诊断中枢" /></label><label>所属 Scope<select bind:value={selectedScopeId} required>{#each scopeChoices as scope}<option value={scope.id}>{scope.name} · {scope.type}</option>{/each}</select></label><label class="full">用途说明<textarea bind:value={aiEngineCreateDescription} placeholder="例如：截图诊断、日志分析和受控 Skill"></textarea></label></div>{:else if aiEngineCreateStep === 2}<h3>能力意图</h3><p>选择业务需要的能力，发布时会与所有启用 Endpoint 的能力交集进行校验。</p><div class="ai-capability-picker">{#each [['chat','文本对话','文本消息与流式文本输出'],['vision','视觉输入','图片、截图或图表证据'],['audio','音频输入','音频证据与转写'],['tool_calling','工具调用','受控 Skill 与结构化动作'],['structured_output','结构化输出','JSON Schema 约束响应'],['stream','流式输出','实时显示模型响应'],['long_context','长上下文','上下文窗口达到 128k']] as capability}<button type="button" class:active={aiEngineCreateCapabilities.includes(capability[0] as AIEngineCapability)} on:click={() => toggleAIEngineCapability(capability[0] as AIEngineCapability)}><strong>{capability[1]}</strong><small>{capability[2]}</small></button>{/each}</div><div class="ai-form-note">最终能力 = 所有启用 Endpoint 的能力交集；上下文窗口取成员最小值。</div>{:else if aiEngineCreateStep === 3}<h3>连接成员</h3><p>每个成员是独立的 Provider、模型和加密凭据组合。</p><div class="ai-endpoint-editor">{#each aiEngineCreateEndpoints as endpoint, index}<div class="ai-endpoint-card"><div class="ai-endpoint-card-heading"><strong>成员 {index + 1}</strong><button class="icon-button danger-action" type="button" aria-label="移除成员" on:click={() => removeAIEndpoint(index)} disabled={aiEngineCreateEndpoints.length <= 1}><Trash2 size={14} aria-hidden="true" /></button></div><div class="ai-form-grid"><label>Provider<select value={endpoint.provider_type} on:change={(event) => updateAIEndpoint(index, { provider_type: event.currentTarget.value })}><option value="openai">OpenAI</option><option value="openai_compatible">OpenAI Compatible</option><option value="azure_openai">Azure OpenAI</option></select></label><label>模型名称<input value={endpoint.model_name} on:input={(event) => updateAIEndpoint(index, { model_name: event.currentTarget.value })} required placeholder="例如：gpt-4.1" /></label><label>Base URL<input value={endpoint.base_url} on:input={(event) => updateAIEndpoint(index, { base_url: event.currentTarget.value })} required placeholder="https://api.example.com/v1" /></label><label>上下文窗口<input type="number" value={endpoint.context_window} on:input={(event) => updateAIEndpoint(index, { context_window: Number(event.currentTarget.value) })} min="1" required /></label><label>超时秒数<input type="number" value={endpoint.timeout_seconds} on:input={(event) => updateAIEndpoint(index, { timeout_seconds: Number(event.currentTarget.value) })} min="1" max="300" required /></label><label>成员优先级<input type="number" value={endpoint.priority} on:input={(event) => updateAIEndpoint(index, { priority: Number(event.currentTarget.value) })} min="0" required /></label></div><div class="ai-inline-capabilities"><span>成员能力</span>{#each ['chat','vision','audio','tool_calling','structured_output','stream','long_context'] as capability}<button type="button" class:active={endpoint.capabilities.includes(capability)} on:click={() => updateAIEndpoint(index, { capabilities: endpoint.capabilities.includes(capability) ? endpoint.capabilities.filter((item) => item !== capability) : [...endpoint.capabilities, capability] })}>{aiCapabilityLabel(capability)}</button>{/each}</div></div>{/each}<button class="secondary" type="button" on:click={addAIEndpoint}><Plus size={14} aria-hidden="true" />添加成员</button></div>{:else if aiEngineCreateStep === 4}<h3>路由策略</h3><p>首版固定使用优先级路由，数字越大越先调用；仅在可恢复错误时切换。</p><div class="ai-route-choice"><button type="button" class="active"><strong>优先级路由</strong><small>按成员优先级从高到低尝试，稳定且可解释。</small></button></div><fieldset class="ai-fallback-picker"><legend>故障切换条件</legend>{#each [['timeout','连接超时'],['rate_limit','Provider 限流'],['server_error','Provider 5xx']] as fallback}<label><input type="checkbox" checked={aiEngineCreateFallback.includes(fallback[0])} on:change={() => toggleAIEngineFallback(fallback[0])} />{fallback[1]}</label>{/each}</fieldset><div class="ai-form-note">参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。</div>{:else}<h3>测试与发布</h3><p>发布前检查资源、成员协议、能力交集和默认设置。</p><div class="ai-review-list"><div><span>名称</span><strong>{aiEngineName || '未填写'}</strong></div><div><span>成员数</span><strong>{aiEngineCreateEndpoints.length}</strong></div><div><span>能力意图</span><strong>{aiEngineCreateCapabilities.map(aiCapabilityLabel).join('、') || '未选择'}</strong></div><div><span>故障切换</span><strong>{aiEngineCreateFallback.map((item) => item === 'timeout' ? '超时' : item === 'rate_limit' ? '限流' : '5xx').join('、') || '不自动切换'}</strong></div></div><div class="ai-form-note">创建后可以在列表中展开成员，单独测试首选连接；API Token 仅保存到加密凭据。</div>{/if}<div class="ai-wizard-footer"><button class="secondary" type="button" on:click={() => aiEngineCreateStep > 1 ? (aiEngineCreateStep -= 1) : closeAIEngineCreate()}>{aiEngineCreateStep > 1 ? '上一步' : '取消'}</button><button class="primary" type="submit" disabled={busy || (aiEngineCreateStep === 1 && !aiEngineName.trim())}>{aiEngineCreateStep < 5 ? '下一步' : '发布 AI 引擎'}</button></div></form></div></section>
-          {/if}
+              <section
+                class="panel ai-engine-create-panel"
+                aria-labelledby="ai-engine-create-title"
+              >
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">NEW AI ENGINE</p>
+                    <h2 id="ai-engine-create-title">创建 AI 引擎</h2>
+                  </div>
+                  <button
+                    class="quiet-button"
+                    type="button"
+                    on:click={closeAIEngineCreate}>关闭</button
+                  >
+                </div>
+                <div class="ai-wizard">
+                  <nav class="ai-wizard-steps" aria-label="创建步骤">
+                    {#each ['基础信息', '添加模型', '路由策略', '发布总结'] as step, index}<button
+                        type="button"
+                        class:active={aiEngineCreateStep === index + 1}
+                        class:done={aiEngineCreateStep > index + 1}
+                        on:click={() => (aiEngineCreateStep = index + 1)}
+                        ><b
+                          >{aiEngineCreateStep > index + 1 ? '✓' : index + 1}</b
+                        ><span>{step}</span></button
+                      >{/each}
+                  </nav>
+                  <form
+                    class="ai-wizard-content"
+                    on:submit|preventDefault={() =>
+                      aiEngineCreateStep < 4
+                        ? (aiEngineCreateStep += 1)
+                        : void createAIEngine()}
+                  >
+                    <div class="ai-step-heading">
+                      <h3>
+                        {aiEngineCreateStep === 1
+                          ? '基础信息'
+                          : aiEngineCreateStep === 2
+                            ? '添加模型'
+                            : aiEngineCreateStep === 3
+                              ? '路由策略'
+                              : '发布总结'}
+                      </h3>
+                      {#if aiEngineCreateStep === 2 && aiEngineModelError}
+                        <span
+                          class="ai-step-error"
+                          class:testing={aiEngineModelTesting}
+                          role="alert">{aiEngineModelError}</span
+                        >
+                      {/if}
+                      <div class="ai-step-actions">
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() =>
+                            aiEngineCreateStep > 1
+                              ? (aiEngineCreateStep -= 1)
+                              : closeAIEngineCreate()}
+                          >{aiEngineCreateStep > 1 ? '上一步' : '取消'}</button
+                        ><button
+                          class="primary"
+                          type="submit"
+                          disabled={busy ||
+                            (aiEngineCreateStep === 1 &&
+                              !aiEngineName.trim()) ||
+                            (aiEngineCreateStep === 2 &&
+                              aiEngineCreateEndpoints.length === 0)}
+                          >{aiEngineCreateStep < 4
+                            ? '下一步'
+                            : '发布 AI 引擎'}</button
+                        >
+                      </div>
+                    </div>
+                    {#if aiEngineCreateStep === 1}
+                      <p>
+                        定义用户大模型引擎的统一能力入口；AI
+                        引擎可从多个大模型Endpoint中进行调度。
+                      </p>
+                      <div class="ai-form-grid">
+                        <div class="ai-engine-name-field">
+                          <button
+                            class="team-icon-picker-trigger"
+                            type="button"
+                            aria-label="选择 AI 引擎图标"
+                            data-tooltip="选择 AI 引擎图标"
+                            on:click={openAIEngineIconPicker}
+                            ><span class="entity-icon team-icon"
+                              ><svelte:component
+                                this={teamIconComponent(aiEngineIcon)}
+                                size={16}
+                                strokeWidth={1.8}
+                              /></span
+                            ></button
+                          >
+                          <label
+                            ><span
+                              >名称<span
+                                class="required-mark"
+                                aria-hidden="true">*</span
+                              ></span
+                            ><input
+                              bind:value={aiEngineName}
+                              required
+                              placeholder="例如：生产诊断中枢"
+                            /></label
+                          >
+                        </div>
+                        <div class="ai-engine-scope-default-fields">
+                          <label
+                            ><span
+                              >级别<span class="required-mark" aria-hidden="true"
+                                >*</span
+                              ></span
+                            ><select bind:value={selectedScopeId} required
+                              >{#each scopeChoices as scope}<option
+                                  value={scope.id}
+                                  >{scope.type === 'platform'
+                                    ? scopeLevelLabel(scope.type)
+                                    : `${scope.name} · ${scopeLevelLabel(scope.type)}`}</option
+                                >{/each}</select
+                            ></label
+                          ><label class="ai-default-field"
+                            ><span>默认引擎</span><button
+                              class="ai-switch"
+                              class:on={aiEngineCreateDefault}
+                              type="button"
+                              role="switch"
+                              aria-checked={aiEngineCreateDefault}
+                              aria-label="设置为默认 AI 引擎"
+                              on:click={() => (aiEngineCreateDefault = !aiEngineCreateDefault)}
+                              ><span></span></button></label>
+                        </div>
+                        <label class="full"
+                          >用途说明<textarea
+                            bind:value={aiEngineCreateDescription}
+                            placeholder="例如：截图诊断、日志分析和受控 Skill"
+                          ></textarea></label
+                        >
+                      </div>{:else if aiEngineCreateStep === 2}
+                      <p>
+                        先填写模型连接信息，再添加到引擎；添加后会自动计算能力并检查连接状态。
+                      </p>
+                      <div class="ai-model-entry-form">
+                        <div class="ai-model-form-row">
+                          <label
+                            ><span
+                              >模型厂商<span
+                                class="required-mark"
+                                aria-hidden="true">*</span
+                              ></span
+                            ><div
+                              class="ai-provider-picker"
+                              class:ai-field-invalid={aiEngineModelFieldMissing('provider')}
+                            ><button
+                                class="ai-provider-trigger"
+                                type="button"
+                                aria-label="选择模型厂商"
+                                aria-expanded={aiProviderMenuOpen}
+                                on:click={() => (aiProviderMenuOpen = !aiProviderMenuOpen)}
+                                ><svelte:component this={teamIconComponent(aiProviderOption(aiEngineCreateDraft.provider_type).icon)} size={15} aria-hidden="true" /><span>{aiProviderOption(aiEngineCreateDraft.provider_type).label}</span><ChevronDown size={14} aria-hidden="true" /></button
+                              >{#if aiProviderMenuOpen}<div class="ai-provider-menu" role="listbox">
+                                {#each aiProviderOptions as provider}<button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={provider.value === aiEngineCreateDraft.provider_type}
+                                    on:click={() => selectAIProvider(provider.value)}
+                                    ><svelte:component this={teamIconComponent(provider.icon)} size={15} aria-hidden="true" /><span>{provider.label}</span></button
+                                  >{/each}
+                              </div>{/if}</div
+                            ></label
+                          ><label
+                            ><span
+                              >模型地址<span
+                                class="required-mark"
+                                aria-hidden="true">*</span
+                              ></span
+                            ><input
+                              class:ai-field-invalid={aiEngineModelFieldMissing(
+                                'base_url'
+                              )}
+                              aria-label="模型地址"
+                              bind:value={aiEngineCreateDraft.base_url}
+                              on:input={() =>
+                                clearAIEngineModelFieldError('base_url')}
+                              placeholder="https://api.example.com/v1"
+                            /></label
+                          ><label
+                            ><span
+                              >模型凭证<span
+                                class="required-mark"
+                                aria-hidden="true">*</span
+                              ></span
+                            ><span class="password-control"
+                              ><input
+                                class:ai-field-invalid={aiEngineModelFieldMissing('credential')}
+                                aria-label="模型凭证"
+                                type={aiModelCredentialVisible ? 'text' : 'password'}
+                                bind:value={aiEngineCreateDraft.credential}
+                                on:input={() => clearAIEngineModelFieldError('credential')}
+                                placeholder="输入 API Token"
+                              /><button
+                                class="password-toggle"
+                                type="button"
+                                aria-label={aiModelCredentialVisible ? '隐藏模型凭证' : '显示模型凭证'}
+                                on:click={() => (aiModelCredentialVisible = !aiModelCredentialVisible)}
+                                >{#if aiModelCredentialVisible}<EyeOff size={15} aria-hidden="true" />{:else}<Eye size={15} aria-hidden="true" />{/if}</button
+                              ></span
+                            ></label
+                          >
+                        </div>
+                        <div class="ai-model-form-row">
+                          <label
+                            ><span>模型名称<span class="required-mark" aria-hidden="true">*</span></span><input
+                              class:ai-field-invalid={aiEngineModelFieldMissing('model_name')}
+                              aria-label="模型名称"
+                              bind:value={aiEngineCreateDraft.model_name}
+                              on:input={() => clearAIEngineModelFieldError('model_name')}
+                              placeholder="例如：gpt-4.1"
+                            /></label
+                          ><label
+                            >温度<input
+                              aria-label="温度"
+                              type="number"
+                              bind:value={aiEngineCreateDraft.temperature}
+                              min="0"
+                              max="2"
+                              step="0.1"
+                            /></label
+                          ><label
+                            >上下文窗口<input
+                              aria-label="上下文窗口"
+                              type="number"
+                              bind:value={aiEngineCreateDraft.context_window}
+                              min="1"
+                            /></label
+                          ><label
+                            >支持的能力
+                            <div class="ai-capability-card-picker">
+                              {#each ['chat', 'vision', 'audio', 'tool_calling', 'structured_output', 'stream', 'long_context', 'deep_thinking'] as capability}<button
+                                  class:active={aiEngineCreateDraft.capabilities.includes(
+                                    capability
+                                  )}
+                                  type="button"
+                                  on:click={() =>
+                                    toggleAIEndpointCapability(capability)}
+                                  >{aiCapabilityLabel(capability)}</button
+                                >{/each}
+                            </div></label
+                          >
+                          <div class="ai-model-form-actions">
+                            <button
+                              class="secondary"
+                              type="button"
+                              on:click={addAIEndpoint}
+                              disabled={busy || aiEngineModelTesting}
+                              ><Plus
+                                size={14}
+                                aria-hidden="true"
+                              />{aiEngineEditingEndpointIndex >= 0
+                                ? '保存模型'
+                                : '添加模型'}</button
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="ai-model-list" aria-label="已添加模型">
+                        {#if aiEngineCreateEndpoints.length === 0}<div
+                            class="ai-model-empty"
+                          >
+                            尚未添加模型，填写上方表单后点击添加模型。
+                          </div>{:else}<div
+                            class="ai-model-table-head"
+                            aria-hidden="true"
+                          >
+                            <span>模型厂商 / 地址</span><span>模型名称</span
+                            ><span>能力</span><span>上下文</span><span
+                              >状态</span
+                            ><span>操作</span>
+                          </div>
+                          {#each aiEngineCreateEndpoints as endpoint, index}<div
+                              class="ai-model-row"
+                            >
+                              <span class="ai-model-endpoint"
+                                ><strong
+                                  >{aiProviderLabel(
+                                    endpoint.provider_type
+                                  )}</strong
+                                ><small>{endpoint.base_url}</small></span
+                              ><span class="ai-model-name"
+                                >{endpoint.model_name}</span
+                              ><span class="ai-model-capabilities"
+                                >{aiCapabilitiesForEndpoints([endpoint])
+                                  .map(aiCapabilityLabel)
+                                  .join(' · ')}</span
+                              ><span class="ai-model-context"
+                                >{endpoint.context_window.toLocaleString()}</span
+                              ><span
+                                class="ai-model-connection {aiEndpointHealthClass(
+                                  endpoint
+                                )}">{aiEndpointConnectionLabel(endpoint)}</span
+                              ><span class="ai-model-actions"
+                                ><button
+                                  class="icon-button"
+                                  type="button"
+                                  aria-label={`编辑 ${endpoint.model_name}`}
+                                  on:click={() => editAIEndpoint(index)}
+                                  ><Pencil
+                                    size={14}
+                                    aria-hidden="true"
+                                  /></button
+                                ><button
+                                  class="icon-button danger-action"
+                                  type="button"
+                                  aria-label={`删除 ${endpoint.model_name}`}
+                                  on:click={() => removeAIEndpoint(index)}
+                                  ><Trash2
+                                    size={14}
+                                    aria-hidden="true"
+                                  /></button
+                                ></span
+                              >
+                            </div>{/each}{/if}
+                      </div>
+                      <div class="ai-form-note">
+                        当前引擎能力：{aiCapabilitiesForEndpoints(
+                          aiEngineCreateEndpoints
+                        )
+                          .map(aiCapabilityLabel)
+                          .join('、') || '添加并填写模型后自动计算'}
+                      </div>{:else if aiEngineCreateStep === 3}
+                      <p>
+                        首版固定使用优先级路由，数字越大越先调用；仅在可恢复错误时切换。
+                      </p>
+                      <div class="ai-route-choice">
+                        <button type="button" class="active"
+                          ><strong>优先级路由</strong><small
+                            >按成员优先级从高到低尝试，稳定且可解释。</small
+                          ></button
+                        >
+                      </div>
+                      <fieldset class="ai-fallback-picker">
+                        <legend>故障切换条件</legend
+                        >{#each [['timeout', '连接超时'], ['rate_limit', 'Provider 限流'], ['server_error', 'Provider 5xx']] as fallback}<label
+                            ><input
+                              type="checkbox"
+                              checked={aiEngineCreateFallback.includes(
+                                fallback[0]
+                              )}
+                              on:change={() =>
+                                toggleAIEngineFallback(fallback[0])}
+                            />{fallback[1]}</label
+                          >{/each}
+                      </fieldset>
+                      <div class="ai-form-note">
+                        参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。
+                      </div>{:else}
+                      <p>发布前确认基础信息、模型连接和路由策略；发布后业务只感知统一的 AI 引擎入口。</p>
+                      <div class="ai-review-grid">
+                        <section class="ai-review-section" aria-labelledby="ai-review-basics-title">
+                          <div class="ai-review-section-heading">
+                            <h4 id="ai-review-basics-title">基础信息</h4>
+                            <span>{scopeLevelLabel(scopeType(selectedScopeId))}</span>
+                          </div>
+                          <div class="ai-review-list">
+                            <div><span>名称</span><strong>{aiEngineName || '未填写'}</strong></div>
+                            <div><span>所属级别</span><strong>{scopeName(selectedScopeId)} · {scopeLevelLabel(scopeType(selectedScopeId))}</strong></div>
+                            <div><span>用途说明</span><strong>{aiEngineCreateDescription || '未填写'}</strong></div>
+                            <div><span>默认引擎</span><strong>{aiEngineCreateDefault ? '是 · 将接管该级别默认入口' : '否'}</strong></div>
+                            <div><span>引擎图标</span><strong>{commonTeamIconLabels[aiEngineIcon] ?? formatIconName(aiEngineIcon)}</strong></div>
+                          </div>
+                        </section>
+
+                        <section class="ai-review-section ai-review-models" aria-labelledby="ai-review-models-title">
+                          <div class="ai-review-section-heading">
+                            <h4 id="ai-review-models-title">模型连接</h4>
+                            <span>{aiEngineCreateEndpoints.length} 个模型</span>
+                          </div>
+                          {#if aiEngineCreateEndpoints.length === 0}
+                            <div class="ai-review-empty">尚未添加模型，返回“添加模型”步骤完成连接测试。</div>
+                          {:else}
+                            <div class="ai-review-endpoints">
+                              {#each aiEngineCreateEndpoints as endpoint}
+                                <article class="ai-review-endpoint">
+                                  <div class="ai-review-endpoint-heading">
+                                    <div><strong>{aiProviderLabel(endpoint.provider_type)} · {endpoint.model_name}</strong><small>{endpoint.base_url}</small></div>
+                                    <span class="ai-review-status {aiEndpointHealthClass(endpoint)}">{aiEndpointConnectionLabel(endpoint)}</span>
+                                  </div>
+                                  <div class="ai-review-endpoint-meta">
+                                    <span>优先级 {endpoint.priority}</span>
+                                    <span>上下文 {endpoint.context_window.toLocaleString()}</span>
+                                    <span>温度 {Number(endpoint.temperature ?? 0.7).toFixed(1)}</span>
+                                    <span>{endpoint.credential.trim() ? '凭据已配置' : '未配置凭据'}</span>
+                                  </div>
+                                  <div class="ai-review-capabilities">
+                                    {#each endpoint.capabilities.map(aiCapabilityLabel) as capability}<span>{capability}</span>{/each}
+                                  </div>
+                                </article>
+                              {/each}
+                            </div>
+                          {/if}
+                        </section>
+
+                        <section class="ai-review-section" aria-labelledby="ai-review-routing-title">
+                          <div class="ai-review-section-heading">
+                            <h4 id="ai-review-routing-title">引擎能力与路由</h4>
+                            <span>优先级路由</span>
+                          </div>
+                          <div class="ai-review-list">
+                            <div><span>能力交集</span><strong>{aiCapabilitiesForEndpoints(aiEngineCreateEndpoints).map(aiCapabilityLabel).join('、') || '待添加模型'}</strong></div>
+                            <div><span>调用顺序</span><strong>按模型优先级从高到低尝试</strong></div>
+                            <div><span>故障切换</span><strong>{aiEngineCreateFallback.map((item) => item === 'timeout' ? '连接超时' : item === 'rate_limit' ? 'Provider 限流' : 'Provider 5xx').join('、') || '不自动切换'}</strong></div>
+                            <div><span>不可切换</span><strong>参数、权限、凭据或能力错误；已开始流式输出</strong></div>
+                          </div>
+                        </section>
+
+                        <section class="ai-review-section" aria-labelledby="ai-review-checks-title">
+                          <div class="ai-review-section-heading">
+                            <h4 id="ai-review-checks-title">发布检查</h4>
+                            <span>发布前状态</span>
+                          </div>
+                          <div class="ai-review-checks">
+                            <div class:passed={aiEngineCreateEndpoints.length > 0}>
+                              <span>模型数量</span><strong>{aiEngineCreateEndpoints.length > 0 ? '已满足，至少 1 个模型' : '未满足，需要添加模型'}</strong>
+                            </div>
+                            <div class:passed={aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded')}>
+                              <span>连接测试</span><strong>{aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded') ? '全部通过真实连接测试' : '存在未测试或失败的模型'}</strong>
+                            </div>
+                            <div class:passed={aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.credential.trim())}>
+                              <span>模型凭据</span><strong>{aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.credential.trim()) ? '每个模型均已配置' : '存在未配置凭据的模型'}</strong>
+                            </div>
+                            <div class:passed={Boolean(aiEngineName.trim())}>
+                              <span>名称校验</span><strong>{aiEngineName.trim() ? '已填写' : '未填写引擎名称'}</strong>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                      <div class="ai-form-note">
+                        发布后可在引擎列表展开模型连接并单独刷新状态。模型凭据将保存为加密凭据，业务调用只选择引擎，不直接选择具体模型。
+                      </div>{/if}
+                  </form>
+                </div>
+              </section>
+              {#if iconPickerTarget === 'ai-engine'}
+                <div
+                  class="dialog-backdrop"
+                  role="presentation"
+                  on:click={(event) => {
+                    if (event.currentTarget === event.target)
+                      iconPickerTarget = null;
+                  }}
+                >
+                  <dialog
+                    open
+                    class="dialog icon-picker-dialog"
+                    aria-labelledby="ai-engine-icon-picker-title"
+                  >
+                    <div class="dialog-heading">
+                      <div>
+                        <p class="eyebrow">ICON PICKER</p>
+                        <h2 id="ai-engine-icon-picker-title">
+                          选择 AI 引擎图标
+                        </h2>
+                      </div>
+                      <button
+                        class="icon-button"
+                        type="button"
+                        aria-label="关闭"
+                        on:click={() => (iconPickerTarget = null)}>×</button
+                      >
+                    </div>
+                    <div class="icon-picker-body">
+                      <label class="icon-search"
+                        ><Search size={16} aria-hidden="true" /><span
+                          class="sr-only">搜索图标</span
+                        ><input
+                          bind:value={teamIconSearch}
+                          placeholder="搜索图标，如 AI、模型、平台"
+                          aria-label="搜索图标"
+                        /></label
+                      >
+                      <div class="team-icon-grid" aria-label="AI 引擎图标列表">
+                        {#each filteredTeamIconOptions as option}
+                          {@const TeamIcon = teamIconComponent(option.value)}
+                          <button
+                            class:active={aiEngineIcon === option.value}
+                            type="button"
+                            on:click={() => selectTeamIcon(option.value)}
+                            aria-label={`选择图标 ${option.label}`}
+                            ><span class="entity-icon team-icon"
+                              ><TeamIcon size={18} strokeWidth={1.8} /></span
+                            ><span>{option.label}</span></button
+                          >
+                        {:else}
+                          <p class="icon-picker-empty">没有匹配的图标。</p>
+                        {/each}
+                      </div>
+                    </div>
+                  </dialog>
+                </div>
+              {/if}
+            {/if}
           </section>
         {:else}
           <section class="content-grid two-column ai-runtime">
-
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">SKILL REGISTRY</p>
-                <h2>Skill 版本</h2>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">SKILL REGISTRY</p>
+                  <h2>Skill 版本</h2>
+                </div>
+                <span class="count">{skillVersions.length}</span>
               </div>
-              <span class="count">{skillVersions.length}</span>
-            </div>
-            <div class="stack-form compact-form">
-              <label
-                >Skill<select
-                  bind:value={selectedSkillId}
-                  required
-                  on:change={loadSkillVersions}
-                  ><option value="" disabled>选择 Skill 资源</option
-                  >{#each skillResources as item}<option value={item.id}
-                      >{item.name} · {scopeName(item.scope_id)}</option
-                    >{/each}</select
-                ></label
+              <div class="stack-form compact-form">
+                <label
+                  >Skill<select
+                    bind:value={selectedSkillId}
+                    required
+                    on:change={loadSkillVersions}
+                    ><option value="" disabled>选择 Skill 资源</option
+                    >{#each skillResources as item}<option value={item.id}
+                        >{item.name} · {scopeName(item.scope_id)}</option
+                      >{/each}</select
+                  ></label
+                >
+                <label
+                  >版本<select bind:value={selectedSkillVersionId}
+                    ><option value="" disabled>选择版本</option
+                    >{#each skillVersions as version}<option value={version.id}
+                        >v{version.version} · {version.status} · {version.risk_level}</option
+                      >{/each}</select
+                  ></label
+                >
+                <div class="form-actions">
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={setSkillDefault}
+                    disabled={busy || !selectedSkillVersionId}
+                    >设为当前 Scope 默认</button
+                  >
+                  <button
+                    class="primary"
+                    type="button"
+                    on:click={publishSkillVersion}
+                    disabled={busy || !selectedSkillVersionId}>发布版本</button
+                  >
+                </div>
+              </div>
+            </section>
+
+            <section class="panel wide-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">NEW VERSION</p>
+                  <h2>创建 Skill 草稿</h2>
+                </div>
+                <span class="scope-type">不可变版本</span>
+              </div>
+              <form
+                class="stack-form"
+                on:submit|preventDefault={createSkillVersion}
               >
-              <label
-                >版本<select bind:value={selectedSkillVersionId}
-                  ><option value="" disabled>选择版本</option
-                  >{#each skillVersions as version}<option value={version.id}
-                      >v{version.version} · {version.status} · {version.risk_level}</option
-                    >{/each}</select
-                ></label
+                <label
+                  >Agent Instruction<textarea
+                    bind:value={skillInstruction}
+                    rows="5"
+                    required
+                    placeholder="明确目标、边界与输出 JSON 结构"
+                  ></textarea></label
+                >
+                <label
+                  >适用资源类型<input
+                    bind:value={skillTargetKinds}
+                    required
+                    placeholder="Application, Kubernetes"
+                  /></label
+                >
+                <fieldset class="skill-tool-picker">
+                  <legend>允许调用的 Connector 工具</legend>
+                  <p>
+                    仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。
+                  </p>
+                  <div class="skill-tool-grid">
+                    {#each skillToolOptions as tool}
+                      <label
+                        class:selected={selectedSkillToolNames.includes(
+                          tool.name
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSkillToolNames.includes(tool.name)}
+                          on:change={() => toggleSkillTool(tool.name)}
+                        />
+                        <span
+                          ><strong>{tool.title}</strong><small
+                            >{tool.description}</small
+                          ></span
+                        >
+                      </label>
+                    {/each}
+                  </div>
+                </fieldset>
+                <div class="form-row">
+                  <label
+                    >输入 Schema<textarea
+                      bind:value={skillInputSchema}
+                      rows="5"
+                      spellcheck="false"
+                    ></textarea></label
+                  >
+                  <label
+                    >输出 Schema<textarea
+                      bind:value={skillOutputSchema}
+                      rows="5"
+                      spellcheck="false"
+                    ></textarea></label
+                  >
+                </div>
+                <button class="primary" disabled={busy || !selectedSkillId}
+                  >创建版本</button
+                >
+              </form>
+            </section>
+
+            <section class="panel recent-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">CONTROLLED RUNNER</p>
+                  <h2>执行 Skill</h2>
+                </div>
+              </div>
+              <form
+                class="stack-form compact-form"
+                on:submit|preventDefault={executeSkill}
               >
-              <div class="form-actions">
-                <button
-                  class="secondary"
-                  type="button"
-                  on:click={setSkillDefault}
-                  disabled={busy || !selectedSkillVersionId}
-                  >设为当前 Scope 默认</button
+                <label
+                  >目标资源<select bind:value={skillTargetResourceId}
+                    ><option value="">无目标资源</option
+                    >{#each executableTargets as item}<option value={item.id}
+                        >{item.name} · {resourceSchemaName(item.kind)}</option
+                      >{/each}</select
+                  ></label
+                >
+                <label
+                  >输入 JSON<textarea
+                    bind:value={skillInput}
+                    rows="5"
+                    spellcheck="false"
+                  ></textarea></label
                 >
                 <button
                   class="primary"
-                  type="button"
-                  on:click={publishSkillVersion}
-                  disabled={busy || !selectedSkillVersionId}>发布版本</button
+                  disabled={busy || !selectedSkillVersionId}>执行</button
                 >
-              </div>
-            </div>
-          </section>
+              </form>
+              {#if skillOutput}<pre
+                  class="config-preview">{skillOutput}</pre>{/if}
+            </section>
 
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">NEW VERSION</p>
-                <h2>创建 Skill 草稿</h2>
-              </div>
-              <span class="scope-type">不可变版本</span>
-            </div>
-            <form
-              class="stack-form"
-              on:submit|preventDefault={createSkillVersion}
-            >
-              <label
-                >Agent Instruction<textarea
-                  bind:value={skillInstruction}
-                  rows="5"
-                  required
-                  placeholder="明确目标、边界与输出 JSON 结构"
-                ></textarea></label
-              >
-              <label
-                >适用资源类型<input
-                  bind:value={skillTargetKinds}
-                  required
-                  placeholder="Application, Kubernetes"
-                /></label
-              >
-              <fieldset class="skill-tool-picker">
-                <legend>允许调用的 Connector 工具</legend>
-                <p>仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。</p>
-                <div class="skill-tool-grid">
-                  {#each skillToolOptions as tool}
-                    <label
-                      class:selected={selectedSkillToolNames.includes(
-                        tool.name
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSkillToolNames.includes(tool.name)}
-                        on:change={() => toggleSkillTool(tool.name)}
-                      />
-                      <span
-                        ><strong>{tool.title}</strong><small
-                          >{tool.description}</small
-                        ></span
-                      >
-                    </label>
-                  {/each}
+            <section class="panel wide-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">EXECUTIONS</p>
+                  <h2>执行记录</h2>
                 </div>
-              </fieldset>
-              <div class="form-row">
-                <label
-                  >输入 Schema<textarea
-                    bind:value={skillInputSchema}
-                    rows="5"
-                    spellcheck="false"
-                  ></textarea></label
-                >
-                <label
-                  >输出 Schema<textarea
-                    bind:value={skillOutputSchema}
-                    rows="5"
-                    spellcheck="false"
-                  ></textarea></label
-                >
+                <span class="count">{skillExecutions.length}</span>
               </div>
-              <button class="primary" disabled={busy || !selectedSkillId}
-                >创建版本</button
-              >
-            </form>
-          </section>
-
-          <section class="panel recent-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">CONTROLLED RUNNER</p>
-                <h2>执行 Skill</h2>
-              </div>
-            </div>
-            <form
-              class="stack-form compact-form"
-              on:submit|preventDefault={executeSkill}
-            >
-              <label
-                >目标资源<select bind:value={skillTargetResourceId}
-                  ><option value="">无目标资源</option
-                  >{#each executableTargets as item}<option value={item.id}
-                      >{item.name} · {resourceSchemaName(item.kind)}</option
-                    >{/each}</select
-                ></label
-              >
-              <label
-                >输入 JSON<textarea
-                  bind:value={skillInput}
-                  rows="5"
-                  spellcheck="false"
-                ></textarea></label
-              >
-              <button class="primary" disabled={busy || !selectedSkillVersionId}
-                >执行</button
-              >
-            </form>
-            {#if skillOutput}<pre
-                class="config-preview">{skillOutput}</pre>{/if}
-          </section>
-
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">EXECUTIONS</p>
-                <h2>执行记录</h2>
-              </div>
-              <span class="count">{skillExecutions.length}</span>
-            </div>
-            <div class="table-list">
-              {#each skillExecutions as execution}<div class="list-row static">
-                  <span
-                    ><strong>{execution.model_name}</strong><small
-                      >{formatDate(execution.started_at)} · {execution.total_tokens}
-                      tokens · {execution.tool_call_count} tools</small
-                    ></span
-                  ><span class="status-label {execution.status}"
-                    >{execution.status}</span
+              <div class="table-list">
+                {#each skillExecutions as execution}<div
+                    class="list-row static"
                   >
-                </div>{:else}<div class="empty-state">
-                  当前 Scope 暂无执行记录。
-                </div>{/each}
-            </div>
+                    <span
+                      ><strong>{execution.model_name}</strong><small
+                        >{formatDate(execution.started_at)} · {execution.total_tokens}
+                        tokens · {execution.tool_call_count} tools</small
+                      ></span
+                    ><span class="status-label {execution.status}"
+                      >{execution.status}</span
+                    >
+                  </div>{:else}<div class="empty-state">
+                    当前 Scope 暂无执行记录。
+                  </div>{/each}
+              </div>
+            </section>
           </section>
-        </section>
         {/if}
       {:else if view === 'access'}
         <section class="access-page">
@@ -5604,17 +7184,23 @@
                 <div class="access-filter-copy">
                   <div>
                     <h2>{accessTab === 'teams' ? '团队列表' : '用户列表'}</h2>
-                    <p>{accessTab === 'teams'
-                      ? '展开团队可查看其成员与项目。仅平台管理员可添加、编辑或删除团队。'
-                      : '角色包含直接授权和成员组继承授权；管理员仅可授权、删除或重置其他用户的密码。'}</p>
+                    <p>
+                      {accessTab === 'teams'
+                        ? '展开团队可查看其成员与项目。仅平台管理员可添加、编辑或删除团队。'
+                        : '角色包含直接授权和成员组继承授权；管理员仅可授权、删除或重置其他用户的密码。'}
+                    </p>
                   </div>
-                  <span class="access-count">{accessTab === 'teams'
-                    ? visibleAccessTeams.length + ' 个团队'
-                    : visibleAccessUsers.length + ' 个用户'}</span>
+                  <span class="access-count"
+                    >{accessTab === 'teams'
+                      ? visibleAccessTeams.length + ' 个团队'
+                      : visibleAccessUsers.length + ' 个用户'}</span
+                  >
                 </div>
                 <label class="access-search">
                   <Search size={15} aria-hidden="true" />
-                  <span class="sr-only">搜索{accessTab === 'teams' ? '团队' : '用户'}</span><input
+                  <span class="sr-only"
+                    >搜索{accessTab === 'teams' ? '团队' : '用户'}</span
+                  ><input
                     bind:value={accessSearch}
                     placeholder={accessTab === 'teams'
                       ? '搜索团队名称、编码或状态'
@@ -5622,50 +7208,52 @@
                   />
                 </label>
                 <div class="access-heading-actions">
-                {#if accessTab === 'teams'}
-                  <button
-                    class="secondary danger-action"
-                    type="button"
-                    disabled={selectedAccessTeamIds.length === 0 || busy}
-                    data-tooltip={selectedAccessTeamIds.length === 0
-                      ? '请先选择可管理的团队'
-                      : '批量禁用所选团队'}
-                    on:click={() =>
-                      requestDisable('team', selectedAccessTeamIds)}
-                    ><Trash2 size={15} aria-hidden="true" />批量删除</button
-                  >
-                  {#if accessCanCreateTeam}<button
-                      class="primary"
+                  {#if accessTab === 'teams'}
+                    <button
+                      class="secondary danger-action"
                       type="button"
-                      on:click={openTeamDialog}
-                      ><Plus size={15} aria-hidden="true" />添加团队</button
-                    >{/if}
-                {:else if accessTab === 'users'}
-                  <button
-                    class="secondary danger-action"
-                    type="button"
-                    disabled={selectedAccessUserIds.length === 0 || busy}
-                    data-tooltip={selectedAccessUserIds.length === 0
-                      ? '请先选择可管理的用户'
-                      : '批量禁用所选用户'}
-                    on:click={() =>
-                      requestDisable('user', selectedAccessUserIds)}
-                    ><Trash2 size={15} aria-hidden="true" />批量删除</button
-                  >
-                  {#if accessCanCreateUser}<button
-                      class="primary"
+                      disabled={selectedAccessTeamIds.length === 0 || busy}
+                      data-tooltip={selectedAccessTeamIds.length === 0
+                        ? '请先选择可管理的团队'
+                        : '批量禁用所选团队'}
+                      on:click={() =>
+                        requestDisable('team', selectedAccessTeamIds)}
+                      ><Trash2 size={15} aria-hidden="true" />批量删除</button
+                    >
+                    {#if accessCanCreateTeam}<button
+                        class="primary"
+                        type="button"
+                        on:click={openTeamDialog}
+                        ><Plus size={15} aria-hidden="true" />添加团队</button
+                      >{/if}
+                  {:else if accessTab === 'users'}
+                    <button
+                      class="secondary danger-action"
                       type="button"
-                      on:click={() => {
-                        resetUserDialog();
-                        userDialogOpen = true;
-                      }}><Plus size={15} aria-hidden="true" />添加用户</button
-                    >{/if}
-                {/if}
+                      disabled={selectedAccessUserIds.length === 0 || busy}
+                      data-tooltip={selectedAccessUserIds.length === 0
+                        ? '请先选择可管理的用户'
+                        : '批量禁用所选用户'}
+                      on:click={() =>
+                        requestDisable('user', selectedAccessUserIds)}
+                      ><Trash2 size={15} aria-hidden="true" />批量删除</button
+                    >
+                    {#if accessCanCreateUser}<button
+                        class="primary"
+                        type="button"
+                        on:click={() => {
+                          resetUserDialog();
+                          userDialogOpen = true;
+                        }}><Plus size={15} aria-hidden="true" />添加用户</button
+                      >{/if}
+                  {/if}
                 </div>
               </div>
             {/if}
             {#if accessLoading}
-              <div class="access-state" aria-live="polite">正在加载管理数据...</div>
+              <div class="access-state" aria-live="polite">
+                正在加载管理数据...
+              </div>
             {:else if accessLoadError}
               <div class="access-state access-error">
                 <span>{accessLoadError}</span><button
@@ -5683,14 +7271,19 @@
                     checked={visibleAccessTeams.some(canManageTeam) &&
                       visibleAccessTeams
                         .filter(canManageTeam)
-                        .every((team) => selectedAccessTeamIds.includes(team.id))}
+                        .every((team) =>
+                          selectedAccessTeamIds.includes(team.id)
+                        )}
                     on:change={(event) => {
                       selectedAccessTeamIds = event.currentTarget.checked
-                        ? visibleAccessTeams.filter(canManageTeam).map((team) => team.id)
+                        ? visibleAccessTeams
+                            .filter(canManageTeam)
+                            .map((team) => team.id)
                         : [];
                     }}
-                  /><span>团队</span><span>成员</span><span>项目</span
-                  ><span>状态</span><span>操作</span>
+                  /><span>团队</span><span>成员</span><span>项目</span><span
+                    >状态</span
+                  ><span>操作</span>
                 </div>
                 {#each visibleAccessTeams as team}
                   {@const teamMembers = accessTeamUsers[team.id] ?? []}
@@ -5703,7 +7296,8 @@
                       <input
                         type="checkbox"
                         aria-label={`选择团队 ${team.name}`}
-                        disabled={!canManageTeam(team) || team.status !== 'active'}
+                        disabled={!canManageTeam(team) ||
+                          team.status !== 'active'}
                         bind:group={selectedAccessTeamIds}
                         value={team.id}
                       />
@@ -5713,9 +7307,10 @@
                         aria-expanded={teamAccessExpanded[team.id]}
                         on:click={() => toggleTeamAccess(team.id)}
                       >
-                        <span class="entity-icon team-icon"><TeamIcon size={17} strokeWidth={1.8} /></span
-                        ><span><strong>{team.name}</strong><small
-                            >{team.code}</small
+                        <span class="entity-icon team-icon"
+                          ><TeamIcon size={17} strokeWidth={1.8} /></span
+                        ><span
+                          ><strong>{team.name}</strong><small>{team.code}</small
                           ></span
                         ><ChevronDown
                           size={16}
@@ -5772,11 +7367,14 @@
                                 >{(member.display_name || member.username)
                                   .slice(0, 1)
                                   .toUpperCase()}</span
-                              ><span><strong
-                                  >{member.display_name || member.username}</strong
+                              ><span
+                                ><strong
+                                  >{member.display_name ||
+                                    member.username}</strong
                                 ><small
-                                  >{userRoles(member.id).map(roleLabel).join(' · ') ||
-                                    '未分配角色'}</small
+                                  >{userRoles(member.id)
+                                    .map(roleLabel)
+                                    .join(' · ') || '未分配角色'}</small
                                 ></span
                               ></button
                             >{:else}<span class="directory-empty"
@@ -5787,12 +7385,13 @@
                           <span class="directory-label">项目</span>
                           {#each teamProjects as project}<div
                               class="directory-project"
-                            ><span class="project-dot"></span><span
+                            >
+                              <span class="project-dot"></span><span
                                 ><strong>{project.name}</strong><small
                                   >{project.code} · {project.status}</small
                                 ></span
-                              ></div
-                            >{:else}<span class="directory-empty"
+                              >
+                            </div>{:else}<span class="directory-empty"
                               >暂无项目</span
                             >{/each}
                         </div>
@@ -5812,10 +7411,14 @@
                     checked={visibleAccessUsers.some(canManageUser) &&
                       visibleAccessUsers
                         .filter(canManageUser)
-                        .every((user) => selectedAccessUserIds.includes(user.id))}
+                        .every((user) =>
+                          selectedAccessUserIds.includes(user.id)
+                        )}
                     on:change={(event) => {
                       selectedAccessUserIds = event.currentTarget.checked
-                        ? visibleAccessUsers.filter(canManageUser).map((user) => user.id)
+                        ? visibleAccessUsers
+                            .filter(canManageUser)
+                            .map((user) => user.id)
                         : [];
                     }}
                   /><span>用户</span><span>授权范围</span><span>角色与权限</span
@@ -5826,7 +7429,8 @@
                     <input
                       type="checkbox"
                       aria-label={`选择用户 ${user.display_name || user.username}`}
-                      disabled={!canManageUser(user) || user.status !== 'active'}
+                      disabled={!canManageUser(user) ||
+                        user.status !== 'active'}
                       bind:group={selectedAccessUserIds}
                       value={user.id}
                     />
@@ -5835,8 +7439,10 @@
                         >{(user.display_name || user.username)
                           .slice(0, 1)
                           .toUpperCase()}</span
-                      ><span><strong>{user.display_name || user.username}</strong
-                        ><small>@{user.username}{user.email
+                      ><span
+                        ><strong>{user.display_name || user.username}</strong
+                        ><small
+                          >@{user.username}{user.email
                             ? ` · ${user.email}`
                             : ''}</small
                         ></span
@@ -5851,17 +7457,18 @@
                     </div>
                     <div class="access-user-auth">
                       <div class="access-user-roles">
-                        {#each userRoles(user.id) as role}<span class="role-chip"
-                            >{roleLabel(role)}</span
+                        {#each userRoles(user.id) as role}<span
+                            class="role-chip">{roleLabel(role)}</span
                           >{:else}<span class="role-chip muted-chip"
                             >未分配角色</span
                           >{/each}
                       </div>
                       <div class="access-user-permissions">
                         {#each userPermissions(user.id).slice(0, 3) as permission}<span
+                            data-tooltip={permissionDescription(permission)}
+                            title={permissionDescription(permission)}
                             >{permission}</span
-                          >{:else}<span class="permission-empty"
-                            >暂无权限</span
+                          >{:else}<span class="permission-empty">暂无权限</span
                           >{/each}{#if userPermissions(user.id).length > 3}<span
                             >+{userPermissions(user.id).length - 3}</span
                           >{/if}
@@ -5893,7 +7500,9 @@
                           ><Trash2 size={15} aria-hidden="true" /></button
                         >
                       {:else}<span class="read-only-label"
-                          >{user.id === currentUser?.id ? '当前账号' : '只读'}</span
+                          >{user.id === currentUser?.id
+                            ? '当前账号'
+                            : '只读'}</span
                         >{/if}
                     </div>
                   </article>
@@ -5906,9 +7515,13 @@
                 <div class="role-catalog-toolbar">
                   <div>
                     <h2>角色权限</h2>
-                    <p>角色权限决定用户在对应 Scope 内可以执行的操作；仅管理员可为其他用户授权。</p>
+                    <p>
+                      角色权限决定用户在对应 Scope
+                      内可以执行的操作；仅管理员可为其他用户授权。
+                    </p>
                   </div>
-                  <span class="access-role-boundary"><ShieldCheck
+                  <span class="access-role-boundary"
+                    ><ShieldCheck
                       size={16}
                       aria-hidden="true"
                     />授权时只显示当前账号可完整授予的角色</span
@@ -5924,6 +7537,8 @@
                     </div>
                     <div class="permission-list">
                       {#each role.permissions as permission}<span
+                          data-tooltip={permissionDescription(String(permission))}
+                          title={permissionDescription(String(permission))}
                           >{permission}</span
                         >{/each}
                     </div>
@@ -5963,7 +7578,13 @@
                     aria-label="选择团队图标"
                     data-tooltip="选择团队图标"
                     on:click={() => openTeamIconPicker('create')}
-                    ><span class="entity-icon team-icon"><svelte:component this={teamIconComponent(teamIcon)} size={16} strokeWidth={1.8} /></span></button
+                    ><span class="entity-icon team-icon"
+                      ><svelte:component
+                        this={teamIconComponent(teamIcon)}
+                        size={16}
+                        strokeWidth={1.8}
+                      /></span
+                    ></button
                   ><label
                     >名称<input
                       bind:value={teamName}
@@ -6017,9 +7638,14 @@
               <form class="stack-form" on:submit|preventDefault={createUser}>
                 <div class="form-row">
                   <label
-                    ><span>用户名<span class="required-mark" aria-hidden="true">*</span></span><input
+                    ><span
+                      >用户名<span class="required-mark" aria-hidden="true"
+                        >*</span
+                      ></span
+                    ><input
                       value={newUserUsername}
-                      on:input={(event) => updateNewUserUsername(event.currentTarget.value)}
+                      on:input={(event) =>
+                        updateNewUserUsername(event.currentTarget.value)}
                       required
                       placeholder="登录用户名"
                     /></label
@@ -6046,14 +7672,39 @@
                 </div>
                 <fieldset class="preference-group">
                   <legend>一次性密码</legend>
-                  <div class="segmented-control" role="radiogroup" aria-label="一次性密码方式">
-                    <button type="button" class:active={newUserPasswordMode === 'generated'} on:click={() => (newUserPasswordMode = 'generated')}>自动生成</button>
-                    <button type="button" class:active={newUserPasswordMode === 'manual'} on:click={() => (newUserPasswordMode = 'manual')}>手动设置</button>
+                  <div
+                    class="segmented-control"
+                    role="radiogroup"
+                    aria-label="一次性密码方式"
+                  >
+                    <button
+                      type="button"
+                      class:active={newUserPasswordMode === 'generated'}
+                      on:click={() => (newUserPasswordMode = 'generated')}
+                      >自动生成</button
+                    >
+                    <button
+                      type="button"
+                      class:active={newUserPasswordMode === 'manual'}
+                      on:click={() => (newUserPasswordMode = 'manual')}
+                      >手动设置</button
+                    >
                   </div>
                   {#if newUserPasswordMode === 'manual'}
-                    <label>一次性密码<input type="password" bind:value={newUserPassword} required minlength="8" autocomplete="new-password" placeholder="至少 8 位" /></label>
+                    <label
+                      >一次性密码<input
+                        type="password"
+                        bind:value={newUserPassword}
+                        required
+                        minlength="8"
+                        autocomplete="new-password"
+                        placeholder="至少 8 位"
+                      /></label
+                    >
                   {:else}
-                    <p class="form-help">创建后显示一次性密码，仅可查看和复制一次。</p>
+                    <p class="form-help">
+                      创建后显示一次性密码，仅可查看和复制一次。
+                    </p>
                   {/if}
                 </fieldset>
                 <section class="new-user-grants" aria-label="用户授权">
@@ -6061,30 +7712,44 @@
                     <div>
                       <strong>授权配置</strong>
                     </div>
-                    <button class="secondary" type="button" on:click={addNewUserGrant} disabled={busy || manageableScopeChoices.length === 0}
+                    <button
+                      class="secondary"
+                      type="button"
+                      on:click={addNewUserGrant}
+                      disabled={busy || manageableScopeChoices.length === 0}
                       ><Plus size={15} aria-hidden="true" />添加授权</button
                     >
                   </div>
                   <div class="new-user-grant-header" aria-hidden="true">
-                    <span>级别</span><span>对象</span><span>角色</span><span>操作</span>
+                    <span>级别</span><span>对象</span><span>角色</span><span
+                      >操作</span
+                    >
                   </div>
                   {#each newUserGrants as grant, grantIndex}
                     <section class="new-user-grant-row">
                       <div class="new-user-grant-fields">
-                        <label><span class="sr-only">授权级别</span><select
-                          value={grant.scopeType}
-                          on:change={(event) =>
-                            chooseNewUserGrantType(
-                              grantIndex,
-                              event.currentTarget.value as NewUserGrant['scopeType']
-                            )}
-                          >{#each ['platform', 'team', 'project'] as type}
-                            {#if newUserGrantScopes(type as NewUserGrant['scopeType']).length > 0}
-                              <option value={type}>{grantScopeLabel(type as NewUserGrant['scopeType'])}</option>
-                            {/if}
-                          {/each}</select
-                        ></label>
-                        <label><span class="sr-only">授权对象</span>
+                        <label
+                          ><span class="sr-only">授权级别</span><select
+                            value={grant.scopeType}
+                            on:change={(event) =>
+                              chooseNewUserGrantType(
+                                grantIndex,
+                                event.currentTarget
+                                  .value as NewUserGrant['scopeType']
+                              )}
+                            >{#each ['platform', 'team', 'project'] as type}
+                              {#if newUserGrantScopes(type as NewUserGrant['scopeType']).length > 0}
+                                <option value={type}
+                                  >{grantScopeLabel(
+                                    type as NewUserGrant['scopeType']
+                                  )}</option
+                                >
+                              {/if}
+                            {/each}</select
+                          ></label
+                        >
+                        <label
+                          ><span class="sr-only">授权对象</span>
                           {#if grant.scopeType === 'platform'}
                             <span class="new-user-no-object">无需选择</span>
                           {:else}
@@ -6096,26 +7761,33 @@
                                   roleID: '',
                                   resourceGrants: []
                                 })}
-                              ><option value="">选择{grant.scopeType === 'team' ? '团队' : '项目'}</option
+                              ><option value=""
+                                >选择{grant.scopeType === 'team'
+                                  ? '团队'
+                                  : '项目'}</option
                               >{#each newUserGrantScopes(grant.scopeType) as scope}
                                 <option value={scope.id}>{scope.name}</option>
                               {/each}</select
                             >
                           {/if}
                         </label>
-                        <label><span class="sr-only">角色</span><select
-                          value={grant.roleID}
-                          disabled={!grant.scopeID}
-                          on:change={(event) =>
-                            updateNewUserGrant(grantIndex, {
-                              roleID: event.currentTarget.value,
-                              resourceGrants: []
-                            })}
-                          ><option value="">选择角色</option
-                          >{#each newUserGrantRoles(grant) as role}
-                            <option value={role.id}>{grantRoleLabel(role.name)}</option>
-                          {/each}</select
-                        ></label>
+                        <label
+                          ><span class="sr-only">角色</span><select
+                            value={grant.roleID}
+                            disabled={!grant.scopeID}
+                            on:change={(event) =>
+                              updateNewUserGrant(grantIndex, {
+                                roleID: event.currentTarget.value,
+                                resourceGrants: []
+                              })}
+                            ><option value="">选择角色</option
+                            >{#each newUserGrantRoles(grant) as role}
+                              <option value={role.id}
+                                >{grantRoleLabel(role.name)}</option
+                              >
+                            {/each}</select
+                          ></label
+                        >
                         <button
                           class="icon-button danger-action"
                           type="button"
@@ -6130,30 +7802,72 @@
                         <div class="new-user-resource-grants">
                           <div>
                             <strong>范围资源权限</strong>
-                            <small>{grantScopeLabel(grant.scopeType)}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。</small>
+                            <small
+                              >{grantScopeLabel(
+                                grant.scopeType
+                              )}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。</small
+                            >
                           </div>
                           {#each grant.resourceGrants as resourceGrant, resourceIndex}
                             <div class="new-user-resource-grant-row">
-                              <label>资源<select
-                                value={resourceGrant.resourceID}
-                                on:change={(event) => updateNewUserResourceGrant(grantIndex, resourceIndex, { resourceID: event.currentTarget.value })}
-                                ><option value="">选择范围内资源</option
-                                >{#each newUserGrantResources(grant) as resource}
-                                  <option value={resource.id}>{resource.name} · {resource.kind}</option>
-                                {/each}</select
-                              ></label>
-                              <label>资源权限<select
-                                value={resourceGrant.roleID}
-                                on:change={(event) => updateNewUserResourceGrant(grantIndex, resourceIndex, { roleID: event.currentTarget.value })}
-                                ><option value="">选择资源权限</option
-                                >{#each newUserGrantResourceRoles(grant) as resourceRole}
-                                  <option value={resourceRole.id}>{roleLabel(resourceRole.name)}</option>
-                                {/each}</select
-                              ></label>
-                              <button class="icon-button danger-action" type="button" data-tooltip="移除资源权限" aria-label="移除资源权限" on:click={() => removeNewUserResourceGrant(grantIndex, resourceIndex)}><Trash2 size={14} aria-hidden="true" /></button>
+                              <label
+                                >资源<select
+                                  value={resourceGrant.resourceID}
+                                  on:change={(event) =>
+                                    updateNewUserResourceGrant(
+                                      grantIndex,
+                                      resourceIndex,
+                                      { resourceID: event.currentTarget.value }
+                                    )}
+                                  ><option value="">选择范围内资源</option
+                                  >{#each newUserGrantResources(grant) as resource}
+                                    <option value={resource.id}
+                                      >{resource.name} · {resource.kind}</option
+                                    >
+                                  {/each}</select
+                                ></label
+                              >
+                              <label
+                                >资源权限<select
+                                  value={resourceGrant.roleID}
+                                  on:change={(event) =>
+                                    updateNewUserResourceGrant(
+                                      grantIndex,
+                                      resourceIndex,
+                                      { roleID: event.currentTarget.value }
+                                    )}
+                                  ><option value="">选择资源权限</option
+                                  >{#each newUserGrantResourceRoles(grant) as resourceRole}
+                                    <option value={resourceRole.id}
+                                      >{roleLabel(resourceRole.name)}</option
+                                    >
+                                  {/each}</select
+                                ></label
+                              >
+                              <button
+                                class="icon-button danger-action"
+                                type="button"
+                                data-tooltip="移除资源权限"
+                                aria-label="移除资源权限"
+                                on:click={() =>
+                                  removeNewUserResourceGrant(
+                                    grantIndex,
+                                    resourceIndex
+                                  )}
+                                ><Trash2 size={14} aria-hidden="true" /></button
+                              >
                             </div>
                           {/each}
-                          <button class="secondary" type="button" on:click={() => addNewUserResourceGrant(grantIndex)} disabled={busy}><Plus size={14} aria-hidden="true" />添加资源权限</button>
+                          <button
+                            class="secondary"
+                            type="button"
+                            on:click={() => addNewUserResourceGrant(grantIndex)}
+                            disabled={busy}
+                            ><Plus
+                              size={14}
+                              aria-hidden="true"
+                            />添加资源权限</button
+                          >
                         </div>
                       {/if}
                     </section>
@@ -6164,14 +7878,24 @@
                 <div class="form-actions">
                   {#if createdUserCredentials}
                     <div class="created-credentials-inline" aria-live="polite">
-                      <span>一次性密码：<strong>{createdUserCredentials.password}</strong></span>
+                      <span
+                        >一次性密码：<strong
+                          >{createdUserCredentials.password}</strong
+                        ></span
+                      >
                       <button
                         class="icon-button"
                         type="button"
                         aria-label="复制一次性密码"
                         data-tooltip="复制一次性密码"
                         on:click={copyOneTimePassword}
-                        >{#if copiedControl === 'created-password'}<ClipboardCheck size={15} aria-hidden="true" />{:else}<Copy size={15} aria-hidden="true" />{/if}</button
+                        >{#if copiedControl === 'created-password'}<ClipboardCheck
+                            size={15}
+                            aria-hidden="true"
+                          />{:else}<Copy
+                            size={15}
+                            aria-hidden="true"
+                          />{/if}</button
                       >
                     </div>
                   {/if}
@@ -6191,8 +7915,7 @@
                             (resourceGrant) =>
                               !resourceGrant.resourceID || !resourceGrant.roleID
                           )
-                      )}
-                    >创建用户并授权</button
+                      )}>创建用户并授权</button
                   >
                 </div>
               </form>
@@ -6207,7 +7930,11 @@
               if (event.currentTarget === event.target) editingTeam = null;
             }}
           >
-            <dialog open class="dialog" aria-labelledby="edit-team-dialog-title">
+            <dialog
+              open
+              class="dialog"
+              aria-labelledby="edit-team-dialog-title"
+            >
               <div class="dialog-heading">
                 <div>
                   <p class="eyebrow">TEAM</p>
@@ -6228,7 +7955,13 @@
                     aria-label="选择团队图标"
                     data-tooltip="选择团队图标"
                     on:click={() => openTeamIconPicker('edit')}
-                    ><span class="entity-icon team-icon"><svelte:component this={teamIconComponent(editTeamIcon)} size={16} strokeWidth={1.8} /></span></button
+                    ><span class="entity-icon team-icon"
+                      ><svelte:component
+                        this={teamIconComponent(editTeamIcon)}
+                        size={16}
+                        strokeWidth={1.8}
+                      /></span
+                    ></button
                   ><label
                     >名称<input
                       bind:value={editTeamName}
@@ -6240,8 +7973,8 @@
                 </div>
                 <label
                   >状态<select bind:value={editTeamStatus}
-                    ><option value="active">启用</option><option value="disabled"
-                      >禁用</option
+                    ><option value="active">启用</option><option
+                      value="disabled">禁用</option
                     ></select
                   ></label
                 >
@@ -6264,11 +7997,15 @@
               if (event.currentTarget === event.target) iconPickerTarget = null;
             }}
           >
-            <dialog open class="dialog icon-picker-dialog" aria-labelledby="icon-picker-title">
+            <dialog
+              open
+              class="dialog icon-picker-dialog"
+              aria-labelledby="icon-picker-title"
+            >
               <div class="dialog-heading">
                 <div>
-                  <p class="eyebrow">TEAM ICON</p>
-                  <h2 id="icon-picker-title">选择团队图标</h2>
+                  <p class="eyebrow">ICON PICKER</p>
+                  <h2 id="icon-picker-title">选择图标</h2>
                 </div>
                 <button
                   class="icon-button"
@@ -6278,16 +8015,30 @@
                 >
               </div>
               <div class="icon-picker-body">
-                <label class="icon-search"><Search size={16} aria-hidden="true" /><span class="sr-only">搜索图标</span><input bind:value={teamIconSearch} placeholder="搜索图标，如 Kubernetes、数据库" aria-label="搜索图标" /></label>
+                <label class="icon-search"
+                  ><Search size={16} aria-hidden="true" /><span class="sr-only"
+                    >搜索图标</span
+                  ><input
+                    bind:value={teamIconSearch}
+                    placeholder="搜索图标，如 Kubernetes、数据库"
+                    aria-label="搜索图标"
+                  /></label
+                >
                 <div class="team-icon-grid" aria-label="团队图标列表">
                   {#each filteredTeamIconOptions as option}
                     {@const TeamIcon = teamIconComponent(option.value)}
                     <button
-                      class:active={(iconPickerTarget === 'create' ? teamIcon : editTeamIcon) === option.value}
+                      class:active={(iconPickerTarget === 'create'
+                        ? teamIcon
+                        : iconPickerTarget === 'edit'
+                          ? editTeamIcon
+                          : aiEngineIcon) === option.value}
                       type="button"
                       on:click={() => selectTeamIcon(option.value)}
                       aria-label={`选择图标 ${option.label}`}
-                      ><span class="entity-icon team-icon"><TeamIcon size={18} strokeWidth={1.8} /></span><span>{option.label}</span></button
+                      ><span class="entity-icon team-icon"
+                        ><TeamIcon size={18} strokeWidth={1.8} /></span
+                      ><span>{option.label}</span></button
                     >
                   {:else}
                     <p class="icon-picker-empty">没有匹配的图标。</p>
@@ -6305,7 +8056,11 @@
               if (event.currentTarget === event.target) editingUser = null;
             }}
           >
-            <dialog open class="dialog wide-dialog" aria-labelledby="edit-user-dialog-title">
+            <dialog
+              open
+              class="dialog wide-dialog"
+              aria-labelledby="edit-user-dialog-title"
+            >
               <div class="dialog-heading">
                 <div>
                   <p class="eyebrow">USER ACCESS</p>
@@ -6320,8 +8075,21 @@
               </div>
               <form class="stack-form" on:submit|preventDefault={saveUser}>
                 <div class="form-row">
-                  <label>用户名<input value={editingUser.username} disabled aria-label="用户名不可修改" /></label>
-                  <label>显示名<input bind:value={editUserDisplayName} required maxlength="120" placeholder="默认使用用户名" /></label>
+                  <label
+                    >用户名<input
+                      value={editingUser.username}
+                      disabled
+                      aria-label="用户名不可修改"
+                    /></label
+                  >
+                  <label
+                    >显示名<input
+                      bind:value={editUserDisplayName}
+                      required
+                      maxlength="120"
+                      placeholder="默认使用用户名"
+                    /></label
+                  >
                 </div>
                 <label
                   >授权 Scope<select
@@ -6340,7 +8108,8 @@
                         type="checkbox"
                         bind:group={editUserRoleIds}
                         value={role.id}
-                      /><span><strong>{roleLabel(role.name)}</strong><small
+                      /><span
+                        ><strong>{roleLabel(role.name)}</strong><small
                           >{role.permissions.length} 项权限</small
                         ></span
                       ></label
@@ -6356,37 +8125,72 @@
                     <div class="scope-viewer-resource-heading">
                       <div>
                         <strong>范围资源权限</strong>
-                        <p>{grantScopeLabel(scopeType(editUserScopeId) as NewUserGrant['scopeType'])}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。</p>
+                        <p>
+                          {grantScopeLabel(
+                            scopeType(
+                              editUserScopeId
+                            ) as NewUserGrant['scopeType']
+                          )}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。
+                        </p>
                       </div>
                       <ShieldCheck size={17} aria-hidden="true" />
                     </div>
                     <div class="form-row">
-                      <label>资源角色<select bind:value={editUserResourceRoleId}>
-                        <option value="">选择资源角色</option>
-                        {#each availableScopeViewerResourceRoles as resourceRole}
-                          <option value={resourceRole.id}>{roleLabel(resourceRole.name)}</option>
-                        {/each}
-                      </select></label>
-                      <label>具体资源<select bind:value={editUserResourceId}>
-                        <option value="">选择范围内资源</option>
-                        {#each scopeViewerResources as resource}
-                          <option value={resource.id}>{resource.name} · {resource.kind}</option>
-                        {/each}
-                      </select></label>
+                      <label
+                        >资源角色<select bind:value={editUserResourceRoleId}>
+                          <option value="">选择资源角色</option>
+                          {#each availableScopeViewerResourceRoles as resourceRole}
+                            <option value={resourceRole.id}
+                              >{roleLabel(resourceRole.name)}</option
+                            >
+                          {/each}
+                        </select></label
+                      >
+                      <label
+                        >具体资源<select bind:value={editUserResourceId}>
+                          <option value="">选择范围内资源</option>
+                          {#each scopeViewerResources as resource}
+                            <option value={resource.id}
+                              >{resource.name} · {resource.kind}</option
+                            >
+                          {/each}
+                        </select></label
+                      >
                     </div>
-                    <button class="secondary" type="button" disabled={busy || !editUserResourceRoleId || !editUserResourceId} on:click={grantScopeViewerResource}>
+                    <button
+                      class="secondary"
+                      type="button"
+                      disabled={busy ||
+                        !editUserResourceRoleId ||
+                        !editUserResourceId}
+                      on:click={grantScopeViewerResource}
+                    >
                       <Plus size={15} aria-hidden="true" />添加资源权限
                     </button>
                     <div class="scope-viewer-resource-list">
                       {#each scopeViewerResourceBindings as resourceBinding}
                         <div class="scope-viewer-resource-item">
-                          <span><strong>{resourceBinding.resource_name}</strong><small>{roleLabel(resourceBinding.role_name)}</small></span>
-                          <button class="icon-button danger-action" type="button" aria-label="移除资源权限" data-tooltip="移除资源权限" on:click={() => revokeScopeViewerResource(resourceBinding)}>
+                          <span
+                            ><strong>{resourceBinding.resource_name}</strong
+                            ><small
+                              >{roleLabel(resourceBinding.role_name)}</small
+                            ></span
+                          >
+                          <button
+                            class="icon-button danger-action"
+                            type="button"
+                            aria-label="移除资源权限"
+                            data-tooltip="移除资源权限"
+                            on:click={() =>
+                              revokeScopeViewerResource(resourceBinding)}
+                          >
                             <Trash2 size={14} aria-hidden="true" />
                           </button>
                         </div>
                       {:else}
-                        <span class="permission-empty">尚未添加具体资源权限</span>
+                        <span class="permission-empty"
+                          >尚未添加具体资源权限</span
+                        >
                       {/each}
                     </div>
                   </section>
@@ -6394,23 +8198,59 @@
                 {#if passwordResetCredentials}
                   <section class="role-preview" aria-live="polite">
                     <strong>一次性密码已生成</strong>
-                    <label>用户名<input value={passwordResetCredentials.username} readonly /></label>
-                    <label>一次性密码<input value={passwordResetCredentials.password} readonly /></label>
+                    <label
+                      >用户名<input
+                        value={passwordResetCredentials.username}
+                        readonly
+                      /></label
+                    >
+                    <label
+                      >一次性密码<input
+                        value={passwordResetCredentials.password}
+                        readonly
+                      /></label
+                    >
                     <div class="form-actions">
-                      <button class="secondary" type="button" on:click={() => copyPasswordResetCredentials(false)}>{#if copiedControl === 'reset-username'}<ClipboardCheck size={15} aria-hidden="true" />已复制{:else}<Copy size={15} aria-hidden="true" />复制用户名{/if}</button>
-                      <button class="primary" type="button" on:click={() => copyPasswordResetCredentials(true)}>{#if copiedControl === 'reset-credentials'}<ClipboardCheck size={15} aria-hidden="true" />已复制{:else}<Copy size={15} aria-hidden="true" />复制用户名和密码{/if}</button>
+                      <button
+                        class="secondary"
+                        type="button"
+                        on:click={() => copyPasswordResetCredentials(false)}
+                        >{#if copiedControl === 'reset-username'}<ClipboardCheck
+                            size={15}
+                            aria-hidden="true"
+                          />已复制{:else}<Copy
+                            size={15}
+                            aria-hidden="true"
+                          />复制用户名{/if}</button
+                      >
+                      <button
+                        class="primary"
+                        type="button"
+                        on:click={() => copyPasswordResetCredentials(true)}
+                        >{#if copiedControl === 'reset-credentials'}<ClipboardCheck
+                            size={15}
+                            aria-hidden="true"
+                          />已复制{:else}<Copy
+                            size={15}
+                            aria-hidden="true"
+                          />复制用户名和密码{/if}</button
+                      >
                     </div>
                   </section>
                 {/if}
                 <div class="form-actions">
-                  <button class="secondary" type="button" disabled={busy} on:click={resetManagedUserPassword}>重置密码</button>
+                  <button
+                    class="secondary"
+                    type="button"
+                    disabled={busy}
+                    on:click={resetManagedUserPassword}>重置密码</button
+                  >
                   <button
                     class="secondary"
                     type="button"
                     on:click={() => (editingUser = null)}>取消</button
-                  ><button
-                    class="primary"
-                    disabled={busy || !editUserScopeId}>保存授权</button
+                  ><button class="primary" disabled={busy || !editUserScopeId}
+                    >保存授权</button
                   >
                 </div>
               </form>

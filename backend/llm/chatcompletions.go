@@ -18,6 +18,7 @@ import (
 	"iter"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"google.golang.org/adk/v2/model"
@@ -82,8 +83,13 @@ func (m *ChatCompletionsModel) GenerateContent(ctx context.Context, request *mod
 		}
 		defer response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 32<<10))
-			yield(nil, fmt.Errorf("Chat Completions returned status %d", response.StatusCode))
+			body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
+			message := upstreamErrorMessage(body)
+			if message == "" {
+				yield(nil, fmt.Errorf("Chat Completions returned status %d", response.StatusCode))
+			} else {
+				yield(nil, fmt.Errorf("Chat Completions returned status %d: %s", response.StatusCode, message))
+			}
 			return
 		}
 		if stream {
@@ -99,6 +105,49 @@ func (m *ChatCompletionsModel) GenerateContent(ctx context.Context, request *mod
 		yield(result, err)
 	}
 }
+
+// upstreamErrorMessage extracts only conventional human-readable fields.
+// Arbitrary response fields are intentionally ignored to avoid reflecting
+// credentials or provider internals back to the caller.
+func upstreamErrorMessage(body []byte) string {
+	var envelope struct {
+		Error   json.RawMessage `json:"error"`
+		Message string          `json:"message"`
+	}
+	if json.Unmarshal(body, &envelope) == nil {
+		if strings.TrimSpace(envelope.Message) != "" {
+			return redactUpstreamMessage(envelope.Message)
+		}
+		var nested struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(envelope.Error, &nested) == nil && strings.TrimSpace(nested.Message) != "" {
+			return redactUpstreamMessage(nested.Message)
+		}
+		var text string
+		if json.Unmarshal(envelope.Error, &text) == nil {
+			return redactUpstreamMessage(text)
+		}
+		return ""
+	}
+	return redactUpstreamMessage(string(body))
+}
+
+func redactUpstreamMessage(message string) string {
+	message = strings.TrimSpace(strings.ReplaceAll(message, "\n", " "))
+	if message == "" {
+		return ""
+	}
+	if upstreamSensitiveValuePattern.MatchString(message) {
+		return ""
+	}
+	if len([]rune(message)) > 400 {
+		message = string([]rune(message)[:400]) + "..."
+	}
+	return message
+}
+
+var upstreamSensitiveValuePattern = regexp.MustCompile(`(?i)(authorization|api[- ]?key|token|secret|password|bearer)(\s*(?:[:=]|\s)\s*)[^\s,;\)\]}]+`)
 
 type chatRequest struct {
 	Model         string         `json:"model"`

@@ -114,6 +114,18 @@ func TestChatCompletionsUpstreamFailureDoesNotExposeBody(t *testing.T) {
 	}
 }
 
+func TestUpstreamErrorMessage(t *testing.T) {
+	if got := upstreamErrorMessage([]byte(`{"error":{"message":"model does not exist"}}`)); got != "model does not exist" {
+		t.Fatalf("provider message = %q", got)
+	}
+	if got := upstreamErrorMessage([]byte(`{"error":"token=do-not-expose"}`)); got != "" {
+		t.Fatalf("credential leaked through provider message = %q", got)
+	}
+	if got := upstreamErrorMessage([]byte(`{"message":"invalid API key"}`)); got != "invalid API key" {
+		t.Fatalf("safe API key reason = %q", got)
+	}
+}
+
 func TestAPIKeyFromCredential(t *testing.T) {
 	if got := apiKeyFromCredential([]byte(`{"token":" structured-secret "}`)); got != "structured-secret" {
 		t.Fatalf("structured API key = %q", got)

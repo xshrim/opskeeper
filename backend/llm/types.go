@@ -8,6 +8,7 @@ const AIEngineKind = "AIEngine"
 type ModelConfig struct {
 	Name                  string   `json:"name"`
 	ContextWindow         int      `json:"context_window"`
+	Temperature           float64  `json:"temperature"`
 	InputPricePerMillion  float64  `json:"input_price_per_million,omitempty"`
 	OutputPricePerMillion float64  `json:"output_price_per_million,omitempty"`
 	Capabilities          []string `json:"capabilities,omitempty"`
@@ -49,4 +50,15 @@ type ConnectionResult struct {
 	Status             string `json:"status"`
 	LatencyMS          int64  `json:"latency_ms"`
 	Message            string `json:"message"`
+}
+
+type DraftConnection struct {
+	ScopeID       string
+	ProviderType  string
+	BaseURL       string
+	ModelName     string
+	APIKey        string
+	ContextWindow int
+	Temperature   float64
+	Capabilities  []string
 }

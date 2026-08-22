@@ -66,6 +66,7 @@ resource:create
 resource:update
 resource:delete
 resource:use
+engine:manage
 credential:manage
 credential:test
 relation:manage
@@ -78,6 +79,32 @@ inspection:execute
 operation:approve
 audit:read
 ```
+
+权限说明：
+
+| 权限 | 含义 |
+|---|---|
+| `organization:read` | 查看组织、平台和 Scope 信息 |
+| `team:manage` | 创建、编辑和停用团队 |
+| `project:manage` | 创建、编辑和停用项目 |
+| `member:grant` | 管理用户、用户组和角色授权 |
+| `resource:read` | 查看资源列表、配置和详情 |
+| `resource:create` | 创建资源 |
+| `resource:update` | 编辑资源配置 |
+| `resource:delete` | 删除或停用资源 |
+| `resource:use` | 使用资源执行连接测试或业务调用 |
+| `engine:manage` | 设置或取消对应级别的默认 AI 引擎 |
+| `credential:manage` | 管理凭据及其关联配置 |
+| `credential:test` | 测试凭据连接 |
+| `relation:manage` | 管理资源之间的关联关系 |
+| `discovery:run` | 启动集群或资源发现 |
+| `discovery:import` | 导入发现结果 |
+| `diagnosis:start` | 启动 AI 诊断 |
+| `diagnosis:read` | 查看诊断记录和结果 |
+| `inspection:manage` | 管理自动巡检策略 |
+| `inspection:execute` | 执行自动巡检 |
+| `operation:approve` | 审批受控操作 |
+| `audit:read` | 查看审计日志 |
 
 `resource:use` 与 `resource:read` 分离。例如项目运维人员可以使用团队级 AIEngine 或监控平台完成诊断，但不能查看 AIEngine 内部 Endpoint 的地址、密钥或修改配置。LLMEndpoint 不作为独立授权主体，所有授权判断都以所属 AIEngine 为准。
 
