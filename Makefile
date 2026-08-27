@@ -7,7 +7,13 @@ COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,dep
 WEBUI_DIST := backend/webui/dist
 IMAGE_REPOSITORY ?= opskeeper
 IMAGE_TAG ?= local
-GOPROXY ?= https://goproxy.cn,direct
+# Use pipe fallback semantics so an unavailable proxy does not block the
+# development workflow. A comma only falls back for 404/410 responses.
+# A command-line assignment (for example, `make GOPROXY=...`) can still
+# override this project default. Environment-only values are intentionally
+# ignored so a stale global GOPROXY cannot disable the fallback chain.
+GOPROXY = https://goproxy.cn|https://proxy.golang.org|direct
+export GOPROXY
 ALPINE_MIRROR ?= https://mirrors.aliyun.com/alpine
 NPM_REGISTRY ?= https://registry.npmmirror.com
 CGO_ENABLED ?= 0
@@ -171,7 +177,7 @@ build: webui-assets ## Build production binaries with the embedded frontend and 
 
 image: ## Build the final application image.
 	docker build \
-		--build-arg GOPROXY=$(GOPROXY) \
+		--build-arg "GOPROXY=$(GOPROXY)" \
 		--build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) \
 		--build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
 		--build-arg VERSION=$(VERSION) \

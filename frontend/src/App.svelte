@@ -132,6 +132,11 @@
     testMessage?: string;
     latencyMs?: number;
   };
+  type AIEndpointTestState = {
+    status: AIEndpointDraft['testStatus'];
+    message?: string;
+    latencyMs?: number;
+  };
   type AIProviderOption = {
     value: string;
     label: string;
@@ -191,7 +196,7 @@
     Search: '检索',
     BookOpen: '手册',
     Sparkles: 'Skill',
-    BrainCircuit: 'AI 引擎',
+    BrainCircuit: 'AI 模型',
     Bot: 'MCP',
     HardDrive: '存储',
     KeyRound: '凭据',
@@ -374,34 +379,35 @@
   let resourceBindings: ResourceRoleBinding[] = [];
   let aiLoaded = false;
   let selectedProviderId = '';
-  let selectedAIEngineId = '';
-  let selectedAIEngineResource: Resource | null = null;
-  let expandedAIEngineId = '';
-  let aiEngineSearch = '';
-  let aiEngineStatusFilter = 'all';
-  let aiEngineScopeFilter = 'all';
-  let aiEngineCreateOpen = false;
-  let aiEngineCreateStep = 1;
-  let aiEngineCreateDescription = '';
-  let aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
-  let aiEngineCreateEndpoints: AIEndpointDraft[] = [];
-  let aiEngineCreateDraft = defaultAIEndpoint();
-  let aiEngineEditingEndpointIndex = -1;
-  let aiEngineIcon = 'BrainCircuit';
+  let selectedAIModelId = '';
+  let selectedAIModelResource: Resource | null = null;
+  let expandedAIModelId = '';
+  let aiModelSearch = '';
+  let aiModelStatusFilter = 'all';
+  let aiModelScopeFilter = 'all';
+  let aiModelCreateOpen = false;
+  let aiModelCreateStep = 1;
+  let aiModelCreateDescription = '';
+  let aiModelCreateFallback = ['timeout', 'rate_limit', 'server_error'];
+  let aiModelCreateEndpoints: AIEndpointDraft[] = [];
+  let aiModelCreateDraft = defaultAIEndpoint();
+  let aiModelEditingEndpointIndex = -1;
+  let aiModelIcon = 'BrainCircuit';
   let aiModelCredentialVisible = false;
   let aiProviderMenuOpen = false;
-  let aiEngineCreateDefault = false;
-  let aiEngineModelError = '';
-  let aiEngineModelMissing: string[] = [];
-  let aiEngineModelTesting = false;
-  let aiEngineRefreshing = false;
-  let aiEngineEndpointTestBusy = false;
-  let aiEngineName = '';
-  let aiEngineStrategy = 'priority';
-  let aiEngineEditName = '';
-  let aiEngineEditEndpoints = '[]';
-  let aiEngineEditStatus = 'active';
-  let aiEngineEndpoints =
+  let aiModelCreateDefault = false;
+  let aiModelModelError = '';
+  let aiModelModelMissing: string[] = [];
+  let aiModelModelTesting = false;
+  let aiModelRefreshing = false;
+  let aiModelEndpointTestBusy = false;
+  let aiModelEndpointTests: Record<string, AIEndpointTestState> = {};
+  let aiModelName = '';
+  let aiModelStrategy = 'priority';
+  let aiModelEditName = '';
+  let aiModelEditEndpoints = '[]';
+  let aiModelEditStatus = 'active';
+  let aiModelEndpoints =
     '[\n  {\n    "provider_type": "openai_compatible",\n    "base_url": "https://api.example.com/v1",\n    "model_name": "model-name",\n    "context_window": 32768,\n    "capabilities": ["chat", "stream"],\n    "timeout_seconds": 60,\n    "priority": 100,\n    "enabled": true\n  }\n]';
   let selectedSkillId = '';
   let selectedSkillVersionId = '';
@@ -515,7 +521,7 @@
   let selectedAccessTeamIds: string[] = [];
   let selectedAccessUserIds: string[] = [];
   let teamDialogOpen = false;
-  let iconPickerTarget: 'create' | 'edit' | 'ai-engine' | null = null;
+  let iconPickerTarget: 'create' | 'edit' | 'ai-model' | null = null;
   let teamIconSearch = '';
   let userDialogOpen = false;
   let editingTeam: Team | null = null;
@@ -617,54 +623,54 @@
   $: applicationCandidates = discoveryItems.filter(
     (item) => item.kind === 'Application'
   );
-  $: aiEngines = resources.filter(
-    (item) => item.kind === 'AIEngine' || item.kind === 'LLMProvider'
+  $: aiModels = resources.filter(
+    (item) => item.kind === 'AIModel' || item.kind === 'LLMProvider'
   );
-  $: visibleAIEngines = aiEngines.filter((engine) => {
+  $: visibleAIModels = aiModels.filter((model) => {
     if (
-      aiEngineStatusFilter !== 'all' &&
-      engine.status !== aiEngineStatusFilter
+      aiModelStatusFilter !== 'all' &&
+      model.status !== aiModelStatusFilter
     )
       return false;
     if (
-      aiEngineScopeFilter !== 'all' &&
-      scopeType(engine.scope_id) !== aiEngineScopeFilter
+      aiModelScopeFilter !== 'all' &&
+      scopeType(model.scope_id) !== aiModelScopeFilter
     )
       return false;
-    const query = aiEngineSearch.trim().toLowerCase();
+    const query = aiModelSearch.trim().toLowerCase();
     return (
       !query ||
-      `${engine.name} ${scopeName(engine.scope_id)} ${aiEngineDescription(engine)}`
+      `${model.name} ${scopeName(model.scope_id)} ${aiModelDescription(model)}`
         .toLowerCase()
         .includes(query)
     );
   });
-  $: aiEngineHealthyCount = aiEngines.filter(
-    (engine) => aiEngineStatus(engine) === 'healthy'
+  $: aiModelHealthyCount = aiModels.filter(
+    (model) => aiModelStatus(model) === 'healthy'
   ).length;
-  $: aiEngineRepairCount = aiEngines.filter(
-    (engine) => aiEngineStatus(engine) === 'repair'
+  $: aiModelRepairCount = aiModels.filter(
+    (model) => aiModelStatus(model) === 'repair'
   ).length;
-  $: aiEngineEndpointCount = aiEngines.reduce(
-    (count, engine) => count + aiEngineEndpointsFor(engine).length,
+  $: aiModelEndpointCount = aiModels.reduce(
+    (count, model) => count + aiModelEndpointsFor(model).length,
     0
   );
-  $: aiEngineHealthyEndpointCount = aiEngines.reduce(
-    (count, engine) =>
+  $: aiModelHealthyEndpointCount = aiModels.reduce(
+    (count, model) =>
       count +
-      aiEngineEndpointsFor(engine).filter(
+      aiModelEndpointsFor(model).filter(
         (endpoint) => endpointStatus(endpoint) === 'healthy'
       ).length,
     0
   );
-  $: selectedAIEngineResource =
-    aiEngines.find((item) => item.id === selectedAIEngineId) ?? null;
-  $: llmProviders = aiEngines;
+  $: selectedAIModelResource =
+    aiModels.find((item) => item.id === selectedAIModelId) ?? null;
+  $: llmProviders = aiModels;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
   $: executableTargets = visibleResources.filter(
     (item) =>
       item.kind !== 'LLMProvider' &&
-      item.kind !== 'AIEngine' &&
+      item.kind !== 'AIModel' &&
       item.kind !== 'Skill'
   );
   $: diagnosisTargets = visibleResources.filter(
@@ -1446,22 +1452,22 @@
 
   async function loadAI() {
     aiLoaded = true;
-    selectedAIEngineId = selectedAIEngineId || aiEngines[0]?.id || '';
-    selectedProviderId = selectedAIEngineId;
+    selectedAIModelId = selectedAIModelId || aiModels[0]?.id || '';
+    selectedProviderId = selectedAIModelId;
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
-    const selectedEngine = aiEngines.find(
-      (item) => item.id === selectedAIEngineId
+    const selectedModel = aiModels.find(
+      (item) => item.id === selectedAIModelId
     );
-    const endpoints = selectedEngine?.config.endpoints as
+    const endpoints = selectedModel?.config.endpoints as
       Array<{ model_name?: string }> | undefined;
-    const legacyModels = selectedEngine?.config.models as
+    const legacyModels = selectedModel?.config.models as
       Array<{ name?: string }> | undefined;
     llmModelName =
       llmModelName ||
       endpoints?.[0]?.model_name ||
       legacyModels?.[0]?.name ||
       '';
-    syncAIEngineEditor(selectedEngine ?? null);
+    syncAIModelEditor(selectedModel ?? null);
     if (selectedSkillId) await loadSkillVersions();
     if (selectedScopeId) {
       try {
@@ -1472,56 +1478,62 @@
     }
   }
 
-  async function refreshAIEngines() {
-    if (aiEngineRefreshing) return;
-    aiEngineRefreshing = true;
+  async function refreshAIModels() {
+    if (aiModelRefreshing) return;
+    aiModelRefreshing = true;
     errorMessage = '';
     try {
       const resourcePage = await api.resources();
       resources = resourcePage.items;
       await loadResourceConnectionChecks(resources);
+      await Promise.all(
+        resourcePage.items
+          .filter((item) => item.kind === 'AIModel')
+          .map((model) => testAIModel(model, false))
+      );
     } catch (error) {
-      errorMessage = describeError(error, 'AI 引擎状态刷新失败');
+      errorMessage = describeError(error, 'AI 模型状态刷新失败');
     } finally {
-      aiEngineRefreshing = false;
+      aiModelRefreshing = false;
     }
   }
 
-  function syncAIEngineEditor(engine: Resource | null) {
-    if (!engine) {
-      aiEngineEditName = '';
-      aiEngineEditEndpoints = '[]';
-      aiEngineEditStatus = 'active';
+  function syncAIModelEditor(model: Resource | null) {
+    if (!model) {
+      aiModelEditName = '';
+      aiModelEditEndpoints = '[]';
+      aiModelEditStatus = 'active';
       return;
     }
-    aiEngineEditName = engine.name;
-    aiEngineEditEndpoints = JSON.stringify(
-      engine.config.endpoints ?? engine.config.models ?? [],
+    aiModelEditName = model.name;
+    aiModelEditEndpoints = JSON.stringify(
+      model.config.endpoints ?? model.config.models ?? [],
       null,
       2
     );
-    aiEngineEditStatus = engine.status;
+    aiModelEditStatus = model.status;
   }
 
-  function aiEngineDescription(engine: Resource) {
+  function aiModelDescription(model: Resource) {
     return String(
-      engine.config.description ?? engine.labels?.description ?? ''
+      model.config.description ?? model.labels?.description ?? ''
     );
   }
 
-  function aiEngineIconFor(engine: Resource) {
-    return String(engine.config.icon ?? 'BrainCircuit');
+  function aiModelIconFor(model: Resource) {
+    return String(model.config.icon ?? 'BrainCircuit');
   }
 
-  function aiEngineEndpointsFor(engine: Resource | null): AIEndpointDraft[] {
-    if (!engine) return [];
-    const raw = Array.isArray(engine.config.endpoints)
-      ? engine.config.endpoints
-      : Array.isArray(engine.config.models)
-        ? engine.config.models
+  function aiModelEndpointsFor(model: Resource | null): AIEndpointDraft[] {
+    if (!model) return [];
+    const raw = Array.isArray(model.config.endpoints)
+      ? model.config.endpoints
+      : Array.isArray(model.config.models)
+        ? model.config.models
         : [];
     return raw.map((value, index) => {
       const endpoint = (value ?? {}) as Record<string, unknown>;
+      const test = aiModelEndpointTests[`${model.id}:${index}`];
       return {
         provider_type: String(endpoint.provider_type ?? 'openai_compatible'),
         base_url: String(endpoint.base_url ?? ''),
@@ -1535,7 +1547,9 @@
         timeout_seconds: Number(endpoint.timeout_seconds ?? 60),
         priority: Number(endpoint.priority ?? 100 - index),
         enabled: endpoint.enabled !== false,
-        testStatus: 'idle'
+        testStatus: test?.status ?? 'idle',
+        testMessage: test?.message,
+        latencyMs: test?.latencyMs
       };
     });
   }
@@ -1547,30 +1561,36 @@
     return 'pending';
   }
 
-  function aiEngineStatus(engine: Resource) {
-    if (engine.status !== 'active') return 'disabled';
-    const endpoints = aiEngineEndpointsFor(engine);
+  function aiModelStatus(model: Resource) {
+    if (model.status !== 'active') return 'disabled';
+    const endpoints = aiModelEndpointsFor(model);
+    if (endpoints.some((endpoint) => endpoint.testStatus === 'testing'))
+      return 'testing';
     if (
       endpoints.length === 0 ||
       endpoints.every((endpoint) => !endpoint.enabled)
     )
       return 'repair';
-    return 'healthy';
+    return endpoints.some((endpoint) => endpoint.testStatus === 'failed')
+      ? 'repair'
+      : 'healthy';
   }
 
-  function aiEngineStatusLabel(engine: Resource) {
-    const status = aiEngineStatus(engine);
+  function aiModelStatusLabel(model: Resource) {
+    const status = aiModelStatus(model);
     return status === 'healthy'
       ? '正常'
       : status === 'repair'
         ? '异常'
+        : status === 'testing'
+          ? '测试中'
         : '已停用';
   }
 
-  function aiEngineHealthRatio(engine: Resource) {
-    const endpoints = aiEngineEndpointsFor(engine);
+  function aiModelHealthRatio(model: Resource) {
+    const endpoints = aiModelEndpointsFor(model);
     const healthy =
-      engine.status === 'active'
+      model.status === 'active'
         ? endpoints.filter(
             (endpoint) => endpoint.enabled && endpoint.testStatus !== 'failed'
           ).length
@@ -1578,17 +1598,19 @@
     return `${healthy}/${endpoints.length}`;
   }
 
-  function aiEngineStatusClass(engine: Resource) {
-    const status = aiEngineStatus(engine);
+  function aiModelStatusClass(model: Resource) {
+    const status = aiModelStatus(model);
     return status === 'healthy'
       ? 'healthy'
       : status === 'repair'
         ? 'warning'
-        : 'disabled';
+        : status === 'testing'
+          ? 'pending'
+          : 'disabled';
   }
 
-  function aiEngineCapabilities(engine: Resource) {
-    return aiCapabilitiesForEndpoints(aiEngineEndpointsFor(engine));
+  function aiModelCapabilities(model: Resource) {
+    return aiCapabilitiesForEndpoints(aiModelEndpointsFor(model));
   }
 
   function aiCapabilitiesForEndpoints(endpoints: AIEndpointDraft[]) {
@@ -1658,6 +1680,7 @@
   }
 
   function aiEndpointConnectionLabel(endpoint: AIEndpointDraft) {
+    if (!endpoint.enabled) return '已停用';
     if (endpoint.testStatus === 'testing') return '连接中...';
     if (endpoint.testStatus === 'succeeded')
       return `正常 · ${endpoint.latencyMs ?? 35} ms`;
@@ -1689,42 +1712,42 @@
 
   function selectAIProvider(value: string) {
     const option = aiProviderOption(value);
-    aiEngineCreateDraft = {
-      ...aiEngineCreateDraft,
+    aiModelCreateDraft = {
+      ...aiModelCreateDraft,
       provider_type: option.value,
       base_url: option.baseUrl
     };
     aiProviderMenuOpen = false;
-    clearAIEngineModelFieldError('provider');
+    clearAIModelModelFieldError('provider');
   }
 
-  function openAIEngineCreate() {
-    aiEngineCreateOpen = true;
-    aiEngineCreateStep = 1;
-    aiEngineName = '';
-    aiEngineCreateDescription = '';
-    aiEngineCreateFallback = ['timeout', 'rate_limit', 'server_error'];
-    aiEngineCreateEndpoints = [];
-    aiEngineCreateDraft = defaultAIEndpoint();
-    aiEngineEditingEndpointIndex = -1;
-    aiEngineIcon = 'BrainCircuit';
+  function openAIModelCreate() {
+    aiModelCreateOpen = true;
+    aiModelCreateStep = 1;
+    aiModelName = '';
+    aiModelCreateDescription = '';
+    aiModelCreateFallback = ['timeout', 'rate_limit', 'server_error'];
+    aiModelCreateEndpoints = [];
+    aiModelCreateDraft = defaultAIEndpoint();
+    aiModelEditingEndpointIndex = -1;
+    aiModelIcon = 'BrainCircuit';
     aiModelCredentialVisible = false;
     aiProviderMenuOpen = false;
-    aiEngineCreateDefault = false;
-    aiEngineModelError = '';
-    aiEngineModelMissing = [];
-    aiEngineModelTesting = false;
+    aiModelCreateDefault = false;
+    aiModelModelError = '';
+    aiModelModelMissing = [];
+    aiModelModelTesting = false;
   }
 
-  function closeAIEngineCreate() {
-    aiEngineCreateOpen = false;
-    aiEngineCreateStep = 1;
+  function closeAIModelCreate() {
+    aiModelCreateOpen = false;
+    aiModelCreateStep = 1;
   }
 
-  function toggleAIEngineFallback(value: string) {
-    aiEngineCreateFallback = aiEngineCreateFallback.includes(value)
-      ? aiEngineCreateFallback.filter((item) => item !== value)
-      : [...aiEngineCreateFallback, value];
+  function toggleAIModelFallback(value: string) {
+    aiModelCreateFallback = aiModelCreateFallback.includes(value)
+      ? aiModelCreateFallback.filter((item) => item !== value)
+      : [...aiModelCreateFallback, value];
   }
 
   function aiProviderLabel(provider: string) {
@@ -1732,52 +1755,52 @@
   }
 
   function toggleAIEndpointCapability(capability: string) {
-    const selected = aiEngineCreateDraft.capabilities;
-    aiEngineCreateDraft = {
-      ...aiEngineCreateDraft,
+    const selected = aiModelCreateDraft.capabilities;
+    aiModelCreateDraft = {
+      ...aiModelCreateDraft,
       capabilities: selected.includes(capability)
         ? selected.filter((item) => item !== capability)
         : [...selected, capability]
     };
   }
 
-  function aiEngineCreateDraftIsComplete() {
+  function aiModelCreateDraftIsComplete() {
     return Boolean(
-      aiEngineCreateDraft.base_url.trim() &&
-      aiEngineCreateDraft.model_name.trim() &&
-      aiEngineCreateDraft.credential.trim()
+      aiModelCreateDraft.base_url.trim() &&
+      aiModelCreateDraft.model_name.trim() &&
+      aiModelCreateDraft.credential.trim()
     );
   }
 
-  function aiEngineModelFieldMissing(field: string) {
-    return aiEngineModelMissing.includes(field);
+  function aiModelModelFieldMissing(field: string) {
+    return aiModelModelMissing.includes(field);
   }
 
-  function clearAIEngineModelFieldError(field: string) {
-    if (!aiEngineModelMissing.includes(field)) return;
+  function clearAIModelModelFieldError(field: string) {
+    if (!aiModelModelMissing.includes(field)) return;
     const value =
       field === 'provider'
-        ? aiEngineCreateDraft.provider_type
+        ? aiModelCreateDraft.provider_type
         : field === 'base_url'
-          ? aiEngineCreateDraft.base_url
+          ? aiModelCreateDraft.base_url
           : field === 'model_name'
-            ? aiEngineCreateDraft.model_name
-            : aiEngineCreateDraft.credential;
+            ? aiModelCreateDraft.model_name
+            : aiModelCreateDraft.credential;
     if (!value.trim()) return;
-    aiEngineModelMissing = aiEngineModelMissing.filter(
+    aiModelModelMissing = aiModelModelMissing.filter(
       (item) => item !== field
     );
-    if (aiEngineModelMissing.length === 0) aiEngineModelError = '';
+    if (aiModelModelMissing.length === 0) aiModelModelError = '';
   }
 
   async function addAIEndpoint() {
-    if (!aiEngineCreateDraftIsComplete()) {
+    if (!aiModelCreateDraftIsComplete()) {
       const missing: string[] = [];
-      if (!aiEngineCreateDraft.provider_type.trim()) missing.push('provider');
-      if (!aiEngineCreateDraft.base_url.trim()) missing.push('base_url');
-      if (!aiEngineCreateDraft.model_name.trim()) missing.push('model_name');
-      if (!aiEngineCreateDraft.credential.trim()) missing.push('credential');
-      aiEngineModelMissing = missing;
+      if (!aiModelCreateDraft.provider_type.trim()) missing.push('provider');
+      if (!aiModelCreateDraft.base_url.trim()) missing.push('base_url');
+      if (!aiModelCreateDraft.model_name.trim()) missing.push('model_name');
+      if (!aiModelCreateDraft.credential.trim()) missing.push('credential');
+      aiModelModelMissing = missing;
       const labels = missing.map((field) =>
         field === 'provider'
           ? '模型厂商'
@@ -1787,31 +1810,31 @@
               ? '模型名称'
               : '模型凭证'
       );
-      aiEngineModelError = `请填写${labels.join('、')}`;
+      aiModelModelError = `请填写${labels.join('、')}`;
       return;
     }
-    aiEngineModelTesting = true;
-    aiEngineModelError = '正在测试模型连接...';
+    aiModelModelTesting = true;
+    aiModelModelError = '正在测试模型连接...';
     try {
       const connection = await api.testDraftLLM({
         scope_id: selectedScopeId,
-        provider_type: aiEngineCreateDraft.provider_type,
-        base_url: aiEngineCreateDraft.base_url,
-        model_name: aiEngineCreateDraft.model_name,
-        api_key: aiEngineCreateDraft.credential,
-        context_window: aiEngineCreateDraft.context_window,
-        temperature: aiEngineCreateDraft.temperature,
-        capabilities: aiEngineCreateDraft.capabilities,
+        provider_type: aiModelCreateDraft.provider_type,
+        base_url: aiModelCreateDraft.base_url,
+        model_name: aiModelCreateDraft.model_name,
+        api_key: aiModelCreateDraft.credential,
+        context_window: aiModelCreateDraft.context_window,
+        temperature: aiModelCreateDraft.temperature,
+        capabilities: aiModelCreateDraft.capabilities,
         stream: true
       });
       addAIEndpointAfterTest(connection.latency_ms);
     } catch (error) {
-      aiEngineModelError = describeError(
+      aiModelModelError = describeError(
         error,
         '模型连接测试失败，请检查地址、凭证和模型名称'
       );
     } finally {
-      aiEngineModelTesting = false;
+      aiModelModelTesting = false;
     }
   }
 
@@ -1819,55 +1842,55 @@
     const nextPriority =
       Math.max(
         0,
-        ...aiEngineCreateEndpoints.map((endpoint) => endpoint.priority)
+        ...aiModelCreateEndpoints.map((endpoint) => endpoint.priority)
       ) + 10;
     const endpoint = {
-      ...aiEngineCreateDraft,
+      ...aiModelCreateDraft,
       priority:
-        aiEngineEditingEndpointIndex >= 0
-          ? (aiEngineCreateEndpoints[aiEngineEditingEndpointIndex]?.priority ??
+        aiModelEditingEndpointIndex >= 0
+          ? (aiModelCreateEndpoints[aiModelEditingEndpointIndex]?.priority ??
             nextPriority)
           : nextPriority,
-      capabilities: aiEngineCreateDraft.capabilities,
+      capabilities: aiModelCreateDraft.capabilities,
       testStatus: 'succeeded' as const,
       latencyMs
     };
-    if (aiEngineEditingEndpointIndex >= 0) {
-      aiEngineCreateEndpoints = aiEngineCreateEndpoints.map((item, index) =>
-        index === aiEngineEditingEndpointIndex ? endpoint : item
+    if (aiModelEditingEndpointIndex >= 0) {
+      aiModelCreateEndpoints = aiModelCreateEndpoints.map((item, index) =>
+        index === aiModelEditingEndpointIndex ? endpoint : item
       );
     } else {
-      aiEngineCreateEndpoints = [...aiEngineCreateEndpoints, endpoint];
+      aiModelCreateEndpoints = [...aiModelCreateEndpoints, endpoint];
     }
-    aiEngineCreateDraft = defaultAIEndpoint();
-    aiEngineEditingEndpointIndex = -1;
+    aiModelCreateDraft = defaultAIEndpoint();
+    aiModelEditingEndpointIndex = -1;
     aiModelCredentialVisible = false;
-    aiEngineModelError = '';
-    aiEngineModelMissing = [];
+    aiModelModelError = '';
+    aiModelModelMissing = [];
   }
 
   function removeAIEndpoint(index: number) {
-    aiEngineCreateEndpoints = aiEngineCreateEndpoints.filter(
+    aiModelCreateEndpoints = aiModelCreateEndpoints.filter(
       (_, itemIndex) => itemIndex !== index
     );
-    if (aiEngineEditingEndpointIndex === index) {
-      aiEngineCreateDraft = defaultAIEndpoint();
-      aiEngineEditingEndpointIndex = -1;
+    if (aiModelEditingEndpointIndex === index) {
+      aiModelCreateDraft = defaultAIEndpoint();
+      aiModelEditingEndpointIndex = -1;
     }
   }
 
   function editAIEndpoint(index: number) {
-    const endpoint = aiEngineCreateEndpoints[index];
+    const endpoint = aiModelCreateEndpoints[index];
     if (!endpoint) return;
-    aiEngineCreateDraft = { ...endpoint, testStatus: 'idle' };
-    aiEngineEditingEndpointIndex = index;
+    aiModelCreateDraft = { ...endpoint, testStatus: 'idle' };
+    aiModelEditingEndpointIndex = index;
     aiModelCredentialVisible = Boolean(endpoint.credential);
-    aiEngineModelError = '';
-    aiEngineModelMissing = [];
+    aiModelModelError = '';
+    aiModelModelMissing = [];
   }
 
   function updateAIEndpoint(index: number, patch: Partial<AIEndpointDraft>) {
-    const next = aiEngineCreateEndpoints.map((endpoint, itemIndex) => {
+    const next = aiModelCreateEndpoints.map((endpoint, itemIndex) => {
       if (itemIndex !== index) return endpoint;
       const updated = { ...endpoint, ...patch, testStatus: 'idle' as const };
       return {
@@ -1875,15 +1898,15 @@
         capabilities: deriveAIEndpointCapabilities(updated)
       };
     });
-    aiEngineCreateEndpoints = next;
+    aiModelCreateEndpoints = next;
     const endpoint = next[index];
     if (endpoint?.model_name.trim() && endpoint.base_url.trim()) {
       window.setTimeout(() => {
         if (
-          aiEngineCreateEndpoints[index]?.model_name === endpoint.model_name &&
-          aiEngineCreateEndpoints[index]?.base_url === endpoint.base_url
+          aiModelCreateEndpoints[index]?.model_name === endpoint.model_name &&
+          aiModelCreateEndpoints[index]?.base_url === endpoint.base_url
         ) {
-          aiEngineCreateEndpoints = aiEngineCreateEndpoints.map(
+          aiModelCreateEndpoints = aiModelCreateEndpoints.map(
             (item, itemIndex) =>
               itemIndex === index
                 ? {
@@ -1913,54 +1936,84 @@
     };
   }
 
-  function editAIEngine(engine: Resource) {
-    selectedAIEngineId = engine.id;
-    selectedAIEngineResource = engine;
-    syncAIEngineEditor(engine);
-    expandedAIEngineId = engine.id;
+  function editAIModel(model: Resource) {
+    selectedAIModelId = model.id;
+    selectedAIModelResource = model;
+    syncAIModelEditor(model);
+    expandedAIModelId = model.id;
   }
 
-  async function testAIEngine(engine: Resource) {
-    const endpoints = aiEngineEndpointsFor(engine).filter(
-      (endpoint) => endpoint.enabled
+  async function testAIModel(model: Resource, showError = true) {
+    const scopeID = selectedScopeId || model.scope_id;
+    if (!scopeID) return;
+    const endpoints = aiModelEndpointsFor(model);
+    const enabled = endpoints
+      .map((endpoint, index) => ({ endpoint, index }))
+      .filter(({ endpoint }) => endpoint.enabled);
+    if (enabled.length === 0) return;
+    aiModelEndpointTestBusy = true;
+    aiModelEndpointTests = {
+      ...aiModelEndpointTests,
+      ...Object.fromEntries(
+        enabled.map(({ index }) => [
+          `${model.id}:${index}`,
+          { status: 'testing' as const }
+        ])
+      )
+    };
+    const results = await Promise.all(
+      enabled.map(async ({ index }) => {
+        const key = `${model.id}:${index}`;
+        try {
+          const result = await api.testAIModelEndpoint(model.id, index, {
+            scope_id: scopeID,
+            stream: true
+          });
+          const state = {
+            status: 'succeeded' as const,
+            message: result.message,
+            latencyMs: result.latency_ms
+          };
+          aiModelEndpointTests = { ...aiModelEndpointTests, [key]: state };
+          return [key, state] as const;
+        } catch (error) {
+          const state = {
+            status: 'failed' as const,
+            message: describeError(error, '连接测试失败')
+          };
+          aiModelEndpointTests = { ...aiModelEndpointTests, [key]: state };
+          return [key, state] as const;
+        }
+      })
     );
-    const first = endpoints.sort(
-      (left, right) => right.priority - left.priority
-    )[0];
-    if (!first || !selectedScopeId) return;
-    aiEngineEndpointTestBusy = true;
-    try {
-      const result = await api.testLLMProvider(engine.id, {
-        scope_id: selectedScopeId,
-        model_name: first.model_name,
-        stream: true
-      });
-      notice = `${engine.name} 首选模型测试通过，耗时 ${result.latency_ms} ms`;
-    } catch (error) {
-      errorMessage = describeError(error, `${engine.name} 连接测试失败`);
-    } finally {
-      aiEngineEndpointTestBusy = false;
+    aiModelEndpointTests = {
+      ...aiModelEndpointTests,
+      ...Object.fromEntries(results)
+    };
+    aiModelEndpointTestBusy = false;
+    if (showError && results.some(([, state]) => state.status === 'failed')) {
+      errorMessage = `${model.name} 存在大模型节点连接失败，请查看状态详情`;
     }
   }
 
-  async function saveAIEngine() {
+  async function saveAIModel() {
     if (
-      !selectedAIEngineResource ||
+      !selectedAIModelResource ||
       !selectedScopeId ||
-      !aiEngineEditName.trim()
+      !aiModelEditName.trim()
     )
       return;
     await action(async () => {
-      const currentEngine = selectedAIEngineResource as Resource;
-      const endpoints = JSON.parse(aiEngineEditEndpoints) as unknown;
+      const currentModel = selectedAIModelResource as Resource;
+      const endpoints = JSON.parse(aiModelEditEndpoints) as unknown;
       if (!Array.isArray(endpoints) || endpoints.length === 0) {
         throw new Error('至少需要配置一个模型连接');
       }
-      const updated = await api.updateResource(currentEngine.id, {
-        name: aiEngineEditName.trim(),
-        status: aiEngineEditStatus,
+      const updated = await api.updateResource(currentModel.id, {
+        name: aiModelEditName.trim(),
+        status: aiModelEditStatus,
         config: {
-          ...currentEngine.config,
+          ...currentModel.config,
           strategy: 'priority',
           fallback_on: ['timeout', 'rate_limit', 'server_error'],
           endpoints
@@ -1969,8 +2022,8 @@
       resources = resources.map((resource) =>
         resource.id === updated.id ? updated : resource
       );
-      syncAIEngineEditor(updated);
-      notice = `AI 引擎“${updated.name}”已更新`;
+      syncAIModelEditor(updated);
+      notice = `AI 模型“${updated.name}”已更新`;
     });
   }
 
@@ -1988,9 +2041,9 @@
   }
 
   async function testLLMProvider() {
-    if (!selectedAIEngineId || !selectedScopeId || !llmModelName) return;
+    if (!selectedAIModelId || !selectedScopeId || !llmModelName) return;
     await action(async () => {
-      llmConnection = await api.testLLMProvider(selectedAIEngineId, {
+      llmConnection = await api.testLLMProvider(selectedAIModelId, {
         scope_id: selectedScopeId,
         model_name: llmModelName,
         stream: true
@@ -1999,35 +2052,35 @@
     });
   }
 
-  async function createAIEngine() {
-    if (!selectedScopeId || !aiEngineName.trim()) return;
+  async function createAIModel() {
+    if (!selectedScopeId || !aiModelName.trim()) return;
     await action(async () => {
-      const normalizedName = aiEngineName.trim().toLocaleLowerCase();
+      const normalizedName = aiModelName.trim().toLocaleLowerCase();
       const duplicate = resources.some(
         (item) =>
-          item.kind === 'AIEngine' &&
+          item.kind === 'AIModel' &&
           item.scope_id === selectedScopeId &&
           item.name.trim().toLocaleLowerCase() === normalizedName
       );
       if (duplicate) {
-        throw new Error('当前级别下已有同名 AI 引擎，请更换名称后再发布');
+        throw new Error('当前级别下已有同名 AI 模型，请更换名称后再发布');
       }
       if (
-        aiEngineCreateEndpoints.length === 0 ||
-        aiEngineCreateEndpoints.some(
+        aiModelCreateEndpoints.length === 0 ||
+        aiModelCreateEndpoints.some(
           (endpoint) => !endpoint.model_name.trim() || !endpoint.base_url.trim()
         )
       ) {
         throw new Error('至少需要配置一个模型连接');
       }
       const endpoints: Record<string, unknown>[] = [];
-      for (const [index, endpoint] of aiEngineCreateEndpoints.entries()) {
+      for (const [index, endpoint] of aiModelCreateEndpoints.entries()) {
         let credentialId = '';
         if (endpoint.credential.trim()) {
           const credential = await api.createCredential({
             scope_id: selectedScopeId,
-            name: `${aiEngineName.trim()} ${endpoint.provider_type} API Token ${index + 1}`,
-            purpose: 'AIEngine LLMEndpoint',
+            name: `${aiModelName.trim()} ${endpoint.provider_type} API Token ${index + 1}`,
+            purpose: 'AIModel 大模型节点',
             secret: JSON.stringify({ token: endpoint.credential.trim() })
           });
           credentialId = credential.id;
@@ -2036,53 +2089,53 @@
       }
       const created = await api.createResource({
         scope_id: selectedScopeId,
-        kind: 'AIEngine',
-        name: aiEngineName.trim(),
+        kind: 'AIModel',
+        name: aiModelName.trim(),
         status: 'active',
-        labels: aiEngineCreateDescription.trim()
-          ? { description: aiEngineCreateDescription.trim() }
+        labels: aiModelCreateDescription.trim()
+          ? { description: aiModelCreateDescription.trim() }
           : {},
         config: {
-          strategy: aiEngineStrategy,
-          fallback_on: aiEngineCreateFallback,
-          icon: aiEngineIcon,
+          strategy: aiModelStrategy,
+          fallback_on: aiModelCreateFallback,
+          icon: aiModelIcon,
           default: false,
           endpoints
         }
       });
-      const finalized = aiEngineCreateDefault
-        ? await api.setAIEngineDefault(created.id, true)
+      const finalized = aiModelCreateDefault
+        ? await api.setAIModelDefault(created.id, true)
         : created;
       resources = [finalized, ...resources];
-      selectedAIEngineId = finalized.id;
+      selectedAIModelId = finalized.id;
       selectedProviderId = finalized.id;
-      aiEngineName = '';
-      aiEngineCreateOpen = false;
-      aiEngineCreateStep = 1;
-      notice = `AI 引擎“${finalized.name}”已创建`;
+      aiModelName = '';
+      aiModelCreateOpen = false;
+      aiModelCreateStep = 1;
+      notice = `AI 模型“${finalized.name}”已创建`;
     });
   }
 
-  async function toggleAIEngineDefault(engine: Resource) {
+  async function toggleAIModelDefault(model: Resource) {
     await action(async () => {
-      const updated = await api.setAIEngineDefault(engine.id, !Boolean(engine.config.default));
+      const updated = await api.setAIModelDefault(model.id, !Boolean(model.config.default));
       resources = resources.map((item) =>
-        item.kind === 'AIEngine' && item.scope_id === engine.scope_id
+        item.kind === 'AIModel' && item.scope_id === model.scope_id
           ? item.id === updated.id
             ? updated
             : { ...item, config: { ...item.config, default: false } }
           : item
       );
-      notice = updated.config.default ? `已将“${updated.name}”设为默认引擎` : `已取消“${updated.name}”的默认设置`;
+      notice = updated.config.default ? `已将“${updated.name}”设为默认模型` : `已取消“${updated.name}”的默认设置`;
     });
   }
 
   async function setLLMDefault() {
-    if (!selectedAIEngineId || !selectedScopeId || !llmModelName) return;
+    if (!selectedAIModelId || !selectedScopeId || !llmModelName) return;
     await action(async () => {
       await api.setLLMDefault({
         scope_id: selectedScopeId,
-        provider_resource_id: selectedAIEngineId,
+        provider_resource_id: selectedAIModelId,
         model_name: llmModelName
       });
       notice = '默认模型已更新';
@@ -2448,15 +2501,15 @@
     iconPickerTarget = target;
   }
 
-  function openAIEngineIconPicker() {
+  function openAIModelIconPicker() {
     teamIconSearch = '';
-    iconPickerTarget = 'ai-engine';
+    iconPickerTarget = 'ai-model';
   }
 
   function selectTeamIcon(icon: string) {
     if (iconPickerTarget === 'create') teamIcon = icon;
     if (iconPickerTarget === 'edit') editTeamIcon = icon;
-    if (iconPickerTarget === 'ai-engine') aiEngineIcon = icon;
+    if (iconPickerTarget === 'ai-model') aiModelIcon = icon;
     iconPickerTarget = null;
     teamIconSearch = '';
   }
@@ -2940,7 +2993,7 @@
         error.status === 409 &&
         error.message === 'Resource conflicts with existing data'
       ) {
-        return '当前级别下已有同名 AI 引擎或凭据冲突，请更换名称后重试。';
+        return '当前级别下已有同名 AI 模型或凭据冲突，请更换名称后重试。';
       }
       return error.message || fallback;
     }
@@ -3088,7 +3141,7 @@
     'resource:update': '编辑资源配置',
     'resource:delete': '删除或停用资源',
     'resource:use': '使用资源执行连接测试或业务调用',
-    'engine:manage': '设置或取消对应级别的默认 AI 引擎',
+    'model:manage': '设置或取消对应级别的默认 AI 模型',
     'credential:manage': '管理凭据及其关联配置',
     'credential:test': '测试凭据连接',
     'relation:manage': '管理资源之间的关联关系',
@@ -3527,7 +3580,7 @@
       organization: '项目管理',
       discovery: '集群项目与应用导入',
       resources: '资源目录',
-      ai: 'AI 引擎',
+      ai: 'AI 模型',
       skill: 'Skill',
       operations: '受控操作与 MCP',
       diagnosis: 'AI 诊断工作台',
@@ -3545,7 +3598,7 @@
       organization: '项目',
       discovery: '集群导入',
       resources: '资源',
-      ai: 'AI 引擎',
+      ai: 'AI 模型',
       skill: 'Skill',
       operations: '受控操作',
       diagnosis: 'AI 诊断',
@@ -3591,7 +3644,7 @@
     Kubernetes: ['API', 'Agent'],
     MCPServer: ['StreamHTTP', 'SSE'],
     Skill: ['诊断', '监控', '优化', '维护'],
-    'AI 引擎': ['统一引擎'],
+    'AI 模型': ['AI 模型'],
     监控: ['指标', '日志', '链路', '告警']
   };
 
@@ -3600,8 +3653,8 @@
     config?: Record<string, unknown>;
     subtype?: string;
   }) {
-    if (resource.kind === 'LLMProvider' || resource.kind === 'AIEngine')
-      return 'AI 引擎';
+    if (resource.kind === 'LLMProvider' || resource.kind === 'AIModel')
+      return 'AI 模型';
     if (resource.kind === 'MCPServer') return 'MCPServer';
     if (resource.kind === 'GenericAPI') return 'Docker';
     if (resource.kind === 'Application') return '应用';
@@ -3664,15 +3717,15 @@
       MCPServer: 'StreamHTTP',
       GenericAPI: 'API',
       LLMProvider: 'OpenAI',
-      AIEngine: '统一引擎',
+      AIModel: 'AI 模型',
       Prometheus: '指标',
       Loki: '日志',
       Tempo: '链路',
       Alertmanager: '告警'
     };
     const explicit = String(resource.subtype || resource.config?.subtype || '');
-    if (resource.kind === 'AIEngine') {
-      return '统一引擎';
+    if (resource.kind === 'AIModel') {
+      return 'AI 模型';
     }
     return String(
       explicit ||
@@ -3694,7 +3747,7 @@
       Kubernetes: '⬡',
       MCPServer: '⌁',
       Skill: '✧',
-      'AI 引擎': '✦',
+      'AI 模型': '✦',
       监控: '◌'
     };
     return icons[category] ?? '◇';
@@ -4109,13 +4162,13 @@
           ></button
         >
         <button
-          aria-label="AI 引擎"
+          aria-label="AI 模型"
           class:active={view === 'ai'}
           class="nav-item"
           on:click={() => chooseView('ai')}
-          data-tooltip={sidebarCompact ? 'AI 引擎' : undefined}
+          data-tooltip={sidebarCompact ? 'AI 模型' : undefined}
           ><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">AI 引擎</span
+            class="nav-item-label">AI 模型</span
           ></button
         >
         <button
@@ -6237,51 +6290,51 @@
           <section class="ai-health-page">
             <div class="ai-health-metrics">
               <div class="ai-health-metric">
-                <span>可用引擎</span><strong>{aiEngineHealthyCount}</strong
+                <span>可用模型</span><strong>{aiModelHealthyCount}</strong
                 ><small>可被业务调用</small>
               </div>
               <div class="ai-health-metric">
-                <span>健康 Endpoint</span><strong
-                  >{aiEngineHealthyEndpointCount} / {aiEngineEndpointCount}</strong
+                <span>健康大模型节点</span><strong
+                  >{aiModelHealthyEndpointCount} / {aiModelEndpointCount}</strong
                 ><small>当前 Scope 可见成员</small>
               </div>
               <div class="ai-health-metric">
-                <span>默认引擎</span><strong
-                  >{aiEngines.filter((engine) => Boolean(engine.config.default))
+                <span>默认模型</span><strong
+                  >{aiModels.filter((model) => Boolean(model.config.default))
                     .length}</strong
                 ><small>平台、团队或项目</small>
               </div>
               <div class="ai-health-metric">
-                <span>待处理</span><strong>{aiEngineRepairCount}</strong><small
+                <span>待处理</span><strong>{aiModelRepairCount}</strong><small
                   >需要重新测试</small
                 >
               </div>
             </div>
-            {#if !aiEngineCreateOpen}
-              <section class="panel ai-engine-list-panel">
-                <div class="ai-engine-toolbar">
+            {#if !aiModelCreateOpen}
+              <section class="panel ai-model-list-panel">
+                <div class="ai-model-toolbar">
                   <div>
-                    <h2>引擎列表</h2>
+                    <h2>模型列表</h2>
                     <small
-                      >AI 引擎是可包含多个大模型Endpoint的统一能力入口.</small
+                      >AI 模型是可包含多个大模型节点的统一能力入口.</small
                     >
                   </div>
-                  <div class="ai-engine-toolbar-actions">
-                    <div class="ai-engine-filters">
+                  <div class="ai-model-toolbar-actions">
+                    <div class="ai-model-filters">
                       <input
-                        class="ai-engine-search"
-                        bind:value={aiEngineSearch}
+                        class="ai-model-search"
+                        bind:value={aiModelSearch}
                         placeholder="搜索名称、级别或用途"
-                        aria-label="搜索 AI 引擎"
+                        aria-label="搜索 AI 模型"
                       /><select
-                        bind:value={aiEngineStatusFilter}
-                        aria-label="引擎状态"
+                        bind:value={aiModelStatusFilter}
+                        aria-label="模型状态"
                         ><option value="all">全部状态</option><option
                           value="active">启用</option
                         ><option value="disabled">已停用</option></select
                       ><select
-                        bind:value={aiEngineScopeFilter}
-                        aria-label="引擎级别"
+                        bind:value={aiModelScopeFilter}
+                        aria-label="模型级别"
                         ><option value="all">全部级别</option><option
                           value="platform">平台</option
                         ><option value="team">团队</option><option
@@ -6292,8 +6345,8 @@
                     <button
                       class="secondary"
                       type="button"
-                      on:click={() => void refreshAIEngines()}
-                      disabled={busy || aiEngineRefreshing}
+                      on:click={() => void refreshAIModels()}
+                      disabled={busy || aiModelRefreshing}
                       ><RefreshCw
                         size={14}
                         aria-hidden="true"
@@ -6301,112 +6354,120 @@
                     ><button
                       class="primary"
                       type="button"
-                      on:click={openAIEngineCreate}
-                      ><Plus size={14} aria-hidden="true" />添加 AI 引擎</button
+                      on:click={openAIModelCreate}
+                      ><Plus size={14} aria-hidden="true" />添加 AI 模型</button
                     >
                   </div>
                 </div>
-                <div class="ai-engine-list">
-                  {#each visibleAIEngines as engine}
-                    {@const endpoints = aiEngineEndpointsFor(engine)}
-                    {@const capabilities = aiEngineCapabilities(engine)}
+                <div class="ai-model-list">
+                  {#each visibleAIModels as model}
+                    {@const endpoints = aiModelEndpointsFor(model)}
+                    {@const capabilities = aiModelCapabilities(model)}
                     <article
-                      class="ai-engine-row"
-                      class:expanded={expandedAIEngineId === engine.id}
+                      class="ai-model-row"
+                      class:expanded={expandedAIModelId === model.id}
                     >
                       <div
-                        class="ai-engine-row-main"
+                        class="ai-model-row-main"
                         role="button"
                         tabindex="0"
                         on:click={() =>
-                          (expandedAIEngineId =
-                            expandedAIEngineId === engine.id ? '' : engine.id)}
+                          (expandedAIModelId =
+                            expandedAIModelId === model.id ? '' : model.id)}
                         on:keydown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            expandedAIEngineId =
-                              expandedAIEngineId === engine.id ? '' : engine.id;
+                            expandedAIModelId =
+                              expandedAIModelId === model.id ? '' : model.id;
                           }
                         }}
-                        aria-expanded={expandedAIEngineId === engine.id}
+                        aria-expanded={expandedAIModelId === model.id}
                       >
-                        <span class="ai-engine-icon"
+                        <span class="ai-model-icon"
                           ><svelte:component
-                            this={teamIconComponent(aiEngineIconFor(engine))}
+                            this={teamIconComponent(aiModelIconFor(model))}
                             size={18}
                             aria-hidden="true"
                           /></span
-                        ><span class="ai-engine-identity"
-                          ><small class="ai-engine-column-label">引擎</small><strong
-                            >{engine.name}</strong
-                          ><small class="ai-engine-description"
+                        ><span class="ai-model-identity"
+                          ><small class="ai-model-column-label">模型</small><strong
+                            >{model.name}</strong
+                          ><small class="ai-model-description"
                             >大模型统一能力入口</small
                           ></span
-                        ><span class="ai-engine-scope"
-                          ><small class="ai-engine-column-label">级别</small><b
-                            class="ai-scope-badge {scopeType(engine.scope_id)}"
-                            >{scopeLevelLabel(scopeType(engine.scope_id))}</b
-                          ><span class="ai-engine-scope-name"
-                            >{scopeName(engine.scope_id)}</span
+                        ><span class="ai-model-scope"
+                          ><small class="ai-model-column-label">级别</small><b
+                            class="ai-scope-badge {scopeType(model.scope_id)}"
+                            >{scopeLevelLabel(scopeType(model.scope_id))}</b
+                          ><span class="ai-model-scope-name"
+                            >{scopeName(model.scope_id)}</span
                           ></span
-                        ><span class="ai-engine-default"
-                          ><small class="ai-engine-column-label">默认</small><button
+                        ><span class="ai-model-default"
+                          ><small class="ai-model-column-label">默认</small><button
                             class="ai-switch"
-                            class:on={Boolean(engine.config.default)}
+                            class:on={Boolean(model.config.default)}
                             type="button"
                             role="switch"
-                            aria-checked={Boolean(engine.config.default)}
-                            aria-label={engine.config.default ? `取消 ${engine.name} 默认` : `设为 ${engine.name} 默认`}
+                            aria-checked={Boolean(model.config.default)}
+                            aria-label={model.config.default ? `取消 ${model.name} 默认` : `设为 ${model.name} 默认`}
                             on:click={(event) => {
                               event.stopPropagation();
-                              void toggleAIEngineDefault(engine);
+                              void toggleAIModelDefault(model);
                             }}
                             ><span></span></button><small
-                            class="ai-engine-column-hint">级别内唯一</small></span
-                        ><span class="ai-engine-capabilities"
-                          ><small class="ai-engine-column-label">能力</small><span
+                            class="ai-model-column-hint">级别内唯一</small></span
+                        ><span class="ai-model-capabilities"
+                          ><small class="ai-model-column-label">能力</small><span
                             >{#each capabilities as capability}<em
                                 >{aiCapabilityLabel(capability)}</em
                               >{:else}<em class="muted-chip">待计算</em
                               >{/each}</span><small
-                            class="ai-engine-column-hint"
-                            >大模型Endpoint能力交集</small
+                            class="ai-model-column-hint"
+                            >大模型节点能力交集</small
                           ></span
-                        ><span class="ai-engine-health">
-                          <small class="ai-engine-column-label">状态</small>
-                          {#if aiEngineRefreshing}
-                            <span class="ai-engine-refreshing-state">
-                              <RefreshCw
-                                class="ai-refreshing-icon"
-                                size={15}
-                                aria-label="正在刷新"
-                              /><span class="sr-only">正在刷新</span>
-                            </span>
-                          {:else}
-                            <span class="status-label {aiEngineStatusClass(engine)}">
-                              {aiEngineStatusLabel(engine)} {aiEngineHealthRatio(engine)}
-                            </span>
-                          {/if}
-                          <span class="ai-engine-health-meta">
-                            {endpoints.length} 个成员 · {String(engine.config.strategy || 'priority')} 路由
+                        ><span class="ai-model-health">
+                          <small class="ai-model-column-label">状态</small>
+                          <span class="ai-model-health-status">
+                            {#if aiModelRefreshing}
+                              <span class="ai-model-refreshing-state">
+                                <RefreshCw
+                                  class="ai-refreshing-icon"
+                                  size={15}
+                                  aria-label="正在刷新"
+                                /><span class="sr-only">正在刷新</span>
+                              </span>
+                            {:else}
+                              <span class="status-label {aiModelStatusClass(model)}">
+                                {aiModelStatusLabel(model)} {aiModelHealthRatio(model)}
+                              </span>
+                            {/if}
+                            <button
+                              class="icon-button ai-inline-test-button"
+                              type="button"
+                              data-tooltip="测试全部大模型节点"
+                              aria-label={`测试 ${model.name} 的全部大模型节点`}
+                              on:click={(event) => {
+                                event.stopPropagation();
+                                void testAIModel(model);
+                              }}
+                              disabled={aiModelEndpointTestBusy || !endpoints.some((endpoint) => endpoint.enabled)}
+                            ><PlugZap size={14} aria-hidden="true" /></button>
+                          </span>
+                          <span class="ai-model-health-meta">
+                            {endpoints.length} 个成员 · {String(model.config.strategy || 'priority')} 路由
                           </span>
                         </span>
-                        <span
-                          class="ai-engine-chevron"
-                          data-tooltip={expandedAIEngineId === engine.id
-                            ? '收起模型详情'
-                            : '展开模型详情'}
-                        >
+                        <span class="ai-model-chevron">
                           <ChevronDown size={17} aria-hidden="true" />
                           <span class="sr-only">
-                            {expandedAIEngineId === engine.id
+                            {expandedAIModelId === model.id
                               ? '收起模型详情'
                               : '展开模型详情'}
                           </span>
                         </span>
                       </div>
-                      {#if expandedAIEngineId === engine.id}
-                        <div class="ai-engine-row-details">
+                      {#if expandedAIModelId === model.id}
+                        <div class="ai-model-row-details">
                           <div class="ai-endpoint-list">
                             {#each endpoints as endpoint, endpointIndex}<div
                                 class="ai-endpoint-row"
@@ -6417,7 +6478,7 @@
                                   )}"
                                 ></span><span
                                   ><strong
-                                    >{endpoint.provider_type} / {endpoint.model_name}</strong
+                                    >{endpoint.provider_type} · {endpoint.model_name}</strong
                                   ><small
                                     >优先级 {endpoint.priority} · {endpoint.context_window.toLocaleString()}
                                     上下文 · {endpoint.base_url}</small
@@ -6429,18 +6490,20 @@
                                 ><span
                                   class="status-label {aiEndpointHealthClass(
                                     endpoint
-                                  )}">{aiEndpointHealthLabel(endpoint)}</span
+                                  )}"
+                                  title={endpoint.testMessage ?? '尚未进行连接测试'}
+                                  >{aiEndpointConnectionLabel(endpoint)}</span
                                 >
                               </div>{/each}
                           </div>
-                          <aside class="ai-engine-detail-aside">
+                          <aside class="ai-model-detail-aside">
                             <h3>路由与权限</h3>
                             <p>
                               按优先级调用。超时、限流和服务端错误允许切换；已经开始流式输出时不会切换。
                             </p>
                             <div>
                               <span>默认状态</span><strong
-                                >{engine.config.default
+                                >{model.config.default
                                   ? '当前 Scope 默认'
                                   : '未设置'}</strong
                               >
@@ -6459,17 +6522,17 @@
                               <button
                                 class="secondary"
                                 type="button"
-                                on:click={() => void testAIEngine(engine)}
-                                disabled={aiEngineEndpointTestBusy ||
-                                  endpoints.length === 0}
+                                on:click={() => void testAIModel(model)}
+                                disabled={aiModelEndpointTestBusy ||
+                                  !endpoints.some((endpoint) => endpoint.enabled)}
                                 ><PlugZap
                                   size={14}
                                   aria-hidden="true"
-                                />测试首选成员</button
+                                />测试全部大模型节点</button
                               ><button
                                 class="quiet-button"
                                 type="button"
-                                on:click={() => editAIEngine(engine)}
+                                on:click={() => editAIModel(model)}
                                 ><Pencil
                                   size={14}
                                   aria-hidden="true"
@@ -6482,61 +6545,61 @@
                     </article>
                   {:else}<div class="empty-state">
                       <span class="empty-icon">✦</span>
-                      <h2>暂无 AI 引擎</h2>
+                      <h2>暂无 AI 模型</h2>
                       <p>当前 Scope 还没有可用的统一模型入口。</p>
                     </div>{/each}
                 </div>
               </section>
             {:else}
               <section
-                class="panel ai-engine-create-panel"
-                aria-labelledby="ai-engine-create-title"
+                class="panel ai-model-create-panel"
+                aria-labelledby="ai-model-create-title"
               >
                 <div class="panel-heading">
                   <div>
-                    <p class="eyebrow">NEW AI ENGINE</p>
-                    <h2 id="ai-engine-create-title">创建 AI 引擎</h2>
+                    <p class="eyebrow">NEW ai model</p>
+                    <h2 id="ai-model-create-title">创建 AI 模型</h2>
                   </div>
                   <button
                     class="quiet-button"
                     type="button"
-                    on:click={closeAIEngineCreate}>关闭</button
+                    on:click={closeAIModelCreate}>关闭</button
                   >
                 </div>
                 <div class="ai-wizard">
                   <nav class="ai-wizard-steps" aria-label="创建步骤">
                     {#each ['基础信息', '添加模型', '路由策略', '发布总结'] as step, index}<button
                         type="button"
-                        class:active={aiEngineCreateStep === index + 1}
-                        class:done={aiEngineCreateStep > index + 1}
-                        on:click={() => (aiEngineCreateStep = index + 1)}
+                        class:active={aiModelCreateStep === index + 1}
+                        class:done={aiModelCreateStep > index + 1}
+                        on:click={() => (aiModelCreateStep = index + 1)}
                         ><b
-                          >{aiEngineCreateStep > index + 1 ? '✓' : index + 1}</b
+                          >{aiModelCreateStep > index + 1 ? '✓' : index + 1}</b
                         ><span>{step}</span></button
                       >{/each}
                   </nav>
                   <form
                     class="ai-wizard-content"
                     on:submit|preventDefault={() =>
-                      aiEngineCreateStep < 4
-                        ? (aiEngineCreateStep += 1)
-                        : void createAIEngine()}
+                      aiModelCreateStep < 4
+                        ? (aiModelCreateStep += 1)
+                        : void createAIModel()}
                   >
                     <div class="ai-step-heading">
                       <h3>
-                        {aiEngineCreateStep === 1
+                        {aiModelCreateStep === 1
                           ? '基础信息'
-                          : aiEngineCreateStep === 2
+                          : aiModelCreateStep === 2
                             ? '添加模型'
-                            : aiEngineCreateStep === 3
+                            : aiModelCreateStep === 3
                               ? '路由策略'
                               : '发布总结'}
                       </h3>
-                      {#if aiEngineCreateStep === 2 && aiEngineModelError}
+                      {#if aiModelCreateStep === 2 && aiModelModelError}
                         <span
                           class="ai-step-error"
-                          class:testing={aiEngineModelTesting}
-                          role="alert">{aiEngineModelError}</span
+                          class:testing={aiModelModelTesting}
+                          role="alert">{aiModelModelError}</span
                         >
                       {/if}
                       <div class="ai-step-actions">
@@ -6544,40 +6607,40 @@
                           class="secondary"
                           type="button"
                           on:click={() =>
-                            aiEngineCreateStep > 1
-                              ? (aiEngineCreateStep -= 1)
-                              : closeAIEngineCreate()}
-                          >{aiEngineCreateStep > 1 ? '上一步' : '取消'}</button
+                            aiModelCreateStep > 1
+                              ? (aiModelCreateStep -= 1)
+                              : closeAIModelCreate()}
+                          >{aiModelCreateStep > 1 ? '上一步' : '取消'}</button
                         ><button
                           class="primary"
                           type="submit"
                           disabled={busy ||
-                            (aiEngineCreateStep === 1 &&
-                              !aiEngineName.trim()) ||
-                            (aiEngineCreateStep === 2 &&
-                              aiEngineCreateEndpoints.length === 0)}
-                          >{aiEngineCreateStep < 4
+                            (aiModelCreateStep === 1 &&
+                              !aiModelName.trim()) ||
+                            (aiModelCreateStep === 2 &&
+                              aiModelCreateEndpoints.length === 0)}
+                          >{aiModelCreateStep < 4
                             ? '下一步'
-                            : '发布 AI 引擎'}</button
+                            : '发布 AI 模型'}</button
                         >
                       </div>
                     </div>
-                    {#if aiEngineCreateStep === 1}
+                    {#if aiModelCreateStep === 1}
                       <p>
-                        定义用户大模型引擎的统一能力入口；AI
-                        引擎可从多个大模型Endpoint中进行调度。
+                        定义用户大模型的统一能力入口；AI
+                        模型可从多个大模型节点中进行调度。
                       </p>
                       <div class="ai-form-grid">
-                        <div class="ai-engine-name-field">
+                        <div class="ai-model-name-field">
                           <button
                             class="team-icon-picker-trigger"
                             type="button"
-                            aria-label="选择 AI 引擎图标"
-                            data-tooltip="选择 AI 引擎图标"
-                            on:click={openAIEngineIconPicker}
+                            aria-label="选择 AI 模型图标"
+                            data-tooltip="选择 AI 模型图标"
+                            on:click={openAIModelIconPicker}
                             ><span class="entity-icon team-icon"
                               ><svelte:component
-                                this={teamIconComponent(aiEngineIcon)}
+                                this={teamIconComponent(aiModelIcon)}
                                 size={16}
                                 strokeWidth={1.8}
                               /></span
@@ -6590,13 +6653,13 @@
                                 aria-hidden="true">*</span
                               ></span
                             ><input
-                              bind:value={aiEngineName}
+                              bind:value={aiModelName}
                               required
                               placeholder="例如：生产诊断中枢"
                             /></label
                           >
                         </div>
-                        <div class="ai-engine-scope-default-fields">
+                        <div class="ai-model-scope-default-fields">
                           <label
                             ><span
                               >级别<span class="required-mark" aria-hidden="true"
@@ -6611,25 +6674,25 @@
                                 >{/each}</select
                             ></label
                           ><label class="ai-default-field"
-                            ><span>默认引擎</span><button
+                            ><span>默认模型</span><button
                               class="ai-switch"
-                              class:on={aiEngineCreateDefault}
+                              class:on={aiModelCreateDefault}
                               type="button"
                               role="switch"
-                              aria-checked={aiEngineCreateDefault}
-                              aria-label="设置为默认 AI 引擎"
-                              on:click={() => (aiEngineCreateDefault = !aiEngineCreateDefault)}
+                              aria-checked={aiModelCreateDefault}
+                              aria-label="设置为默认 AI 模型"
+                              on:click={() => (aiModelCreateDefault = !aiModelCreateDefault)}
                               ><span></span></button></label>
                         </div>
                         <label class="full"
                           >用途说明<textarea
-                            bind:value={aiEngineCreateDescription}
+                            bind:value={aiModelCreateDescription}
                             placeholder="例如：截图诊断、日志分析和受控 Skill"
                           ></textarea></label
                         >
-                      </div>{:else if aiEngineCreateStep === 2}
+                      </div>{:else if aiModelCreateStep === 2}
                       <p>
-                        先填写模型连接信息，再添加到引擎；添加后会自动计算能力并检查连接状态。
+                        先填写模型连接信息，再添加到模型；添加后会自动计算能力并检查连接状态。
                       </p>
                       <div class="ai-model-entry-form">
                         <div class="ai-model-form-row">
@@ -6641,19 +6704,19 @@
                               ></span
                             ><div
                               class="ai-provider-picker"
-                              class:ai-field-invalid={aiEngineModelFieldMissing('provider')}
+                              class:ai-field-invalid={aiModelModelFieldMissing('provider')}
                             ><button
                                 class="ai-provider-trigger"
                                 type="button"
                                 aria-label="选择模型厂商"
                                 aria-expanded={aiProviderMenuOpen}
                                 on:click={() => (aiProviderMenuOpen = !aiProviderMenuOpen)}
-                                ><svelte:component this={teamIconComponent(aiProviderOption(aiEngineCreateDraft.provider_type).icon)} size={15} aria-hidden="true" /><span>{aiProviderOption(aiEngineCreateDraft.provider_type).label}</span><ChevronDown size={14} aria-hidden="true" /></button
+                                ><svelte:component this={teamIconComponent(aiProviderOption(aiModelCreateDraft.provider_type).icon)} size={15} aria-hidden="true" /><span>{aiProviderOption(aiModelCreateDraft.provider_type).label}</span><ChevronDown size={14} aria-hidden="true" /></button
                               >{#if aiProviderMenuOpen}<div class="ai-provider-menu" role="listbox">
                                 {#each aiProviderOptions as provider}<button
                                     type="button"
                                     role="option"
-                                    aria-selected={provider.value === aiEngineCreateDraft.provider_type}
+                                    aria-selected={provider.value === aiModelCreateDraft.provider_type}
                                     on:click={() => selectAIProvider(provider.value)}
                                     ><svelte:component this={teamIconComponent(provider.icon)} size={15} aria-hidden="true" /><span>{provider.label}</span></button
                                   >{/each}
@@ -6666,13 +6729,13 @@
                                 aria-hidden="true">*</span
                               ></span
                             ><input
-                              class:ai-field-invalid={aiEngineModelFieldMissing(
+                              class:ai-field-invalid={aiModelModelFieldMissing(
                                 'base_url'
                               )}
                               aria-label="模型地址"
-                              bind:value={aiEngineCreateDraft.base_url}
+                              bind:value={aiModelCreateDraft.base_url}
                               on:input={() =>
-                                clearAIEngineModelFieldError('base_url')}
+                                clearAIModelModelFieldError('base_url')}
                               placeholder="https://api.example.com/v1"
                             /></label
                           ><label
@@ -6683,11 +6746,11 @@
                               ></span
                             ><span class="password-control"
                               ><input
-                                class:ai-field-invalid={aiEngineModelFieldMissing('credential')}
+                                class:ai-field-invalid={aiModelModelFieldMissing('credential')}
                                 aria-label="模型凭证"
                                 type={aiModelCredentialVisible ? 'text' : 'password'}
-                                bind:value={aiEngineCreateDraft.credential}
-                                on:input={() => clearAIEngineModelFieldError('credential')}
+                                bind:value={aiModelCreateDraft.credential}
+                                on:input={() => clearAIModelModelFieldError('credential')}
                                 placeholder="输入 API Token"
                               /><button
                                 class="password-toggle"
@@ -6702,17 +6765,17 @@
                         <div class="ai-model-form-row">
                           <label
                             ><span>模型名称<span class="required-mark" aria-hidden="true">*</span></span><input
-                              class:ai-field-invalid={aiEngineModelFieldMissing('model_name')}
+                              class:ai-field-invalid={aiModelModelFieldMissing('model_name')}
                               aria-label="模型名称"
-                              bind:value={aiEngineCreateDraft.model_name}
-                              on:input={() => clearAIEngineModelFieldError('model_name')}
+                              bind:value={aiModelCreateDraft.model_name}
+                              on:input={() => clearAIModelModelFieldError('model_name')}
                               placeholder="例如：gpt-4.1"
                             /></label
                           ><label
                             >温度<input
                               aria-label="温度"
                               type="number"
-                              bind:value={aiEngineCreateDraft.temperature}
+                              bind:value={aiModelCreateDraft.temperature}
                               min="0"
                               max="2"
                               step="0.1"
@@ -6721,14 +6784,14 @@
                             >上下文窗口<input
                               aria-label="上下文窗口"
                               type="number"
-                              bind:value={aiEngineCreateDraft.context_window}
+                              bind:value={aiModelCreateDraft.context_window}
                               min="1"
                             /></label
                           ><label
                             >支持的能力
                             <div class="ai-capability-card-picker">
                               {#each ['chat', 'vision', 'audio', 'tool_calling', 'structured_output', 'stream', 'long_context', 'deep_thinking'] as capability}<button
-                                  class:active={aiEngineCreateDraft.capabilities.includes(
+                                  class:active={aiModelCreateDraft.capabilities.includes(
                                     capability
                                   )}
                                   type="button"
@@ -6743,19 +6806,19 @@
                               class="secondary"
                               type="button"
                               on:click={addAIEndpoint}
-                              disabled={busy || aiEngineModelTesting}
+                              disabled={busy || aiModelModelTesting}
                               ><Plus
                                 size={14}
                                 aria-hidden="true"
-                              />{aiEngineEditingEndpointIndex >= 0
+                              />{aiModelEditingEndpointIndex >= 0
                                 ? '保存模型'
                                 : '添加模型'}</button
                             >
                           </div>
                         </div>
                       </div>
-                      <div class="ai-model-list" aria-label="已添加模型">
-                        {#if aiEngineCreateEndpoints.length === 0}<div
+                      <div class="ai-model-entry-list" aria-label="已添加模型">
+                        {#if aiModelCreateEndpoints.length === 0}<div
                             class="ai-model-empty"
                           >
                             尚未添加模型，填写上方表单后点击添加模型。
@@ -6768,8 +6831,8 @@
                               >状态</span
                             ><span>操作</span>
                           </div>
-                          {#each aiEngineCreateEndpoints as endpoint, index}<div
-                              class="ai-model-row"
+                          {#each aiModelCreateEndpoints as endpoint, index}<div
+                              class="ai-model-entry-row"
                             >
                               <span class="ai-model-endpoint"
                                 ><strong
@@ -6779,7 +6842,7 @@
                                 ><small>{endpoint.base_url}</small></span
                               ><span class="ai-model-name"
                                 >{endpoint.model_name}</span
-                              ><span class="ai-model-capabilities"
+                              ><span class="ai-model-entry-capabilities"
                                 >{aiCapabilitiesForEndpoints([endpoint])
                                   .map(aiCapabilityLabel)
                                   .join(' · ')}</span
@@ -6813,12 +6876,12 @@
                             </div>{/each}{/if}
                       </div>
                       <div class="ai-form-note">
-                        当前引擎能力：{aiCapabilitiesForEndpoints(
-                          aiEngineCreateEndpoints
+                        当前模型能力：{aiCapabilitiesForEndpoints(
+                          aiModelCreateEndpoints
                         )
                           .map(aiCapabilityLabel)
                           .join('、') || '添加并填写模型后自动计算'}
-                      </div>{:else if aiEngineCreateStep === 3}
+                      </div>{:else if aiModelCreateStep === 3}
                       <p>
                         首版固定使用优先级路由，数字越大越先调用；仅在可恢复错误时切换。
                       </p>
@@ -6834,18 +6897,18 @@
                         >{#each [['timeout', '连接超时'], ['rate_limit', 'Provider 限流'], ['server_error', 'Provider 5xx']] as fallback}<label
                             ><input
                               type="checkbox"
-                              checked={aiEngineCreateFallback.includes(
+                              checked={aiModelCreateFallback.includes(
                                 fallback[0]
                               )}
                               on:change={() =>
-                                toggleAIEngineFallback(fallback[0])}
+                                toggleAIModelFallback(fallback[0])}
                             />{fallback[1]}</label
                           >{/each}
                       </fieldset>
                       <div class="ai-form-note">
                         参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。
                       </div>{:else}
-                      <p>发布前确认基础信息、模型连接和路由策略；发布后业务只感知统一的 AI 引擎入口。</p>
+                      <p>发布前确认基础信息、模型连接和路由策略；发布后业务只感知统一的 AI 模型入口。</p>
                       <div class="ai-review-grid">
                         <section class="ai-review-section" aria-labelledby="ai-review-basics-title">
                           <div class="ai-review-section-heading">
@@ -6853,24 +6916,24 @@
                             <span>{scopeLevelLabel(scopeType(selectedScopeId))}</span>
                           </div>
                           <div class="ai-review-list">
-                            <div><span>名称</span><strong>{aiEngineName || '未填写'}</strong></div>
+                            <div><span>名称</span><strong>{aiModelName || '未填写'}</strong></div>
                             <div><span>所属级别</span><strong>{scopeName(selectedScopeId)} · {scopeLevelLabel(scopeType(selectedScopeId))}</strong></div>
-                            <div><span>用途说明</span><strong>{aiEngineCreateDescription || '未填写'}</strong></div>
-                            <div><span>默认引擎</span><strong>{aiEngineCreateDefault ? '是 · 将接管该级别默认入口' : '否'}</strong></div>
-                            <div><span>引擎图标</span><strong>{commonTeamIconLabels[aiEngineIcon] ?? formatIconName(aiEngineIcon)}</strong></div>
+                            <div><span>用途说明</span><strong>{aiModelCreateDescription || '未填写'}</strong></div>
+                            <div><span>默认模型</span><strong>{aiModelCreateDefault ? '是 · 将接管该级别默认入口' : '否'}</strong></div>
+                            <div><span>模型图标</span><strong>{commonTeamIconLabels[aiModelIcon] ?? formatIconName(aiModelIcon)}</strong></div>
                           </div>
                         </section>
 
                         <section class="ai-review-section ai-review-models" aria-labelledby="ai-review-models-title">
                           <div class="ai-review-section-heading">
                             <h4 id="ai-review-models-title">模型连接</h4>
-                            <span>{aiEngineCreateEndpoints.length} 个模型</span>
+                            <span>{aiModelCreateEndpoints.length} 个模型</span>
                           </div>
-                          {#if aiEngineCreateEndpoints.length === 0}
+                          {#if aiModelCreateEndpoints.length === 0}
                             <div class="ai-review-empty">尚未添加模型，返回“添加模型”步骤完成连接测试。</div>
                           {:else}
                             <div class="ai-review-endpoints">
-                              {#each aiEngineCreateEndpoints as endpoint}
+                              {#each aiModelCreateEndpoints as endpoint}
                                 <article class="ai-review-endpoint">
                                   <div class="ai-review-endpoint-heading">
                                     <div><strong>{aiProviderLabel(endpoint.provider_type)} · {endpoint.model_name}</strong><small>{endpoint.base_url}</small></div>
@@ -6893,13 +6956,13 @@
 
                         <section class="ai-review-section" aria-labelledby="ai-review-routing-title">
                           <div class="ai-review-section-heading">
-                            <h4 id="ai-review-routing-title">引擎能力与路由</h4>
+                            <h4 id="ai-review-routing-title">模型能力与路由</h4>
                             <span>优先级路由</span>
                           </div>
                           <div class="ai-review-list">
-                            <div><span>能力交集</span><strong>{aiCapabilitiesForEndpoints(aiEngineCreateEndpoints).map(aiCapabilityLabel).join('、') || '待添加模型'}</strong></div>
+                            <div><span>能力交集</span><strong>{aiCapabilitiesForEndpoints(aiModelCreateEndpoints).map(aiCapabilityLabel).join('、') || '待添加模型'}</strong></div>
                             <div><span>调用顺序</span><strong>按模型优先级从高到低尝试</strong></div>
-                            <div><span>故障切换</span><strong>{aiEngineCreateFallback.map((item) => item === 'timeout' ? '连接超时' : item === 'rate_limit' ? 'Provider 限流' : 'Provider 5xx').join('、') || '不自动切换'}</strong></div>
+                            <div><span>故障切换</span><strong>{aiModelCreateFallback.map((item) => item === 'timeout' ? '连接超时' : item === 'rate_limit' ? 'Provider 限流' : 'Provider 5xx').join('、') || '不自动切换'}</strong></div>
                             <div><span>不可切换</span><strong>参数、权限、凭据或能力错误；已开始流式输出</strong></div>
                           </div>
                         </section>
@@ -6910,28 +6973,28 @@
                             <span>发布前状态</span>
                           </div>
                           <div class="ai-review-checks">
-                            <div class:passed={aiEngineCreateEndpoints.length > 0}>
-                              <span>模型数量</span><strong>{aiEngineCreateEndpoints.length > 0 ? '已满足，至少 1 个模型' : '未满足，需要添加模型'}</strong>
+                            <div class:passed={aiModelCreateEndpoints.length > 0}>
+                              <span>模型数量</span><strong>{aiModelCreateEndpoints.length > 0 ? '已满足，至少 1 个模型' : '未满足，需要添加模型'}</strong>
                             </div>
-                            <div class:passed={aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded')}>
-                              <span>连接测试</span><strong>{aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded') ? '全部通过真实连接测试' : '存在未测试或失败的模型'}</strong>
+                            <div class:passed={aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded')}>
+                              <span>连接测试</span><strong>{aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded') ? '全部通过真实连接测试' : '存在未测试或失败的模型'}</strong>
                             </div>
-                            <div class:passed={aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.credential.trim())}>
-                              <span>模型凭据</span><strong>{aiEngineCreateEndpoints.length > 0 && aiEngineCreateEndpoints.every((endpoint) => endpoint.credential.trim()) ? '每个模型均已配置' : '存在未配置凭据的模型'}</strong>
+                            <div class:passed={aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.credential.trim())}>
+                              <span>模型凭据</span><strong>{aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.credential.trim()) ? '每个模型均已配置' : '存在未配置凭据的模型'}</strong>
                             </div>
-                            <div class:passed={Boolean(aiEngineName.trim())}>
-                              <span>名称校验</span><strong>{aiEngineName.trim() ? '已填写' : '未填写引擎名称'}</strong>
+                            <div class:passed={Boolean(aiModelName.trim())}>
+                              <span>名称校验</span><strong>{aiModelName.trim() ? '已填写' : '未填写模型名称'}</strong>
                             </div>
                           </div>
                         </section>
                       </div>
                       <div class="ai-form-note">
-                        发布后可在引擎列表展开模型连接并单独刷新状态。模型凭据将保存为加密凭据，业务调用只选择引擎，不直接选择具体模型。
+                        发布后可在模型列表展开模型连接并单独刷新状态。模型凭据将保存为加密凭据，业务调用只选择模型，不直接选择具体模型。
                       </div>{/if}
                   </form>
                 </div>
               </section>
-              {#if iconPickerTarget === 'ai-engine'}
+              {#if iconPickerTarget === 'ai-model'}
                 <div
                   class="dialog-backdrop"
                   role="presentation"
@@ -6943,13 +7006,13 @@
                   <dialog
                     open
                     class="dialog icon-picker-dialog"
-                    aria-labelledby="ai-engine-icon-picker-title"
+                    aria-labelledby="ai-model-icon-picker-title"
                   >
                     <div class="dialog-heading">
                       <div>
                         <p class="eyebrow">ICON PICKER</p>
-                        <h2 id="ai-engine-icon-picker-title">
-                          选择 AI 引擎图标
+                        <h2 id="ai-model-icon-picker-title">
+                          选择 AI 模型图标
                         </h2>
                       </div>
                       <button
@@ -6969,11 +7032,11 @@
                           aria-label="搜索图标"
                         /></label
                       >
-                      <div class="team-icon-grid" aria-label="AI 引擎图标列表">
+                      <div class="team-icon-grid" aria-label="AI 模型图标列表">
                         {#each filteredTeamIconOptions as option}
                           {@const TeamIcon = teamIconComponent(option.value)}
                           <button
-                            class:active={aiEngineIcon === option.value}
+                            class:active={aiModelIcon === option.value}
                             type="button"
                             on:click={() => selectTeamIcon(option.value)}
                             aria-label={`选择图标 ${option.label}`}
@@ -8032,7 +8095,7 @@
                         ? teamIcon
                         : iconPickerTarget === 'edit'
                           ? editTeamIcon
-                          : aiEngineIcon) === option.value}
+                          : aiModelIcon) === option.value}
                       type="button"
                       on:click={() => selectTeamIcon(option.value)}
                       aria-label={`选择图标 ${option.label}`}

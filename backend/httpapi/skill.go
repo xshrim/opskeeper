@@ -23,6 +23,7 @@ type llmService interface {
 	SetDefault(context.Context, string, string, string, string) (llm.Default, error)
 	Resolve(context.Context, string, string, string) (llm.ResolvedModel, error)
 	TestConnection(context.Context, string, string, string, bool) (llm.ConnectionResult, error)
+	TestAIModelEndpoint(context.Context, string, string, int, bool) (llm.ConnectionResult, error)
 	TestDraftConnection(context.Context, llm.DraftConnection, bool) (llm.ConnectionResult, error)
 }
 
@@ -58,6 +59,10 @@ type testLLMRequest struct {
 	ScopeID   string `json:"scope_id"`
 	ModelName string `json:"model_name"`
 	Stream    bool   `json:"stream"`
+}
+type testAIModelEndpointRequest struct {
+	ScopeID string `json:"scope_id"`
+	Stream  bool   `json:"stream"`
 }
 type testDraftLLMRequest struct {
 	ScopeID       string   `json:"scope_id"`
@@ -109,6 +114,7 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, r
 		router.With(guard(authorization.ResourceUpdate)).Put("/llm-defaults", h.setLLMDefault)
 		router.With(guard(authorization.ResourceRead)).Get("/llm-defaults", h.resolveLLMDefault)
 		router.With(guard(authorization.ResourceUse)).Post("/llm-providers/{providerID}/test", h.testLLM)
+		router.With(guard(authorization.ResourceUse)).Post("/ai-models/{modelID}/endpoints/{endpointIndex}/test", h.testAIModelEndpoint)
 		router.With(guard(authorization.ResourceUpdate)).Post("/llm-providers/test-draft", h.testDraftLLM)
 	}
 	if skills != nil {
@@ -160,6 +166,25 @@ func (h aiHandler) testLLM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.record(r, "llm.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (h aiHandler) testAIModelEndpoint(w http.ResponseWriter, r *http.Request) {
+	var body testAIModelEndpointRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	endpointIndex, err := strconv.Atoi(chi.URLParam(r, "endpointIndex"))
+	if err != nil || endpointIndex < 0 {
+		writeError(w, r, http.StatusBadRequest, "invalid_request", "endpoint_index must be a non-negative integer")
+		return
+	}
+	item, err := h.llms.TestAIModelEndpoint(r.Context(), body.ScopeID, chi.URLParam(r, "modelID"), endpointIndex, body.Stream)
+	if err != nil {
+		writeAIConnectionError(w, r, err)
+		return
+	}
+	h.record(r, "llm.ai_model_endpoint.test", "resource", item.ProviderResourceID, body.ScopeID)
 	writeJSON(w, http.StatusOK, item)
 }
 func (h aiHandler) testDraftLLM(w http.ResponseWriter, r *http.Request) {

@@ -184,9 +184,10 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	defer listener.Close()
 	listenAddress := listener.Addr().String()
+	accessAddress := accessURL(listenAddress, cfg.BasePath)
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "kind", "service-start", "listen", listenAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
+		logger.Info("api listening", "kind", "service-start", "listen", listenAddress, "url", accessAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
 		serverErr <- server.Serve(listener)
 	}()
 
@@ -204,6 +205,28 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		}
 		return err
 	}
+}
+
+// accessURL turns the bound listener address into a browser-friendly URL.
+// Wildcard addresses describe the bind interface, so localhost is clearer for
+// local development while preserving an explicitly configured host.
+func accessURL(listenAddress, basePath string) string {
+	host, port, err := net.SplitHostPort(listenAddress)
+	if err != nil || port == "" {
+		return "http://" + strings.TrimRight(listenAddress, "/") + normalizedBasePath(basePath)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port) + normalizedBasePath(basePath)
+}
+
+func normalizedBasePath(basePath string) string {
+	basePath = strings.TrimSpace(basePath)
+	if basePath == "" || basePath == "/" {
+		return "/"
+	}
+	return "/" + strings.Trim(basePath, "/") + "/"
 }
 
 func envOrDefault(key, fallback string) string {

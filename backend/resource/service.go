@@ -23,7 +23,7 @@ type Store interface {
 	DeleteRelation(context.Context, string, string) error
 	Topology(context.Context, string, int, int) ([]TopologyNode, error)
 	SetDefault(context.Context, string, string, string) (Default, error)
-	SetAIEngineDefault(context.Context, string, bool) (Resource, error)
+	SetAIModelDefault(context.Context, string, bool) (Resource, error)
 	ResolveDefault(context.Context, string, string) (Resource, error)
 }
 
@@ -65,8 +65,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	if err := validateConfig(input.Config, schema); err != nil {
 		return Resource{}, err
 	}
-	if input.Kind == "AIEngine" {
-		if err := validateAIEngineConfig(input.Config); err != nil {
+	if input.Kind == "AIModel" {
+		if err := validateAIModelConfig(input.Config); err != nil {
 			return Resource{}, err
 		}
 	}
@@ -113,8 +113,8 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 	if err := validateConfig(input.Config, schema); err != nil {
 		return Resource{}, err
 	}
-	if input.Kind == "AIEngine" {
-		if err := validateAIEngineConfig(input.Config); err != nil {
+	if input.Kind == "AIModel" {
+		if err := validateAIModelConfig(input.Config); err != nil {
 			return Resource{}, err
 		}
 	}
@@ -187,8 +187,8 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 		if err := validateConfig(*input.Config, schema); err != nil {
 			return Resource{}, err
 		}
-		if current.Kind == "AIEngine" {
-			if err := validateAIEngineConfig(*input.Config); err != nil {
+		if current.Kind == "AIModel" {
+			if err := validateAIModelConfig(*input.Config); err != nil {
 				return Resource{}, err
 			}
 		}
@@ -199,48 +199,48 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 	return s.store.Update(ctx, id, input)
 }
 
-// validateAIEngineConfig enforces the semantic contract that cannot be
+// validateAIModelConfig enforces the semantic contract that cannot be
 // represented by the intentionally simple resource schema validator.
-func validateAIEngineConfig(config map[string]any) error {
+func validateAIModelConfig(config map[string]any) error {
 	if strategy, ok := config["strategy"].(string); !ok || strategy != "priority" {
-		return invalid("AIEngine strategy must be priority")
+		return invalid("AIModel strategy must be priority")
 	}
-	rawEndpoints, ok := aiEngineEndpoints(config["endpoints"])
+	rawEndpoints, ok := aiModelEndpoints(config["endpoints"])
 	if !ok || len(rawEndpoints) == 0 {
-		return invalid("AIEngine endpoints must contain at least one endpoint")
+		return invalid("AIModel endpoints must contain at least one endpoint")
 	}
 	seenPriority := map[int]bool{}
 	for index, raw := range rawEndpoints {
 		endpoint, ok := raw.(map[string]any)
 		if !ok {
-			return invalid(fmt.Sprintf("AIEngine endpoints[%d] must be an object", index))
+			return invalid(fmt.Sprintf("AIModel endpoints[%d] must be an object", index))
 		}
 		providerType, _ := endpoint["provider_type"].(string)
 		baseURL, _ := endpoint["base_url"].(string)
 		modelName, _ := endpoint["model_name"].(string)
 		if strings.TrimSpace(providerType) == "" || strings.TrimSpace(modelName) == "" {
-			return invalid(fmt.Sprintf("AIEngine endpoints[%d] requires provider_type and model_name", index))
+			return invalid(fmt.Sprintf("AIModel endpoints[%d] requires provider_type and model_name", index))
 		}
 		parsed, err := url.ParseRequestURI(baseURL)
 		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return invalid(fmt.Sprintf("AIEngine endpoints[%d].base_url must be an absolute HTTP URL", index))
+			return invalid(fmt.Sprintf("AIModel endpoints[%d].base_url must be an absolute HTTP URL", index))
 		}
-		priority, ok := aiEngineInt(endpoint["priority"])
+		priority, ok := aiModelInt(endpoint["priority"])
 		if !ok || priority < 0 || priority > 100000 {
-			return invalid(fmt.Sprintf("AIEngine endpoints[%d].priority must be between 0 and 100000", index))
+			return invalid(fmt.Sprintf("AIModel endpoints[%d].priority must be between 0 and 100000", index))
 		}
 		if seenPriority[priority] {
-			return invalid("AIEngine endpoint priorities must be unique")
+			return invalid("AIModel endpoint priorities must be unique")
 		}
 		seenPriority[priority] = true
 		if _, ok := endpoint["enabled"].(bool); !ok {
-			return invalid(fmt.Sprintf("AIEngine endpoints[%d].enabled must be boolean", index))
+			return invalid(fmt.Sprintf("AIModel endpoints[%d].enabled must be boolean", index))
 		}
 	}
 	return nil
 }
 
-func aiEngineStringSet(value any) map[string]bool {
+func aiModelStringSet(value any) map[string]bool {
 	set := map[string]bool{}
 	var items []any
 	switch typed := value.(type) {
@@ -259,7 +259,7 @@ func aiEngineStringSet(value any) map[string]bool {
 	return set
 }
 
-func aiEngineEndpoints(value any) ([]any, bool) {
+func aiModelEndpoints(value any) ([]any, bool) {
 	switch typed := value.(type) {
 	case []any:
 		return typed, true
@@ -274,7 +274,7 @@ func aiEngineEndpoints(value any) ([]any, bool) {
 	}
 }
 
-func aiEngineInt(value any) (int, bool) {
+func aiModelInt(value any) (int, bool) {
 	switch number := value.(type) {
 	case int:
 		return number, true
@@ -376,7 +376,7 @@ func (s *Service) SetDefault(ctx context.Context, scopeID, key, resourceID strin
 	return s.store.SetDefault(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(key), strings.TrimSpace(resourceID))
 }
 
-func (s *Service) SetAIEngineDefault(ctx context.Context, resourceID string, enabled bool) (Resource, error) {
+func (s *Service) SetAIModelDefault(ctx context.Context, resourceID string, enabled bool) (Resource, error) {
 	resourceID = strings.TrimSpace(resourceID)
 	if resourceID == "" {
 		return Resource{}, invalid("resource_id is required")
@@ -385,16 +385,16 @@ func (s *Service) SetAIEngineDefault(ctx context.Context, resourceID string, ena
 	if err != nil {
 		return Resource{}, err
 	}
-	if item.Kind != "AIEngine" {
-		return Resource{}, invalid("resource is not an AIEngine")
+	if item.Kind != "AIModel" {
+		return Resource{}, invalid("resource is not an AIModel")
 	}
 	if item.Status != StatusActive && enabled {
-		return Resource{}, invalid("only an active AIEngine can be set as default")
+		return Resource{}, invalid("only an active AIModel can be set as default")
 	}
 	if !allowsExactScope(ctx, item.ScopeID) {
 		return Resource{}, authorization.ErrForbidden
 	}
-	return s.store.SetAIEngineDefault(ctx, resourceID, enabled)
+	return s.store.SetAIModelDefault(ctx, resourceID, enabled)
 }
 
 func (s *Service) ResolveDefault(ctx context.Context, scopeID, key string) (Resource, error) {

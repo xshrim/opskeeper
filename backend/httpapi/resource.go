@@ -26,7 +26,7 @@ type resourceService interface {
 	DeleteRelation(context.Context, string, string) error
 	Topology(context.Context, string, int, int) ([]resource.TopologyNode, error)
 	SetDefault(context.Context, string, string, string) (resource.Default, error)
-	SetAIEngineDefault(context.Context, string, bool) (resource.Resource, error)
+	SetAIModelDefault(context.Context, string, bool) (resource.Resource, error)
 	ResolveDefault(context.Context, string, string) (resource.Resource, error)
 }
 
@@ -97,7 +97,7 @@ type setDefaultRequest struct {
 	DefaultKey string `json:"default_key"`
 	ResourceID string `json:"resource_id"`
 }
-type setAIEngineDefaultRequest struct {
+type setAIModelDefaultRequest struct {
 	Default bool `json:"default"`
 }
 
@@ -118,7 +118,7 @@ func registerResourceRoutes(router chi.Router, services resourceService, credent
 		router.Route("/resources/{resourceID}", func(router chi.Router) {
 			router.With(guard(authorization.ResourceRead)).Get("/", handler.getResource)
 			router.With(guard(authorization.ResourceUpdate)).Patch("/", handler.updateResource)
-			router.With(guard(authorization.AIEngineManage)).Patch("/ai-default", handler.setAIEngineDefault)
+			router.With(guard(authorization.AIModelManage)).Patch("/ai-default", handler.setAIModelDefault)
 			router.With(guard(authorization.ResourceDelete)).Delete("/", handler.deleteResource)
 			router.With(guard(authorization.RelationManage)).Get("/relations", handler.listRelations)
 			router.With(guard(authorization.RelationManage)).Post("/relations", handler.createRelation)
@@ -137,17 +137,17 @@ func registerResourceRoutes(router chi.Router, services resourceService, credent
 	}
 }
 
-func (h resourceHandler) setAIEngineDefault(writer http.ResponseWriter, request *http.Request) {
-	var body setAIEngineDefaultRequest
+func (h resourceHandler) setAIModelDefault(writer http.ResponseWriter, request *http.Request) {
+	var body setAIModelDefaultRequest
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.SetAIEngineDefault(request.Context(), chi.URLParam(request, "resourceID"), body.Default)
+	item, err := h.resources.SetAIModelDefault(request.Context(), chi.URLParam(request, "resourceID"), body.Default)
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
 	}
-	h.record(request, "resource.ai_engine_default.set", "resource", item.ID, item.ScopeID)
+	h.record(request, "resource.ai_model_default.set", "resource", item.ID, item.ScopeID)
 	writeJSON(writer, http.StatusOK, item)
 }
 

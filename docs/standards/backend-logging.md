@@ -62,7 +62,7 @@ reqid clientip method path status duration
 `service-start`、`job`、`audit`、`error` 等类别应优先使用稳定、低基数的标识和结果。例如：
 
 ```text
-service-start listen 127.0.0.1:8080
+service-start listen 127.0.0.1:8080 url http://127.0.0.1:8080/opskeeper/
 job inspection-run run-123 succeeded 842ms
 audit user.login user-123 succeeded
 error database timeout
@@ -102,13 +102,13 @@ JSON 必须是单行对象，不使用多行 pretty-print。公共字段使用�
 
 ```text
 # raw
-2026-08-19T08:30:12.123 INFO opskeeper-api service-start - - api.run main.go:181 listen 127.0.0.1:8080
+2026-08-19T08:30:12.123 INFO opskeeper-api service-start - - api.run main.go:181 listen 127.0.0.1:8080 url=http://127.0.0.1:8080/opskeeper/
 
 # text
-time=2026-08-19T08:30:12.123 level=INFO service=opskeeper-api kind=service-start traceid=- spanid=- func=api.run file:line=main.go:181 msg="listen 127.0.0.1:8080"
+time=2026-08-19T08:30:12.123 level=INFO service=opskeeper-api kind=service-start traceid=- spanid=- func=api.run file:line=main.go:181 msg="listen 127.0.0.1:8080 url=http://127.0.0.1:8080/opskeeper/"
 
 # json
-{"time":"2026-08-19T08:30:12.123","level":"INFO","service":"opskeeper-api","kind":"service-start","traceid":"-","spanid":"-","func":"api.run","file:line":"main.go:181","msg":"listen 127.0.0.1:8080"}
+{"time":"2026-08-19T08:30:12.123","level":"INFO","service":"opskeeper-api","kind":"service-start","traceid":"-","spanid":"-","func":"api.run","file:line":"main.go:181","msg":"listen 127.0.0.1:8080 url=http://127.0.0.1:8080/opskeeper/"}
 ```
 
 ### 5.2 `http-request`

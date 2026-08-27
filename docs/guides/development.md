@@ -240,7 +240,7 @@ make llm-provider-test
 
 该入口通过项目内 OpenAI-compatible Adapter、ADK `llmagent` 和 ADK Runner 分别执行非流式与 SSE 请求，并验证响应非空及 Token usage。它会访问外部服务并可能产生费用，因此不并入默认 `make test` 或 `make quality`。测试只输出模式、字符数和 Token 数，不输出 Token 或模型正文。
 
-应用中登记 AIEngine 时，路由配置和能力意图保存在资源配置；Provider 类型、Base URL、模型名称、能力和超时保存在 AIEngine 私有的 LLMEndpoint 中。API Token 必须通过资源凭据加密保存，LLMEndpoint 不登记为独立资源，也不参与独立授权。AIEngine 不再划分单模态和多模态子类，`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段，最终能力由启用成员自动计算交集。
+应用中登记 AIModel 时，路由配置和能力意图保存在资源配置；Provider 类型、Base URL、模型名称、能力和超时保存在 AIModel 私有的大模型节点（LLMEndpoint）中。API Token 必须通过资源凭据加密保存，大模型节点不登记为独立资源，也不参与独立授权。AIModel 不再划分单模态和多模态子类，`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段，最终能力由启用成员自动计算交集。
 
 ## 5. PostgreSQL 与 Redis
 
@@ -330,7 +330,7 @@ backend/bin/opskeeper-migrate
 backend/bin/opskeeper-admin
 ```
 
-本地二进制和最终镜像内文件名固定为 `opskeeper-*`。`make build` 默认从 Git 生成版本、提交和 UTC 构建时间，也可由流水线显式传入 `VERSION`、`COMMIT`、`BUILD_TIME`。镜像名通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定；镜像 Builder 默认使用 `goproxy.cn`、阿里云 Alpine 镜像和 npmmirror，均可通过同名 Make 变量覆盖。
+本地二进制和最终镜像内文件名固定为 `opskeeper-*`。`make build` 默认从 Git 生成版本、提交和 UTC 构建时间，也可由流水线显式传入 `VERSION`、`COMMIT`、`BUILD_TIME`。镜像名通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定；Go 依赖默认使用 `goproxy.cn`、`proxy.golang.org` 的故障转移代理链，镜像 Builder 还使用阿里云 Alpine 镜像和 npmmirror，均可通过同名 Make 变量覆盖。自定义代理请使用 `make GOPROXY=...` 传入，避免机器上的全局 Go 配置覆盖项目设置。
 
 数据库集成测试必须显式提供可丢弃数据库：
 

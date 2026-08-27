@@ -51,7 +51,7 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 |---|---|---|
 | `IMAGE_REPOSITORY` | `make image` | 设置镜像仓库，默认 `opskeeper` |
 | `IMAGE_TAG` | `make image` | 设置镜像标签，默认 `local` |
-| `GOPROXY` | 构建 | 设置 Go 依赖代理，不属于应用运行配置 |
+| `GOPROXY` | 构建 | 设置 Go 依赖代理链，不属于应用运行配置；默认在 `goproxy.cn`、`proxy.golang.org` 不可用时自动故障转移，可通过 `make GOPROXY=...` 覆盖 |
 | `ALPINE_MIRROR` | 镜像构建 | 设置 Builder 的 Alpine 软件源，默认 `https://mirrors.aliyun.com/alpine` |
 | `NPM_REGISTRY` | 镜像构建 | 设置 Builder 的 npm Registry，默认 `https://registry.npmmirror.com` |
 | `VERSION` | 构建 | 应用版本；默认使用当前 Git 描述，流水线应显式传入发布版本 |

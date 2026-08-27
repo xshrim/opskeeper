@@ -13,7 +13,7 @@ RUN make frontend-build
 
 FROM golang:1.26-alpine AS backend-builder
 
-ARG GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://goproxy.cn|https://proxy.golang.org|direct
 ARG ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 ARG VERSION=dev
 ARG COMMIT=unknown

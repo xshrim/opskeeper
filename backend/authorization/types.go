@@ -14,7 +14,7 @@ const (
 	ResourceUpdate    Permission = "resource:update"
 	ResourceDelete    Permission = "resource:delete"
 	ResourceUse       Permission = "resource:use"
-	AIEngineManage    Permission = "engine:manage"
+	AIModelManage     Permission = "model:manage"
 	CredentialManage  Permission = "credential:manage"
 	CredentialTest    Permission = "credential:test"
 	RelationManage    Permission = "relation:manage"

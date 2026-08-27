@@ -150,6 +150,77 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 	return ConnectionResult{ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
 }
 
+// TestAIModelEndpoint runs a real completion against one endpoint in an
+// AIModel. Model endpoints may use different providers, URLs, and linked
+// credentials, so they cannot be represented by the legacy provider test
+// operation which resolves only the preferred endpoint.
+func (s *Service) TestAIModelEndpoint(ctx context.Context, scopeID, modelID string, endpointIndex int, stream bool) (ConnectionResult, error) {
+	if endpointIndex < 0 || s.resources == nil {
+		return ConnectionResult{}, invalid("endpoint_index is invalid")
+	}
+	item, err := s.resources.Get(ctx, strings.TrimSpace(modelID))
+	if err != nil {
+		return ConnectionResult{}, err
+	}
+	if item.Kind != AIModelKind {
+		return ConnectionResult{}, invalid("resource is not an AIModel")
+	}
+	if item.Status != resource.StatusActive {
+		return ConnectionResult{}, invalid("AIModel is not active")
+	}
+	if !allowsProviderResource(ctx, item) {
+		return ConnectionResult{}, authorization.ErrForbidden
+	}
+	encoded, err := json.Marshal(item.Config)
+	if err != nil {
+		return ConnectionResult{}, fmt.Errorf("encode AIModel config: %w", err)
+	}
+	var config struct {
+		Endpoints []struct {
+			ProviderType  string   `json:"provider_type"`
+			BaseURL       string   `json:"base_url"`
+			ModelName     string   `json:"model_name"`
+			ContextWindow int      `json:"context_window"`
+			Temperature   float64  `json:"temperature"`
+			Capabilities  []string `json:"capabilities"`
+			CredentialID  string   `json:"credential_id"`
+			Enabled       bool     `json:"enabled"`
+		} `json:"endpoints"`
+	}
+	if err := json.Unmarshal(encoded, &config); err != nil || endpointIndex >= len(config.Endpoints) {
+		return ConnectionResult{}, invalid("endpoint_index is out of range")
+	}
+	endpoint := config.Endpoints[endpointIndex]
+	if !endpoint.Enabled {
+		return ConnectionResult{}, invalid("AIModel endpoint is disabled")
+	}
+	apiKey := ""
+	credentialID := strings.TrimSpace(endpoint.CredentialID)
+	if credentialID == "" && item.CredentialID != nil {
+		credentialID = strings.TrimSpace(*item.CredentialID)
+	}
+	if credentialID != "" {
+		if s.credentials == nil {
+			return ConnectionResult{}, fmt.Errorf("credential service is unavailable")
+		}
+		secret, err := s.credentials.RevealLinked(ctx, credentialID)
+		if err != nil {
+			return ConnectionResult{}, fmt.Errorf("read LLM credential: %w", err)
+		}
+		apiKey = apiKeyFromCredential(secret)
+	}
+	result, err := s.TestDraftConnection(ctx, DraftConnection{
+		ScopeID: scopeID, ProviderType: endpoint.ProviderType, BaseURL: endpoint.BaseURL,
+		ModelName: endpoint.ModelName, APIKey: apiKey, ContextWindow: endpoint.ContextWindow,
+		Temperature: endpoint.Temperature, Capabilities: endpoint.Capabilities,
+	}, stream)
+	if err != nil {
+		return ConnectionResult{}, err
+	}
+	result.ProviderResourceID = item.ID
+	return result, nil
+}
+
 func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -209,22 +280,22 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 	if err != nil {
 		return Provider{}, err
 	}
-	if item.Kind != ProviderKind && item.Kind != AIEngineKind {
-		return Provider{}, invalid("resource is not an AIEngine or LLMProvider")
+	if item.Kind != ProviderKind && item.Kind != AIModelKind {
+		return Provider{}, invalid("resource is not an AIModel or LLMProvider")
 	}
 	if !allowsProviderResource(ctx, item) {
 		return Provider{}, authorization.ErrForbidden
 	}
 	if requireActive && item.Status != resource.StatusActive {
-		return Provider{}, invalid("AIEngine is not active")
+		return Provider{}, invalid("AIModel is not active")
 	}
 	encoded, err := json.Marshal(item.Config)
 	if err != nil {
 		return Provider{}, fmt.Errorf("encode LLMProvider config: %w", err)
 	}
 	var config ProviderConfig
-	if item.Kind == AIEngineKind {
-		var engine struct {
+	if item.Kind == AIModelKind {
+		var model struct {
 			Endpoints []struct {
 				ProviderType   string   `json:"provider_type"`
 				BaseURL        string   `json:"base_url"`
@@ -236,10 +307,10 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 				Enabled        bool     `json:"enabled"`
 			} `json:"endpoints"`
 		}
-		if err := json.Unmarshal(encoded, &engine); err != nil || len(engine.Endpoints) == 0 {
-			return Provider{}, invalid("AIEngine config is invalid")
+		if err := json.Unmarshal(encoded, &model); err != nil || len(model.Endpoints) == 0 {
+			return Provider{}, invalid("AIModel config is invalid")
 		}
-		for _, endpoint := range engine.Endpoints {
+		for _, endpoint := range model.Endpoints {
 			if !endpoint.Enabled {
 				continue
 			}
@@ -252,7 +323,7 @@ func (s *Service) readProvider(ctx context.Context, providerID string, requireAc
 			break
 		}
 		if len(config.Models) == 0 {
-			return Provider{}, invalid("AIEngine has no enabled endpoint")
+			return Provider{}, invalid("AIModel has no enabled endpoint")
 		}
 	} else if err := json.Unmarshal(encoded, &config); err != nil {
 		return Provider{}, invalid("LLMProvider config is invalid")

@@ -7,8 +7,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load() error = %v", err)
 	}
-	if len(items) != 13 {
-		t.Fatalf("load() returned %d migrations, want thirteen migrations", len(items))
+	if len(items) != 15 {
+		t.Fatalf("load() returned %d migrations, want fifteen migrations", len(items))
 	}
 	if items[0].version != 1 || items[0].name != "initial" {
 		t.Fatalf("loaded migration = %#v, want version 1 initial", items[0])
@@ -48,6 +48,12 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	}
 	if items[12].version != 13 || items[12].name != "rename_ai_engine_manage_permission" {
 		t.Fatalf("loaded migration = %#v, want version 13 rename_ai_engine_manage_permission", items[12])
+	}
+	if items[13].version != 14 || items[13].name != "rename_ai_model" {
+		t.Fatalf("loaded migration = %#v, want version 14 rename_ai_model", items[13])
+	}
+	if items[14].version != 15 || items[14].name != "ai_model_schema_labels" {
+		t.Fatalf("loaded migration = %#v, want version 15 ai_model_schema_labels", items[14])
 	}
 	for _, item := range items {
 		if item.sql == "" || item.downSQL == "" || item.checksum == "" {

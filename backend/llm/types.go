@@ -3,7 +3,7 @@ package llm
 import "time"
 
 const ProviderKind = "LLMProvider"
-const AIEngineKind = "AIEngine"
+const AIModelKind = "AIModel"
 
 type ModelConfig struct {
 	Name                  string   `json:"name"`

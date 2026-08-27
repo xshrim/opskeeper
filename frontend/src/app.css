@@ -2969,7 +2969,7 @@ textarea:focus {
   font-size: 10px;
 }
 
-/* AI Engine health-summary workbench (方案 B) */
+/* AI Model health-summary workbench (方案 B) */
 .ai-health-page {
   display: grid;
   gap: 18px;
@@ -3026,11 +3026,11 @@ textarea:focus {
   margin-top: 4px;
   font-size: 10px;
 }
-.ai-engine-list-panel {
+.ai-model-list-panel {
   padding: 0;
   overflow: hidden;
 }
-.ai-engine-toolbar {
+.ai-model-toolbar {
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -3038,16 +3038,16 @@ textarea:focus {
   padding: 20px 22px 15px;
   border-bottom: 1px solid #dce1e5;
 }
-.ai-engine-toolbar > div:first-child {
+.ai-model-toolbar > div:first-child {
   min-width: 0;
   flex: 0 1 auto;
 }
-.ai-engine-toolbar > div:first-child small {
+.ai-model-toolbar > div:first-child small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ai-engine-toolbar-actions {
+.ai-model-toolbar-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -3056,23 +3056,23 @@ textarea:focus {
   flex: 1 1 auto;
   flex-wrap: nowrap;
 }
-.ai-engine-toolbar-actions > button {
+.ai-model-toolbar-actions > button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 34px;
   white-space: nowrap;
 }
-.ai-engine-toolbar h2 {
+.ai-model-toolbar h2 {
   font-size: 17px;
 }
-.ai-engine-toolbar small {
+.ai-model-toolbar small {
   display: block;
   margin-top: 5px;
   color: #6d7780;
   font-size: 11px;
 }
-.ai-engine-filters {
+.ai-model-filters {
   display: flex;
   gap: 7px;
   align-items: center;
@@ -3080,8 +3080,8 @@ textarea:focus {
   flex: 1 1 auto;
   flex-wrap: nowrap;
 }
-.ai-engine-search,
-.ai-engine-filters select {
+.ai-model-search,
+.ai-model-filters select {
   min-height: 34px;
   padding: 0 10px;
   color: #20242a;
@@ -3090,32 +3090,32 @@ textarea:focus {
   border-radius: 5px;
   font-size: 12px;
 }
-.ai-engine-search {
+.ai-model-search {
   width: clamp(140px, 24vw, 300px);
   min-width: 0;
   flex: 1 1 220px;
 }
-.ai-engine-filters select {
+.ai-model-filters select {
   width: 120px;
   min-width: 120px;
   flex: 0 0 120px;
 }
-.ai-engine-list {
+.ai-model-list {
   display: grid;
   gap: 8px;
   padding: 12px;
 }
-.ai-engine-row {
+.ai-model-row {
   overflow: hidden;
   background: #fffdfc;
   border: 1px solid #e2e7e9;
   border-radius: 7px;
 }
-.ai-engine-row:hover,
-.ai-engine-row.expanded {
+.ai-model-row:hover,
+.ai-model-row.expanded {
   border-color: #d4a78f;
 }
-.ai-engine-row-main {
+.ai-model-row-main {
   display: grid;
   grid-template-columns:
     34px minmax(180px, 1.25fr) minmax(104px, 0.55fr)
@@ -3130,13 +3130,13 @@ textarea:focus {
   background: transparent;
   border: 0;
 }
-.ai-engine-default {
+.ai-model-default {
   display: grid;
   justify-items: start;
   gap: 5px;
   min-width: 0;
 }
-.ai-engine-default small,
+.ai-model-default small,
 .ai-default-field small {
   color: #71808a;
   font-size: 10px;
@@ -3144,20 +3144,20 @@ textarea:focus {
 .ai-default-field {
   min-width: 0;
 }
-.ai-engine-scope-default-fields {
+.ai-model-scope-default-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(92px, auto);
   align-items: stretch;
   gap: 13px;
   min-width: 0;
 }
-.ai-engine-scope-default-fields .ai-default-field {
+.ai-model-scope-default-fields .ai-default-field {
   display: grid !important;
   align-content: start;
   gap: 6px !important;
   white-space: nowrap;
 }
-.ai-engine-scope-default-fields .ai-default-field .ai-switch {
+.ai-model-scope-default-fields .ai-default-field .ai-switch {
   align-self: end;
   justify-self: start;
   width: 34px;
@@ -3246,10 +3246,10 @@ textarea:focus {
   color: #315d52;
   background: #edf5f0;
 }
-.ai-engine-row-main:hover {
+.ai-model-row-main:hover {
   background: #fffaf7;
 }
-.ai-engine-icon {
+.ai-model-icon {
   display: grid;
   place-items: center;
   width: 32px;
@@ -3259,18 +3259,18 @@ textarea:focus {
   border: 1px solid #cce3df;
   border-radius: 7px;
 }
-.ai-engine-identity,
-.ai-engine-scope,
-.ai-engine-default,
-.ai-engine-capabilities,
-.ai-engine-health {
+.ai-model-identity,
+.ai-model-scope,
+.ai-model-default,
+.ai-model-capabilities,
+.ai-model-health {
   display: grid;
   align-content: start;
   justify-items: start;
   gap: 5px;
   min-width: 0;
 }
-.ai-engine-column-label {
+.ai-model-column-label {
   display: block;
   margin: 0;
   color: #71808a;
@@ -3280,7 +3280,7 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ai-engine-column-hint {
+.ai-model-column-hint {
   display: block;
   color: #71808a;
   font-size: 10px;
@@ -3289,12 +3289,12 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ai-engine-identity strong {
+.ai-model-identity strong {
   font-size: 13px;
 }
-.ai-engine-description,
-.ai-engine-scope-name,
-.ai-engine-health-meta {
+.ai-model-description,
+.ai-model-scope-name,
+.ai-model-health-meta {
   display: block;
   color: #71808a;
   font-size: 10px;
@@ -3302,7 +3302,7 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ai-engine-scope b {
+.ai-model-scope b {
   font-size: 12px;
   font-weight: 700;
 }
@@ -3327,10 +3327,10 @@ textarea:focus {
   color: #765833;
   background: #f8eddc;
 }
-.ai-engine-capabilities small {
+.ai-model-capabilities small {
   margin-top: 0;
 }
-.ai-engine-capabilities span {
+.ai-model-capabilities span {
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
@@ -3338,7 +3338,7 @@ textarea:focus {
   margin-top: 5px;
   overflow: hidden;
 }
-.ai-engine-capabilities em,
+.ai-model-capabilities em,
 .ai-endpoint-caps em {
   flex: 0 0 auto;
   padding: 3px 6px;
@@ -3349,11 +3349,11 @@ textarea:focus {
   font-style: normal;
   white-space: nowrap;
 }
-.ai-engine-capabilities em.muted-chip {
+.ai-model-capabilities em.muted-chip {
   color: #8d817a;
   background: #f4f1ef;
 }
-.ai-engine-health .status-label {
+.ai-model-health .status-label {
   display: inline-flex;
   width: fit-content;
   max-width: max-content;
@@ -3366,29 +3366,56 @@ textarea:focus {
   font-weight: 700;
   white-space: nowrap;
 }
-.ai-engine-health .status-label::before {
+.ai-model-health .status-label::before {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
   content: '';
 }
-.ai-engine-health .status-label.healthy,
+.ai-model-health .status-label.healthy,
 .status-label.healthy {
   color: #2f7956;
   background: #eaf4ed;
 }
-.ai-engine-health .status-label.warning,
+.ai-model-health .status-label.warning,
 .status-label.warning {
   color: #a56411;
   background: #fff5dc;
 }
-.ai-engine-health .status-label.disabled,
+.ai-model-health .status-label.disabled,
 .status-label.disabled {
   color: #796f69;
   background: #eee8e5;
 }
-.ai-engine-chevron {
+.ai-model-health .status-label.pending,
+.ai-endpoint-row > .status-label.pending {
+  color: #60747a;
+  background: #eef3f4;
+}
+.ai-model-health-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 21px;
+}
+.ai-inline-test-button {
+  width: 24px;
+  height: 24px;
+  color: #60747a;
+  border: 1px solid transparent;
+}
+.ai-inline-test-button:hover {
+  color: #315d52;
+  background: #edf5f0;
+  border-color: #cce3df;
+}
+.ai-inline-test-button:disabled {
+  color: #9aa4a8;
+  background: transparent;
+  border-color: transparent;
+}
+.ai-model-chevron {
   display: grid;
   place-items: center;
   align-self: center;
@@ -3399,14 +3426,14 @@ textarea:focus {
   border-radius: 4px;
   transition: transform 0.16s ease;
 }
-.ai-engine-chevron:hover {
+.ai-model-chevron:hover {
   color: #e7601b;
   background: #fff0e8;
 }
-.ai-engine-row.expanded .ai-engine-chevron {
+.ai-model-row.expanded .ai-model-chevron {
   transform: rotate(180deg);
 }
-.ai-engine-row-details {
+.ai-model-row-details {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.75fr);
   gap: 16px;
@@ -3481,7 +3508,7 @@ textarea:focus {
   color: #a56411;
   background: transparent;
 }
-.ai-engine-detail-aside {
+.ai-model-detail-aside {
   display: grid;
   align-content: start;
   gap: 8px;
@@ -3490,16 +3517,16 @@ textarea:focus {
   border: 1px solid #eadbd3;
   border-radius: 6px;
 }
-.ai-engine-detail-aside h3 {
+.ai-model-detail-aside h3 {
   font-size: 12px;
 }
-.ai-engine-detail-aside p {
+.ai-model-detail-aside p {
   margin: 0 0 2px;
   color: #71808a;
   font-size: 11px;
   line-height: 1.5;
 }
-.ai-engine-detail-aside > div:not(.ai-detail-actions) {
+.ai-model-detail-aside > div:not(.ai-detail-actions) {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -3508,7 +3535,7 @@ textarea:focus {
   color: #71808a;
   font-size: 10px;
 }
-.ai-engine-detail-aside > div strong {
+.ai-model-detail-aside > div strong {
   color: #20242a;
   font-weight: 600;
   text-align: right;
@@ -3524,7 +3551,7 @@ textarea:focus {
   align-items: center;
   gap: 5px;
 }
-.ai-engine-dialog-backdrop {
+.ai-model-dialog-backdrop {
   position: fixed;
   z-index: 30;
   inset: 0;
@@ -3533,21 +3560,21 @@ textarea:focus {
   padding: 24px;
   background: rgba(23, 27, 33, 0.44);
 }
-.ai-engine-create-panel {
+.ai-model-create-panel {
   padding: 0;
   overflow: hidden;
 }
-.ai-engine-create-panel > .panel-heading {
+.ai-model-create-panel > .panel-heading {
   border-bottom: 1px solid #dce1e5;
 }
-.ai-engine-dialog {
+.ai-model-dialog {
   width: min(920px, 100%);
   max-height: min(780px, calc(100vh - 48px));
   overflow: auto;
   padding: 0;
   background: #fff;
 }
-.ai-engine-dialog > .panel-heading {
+.ai-model-dialog > .panel-heading {
   position: sticky;
   z-index: 1;
   top: 0;
@@ -3663,16 +3690,16 @@ textarea:focus {
     box-shadow: 0 0 0 4px rgb(201 75 60 / 12%);
   }
 }
-.ai-engine-name-field {
+.ai-model-name-field {
   display: flex;
   align-items: end;
   gap: 8px;
   min-width: 0;
 }
-.ai-engine-name-field label {
+.ai-model-name-field label {
   flex: 1 1 auto;
 }
-.ai-engine-name-field .team-icon-picker-trigger {
+.ai-model-name-field .team-icon-picker-trigger {
   flex: 0 0 auto;
   width: 35px;
   height: 35px;
@@ -3880,12 +3907,12 @@ textarea:focus {
   border-color: #9bc7b5;
   font-weight: 700;
 }
-.ai-model-list {
+.ai-model-entry-list {
   min-width: 0;
   overflow-x: auto;
 }
 .ai-model-table-head,
-.ai-model-row {
+.ai-model-entry-row {
   display: grid;
   grid-template-columns:
     minmax(220px, 1.55fr) minmax(125px, 1fr) minmax(120px, 1fr)
@@ -3900,14 +3927,14 @@ textarea:focus {
   font-size: 10px;
   font-weight: 700;
 }
-.ai-model-row {
+.ai-model-entry-row {
   padding: 8px;
   background: #fffdfc;
   border: 1px solid #dce1e5;
   border-radius: 6px;
 }
-.ai-model-row input,
-.ai-model-row select {
+.ai-model-entry-row input,
+.ai-model-entry-row select {
   min-width: 0;
   min-height: 34px;
   padding: 7px 8px;
@@ -3950,7 +3977,7 @@ textarea:focus {
   width: 27px;
   height: 27px;
 }
-.ai-model-capabilities {
+.ai-model-entry-capabilities {
   min-width: 0;
   color: #526069;
   font-size: 10px;
@@ -4403,41 +4430,41 @@ textarea:focus {
   .resource-catalog-filters .primary {
     flex: 1 1 120px;
   }
-  .ai-engine-toolbar {
+  .ai-model-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
-  .ai-engine-toolbar-actions {
+  .ai-model-toolbar-actions {
     justify-content: stretch;
   }
-  .ai-engine-filters {
+  .ai-model-filters {
     flex: 1 1 100%;
     flex-wrap: wrap;
   }
-  .ai-engine-search {
+  .ai-model-search {
     width: 100%;
     flex: 1 1 100%;
   }
-  .ai-engine-filters select {
+  .ai-model-filters select {
     flex: 1 1 120px;
     min-width: 120px;
   }
-  .ai-engine-toolbar-actions > button {
+  .ai-model-toolbar-actions > button {
     flex: 1 1 140px;
     justify-content: center;
   }
-  .ai-engine-row-main {
+  .ai-model-row-main {
     grid-template-columns: 32px minmax(0, 1fr) 20px;
     gap: 9px;
     padding: 10px;
   }
-  .ai-engine-scope,
-  .ai-engine-default,
-  .ai-engine-capabilities,
-  .ai-engine-health {
+  .ai-model-scope,
+  .ai-model-default,
+  .ai-model-capabilities,
+  .ai-model-health {
     grid-column: 2 / -1;
   }
-  .ai-engine-row-details {
+  .ai-model-row-details {
     grid-template-columns: 1fr;
     padding-left: 10px;
   }
@@ -4461,7 +4488,7 @@ textarea:focus {
   .ai-model-form-row:nth-child(2) {
     grid-template-columns: 1fr;
   }
-  .ai-engine-name-field {
+  .ai-model-name-field {
     align-items: end;
   }
   .ai-model-form-actions {
@@ -4470,12 +4497,12 @@ textarea:focus {
   .ai-model-table-head {
     display: none;
   }
-  .ai-model-row {
+  .ai-model-entry-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     min-width: 0;
   }
   .ai-model-endpoint,
-  .ai-model-capabilities,
+  .ai-model-entry-capabilities,
   .ai-model-connection {
     grid-column: span 2;
   }
@@ -5966,7 +5993,7 @@ button.workspace-team:hover {
 }
 
 /* Resource catalog theme overrides. The catalog uses the same semantic colors
-   as the AI engine list while keeping surfaces and controls readable in dark mode. */
+   as the ai model list while keeping surfaces and controls readable in dark mode. */
 :root[data-theme='dark'] .resource-list-panel,
 :root[data-theme='dark'] .resource-catalog-panel,
 :root[data-theme='dark'] .resource-catalog-row {
@@ -6132,20 +6159,21 @@ button.workspace-team:hover {
   color: #9d8f87;
 }
 
-/* AI engine workbench theme overrides. Keep list and wizard surfaces readable
+/* ai model workbench theme overrides. Keep list and wizard surfaces readable
    in both themes without relying on the generic panel/input defaults. */
 :root[data-theme='dark'] .ai-health-metric,
-:root[data-theme='dark'] .ai-engine-list-panel,
-:root[data-theme='dark'] .ai-engine-row,
-:root[data-theme='dark'] .ai-engine-create-panel,
+:root[data-theme='dark'] .ai-model-list-panel,
+:root[data-theme='dark'] .ai-model-row,
+:root[data-theme='dark'] .ai-model-entry-row,
+:root[data-theme='dark'] .ai-model-create-panel,
 :root[data-theme='dark'] .ai-model-row {
   color: #eee4df;
   background: #2a2623;
   border-color: #514740;
 }
 :root[data-theme='dark'] .ai-health-metric strong,
-:root[data-theme='dark'] .ai-engine-row-main,
-:root[data-theme='dark'] .ai-engine-detail-aside > div strong,
+:root[data-theme='dark'] .ai-model-row-main,
+:root[data-theme='dark'] .ai-model-detail-aside > div strong,
 :root[data-theme='dark'] .ai-wizard-content,
 :root[data-theme='dark'] .ai-form-grid label,
 :root[data-theme='dark'] .ai-fallback-picker legend,
@@ -6185,20 +6213,21 @@ button.workspace-team:hover {
   border-color: #23735e;
 }
 :root[data-theme='dark'] .ai-page-heading p:not(.eyebrow),
-:root[data-theme='dark'] .ai-engine-toolbar small,
+:root[data-theme='dark'] .ai-model-toolbar small,
 :root[data-theme='dark'] .ai-health-metric span,
 :root[data-theme='dark'] .ai-health-metric small,
-:root[data-theme='dark'] .ai-engine-identity small,
-:root[data-theme='dark'] .ai-engine-scope small,
-:root[data-theme='dark'] .ai-engine-health small,
-:root[data-theme='dark'] .ai-engine-capabilities small,
-:root[data-theme='dark'] .ai-engine-column-label,
-:root[data-theme='dark'] .ai-engine-column-hint,
-:root[data-theme='dark'] .ai-engine-description,
-:root[data-theme='dark'] .ai-engine-scope-name,
-:root[data-theme='dark'] .ai-engine-health-meta,
+:root[data-theme='dark'] .ai-model-identity small,
+:root[data-theme='dark'] .ai-model-scope small,
+:root[data-theme='dark'] .ai-model-health small,
+:root[data-theme='dark'] .ai-model-capabilities small,
+:root[data-theme='dark'] .ai-model-entry-capabilities,
+:root[data-theme='dark'] .ai-model-column-label,
+:root[data-theme='dark'] .ai-model-column-hint,
+:root[data-theme='dark'] .ai-model-description,
+:root[data-theme='dark'] .ai-model-scope-name,
+:root[data-theme='dark'] .ai-model-health-meta,
 :root[data-theme='dark'] .ai-endpoint-row small,
-:root[data-theme='dark'] .ai-engine-detail-aside p,
+:root[data-theme='dark'] .ai-model-detail-aside p,
 :root[data-theme='dark'] .ai-model-capabilities,
 :root[data-theme='dark'] .ai-wizard-content > p,
 :root[data-theme='dark'] .ai-form-note,
@@ -6209,23 +6238,41 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .ai-review-checks span {
   color: #bfb3ac;
 }
-:root[data-theme='dark'] .ai-engine-toolbar,
-:root[data-theme='dark'] .ai-engine-create-panel > .panel-heading,
-:root[data-theme='dark'] .ai-engine-row-details,
+:root[data-theme='dark'] .ai-model-toolbar,
+:root[data-theme='dark'] .ai-model-create-panel > .panel-heading,
+:root[data-theme='dark'] .ai-model-row-details,
 :root[data-theme='dark'] .ai-wizard-footer,
 :root[data-theme='dark'] .ai-review-list div,
 :root[data-theme='dark'] .ai-review-checks div,
 :root[data-theme='dark'] .ai-review-section,
-:root[data-theme='dark'] .ai-engine-detail-aside > div:not(.ai-detail-actions) {
+:root[data-theme='dark'] .ai-model-detail-aside > div:not(.ai-detail-actions) {
   border-color: #514740;
 }
-:root[data-theme='dark'] .ai-engine-row-main:hover {
+:root[data-theme='dark'] .ai-model-row-main:hover {
   background: #342e2a;
 }
-:root[data-theme='dark'] .ai-engine-icon {
+:root[data-theme='dark'] .ai-model-icon {
   color: #9fe4cf;
   background: #173e35;
   border-color: #23735e;
+}
+:root[data-theme='dark'] .ai-inline-test-button {
+  color: #a9bbb9;
+}
+:root[data-theme='dark'] .ai-inline-test-button:hover {
+  color: #9fe4cf;
+  background: #173e35;
+  border-color: #23735e;
+}
+:root[data-theme='dark'] .ai-inline-test-button:disabled {
+  color: #6f7d7d;
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-theme='dark'] .ai-model-health .status-label.pending,
+:root[data-theme='dark'] .ai-endpoint-row > .status-label.pending {
+  color: #b5c7c5;
+  background: #2e4140;
 }
 :root[data-theme='dark'] .ai-scope-badge.platform {
   color: #9fe4cf;
@@ -6239,31 +6286,31 @@ button.workspace-team:hover {
   color: #c5ccff;
   background: #30375d;
 }
-:root[data-theme='dark'] .ai-engine-chevron:hover {
+:root[data-theme='dark'] .ai-model-chevron:hover {
   color: #ffb58b;
   background: #4a2d20;
 }
-:root[data-theme='dark'] .ai-engine-row-details,
+:root[data-theme='dark'] .ai-model-row-details,
 :root[data-theme='dark'] .ai-wizard-steps,
 :root[data-theme='dark'] .ai-model-empty,
 :root[data-theme='dark'] .ai-form-note {
   background: #342e2a;
 }
-:root[data-theme='dark'] .ai-engine-search,
-:root[data-theme='dark'] .ai-engine-filters select,
+:root[data-theme='dark'] .ai-model-search,
+:root[data-theme='dark'] .ai-model-filters select,
 :root[data-theme='dark'] .ai-form-grid input,
 :root[data-theme='dark'] .ai-form-grid select,
 :root[data-theme='dark'] .ai-form-grid textarea,
 :root[data-theme='dark'] .ai-model-form-row input,
 :root[data-theme='dark'] .ai-model-form-row select,
-:root[data-theme='dark'] .ai-model-row input,
-:root[data-theme='dark'] .ai-model-row select {
+:root[data-theme='dark'] .ai-model-entry-row input,
+:root[data-theme='dark'] .ai-model-entry-row select {
   color: #f1e8e3;
   background: #302b28;
   border-color: #514740;
 }
 :root[data-theme='dark'] .ai-default-field small,
-:root[data-theme='dark'] .ai-engine-default small {
+:root[data-theme='dark'] .ai-model-default small {
   color: #bfb3ac;
 }
 :root[data-theme='dark'] .ai-switch {
@@ -6288,13 +6335,13 @@ button.workspace-team:hover {
   color: #9fe4cf;
   background: #173e35;
 }
-:root[data-theme='dark'] .ai-engine-search::placeholder,
-:root[data-theme='dark'] .ai-model-row input::placeholder,
+:root[data-theme='dark'] .ai-model-search::placeholder,
+:root[data-theme='dark'] .ai-model-entry-row input::placeholder,
 :root[data-theme='dark'] .ai-form-grid input::placeholder,
 :root[data-theme='dark'] .ai-form-grid textarea::placeholder {
   color: #9d8f87;
 }
-:root[data-theme='dark'] .ai-engine-detail-aside,
+:root[data-theme='dark'] .ai-model-detail-aside,
 :root[data-theme='dark'] .ai-endpoint-row,
 :root[data-theme='dark'] .ai-review-list,
 :root[data-theme='dark'] .ai-review-checks,
@@ -6369,12 +6416,12 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .ai-fallback-picker label {
   color: #d5c8c1;
 }
-:root[data-theme='dark'] .ai-engine-capabilities em,
+:root[data-theme='dark'] .ai-model-capabilities em,
 :root[data-theme='dark'] .ai-endpoint-caps em {
   color: #9fe4cf;
   background: #173e35;
 }
-:root[data-theme='dark'] .ai-engine-capabilities em.muted-chip {
+:root[data-theme='dark'] .ai-model-capabilities em.muted-chip {
   color: #bfb3ac;
   background: #3a3430;
 }

@@ -68,7 +68,7 @@ resources {
 | 基础设施 | Kubernetes |
 | 业务 | Application |
 | 中间件 | PostgreSQL、Redis、Kafka、Elasticsearch、GenericMiddleware |
-| AI | AIEngine、MCPServer、Skill |
+| AI | AIModel、MCPServer、Skill |
 | 可观测平台 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、GenericAPI |
 | 开发交付 | Repository、Artifact |
 | 运维支撑 | NotificationChannel、Runbook |
@@ -87,7 +87,7 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 | PostgreSQL | Host、Port、Database、Username | Password |
 | Redis | Host、Port、Database、Username | Password |
 | Kafka | Brokers、TLS | Username、Password |
-| AIEngine | 路由策略、能力意图、Endpoint 能力交集和上下文窗口 | AIEngine 内部 Endpoint 的 API Token |
+| AIModel | 路由策略、能力意图、大模型节点能力交集和上下文窗口 | AIModel 内部大模型节点的 API Token |
 | Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
 | Artifact | URL、Provider、Namespace | Username、Password、Token |
 | Prometheus | URL | Username、Password、Token |
@@ -150,7 +150,7 @@ resource_relations {
 | `depends_on` | 业务应用依赖 Redis、Kafka |
 | `observed_by` | 应用由 Prometheus、Loki 观测 |
 | `exposes` | Service/Ingress 暴露应用 |
-| `uses_ai_engine` | 诊断策略、Skill 或巡检使用某个 AIEngine |
+| `uses_ai_model` | 诊断策略、Skill 或巡检使用某个 AIModel |
 | `uses_skill` | 项目或资源使用某个 Skill |
 | `served_by_mcp` | Skill 通过 MCP Server 获取能力 |
 
@@ -166,7 +166,7 @@ redis-shared [团队: 支付团队]
 prometheus-main [平台]
 ```
 
-模型与 Skill 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 AIEngine 资源 ID，由引擎内部按优先级解析实际 Endpoint；Skill 默认项固定 Skill 资源 ID 和已发布 SkillVersion ID。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
+模型与 Skill 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 AIModel 资源 ID，由模型内部按优先级解析实际大模型节点；Skill 默认项固定 Skill 资源 ID 和已发布 SkillVersion ID。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
 
 ## 7. 主要数据表
 

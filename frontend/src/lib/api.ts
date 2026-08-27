@@ -697,7 +697,7 @@ export const api = {
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
     request<Resource>(`api/v1/resources/${id}/`, patch(body)),
-  setAIEngineDefault: (id: string, enabled: boolean) =>
+  setAIModelDefault: (id: string, enabled: boolean) =>
     request<Resource>(`api/v1/resources/${id}/ai-default`, patch({ default: enabled })),
   deleteResource: (id: string) =>
     request<void>(`api/v1/resources/${id}/`, { method: 'DELETE' }),
@@ -712,6 +712,15 @@ export const api = {
     body: { scope_id: string; model_name: string; stream: boolean }
   ) =>
     request<LLMConnectionResult>(`api/v1/llm-providers/${id}/test`, json(body)),
+  testAIModelEndpoint: (
+    id: string,
+    endpointIndex: number,
+    body: { scope_id: string; stream: boolean }
+  ) =>
+    request<LLMConnectionResult>(
+      `api/v1/ai-models/${id}/endpoints/${endpointIndex}/test`,
+      json(body)
+    ),
   testDraftLLM: (body: {
     scope_id: string;
     provider_type: string;
