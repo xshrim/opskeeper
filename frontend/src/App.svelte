@@ -6308,7 +6308,8 @@
                 {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '').toLowerCase().includes(diagnosisSessionSearch.toLowerCase())) as session}
                   <div class="diagnosis-session-item">
                     <button class:active={selectedDiagnosisId === session.id} class="diagnosis-session-row-f" on:click={() => void openDiagnosis(session.id)}>
-                      <strong>{session.title || '未命名诊断'}</strong><small>{formatDate(session.created_at)}</small><span>{diagnosisStatusLabel(session.status)}</span>
+                      <strong class="diagnosis-session-title-f">{session.title || '未命名诊断'}</strong>
+                      <span class="diagnosis-session-meta-f"><small>{formatDate(session.created_at)}</small><em class={`diagnosis-session-status-f ${session.status}`}>{diagnosisStatusLabel(session.status)}</em></span>
                     </button>
                     <div class="diagnosis-session-actions">
                       <button aria-label="重命名会话" title="重命名会话" on:click|stopPropagation={() => renameDiagnosisSession(session)}><Pencil size={13} /></button>
@@ -6325,7 +6326,6 @@
           <section class="diagnosis-conversation-f">
             <header class="diagnosis-conversation-head">
               <div class="diagnosis-conversation-title">
-                <p class="eyebrow">AI 诊断工作台</p>
                 <h1>{diagnosisSnapshot?.session.title || '新建诊断会话'}</h1>
                 <small>{activeScope?.name ?? '当前级别'} · 只读证据链</small>
               </div>
