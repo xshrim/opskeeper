@@ -2,7 +2,10 @@
   import { onMount } from 'svelte';
   import {
     Boxes,
+    Bot,
     Building2,
+    ChevronLeft,
+    ChevronRight,
     ChevronDown,
     ClipboardCheck,
     CloudDownload,
@@ -11,19 +14,23 @@
     EyeOff,
     FolderKanban,
     LayoutDashboard,
+    Link2,
     LogOut,
     Monitor,
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
+    Paperclip,
     Pencil,
     PlugZap,
     Plus,
     RefreshCw,
     ScanSearch,
     Search,
+    Send,
     ShieldCheck,
     Sparkles,
+    Square,
     Stethoscope,
     Sun,
     Trash2,
@@ -40,8 +47,10 @@
     type ConnectionCheck,
     type ConnectorCapability,
     type DiagnosisEvidence,
+    type DiagnosisMessage,
     type DiagnosisSession,
     type DiagnosisSnapshot,
+    type DiagnosisStatus,
     type DiscoveryItem,
     type DiscoveryProjectMapping,
     type DiscoveryRun,
@@ -428,9 +437,23 @@
   let selectedDiagnosisId = '';
   let diagnosisSnapshot: DiagnosisSnapshot | null = null;
   let diagnosisQuestion = '';
+  let diagnosisComposerText = '';
   let diagnosisTargetIds: string[] = [];
   let diagnosisFollowup = '';
   let selectedEvidence: DiagnosisEvidence | null = null;
+  let diagnosisHistoryWidth = 232;
+  let diagnosisContextWidth = 275;
+  let diagnosisHistoryCollapsed = false;
+  let diagnosisContextCollapsed = false;
+  let diagnosisContextTab: 'context' | 'evidence' = 'context';
+  let diagnosisSessionSearch = '';
+  let diagnosisEditingMessageId = '';
+  let diagnosisEditDraft = '';
+  let diagnosisInterruptedReason = '';
+  let diagnosisGenerating = false;
+  let diagnosisActionExpanded: Record<string, boolean> = {};
+  let diagnosisActionChildren: Record<string, boolean> = {};
+  let diagnosisHiddenMessageIds: string[] = [];
   let diagnosisEvents: EventSource | null = null;
   let inspectionLoaded = false;
   let inspectionPolicies: InspectionPolicy[] = [];
@@ -626,6 +649,9 @@
   $: aiModels = resources.filter(
     (item) => item.kind === 'AIModel' || item.kind === 'LLMProvider'
   );
+  $: if (view === 'diagnosis' && !selectedAIModelId && aiModels[0]) {
+    selectedAIModelId = aiModels[0].id;
+  }
   $: visibleAIModels = aiModels.filter((model) => {
     if (
       aiModelStatusFilter !== 'all' &&
@@ -1353,8 +1379,19 @@
     closeDiagnosisEvents();
     selectedDiagnosisId = id;
     selectedEvidence = null;
+    diagnosisEditingMessageId = '';
+    diagnosisEditDraft = '';
+    diagnosisInterruptedReason = '';
     try {
       diagnosisSnapshot = await api.diagnosisSession(id);
+      diagnosisSnapshot = {
+        ...diagnosisSnapshot,
+        messages: diagnosisSnapshot.messages.filter(
+          (message) => !diagnosisHiddenMessageIds.includes(message.id)
+        )
+      };
+      diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
+      diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
       diagnosisEventCursor = 0;
       openDiagnosisEvents(id);
     } catch (error) {
@@ -1399,7 +1436,14 @@
   async function refreshDiagnosis(id = selectedDiagnosisId) {
     if (!id || id !== selectedDiagnosisId) return;
     try {
-      diagnosisSnapshot = await api.diagnosisSession(id);
+      const snapshot = await api.diagnosisSession(id);
+      diagnosisSnapshot = {
+        ...snapshot,
+        messages: snapshot.messages.filter(
+          (message) => !diagnosisHiddenMessageIds.includes(message.id)
+        )
+      };
+      diagnosisGenerating = isDiagnosisRunning(snapshot.session.status);
       diagnosisSessions = diagnosisSessions.map((item) =>
         item.id === diagnosisSnapshot?.session.id
           ? diagnosisSnapshot.session
@@ -1411,6 +1455,7 @@
         diagnosisSnapshot.session.status === 'cancelled'
       ) {
         closeDiagnosisEvents();
+        diagnosisGenerating = false;
       }
     } catch (error) {
       errorMessage = describeError(error, '诊断状态刷新失败');
@@ -1424,7 +1469,14 @@
   }
 
   async function startDiagnosis() {
-    if (!selectedScopeId || diagnosisTargetIds.length === 0) return;
+    if (!selectedScopeId) {
+      errorMessage = '请先选择一个可用级别。';
+      return;
+    }
+    if (diagnosisTargetIds.length === 0) {
+      errorMessage = '请在右侧上下文中至少选择一个资源。';
+      return;
+    }
     await action(async () => {
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
@@ -1434,9 +1486,82 @@
       diagnosisSessions = [session, ...diagnosisSessions];
       diagnosisQuestion = '';
       diagnosisTargetIds = [];
+      diagnosisFollowup = '';
+      diagnosisInterruptedReason = '';
       notice = '诊断会话已创建，正在建立受控证据链。';
       await openDiagnosis(session.id);
     });
+  }
+
+  async function submitDiagnosisMessage() {
+    const content = diagnosisComposerText.trim();
+    if (!content) return;
+    if (!selectedDiagnosisId) {
+      diagnosisQuestion = content;
+      await startDiagnosis();
+      diagnosisComposerText = '';
+      return;
+    }
+    diagnosisFollowup = content;
+    await sendDiagnosisFollowup();
+    diagnosisComposerText = '';
+  }
+
+  function handleDiagnosisComposerKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void submitDiagnosisMessage();
+    }
+  }
+
+  function isLastDiagnosisUser(index: number) {
+    const messages = diagnosisSnapshot?.messages ?? [];
+    return index === messages.map((item) => item.role).lastIndexOf('user');
+  }
+
+  function copyDiagnosisAnswer(content: string) {
+    void navigator.clipboard?.writeText(content).then(
+      () => (notice = '回答已复制。'),
+      () => (notice = '当前浏览器不允许直接复制，请手动选择文本。')
+    );
+  }
+
+  function toggleDiagnosisContext(resourceID: string) {
+    if (diagnosisTargetIds.includes(resourceID)) {
+      diagnosisTargetIds = diagnosisTargetIds.filter((id) => id !== resourceID);
+      return;
+    }
+    if (diagnosisTargetIds.length >= 20) {
+      errorMessage = '一次诊断最多加载 20 个上下文资源。';
+      return;
+    }
+    diagnosisTargetIds = [...diagnosisTargetIds, resourceID];
+    if (selectedDiagnosisId) {
+      void action(async () => {
+        await api.addDiagnosisTarget(selectedDiagnosisId, resourceID);
+        await refreshDiagnosis();
+      });
+    }
+  }
+
+  function startDiagnosisResize(side: 'history' | 'context', event: PointerEvent) {
+    if (window.innerWidth <= 850) return;
+    const startX = event.clientX;
+    const startWidth = side === 'history' ? diagnosisHistoryWidth : diagnosisContextWidth;
+    const move = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientX - startX;
+      if (side === 'history') {
+        diagnosisHistoryWidth = Math.max(180, Math.min(360, startWidth + delta));
+      } else {
+        diagnosisContextWidth = Math.max(220, Math.min(380, startWidth - delta));
+      }
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
   }
 
   async function sendDiagnosisFollowup() {
@@ -1444,9 +1569,142 @@
     await action(async () => {
       await api.askDiagnosis(selectedDiagnosisId, diagnosisFollowup);
       diagnosisFollowup = '';
+      diagnosisInterruptedReason = '';
+      diagnosisGenerating = true;
       notice = '追问已提交，正在重新诊断。';
       await refreshDiagnosis();
       openDiagnosisEvents(selectedDiagnosisId);
+    });
+  }
+
+  function isDiagnosisRunning(status: DiagnosisStatus | string) {
+    return ['queued', 'planning', 'collecting', 'analyzing'].includes(status);
+  }
+
+  function newDiagnosisSession() {
+    closeDiagnosisEvents();
+    selectedDiagnosisId = '';
+    diagnosisSnapshot = null;
+    selectedEvidence = null;
+    diagnosisQuestion = '';
+    diagnosisFollowup = '';
+    diagnosisComposerText = '';
+    diagnosisTargetIds = [];
+    diagnosisEditingMessageId = '';
+    diagnosisEditDraft = '';
+    diagnosisInterruptedReason = '';
+    diagnosisGenerating = false;
+  }
+
+  function clearDiagnosisHistory() {
+    closeDiagnosisEvents();
+    diagnosisSessions = [];
+    newDiagnosisSession();
+    notice = '已清空当前作用域的会话列表。';
+  }
+
+  function renameDiagnosisSession(session: DiagnosisSession) {
+    const title = window.prompt('重命名诊断会话', session.title || '未命名诊断');
+    if (!title?.trim()) return;
+    diagnosisSessions = diagnosisSessions.map((item) =>
+      item.id === session.id ? { ...item, title: title.trim() } : item
+    );
+    if (diagnosisSnapshot?.session.id === session.id) {
+      diagnosisSnapshot = {
+        ...diagnosisSnapshot,
+        session: { ...diagnosisSnapshot.session, title: title.trim() }
+      };
+    }
+  }
+
+  function deleteDiagnosisSession(session: DiagnosisSession) {
+    if (!window.confirm(`删除“${session.title || '未命名诊断'}”的列表记录？`)) return;
+    diagnosisSessions = diagnosisSessions.filter((item) => item.id !== session.id);
+    if (selectedDiagnosisId === session.id) newDiagnosisSession();
+  }
+
+  function beginDiagnosisEdit(message: DiagnosisMessage) {
+    diagnosisEditingMessageId = message.id;
+    diagnosisEditDraft = message.content;
+  }
+
+  async function saveDiagnosisEdit() {
+    const content = diagnosisEditDraft.trim();
+    if (!content || !selectedDiagnosisId || !diagnosisSnapshot) return;
+    const originalID = diagnosisEditingMessageId;
+    await action(async () => {
+      const created = await api.askDiagnosis(selectedDiagnosisId, content);
+      diagnosisHiddenMessageIds = [...diagnosisHiddenMessageIds, originalID];
+      diagnosisSnapshot = {
+        ...diagnosisSnapshot!,
+        messages: [
+          ...diagnosisSnapshot!.messages.filter((message) => message.id !== originalID),
+          created
+        ]
+      };
+      diagnosisEditingMessageId = '';
+      diagnosisEditDraft = '';
+      diagnosisFollowup = '';
+      diagnosisGenerating = true;
+      notice = '问题已更新，正在重新诊断。';
+      openDiagnosisEvents(selectedDiagnosisId);
+    });
+  }
+
+  function stopDiagnosisGeneration() {
+    if (!selectedDiagnosisId || !diagnosisGenerating) return;
+    closeDiagnosisEvents();
+    diagnosisGenerating = false;
+    diagnosisInterruptedReason = '用户手动停止了当前流式诊断。后台任务仍会继续记录审计事件。';
+    notice = '已停止当前页面的流式输出。';
+  }
+
+  function diagnosisStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+      queued: '排队中', planning: '规划中', collecting: '采集中', analyzing: '分析中',
+      succeeded: '已完成', failed: '失败', cancelled: '已取消'
+    };
+    return labels[status] ?? status;
+  }
+
+  function diagnosisDuration(start: string, end?: string) {
+    const begin = new Date(start).getTime();
+    const finish = end ? new Date(end).getTime() : Date.now();
+    if (!Number.isFinite(begin) || !Number.isFinite(finish)) return '—';
+    const seconds = Math.max(0, Math.round((finish - begin) / 1000));
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  }
+
+  function diagnosisActionData(snapshot: DiagnosisSnapshot) {
+    const steps = snapshot.plan?.steps ?? [];
+    return steps.map((step) => {
+      const evidence = snapshot.evidence.filter((item) =>
+        step.title.toLowerCase().includes(item.capability.toLowerCase()) ||
+        item.capability.toLowerCase().includes(step.phase)
+      );
+      return {
+        id: step.id,
+        title: step.title,
+        status: diagnosisStatusLabel(step.status),
+        duration: diagnosisDuration(step.created_at, step.updated_at),
+        children: evidence.length
+          ? evidence.map((item) => ({
+              id: item.id,
+              title: item.capability || 'Connector 只读查询',
+              status: item.partial ? '部分结果' : '完成',
+              duration: diagnosisDuration(item.created_at, item.collected_at),
+              input: JSON.stringify({ target_resource_id: item.target_resource_id, source_resource_id: item.source_resource_id }, null, 2),
+              output: JSON.stringify(item.content, null, 2)
+            }))
+          : [{
+              id: `${step.id}-execution`,
+              title: step.detail || '执行受控诊断动作',
+              status: diagnosisStatusLabel(step.status),
+              duration: diagnosisDuration(step.created_at, step.updated_at),
+              input: JSON.stringify({ phase: step.phase, sequence: step.sequence }, null, 2),
+              output: JSON.stringify({ status: step.status }, null, 2)
+            }]
+      };
     });
   }
 
@@ -4321,7 +4579,7 @@
       </div>
     </aside>
 
-    <main class="main-content">
+    <main class="main-content" class:diagnosis-main-content={view === 'diagnosis'}>
       <header class="topbar">
         <div>
           <p class="breadcrumb">
@@ -6030,259 +6288,99 @@
           </section>
         </section>
       {:else if view === 'diagnosis'}
-        <section class="content-grid diagnosis-workbench">
-          <section class="panel diagnosis-start">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">READ-ONLY INVESTIGATION</p>
-                <h2>开始诊断</h2>
-              </div>
-              <span class="scope-type">{activeScope?.name ?? 'Scope'}</span>
-            </div>
-            <form class="stack-form" on:submit|preventDefault={startDiagnosis}>
-              <label
-                >诊断问题<textarea
-                  bind:value={diagnosisQuestion}
-                  rows="4"
-                  required
-                  placeholder="例如：为什么该应用在最近一小时的错误率升高？"
-                ></textarea></label
-              >
-              <fieldset class="diagnosis-target-picker">
-                <legend>目标资源（最多 20 个）</legend>
-                <p>
-                  只会调用已发布 Skill 中声明的只读 Connector
-                  工具；外部返回内容均按不可信证据处理。
-                </p>
-                <div class="diagnosis-target-list">
-                  {#each diagnosisTargets as resource}
-                    <label
-                      class:selected={diagnosisTargetIds.includes(resource.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={diagnosisTargetIds.includes(resource.id)}
-                        on:change={() => toggleDiagnosisTarget(resource.id)}
-                      />
-                      <span class="resource-kind-icon"
-                        >{resourceIcon(resource.kind)}</span
-                      >
-                      <span
-                        ><strong>{resource.name}</strong><small
-                          >{resourceSchemaName(resource.kind)} · {scopeName(
-                            resource.scope_id
-                          )}</small
-                        ></span
-                      >
-                    </label>
-                  {:else}
-                    <div class="empty-state">
-                      当前作用域没有可用于诊断的活动资源。
-                    </div>
-                  {/each}
+        <section
+          class="diagnosis-workbench-f"
+          class:history-collapsed={diagnosisHistoryCollapsed}
+          class:context-collapsed={diagnosisContextCollapsed}
+          style={`--diagnosis-history-width:${diagnosisHistoryWidth}px;--diagnosis-context-width:${diagnosisContextWidth}px`}
+        >
+          {#if !diagnosisHistoryCollapsed}
+            <aside class="diagnosis-history-panel">
+              <div class="diagnosis-panel-top">
+                <div><h2>会话历史</h2><small>{diagnosisSessions.length} 个会话</small></div>
+                <div class="diagnosis-heading-actions">
+                  <button class="icon-button" aria-label="清空会话历史" title="清空会话历史" on:click={clearDiagnosisHistory}><Trash2 size={15} /></button>
+                  <button class="icon-button" aria-label="新建诊断会话" title="新建诊断会话" on:click={newDiagnosisSession}><Plus size={16} /></button>
                 </div>
-              </fieldset>
-              <button
-                class="primary"
-                disabled={busy || diagnosisTargetIds.length === 0}
-                >建立诊断证据链</button
-              >
+              </div>
+              <input class="diagnosis-session-search" bind:value={diagnosisSessionSearch} placeholder="搜索会话" aria-label="搜索会话" />
+              <div class="diagnosis-session-list-f">
+                {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '').toLowerCase().includes(diagnosisSessionSearch.toLowerCase())) as session}
+                  <div class="diagnosis-session-item">
+                    <button class:active={selectedDiagnosisId === session.id} class="diagnosis-session-row-f" on:click={() => void openDiagnosis(session.id)}>
+                      <strong>{session.title || '未命名诊断'}</strong><small>{formatDate(session.created_at)}</small><span>{diagnosisStatusLabel(session.status)}</span>
+                    </button>
+                    <div class="diagnosis-session-actions">
+                      <button aria-label="重命名会话" title="重命名会话" on:click|stopPropagation={() => renameDiagnosisSession(session)}><Pencil size={13} /></button>
+                      <button aria-label="删除会话" title="删除会话" on:click|stopPropagation={() => deleteDiagnosisSession(session)}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                {:else}<p class="diagnosis-empty">还没有诊断会话。</p>{/each}
+              </div>
+            </aside>
+          {/if}
+          <div class="diagnosis-splitter left" role="separator" aria-orientation="vertical" on:pointerdown={(event) => startDiagnosisResize('history', event)}>
+            <button aria-label={diagnosisHistoryCollapsed ? '展开会话历史' : '折叠会话历史'} on:click={() => (diagnosisHistoryCollapsed = !diagnosisHistoryCollapsed)}>{#if diagnosisHistoryCollapsed}<ChevronRight size={16} />{:else}<ChevronLeft size={16} />{/if}</button>
+          </div>
+          <section class="diagnosis-conversation-f">
+            <header class="diagnosis-conversation-head">
+              <div class="diagnosis-conversation-title">
+                <p class="eyebrow">AI 诊断工作台</p>
+                <h1>{diagnosisSnapshot?.session.title || '新建诊断会话'}</h1>
+                <small>{activeScope?.name ?? '当前级别'} · 只读证据链</small>
+              </div>
+              <div class="diagnosis-loaded-context">
+                <span>已加载上下文</span>
+                {#each diagnosisTargets.filter((resource) => diagnosisTargetIds.includes(resource.id)).slice(0, 3) as resource}<span class="diagnosis-context-chip">{resource.name}</span>{/each}
+                {#if diagnosisTargetIds.length > 3}<span class="diagnosis-context-chip accent">+{diagnosisTargetIds.length - 3}</span>{/if}
+                {#if diagnosisTargetIds.length === 0}<span class="diagnosis-context-chip muted">未选择</span>{/if}
+              </div>
+              <div class="diagnosis-head-actions">
+                <button class="icon-button super-session-button" aria-label="超级会话" title="超级会话" on:click={() => (notice = '超级会话已启用，将持续保留当前上下文。')}><Sparkles size={16} /></button>
+                <span class="diagnosis-head-status"><i class:running={diagnosisGenerating}></i>{diagnosisGenerating ? '正在生成诊断' : diagnosisSnapshot ? diagnosisStatusLabel(diagnosisSnapshot.session.status) : '等待提问'}</span>
+              </div>
+            </header>
+            <div class="diagnosis-message-list-f">
+              {#if !diagnosisSnapshot}<div class="diagnosis-welcome"><span class="diagnosis-welcome-icon"><Stethoscope size={23} /></span><h2>从一个问题开始</h2><p>选择右侧上下文资源，描述现象后发送。Agent 会沿着可审计的只读证据链进行诊断。</p></div>{/if}
+              {#if diagnosisSnapshot}{#each diagnosisSnapshot.messages as message, index}
+                <article class="diagnosis-message-f {message.role}">
+                  <span class="diagnosis-message-avatar">{message.role === 'assistant' ? 'AI' : '你'}</span>
+                  <div class="diagnosis-message-content">
+                    <div class="diagnosis-message-meta">{#if message.role === 'assistant'}<strong>AI 诊断 Agent</strong>{/if}<small>{formatDate(message.created_at)}</small></div>
+                    {#if diagnosisEditingMessageId === message.id}
+                      <div class="diagnosis-edit-box"><textarea bind:value={diagnosisEditDraft} aria-label="编辑诊断问题" rows="3"></textarea><div><button class="secondary" on:click={() => (diagnosisEditingMessageId = '')}>取消</button><button class="primary" on:click={() => void saveDiagnosisEdit()} disabled={busy}>重新发送</button></div></div>
+                    {:else}
+                      <div class="diagnosis-bubble-f"><p>{message.content}</p>{#if diagnosisInterruptedReason && message.role === 'assistant' && index === diagnosisSnapshot.messages.map((item) => item.role).lastIndexOf('assistant')}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}{#if message.role === 'assistant'}<button class="bubble-icon copy" aria-label="复制回答" title="复制回答" on:click={() => copyDiagnosisAnswer(message.content)}><Copy size={14} /></button>{/if}{#if message.role === 'user' && isLastDiagnosisUser(index)}<button class="bubble-icon edit" aria-label="编辑并重新发送" title="编辑并重新发送" on:click={() => beginDiagnosisEdit(message)}><Pencil size={14} /></button>{/if}</div>
+                    {/if}
+                    {#if message.role === 'assistant' && index === diagnosisSnapshot.messages.map((item) => item.role).lastIndexOf('assistant')}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
+                      <div class="diagnosis-action-group"><button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span>{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>{#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span>{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}</div>{/each}</div>{/if}</div>
+                    {/each}{/if}
+                  </div>
+                </article>
+              {/each}{/if}
+            </div>
+            <form class="diagnosis-composer-f" on:submit|preventDefault={() => void submitDiagnosisMessage()}>
+              <div class="diagnosis-composer-shell">
+                <textarea bind:value={diagnosisComposerText} on:keydown={handleDiagnosisComposerKeydown} placeholder="描述问题，或输入 / 调用 Skill…" aria-label="输入诊断问题" rows="3" maxlength="16000"></textarea>
+                <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedAIModelId} aria-label="选择 AIModel">{#each aiModels as model}<option value={model.id}>{model.name} · AIModel</option>{:else}<option value="">当前作用域暂无 AIModel</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
+              </div>
+              <small class="diagnosis-composer-note"><span>Enter 发送 · Shift + Enter 换行</span><span>当前模型支持：文本、工具调用、流式输出</span></small>
             </form>
           </section>
-
-          <section class="panel diagnosis-history">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">SESSION HISTORY</p>
-                <h2>会话历史</h2>
-              </div>
-              <span class="count">{diagnosisSessions.length}</span>
-            </div>
-            <div class="table-list diagnosis-session-list">
-              {#each diagnosisSessions as session}
-                <button
-                  class:active={selectedDiagnosisId === session.id}
-                  class="list-row diagnosis-session-row"
-                  on:click={() => void openDiagnosis(session.id)}
-                >
-                  <span
-                    ><strong>{session.title || '未命名诊断'}</strong><small
-                      >{formatDate(session.created_at)}</small
-                    ></span
-                  >
-                  <span class="status-label {session.status}"
-                    >{session.status}</span
-                  >
-                </button>
-              {:else}<div class="empty-state">还没有诊断会话。</div>{/each}
-            </div>
-          </section>
-
-          {#if diagnosisSnapshot}
-            <section class="panel wide-panel diagnosis-timeline">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">PLAN · EXECUTE · VERIFY · SUMMARIZE</p>
-                  <h2>{diagnosisSnapshot.session.title}</h2>
-                </div>
-                <span class="status-label {diagnosisSnapshot.session.status}"
-                  >{diagnosisSnapshot.session.status}</span
-                >
-              </div>
-              {#if diagnosisSnapshot.plan}
-                <p class="plan-summary">{diagnosisSnapshot.plan.summary}</p>
-                <ol class="plan-steps">
-                  {#each diagnosisSnapshot.plan.steps as step}
-                    <li class={step.status}>
-                      <span>{step.sequence}</span>
-                      <div>
-                        <strong>{step.title}</strong><small>{step.detail}</small
-                        >
-                      </div>
-                      <em>{step.phase} · {step.status}</em>
-                    </li>
-                  {/each}
-                </ol>
-              {:else}<div class="empty-state">
-                  诊断正在排定受控执行计划…
-                </div>{/if}
-            </section>
-
-            <section class="panel diagnosis-conversation">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">CONVERSATION</p>
-                  <h2>诊断对话</h2>
-                </div>
-              </div>
-              <div class="diagnosis-messages">
-                {#each diagnosisSnapshot.messages as message}
-                  <article class="diagnosis-message {message.role}">
-                    <span>{message.role === 'assistant' ? 'AI' : '你'}</span>
-                    <div>
-                      <p>{message.content}</p>
-                      <small>{formatDate(message.created_at)}</small>
-                    </div>
-                  </article>
-                {/each}
-              </div>
-              <form
-                class="followup-form"
-                on:submit|preventDefault={sendDiagnosisFollowup}
-              >
-                <input
-                  bind:value={diagnosisFollowup}
-                  placeholder="补充问题或继续追问…"
-                  maxlength="16000"
-                />
-                <button
-                  class="primary"
-                  disabled={busy || !diagnosisFollowup.trim()}>发送</button
-                >
-              </form>
-            </section>
-
-            <section class="panel diagnosis-evidence">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">EVIDENCE DRAWER</p>
-                  <h2>证据</h2>
-                </div>
-                <span class="count">{diagnosisSnapshot.evidence.length}</span>
-              </div>
-              <div class="evidence-list">
-                {#each diagnosisSnapshot.evidence as evidence}
-                  <button
-                    class:active={selectedEvidence?.id === evidence.id}
-                    class="evidence-row"
-                    on:click={() => (selectedEvidence = evidence)}
-                  >
-                    <span class="evidence-id">#{evidence.id.slice(0, 8)}</span
-                    ><span
-                      ><strong
-                        >{evidence.capability || 'connector result'}</strong
-                      ><small
-                        >{formatDate(evidence.collected_at)} · {evidence.partial
-                          ? '部分结果'
-                          : '完整结果'} · 不可信输入</small
-                      ></span
-                    >
-                  </button>
-                {:else}<div class="empty-state">
-                    执行完成后，Connector 返回的只读结果会作为 Evidence
-                    保存到这里。
-                  </div>{/each}
-              </div>
-              {#if selectedEvidence}
-                <div class="evidence-detail">
-                  <div class="detail-meta">
-                    <span
-                      >Hash <code>{selectedEvidence.content_hash}</code></span
-                    ><span
-                      >来源 {selectedEvidence.source_resource_id || '—'}</span
-                    >
-                  </div>
-                  <pre class="config-preview">{JSON.stringify(
-                      selectedEvidence.content,
-                      null,
-                      2
-                    )}</pre>
-                </div>
+          <div class="diagnosis-splitter right" role="separator" aria-orientation="vertical" on:pointerdown={(event) => startDiagnosisResize('context', event)}>
+            <button aria-label={diagnosisContextCollapsed ? '展开诊断上下文' : '折叠诊断上下文'} on:click={() => (diagnosisContextCollapsed = !diagnosisContextCollapsed)}>{#if diagnosisContextCollapsed}<ChevronLeft size={16} />{:else}<ChevronRight size={16} />{/if}</button>
+          </div>
+          {#if !diagnosisContextCollapsed}
+            <aside class="diagnosis-context-panel-f">
+              <div class="diagnosis-panel-top"><div><h2>诊断上下文</h2><small>{diagnosisTargetIds.length} / {diagnosisTargets.length} 已加载</small></div></div>
+              <div class="diagnosis-context-tabs"><button class:active={diagnosisContextTab === 'context'} on:click={() => (diagnosisContextTab = 'context')}>上下文</button><button class:active={diagnosisContextTab === 'evidence'} on:click={() => (diagnosisContextTab = 'evidence')}>证据链</button></div>
+              {#if diagnosisContextTab === 'context'}
+                <p class="diagnosis-context-note"><strong>上下文开关</strong><br />只把打开的资源提供给当前 Agent；关闭不会删除资源，也不会影响权限。</p>
+                <div class="diagnosis-resource-list-f">{#each diagnosisTargets as resource}<label class:selected={diagnosisTargetIds.includes(resource.id)}><span class="diagnosis-resource-icon">{resourceIcon(resource.kind)}</span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span><input type="checkbox" checked={diagnosisTargetIds.includes(resource.id)} on:change={() => toggleDiagnosisContext(resource.id)} /></label>{:else}<p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>{/each}</div>
+              {:else}
+                <div class="diagnosis-evidence-list-f">{#each diagnosisSnapshot?.evidence ?? [] as evidence}<button class:active={selectedEvidence?.id === evidence.id} on:click={() => (selectedEvidence = evidence)}><strong>{evidence.capability || 'Connector 只读结果'}</strong><small>{formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'} · 不可信输入</small></button>{:else}<p class="diagnosis-empty">执行完成后，Connector 返回的只读结果会出现在这里。</p>{/each}</div>{#if selectedEvidence}<pre class="diagnosis-evidence-detail">{JSON.stringify(selectedEvidence.content, null, 2)}</pre>{/if}
               {/if}
-            </section>
-
-            <section class="panel wide-panel diagnosis-report">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">TRACEABLE REPORT</p>
-                  <h2>诊断报告</h2>
-                </div>
-                {#if diagnosisSnapshot.report}<span
-                    class="status-label {diagnosisSnapshot.report.status}"
-                    >{diagnosisSnapshot.report.status}</span
-                  >{/if}
-              </div>
-              {#if diagnosisSnapshot.report}
-                <p class="report-conclusion">
-                  {diagnosisSnapshot.report.conclusion}
-                </p>
-                <div class="evidence-references">
-                  <strong>Evidence 引用：</strong
-                  >{#each diagnosisSnapshot.report.evidence_ids as evidenceID}<button
-                      class="text-button"
-                      on:click={() =>
-                        (selectedEvidence =
-                          diagnosisSnapshot?.evidence.find(
-                            (item) => item.id === evidenceID
-                          ) ?? null)}>#{evidenceID.slice(0, 8)}</button
-                    >{:else}<span>无。报告中的内容仅为待验证假设。</span>{/each}
-                </div>
-                {#if diagnosisSnapshot.hypotheses.length}<div
-                    class="hypothesis-list"
-                  >
-                    {#each diagnosisSnapshot.hypotheses as hypothesis}<div>
-                        <span class="status-label {hypothesis.status}"
-                          >{hypothesis.status}</span
-                        >
-                        <p>{hypothesis.statement}</p>
-                      </div>{/each}
-                  </div>{/if}
-              {:else if diagnosisSnapshot.session.status === 'failed'}<div
-                  class="alert error"
-                >
-                  {diagnosisSnapshot.session.error_message || '诊断执行失败。'}
-                </div>{:else}<div class="empty-state">
-                  正在归纳结果；没有 Evidence 引用时不会生成确定性结论。
-                </div>{/if}
-            </section>
-          {:else}
-            <section class="panel wide-panel empty-detail">
-              <div class="empty-state">
-                <span class="empty-icon">⌁</span>
-                <h2>选择或创建诊断会话</h2>
-                <p>会话将固定目标资源和作用域，并通过流式事件展示执行进度。</p>
-              </div>
-            </section>
+            </aside>
           {/if}
         </section>
       {:else if view === 'ai' || view === 'skill'}

@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T06 AI 诊断页面优化 · 六种设计方案预览</title>
+    <style>
+      :root {
+        --ink: #252b30;
+        --muted: #6f7a82;
+        --subtle: #879199;
+        --accent: #e7601b;
+        --accent-strong: #d95716;
+        --accent-soft: #fff0e9;
+        --teal: #9e3f0f;
+        --teal-soft: #fff0e8;
+        --surface: #ffffff;
+        --surface-2: #fbfaf8;
+        --wash: #eee9e5;
+        --line: #eadfd9;
+        --line-strong: #dfc8ba;
+        --sidebar: #181d23;
+        --sidebar-2: #242b33;
+        --sidebar-text: #e9eef0;
+        --warning: #a46719;
+        --warning-soft: #fff4dc;
+        --danger: #bc4839;
+        --danger-soft: #fcebe8;
+        --shadow: 0 12px 30px rgba(47, 41, 38, .07);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      :root[data-theme="dark"] {
+        --ink: #253238;
+        --muted: #52616a;
+        --subtle: #76838a;
+        --accent: #18a27d;
+        --accent-strong: #158c6c;
+        --accent-soft: #e4f3ee;
+        --teal: #18a27d;
+        --teal-soft: #e4f3ee;
+        --surface: #f5f7f8;
+        --surface-2: #fafbfb;
+        --wash: #f1f4f5;
+        --line: #c7ded7;
+        --line-strong: #9fc9bb;
+        --sidebar: #0d1816;
+        --sidebar-2: #12342d;
+        --sidebar-text: #e7ecef;
+        --warning: #c5ccff;
+        --warning-soft: #263a3a;
+        --danger: #efb0b8;
+        --danger-soft: #3d2f36;
+        --shadow: 0 12px 30px rgba(0, 0, 0, .22);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; background: var(--wash); }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent); outline-offset: 2px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
+      .sidebar { display: flex; flex-direction: column; min-height: 100vh; padding: 21px 14px 17px; color: var(--sidebar-text); background: var(--sidebar); border-right: 1px solid #30373e; }
+      .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+      .brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 7px; color: #fff; background: var(--accent); font-size: 14px; font-weight: 800; }
+      .brand strong { display: block; font-size: 15px; letter-spacing: .01em; }
+      .brand small { display: block; margin-top: 2px; color: #87929d; font-size: 10px; }
+      .nav-label { margin: 31px 8px 9px; color: #7f8a95; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+      .side-nav { display: grid; gap: 3px; }
+      .side-nav button { display: flex; align-items: center; gap: 10px; min-height: 39px; padding: 0 11px; color: #aeb7bf; background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 12px; }
+      .side-nav button:hover, .side-nav button.active { color: #fff; background: var(--sidebar-2); }
+      .side-nav button.active::before { width: 3px; height: 18px; margin-left: -11px; margin-right: 5px; border-radius: 0 3px 3px 0; background: var(--accent); content: ""; }
+      .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 14px 8px 0; color: #8f99a2; border-top: 1px solid #30373e; font-size: 11px; }
+      .avatar { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: var(--ink); background: var(--accent-soft); font-size: 10px; font-weight: 800; }
+      .page { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 74px; padding: 15px clamp(18px, 4vw, 54px); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .crumb { color: var(--muted); font-size: 11px; }
+      .crumb strong { display: block; margin-top: 4px; color: var(--ink); font-size: 16px; }
+      .top-actions { display: flex; align-items: center; gap: 8px; }
+      .actor { display: flex; align-items: center; gap: 8px; margin-left: 7px; color: var(--muted); font-size: 11px; }
+      .top-button, .icon-button, .ghost, .primary, .select-button { min-height: 32px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+      .top-button, .ghost, .primary { padding: 0 11px; font-size: 11px; }
+      .top-button:hover, .ghost:hover, .icon-button:hover, .select-button:hover { color: var(--accent); border-color: var(--accent); }
+      .primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 750; }
+      .primary:hover { color: #fff; background: var(--accent-strong); }
+      .icon-button { display: inline-grid; place-items: center; width: 31px; padding: 0; font-size: 14px; }
+      main { width: min(1390px, calc(100% - 36px)); margin: 0 auto; padding: 29px 0 58px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .13em; }
+      h1, h2, h3, h4, p { letter-spacing: 0; }
+      h1 { margin: 0; font-size: 29px; line-height: 1.16; }
+      h2 { margin: 0; font-size: 16px; }
+      h3 { margin: 0; font-size: 14px; }
+      .intro p:not(.eyebrow) { max-width: 770px; margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.58; }
+      .theme-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 9px 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; font-size: 11px; white-space: nowrap; }
+      .theme-toggle b { color: var(--ink); }
+      .scheme-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 15px; }
+      .scheme-tab { min-height: 73px; padding: 10px 11px; color: var(--muted); background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid transparent; border-radius: 7px; text-align: left; }
+      .scheme-tab:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+      .scheme-tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--accent); box-shadow: var(--shadow); }
+      .scheme-tab b, .scheme-tab strong, .scheme-tab span { display: block; }
+      .scheme-tab b { color: var(--accent); font-size: 10px; }
+      .scheme-tab strong { margin-top: 5px; font-size: 12px; }
+      .scheme-tab span { margin-top: 5px; font-size: 10px; line-height: 1.34; }
+      .design-note { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 20px; margin-bottom: 15px; padding: 16px 19px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 7px; }
+      .design-note p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+      .principles { display: grid; align-content: center; gap: 6px; color: var(--muted); font-size: 10px; }
+      .principles span { display: flex; align-items: center; gap: 7px; }
+      .principles i { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+      .principles b { color: var(--ink); }
+      .workspace { min-width: 0; }
+      .agent-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr) 275px; min-height: 650px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+      .agent-shell.two-column { grid-template-columns: 232px minmax(0, 1fr); }
+      .agent-shell.conversation-focus { grid-template-columns: 82px minmax(0, 1fr) 310px; }
+      .agent-shell.evidence-canvas { grid-template-columns: minmax(0, 1fr) 310px; }
+      .agent-shell.cockpit { grid-template-columns: 245px minmax(0, 1fr) 290px; }
+      .agent-shell.responsive-workbench { grid-template-columns: minmax(0, var(--history-width, 232px)) 11px minmax(0, 1fr) 11px minmax(0, var(--context-width, 275px)); }
+      .agent-shell.responsive-workbench.history-collapsed { grid-template-columns: 0 11px minmax(0, 1fr) 11px minmax(0, var(--context-width, 275px)); }
+      .agent-shell.responsive-workbench.context-collapsed { grid-template-columns: minmax(0, var(--history-width, 232px)) 11px minmax(0, 1fr) 11px 0; }
+      .agent-shell.responsive-workbench.history-collapsed.context-collapsed { grid-template-columns: 0 11px minmax(0, 1fr) 11px 0; }
+      .agent-shell.responsive-workbench > .history-panel,
+      .agent-shell.responsive-workbench > .context-panel { overflow: hidden; }
+      .agent-shell.responsive-workbench.history-collapsed > .history-panel,
+      .agent-shell.responsive-workbench.context-collapsed > .context-panel { padding: 0; border: 0; }
+      .panel-splitter { position: relative; z-index: 2; display: grid; place-items: center; min-width: 0; color: var(--subtle); background: var(--surface-2); border: 0; cursor: col-resize; }
+      .panel-splitter:hover { color: var(--accent); background: var(--accent-soft); }
+      .panel-splitter button { display: grid; place-items: center; width: 100%; height: 54px; padding: 0; color: inherit; background: transparent; border: 0; font-size: 15px; line-height: 1; }
+      .panel-splitter button { cursor: pointer; }
+      .panel-splitter.left { border-right: 1px solid var(--line); }
+      .panel-splitter.right { border-left: 1px solid var(--line); }
+      .history-panel, .context-panel { min-width: 0; background: var(--surface-2); }
+      .history-panel { padding: 15px 12px; border-right: 1px solid var(--line); }
+      .context-panel { padding: 15px 14px; border-left: 1px solid var(--line); }
+      .panel-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; margin-bottom: 12px; }
+      .panel-top h3 { font-size: 12px; }
+      .panel-top small { color: var(--subtle); font-size: 10px; }
+      .history-search { width: 100%; height: 31px; margin-bottom: 11px; padding: 0 9px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font-size: 11px; }
+      .session-list, .resource-list, .skill-list { display: grid; gap: 4px; }
+      .session-row { position: relative; min-width: 0; }
+      .session { position: relative; display: block; width: 100%; padding: 9px 8px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 6px; text-align: left; }
+      .session:hover, .session.active { color: var(--ink); background: var(--surface); border-color: var(--line); }
+      .session.active::before { position: absolute; top: 11px; left: -13px; width: 3px; height: 16px; border-radius: 0 3px 3px 0; background: var(--accent); content: ""; }
+      .session strong, .session small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .session strong { font-size: 11px; }
+      .session small { margin-top: 4px; color: var(--subtle); font-size: 10px; }
+      .session-meta { display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-top: 5px; color: var(--subtle); font-size: 9px; }
+      .session-actions { position: absolute; top: 50%; right: 6px; display: flex; gap: 2px; opacity: 0; transform: translateY(-50%); transition: opacity 120ms ease; }
+      .session-row:hover .session-actions, .session-row:focus-within .session-actions { opacity: 1; }
+      .session-actions button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
+      .session-actions button:hover { color: var(--accent); border-color: var(--accent); }
+      .history-heading-actions { display: flex; align-items: center; gap: 3px; }
+      .history-heading-actions button { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; color: var(--muted); background: transparent; border: 0; border-radius: 4px; font-size: 14px; }
+      .history-heading-actions button:hover { color: var(--accent); background: var(--accent-soft); }
+      .new-session { width: 100%; margin-top: 9px; }
+      .conversation { display: flex; min-width: 0; flex-direction: column; background: var(--surface); }
+      .conversation-head { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.5fr) minmax(80px, 1fr); align-items: center; gap: 12px; min-height: 69px; padding: 13px 19px; border-bottom: 1px solid var(--line); }
+      .conversation-head > div { min-width: 0; }
+      .conversation-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .conversation-head p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+      .head-status { display: flex; align-items: center; gap: 6px; color: var(--teal); font-size: 10px; white-space: nowrap; }
+      .head-status i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+      .loaded-context { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; overflow: hidden; }
+      .loaded-context-label { flex: 0 0 auto; color: var(--subtle); font-size: 9px; }
+      .loaded-context .tag { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+      .super-session { justify-self: end; display: inline-grid; place-items: center; width: 29px; height: 29px; color: var(--teal); background: var(--teal-soft); border: 0; border-radius: 6px; font-size: 14px; }
+      .super-session:hover { color: var(--accent); background: var(--accent-soft); }
+      .conversation-head-actions { display: flex; align-items: center; justify-self: end; gap: 8px; min-width: 0; }
+      .messages { display: grid; align-content: start; gap: 18px; min-height: 0; flex: 1; overflow: auto; padding: 25px clamp(18px, 4vw, 57px) 21px; }
+      .message { display: grid; grid-template-columns: 27px minmax(0, 1fr); gap: 10px; max-width: 780px; }
+      .message.user { margin-left: auto; grid-template-columns: minmax(0, 1fr) 27px; }
+      .message.user .message-avatar { order: 2; }
+      .message.user .message-copy { justify-items: end; }
+      .message-avatar { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; color: #fff; background: var(--teal); font-size: 10px; font-weight: 800; }
+      .message.user .message-avatar { color: var(--ink); background: var(--accent-soft); }
+      .message-copy { display: grid; gap: 7px; min-width: 0; }
+      .message-meta { display: flex; align-items: center; gap: 8px; color: var(--subtle); font-size: 10px; }
+      .message.user .message-meta { flex-direction: row-reverse; }
+      .message-body { position: relative; max-width: 690px; padding: 12px 14px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px 10px 10px 10px; font-size: 12px; line-height: 1.65; }
+      .message.user .message-body { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); border-radius: 10px 5px 10px 10px; }
+      .message-body p { margin: 0; }
+      .message-body p + p { margin-top: 8px; }
+      .message-body code { padding: 2px 4px; color: var(--teal); background: var(--teal-soft); border-radius: 3px; font-size: 10px; }
+      .bubble-action { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 23px; height: 23px; padding: 0; color: var(--subtle); background: color-mix(in srgb, var(--surface) 82%, transparent); border: 0; border-radius: 4px; opacity: 0; transition: opacity 120ms ease, color 120ms ease; }
+      .message-body:hover .bubble-action, .message-body:focus-within .bubble-action { opacity: 1; }
+      .bubble-action:hover { color: var(--accent); background: var(--surface); }
+      .message.user .message-body { padding-right: 38px; }
+      .message-tools { display: none; }
+      .edit-box { display: grid; gap: 7px; width: min(100%, 680px); }
+      .edit-box textarea { min-height: 83px; padding: 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; resize: vertical; font-size: 12px; line-height: 1.55; }
+      .edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+      .edit-actions button { min-height: 27px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; font-size: 10px; }
+      .edit-actions .save { color: #fff; background: var(--accent); border-color: var(--accent); }
+      .interruption { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 5px 7px; color: var(--warning); background: var(--warning-soft); border-radius: 4px; font-size: 10px; }
+      .interruption i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+      .action-group { margin-top: 10px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; }
+      .action-group-toggle, .action-child-toggle { display: flex; align-items: center; width: 100%; min-height: 29px; gap: 7px; padding: 0 8px; color: var(--muted); background: transparent; border: 0; text-align: left; font-size: 10px; }
+      .action-group-toggle:hover, .action-child-toggle:hover { color: var(--ink); background: var(--surface-2); }
+      .action-chevron { display: inline-block; width: 11px; color: var(--subtle); font-size: 11px; }
+      .action-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .action-status { color: var(--teal); white-space: nowrap; }
+      .action-status.running { color: var(--accent); }
+      .action-duration, .action-count { color: var(--subtle); white-space: nowrap; }
+      .action-children { display: grid; gap: 1px; padding: 2px 0 4px 25px; border-top: 1px solid var(--line); }
+      .action-child { min-width: 0; }
+      .action-child-toggle { min-height: 27px; padding-right: 8px; }
+      .action-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 5px 8px 8px 26px; }
+      .action-detail pre { min-width: 0; max-height: 90px; overflow: auto; margin: 0; padding: 6px 7px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; line-height: 1.4; white-space: pre-wrap; }
+      .action-detail pre::before { display: block; margin-bottom: 3px; color: var(--subtle); font-family: inherit; font-size: 8px; font-weight: 700; letter-spacing: .08em; }
+      .action-detail pre:first-child::before { content: 'INPUT'; }
+      .action-detail pre:last-child::before { content: 'OUTPUT'; }
+      .composer { padding: 12px clamp(14px, 3.5vw, 48px) 16px; border-top: 1px solid var(--line); }
+      .composer-box { overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 7px; box-shadow: 0 4px 13px rgba(47, 41, 38, .05); }
+      .composer-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent); }
+      .composer textarea { display: block; width: 100%; min-height: 78px; max-height: 190px; padding: 12px 13px 8px; color: var(--ink); background: transparent; border: 0; outline: 0; resize: vertical; font-size: 12px; line-height: 1.55; }
+      .composer textarea::placeholder { color: var(--subtle); }
+      .composer-tools { display: flex; align-items: center; gap: 5px; padding: 7px 8px; border-top: 1px solid var(--line); }
+      .composer-left, .composer-right { display: flex; align-items: center; gap: 5px; }
+      .composer-left { min-width: 0; flex: 1; }
+      .tool-button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 0 7px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 4px; font-size: 10px; white-space: nowrap; }
+      .tool-button:hover { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 20%, var(--line)); }
+      .tool-button b { font-size: 14px; font-weight: 500; line-height: 1; }
+      .model-select { min-height: 29px; max-width: 185px; padding: 0 7px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; font-size: 10px; }
+      .send-button { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 11px; color: #fff; background: var(--accent); border: 1px solid var(--accent); border-radius: 5px; font-size: 10px; font-weight: 750; }
+      .send-button.stop { color: #fff; background: var(--danger); border-color: var(--danger); }
+      .send-button:hover { filter: brightness(.96); }
+      .composer-note { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; color: var(--subtle); font-size: 9px; }
+      .resource-section + .resource-section { margin-top: 19px; }
+      .resource-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 6px; border: 1px solid transparent; border-radius: 5px; }
+      .resource-row:hover { background: var(--surface); border-color: var(--line); }
+      .resource-icon { display: grid; place-items: center; width: 25px; height: 25px; color: var(--teal); background: var(--teal-soft); border-radius: 5px; font-size: 12px; }
+      .resource-row strong, .resource-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .resource-row strong { font-size: 10px; }
+      .resource-row small { margin-top: 3px; color: var(--subtle); font-size: 9px; }
+      .switch { position: relative; width: 29px; height: 17px; padding: 0; background: #c9d0d2; border: 1px solid #b8c0c3; border-radius: 999px; }
+      .switch span { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.16); transition: transform 140ms ease; }
+      .switch.on { background: var(--teal); border-color: var(--teal); }
+      .switch.on span { transform: translateX(12px); }
+      .context-summary { margin: 0 0 11px; padding: 9px 10px; color: var(--muted); background: var(--teal-soft); border: 1px solid color-mix(in srgb, var(--teal) 20%, var(--line)); border-radius: 5px; font-size: 10px; line-height: 1.45; }
+      .context-summary b { color: var(--teal); }
+      .context-tabs { display: flex; gap: 3px; margin-bottom: 11px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; }
+      .context-tab { flex: 1; min-height: 27px; padding: 0 7px; color: var(--muted); background: transparent; border: 0; border-radius: 4px; font-size: 10px; }
+      .context-tab:hover, .context-tab.active { color: var(--ink); background: var(--teal-soft); }
+      .section-label { margin: 15px 6px 6px; color: var(--subtle); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+      .tag-list { display: flex; flex-wrap: wrap; gap: 5px; }
+      .tag { padding: 4px 6px; color: var(--teal); background: var(--teal-soft); border-radius: 4px; font-size: 9px; white-space: nowrap; }
+      .tag.orange { color: var(--accent-strong); background: var(--accent-soft); }
+      .empty-context { display: grid; place-items: center; min-height: 180px; padding: 15px; color: var(--subtle); text-align: center; font-size: 10px; line-height: 1.5; }
+      .empty-context b { display: block; margin-bottom: 5px; color: var(--ink); font-size: 12px; }
+      .compact-rail { display: grid; align-content: start; gap: 8px; padding: 14px 10px; background: var(--surface-2); border-right: 1px solid var(--line); }
+      .rail-button { display: grid; place-items: center; width: 37px; height: 37px; margin: 0 auto; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 7px; font-size: 15px; }
+      .rail-button:hover, .rail-button.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+      .rail-divider { height: 1px; margin: 3px 5px; background: var(--line); }
+      .timeline { display: grid; gap: 12px; padding: 18px 19px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+      .timeline-item { display: grid; grid-template-columns: 78px 9px minmax(0, 1fr); gap: 9px; align-items: start; }
+      .timeline-time { color: var(--subtle); font-size: 9px; line-height: 1.4; text-align: right; }
+      .timeline-node { position: relative; width: 9px; height: 9px; margin-top: 3px; border: 2px solid var(--teal); border-radius: 50%; }
+      .timeline-item:not(:last-child) .timeline-node::after { position: absolute; top: 7px; left: 2px; width: 1px; height: 35px; background: var(--line-strong); content: ""; }
+      .timeline-copy strong { font-size: 10px; }
+      .timeline-copy p { margin: 3px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+      .evidence-list { display: grid; gap: 6px; padding: 14px 18px; }
+      .evidence-card { padding: 9px 10px; background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 5px; }
+      .evidence-card strong, .evidence-card small { display: block; }
+      .evidence-card strong { font-size: 10px; }
+      .evidence-card small { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+      .metric-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 13px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+      .metric { padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; }
+      .metric span, .metric small { display: block; color: var(--muted); font-size: 9px; }
+      .metric strong { display: block; margin-top: 5px; color: var(--ink); font-size: 17px; }
+      .metric small { margin-top: 3px; color: var(--subtle); }
+      .cockpit-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+      .cockpit-top p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+      .badge { display: inline-flex; align-items: center; min-height: 21px; padding: 0 7px; color: var(--teal); background: var(--teal-soft); border-radius: 999px; font-size: 9px; font-weight: 750; white-space: nowrap; }
+      .agent-card { padding: 9px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; }
+      .agent-card + .agent-card { margin-top: 7px; }
+      .agent-card strong, .agent-card small { display: block; }
+      .agent-card strong { font-size: 10px; }
+      .agent-card small { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+      .agent-card.active { border-color: var(--accent); background: var(--accent-soft); }
+      .scheme-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; color: var(--subtle); font-size: 10px; }
+      .toast { position: fixed; right: 24px; bottom: 22px; z-index: 10; max-width: min(340px, calc(100% - 48px)); padding: 10px 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); border-radius: 5px; box-shadow: var(--shadow); font-size: 11px; }
+      @media (max-width: 1120px) {
+        .agent-shell, .agent-shell.cockpit { grid-template-columns: 205px minmax(0, 1fr) 245px; }
+        .agent-shell.conversation-focus { grid-template-columns: 70px minmax(0, 1fr) 260px; }
+        .tool-button { padding: 0 5px; }
+        .tool-button span { display: none; }
+      }
+      @media (max-width: 850px) {
+        .shell { grid-template-columns: 64px minmax(0, 1fr); }
+        .sidebar { padding: 17px 8px; }
+        .brand { justify-content: center; padding: 0; }
+        .brand > div, .nav-label, .side-nav button span, .sidebar-foot > span { display: none; }
+        .side-nav button { justify-content: center; padding: 0; }
+        .side-nav button.active::before { margin-left: -8px; margin-right: 0; }
+        .sidebar-foot { justify-content: center; padding-left: 0; padding-right: 0; }
+        main { width: min(100% - 24px, 720px); padding-top: 22px; }
+        .intro { align-items: flex-start; flex-direction: column; }
+        .scheme-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .design-note { grid-template-columns: 1fr; }
+        .agent-shell, .agent-shell.two-column, .agent-shell.conversation-focus, .agent-shell.evidence-canvas, .agent-shell.cockpit, .agent-shell.responsive-workbench { grid-template-columns: 1fr; }
+        .agent-shell.responsive-workbench.history-collapsed, .agent-shell.responsive-workbench.context-collapsed, .agent-shell.responsive-workbench.history-collapsed.context-collapsed { grid-template-columns: 1fr; }
+        .agent-shell.responsive-workbench .panel-splitter { min-height: 11px; height: 11px; cursor: row-resize; border: 0; border-top: 1px solid var(--line); }
+        .agent-shell.responsive-workbench .panel-splitter button { width: 54px; height: 11px; transform: rotate(90deg); }
+        .agent-shell.responsive-workbench.history-collapsed > .history-panel, .agent-shell.responsive-workbench.context-collapsed > .context-panel { display: none; }
+        .agent-shell.responsive-workbench > .conversation { order: 1; }
+        .agent-shell.responsive-workbench > .panel-splitter.left { order: 2; }
+        .agent-shell.responsive-workbench > .history-panel { order: 3; }
+        .agent-shell.responsive-workbench > .panel-splitter.right { order: 4; }
+        .agent-shell.responsive-workbench > .context-panel { order: 5; }
+        .history-panel, .context-panel { border: 0; }
+        .history-panel { order: 2; border-top: 1px solid var(--line); }
+        .context-panel { order: 3; border-top: 1px solid var(--line); }
+        .conversation { min-height: 620px; }
+        .compact-rail { display: flex; align-items: center; order: 2; overflow: auto; border: 0; border-top: 1px solid var(--line); }
+        .compact-rail .rail-button { flex: 0 0 37px; }
+        .compact-rail .rail-divider { width: 1px; height: 24px; }
+        .messages { padding-left: 15px; padding-right: 15px; }
+        .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .topbar { padding-left: 13px; padding-right: 13px; }
+        .actor { display: none; }
+      }
+      @media (max-width: 520px) {
+        h1 { font-size: 24px; }
+        .scheme-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .scheme-tab { min-height: 68px; }
+        .conversation-head { padding-left: 13px; padding-right: 13px; }
+        .head-status { display: none; }
+        .message { grid-template-columns: 24px minmax(0, 1fr); gap: 7px; }
+        .message.user { grid-template-columns: minmax(0, 1fr) 24px; }
+        .message-avatar { width: 24px; height: 24px; }
+        .composer-tools { align-items: flex-end; flex-wrap: wrap; }
+        .composer-left { flex-wrap: wrap; }
+        .composer-right { width: 100%; justify-content: space-between; }
+        .model-select { max-width: none; flex: 1; }
+        .composer-note { display: block; line-height: 1.5; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      const resources = [
+        { icon: '⌁', name: '订单服务 / order-api', type: 'Application · 项目级', on: true },
+        { icon: '◉', name: '生产 Kubernetes', type: 'Kubernetes · 平台级', on: true },
+        { icon: '◒', name: '主订单 PostgreSQL', type: 'PostgreSQL · 团队级', on: true },
+        { icon: '◌', name: 'Prometheus 生产', type: '监控平台 · 平台级', on: false },
+        { icon: '▤', name: '最近发布变更', type: '审计事件 · 最近 24 小时', on: true }
+      ];
+      const variants = {
+        a: { title: 'A · 三栏工作台', short: '历史 + 对话 + 上下文', desc: '把会话历史、实时对话和可加载资源固定在同一视线内。适合值守人员连续切换多个项目并保留上下文开关。' },
+        b: { title: 'B · 对话聚焦', short: '轻侧栏 + 上下文抽屉', desc: '将主空间让给 Agent 对话，历史会话收进窄侧栏，上下文资源保持在右侧。适合需要持续追问和编辑最后一条问题的诊断流程。' },
+        c: { title: 'C · 证据画布', short: '对话 + 证据时间线', desc: '把 Skill 执行、资源采集和证据卡片放在对话下方，诊断过程更容易复盘。适合故障追溯、交接和值班记录。' },
+        d: { title: 'D · Agent 驾驶舱', short: '状态指标 + Agent 列表', desc: '顶部先展示当前诊断状态和资源健康摘要，右侧列出可切换的 Agent。适合平台管理员同时关注长任务进度和诊断策略。' },
+        e: { title: 'E · 线程导航', short: '会话列表 + 任务线程', desc: '以线程为中心呈现问题、工具调用和模型回复，每个资源上下文都可以单独开关。适合多任务并行和团队协作。' },
+        f: { title: 'F · 响应式工作台', short: '桌面三栏 / 移动堆叠', desc: '桌面保持高密度三栏，历史与诊断上下文可拖动调整宽度，也可通过分隔线快速折叠；窄屏按对话、历史、上下文顺序堆叠，并在上下文与证据链之间切换。' }
+      };
+      let activeVariant = 'f';
+      let theme = 'light';
+      let activeSession = 0;
+      let activeResources = resources.map((item) => item.on);
+      let historyWidth = 232;
+      let contextWidth = 275;
+      let historyCollapsed = false;
+      let contextCollapsed = false;
+      let activeContextTab = 'context';
+      let expandedActionGroups = {};
+      let expandedActionChildren = {};
+      let sessions = [
+        { title: '生产订单接口延迟升高', meta: '刚刚 · 进行中', count: '4 条消息' },
+        { title: 'checkout-api 发布后 5xx', meta: '今天 09:42 · 已完成', count: '18 条消息' },
+        { title: 'Redis 主从同步波动', meta: '昨天 · 已归档', count: '9 条消息' },
+        { title: '新建支付项目巡检', meta: '周一 · 已完成', count: '12 条消息' }
+      ];
+      let messages = [
+        { role: 'user', text: '生产订单接口从 10:20 开始延迟升高，帮我定位是否和最近发布或数据库连接池有关。', time: '10:31' },
+        { role: 'assistant', text: '我会先检查 order-api 的近期发布、请求延迟和错误率，再对比 PostgreSQL 连接池与等待事件。当前已加载 4 个上下文资源。', time: '10:31', actions: [
+          { title: '读取生产订单服务上下文', status: '完成', duration: '1.8s', children: [
+            { title: '查询 Kubernetes Pod 状态', status: '完成', duration: '620ms', input: '{ "namespace": "production", "app": "order-api" }', output: '{ "ready": 3, "restarts": 2 }' },
+            { title: '查询发布变更', status: '完成', duration: '410ms', input: '{ "resource": "order-api", "window": "24h" }', output: '{ "version": "v2026.08.27.3" }' }
+          ] }
+        ] },
+        { role: 'assistant', text: '初步发现：10:18 的版本变更后，连接池使用率从 62% 升到 94%。我正在继续核对慢查询和 Pod 重启时间。', time: '10:32', actions: [
+          { title: '核对数据库与接口指标', status: '进行中', duration: '3.4s', children: [
+            { title: '查询 PostgreSQL 连接池', status: '完成', duration: '780ms', input: '{ "pool": "order-primary", "window": "30m" }', output: '{ "used": "94%", "waiting": 7 }' },
+            { title: '对比请求延迟和错误率', status: '进行中', duration: '2.6s', input: '{ "service": "order-api", "metrics": ["p95", "5xx"] }', output: '{ "p95": "2.8s", "5xx": "1.2%" }' }
+          ] }
+        ] }
+      ];
+      let sending = false;
+      let timer = null;
+      let editingIndex = -1;
+      let toastTimer = null;
+
+      function escapeHTML(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+      }
+      function notify(text) {
+        let node = document.querySelector('.toast');
+        if (!node) { node = document.createElement('div'); node.className = 'toast'; document.body.appendChild(node); }
+        node.textContent = text;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => node.remove(), 2300);
+      }
+      function iconButton(label, symbol, extra = '') { return `<button class="icon-button ${extra}" type="button" aria-label="${label}" data-action="${label}">${symbol}</button>`; }
+      function renderSessions(compact = false) {
+        if (compact) return `<div class="compact-rail"><button class="rail-button active" type="button" aria-label="会话历史" data-action="history">◷</button><button class="rail-button" type="button" aria-label="新建会话" data-action="new-session">＋</button><div class="rail-divider"></div><button class="rail-button" type="button" aria-label="已保存" data-action="saved">☆</button></div>`;
+        return `<aside class="history-panel"><div class="panel-top"><div><h3>会话历史</h3><small>${sessions.length} 个会话</small></div><div class="history-heading-actions"><button type="button" aria-label="清空会话历史" data-action="clear-history">⌫</button><button type="button" aria-label="新建诊断会话" data-action="new-session">＋</button></div></div><input class="history-search" placeholder="搜索会话" aria-label="搜索会话" /><div class="session-list">${sessions.map((session, index) => `<div class="session-row"><button class="session ${activeSession === index ? 'active' : ''}" type="button" data-session="${index}"><strong>${escapeHTML(session.title)}</strong><small>${escapeHTML(session.meta)}</small><div class="session-meta"><span>${escapeHTML(session.count)}</span><span>${index === 0 ? '●' : ''}</span></div></button><span class="session-actions"><button type="button" aria-label="重命名会话" data-session-action="rename" data-session-index="${index}">✎</button><button type="button" aria-label="删除会话" data-session-action="delete" data-session-index="${index}">×</button></span></div>`).join('')}</div></aside>`;
+      }
+      function loadedContextMarkup() {
+        const loaded = resources.filter((_, index) => activeResources[index]);
+        if (!loaded.length) return '<div class="loaded-context"><span class="loaded-context-label">上下文</span><span class="tag">未加载资源</span></div>';
+        return `<div class="loaded-context"><span class="loaded-context-label">已加载</span>${loaded.slice(0, 3).map((resource) => `<span class="tag">${escapeHTML(resource.name.split(' / ')[0])}</span>`).join('')}${loaded.length > 3 ? `<span class="tag orange">+${loaded.length - 3}</span>` : ''}</div>`;
+      }
+      function renderEvidence() {
+        return `<div class="evidence-list"><div class="evidence-card"><strong>指标证据 · metrics-8f12</strong><small>HTTP p95 在 10:18 发布后从 640ms 升至 2.8s，时间范围 10:15-10:35。</small></div><div class="evidence-card"><strong>运行证据 · kubernetes-a120</strong><small>order-api 新 Pod readiness probe 连续失败 2 次，重启次数为 2。</small></div><div class="evidence-card"><strong>变更证据 · audit-0c91</strong><small>部署变更由 release-bot 发起，版本 v2026.08.27.3 于 10:18 完成。</small></div><div class="evidence-card"><strong>关联资源 · postgres-77de</strong><small>连接池使用率 94%，存在 7 个等待连接，与延迟升高时间窗口一致。</small></div></div>`;
+      }
+      function renderResources() {
+        const enabled = activeResources.filter(Boolean).length;
+        const body = activeContextTab === 'evidence' ? renderEvidence() : `<p class="context-summary"><b>上下文开关</b><br />只把打开的资源提供给当前 Agent；关闭后不会删除资源，也不会影响权限。</p><div class="resource-section"><div class="section-label">可加载资源</div><div class="resource-list">${resources.map((resource, index) => `<div class="resource-row"><span class="resource-icon">${resource.icon}</span><span><strong>${escapeHTML(resource.name)}</strong><small>${escapeHTML(resource.type)}</small></span><button class="switch ${activeResources[index] ? 'on' : ''}" type="button" role="switch" aria-checked="${activeResources[index]}" data-resource="${index}" aria-label="${activeResources[index] ? '关闭' : '打开'} ${resource.name} 上下文"><span></span></button></div>`).join('')}</div></div><div class="resource-section"><div class="section-label">已识别能力</div><div class="tag-list"><span class="tag">指标</span><span class="tag">日志</span><span class="tag">拓扑</span><span class="tag orange">发布变更</span><span class="tag">数据库</span></div></div>`;
+        return `<aside class="context-panel"><div class="panel-top"><div><h3>诊断上下文</h3><small>${enabled} / ${resources.length} 已加载</small></div></div><div class="context-tabs" role="tablist" aria-label="诊断侧栏"><button class="context-tab ${activeContextTab === 'context' ? 'active' : ''}" type="button" role="tab" aria-selected="${activeContextTab === 'context'}" data-context-tab="context">上下文</button><button class="context-tab ${activeContextTab === 'evidence' ? 'active' : ''}" type="button" role="tab" aria-selected="${activeContextTab === 'evidence'}" data-context-tab="evidence">证据链</button></div>${body}</aside>`;
+      }
+      function renderComposer() {
+        return `<div class="composer"><div class="composer-box"><textarea id="composer-input" placeholder="描述问题，或输入 / 调用 Skill…" aria-label="输入诊断问题"></textarea><div class="composer-tools"><div class="composer-left"><button class="tool-button" type="button" data-action="attachment"><b>＋</b><span>附件</span></button><button class="tool-button" type="button" data-action="link"><b>↗</b><span>链接</span></button><button class="tool-button" type="button" data-action="skills"><b>✧</b><span>Skills</span></button><button class="tool-button" type="button" data-action="agent"><b>◇</b><span>Agent</span></button></div><div class="composer-right"><label class="sr-only" for="model-select">选择 AIModel</label><select id="model-select" class="model-select"><option>生产诊断中枢 · AIModel</option><option>团队巡检助手 · AIModel</option><option>项目问答实验场 · AIModel</option></select><button class="send-button ${sending ? 'stop' : ''}" type="button" id="send-button">${sending ? '■ 停止' : '↑ 发送'}</button></div></div></div><div class="composer-note"><span>Enter 发送 · Shift + Enter 换行</span><span>当前模型支持：文本 · 工具调用 · 流式输出</span></div></div>`;
+      }
+      function renderMessages() {
+        return `<div class="messages" id="messages">${messages.map((message, index) => {
+          const isLastUser = message.role === 'user' && index === messages.map((item) => item.role).lastIndexOf('user');
+          if (editingIndex === index) return `<article class="message user"><span class="message-avatar">我</span><div class="message-copy"><div class="message-meta"><strong>你</strong><span>编辑中</span></div><div class="edit-box"><textarea id="edit-input" aria-label="编辑最后一条问题">${escapeHTML(message.text)}</textarea><div class="edit-actions"><button type="button" data-action="cancel-edit">取消</button><button class="save" type="button" data-action="save-edit">重新发送</button></div></div></div></article>`;
+          return `<article class="message ${message.role}"><span class="message-avatar">${message.role === 'user' ? '我' : 'AI'}</span><div class="message-copy"><div class="message-meta"><strong>${message.role === 'user' ? '你' : 'AI 诊断 Agent'}</strong><span>${message.time}</span></div><div class="message-body"><p>${escapeHTML(message.text).replace(/\n/g, '<br />')}</p>${message.interruption ? `<span class="interruption"><i></i>回答已中断：${escapeHTML(message.interruption)}</span>` : ''}${message.role === 'assistant' ? `<button class="bubble-action copy" type="button" aria-label="复制回答" data-copy="${index}">⧉</button>` : ''}${isLastUser ? `<button class="bubble-action edit" type="button" aria-label="编辑并重新发送" data-edit="${index}">✎</button>` : ''}${message.actions ? renderActionGroups(message.actions, index) : ''}</div></div></article>`;
+        }).join('')}${sending ? `<article class="message assistant"><span class="message-avatar">AI</span><div class="message-copy"><div class="message-meta"><strong>AI 诊断 Agent</strong><span>正在生成</span></div><div class="message-body"><p>正在读取上下文并执行诊断 Skill <span aria-hidden="true">…</span></p></div></div></article>` : ''}</div>`;
+      }
+      function renderActionGroups(actions, messageIndex) {
+        return `<div class="action-stream">${actions.map((action, actionIndex) => { const key = `${messageIndex}-${actionIndex}`; const expanded = expandedActionGroups[key]; return `<div class="action-group"><button class="action-group-toggle" type="button" aria-expanded="${Boolean(expanded)}" data-action-group="${key}"><span class="action-chevron">${expanded ? '⌄' : '›'}</span><span class="action-title">${escapeHTML(action.title)}</span><span class="action-status ${action.status === '进行中' ? 'running' : ''}">${escapeHTML(action.status)}</span><span class="action-duration">${escapeHTML(action.duration)}</span><span class="action-count">${action.children.length} 项</span></button>${expanded ? `<div class="action-children">${action.children.map((child, childIndex) => { const childKey = `${key}-${childIndex}`; const childExpanded = expandedActionChildren[childKey]; return `<div class="action-child"><button class="action-child-toggle" type="button" aria-expanded="${Boolean(childExpanded)}" data-action-child="${childKey}"><span class="action-chevron">${childExpanded ? '⌄' : '›'}</span><span class="action-title">${escapeHTML(child.title)}</span><span class="action-status ${child.status === '进行中' ? 'running' : ''}">${escapeHTML(child.status)}</span><span class="action-duration">${escapeHTML(child.duration)}</span></button>${childExpanded ? `<div class="action-detail"><pre>${escapeHTML(child.input)}</pre><pre>${escapeHTML(child.output)}</pre></div>` : ''}</div>`; }).join('')}</div>` : ''}</div>`; }).join('')}</div>`;
+      }
+      function renderConversation(title = '生产订单接口延迟升高', subtitle = '项目 · 生产支付 · 最近活动 10:18') {
+        return `<section class="conversation"><header class="conversation-head"><div><h2>${title}</h2><p>${subtitle}</p></div>${loadedContextMarkup()}<div class="conversation-head-actions"><button class="super-session" type="button" aria-label="超级会话" data-action="super-session">✦</button><span class="head-status"><i></i>${sending ? '正在生成诊断' : '会话已连接'}</span></div></header>${renderMessages()}${renderComposer()}</section>`;
+      }
+      function renderA() { return `<div class="agent-shell">${renderSessions()}${renderConversation()}${renderResources()}</div>`; }
+      function renderB() { return `<div class="agent-shell conversation-focus">${renderSessions(true)}${renderConversation('生产订单接口延迟升高', '对话聚焦 · 4 个上下文资源')}${renderResources()}</div>`; }
+      function renderC() { return `<div class="agent-shell evidence-canvas"><div class="conversation"><header class="conversation-head"><div><h2>checkout-api 发布后 5xx</h2><p>证据画布 · 按时间顺序核对诊断事实</p></div><span class="head-status"><i></i>3 个证据已确认</span></header><div class="timeline"><div class="timeline-item"><span class="timeline-time">10:18 · 发布事件</span><span class="timeline-node"></span><div class="timeline-copy"><strong>版本 v2026.08.27.3 已发布</strong><p>Deployment rollout 完成，2 个 Pod 先后重启。</p></div></div><div class="timeline-item"><span class="timeline-time">10:22 · 指标异常</span><span class="timeline-node"></span><div class="timeline-copy"><strong>5xx 比例升至 4.8%</strong><p>主要集中在支付确认接口，已加载 Prometheus 指标。</p></div></div></div>${renderMessages()}${renderComposer()}</div><aside class="context-panel"><div class="panel-top"><h3>证据与上下文</h3><small>5 个来源</small></div><div class="evidence-list"><div class="evidence-card"><strong>Evidence · metrics-8f12</strong><small>HTTP 5xx 在发布后 4 分钟开始升高，时间范围 10:15-10:35。</small></div><div class="evidence-card"><strong>Evidence · kubernetes-a120</strong><small>新 Pod 的 readiness probe 曾连续失败 2 次。</small></div><div class="evidence-card"><strong>Evidence · audit-0c91</strong><small>部署变更由 release-bot 发起，镜像 digest 已固定。</small></div></div>${renderResources().replace('<aside class="context-panel">', '<div>').replace(/<\/aside>$/, '</div>')}</aside></div>`; }
+      function renderD() { return `<div class="agent-shell cockpit"><aside class="history-panel"><div class="panel-top"><h3>Agent 目录</h3><small>3 个可用</small></div><div class="agent-card active"><strong>故障定位 Agent</strong><small>指标、日志、拓扑和发布变更的证据链诊断。</small></div><div class="agent-card"><strong>发布回归 Agent</strong><small>对比版本变更、探针和错误率。</small></div><div class="agent-card"><strong>数据库诊断 Agent</strong><small>连接池、锁等待和慢查询分析。</small></div><div class="section-label">Skills</div><div class="skill-list"><span class="tag">kubernetes_read</span><span class="tag">query_metrics</span><span class="tag">query_logs</span></div></aside><div class="conversation"><div class="cockpit-top"><div><h2>诊断驾驶舱</h2><p>当前任务：定位生产订单接口延迟</p></div><span class="badge">进行中 · 68%</span></div><div class="metric-strip"><div class="metric"><span>已执行 Skill</span><strong>4</strong><small>只读调用</small></div><div class="metric"><span>证据来源</span><strong>9</strong><small>3 个资源</small></div><div class="metric"><span>上下文窗口</span><strong>42k</strong><small>已使用 / 128k</small></div><div class="metric"><span>耗时</span><strong>01:24</strong><small>流式诊断</small></div></div>${renderMessages()}${renderComposer()}</div>${renderResources()}</div>`; }
+      function renderE() { return `<div class="agent-shell two-column"><aside class="history-panel"><div class="panel-top"><h3>线程导航</h3><small>按任务分组</small></div><div class="section-label">当前线程 · 生产订单</div><div class="session-list"><button class="session active" type="button"><strong>问题描述</strong><small>延迟从 10:20 升高</small></button><button class="session" type="button"><strong>指标核对</strong><small>连接池使用率 94%</small></button><button class="session" type="button"><strong>发布对比</strong><small>版本 v2026.08.27.3</small></button><button class="session" type="button"><strong>结论与建议</strong><small>等待 Agent 输出</small></button></div><div class="section-label">其他会话</div>${renderSessions().replace('<aside class="history-panel">', '<div>').replace(/<\/aside>$/, '</div>')}</aside>${renderConversation('问题描述 · 生产订单接口延迟升高', '线程 1 / 4 · 可回到任意节点继续追问')}</div>`; }
+      function renderF() { return `<div class="agent-shell responsive-workbench ${historyCollapsed ? 'history-collapsed' : ''} ${contextCollapsed ? 'context-collapsed' : ''}" style="--history-width:${historyWidth}px;--context-width:${contextWidth}px">${renderSessions()}<div class="panel-splitter left" data-resize="history"><button type="button" aria-label="${historyCollapsed ? '展开会话历史' : '折叠会话历史'}" data-collapse="history">${historyCollapsed ? '›' : '‹'}</button></div>${renderConversation('生产订单接口延迟升高', '响应式工作台 · 桌面三栏 / 移动堆叠') }<div class="panel-splitter right" data-resize="context"><button type="button" aria-label="${contextCollapsed ? '展开诊断上下文' : '折叠诊断上下文'}" data-collapse="context">${contextCollapsed ? '‹' : '›'}</button></div>${renderResources()}</div>`; }
+      function workspaceMarkup() { return ({ a: renderA, b: renderB, c: renderC, d: renderD, e: renderE, f: renderF })[activeVariant](); }
+      function render() {
+        document.documentElement.dataset.theme = theme;
+        document.getElementById('app').innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">◎</span><div><strong>OpsKeeper</strong><small>AI 运维值守平台</small></div></div><div class="nav-label">WORKSPACE</div><nav class="side-nav"><button type="button"><b>⌂</b><span>概览</span></button><button type="button"><b>◇</b><span>资源</span></button><button class="active" type="button"><b>✦</b><span>AI 诊断</span></button><button type="button"><b>♢</b><span>自动巡检</span></button><button type="button"><b>✓</b><span>受控操作</span></button></nav><div class="sidebar-foot"><span class="avatar">LM</span><span>Lin Manager<br />平台管理员</span></div></aside><div class="page"><header class="topbar"><div class="crumb">Platform / 智能运维<strong>AI 诊断工作台</strong></div><div class="top-actions"><button class="theme-toggle" type="button" id="theme-toggle">◐ <b>${theme === 'light' ? '浅色' : '深色'}</b>主题</button><button class="top-button" type="button" data-action="help">?</button><div class="actor"><span class="avatar">LM</span>Lin Manager</div></div></header><main><div class="intro"><div><p class="eyebrow">DESIGN REVIEW / T06</p><h1>AI 诊断页面优化</h1><p>六种 AI Agent 工作台编排方案预览。每种方案都包含可发送的对话输入、AIModel / Skill / Agent 选择、最后一条问题编辑重发、回答复制与停止生成，并展示会话历史和可按开关加载的诊断上下文资源。</p></div></div><div class="scheme-tabs" role="tablist" aria-label="六种设计方案">${Object.entries(variants).map(([key, variant], index) => `<button class="scheme-tab" type="button" role="tab" aria-selected="${activeVariant === key}" data-variant="${key}"><b>${String.fromCharCode(65 + index)}</b><strong>${variant.title.slice(4)}</strong><span>${variant.short}</span></button>`).join('')}</div><section class="design-note"><div><h2>${variants[activeVariant].title}</h2><p>${variants[activeVariant].desc}</p></div><div class="principles"><span><i></i><b>输入：</b>Enter 发送，Shift + Enter 换行</span><span><i></i><b>输出：</b>可复制、可停止，异常结束显示原因</span><span><i></i><b>上下文：</b>资源开关只影响当前诊断会话</span></div></section><div class="workspace">${workspaceMarkup()}</div><div class="scheme-footer"><span>静态交互预览 · 不写入正式数据</span><span>方案 ${activeVariant.toUpperCase()} / 6</span></div></main></div></div>`;
+        bind();
+      }
+      function bind() {
+        document.querySelectorAll('[data-variant]').forEach((button) => button.addEventListener('click', () => { activeVariant = button.dataset.variant; editingIndex = -1; render(); }));
+        document.getElementById('theme-toggle').addEventListener('click', () => { theme = theme === 'light' ? 'dark' : 'light'; render(); });
+        document.querySelectorAll('[data-session]').forEach((button) => button.addEventListener('click', () => { activeSession = Number(button.dataset.session); notify(`已加载会话：${sessions[activeSession].title}`); render(); }));
+        document.querySelectorAll('[data-resource]').forEach((button) => button.addEventListener('click', () => { const index = Number(button.dataset.resource); activeResources[index] = !activeResources[index]; render(); }));
+        document.querySelectorAll('[data-context-tab]').forEach((button) => button.addEventListener('click', () => { activeContextTab = button.dataset.contextTab; render(); }));
+        document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => { const text = messages[Number(button.dataset.copy)].text; try { await navigator.clipboard.writeText(text); notify('回答已复制'); } catch { notify('已准备复制回答'); } }));
+        document.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => { editingIndex = Number(button.dataset.edit); render(); setTimeout(() => document.getElementById('edit-input')?.focus(), 0); }));
+        document.querySelectorAll('[data-action-group]').forEach((button) => button.addEventListener('click', () => { const key = button.dataset.actionGroup; expandedActionGroups[key] = !expandedActionGroups[key]; render(); }));
+        document.querySelectorAll('[data-action-child]').forEach((button) => button.addEventListener('click', () => { const key = button.dataset.actionChild; expandedActionChildren[key] = !expandedActionChildren[key]; render(); }));
+        document.querySelectorAll('[data-session-action]').forEach((button) => button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const index = Number(button.dataset.sessionIndex);
+          if (button.dataset.sessionAction === 'rename') {
+            const nextTitle = window.prompt('重命名会话', sessions[index].title);
+            if (nextTitle?.trim()) { sessions[index].title = nextTitle.trim(); render(); }
+          } else if (sessions.length > 1) {
+            sessions.splice(index, 1);
+            if (index < activeSession) activeSession -= 1;
+            if (activeSession >= sessions.length) activeSession = sessions.length - 1;
+            render();
+          } else notify('至少保留一个会话');
+        }));
+        document.querySelectorAll('[data-resize]').forEach((splitter) => {
+          let startX = 0;
+          let startWidth = 0;
+          let moved = false;
+          splitter.addEventListener('pointerdown', (event) => {
+            if (event.target.closest('button') || window.innerWidth <= 850) return;
+            const shell = splitter.closest('.responsive-workbench');
+            if (!shell) return;
+            startX = event.clientX;
+            startWidth = splitter.dataset.resize === 'history' ? historyWidth : contextWidth;
+            moved = false;
+            splitter.setPointerCapture?.(event.pointerId);
+            const onMove = (moveEvent) => {
+              const delta = moveEvent.clientX - startX;
+              if (Math.abs(delta) > 3) moved = true;
+              const next = splitter.dataset.resize === 'history' ? Math.min(360, Math.max(170, startWidth + delta)) : Math.min(380, Math.max(220, startWidth - delta));
+              if (splitter.dataset.resize === 'history') { historyWidth = next; shell.style.setProperty('--history-width', `${next}px`); } else { contextWidth = next; shell.style.setProperty('--context-width', `${next}px`); }
+            };
+            const onUp = () => { splitter.removeEventListener('pointermove', onMove); splitter.removeEventListener('pointerup', onUp); splitter.releasePointerCapture?.(event.pointerId); };
+            splitter.addEventListener('pointermove', onMove);
+            splitter.addEventListener('pointerup', onUp, { once: true });
+          });
+        });
+        document.querySelectorAll('[data-collapse]').forEach((button) => button.addEventListener('click', () => {
+          if (button.dataset.collapse === 'history') historyCollapsed = !historyCollapsed;
+          if (button.dataset.collapse === 'context') contextCollapsed = !contextCollapsed;
+          render();
+        }));
+        document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => handleAction(button.dataset.action)));
+        const input = document.getElementById('composer-input');
+        if (input) input.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(input.value); } });
+        const send = document.getElementById('send-button');
+        if (send) send.addEventListener('click', () => sending ? stopGeneration() : sendMessage(document.getElementById('composer-input')?.value ?? ''));
+        const saveEdit = document.querySelector('[data-action="save-edit"]');
+        if (saveEdit) saveEdit.addEventListener('click', () => { const input = document.getElementById('edit-input'); if (!input?.value.trim()) return notify('问题不能为空'); messages = messages.slice(0, editingIndex); editingIndex = -1; sendMessage(input.value); });
+        const cancelEdit = document.querySelector('[data-action="cancel-edit"]');
+        if (cancelEdit) cancelEdit.addEventListener('click', () => { editingIndex = -1; render(); });
+      }
+      function handleAction(action) {
+        if (action === 'clear-history') {
+          if (window.confirm('清空会话历史？')) { sessions = [sessions[0]]; activeSession = 0; notify('已清空其他会话'); render(); }
+          return;
+        }
+        if (action === 'new-session') {
+          sessions.unshift({ title: '未命名诊断会话', meta: '刚刚 · 新建', count: '0 条消息' });
+          activeSession = 0;
+          messages = [];
+          editingIndex = -1;
+          notify('已创建新的 AI 诊断会话');
+          render();
+          return;
+        }
+        const copy = { attachment: '已打开附件选择器，可添加日志、截图或配置文件', link: '已打开链接输入，可加载受控网页或变更记录', skills: 'Skills：kubernetes_read、query_metrics、query_logs', agent: 'Agent：故障定位 Agent、发布回归 Agent、数据库诊断 Agent', saved: '已打开收藏的诊断会话', history: '会话历史已展开', 'super-session': '超级会话已启用：将持续保留当前上下文', help: '输入问题后即可开始流式诊断' };
+        notify(copy[action] || '操作已触发');
+      }
+      function sendMessage(text) {
+        if (sending) return;
+        const value = String(text || '').trim();
+        if (!value) return notify('请输入诊断问题');
+        messages = [...messages, { role: 'user', text: value, time: '刚刚' }];
+        sending = true;
+        render();
+        timer = setTimeout(() => {
+          messages = [...messages, { role: 'assistant', text: '根据当前上下文，延迟升高与最近发布后的连接池压力高度相关。建议先将连接池上限恢复到发布前配置，并观察 10 分钟内的等待事件与 5xx 比例。需要我继续生成一份可交接的诊断摘要吗？', time: '刚刚', actions: [{ title: '生成诊断结论与建议', status: '完成', duration: '1.2s', children: [{ title: '汇总指标证据', status: '完成', duration: '540ms', input: '{ "sources": 4 }', output: '{ "confidence": "高" }' }, { title: '整理处置建议', status: '完成', duration: '330ms', input: '{ "format": "handoff" }', output: '{ "steps": 3 }' }] }] }];
+          sending = false;
+          timer = null;
+          render();
+        }, 4200);
+      }
+      function stopGeneration() {
+        if (!sending) return;
+        clearTimeout(timer);
+        timer = null;
+        messages = [...messages, { role: 'assistant', text: '诊断输出尚未完成，已保留当前已生成内容。', time: '刚刚', interruption: '用户手动停止生成。' }];
+        sending = false;
+        render();
+      }
+      render();
+    </script>
+  </body>
+</html>
