@@ -5286,8 +5286,8 @@ button.workspace-team:hover {
   background: var(--theme-bg-page);
 }
 
-/* Dark theme surface separators use the same restrained cyan border as the
-   diagnosis workbench. Controls keep their stronger border contract below. */
+/* Dark theme surfaces and separators follow the warm dark palette used by
+   main. Controls keep their stronger border contract below. */
 :root[data-theme='dark'] .panel,
 :root[data-theme='dark'] .metric,
 :root[data-theme='dark'] .list-row,
@@ -5325,7 +5325,6 @@ button.workspace-team:hover {
   border-top-color: var(--theme-divider);
   border-bottom-color: var(--theme-divider);
 }
-:root[data-theme='dark'] .sidebar,
 :root[data-theme='dark'] .panel,
 :root[data-theme='dark'] .metric,
 :root[data-theme='dark'] .user-menu,
@@ -5656,7 +5655,7 @@ button.workspace-team:hover {
 
 /* Keep all console surfaces and controls in the same dark theme family. */
 :root[data-theme='dark'] .sidebar {
-  background: var(--theme-bg-surface);
+  background: var(--theme-bg-page);
   border-color: var(--theme-border);
   box-shadow: 1px 0 4px color-mix(in srgb, var(--theme-fg) 10%, transparent);
 }
@@ -6771,43 +6770,43 @@ button.workspace-team:hover {
   color-scheme: light;
 }
 :root[data-theme='dark'] {
-  --theme-bg-page: #f1f4f5;
-  --theme-bg-surface: #f5f7f8;
-  --theme-bg-raised: #fafbfb;
-  --theme-bg-subtle: #e9eef0;
-  --theme-bg-input: #f4f6f7;
-  --theme-bg-hover: #eaf0f1;
-  --theme-bg-selected: #e4f3ee;
-  --theme-bg-accent-soft: #e4f3ee;
-  --theme-bg-success-soft: #e4f3ee;
-  --theme-bg-warning-soft: #eef0f7;
-  --theme-bg-danger-soft: #f7e9ec;
-  --theme-fg: #3f4b50;
-  --theme-fg-strong: #1d292e;
-  --theme-fg-muted: #52616a;
-  --theme-fg-subtle: #76838a;
-  --theme-fg-disabled: #9aa6ac;
-  --theme-border: #c7ded7;
+  --theme-bg-page: #211e1c;
+  --theme-bg-surface: #2a2623;
+  --theme-bg-raised: #342e2a;
+  --theme-bg-subtle: #3a3430;
+  --theme-bg-input: #302b28;
+  --theme-bg-hover: #342e2a;
+  --theme-bg-selected: #173e35;
+  --theme-bg-accent-soft: #173e35;
+  --theme-bg-success-soft: #173e35;
+  --theme-bg-warning-soft: #46371e;
+  --theme-bg-danger-soft: #4a2d27;
+  --theme-fg: #eee4df;
+  --theme-fg-strong: #f1e8e3;
+  --theme-fg-muted: #bfb3ac;
+  --theme-fg-subtle: #9d8f87;
+  --theme-fg-disabled: #6f7d7d;
+  --theme-border: #473e39;
   --theme-divider: var(--theme-border);
-  --theme-border-strong: #9fc9bb;
-  --theme-border-focus: #18a27d;
+  --theme-border-strong: #514740;
+  --theme-border-focus: #2c8d72;
   --theme-accent: #173c35;
-  --theme-accent-hover: #205447;
-  --theme-accent-active: #123029;
+  --theme-accent-hover: #1f594b;
+  --theme-accent-active: #173e35;
   --theme-action: #18a27d;
   --theme-action-hover: #158c6c;
   --theme-action-active: #117557;
   --theme-accent-contrast: #fff;
-  --theme-teal: #173c35;
-  --theme-teal-soft: #e4f3ee;
-  --theme-success: #18a27d;
-  --theme-warning: #c5ccff;
-  --theme-danger: #efb0b8;
+  --theme-teal: #9fe4cf;
+  --theme-teal-soft: #173e35;
+  --theme-success: #9fe4cf;
+  --theme-warning: #f4d18a;
+  --theme-danger: #ffb4a2;
   --theme-focus: rgba(24, 162, 125, 0.18);
   --theme-focus-strong: rgba(24, 162, 125, 0.3);
-  --theme-overlay: rgb(0 0 0 / 56%);
-  --theme-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  --theme-shadow-soft: 0 8px 20px rgba(0, 0, 0, 0.16);
+  --theme-overlay: rgb(10 8 7 / 62%);
+  --theme-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  --theme-shadow-soft: 0 8px 20px rgb(0 0 0 / 28%);
   color-scheme: dark;
 }
 :root[data-theme='dark'] body,
