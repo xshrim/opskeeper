@@ -58,3 +58,14 @@ func TestAIEngineHandlerPassesSkillAndAgentProfileSelection(t *testing.T) {
 		t.Fatalf("request selection=%+v", engine.request)
 	}
 }
+
+func TestTerminalAIEventClosesStreamAfterFinalLifecycleEvent(t *testing.T) {
+	for _, eventType := range []string{"execution.completed", "execution.failed", "execution.cancelled"} {
+		if !terminalAIEvent(aiengine.Event{Type: eventType}) {
+			t.Errorf("terminalAIEvent(%q) = false", eventType)
+		}
+	}
+	if terminalAIEvent(aiengine.Event{Type: "tool.completed"}) {
+		t.Fatal("tool.completed must not close the execution stream")
+	}
+}

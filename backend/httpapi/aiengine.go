@@ -129,6 +129,10 @@ func (h aiEngineEventHandler) events(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			after = event.Sequence
+			if terminalAIEvent(event) {
+				_ = controller.Flush()
+				return
+			}
 		}
 		if err := controller.Flush(); err != nil {
 			return
@@ -138,6 +142,15 @@ func (h aiEngineEventHandler) events(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-time.After(300 * time.Millisecond):
 		}
+	}
+}
+
+func terminalAIEvent(event aiengine.Event) bool {
+	switch event.Type {
+	case "execution.completed", "execution.failed", "execution.cancelled":
+		return true
+	default:
+		return false
 	}
 }
 

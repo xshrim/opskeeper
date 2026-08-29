@@ -414,6 +414,10 @@ completed_at
 duration_ms
 ```
 
+审计表同时保存实际 Provider 和模型，避免在多模型配置下无法判断调用来源。
+SSE 在发送终态事件后关闭连接；客户端通过 `Last-Event-ID` 或 `after` 从下一个序号继续读取，
+不会重复已发送事件。
+
 入参、出参和错误信息递归脱敏：
 
 - `api_key`、`token`、`password`、`secret`、`authorization` 等字段替换为 `[REDACTED]`；

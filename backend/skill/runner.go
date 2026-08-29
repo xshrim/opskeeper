@@ -198,7 +198,7 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	}
 
 	resourceFilter, _ := authorization.ResourceFilterFromContext(ctx)
-	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, resourceFilter: resourceFilter, calls: input.MaxToolCalls, resolvedContext: input.ResolvedContext, gateway: input.ToolGateway, allowedAgentTools: profileToolSet(input.AgentProfile), persistExecution: persistExecution, skipToolCallStore: !persistExecution}
+	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, providerResourceID: resolved.Provider.ResourceID, modelName: resolved.Model.Name, resourceFilter: resourceFilter, calls: input.MaxToolCalls, resolvedContext: input.ResolvedContext, gateway: input.ToolGateway, allowedAgentTools: profileToolSet(input.AgentProfile), persistExecution: persistExecution, skipToolCallStore: !persistExecution}
 	tools, err := policy.tools(ctx)
 	if err != nil {
 		return finish(FinishExecutionInput{Status: "failed", ErrorCode: "tool_setup", ErrorMessage: publicError(err)})
@@ -380,6 +380,7 @@ type policy struct {
 	input                         RunInput
 	version                       Version
 	executionID, targetResourceID string
+	providerResourceID, modelName string
 	resourceFilter                authorization.ResourceFilter
 	resolvedContext               *aiengine.ResolvedContext
 	gateway                       *aiengine.PolicyGateway
@@ -403,7 +404,10 @@ func (p *policy) beforeTool(_ agent.Context, t tool.Tool, args map[string]any) (
 			p.usedCalls.Add(-1)
 			return p.rejectTool(t.Name(), args, "tool_budget", ErrBudget)
 		}
-		return args, nil
+		// A nil result tells ADK to continue with the actual function tool.
+		// Returning args here would make ADK treat the callback result as the
+		// tool response and skip MCP invocation entirely.
+		return nil, nil
 	}
 	spec, declared := declaredTool(p.version.Tools, t.Name())
 	if !declared {
@@ -445,7 +449,7 @@ func (p *policy) beforeTool(_ agent.Context, t tool.Tool, args map[string]any) (
 
 func (p *policy) rejectTool(name string, args map[string]any, code string, cause error) (map[string]any, error) {
 	if p.skipToolCallStore {
-		p.recordAudit(name, args, nil, "rejected", cause)
+		p.recordAuditTiming(name, args, nil, "rejected", cause, time.Now().UTC(), code)
 		p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"error": publicError(cause)})
 		return nil, cause
 	}
@@ -462,7 +466,7 @@ func (p *policy) rejectTool(name string, args map[string]any, code string, cause
 	if _, err := p.runner.Executions.FinishToolCall(context.Background(), call.ID, "rejected", "", code, publicError(cause)); err != nil {
 		return nil, fmt.Errorf("finish rejected tool call: %w", err)
 	}
-	p.recordAudit(name, args, nil, "rejected", cause)
+	p.recordAuditTiming(name, args, nil, "rejected", cause, time.Now().UTC(), code)
 	p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"error": publicError(cause)})
 	return nil, cause
 }
@@ -589,7 +593,7 @@ func (p *policy) tools(ctx context.Context) ([]tool.Tool, error) {
 	for _, definition := range p.contextDefinitions() {
 		definition := definition
 		item, err := functiontool.New(functiontool.Config{Name: definition.Name, Description: definition.Description}, func(_ agent.Context, args map[string]any) (map[string]any, error) {
-			call := aiengine.ToolCall{ExecutionID: p.executionID, ActorID: p.input.ActorID, ScopeID: p.input.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, Arguments: args, EventSink: p.input.EventSink}
+			call := aiengine.ToolCall{ExecutionID: p.executionID, ActorID: p.input.ActorID, ScopeID: p.input.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ProviderResourceID: p.providerResourceID, ModelName: p.modelName, Arguments: args, EventSink: p.input.EventSink}
 			toolResult, invokeErr := p.gateway.Invoke(ctx, call)
 			if invokeErr != nil {
 				return nil, invokeErr
@@ -631,6 +635,7 @@ func evidenceMap(evidence connector.Evidence, err error) (map[string]any, error)
 }
 
 func (p *policy) execute(ctx context.Context, name, targetID string, args any, run func() (connector.Evidence, error)) (map[string]any, error) {
+	started := time.Now().UTC()
 	encoded, _ := json.Marshal(args)
 	digest := sha256.Sum256(encoded)
 	sequence := int(p.recordedCalls.Add(1))
@@ -641,7 +646,7 @@ func (p *policy) execute(ctx context.Context, name, targetID string, args any, r
 	evidence, runErr := run()
 	if runErr != nil {
 		_, _ = p.runner.Executions.FinishToolCall(context.Background(), call.ID, "failed", "", "connector", publicError(runErr))
-		p.recordAudit(name, args, nil, "failed", runErr)
+		p.recordAuditTiming(name, args, nil, "failed", runErr, started, "connector")
 		p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"resource_id": targetID, "error": publicError(runErr)})
 		return nil, runErr
 	}
@@ -654,12 +659,16 @@ func (p *policy) execute(ctx context.Context, name, targetID string, args any, r
 	if finishErr != nil {
 		return nil, finishErr
 	}
-	p.recordAudit(name, args, result, "succeeded", nil)
+	p.recordAuditTiming(name, args, result, "succeeded", nil, started, "")
 	p.emitToolEvent(name, "tool.completed", aiengine.StatusSucceeded, map[string]any{"resource_id": targetID})
 	return result, err
 }
 
 func (p *policy) recordAudit(name string, args, output any, status string, cause error) {
+	p.recordAuditTiming(name, args, output, status, cause, time.Time{}, "")
+}
+
+func (p *policy) recordAuditTiming(name string, args, output any, status string, cause error, started time.Time, errorCode string) {
 	if p.input.ToolCallAudit == nil {
 		return
 	}
@@ -671,7 +680,11 @@ func (p *policy) recordAudit(name string, args, output any, status string, cause
 	if cause != nil {
 		message = publicError(cause)
 	}
-	_ = p.input.ToolCallAudit.RecordToolCall(context.Background(), aiengine.ToolCallRecord{ExecutionID: p.executionID, Sequence: int(p.recordedCalls.Load()), ResourceID: p.targetResourceID, ToolName: name, Arguments: arguments, Output: output, Status: statusValue(status), Error: message})
+	completed := time.Now().UTC()
+	if started.IsZero() {
+		started = completed
+	}
+	_ = p.input.ToolCallAudit.RecordToolCall(context.Background(), aiengine.ToolCallRecord{ExecutionID: p.executionID, Sequence: int(p.recordedCalls.Load()), ProviderResourceID: p.providerResourceID, ModelName: p.modelName, ResourceID: p.targetResourceID, ToolName: name, Arguments: arguments, Output: output, Status: statusValue(status), ErrorCode: errorCode, Error: message, StartedAt: started, CompletedAt: completed, DurationMS: completed.Sub(started).Milliseconds()})
 }
 
 func statusValue(status string) aiengine.Status {

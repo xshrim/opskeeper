@@ -130,14 +130,16 @@ func (r *ToolRegistry) List(resourceID string) []ToolDefinition {
 }
 
 type ToolCall struct {
-	ExecutionID string
-	Sequence    int
-	ActorID     string
-	ScopeID     string
-	ResourceID  string
-	Name        string
-	Arguments   map[string]any
-	EventSink   EventSink
+	ExecutionID        string
+	Sequence           int
+	ActorID            string
+	ScopeID            string
+	ResourceID         string
+	Name               string
+	ProviderResourceID string
+	ModelName          string
+	Arguments          map[string]any
+	EventSink          EventSink
 }
 
 type ToolAuthorizer func(context.Context, ToolCall, ToolDefinition) error
@@ -219,23 +221,31 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 	runCtx, cancel := context.WithTimeout(ctx, g.Timeout)
 	defer cancel()
 	result, err := tool.Invoke(runCtx, call.Arguments)
+	completedAt := time.Now().UTC()
+	durationMS := completedAt.Sub(started).Milliseconds()
 	if err != nil {
 		if g.AuditStore != nil {
-			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, Error: err.Error()})
+			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_execution", Error: err.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
 		}
 		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "error": err.Error(), "duration_ms": time.Since(started).Milliseconds()}})
 		return ToolResult{}, err
 	}
 	encoded, marshalErr := json.Marshal(result.Output)
 	if marshalErr != nil {
+		if g.AuditStore != nil {
+			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "output_not_serializable", Error: marshalErr.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+		}
 		return ToolResult{}, fmt.Errorf("%w: output is not JSON serializable: %v", ErrToolInvalid, marshalErr)
 	}
 	if int64(len(encoded)) > g.MaxResponseBytes {
+		if g.AuditStore != nil {
+			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "response_too_large", Error: ErrToolLimited.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+		}
 		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "error": ErrToolLimited.Error(), "duration_ms": time.Since(started).Milliseconds()}})
 		return ToolResult{}, ErrToolLimited
 	}
 	if g.AuditStore != nil {
-		_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Output: result.Output, Status: StatusSucceeded})
+		_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Output: result.Output, Status: StatusSucceeded, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
 	}
 	if err := emitToolEvent(call.EventSink, Event{Type: "tool.completed", Status: StatusSucceeded, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "duration_ms": time.Since(started).Milliseconds()}}); err != nil {
 		return ToolResult{}, err

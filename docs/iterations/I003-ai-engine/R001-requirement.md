@@ -99,7 +99,7 @@
 | T01 | AIEngine 统一执行内核 | Request、Result、Event、Profile、预算、取消和统一 Runtime | 无 | 已完成 |
 | T02 | 上下文工具层 | Context Resolver、Tool Registry、Policy Gateway、Connector/MCP 工具 | T01 | 已完成 |
 | T03 | Skill 与 Agent Profile | Skill 版本、专家 Agent、组合 Prompt 和契约校验 | T01-T02 | 已完成 |
-| T04 | 流式事件与工具调用审计 | 事件持久化、SSE 续读、Tool Call 脱敏审计 | T01-T03 | 待批准 |
+| T04 | 流式事件与工具调用审计 | 事件持久化、SSE 续读、Tool Call 脱敏审计 | T01-T03 | 已完成 |
 | T05 | 知识库与工作流编排 | 知识检索、引用、持久化 DAG、审批和恢复 | T01-T04 | 待批准 |
 
 ## 7. 依赖与风险

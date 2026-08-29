@@ -167,6 +167,29 @@ func TestPolicyRejectsUndeclaredInvalidOverBudgetAndUnauthorizedTools(t *testing
 	}
 }
 
+func TestPolicyAllowsContextToolToContinueToADKInvocation(t *testing.T) {
+	toolItem, err := functiontool.New(functiontool.Config{Name: "docker:list_containers", Description: "list"}, func(agent.Context, map[string]any) (map[string]any, error) {
+		return map[string]any{"count": 1}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := &policy{
+		runCtx:          context.Background(),
+		executionID:     "execution-context-tool",
+		calls:           1,
+		resolvedContext: &aiengine.ResolvedContext{Tools: []aiengine.ToolDefinition{{Name: "docker:list_containers", ResourceID: "resource-1"}}},
+		gateway:         aiengine.NewPolicyGateway(aiengine.NewToolRegistry(), nil, time.Second, 1024, 1),
+	}
+	args, err := policy.beforeTool(nil, toolItem, map[string]any{})
+	if err != nil {
+		t.Fatalf("context tool callback error = %v", err)
+	}
+	if args != nil {
+		t.Fatalf("context tool callback returned %v; non-nil would skip ADK invocation", args)
+	}
+}
+
 func TestPolicyBuildsOnlyDeclaredMiddlewareInspectionTools(t *testing.T) {
 	policy := &policy{
 		runner:  &Runner{Connector: &fakeConnector{}},
