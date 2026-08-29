@@ -37,6 +37,8 @@ type Options struct {
 	AIEngine           aiengine.Engine
 	AIEngineEvents     aiengine.EventStore
 	AIEngineToolCalls  aiengine.ToolCallStore
+	WorkflowRuns       aiengine.WorkflowRunStore
+	WorkflowExecutor   workflowExecutionService
 	Diagnosis          diagnosisService
 	Inspection         inspectionService
 	MCP                mcpService
@@ -119,6 +121,8 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
 				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
 				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)
+				registerWorkflowRoutes(aiRouter, options.Resources, options.WorkflowRuns, options.WorkflowExecutor, options.AIEngineEvents, requirePermission)
+				registerKnowledgeRoutes(aiRouter, options.Resources, requirePermission)
 			}
 			if options.Identity != nil && options.Diagnosis != nil {
 				diagnosisRouter := router.With(authHandler{service: options.Identity}.requireAuth)

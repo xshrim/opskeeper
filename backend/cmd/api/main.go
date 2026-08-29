@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,6 +39,16 @@ import (
 	"opskeeper/backend/version"
 	"opskeeper/backend/webui"
 )
+
+func resourceAllowedForContext(ctx context.Context, scopeID, resourceID string) bool {
+	if filter, restricted := authorization.ResourceFilterFromContext(ctx); restricted {
+		return filter.Allows(scopeID, resourceID)
+	}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted {
+		return filter.Allows(scopeID)
+	}
+	return true
+}
 
 const serviceName = "opskeeper-api"
 
@@ -147,9 +158,29 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		mcpService.AIEngineProvider(),
 	)
 	aiStore := aiengine.NewPostgresStore(pool)
+	workflowRunStore := aiengine.NewPostgresWorkflowRunStore(pool)
+	workflowRetriever := aiengine.KnowledgeRetrieverFunc(func(queryCtx context.Context, query aiengine.KnowledgeQuery) (aiengine.RetrievalResult, error) {
+		item, getErr := resourceService.Get(queryCtx, query.KnowledgeBaseID)
+		if getErr != nil {
+			return aiengine.RetrievalResult{}, getErr
+		}
+		if item.Kind != "KnowledgeBase" || item.ScopeID != query.ScopeID || !resourceAllowedForContext(queryCtx, item.ScopeID, item.ID) {
+			return aiengine.RetrievalResult{}, authorization.ErrForbidden
+		}
+		encoded, marshalErr := json.Marshal(item.Config)
+		if marshalErr != nil {
+			return aiengine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", marshalErr)
+		}
+		var base aiengine.KnowledgeBase
+		if err := json.Unmarshal(encoded, &base); err != nil {
+			return aiengine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", err)
+		}
+		return aiengine.SearchDocuments(query, base)
+	})
 	contextTooling.Gateway.AuditStore = aiStore
 	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore).
 		WithAgentProfileResolver(agentProfileResolver)
+	workflowService := aiengine.NewWorkflowService(workflowRunStore, aiEngine, contextTooling.Gateway, workflowRetriever, aiStore)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
@@ -180,6 +211,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			AIEngine:           aiEngine,
 			AIEngineEvents:     aiStore,
 			AIEngineToolCalls:  aiStore,
+			WorkflowRuns:       workflowRunStore,
+			WorkflowExecutor:   workflowService,
 			Diagnosis:          diagnosisService,
 			Inspection:         inspectionService,
 			MCP:                mcpService,

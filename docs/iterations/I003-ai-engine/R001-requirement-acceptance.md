@@ -127,6 +127,52 @@ T03 增强项已完成：新增 AgentProfile 版本表、版本发布/停用 API
 
 本轮自动验证：`go test -count=1 ./...`、目标包 `go test -race`、`go vet ./...`、迁移集成测试、前端 `npm run check/test/build` 均通过。
 
+## T05 知识库与工作流编排
+
+**状态：** 实施中（执行闭环已接入，端到端验收待补）
+
+已完成第一阶段：
+
+- 新增 `KnowledgeQuery`、知识片段、引用和 `KnowledgeRetriever` 契约；资源型 KnowledgeBase 提供确定性的关键词检索基线，结果带不可信标记和引用信息。
+- 新增 Workflow/WorkflowRun 类型、节点类型白名单、节点/边引用校验、DAG 无环校验、节点超时/重试边界和显式运行状态机。
+- 新增迁移 `0027_knowledge_workflow`：注册 KnowledgeBase 与 Workflow Resource Schema，并创建 `ai_workflow_runs` 持久化运行快照表及索引、更新时间触发器。
+- Workflow Resource 写入时即执行 DAG 基础校验；WorkflowRun 创建、查询、列表、状态迁移、暂停恢复和取消 API 复用 Scope/Resource 权限边界。
+- 新增知识库检索 API：`POST /api/v1/knowledge-bases/{id}/search`。
+- 新增 `WorkflowService`：Agent/Skill 节点统一构造 `aiengine.Request`，Tool 节点经过
+  `PolicyGateway`，Retrieval 节点经过 `KnowledgeRetriever`；`start` 和审批后的 `resume`
+  现在会真正执行节点并返回最新运行状态。
+- 支持并行节点的受控分支执行（最多 32 个声明式分支），节点超时、有限重试和取消会传播到
+  分支；工作流事件写入 AIEngine 事件存储，包含开始、节点开始/完成/失败、审批等待、终态。
+- 新增 `GET /api/v1/workflow-runs/{id}/events`，按运行 ID 直接提供与 AIEngine 执行事件一致的
+  SSE 续读能力，支持 `after` 和 `Last-Event-ID`。
+
+验证记录：
+
+- `cd backend && go test -count=1 ./...`：通过；
+- `go test -count=1 -tags=integration ./aiengine ./migrations`：通过，真实 PostgreSQL 已验证工作流运行记录创建、输入/状态快照、状态迁移、终态完成时间和终态恢复保护；
+- `make migrate`：迁移 0027 成功应用；
+- `go vet ./...`、`git diff --check`：通过。
+
+后续 T05 工作：补充 HTTP API 的真实权限集成测试、事件查询验收和向量检索实现；当前节点执行器已经接入统一 AIEngine、Tool Gateway 和知识检索契约。
+
+### T05 自动验收记录（2026-08-29）
+
+- `go test -count=1 ./...`：通过。
+- `go test -race ./aiengine ./httpapi ./resource ./migrations`：通过。
+- `go vet ./...`：通过。
+- `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -count=1 -tags=integration ./aiengine ./migrations`：通过，真实 PostgreSQL 验证 WorkflowRun 创建、`created_by`、输入/状态快照、状态迁移、终态保护。
+- `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -count=1 -tags=integration ./e2e`：通过，真实临时 schema 验证资源导入、诊断和巡检端到端链路。
+- 工作流节点执行器单元测试通过，覆盖 Agent、Retrieval、Tool、Parallel 分支和节点输出快照。
+
+补充验证：`go test -count=1 -tags=integration ./...` 中 AIEngine、e2e、资源、诊断、巡检、
+Connector、LLM 和权限相关测试通过；迁移包中的项目成员历史迁移断言，以及组织包的回滚
+断言在当前共享数据库上失败，单独串行重跑仍可复现，属于既有迁移测试/数据库状态问题，
+与本次 T05 工作流代码无直接调用关系。
+
+尚未自动通过的项目：当前仓库没有带登录态的 Workflow HTTP API 集成测试夹具，因此
+`/workflows/{id}/runs`、`start`、`resume`、`cancel`、权限隔离和
+`/workflow-runs/{id}/events` 的真实 HTTP 验收仍需启动当前分支 API 后执行；该项不宣称已通过。
+
 ### T04 真实模型与 HTTP 验收记录（2026-08-29）
 
 - `make llm-provider-test` 使用 `.env` 中的 GLM-4-Flash 通过普通和 SSE 两种模式完成真实文本生成，均返回有效输出和 token 用量。

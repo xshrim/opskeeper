@@ -374,6 +374,61 @@ AIEngine 不直接读取数据库、容器或 MCP Server。所有外部信息必
 - 指定 Skill 或 Agent 只负责 Prompt 和工具契约，实际模型调用仍由 AIEngine 完成；
 - 知识库检索和工作流节点以受控工具形式接入，不允许绕过审计。
 
+T05 的基础契约已经在 `backend/aiengine` 建立：`KnowledgeQuery` 强制携带
+Scope 和检索词，`KnowledgeRetriever` 返回不可信知识片段及可追溯引用；`Workflow`
+以版本化节点和有向边表示，写入或执行前进行节点类型、引用、重试/超时边界和 DAG
+无环校验。`WorkflowRun` 使用显式的 pending/running/waiting_approval/succeeded/
+failed/cancelled 状态迁移，为后续持久化快照、审批恢复和断点续跑提供状态机边界。
+
+当前最小管理 API：
+
+```text
+POST /api/v1/knowledge-bases/{id}/search
+POST /api/v1/workflows/{id}/runs
+GET  /api/v1/workflows/{id}/runs
+GET  /api/v1/workflow-runs/{id}
+GET  /api/v1/workflow-runs/{id}/events
+POST /api/v1/workflow-runs/{id}/start
+POST /api/v1/workflow-runs/{id}/resume
+POST /api/v1/workflow-runs/{id}/cancel
+PATCH /api/v1/workflow-runs/{id}
+```
+
+KnowledgeBase 和 Workflow 本体使用 Resource API 管理；`0027_knowledge_workflow`
+增加对应 Schema，并为 WorkflowRun 保存工作流版本、执行 ID、当前节点、尝试次数、
+输入和状态快照。运行 API 在每次操作前重新读取 Workflow Resource 并检查资源权限，
+因此不能通过猜测运行 ID 跨 Scope 访问数据。`WorkflowService` 将 Agent/Skill 节点转换为
+统一 `aiengine.Request`，Tool 节点强制经过 `PolicyGateway`，Retrieval 节点强制经过
+`KnowledgeRetriever`。`start` 和 `resume` 会执行节点并写入节点输出快照；节点失败按有限
+重试策略终止运行，审批节点进入 `waiting_approval`，恢复后从未完成节点继续。并行节点使用
+配置中的 `branches` 声明式分支，每次最多 32 个分支，并传播取消。所有工作流生命周期和
+节点状态事件会写入 AIEngine 事件存储。
+
+节点配置只允许引用 Provider/模型、资源 ID、Skill/Agent ID 或检索参数，禁止注入 Provider
+地址、凭据或任意代码。Condition 节点只支持受限的 `state` 键与 `equals` 值比较。
+
+工作流节点配置示例：
+
+```json
+{
+  "id": "diagnose",
+  "type": "agent",
+  "name": "诊断摘要",
+  "config": {
+    "purpose": "diagnosis",
+    "agent_profile_id": "profile-resource-id",
+    "task": "根据前置节点证据生成诊断摘要",
+    "context": {"resource_ids": ["postgres-resource-id"]},
+    "stream": false
+  }
+}
+```
+
+`tool` 节点的配置为 `resource_id`、`name` 和可选 `arguments`；`retrieval` 节点的配置
+为 `knowledge_base_id`、`query` 和可选 `top_k`；`parallel` 节点的配置为 `branches` 数组，
+每个分支使用同样的节点契约。Agent/Skill 节点执行结果、工具输出和检索引用都会写入
+WorkflowRun 的脱敏 `state.node_outputs` 快照。
+
 ## 10. 流式响应和断线续读
 
 AIEngine 提供：

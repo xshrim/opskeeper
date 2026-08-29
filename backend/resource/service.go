@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -66,6 +67,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	}
 	if input.Kind == "AIProvider" {
 		if err := validateAIProviderConfig(input.Config); err != nil {
+			return Resource{}, err
+		}
+	}
+	if input.Kind == "Workflow" {
+		if err := validateWorkflowConfig(input.Config); err != nil {
 			return Resource{}, err
 		}
 	}
@@ -191,6 +197,11 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 				return Resource{}, err
 			}
 		}
+		if current.Kind == "Workflow" {
+			if err := validateWorkflowConfig(*input.Config); err != nil {
+				return Resource{}, err
+			}
+		}
 	}
 	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.CredentialID == nil {
 		return Resource{}, invalid("at least one field must be provided")
@@ -289,6 +300,67 @@ func configFloat(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// validateWorkflowConfig keeps resource writes independent from the
+// AIEngine package (which consumes resources for context tooling) while
+// enforcing the same persisted DAG invariants at the catalog boundary.
+func validateWorkflowConfig(config map[string]any) error {
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return invalid("Workflow config is invalid")
+	}
+	var parsed struct {
+		Version int `json:"version"`
+		Nodes   []struct {
+			ID string `json:"id"`
+		} `json:"nodes"`
+		Edges []struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"edges"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Version < 1 || len(parsed.Nodes) == 0 {
+		return invalid("Workflow config requires a positive version and at least one node")
+	}
+	seen := make(map[string]bool, len(parsed.Nodes))
+	for _, node := range parsed.Nodes {
+		if strings.TrimSpace(node.ID) == "" || seen[node.ID] {
+			return invalid("Workflow node IDs must be non-empty and unique")
+		}
+		seen[node.ID] = true
+	}
+	graph := make(map[string][]string, len(seen))
+	for _, edge := range parsed.Edges {
+		if !seen[edge.From] || !seen[edge.To] || edge.From == edge.To {
+			return invalid("Workflow edge references an invalid node")
+		}
+		graph[edge.From] = append(graph[edge.From], edge.To)
+	}
+	state := make(map[string]uint8, len(seen))
+	var visit func(string) bool
+	visit = func(id string) bool {
+		if state[id] == 1 {
+			return false
+		}
+		if state[id] == 2 {
+			return true
+		}
+		state[id] = 1
+		for _, child := range graph[id] {
+			if !visit(child) {
+				return false
+			}
+		}
+		state[id] = 2
+		return true
+	}
+	for id := range seen {
+		if !visit(id) {
+			return invalid("Workflow config contains a cycle")
+		}
+	}
+	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
