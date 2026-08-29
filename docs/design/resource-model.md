@@ -150,7 +150,7 @@ resource_relations {
 | `depends_on` | 业务应用依赖 Redis、Kafka |
 | `observed_by` | 应用由 Prometheus、Loki 观测 |
 | `exposes` | Service/Ingress 暴露应用 |
-| `uses_ai_provider` | 诊断策略、Skill 或巡检使用某个 AIProvider 和模型 |
+| `uses_ai_provider` | 诊断策略、Skill、AgentProfile 或巡检使用某个 AIProvider 和模型 |
 | `uses_skill` | 项目或资源使用某个 Skill |
 | `served_by_mcp` | Skill 通过 MCP Server 获取能力 |
 
@@ -166,7 +166,7 @@ redis-shared [团队: 支付团队]
 prometheus-main [平台]
 ```
 
-模型与 Skill 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 Scope + 场景标签对应的 AIProvider，执行时解析并固定模型；Skill 默认项固定 Skill 资源 ID 和已发布 SkillVersion ID。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
+模型与 Skill/AgentProfile 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 Scope + 场景标签对应的 AIProvider，执行时解析并固定模型；Skill 和 AgentProfile 只提供可选 Prompt、工具和契约来源。巡检策略未指定 AgentProfile 时使用内置巡检契约。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
 
 ## 7. 主要数据表
 
@@ -183,12 +183,15 @@ resource_sync_states
 discovery_runs
 discovery_items
 skill_versions
+agent_profile_versions
+inspection_policies (可选 agent_profile_resource_id)
 scope_ai_provider_bindings
 skill_scope_defaults
-skill_executions
-skill_tool_calls
 scope_defaults
 ```
+
+AIEngine 的统一执行事件与工具审计保存在 `ai_execution_events` 和
+`ai_execution_tool_calls`；Skill 不拥有独立执行表。
 
 `external_uid + source_resource_id + scope` 建立唯一约束，保证 Kubernetes 和外部平台资源重复同步时执行更新而不是重复创建。
 

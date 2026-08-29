@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/resource"
 )
@@ -173,6 +174,34 @@ func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explici
 	return version, nil
 }
 
+// ResolvePlan exposes a published Skill as a side-effect-free AIEngine plan.
+// It intentionally does not resolve a model, create an execution record or
+// invoke a tool; those responsibilities belong exclusively to AIEngine.
+func (s *Service) ResolvePlan(ctx context.Context, scopeID, skillID, versionID string) (aiengine.ExecutionPlan, error) {
+	version, err := s.Resolve(ctx, scopeID, skillID, versionID)
+	if err != nil {
+		return aiengine.ExecutionPlan{}, err
+	}
+	declarations := make([]aiengine.ToolDeclaration, 0, len(version.Tools))
+	allowed := make([]string, 0, len(version.Tools))
+	for _, item := range version.Tools {
+		declarations = append(declarations, aiengine.ToolDeclaration{Name: item.Name, Description: item.Description, InputSchema: item.InputSchema})
+		allowed = append(allowed, item.Name)
+	}
+	return aiengine.ExecutionPlan{
+		SourceResourceID: version.SkillResourceID,
+		SourceVersionID:  version.ID,
+		Name:             version.Manifest.Name,
+		Description:      version.Manifest.Description,
+		Instruction:      version.Manifest.Instruction,
+		InputSchema:      version.InputSchema,
+		OutputSchema:     version.OutputSchema,
+		Tools:            declarations,
+		AllowedTools:     allowed,
+		TargetKinds:      version.Manifest.TargetKinds,
+	}, nil
+}
+
 func (s *Service) ValidateTarget(ctx context.Context, version Version, targetID string) (resource.Resource, error) {
 	targetID = strings.TrimSpace(targetID)
 	if targetID == "" {
@@ -189,34 +218,6 @@ func (s *Service) ValidateTarget(ctx context.Context, version Version, targetID 
 		return resource.Resource{}, authorization.ErrForbidden
 	}
 	return item, nil
-}
-
-func (s *Service) GetExecution(ctx context.Context, id string) (Execution, error) {
-	item, err := s.store.GetExecution(ctx, strings.TrimSpace(id))
-	if err != nil {
-		return Execution{}, err
-	}
-	skillResource, err := s.skillResource(ctx, item.SkillResourceID)
-	if err != nil {
-		return Execution{}, err
-	}
-	if !allowsSkillResource(ctx, skillResource) {
-		return Execution{}, authorization.ErrForbidden
-	}
-	return item, nil
-}
-
-func (s *Service) ListExecutions(ctx context.Context, scopeID string, limit int) ([]Execution, error) {
-	if !allowsScope(ctx, strings.TrimSpace(scopeID)) {
-		return nil, authorization.ErrForbidden
-	}
-	if limit == 0 {
-		limit = 50
-	}
-	if limit < 1 || limit > 200 {
-		return nil, invalid("limit must be between 1 and 200")
-	}
-	return s.store.ListExecutions(ctx, scopeID, limit)
 }
 
 func (s *Service) skillResource(ctx context.Context, id string) (resource.Resource, error) {

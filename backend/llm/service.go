@@ -133,7 +133,7 @@ func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName st
 			return ResolvedProvider{}, authorization.ErrForbidden
 		}
 		if !validPurpose(purpose) {
-			purpose = PurposeDefault
+			return ResolvedProvider{}, invalid("purpose is not supported")
 		}
 		binding, err := s.store.ResolveBinding(ctx, scopeID, purpose)
 		if err != nil {

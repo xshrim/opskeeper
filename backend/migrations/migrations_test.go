@@ -7,8 +7,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load() error = %v", err)
 	}
-	if len(items) != 27 {
-		t.Fatalf("load() returned %d migrations, want twenty-seven migrations", len(items))
+	if len(items) != 29 {
+		t.Fatalf("load() returned %d migrations, want twenty-nine migrations", len(items))
 	}
 	if items[0].version != 1 || items[0].name != "initial" {
 		t.Fatalf("loaded migration = %#v, want version 1 initial", items[0])
@@ -90,6 +90,12 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	}
 	if items[26].version != 27 || items[26].name != "knowledge_workflow" {
 		t.Fatalf("loaded migration = %#v, want version 27 knowledge_workflow", items[26])
+	}
+	if items[27].version != 28 || items[27].name != "remove_skill_execution_store" {
+		t.Fatalf("loaded migration = %#v, want version 28 remove_skill_execution_store", items[27])
+	}
+	if items[28].version != 29 || items[28].name != "inspection_agent_profile" {
+		t.Fatalf("loaded migration = %#v, want version 29 inspection_agent_profile", items[28])
 	}
 	for _, item := range items {
 		if item.sql == "" || item.downSQL == "" || item.checksum == "" {

@@ -6,13 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/llm"
@@ -32,8 +29,6 @@ type skillService interface {
 	Disable(context.Context, string, string) (skill.Version, error)
 	SetDefault(context.Context, string, string, string, string) (skill.Default, error)
 	Resolve(context.Context, string, string, string) (skill.Version, error)
-	GetExecution(context.Context, string) (skill.Execution, error)
-	ListExecutions(context.Context, string, int) ([]skill.Execution, error)
 }
 
 type agentProfileService interface {
@@ -43,15 +38,9 @@ type agentProfileService interface {
 	DisableVersion(context.Context, string, string) (skill.AgentProfileVersion, error)
 }
 
-type skillRunner interface {
-	Run(context.Context, skill.RunInput) (skill.RunResult, error)
-}
-
 type aiHandler struct {
 	llms          llmService
 	skills        skillService
-	runner        skillRunner
-	engine        aiengine.Engine
 	authorization authorizationService
 	auditor       audit.Logger
 	agentProfiles agentProfileService
@@ -88,24 +77,9 @@ type setSkillDefaultRequest struct {
 type createAgentProfileVersionRequest struct {
 	Config map[string]any `json:"config"`
 }
-type executeSkillRequest struct {
-	ScopeID              string         `json:"scope_id"`
-	TargetResourceID     string         `json:"target_resource_id"`
-	AIProviderResourceID string         `json:"ai_provider_resource_id,omitempty"`
-	ModelName            string         `json:"model_name,omitempty"`
-	SkillResourceID      string         `json:"skill_resource_id,omitempty"`
-	SkillVersionID       string         `json:"skill_version_id,omitempty"`
-	AgentProfileID       string         `json:"agent_profile_id,omitempty"`
-	Input                map[string]any `json:"input"`
-	MaxToolCalls         int            `json:"max_tool_calls,omitempty"`
-	MaxTokens            int64          `json:"max_tokens,omitempty"`
-	MaxOutputBytes       int            `json:"max_output_bytes,omitempty"`
-	TimeoutSeconds       int            `json:"timeout_seconds,omitempty"`
-	Stream               bool           `json:"stream,omitempty"`
-}
 
-func registerAIRoutes(router chi.Router, llms llmService, skills skillService, agentProfiles agentProfileService, runnerService skillRunner, engine aiengine.Engine, authorizer authorizationService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
-	h := aiHandler{llms: llms, skills: skills, agentProfiles: agentProfiles, runner: runnerService, engine: engine, authorization: authorizer, auditor: auditor}
+func registerAIRoutes(router chi.Router, llms llmService, skills skillService, agentProfiles agentProfileService, authorizer authorizationService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+	h := aiHandler{llms: llms, skills: skills, agentProfiles: agentProfiles, authorization: authorizer, auditor: auditor}
 	if bindings, ok := llms.(aiProviderBindingService); ok {
 		registerAIProviderBindingRoutes(router, bindings, requirePermission)
 	}
@@ -129,17 +103,12 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, a
 		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions/{versionID}/disable", h.disableVersion)
 		router.With(guard(authorization.ResourceUpdate)).Put("/skill-defaults", h.setSkillDefault)
 		router.With(guard(authorization.ResourceRead)).Get("/skill-defaults", h.resolveSkillDefault)
-		router.With(guard(authorization.ResourceRead)).Get("/skill-executions", h.listExecutions)
-		router.With(guard(authorization.ResourceRead)).Get("/skill-executions/{executionID}", h.getExecution)
 	}
 	if agentProfiles != nil {
 		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions", h.createAgentProfileVersion)
 		router.With(guard(authorization.ResourceRead)).Get("/agent-profiles/{profileID}/versions", h.listAgentProfileVersions)
 		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions/{versionID}/publish", h.publishAgentProfileVersion)
 		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions/{versionID}/disable", h.disableAgentProfileVersion)
-	}
-	if runnerService != nil || engine != nil {
-		router.Post("/skill-executions", h.executeSkill)
 	}
 }
 
@@ -314,73 +283,6 @@ func (h aiHandler) setSkillDefault(w http.ResponseWriter, r *http.Request) {
 }
 func (h aiHandler) resolveSkillDefault(w http.ResponseWriter, r *http.Request) {
 	item, err := h.skills.Resolve(r.Context(), r.URL.Query().Get("scope_id"), r.URL.Query().Get("skill_resource_id"), r.URL.Query().Get("skill_version_id"))
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, item)
-}
-func (h aiHandler) executeSkill(w http.ResponseWriter, r *http.Request) {
-	if h.authorization == nil {
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Authorization service is unavailable")
-		return
-	}
-	var body executeSkillRequest
-	if !decodeRequest(w, r, &body) {
-		return
-	}
-	user := currentUser(r)
-	subject := authorization.Subject{UserID: user.ID}
-	resourceFilter, err := h.authorization.ResourceFilter(r.Context(), subject, authorization.ResourceUse)
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	ctx := authorization.WithResourceFilter(r.Context(), resourceFilter)
-	if h.engine != nil {
-		contextRequest := aiengine.ContextRequest{}
-		if strings.TrimSpace(body.TargetResourceID) != "" {
-			contextRequest.ResourceIDs = []string{body.TargetResourceID}
-		}
-		result, err := h.engine.Execute(ctx, aiengine.Request{
-			ActorID: user.ID, ScopeID: body.ScopeID, AIProviderResourceID: body.AIProviderResourceID,
-			ModelName: body.ModelName, Purpose: aiengine.PurposeDefault,
-			Profile: aiengine.ProfileSkill, Input: body.Input, Context: contextRequest,
-			SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID,
-			AgentProfileID: body.AgentProfileID,
-			Budget:         aiengine.Budget{MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second},
-		})
-		if err != nil {
-			writeAIError(w, r, err)
-			return
-		}
-		h.record(r, "ai_engine.execute", "ai_execution", result.ExecutionID, body.ScopeID)
-		writeJSON(w, http.StatusCreated, result)
-		return
-	}
-	if h.runner == nil {
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "AI execution service is unavailable")
-		return
-	}
-	result, err := h.runner.Run(ctx, skill.RunInput{ActorID: user.ID, ScopeID: body.ScopeID, TargetResourceID: body.TargetResourceID, SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID, AgentProfileID: body.AgentProfileID, AIProviderResourceID: body.AIProviderResourceID, ModelName: body.ModelName, Purpose: aiengine.PurposeDefault, Input: body.Input, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Stream: body.Stream})
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	h.record(r, "skill.execute", "skill_execution", result.Execution.ID, body.ScopeID)
-	writeJSON(w, http.StatusCreated, result)
-}
-func (h aiHandler) listExecutions(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	items, err := h.skills.ListExecutions(r.Context(), r.URL.Query().Get("scope_id"), limit)
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, items)
-}
-func (h aiHandler) getExecution(w http.ResponseWriter, r *http.Request) {
-	item, err := h.skills.GetExecution(r.Context(), chi.URLParam(r, "executionID"))
 	if err != nil {
 		writeAIError(w, r, err)
 		return

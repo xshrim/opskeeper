@@ -7,7 +7,7 @@ import (
 )
 
 func TestNormalizePolicyRequiresBoundedAuthorizedIntent(t *testing.T) {
-	base := Policy{ScopeID: "scope-1", Name: "API health", Cron: "0 * * * *", Timezone: "Asia/Shanghai", TargetResourceIDs: []string{"target-1", "target-1"}, SkillResourceIDs: []string{"skill-1"}, Timeout: time.Minute, MaxConcurrent: 1, MaxToolCalls: 12, MaxTokens: 20000}
+	base := Policy{ScopeID: "scope-1", Name: "API health", Cron: "0 * * * *", Timezone: "Asia/Shanghai", TargetResourceIDs: []string{"target-1", "target-1"}, Timeout: time.Minute, MaxConcurrent: 1, MaxToolCalls: 12, MaxTokens: 20000}
 	policy, err := normalizePolicy(base)
 	if err != nil {
 		t.Fatalf("normalizePolicy() error = %v", err)

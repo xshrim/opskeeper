@@ -36,6 +36,9 @@ func NewServiceWithSecurity(resources ResourceReader, store SnapshotStore, enhan
 }
 
 func (s *Service) Discover(ctx context.Context, resourceID string) (Snapshot, error) {
+	if s == nil || s.resources == nil || s.store == nil {
+		return Snapshot{}, errors.New("MCP service dependencies are unavailable")
+	}
 	server, config, err := s.server(ctx, resourceID)
 	if err != nil {
 		return Snapshot{}, err
@@ -59,6 +62,9 @@ func (s *Service) Discover(ctx context.Context, resourceID string) (Snapshot, er
 }
 
 func (s *Service) ListSnapshots(ctx context.Context, resourceID string, limit int) ([]Snapshot, error) {
+	if s == nil || s.resources == nil || s.store == nil {
+		return nil, errors.New("MCP service dependencies are unavailable")
+	}
 	if _, _, err := s.server(ctx, resourceID); err != nil {
 		return nil, err
 	}
@@ -69,6 +75,9 @@ func (s *Service) ListSnapshots(ctx context.Context, resourceID string, limit in
 // The result stays raw JSON with untrusted=false impossible: callers must
 // treat every textual field as data rather than instructions or HTML.
 func (s *Service) Call(ctx context.Context, resourceID, name string, arguments map[string]any) (json.RawMessage, error) {
+	if s == nil || s.resources == nil || s.store == nil {
+		return nil, errors.New("MCP service dependencies are unavailable")
+	}
 	_, config, err := s.server(ctx, resourceID)
 	if err != nil {
 		return nil, err
@@ -81,6 +90,9 @@ func (s *Service) Call(ctx context.Context, resourceID, name string, arguments m
 }
 
 func (s *Service) server(ctx context.Context, resourceID string) (resource.Resource, Config, error) {
+	if s == nil || s.resources == nil {
+		return resource.Resource{}, Config{}, errors.New("MCP resource service is unavailable")
+	}
 	server, err := s.resources.Get(ctx, resourceID)
 	if err != nil {
 		return resource.Resource{}, Config{}, err

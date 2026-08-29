@@ -81,8 +81,8 @@ func TestCreateTeamNormalizesInput(t *testing.T) {
 	if store.createTeamInput.Labels == nil {
 		t.Fatal("CreateTeam() passed nil labels")
 	}
-	if store.createTeamInput.Icon != "team" {
-		t.Fatalf("CreateTeam() icon = %q, want team", store.createTeamInput.Icon)
+	if store.createTeamInput.Icon != "UsersRound" {
+		t.Fatalf("CreateTeam() icon = %q, want UsersRound", store.createTeamInput.Icon)
 	}
 }
 

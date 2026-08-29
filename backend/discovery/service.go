@@ -256,7 +256,7 @@ func (s *Service) mapProject(ctx context.Context, cluster resource.Resource, ite
 		TeamID:           team.ID,
 		Name:             name,
 		Code:             code,
-		Icon:             "project",
+		Icon:             "FolderKanban",
 		Labels:           item.Labels,
 		Source:           "kubernetes",
 		SourceResourceID: &clusterID,

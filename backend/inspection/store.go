@@ -61,7 +61,7 @@ func (s *store) CreatePolicy(ctx context.Context, input Policy, actorID string) 
 	}
 	defer tx.Rollback(ctx)
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO inspection_policies (scope_id,name,cron,timezone,status,target_labels,skill_resource_ids,timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows,created_by) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::uuid[],$8,$9,$10,$11,$12,$13,NULLIF($14,'')::uuid) RETURNING id::text`, input.ScopeID, input.Name, input.Cron, input.Timezone, input.Status, labels, input.SkillResourceIDs, int(input.Timeout.Seconds()), input.Retries, input.MaxConcurrent, input.MaxToolCalls, input.MaxTokens, windows, actorID).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO inspection_policies (scope_id,name,cron,timezone,status,target_labels,agent_profile_resource_id,timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows,created_by) VALUES ($1::uuid,$2,$3,$4,$5,$6,NULLIF($7,'')::uuid,$8,$9,$10,$11,$12,$13,NULLIF($14,'')::uuid) RETURNING id::text`, input.ScopeID, input.Name, input.Cron, input.Timezone, input.Status, labels, input.AgentProfileResourceID, int(input.Timeout.Seconds()), input.Retries, input.MaxConcurrent, input.MaxToolCalls, input.MaxTokens, windows, actorID).Scan(&id)
 	if err != nil {
 		return Policy{}, mapError(err)
 	}
@@ -78,7 +78,7 @@ func (s *store) CreatePolicy(ctx context.Context, input Policy, actorID string) 
 }
 
 func (s *store) ListPolicies(ctx context.Context, scopeID string) ([]Policy, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text,scope_id::text,name,cron,timezone,status,target_labels,skill_resource_ids::text[],timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows FROM inspection_policies WHERE scope_id=$1::uuid AND deleted_at IS NULL ORDER BY created_at DESC`, scopeID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,scope_id::text,name,cron,timezone,status,target_labels,COALESCE(agent_profile_resource_id::text,''),timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows FROM inspection_policies WHERE scope_id=$1::uuid AND deleted_at IS NULL ORDER BY created_at DESC`, scopeID)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -88,7 +88,7 @@ func (s *store) ListPolicies(ctx context.Context, scopeID string) ([]Policy, err
 		var item Policy
 		var labels, windows []byte
 		var seconds int
-		if err := rows.Scan(&item.ID, &item.ScopeID, &item.Name, &item.Cron, &item.Timezone, &item.Status, &labels, &item.SkillResourceIDs, &seconds, &item.Retries, &item.MaxConcurrent, &item.MaxToolCalls, &item.MaxTokens, &windows); err != nil {
+		if err := rows.Scan(&item.ID, &item.ScopeID, &item.Name, &item.Cron, &item.Timezone, &item.Status, &labels, &item.AgentProfileResourceID, &seconds, &item.Retries, &item.MaxConcurrent, &item.MaxToolCalls, &item.MaxTokens, &windows); err != nil {
 			return nil, err
 		}
 		item.Timeout = time.Duration(seconds) * time.Second
@@ -166,7 +166,7 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 		return 0, err
 	}
 	defer conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockID)
-	rows, err := conn.Query(ctx, `SELECT id::text,scope_id::text,name,cron,timezone,status,target_labels,skill_resource_ids::text[],timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows FROM inspection_policies WHERE status='active' AND deleted_at IS NULL`)
+	rows, err := conn.Query(ctx, `SELECT id::text,scope_id::text,name,cron,timezone,status,target_labels,COALESCE(agent_profile_resource_id::text,''),timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows FROM inspection_policies WHERE status='active' AND deleted_at IS NULL`)
 	if err != nil {
 		return 0, mapError(err)
 	}
@@ -220,7 +220,7 @@ func scanPolicy(row policyScanner) (Policy, error) {
 	var item Policy
 	var labels, windows []byte
 	var seconds int
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Name, &item.Cron, &item.Timezone, &item.Status, &labels, &item.SkillResourceIDs, &seconds, &item.Retries, &item.MaxConcurrent, &item.MaxToolCalls, &item.MaxTokens, &windows); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Name, &item.Cron, &item.Timezone, &item.Status, &labels, &item.AgentProfileResourceID, &seconds, &item.Retries, &item.MaxConcurrent, &item.MaxToolCalls, &item.MaxTokens, &windows); err != nil {
 		return Policy{}, err
 	}
 	item.Timeout = time.Duration(seconds) * time.Second

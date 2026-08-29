@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"google.golang.org/adk/v2/model"
 )
 
 // Purpose mirrors llm.Purpose without coupling the execution package to the
@@ -61,6 +63,38 @@ type ContextRequest struct {
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
 }
 
+// ToolDeclaration is the provider-neutral tool contract supplied by an
+// optional execution plan. AIEngine owns invocation, policy and audit; plan
+// sources only declare what may be exposed to the model.
+type ToolDeclaration struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+}
+
+// ExecutionPlan is the complete, immutable instruction contract for one
+// execution. Skill and future plan sources may produce it, but never execute
+// it. This keeps the Agent Loop and all model/tool policy in AIEngine.
+type ExecutionPlan struct {
+	SourceResourceID string            `json:"source_resource_id,omitempty"`
+	SourceVersionID  string            `json:"source_version_id,omitempty"`
+	Name             string            `json:"name"`
+	Description      string            `json:"description,omitempty"`
+	Instruction      string            `json:"instruction"`
+	InputSchema      json.RawMessage   `json:"input_schema,omitempty"`
+	OutputSchema     json.RawMessage   `json:"output_schema,omitempty"`
+	Tools            []ToolDeclaration `json:"tools,omitempty"`
+	Capabilities     []string          `json:"capabilities,omitempty"`
+	AllowedTools     []string          `json:"allowed_tools,omitempty"`
+	TargetKinds      []string          `json:"target_kinds,omitempty"`
+}
+
+// PlanResolver resolves an optional plan source. It is deliberately narrower
+// than a runner: resolving a plan has no model calls or side effects.
+type PlanResolver interface {
+	ResolvePlan(context.Context, string, string, string) (ExecutionPlan, error)
+}
+
 // AgentProfile is a versioned, resource-backed expert prompt contract. It
 // narrows the tools and model capabilities an execution may use; it never
 // carries provider credentials or an upstream URL.
@@ -105,29 +139,44 @@ func DefaultBudget() Budget {
 }
 
 type Request struct {
-	ExecutionID          string         `json:"execution_id,omitempty"`
-	ActorID              string         `json:"actor_id,omitempty"`
-	ScopeID              string         `json:"scope_id"`
-	Purpose              Purpose        `json:"purpose,omitempty"`
-	AIProviderResourceID string         `json:"ai_provider_resource_id,omitempty"`
-	ModelName            string         `json:"model_name,omitempty"`
-	Profile              Profile        `json:"profile"`
-	Task                 string         `json:"task,omitempty"`
-	Messages             []Message      `json:"messages,omitempty"`
-	Input                map[string]any `json:"input,omitempty"`
-	Context              ContextRequest `json:"context,omitempty"`
-	SkillResourceID      string         `json:"skill_resource_id,omitempty"`
-	SkillVersionID       string         `json:"skill_version_id,omitempty"`
-	AgentProfileID       string         `json:"agent_profile_id,omitempty"`
-	WorkflowID           string         `json:"workflow_id,omitempty"`
-	Requirements         Requirements   `json:"requirements,omitempty"`
-	Budget               Budget         `json:"budget,omitempty"`
-	Stream               bool           `json:"stream,omitempty"`
+	ExecutionID          string          `json:"execution_id,omitempty"`
+	ActorID              string          `json:"actor_id,omitempty"`
+	ScopeID              string          `json:"scope_id"`
+	Purpose              Purpose         `json:"purpose,omitempty"`
+	AIProviderResourceID string          `json:"ai_provider_resource_id,omitempty"`
+	ModelName            string          `json:"model_name,omitempty"`
+	Profile              Profile         `json:"profile"`
+	Task                 string          `json:"task,omitempty"`
+	Messages             []Message       `json:"messages,omitempty"`
+	Input                map[string]any  `json:"input,omitempty"`
+	Context              ContextRequest  `json:"context,omitempty"`
+	SkillResourceID      string          `json:"skill_resource_id,omitempty"`
+	SkillVersionID       string          `json:"skill_version_id,omitempty"`
+	AgentProfileID       string          `json:"agent_profile_id,omitempty"`
+	WorkflowID           string          `json:"workflow_id,omitempty"`
+	Instruction          string          `json:"instruction,omitempty"`
+	InputSchema          json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema         json.RawMessage `json:"output_schema,omitempty"`
+	AllowedTools         []string        `json:"allowed_tools,omitempty"`
+	RestrictTools        bool            `json:"restrict_tools,omitempty"`
+	Requirements         Requirements    `json:"requirements,omitempty"`
+	Budget               Budget          `json:"budget,omitempty"`
+	Stream               bool            `json:"stream,omitempty"`
 
-	EventSink            EventSink        `json:"-"`
-	ResolvedContext      *ResolvedContext `json:"-"`
-	ToolGateway          *PolicyGateway   `json:"-"`
-	ResolvedAgentProfile *AgentProfile    `json:"-"`
+	EventSink            EventSink             `json:"-"`
+	ResolvedContext      *ResolvedContext      `json:"-"`
+	ToolGateway          *PolicyGateway        `json:"-"`
+	ResolvedAgentProfile *AgentProfile         `json:"-"`
+	ObservationSink      func(ToolObservation) `json:"-"`
+}
+
+// ToolObservation is emitted after a generic context tool returns. Business
+// adapters may turn it into domain evidence without coupling AIEngine to a
+// Connector or Skill package.
+type ToolObservation struct {
+	ToolName   string
+	ResourceID string
+	Result     ToolResult
 }
 
 func (r *Request) Normalize() error {
@@ -224,3 +273,19 @@ type Engine interface {
 	Stream(context.Context, Request) (<-chan Event, error)
 	Cancel(context.Context, string) error
 }
+
+// ModelBuildResult is the provider-independent model handle consumed by the
+// generic AgentRunner. Provider resolution and credential loading remain in
+// the llm package; the execution runtime only receives a model client and
+// the capabilities of the selected model.
+type ModelBuildResult struct {
+	Client             model.LLM
+	ProviderResourceID string
+	ModelName          string
+	Capabilities       []string
+}
+
+// ModelBuilder resolves an AIProvider and model for one execution. Keeping
+// this as a small function avoids coupling the execution package to the
+// provider/resource persistence implementation.
+type ModelBuilder func(context.Context, string, string, string, Purpose) (ModelBuildResult, error)

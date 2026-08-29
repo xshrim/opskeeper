@@ -33,7 +33,6 @@ type Options struct {
 	LLMs               llmService
 	Skills             skillService
 	AgentProfiles      agentProfileService
-	SkillRunner        skillRunner
 	AIEngine           aiengine.Engine
 	AIEngineEvents     aiengine.EventStore
 	AIEngineToolCalls  aiengine.ToolCallStore
@@ -111,13 +110,13 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
-			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.SkillRunner != nil || options.AIEngine != nil) {
+			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.AIEngine != nil) {
 				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.SkillRunner, options.AIEngine, options.Authorization, options.Auditor, requirePermission)
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.Authorization, options.Auditor, requirePermission)
 				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
 				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
 				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +14,7 @@ type Runtime struct {
 	runner        Runner
 	resolver      ContextResolver
 	agentProfiles AgentProfileResolver
+	plans         PlanResolver
 	gateway       *PolicyGateway
 	store         EventStore
 	active        sync.Map
@@ -34,6 +36,14 @@ func NewWithContextAndStore(runner Runner, resolver ContextResolver, gateway *Po
 // resolver without changing the existing constructor signatures.
 func (r *Runtime) WithAgentProfileResolver(resolver AgentProfileResolver) *Runtime {
 	r.agentProfiles = resolver
+	return r
+}
+
+// WithPlanResolver attaches a side-effect-free source of execution plans.
+// The resolver supplies prompt/tool/schema inputs; AIEngine still performs
+// the only model and tool execution.
+func (r *Runtime) WithPlanResolver(resolver PlanResolver) *Runtime {
+	r.plans = resolver
 	return r
 }
 
@@ -96,6 +106,31 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	}
 	request.EventSink = sink
 	_ = sink(Event{Type: "execution.started", Status: StatusRunning, Payload: map[string]any{"profile": request.Profile}})
+	if request.SkillResourceID != "" || request.SkillVersionID != "" {
+		if r.plans == nil {
+			return failedRuntimeResult(request, sink, "plan_unavailable", "execution plan resolver is unavailable")
+		}
+		plan, planErr := r.plans.ResolvePlan(ctx, request.ScopeID, request.SkillResourceID, request.SkillVersionID)
+		if planErr != nil {
+			return failedRuntimeError(request, sink, "plan_resolution", planErr)
+		}
+		if strings.TrimSpace(plan.Instruction) == "" {
+			return failedRuntimeResult(request, sink, "plan_invalid", "execution plan instruction is required")
+		}
+		request.Instruction = plan.Instruction
+		request.InputSchema = plan.InputSchema
+		request.OutputSchema = plan.OutputSchema
+		request.AllowedTools = append([]string(nil), plan.AllowedTools...)
+		request.RestrictTools = true
+		request.Requirements.Capabilities = append(request.Requirements.Capabilities, plan.Capabilities...)
+		if len(request.AllowedTools) == 0 && len(plan.Tools) > 0 {
+			request.AllowedTools = make([]string, 0, len(plan.Tools))
+			for _, declaration := range plan.Tools {
+				request.AllowedTools = append(request.AllowedTools, declaration.Name)
+			}
+		}
+		_ = sink(Event{Type: "execution.plan.resolved", Status: StatusRunning, Payload: map[string]any{"source_resource_id": plan.SourceResourceID, "source_version_id": plan.SourceVersionID, "name": plan.Name, "tool_count": len(plan.Tools)}})
+	}
 	if request.AgentProfileID != "" {
 		if r.agentProfiles == nil {
 			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "agent_profile_unavailable", ErrorMessage: "agent profile resolver is unavailable"}
@@ -109,6 +144,11 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 			return result, profileErr
 		}
 		request.ResolvedAgentProfile = &profile
+		if profile.Instruction != "" && request.Instruction != "" {
+			request.Instruction = profile.Instruction + "\n\n" + request.Instruction
+		} else if profile.Instruction != "" {
+			request.Instruction = profile.Instruction
+		}
 		_ = sink(Event{Type: "agent_profile.resolved", Status: StatusRunning, Payload: map[string]any{"resource_id": profile.ResourceID, "name": profile.Name, "version": profile.Version, "capabilities": profile.Capabilities, "allowed_tool_count": len(profile.AllowedTools)}})
 	}
 	if r.resolver != nil && len(request.Context.ResourceIDs) > 0 {
@@ -210,4 +250,19 @@ func (r *Runtime) Cancel(_ context.Context, executionID string) error {
 		return nil
 	}
 	return fmt.Errorf("execution %q is not running", executionID)
+}
+
+func failedRuntimeResult(request Request, sink EventSink, code, message string) (Result, error) {
+	result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: code, ErrorMessage: message}
+	_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": code, "error": message}})
+	return result, errors.New(message)
+}
+
+func failedRuntimeError(request Request, sink EventSink, code string, err error) (Result, error) {
+	if err == nil {
+		return failedRuntimeResult(request, sink, code, "execution plan resolution failed")
+	}
+	result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: code, ErrorMessage: err.Error()}
+	_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": code, "error": err.Error()}})
+	return result, err
 }

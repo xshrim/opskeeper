@@ -19,12 +19,6 @@ type Store interface {
 	DisableVersion(context.Context, string, string) (Version, error)
 	SetDefault(context.Context, Default, string) (Default, error)
 	ResolveDefault(context.Context, string) (Default, error)
-	StartExecution(context.Context, StartExecutionInput) (Execution, error)
-	FinishExecution(context.Context, string, FinishExecutionInput) (Execution, error)
-	GetExecution(context.Context, string) (Execution, error)
-	ListExecutions(context.Context, string, int) ([]Execution, error)
-	StartToolCall(context.Context, string, int, string, string, string) (ToolCall, error)
-	FinishToolCall(context.Context, string, string, string, string, string) (ToolCall, error)
 }
 
 type store struct{ pool *pgxpool.Pool }
@@ -153,75 +147,6 @@ func (s *store) ResolveDefault(ctx context.Context, scopeID string) (Default, er
 	return item, nil
 }
 
-func (s *store) StartExecution(ctx context.Context, input StartExecutionInput) (Execution, error) {
-	var id string
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO skill_executions (scope_id, actor_user_id, target_resource_id, skill_resource_id, skill_version_id, provider_resource_id, model_name, status, input_digest)
-		VALUES ($1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4::uuid, $5::uuid, $6::uuid, $7, 'running', $8)
-		RETURNING id::text`, input.ScopeID, input.ActorUserID, input.TargetResourceID, input.SkillResourceID, input.SkillVersionID, input.ProviderResourceID, input.ModelName, input.InputDigest).Scan(&id)
-	if err != nil {
-		return Execution{}, mapStoreError(err)
-	}
-	return s.GetExecution(ctx, id)
-}
-
-func (s *store) FinishExecution(ctx context.Context, id string, input FinishExecutionInput) (Execution, error) {
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE skill_executions SET status = $2, output_preview = $3, prompt_tokens = $4,
-		completion_tokens = $5, total_tokens = $6, tool_call_count = $7,
-		error_code = $8, error_message = $9, completed_at = now(), updated_at = now()
-		WHERE id = $1::uuid AND status = 'running'`, id, input.Status, input.OutputPreview,
-		input.PromptTokens, input.CompletionTokens, input.TotalTokens, input.ToolCallCount, input.ErrorCode, input.ErrorMessage)
-	if err != nil {
-		return Execution{}, mapStoreError(err)
-	}
-	if tag.RowsAffected() == 0 {
-		return Execution{}, ErrNotFound
-	}
-	return s.GetExecution(ctx, id)
-}
-
-func (s *store) GetExecution(ctx context.Context, id string) (Execution, error) {
-	return scanExecution(s.pool.QueryRow(ctx, executionSelect+` WHERE id = $1::uuid`, id))
-}
-
-func (s *store) ListExecutions(ctx context.Context, scopeID string, limit int) ([]Execution, error) {
-	rows, err := s.pool.Query(ctx, executionSelect+` WHERE scope_id = $1::uuid ORDER BY created_at DESC LIMIT $2`, scopeID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("list Skill executions: %w", err)
-	}
-	defer rows.Close()
-	items := make([]Execution, 0)
-	for rows.Next() {
-		item, err := scanExecution(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
-func (s *store) StartToolCall(ctx context.Context, executionID string, sequence int, name, targetID, digest string) (ToolCall, error) {
-	var id string
-	err := s.pool.QueryRow(ctx, `INSERT INTO skill_tool_calls (execution_id, sequence, tool_name, target_resource_id, status, input_digest) VALUES ($1::uuid, $2, $3, NULLIF($4, '')::uuid, 'running', $5) RETURNING id::text`, executionID, sequence, name, targetID, digest).Scan(&id)
-	if err != nil {
-		return ToolCall{}, mapStoreError(err)
-	}
-	return getToolCall(ctx, s.pool, id)
-}
-
-func (s *store) FinishToolCall(ctx context.Context, id, status, preview, code, message string) (ToolCall, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE skill_tool_calls SET status = $2, output_preview = $3, error_code = $4, error_message = $5, completed_at = now() WHERE id = $1::uuid AND status = 'running'`, id, status, preview, code, message)
-	if err != nil {
-		return ToolCall{}, mapStoreError(err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ToolCall{}, ErrNotFound
-	}
-	return getToolCall(ctx, s.pool, id)
-}
-
 const versionSelect = `SELECT id::text, skill_resource_id::text, version, manifest, input_schema, output_schema, tools, risk_level, status, created_by::text, created_at, published_at FROM skill_versions`
 
 type rowScanner interface{ Scan(...any) error }
@@ -246,33 +171,6 @@ func scanVersion(row rowScanner) (Version, error) {
 	}
 	if err := json.Unmarshal(tools, &item.Tools); err != nil {
 		return Version{}, fmt.Errorf("decode Skill tools: %w", err)
-	}
-	return item, nil
-}
-
-const executionSelect = `SELECT id::text, scope_id::text, actor_user_id::text, target_resource_id::text, skill_resource_id::text, skill_version_id::text, provider_resource_id::text, model_name, status, input_digest, output_preview, prompt_tokens, completion_tokens, total_tokens, tool_call_count, error_code, error_message, started_at, completed_at FROM skill_executions`
-
-func scanExecution(row rowScanner) (Execution, error) {
-	var item Execution
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.ActorUserID, &item.TargetResourceID, &item.SkillResourceID, &item.SkillVersionID, &item.ProviderResourceID, &item.ModelName, &item.Status, &item.InputDigest, &item.OutputPreview, &item.PromptTokens, &item.CompletionTokens, &item.TotalTokens, &item.ToolCallCount, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Execution{}, ErrNotFound
-		}
-		return Execution{}, fmt.Errorf("scan Skill execution: %w", err)
-	}
-	return item, nil
-}
-
-func getToolCall(ctx context.Context, queryer interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, id string) (ToolCall, error) {
-	var item ToolCall
-	err := queryer.QueryRow(ctx, `SELECT id::text, execution_id::text, sequence, tool_name, target_resource_id::text, status, input_digest, output_preview, error_code, error_message, started_at, completed_at FROM skill_tool_calls WHERE id = $1::uuid`, id).Scan(&item.ID, &item.ExecutionID, &item.Sequence, &item.ToolName, &item.TargetResourceID, &item.Status, &item.InputDigest, &item.OutputPreview, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ToolCall{}, ErrNotFound
-	}
-	if err != nil {
-		return ToolCall{}, fmt.Errorf("scan Skill tool call: %w", err)
 	}
 	return item, nil
 }

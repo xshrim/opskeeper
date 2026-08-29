@@ -19,22 +19,22 @@ const (
 )
 
 type Policy struct {
-	ID                string              `json:"id"`
-	ScopeID           string              `json:"scope_id"`
-	Name              string              `json:"name"`
-	Cron              string              `json:"cron"`
-	Timezone          string              `json:"timezone"`
-	Status            string              `json:"status"`
-	TargetResourceIDs []string            `json:"target_resource_ids"`
-	TargetLabels      map[string]string   `json:"target_labels"`
-	SkillResourceIDs  []string            `json:"skill_resource_ids"`
-	Timeout           time.Duration       `json:"timeout"`
-	TimeoutSeconds    int                 `json:"timeout_seconds"`
-	Retries           int                 `json:"retries"`
-	MaxConcurrent     int                 `json:"max_concurrent"`
-	MaxToolCalls      int                 `json:"max_tool_calls"`
-	MaxTokens         int64               `json:"max_tokens"`
-	Maintenance       []MaintenanceWindow `json:"maintenance"`
+	ID                     string              `json:"id"`
+	ScopeID                string              `json:"scope_id"`
+	Name                   string              `json:"name"`
+	Cron                   string              `json:"cron"`
+	Timezone               string              `json:"timezone"`
+	Status                 string              `json:"status"`
+	TargetResourceIDs      []string            `json:"target_resource_ids"`
+	TargetLabels           map[string]string   `json:"target_labels"`
+	AgentProfileResourceID string              `json:"agent_profile_resource_id,omitempty"`
+	Timeout                time.Duration       `json:"timeout"`
+	TimeoutSeconds         int                 `json:"timeout_seconds"`
+	Retries                int                 `json:"retries"`
+	MaxConcurrent          int                 `json:"max_concurrent"`
+	MaxToolCalls           int                 `json:"max_tool_calls"`
+	MaxTokens              int64               `json:"max_tokens"`
+	Maintenance            []MaintenanceWindow `json:"maintenance"`
 }
 
 // MaintenanceWindow is deliberately a policy fact, not a cron expression:

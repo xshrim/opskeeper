@@ -127,15 +127,11 @@ func TestOperatorWorkflowFromImportThroughDiagnosisAndInspection(t *testing.T) {
 		t.Fatalf("Get(diagnosis) = %#v, %v", snapshot, err)
 	}
 
-	projectSkill, err := resources.Create(ctx, resource.CreateInput{ScopeID: project.Scope.ID, Kind: "Skill", Name: "E2E PostgreSQL health", Config: map[string]any{"summary": "deterministic E2E inspection", "owner": "E2E"}})
-	if err != nil {
-		t.Fatalf("Create(project Skill) error = %v", err)
-	}
 	inspectionStore := inspection.NewStore(pool)
 	inspectionService := inspection.NewService(inspectionStore, resources)
 	policy, err := inspectionService.CreatePolicy(ctx, inspection.Policy{
 		ScopeID: project.Scope.ID, Name: "orders-db-health", Cron: "*/5 * * * *", Timezone: "UTC",
-		TargetResourceIDs: []string{postgres.ID}, TargetLabels: map[string]string{}, SkillResourceIDs: []string{projectSkill.ID}, Timeout: 30 * time.Second,
+		TargetResourceIDs: []string{postgres.ID}, TargetLabels: map[string]string{}, Timeout: 30 * time.Second,
 		Retries: 1, MaxConcurrent: 1, MaxToolCalls: 4, MaxTokens: 2000, Maintenance: []inspection.MaintenanceWindow{},
 	}, actorID)
 	if err != nil {

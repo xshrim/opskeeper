@@ -11,6 +11,30 @@ type fakeRunner struct {
 	run func(context.Context, Request) (Result, error)
 }
 
+type fakePlanResolver struct{ calls int }
+
+func (f *fakePlanResolver) ResolvePlan(context.Context, string, string, string) (ExecutionPlan, error) {
+	f.calls++
+	return ExecutionPlan{SourceResourceID: "skill-1", SourceVersionID: "version-1", Instruction: "plan instruction"}, nil
+}
+
+func TestRuntimeResolvesPlanBeforeAgentRunner(t *testing.T) {
+	plan := &fakePlanResolver{}
+	var received Request
+	runtime := New(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Output: "generic"}, nil
+	}})
+	runtime.runner = fakeRunner{run: func(_ context.Context, request Request) (Result, error) {
+		received = request
+		return Result{Output: "generic"}, nil
+	}}
+	runtime.WithPlanResolver(plan)
+	result, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", SkillResourceID: "skill-1", Task: "inspect"})
+	if err != nil || result.Output != "generic" || plan.calls != 1 || received.Instruction != "plan instruction" {
+		t.Fatalf("plan resolution result=%+v err=%v calls=%d request=%+v", result, err, plan.calls, received)
+	}
+}
+
 func (f fakeRunner) Run(ctx context.Context, request Request) (Result, error) {
 	return f.run(ctx, request)
 }

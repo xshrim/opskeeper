@@ -32,3 +32,30 @@ func TestValidateConfigAllowsRegisteredPermissiveSchema(t *testing.T) {
 		t.Fatalf("validateConfig(permissive) error = %v", err)
 	}
 }
+
+func TestValidateConfigEnforcesNestedSchemaConstraints(t *testing.T) {
+	schema := Schema{Kind: "Nested", Schema: map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"type":    "object", "additionalProperties": false,
+		"required": []any{"models"},
+		"properties": map[string]any{
+			"models": map[string]any{
+				"type": "array", "minItems": 1,
+				"items": map[string]any{
+					"type": "object", "additionalProperties": false,
+					"required":   []any{"name"},
+					"properties": map[string]any{"name": map[string]any{"type": "string", "minLength": 1}},
+				},
+			},
+		},
+	}}
+	if err := validateConfig(map[string]any{"models": []any{map[string]any{"name": "gpt"}}}, schema); err != nil {
+		t.Fatalf("validateConfig(valid nested) error = %v", err)
+	}
+	if err := validateConfig(map[string]any{"models": []any{map[string]any{}}}, schema); err == nil {
+		t.Fatal("validateConfig(missing nested required) error = nil")
+	}
+	if err := validateConfig(map[string]any{"models": []any{}}, schema); err == nil {
+		t.Fatal("validateConfig(nested minItems) error = nil")
+	}
+}

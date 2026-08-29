@@ -57,6 +57,30 @@ AIEngine 是唯一的业务调用入口，负责：
 - 管理超时、取消、预算和失败策略；
 - 持久化执行事件和 Tool Call 审计。
 
+### 3.4 执行运行时与场景适配器
+
+AIEngine 内部只有一个通用 Agent 执行运行时，负责模型调用、推理循环、上下文工具、预算、取消、流式事件和输出契约。业务场景通过适配器把自己的输入转换为 `aiengine.Request`：
+
+```text
+Diagnosis Adapter     Inspection Adapter     Workflow Adapter
+       \                    |                    /
+                    AIEngine Runtime
+             (Agent Loop + Tool Gateway + Audit)
+                              |
+                         AIProvider + Model
+```
+
+Skill 不是执行运行时。Skill 只提供可选的专家指令、工具声明、输入/输出 Schema 和目标资源约束；`SkillService.ResolvePlan` 将已发布版本解析为只读 `ExecutionPlan`，由 Runtime 注入请求。Skill 不持有模型客户端、Connector、ADK Runner 或执行 Store。未指定 Skill 的诊断、对话和巡检仍直接使用 AgentProfile 或内置指令进入 AIEngine。这样所有场景共享同一套模型固定、推理循环、Tool Calling、预算、取消、流式事件和审计行为，不会因为是否使用 Skill 产生两套执行语义。
+
+代码分层约束：
+
+- `backend/aiengine` 持有唯一的通用 `AgentRunner` 和 `Runtime`；它不依赖 Skill、Diagnosis 或具体 Connector。
+- `backend/skill` 只实现 Skill 资源/版本解析，并输出 `aiengine.ExecutionPlan`；不得依赖模型、Connector、执行 Store，也不得定义 Runner 或执行入口。
+- `backend/diagnosis` 只负责会话、诊断计划、Evidence 和报告，并直接依赖 `aiengine.Engine`。
+- `backend/inspection` 和 `backend/aiengine/workflow_service.go` 同样通过 `aiengine.Engine` 执行 Agent，不直接访问模型客户端。巡检策略可以选择一个 AgentProfile；未选择时使用内置巡检解释契约，不再把 Skill 作为必选执行依赖。
+
+当前实现由 `aiengine.Runtime` 统一管理生命周期、上下文、取消和计划解析：无 Skill 的请求直接进入 `aiengine.AgentRunner`；带 `skill_resource_id` 或 `skill_version_id` 的请求先经 `PlanResolver` 注入执行计划，然后仍进入同一个 `aiengine.AgentRunner`。Diagnosis、Inspection 和 Workflow 都直接使用该路径；巡检未配置 AgentProfile 时使用内置契约。不存在 Skill Runner 回退路径或第二套 Agent Loop。
+
 ### 3.4 AgentProfile
 
 AgentProfile 是资源目录中的可复用专家智能体配置，不是模型资源，也不直接保存
@@ -491,7 +515,6 @@ SSE 在发送终态事件后关闭连接；客户端通过 `Last-Event-ID` 或 `
 | `resource:create` | 创建 AIProvider |
 | `resource:update` | 修改 Provider 配置和模型目录 |
 | `resource:delete` | 删除或停用 Provider |
-| `endpoint:manage` | 第一版移除，不再作为运行时权限 |
 | `diagnosis:start` | 启动诊断执行 |
 | `diagnosis:read` | 查看诊断事件和审计 |
 | `inspection:manage` | 配置巡检场景标签和 Scope 默认 Provider |
@@ -573,19 +596,15 @@ AI 诊断对话框使用级联选择器：
 
 如果后续启用显式故障切换，必须在 Request 或场景策略中明确候选 Provider/Model，并在事件中记录完整切换链。已经产生模型输出或工具副作用后不得静默切换。
 
-## 16. 数据库改造
+## 16. 数据库契约
 
-从当前 `AIEndpoint` 架构迁移到第一版时：
+当前数据库只保留 AIProvider、Scope 场景绑定、Skill/AgentProfile 版本和
+AIEngine 统一事件/工具审计表。Skill 不拥有执行表；历史版本中的旧 AI 资源和
+Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这些结构。
 
-1. 删除或归档 `AIEndpoint` 资源和相关 Scope 默认表；
-2. 将 Provider 的模型目录补齐温度、上下文窗口和能力集合；
-3. 创建 `scope_ai_provider_bindings`；
-4. 将默认 AIEndpoint 转换为对应 Scope 的默认 AIProvider；
-5. 删除 `endpoint:manage` 权限和旧接口；
-6. 更新诊断、Skill、巡检和 AIEngine 请求字段为 `ai_provider_resource_id` 与 `model_name`；
-7. 清空不再兼容的旧 AI 资源数据，不保留运行时兼容分支。
-
-由于项目已明确不保留旧 AI 资源，本迁移可以在维护窗口中执行硬切换，失败时回滚数据库迁移，不要求保留旧业务数据。
+一次 AIEngine 执行的生命周期事件写入 `ai_execution_events`，每次工具调用写入
+`ai_execution_tool_calls`。事件和工具审计都保存最终 Provider、模型、状态、耗时和
+错误信息，并对入参/出参递归脱敏。
 
 ## 17. 非功能要求
 
@@ -607,4 +626,4 @@ AI 诊断对话框使用级联选择器：
 5. 工具调用全过程记录入参、出参、状态、耗时和错误，审计结果完成递归脱敏。
 6. 同步、SSE、取消、超时、预算、失败原因和断线续读测试通过。
 7. 执行记录能够明确回答“使用了哪个 Provider 的哪个模型”。
-8. 业务 API、前端和后台 Worker 均不再依赖 `AIEndpoint`。
+8. 业务 API、前端和后台 Worker 均只依赖 AIProvider、模型名称和 AIEngine 统一执行契约。

@@ -106,14 +106,27 @@ func CallBounded(ctx context.Context, endpoint, name string, allowed map[string]
 }
 
 func CallBoundedWithSecurity(ctx context.Context, endpoint, name string, allowed map[string]bool, arguments map[string]any, timeout time.Duration, limit int64, enhancedSecurity bool) (json.RawMessage, error) {
-	if !allowed[strings.TrimSpace(name)] {
+	name = strings.TrimSpace(name)
+	if name == "" || !allowed[name] {
 		return nil, errors.New("MCP tool is not allowlisted")
 	}
-	if _, err := endpointURL(endpoint, enhancedSecurity); err != nil {
+	normalized, err := endpointURL(endpoint, enhancedSecurity)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := DiscoverWithSecurity(ctx, endpoint, timeout, enhancedSecurity); err != nil {
+	discovered, err := DiscoverWithSecurity(ctx, normalized.String(), timeout, enhancedSecurity)
+	if err != nil {
 		return nil, err
+	}
+	found := false
+	for _, tool := range discovered.Tools {
+		if tool.Name == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("MCP tool %q is not available on the server", name)
 	}
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -121,7 +134,7 @@ func CallBoundedWithSecurity(ctx context.Context, endpoint, name string, allowed
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := gomcp.NewClient(&gomcp.Implementation{Name: "opskeeper", Version: "t14"}, nil)
-	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient(timeout, enhancedSecurity), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
+	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: normalized.String(), HTTPClient: httpClient(timeout, enhancedSecurity), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
 	if err != nil {
 		return nil, err
 	}
