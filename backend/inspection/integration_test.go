@@ -65,7 +65,7 @@ func TestLabelSelectorResolvesOnlyMatchingActiveTargets(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels,status) VALUES($1::uuid,'Application','wrong', '{"env":"dev"}','active') RETURNING id::text`, scope).Scan(&wrong); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,target_labels,skill_resource_ids) VALUES($1::uuid,'label-'||gen_random_uuid()::text,'* * * * *','UTC','{"env":"prod"}','{}') RETURNING id::text`, scope).Scan(&policy); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,target_labels) VALUES($1::uuid,'label-'||gen_random_uuid()::text,'* * * * *','UTC','{"env":"prod"}') RETURNING id::text`, scope).Scan(&policy); err != nil {
 		t.Fatal(err)
 	}
 	targets, err := NewStore(pool).ResolveTargets(ctx, Policy{ID: policy, ScopeID: scope, TargetLabels: map[string]string{"env": "prod"}})
@@ -100,7 +100,7 @@ func TestJobLeaseRecoveryAndRetry(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM inspection_jobs WHERE run_id IN (SELECT id FROM inspection_runs WHERE scope_id=$1::uuid); DELETE FROM inspection_runs WHERE scope_id=$1::uuid; DELETE FROM inspection_policies WHERE scope_id=$1::uuid; DELETE FROM scopes WHERE id=$1::uuid`, scope)
 	})
-	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,skill_resource_ids,timeout_seconds) VALUES($1::uuid,'lease-test-'||gen_random_uuid()::text,'* * * * *','UTC','{}',10) RETURNING id::text`, scope).Scan(&policy); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,timeout_seconds) VALUES($1::uuid,'lease-test-'||gen_random_uuid()::text,'* * * * *','UTC',10) RETURNING id::text`, scope).Scan(&policy); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO inspection_runs(policy_id,scope_id,window_start,window_end,trigger,policy_snapshot,target_snapshot) VALUES($1::uuid,$2::uuid,now(),now()+interval '1 minute','manual','{}','[]') RETURNING id::text`, policy, scope).Scan(&run); err != nil {
@@ -187,7 +187,7 @@ func TestFindingIsResolvedWhenRuleDisappears(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name) VALUES($1::uuid,'PostgreSQL','target-'||gen_random_uuid()::text) RETURNING id::text`, scope).Scan(&target); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,skill_resource_ids,timeout_seconds) VALUES($1::uuid,'finding-'||gen_random_uuid()::text,'* * * * *','UTC','{}',10) RETURNING id::text`, scope).Scan(&policy); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,timeout_seconds) VALUES($1::uuid,'finding-'||gen_random_uuid()::text,'* * * * *','UTC',10) RETURNING id::text`, scope).Scan(&policy); err != nil {
 		t.Fatal(err)
 	}
 	makeRun := func(id *string) {

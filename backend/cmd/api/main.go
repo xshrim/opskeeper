@@ -148,8 +148,6 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	agentProfileService := skill.NewAgentProfileService(resourceService, agentProfileVersions)
 	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
 	agentProfileResolver.Versions = agentProfileVersions
-	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore).WithAgentProfileResolver(agentProfileResolver)
-	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	contextTooling := aiengine.NewContextTooling(
@@ -178,8 +176,17 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		return aiengine.SearchDocuments(query, base)
 	})
 	contextTooling.Gateway.AuditStore = aiStore
-	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore).
-		WithAgentProfileResolver(agentProfileResolver)
+	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose aiengine.Purpose) (aiengine.ModelBuildResult, error) {
+		resolved, client, err := llmService.BuildModel(ctx, scopeID, providerID, modelName, llm.Purpose(purpose))
+		if err != nil {
+			return aiengine.ModelBuildResult{}, err
+		}
+		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities}, nil
+	}
+	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
+		WithAgentProfileResolver(agentProfileResolver).
+		WithPlanResolver(skillService)
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), aiEngine, 2*time.Minute)
 	workflowService := aiengine.NewWorkflowService(workflowRunStore, aiEngine, contextTooling.Gateway, workflowRetriever, aiStore)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service
@@ -207,7 +214,6 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			LLMs:               llmService,
 			Skills:             skillService,
 			AgentProfiles:      agentProfileService,
-			SkillRunner:        skillRunner,
 			AIEngine:           aiEngine,
 			AIEngineEvents:     aiStore,
 			AIEngineToolCalls:  aiStore,

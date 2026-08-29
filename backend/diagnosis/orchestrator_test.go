@@ -9,17 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"opskeeper/backend/connector"
-	"opskeeper/backend/skill"
+	"opskeeper/backend/aiengine"
 )
 
 func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 	store := newRecordingStore()
-	runner := fakeRunner{run: func(_ context.Context, input skill.RunInput) (skill.RunResult, error) {
-		input.EvidenceObserver(skill.ObservedEvidence{ToolName: "connector_metrics_query", TargetResourceID: "target-1", Evidence: connector.Evidence{SourceResourceID: "source-1", Capability: connector.CapabilityQueryMetrics, CollectedAt: time.Now(), Summary: map[string]any{"series": 1}, Data: json.RawMessage(`{"rate":0.12}`)}})
-		return skill.RunResult{Output: "错误率在采样窗口内升高。"}, nil
+	engine := fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		request.ObservationSink(aiengine.ToolObservation{ToolName: "connector_metrics_query", ResourceID: "target-1", Result: aiengine.ToolResult{Output: map[string]any{"rate": 0.12}, Untrusted: true}})
+		return aiengine.Result{Output: "错误率在采样窗口内升高。"}, nil
 	}}
-	orchestrator := NewOrchestrator(&Service{store: store}, runner, time.Second)
+	orchestrator := NewOrchestrator(&Service{store: store}, engine, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
 	if store.session.Status != StatusSucceeded {
@@ -41,8 +40,8 @@ func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 
 func TestOrchestratorMarksOutputWithoutEvidenceAsNeedsVerification(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeRunner{run: func(context.Context, skill.RunInput) (skill.RunResult, error) {
-		return skill.RunResult{Output: "可能是上游依赖变慢。"}, nil
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+		return aiengine.Result{Output: "可能是上游依赖变慢。"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -56,8 +55,8 @@ func TestOrchestratorMarksOutputWithoutEvidenceAsNeedsVerification(t *testing.T)
 
 func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeRunner{run: func(context.Context, skill.RunInput) (skill.RunResult, error) {
-		return skill.RunResult{}, errors.New("provider unavailable")
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+		return aiengine.Result{}, errors.New("provider unavailable")
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 	if store.session.Status != StatusFailed || !store.hasEvent("diagnosis.failed") {
@@ -67,9 +66,9 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 	store = newRecordingStore()
 	store.claimed = true
 	calls := 0
-	orchestrator = NewOrchestrator(&Service{store: store}, fakeRunner{run: func(context.Context, skill.RunInput) (skill.RunResult, error) {
+	orchestrator = NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
 		calls++
-		return skill.RunResult{}, nil
+		return aiengine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 	if calls != 0 || store.session.Status != StatusQueued {
@@ -77,13 +76,18 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 	}
 }
 
-type fakeRunner struct {
-	run func(context.Context, skill.RunInput) (skill.RunResult, error)
+type fakeEngine struct {
+	execute func(context.Context, aiengine.Request) (aiengine.Result, error)
 }
 
-func (f fakeRunner) Run(ctx context.Context, input skill.RunInput) (skill.RunResult, error) {
-	return f.run(ctx, input)
+func (f fakeEngine) Name() string { return "fake" }
+func (f fakeEngine) Execute(ctx context.Context, input aiengine.Request) (aiengine.Result, error) {
+	return f.execute(ctx, input)
 }
+func (f fakeEngine) Stream(context.Context, aiengine.Request) (<-chan aiengine.Event, error) {
+	return nil, errors.New("stream not implemented")
+}
+func (f fakeEngine) Cancel(context.Context, string) error { return nil }
 
 type recordingStore struct {
 	mu         sync.Mutex

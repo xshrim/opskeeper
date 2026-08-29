@@ -42,12 +42,12 @@ func (r policyResourceReader) Get(_ context.Context, id string) (resource.Resour
 	return item, nil
 }
 
-func TestCreatePolicyRequiresAuthorizedActiveTargetAndSkill(t *testing.T) {
+func TestCreatePolicyRequiresAuthorizedActiveTargetAndOptionalAgentProfile(t *testing.T) {
 	store := &memoryStore{}
-	resources := policyResourceReader{"target": {ID: "target", ScopeID: "scope", Kind: "PostgreSQL", Status: resource.StatusActive}, "skill": {ID: "skill", ScopeID: "scope", Kind: "Skill", Status: resource.StatusActive}}
+	resources := policyResourceReader{"target": {ID: "target", ScopeID: "scope", Kind: "PostgreSQL", Status: resource.StatusActive}, "profile": {ID: "profile", ScopeID: "scope", Kind: "AgentProfile", Status: resource.StatusActive}}
 	service := NewService(store, resources)
 	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope"}})
-	policy, err := service.CreatePolicy(ctx, Policy{ScopeID: "scope", Name: "health", Cron: "0 * * * *", Timezone: "UTC", TargetResourceIDs: []string{"target"}, SkillResourceIDs: []string{"skill"}, Timeout: time.Minute, MaxConcurrent: 1, MaxToolCalls: 1, MaxTokens: 1}, "actor")
+	policy, err := service.CreatePolicy(ctx, Policy{ScopeID: "scope", Name: "health", Cron: "0 * * * *", Timezone: "UTC", TargetResourceIDs: []string{"target"}, AgentProfileResourceID: "profile", Timeout: time.Minute, MaxConcurrent: 1, MaxToolCalls: 1, MaxTokens: 1}, "actor")
 	if err != nil || policy.ID != "policy-1" {
 		t.Fatalf("CreatePolicy()=%#v,%v", policy, err)
 	}

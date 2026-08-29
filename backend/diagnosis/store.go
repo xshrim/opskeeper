@@ -320,8 +320,13 @@ func (s *store) ClaimRun(ctx context.Context, sessionID string) (Session, bool, 
 	err := s.pool.QueryRow(ctx, `UPDATE diagnosis_sessions
 		SET status = 'planning', updated_at = now()
 		WHERE id = $1::uuid AND status = 'queued'
-		RETURNING id::text, scope_id::text, actor_user_id::text, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at`, sessionID).
-		Scan(&item.ID, &item.ScopeID, &item.ActorUserID, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt)
+		RETURNING id::text, scope_id::text, COALESCE(provider_resource_id::text, ''), COALESCE(model_name, ''),
+			actor_user_id::text, status, title, error_code, error_message,
+			started_at, completed_at, created_at, updated_at`, sessionID).
+		Scan(&item.ID, &item.ScopeID, &item.ProviderResourceID, &item.ModelName,
+			&item.ActorUserID, &item.Status, &item.Title, &item.ErrorCode,
+			&item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt,
+			&item.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, false, nil
 	}

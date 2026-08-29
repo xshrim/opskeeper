@@ -66,13 +66,13 @@
     type RoleDefinition,
     type Team,
     type AIConnectionResult,
+    type AIProviderAvailability,
     type InspectionPolicy,
     type InspectionRun,
     type InspectionFinding,
     type NotificationChannel,
     type OperationRequest,
     type MCPSnapshot,
-    type SkillExecution,
     type SkillVersion,
     type AgentProfileVersion,
     type TopologyNode,
@@ -126,36 +126,6 @@
     description: string;
     inputSchema: Record<string, unknown>;
   };
-  const legacyTeamIconNames: Record<string, string> = {
-    platform: 'Boxes',
-    team: 'UsersRound',
-    project: 'FolderKanban',
-    application: 'AppWindow',
-    api: 'Waypoints',
-    building: 'Building2',
-    cloud: 'Cloud',
-    kubernetes: 'Boxes',
-    endpoint: 'Network',
-    middleware: 'ServerCog',
-    postgresql: 'Database',
-    redis: 'DatabaseZap',
-    kafka: 'Radio',
-    metrics: 'ChartNoAxesCombined',
-    logs: 'FileText',
-    traces: 'GitBranch',
-    observability: 'ScanSearch',
-    notification: 'Bell',
-    schedule: 'Clock',
-    search: 'Search',
-    runbook: 'BookOpen',
-    skill: 'Sparkles',
-    llm: 'BrainCircuit',
-    mcp: 'Bot',
-    storage: 'HardDrive',
-    credential: 'KeyRound',
-    resource: 'Package'
-  };
-
   const commonTeamIconLabels: Record<string, string> = {
     Boxes: '平台',
     UsersRound: '团队',
@@ -346,14 +316,11 @@
   let selectedSkillVersionId = '';
   let llmModelName = '';
   let skillVersions: SkillVersion[] = [];
-  let skillExecutions: SkillExecution[] = [];
   let skillInstruction = '';
   let skillTargetKinds = 'Application';
   let skillInputSchema = '{"type":"object","additionalProperties":true}';
   let skillOutputSchema = '{"type":"object","additionalProperties":true}';
   let skillInput = '{}';
-  let skillTargetResourceId = '';
-  let skillOutput = '';
   let selectedSkillToolNames: string[] = [];
   let agentProfileResources: Resource[] = [];
   let selectedAgentProfileId = '';
@@ -368,6 +335,7 @@
   let agentProfileOutputSchema = '{"type":"object","additionalProperties":true}';
   let diagnosisLoaded = false;
   let diagnosisSessions: DiagnosisSession[] = [];
+  let diagnosisAvailableProviders: AIProviderAvailability[] = [];
   let selectedDiagnosisId = '';
   let diagnosisSnapshot: DiagnosisSnapshot | null = null;
   let diagnosisQuestion = '';
@@ -399,7 +367,7 @@
   let inspectionTimezone =
     Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   let inspectionTargetIds: string[] = [];
-  let inspectionSkillIds: string[] = [];
+  let inspectionAgentProfileId = '';
   let inspectionTargetLabels = '{}';
   let inspectionTimeoutSeconds = 120;
   let inspectionRetries = 1;
@@ -430,11 +398,11 @@
 
   let teamName = '';
   let teamCode = '';
-  let teamIcon = 'team';
+  let teamIcon = 'UsersRound';
   let projectTeamId = '';
   let projectName = '';
   let projectCode = '';
-  let projectIcon = 'project';
+  let projectIcon = 'FolderKanban';
   let resourceKind = '';
   let resourceCategory = '全部';
   let resourceSubtype = '全部';
@@ -580,22 +548,15 @@
   $: applicationCandidates = discoveryItems.filter(
     (item) => item.kind === 'Application'
   );
-  $: aiProviders = resources.filter((item) => item.kind === 'AIProvider');
-  $: if (view === 'diagnosis' && !selectedProviderId && aiProviders[0]) {
-    selectedProviderId = aiProviders[0].id;
-  }
   $: if (view === 'diagnosis' && !llmModelName && selectedProviderId) {
-    const provider = aiProviders.find((item) => item.id === selectedProviderId);
-    const models = Array.isArray(provider?.config?.models) ? provider?.config?.models as Array<Record<string, unknown>> : [];
-    llmModelName = String(provider?.config?.default_model ?? models[0]?.name ?? '');
+    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    llmModelName = String(available?.models[0]?.name ?? '');
   }
   $: diagnosisProviderModels = (() => {
-    const provider = aiProviders.find((item) => item.id === selectedProviderId);
-    return Array.isArray(provider?.config?.models)
-      ? (provider?.config?.models as Array<Record<string, unknown>>)
-      : [];
+    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    if (available) return available.models;
+    return [];
   })();
-  $: llmProviders = aiProviders;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
   $: agentProfileResources = resources.filter((item) => item.kind === 'AgentProfile');
   $: executableTargets = visibleResources.filter(
@@ -1159,7 +1120,7 @@
         timezone: inspectionTimezone,
         target_resource_ids: inspectionTargetIds,
         target_labels: JSON.parse(inspectionTargetLabels),
-        skill_resource_ids: inspectionSkillIds,
+        agent_profile_resource_id: inspectionAgentProfileId || undefined,
         timeout_seconds: inspectionTimeoutSeconds,
         retries: inspectionRetries,
         max_concurrent: inspectionMaxConcurrent,
@@ -1265,6 +1226,18 @@
 
   async function loadDiagnosis() {
     diagnosisLoaded = true;
+    if (selectedScopeId) {
+      try {
+        diagnosisAvailableProviders = await api.availableAIProviders(selectedScopeId, 'diagnosis');
+        if (diagnosisAvailableProviders.length > 0 && (!selectedProviderId || !diagnosisAvailableProviders.some((item) => item.provider_resource_id === selectedProviderId))) {
+          selectedProviderId = diagnosisAvailableProviders[0].provider_resource_id;
+          llmModelName = diagnosisAvailableProviders[0].models[0]?.name ?? '';
+        }
+      } catch (error) {
+        diagnosisAvailableProviders = [];
+        errorMessage = describeError(error, '可用模型服务商加载失败');
+      }
+    }
     await loadDiagnosisSessions();
   }
 
@@ -1296,6 +1269,12 @@
         )
       };
       diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
+      if (diagnosisSnapshot.session.ai_provider_resource_id) {
+        selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
+      }
+      if (diagnosisSnapshot.session.model_name) {
+        llmModelName = diagnosisSnapshot.session.model_name;
+      }
       diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
       diagnosisEventCursor = 0;
       openDiagnosisEvents(id);
@@ -1617,21 +1596,10 @@
 
   async function loadAI() {
     aiLoaded = true;
-    selectedProviderId = selectedProviderId || aiProviders[0]?.id || '';
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
     selectedAgentProfileId = selectedAgentProfileId || agentProfileResources[0]?.id || '';
-    if (!llmModelName && selectedProviderId) {
-      const provider = aiProviders.find((item) => item.id === selectedProviderId);
-      const models = Array.isArray(provider?.config?.models)
-        ? (provider.config.models as Array<Record<string, unknown>>)
-        : [];
-      llmModelName = String(provider?.config?.default_model ?? models[0]?.name ?? '');
-    }
     if (selectedSkillId) await loadSkillVersions();
     if (selectedAgentProfileId) await loadAgentProfileVersions();
-    if (selectedScopeId) {
-      try { skillExecutions = await api.skillExecutions(selectedScopeId); } catch { skillExecutions = []; }
-    }
   }
 
   async function loadAgentProfileVersions() {
@@ -1750,26 +1718,6 @@
     });
   }
 
-  async function executeSkill() {
-    if (!selectedScopeId || !selectedSkillId || !selectedSkillVersionId) return;
-    await action(async () => {
-      const result = await api.executeSkill({
-        scope_id: selectedScopeId,
-        target_resource_id: skillTargetResourceId || undefined,
-        skill_resource_id: selectedSkillId,
-        skill_version_id: selectedSkillVersionId,
-        provider_resource_id: selectedProviderId || undefined,
-        model_name: llmModelName || undefined,
-        input: JSON.parse(skillInput),
-        max_tool_calls: 8,
-        max_tokens: 12000,
-        timeout_seconds: 120
-      });
-      skillOutput = result.output;
-      skillExecutions = [result.execution, ...skillExecutions];
-      notice = 'Skill 执行完成';
-    });
-  }
 
   async function loadDiscovery() {
     discoveryLoaded = true;
@@ -2025,7 +1973,7 @@
       teams = [...teams, created];
       teamName = '';
       teamCode = '';
-      teamIcon = 'team';
+      teamIcon = 'UsersRound';
       notice = `团队“${created.name}”已创建`;
       teamDialogOpen = false;
     });
@@ -2104,7 +2052,7 @@
       projects = [...projects, created];
       projectName = '';
       projectCode = '';
-      projectIcon = 'project';
+      projectIcon = 'FolderKanban';
       notice = `项目“${created.name}”已创建`;
     });
   }
@@ -3338,7 +3286,7 @@
   }
 
   function teamIconComponent(icon: string | undefined): any {
-    const key = legacyTeamIconNames[icon ?? ''] ?? icon ?? 'UsersRound';
+    const key = icon ?? 'UsersRound';
     return (
       lucideIcons[key as keyof typeof lucideIcons] ?? lucideIcons.UsersRound
     );
@@ -5245,29 +5193,16 @@
                   {/each}
                 </div>
               </fieldset>
-              <fieldset>
-                <legend>诊断 Skill</legend>
-                <div class="check-grid">
-                  {#each skillResources.filter( (item) => resourceInActiveWorkspace(item) ) as skill}
-                    <label class="check-row"
-                      ><input
-                        type="checkbox"
-                        checked={inspectionSkillIds.includes(skill.id)}
-                        on:change={() =>
-                          (inspectionSkillIds = toggleInspectionSelection(
-                            inspectionSkillIds,
-                            skill.id
-                          ))}
-                      />{skill.name}</label
-                    >
-                  {/each}
-                </div>
-              </fieldset>
+              <label>解释 AgentProfile（可选）<select bind:value={inspectionAgentProfileId}>
+                <option value="">使用内置巡检解释 Agent</option>
+                {#each agentProfileResources.filter((item) => resourceInActiveWorkspace(item) && item.status === 'active') as profile}
+                  <option value={profile.id}>{profile.name} · {scopeName(profile.scope_id)}</option>
+                {/each}
+              </select></label>
               <button
                 class="primary"
                 disabled={busy ||
                   !inspectionPolicyName ||
-                  inspectionSkillIds.length === 0 ||
                   (inspectionTargetIds.length === 0 &&
                     inspectionTargetLabels.trim() === '{}')}>创建策略</button
               >
@@ -5643,7 +5578,7 @@
             <form class="diagnosis-composer-f" on:submit|preventDefault={() => void submitDiagnosisMessage()}>
               <div class="diagnosis-composer-shell">
                 <textarea bind:value={diagnosisComposerText} on:keydown={handleDiagnosisComposerKeydown} placeholder="描述问题，或输入 / 调用 Skill…" aria-label="输入诊断问题" rows="3" maxlength="16000"></textarea>
-              <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedProviderId} aria-label="选择模型服务商">{#each aiProviders as provider}<option value={provider.id}>{provider.name} · 模型服务商</option>{:else}<option value="">当前作用域暂无模型服务商</option>{/each}</select><select bind:value={llmModelName} aria-label="选择模型"><option value="">选择模型</option>{#each diagnosisProviderModels as model}<option value={String(model.name ?? '')}>{String(model.name ?? '')}</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
+              <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedProviderId} aria-label="选择模型服务商">{#each diagnosisAvailableProviders as provider}<option value={provider.provider_resource_id}>{provider.name}</option>{:else}<option value="">当前作用域暂无可用模型服务商</option>{/each}</select><select bind:value={llmModelName} aria-label="选择模型"><option value="">选择模型</option>{#each diagnosisProviderModels as model}<option value={String(model.name ?? '')}>{String(model.name ?? '')}</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
               </div>
               <small class="diagnosis-composer-note"><span>Enter 发送 · Shift + Enter 换行</span><span>当前模型支持：文本、工具调用、流式输出</span></small>
             </form>
@@ -5813,66 +5748,6 @@
               </form>
             </section>
 
-            <section class="panel recent-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">CONTROLLED RUNNER</p>
-                  <h2>执行 Skill</h2>
-                </div>
-              </div>
-              <form
-                class="stack-form compact-form"
-                on:submit|preventDefault={executeSkill}
-              >
-                <label
-                  >目标资源<select bind:value={skillTargetResourceId}
-                    ><option value="">无目标资源</option
-                    >{#each executableTargets as item}<option value={item.id}
-                        >{item.name} · {resourceSchemaName(item.kind)}</option
-                      >{/each}</select
-                  ></label
-                >
-                <label
-                  >输入 JSON<textarea
-                    bind:value={skillInput}
-                    rows="5"
-                    spellcheck="false"
-                  ></textarea></label
-                >
-                <button
-                  class="primary"
-                  disabled={busy || !selectedSkillVersionId}>执行</button
-                >
-              </form>
-              {#if skillOutput}<pre
-                  class="config-preview">{skillOutput}</pre>{/if}
-            </section>
-
-            <section class="panel wide-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">EXECUTIONS</p>
-                  <h2>执行记录</h2>
-                </div>
-                <span class="count">{skillExecutions.length}</span>
-              </div>
-              <div class="table-list">
-                {#each skillExecutions as execution}<div
-                    class="list-row static"
-                  >
-                    <span
-                      ><strong>{execution.model_name}</strong><small
-                        >{formatDate(execution.started_at)} · {execution.total_tokens}
-                        tokens · {execution.tool_call_count} tools</small
-                      ></span
-                    ><span class="status-label {execution.status}"
-                      >{execution.status}</span
-                    >
-                  </div>{:else}<div class="empty-state">
-                    当前 Scope 暂无执行记录。
-                  </div>{/each}
-              </div>
-            </section>
           </section>
       {:else if view === 'access'}
         <section class="access-page">

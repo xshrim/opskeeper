@@ -23,7 +23,9 @@
 - 指定 Skill、专家 Agent、知识库和工作流；
 - 工具调用过程、输入输出、错误和证据的可追溯记录；
 - 权限、预算、取消、超时、失败恢复和敏感信息保护；
-- 将现有 Skill Runner、Diagnosis 和 Inspection 能力统一接入 AIEngine。
+- 将 Skill 作为可选的 Prompt/工具/契约适配器接入 AIEngine；Diagnosis、Inspection 和 Workflow 直接使用统一 Agent Runtime。巡检策略不强制绑定 Skill，可选绑定 AgentProfile。
+- AI 诊断页面可选择具备诊断能力的 AIProvider 和模型，并通过 AIEngine 完成实际故障诊断。
+- 诊断页面展示执行状态、受控工具动作、证据链、模型错误原因和中断状态。
 
 ## 3. 非目标
 
@@ -101,6 +103,7 @@
 | T03 | Skill 与 Agent Profile | Skill 版本、专家 Agent、组合 Prompt 和契约校验 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 事件持久化、SSE 续读、Tool Call 脱敏审计 | T01-T03 | 已完成 |
 | T05 | 知识库与工作流编排 | 知识检索、引用、持久化 DAG、审批和恢复 | T01-T04 | 实施中 |
+| T06 | AI 诊断页面接入 AIEngine | Provider/模型选择、真实诊断执行、流式状态和证据展示 | T01-T04 | 已完成 |
 
 ## 7. 依赖与风险
 

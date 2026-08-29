@@ -4167,29 +4167,6 @@ textarea:focus {
 .ai-route-choice {
   max-width: 360px;
 }
-.ai-fallback-picker {
-  display: grid;
-  gap: 8px;
-  max-width: 360px;
-  margin: 16px 0 0;
-  padding: 12px;
-  border: 1px solid var(--theme-border);
-  border-radius: 6px;
-}
-.ai-fallback-picker legend {
-  padding: 0 4px;
-  color: var(--theme-fg);
-  font-size: 11px;
-  font-weight: 700;
-}
-.ai-fallback-picker label {
-  color: var(--theme-fg-muted);
-  font-size: 11px;
-}
-.ai-fallback-picker input {
-  margin-right: 7px;
-  accent-color: var(--theme-accent);
-}
 .ai-review-grid {
   display: grid;
   gap: 18px;
@@ -6563,7 +6540,6 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .ai-model-detail-aside > div strong,
 :root[data-theme='dark'] .ai-wizard-content,
 :root[data-theme='dark'] .ai-form-grid label,
-:root[data-theme='dark'] .ai-fallback-picker legend,
 :root[data-theme='dark'] .ai-review-list strong,
 :root[data-theme='dark'] .ai-review-section-heading h4,
 :root[data-theme='dark'] .ai-review-endpoint-heading strong {
@@ -6736,7 +6712,6 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .ai-review-list,
 :root[data-theme='dark'] .ai-review-checks,
 :root[data-theme='dark'] .ai-review-endpoint,
-:root[data-theme='dark'] .ai-fallback-picker,
 :root[data-theme='dark'] .ai-route-choice button,
 :root[data-theme='dark'] .ai-capability-picker button,
 :root[data-theme='dark'] .ai-endpoint-card {
@@ -6803,9 +6778,6 @@ button.workspace-team:hover {
 :root[data-theme='dark'] .ai-route-choice button.active small {
   color: var(--theme-fg-muted);
 }
-:root[data-theme='dark'] .ai-fallback-picker label {
-  color: var(--theme-fg-muted);
-}
 :root[data-theme='dark'] .ai-model-capabilities em,
 :root[data-theme='dark'] .ai-endpoint-caps em {
   color: var(--theme-teal);
@@ -6820,7 +6792,7 @@ button.workspace-team:hover {
   border-color: var(--theme-border);
 }
 
-/* Keep legacy status and action selectors on the same dark semantic axis. */
+/* Keep status and action selectors on the same dark semantic axis. */
 :root[data-theme='dark'] .danger-action,
 :root[data-theme='dark'] .status-label.disabled,
 :root[data-theme='dark'] .status-label.down,

@@ -47,19 +47,21 @@ flowchart LR
     UI[Browser] <--> API[Go API Server + Embedded Svelte Web]
     API --> Auth[Scope RBAC]
     API --> Catalog[Resource Catalog]
-    API --> AI[AI Orchestrator]
+    API --> AI[AIEngine Runtime]
     API --> PG[(PostgreSQL)]
     API --> Redis[(Redis)]
     Scheduler[Inspection Scheduler] --> Jobs[PostgreSQL Job Queue]
     Jobs --> Worker[Worker Pool]
     Worker --> Discovery[Kubernetes Discovery]
-    Worker --> Skills[Skill Runner]
-    Skills --> K8S[Kubernetes APIs]
-    Skills --> Middleware[Middleware APIs]
-    Skills --> Observability[Metrics Logs Traces]
-    Skills --> MCP[MCP Servers]
+    Worker --> Profiles[AgentProfile Resolver]
+    AI --> Gateway[AIEngine Tool Gateway]
+    Gateway --> K8S[Kubernetes APIs]
+    Gateway --> Middleware[Middleware APIs]
+    Gateway --> Observability[Metrics Logs Traces]
+    Gateway --> MCP[MCP Servers]
     AI --> LLM[AIEngine / AIProvider]
-    AI --> Skills
+    AI --> Skills[Optional Skill Plan Resolver]
+    AI --> Profiles
     Worker --> PG
 ```
 
@@ -98,9 +100,9 @@ flowchart LR
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 AIProvider 在后续目标设计中扩展 |
 | Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现，T10-T14；Markdown Skill 编辑体验见 OI-006 |
-| AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算、执行记录和高风险审批 | 已实现，T10-T14 |
+| AIEngine Runtime | Scope 默认解析、唯一 Agent Loop、受控 Tool Calling、预算、执行事件和高风险审批 | 已实现，T10-T14 |
 | Diagnosis | 对话会话、消息、工具调用、证据和诊断报告 | 已实现，T11-T12 |
-| Inspection | 巡检策略、调度、执行、评分和异常项 | 已实现，T13 |
+| Inspection | 巡检策略、调度、确定性执行、评分和可选 AIEngine 解释 | 已实现，T13 |
 | Notification | HTTPS Webhook、签名、限流、重试和投递记录 | 已实现，T13；邮件等渠道后续扩展 |
 | Audit | 管理操作、模型调用、工具调用、审批和保留记录 | 已实现，T05-T15；敏感字段脱敏，普通角色不能修改或删除，清理要求先导出并记录批次 |
 
@@ -147,7 +149,7 @@ flowchart LR
 | `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 已实现，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 已实现，T13 |
-| `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults`、`/opskeeper/api/v1/skill-executions` | 已实现，T10 |
+| `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults` | 已实现，Skill 仅作为 AIEngine 执行计划来源 |
 | `/opskeeper/api/v1/ai-providers/{id}/test` | AIProvider 与指定模型的连接测试 |
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。

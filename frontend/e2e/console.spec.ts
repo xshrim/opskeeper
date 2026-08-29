@@ -209,7 +209,6 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           created_at: user.created_at
         }
       ]);
-    if (path.includes('/skill-executions')) return json([]);
     if (path.includes('/diagnosis-sessions/') && path.endsWith('/events'))
       return route.fulfill({
         status: 200,
@@ -354,7 +353,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           status: 'active',
           target_resource_ids: [],
           target_labels: { env: 'prod' },
-          skill_resource_ids: [ids.skill],
+          agent_profile_resource_id: '',
           timeout: 120000000000,
           retries: 1,
           max_concurrent: 2,

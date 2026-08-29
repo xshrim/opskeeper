@@ -23,7 +23,7 @@ func (s *Service) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, 
 	if err := validateName(input.Name); err != nil {
 		return Team{}, err
 	}
-	input.Icon = normalizeIcon(input.Icon, "team")
+	input.Icon = normalizeIcon(input.Icon, "UsersRound")
 	if err := validateCode(input.Code); err != nil {
 		return Team{}, err
 	}
@@ -64,7 +64,7 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 		input.Name = &trimmed
 	}
 	if input.Icon != nil {
-		icon := normalizeIcon(*input.Icon, "team")
+		icon := normalizeIcon(*input.Icon, "UsersRound")
 		input.Icon = &icon
 	}
 	if input.Labels != nil {
@@ -93,7 +93,7 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	if err := validateName(input.Name); err != nil {
 		return Project{}, err
 	}
-	input.Icon = normalizeIcon(input.Icon, "project")
+	input.Icon = normalizeIcon(input.Icon, "FolderKanban")
 	if err := validateCode(input.Code); err != nil {
 		return Project{}, err
 	}
@@ -164,7 +164,7 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 		input.Name = &trimmed
 	}
 	if input.Icon != nil {
-		icon := normalizeIcon(*input.Icon, "project")
+		icon := normalizeIcon(*input.Icon, "FolderKanban")
 		input.Icon = &icon
 	}
 	if input.Labels != nil {

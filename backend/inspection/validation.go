@@ -1,7 +1,6 @@
 package inspection
 
 import (
-	"slices"
 	"strings"
 	"time"
 )
@@ -24,12 +23,9 @@ func normalizePolicy(input Policy) (Policy, error) {
 	if input.Status != PolicyActive && input.Status != PolicyDisabled {
 		return Policy{}, invalid("policy status must be active or disabled")
 	}
-	input.TargetResourceIDs, input.SkillResourceIDs = distinctIDs(input.TargetResourceIDs), distinctIDs(input.SkillResourceIDs)
+	input.TargetResourceIDs = distinctIDs(input.TargetResourceIDs)
 	if len(input.TargetResourceIDs) == 0 && len(input.TargetLabels) == 0 {
 		return Policy{}, invalid("policy requires target_resource_ids or target_labels")
-	}
-	if len(input.SkillResourceIDs) == 0 {
-		return Policy{}, invalid("policy requires at least one Skill")
 	}
 	if input.Timeout <= 0 || input.Timeout > time.Hour {
 		return Policy{}, invalid("policy timeout must be between 1 second and 1 hour")
@@ -44,8 +40,4 @@ func normalizePolicy(input Policy) (Policy, error) {
 		}
 	}
 	return input, nil
-}
-
-func policyHasSkill(policy Policy, skillID string) bool {
-	return slices.Contains(policy.SkillResourceIDs, skillID)
 }

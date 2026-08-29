@@ -24,19 +24,19 @@ type inspectionService interface {
 
 type inspectionHandler struct{ service inspectionService }
 type policyRequest struct {
-	ScopeID           string                         `json:"scope_id"`
-	Name              string                         `json:"name"`
-	Cron              string                         `json:"cron"`
-	Timezone          string                         `json:"timezone"`
-	TargetResourceIDs []string                       `json:"target_resource_ids"`
-	SkillResourceIDs  []string                       `json:"skill_resource_ids"`
-	TargetLabels      map[string]string              `json:"target_labels"`
-	TimeoutSeconds    int                            `json:"timeout_seconds"`
-	Retries           int                            `json:"retries"`
-	MaxConcurrent     int                            `json:"max_concurrent"`
-	MaxToolCalls      int                            `json:"max_tool_calls"`
-	MaxTokens         int64                          `json:"max_tokens"`
-	Maintenance       []inspection.MaintenanceWindow `json:"maintenance"`
+	ScopeID                string                         `json:"scope_id"`
+	Name                   string                         `json:"name"`
+	Cron                   string                         `json:"cron"`
+	Timezone               string                         `json:"timezone"`
+	TargetResourceIDs      []string                       `json:"target_resource_ids"`
+	AgentProfileResourceID string                         `json:"agent_profile_resource_id"`
+	TargetLabels           map[string]string              `json:"target_labels"`
+	TimeoutSeconds         int                            `json:"timeout_seconds"`
+	Retries                int                            `json:"retries"`
+	MaxConcurrent          int                            `json:"max_concurrent"`
+	MaxToolCalls           int                            `json:"max_tool_calls"`
+	MaxTokens              int64                          `json:"max_tokens"`
+	Maintenance            []inspection.MaintenanceWindow `json:"maintenance"`
 }
 type channelRequest struct {
 	ScopeID            string  `json:"scope_id"`
@@ -72,7 +72,7 @@ func (h inspectionHandler) createPolicy(w http.ResponseWriter, r *http.Request) 
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.CreatePolicy(r.Context(), inspection.Policy{ScopeID: body.ScopeID, Name: body.Name, Cron: body.Cron, Timezone: body.Timezone, Status: inspection.PolicyActive, TargetResourceIDs: body.TargetResourceIDs, TargetLabels: body.TargetLabels, SkillResourceIDs: body.SkillResourceIDs, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Retries: body.Retries, MaxConcurrent: body.MaxConcurrent, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, Maintenance: body.Maintenance}, currentUser(r).ID)
+	item, err := h.service.CreatePolicy(r.Context(), inspection.Policy{ScopeID: body.ScopeID, Name: body.Name, Cron: body.Cron, Timezone: body.Timezone, Status: inspection.PolicyActive, TargetResourceIDs: body.TargetResourceIDs, TargetLabels: body.TargetLabels, AgentProfileResourceID: body.AgentProfileResourceID, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Retries: body.Retries, MaxConcurrent: body.MaxConcurrent, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, Maintenance: body.Maintenance}, currentUser(r).ID)
 	if err != nil {
 		writeInspectionError(w, r, err)
 		return

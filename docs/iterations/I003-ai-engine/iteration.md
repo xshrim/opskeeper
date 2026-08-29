@@ -15,7 +15,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 ## 2. 迭代范围
 
 - 建立统一 AIEngine 执行内核和执行 Profile；
-- 将现有 ADK Agent、Skill Runner、Diagnosis Orchestrator 和 Inspection AI 扩展点接入统一执行链；
+- 将现有 ADK Agent、Skill Plan Resolver、Diagnosis Orchestrator 和 Inspection AI 扩展点接入统一执行链；
 - 根据用户选择的上下文资源自动建立受控工具集合，并主动采集基础资源信息；
 - 将 Connector 和远程 MCP Server 工具纳入统一 Tool Gateway；
 - 支持指定 Skill、指定专家 Agent 以及 Skill + Agent 组合；
@@ -31,7 +31,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 
 | 需求 | 名称 | 任务 | 状态 | 需求文档 | 验收报告 |
 |---|---|---:|---|---|---|
-| R001 | AIEngine 执行框架设计与实现 | T01-T05 | 实施中 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
+| R001 | AIEngine 执行框架设计与实现 | T01-T06 | 实施中 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
 
 ## 4. 任务总览
 
@@ -42,6 +42,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 | T03 | Skill 与 Agent Profile | 支持指定 Skill、专家 Agent 和组合执行 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 完整记录流式输出、工具入参出参、错误、耗时和恢复 | T01-T03 | 已完成 |
 | T05 | 知识库与工作流编排 | 支持知识检索、引用、DAG、并行、审批和断点恢复 | T01-T04 | 实施中 |
+| T06 | AI 诊断页面接入 AIEngine | 前端可选择 AIProvider/模型，通过 AIEngine 完成真实诊断并展示状态、证据和错误 | T01-T04 | 已完成 |
 
 ## 5. 进入条件
 

@@ -2,6 +2,7 @@ package inspection
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -37,6 +38,9 @@ func NewWorker(store Store, checker DeterministicChecker, explainer AIExplainer,
 // RunOnce claims one durable job. A lost lease makes the run fail safely; a
 // subsequent worker can resume it from the frozen run snapshot.
 func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
+	if w == nil || w.store == nil {
+		return false, errors.New("inspection worker store is unavailable")
+	}
 	job, claimed, err := w.store.ClaimJob(ctx, w.owner, w.lease)
 	if err != nil || !claimed {
 		return claimed, err

@@ -216,26 +216,6 @@ export interface AgentProfileVersion {
   published_at?: string;
 }
 
-export interface SkillExecution {
-  id: string;
-  scope_id: string;
-  target_resource_id?: string;
-  skill_resource_id: string;
-  skill_version_id: string;
-  provider_resource_id: string;
-  model_name: string;
-  status: string;
-  output_preview?: string;
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  tool_call_count: number;
-  error_code?: string;
-  error_message?: string;
-  started_at: string;
-  completed_at?: string;
-}
-
 export interface InspectionPolicy {
   id: string;
   scope_id: string;
@@ -245,7 +225,7 @@ export interface InspectionPolicy {
   status: string;
   target_resource_ids: string[];
   target_labels: Record<string, string>;
-  skill_resource_ids: string[];
+  agent_profile_resource_id?: string;
   timeout: number;
   timeout_seconds?: number;
   retries: number;
@@ -335,12 +315,6 @@ export interface MCPSnapshot {
   untrusted: true;
 }
 
-export interface SkillRunResult {
-  execution: SkillExecution;
-  output: string;
-  events: number;
-}
-
 export type DiagnosisStatus =
   | 'queued'
   | 'planning'
@@ -353,6 +327,8 @@ export type DiagnosisStatus =
 export interface DiagnosisSession {
   id: string;
   scope_id: string;
+  ai_provider_resource_id?: string;
+  model_name?: string;
   actor_user_id?: string;
   status: DiagnosisStatus;
   title: string;
@@ -775,12 +751,6 @@ export const api = {
     skill_resource_id: string;
     skill_version_id: string;
   }) => request('api/v1/skill-defaults', { ...json(body), method: 'PUT' }),
-  skillExecutions: (scopeId: string) =>
-    request<SkillExecution[]>(
-      `api/v1/skill-executions?scope_id=${encodeURIComponent(scopeId)}&limit=50`
-    ),
-  executeSkill: (body: Record<string, unknown>) =>
-    request<SkillRunResult>('api/v1/skill-executions', json(body)),
   diagnosisSessions: (scopeId: string) =>
     request<DiagnosisSession[]>(
       `api/v1/diagnosis-sessions?scope_id=${encodeURIComponent(scopeId)}&limit=50`

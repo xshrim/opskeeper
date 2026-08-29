@@ -40,8 +40,8 @@ func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string
 			return Policy{}, err
 		}
 	}
-	for _, skillID := range policy.SkillResourceIDs {
-		if err := s.validateResource(ctx, policy.ScopeID, skillID, "Skill"); err != nil {
+	if policy.AgentProfileResourceID != "" {
+		if err := s.validateResource(ctx, policy.ScopeID, policy.AgentProfileResourceID, "AgentProfile"); err != nil {
 			return Policy{}, err
 		}
 	}
@@ -177,7 +177,7 @@ func (s *Service) validateResource(ctx context.Context, scopeID, id, kind string
 		return authorization.ErrForbidden
 	}
 	if kind != "" && item.Kind != kind {
-		return invalid("policy Skill is not a Skill resource")
+		return invalid("policy AgentProfile is not an AgentProfile resource")
 	}
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok && !filter.Allows(item.ScopeID, item.ID) {
 		return authorization.ErrForbidden

@@ -81,12 +81,23 @@ func main() {
 	connectors := connector.NewService(registry, resourceService, credentials, connector.NewStore(pool), limits)
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentials)
 	skillService := skill.NewService(skill.NewStore(pool), resourceService)
-	skillRunner := skill.NewRunner(skillService, llmService, connectors, skill.NewStore(pool))
+	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
+	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
+	agentProfileResolver.Versions = agentProfileVersions
 	contextTooling := aiengine.NewContextTooling(aiengine.ResourceServiceReader{Reader: resourceService}, connectors.AIEngineProvider())
 	aiStore := aiengine.NewPostgresStore(pool)
 	contextTooling.Gateway.AuditStore = aiStore
-	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore)
-	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{runner: skillRunner, engine: aiEngine, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
+	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose aiengine.Purpose) (aiengine.ModelBuildResult, error) {
+		resolved, client, err := llmService.BuildModel(ctx, scopeID, providerID, modelName, llm.Purpose(purpose))
+		if err != nil {
+			return aiengine.ModelBuildResult{}, err
+		}
+		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities}, nil
+	}
+	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
+		WithAgentProfileResolver(agentProfileResolver).
+		WithPlanResolver(skillService)
+	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: aiEngine, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
 	var operationReconciler *operation.Reconciler
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
 		operationReconciler, err = operation.NewInClusterReconciler(operation.NewStore(pool))
@@ -234,7 +245,6 @@ func (c connectorChecker) connectivity(ctx context.Context, id string) ([]inspec
 }
 
 type inspectionExplainer struct {
-	runner *skill.Runner
 	engine aiengine.Engine
 	store  interface {
 		RecordExplanation(context.Context, string, string) error
@@ -242,7 +252,7 @@ type inspectionExplainer struct {
 }
 
 func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, policy inspection.Policy, findings []inspection.Finding) error {
-	if e.runner == nil || len(policy.SkillResourceIDs) == 0 {
+	if e.engine == nil {
 		return nil
 	}
 	targets := map[string]bool{}
@@ -257,53 +267,58 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 	var firstErr error
 	succeeded := 0
 	remainingTools, remainingTokens := policy.MaxToolCalls, policy.MaxTokens
-	for _, skillID := range policy.SkillResourceIDs {
-		for targetID := range targets {
-			if remainingTools < 1 || remainingTokens < 1 {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("inspection AI budget exhausted")
-				}
-				break
+	for targetID := range targets {
+		if remainingTools < 1 || remainingTokens < 1 {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("inspection AI budget exhausted")
 			}
-			var output, status string
-			var toolCalls int
-			var totalTokens int64
-			var err error
-			if e.engine != nil {
-				result, executeErr := e.engine.Execute(ctx, aiengine.Request{
-					ScopeID: policy.ScopeID, Profile: aiengine.ProfileInspection, SkillResourceID: skillID,
-					Input: map[string]any{"target_resource_id": targetID}, Context: aiengine.ContextRequest{ResourceIDs: []string{targetID}},
-					Budget: aiengine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
-				})
-				output, toolCalls, totalTokens, status, err = result.Output, result.ToolCallCount, result.TotalTokens, string(result.Status), executeErr
-			} else {
-				result, runErr := e.runner.Run(ctx, skill.RunInput{ScopeID: policy.ScopeID, SkillResourceID: skillID, TargetResourceID: targetID, Purpose: aiengine.PurposeInspection, Input: map[string]any{"target_resource_id": targetID}, MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout})
-				output, toolCalls, totalTokens, status, err = result.Output, result.Execution.ToolCallCount, result.Execution.TotalTokens, result.Execution.Status, runErr
+			break
+		}
+		var output, status string
+		var toolCalls int
+		var totalTokens int64
+		var err error
+		result, executeErr := e.engine.Execute(ctx, aiengine.Request{
+			ScopeID: policy.ScopeID, Profile: aiengine.ProfileInspection, AgentProfileID: policy.AgentProfileResourceID,
+			ResolvedAgentProfile: inspectionProfile(policy),
+			Input:                map[string]any{"target_resource_id": targetID}, Context: aiengine.ContextRequest{ResourceIDs: []string{targetID}},
+			Budget: aiengine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
+		})
+		output, toolCalls, totalTokens, status, err = result.Output, result.ToolCallCount, result.TotalTokens, string(result.Status), executeErr
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
 			}
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				continue
+			continue
+		}
+		remainingTools -= toolCalls
+		remainingTokens -= totalTokens
+		if status != "succeeded" {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("inspection AIEngine execution ended with status %s", status)
 			}
-			remainingTools -= toolCalls
-			remainingTokens -= totalTokens
-			if status != "succeeded" {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("inspection Skill execution ended with status %s", status)
-				}
-				continue
-			}
-			succeeded++
-			if err := e.store.RecordExplanation(ctx, run.ID, output); err != nil {
-				return err
-			}
+			continue
+		}
+		succeeded++
+		if err := e.store.RecordExplanation(ctx, run.ID, output); err != nil {
+			return err
 		}
 	}
 	if succeeded == 0 {
 		return firstErr
 	}
 	return nil
+}
+
+func inspectionProfile(policy inspection.Policy) *aiengine.AgentProfile {
+	if policy.AgentProfileResourceID != "" {
+		return nil
+	}
+	return &aiengine.AgentProfile{
+		ResourceID: "builtin:inspection-agent", ScopeID: policy.ScopeID, Name: "巡检解释 Agent", Version: 1, Enabled: true,
+		Instruction:  "你是 OpsKeeper 巡检解释专家。仅基于确定性巡检结果和授权只读上下文解释异常，明确区分事实与推断，不执行写操作，不泄露凭据。输出简洁的原因分析与建议。",
+		Capabilities: []string{"text", "tool_calling", "stream"},
+	}
 }
 func hostname() string {
 	host, err := os.Hostname()
