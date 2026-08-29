@@ -38,8 +38,8 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 | 任务 | 名称 | 目标 | 依赖 | 状态 |
 |---|---|---|---|---|
 | T01 | AIEngine 统一执行内核 | 统一 Request、Result、Event、Agent Loop、预算、取消和执行 Profile | 无 | 已完成 |
-| T02 | 上下文工具层 | 自动解析上下文资源，接入 Connector 和远程 MCP Tool Gateway | T01 | 实施中 |
-| T03 | Skill 与 Agent Profile | 支持指定 Skill、专家 Agent 和组合执行 | T01-T02 | 待批准 |
+| T02 | 上下文工具层 | 自动解析上下文资源，接入 Connector 和远程 MCP Tool Gateway | T01 | 已完成 |
+| T03 | Skill 与 Agent Profile | 支持指定 Skill、专家 Agent 和组合执行 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 完整记录流式输出、工具入参出参、错误、耗时和恢复 | T01-T03 | 待批准 |
 | T05 | 知识库与工作流编排 | 支持知识检索、引用、DAG、并行、审批和断点恢复 | T01-T04 | 待批准 |
 

@@ -57,6 +57,31 @@ AIEngine 是唯一的业务调用入口，负责：
 - 管理超时、取消、预算和失败策略；
 - 持久化执行事件和 Tool Call 审计。
 
+### 3.4 AgentProfile
+
+AgentProfile 是资源目录中的可复用专家智能体配置，不是模型资源，也不直接保存
+Provider 地址或凭据。它包含版本、专家指令、适用资源类型、所需模型能力、工具白名单
+以及可选的输入/输出 JSON Schema，并沿用 `resource:read` 与 `resource:use` 权限。
+
+一次执行可以选择只使用 Skill、只使用 AgentProfile，或同时使用 Skill 和 AgentProfile。
+组合执行时，AgentProfile 指令作为专家约束放在 Skill 指令之前，二者都必须满足输入和
+输出契约；AgentProfile 的工具白名单是最终限制，模型能力要求与执行场景要求取并集。
+只使用 AgentProfile 时，AIEngine 使用其指令和契约创建临时执行，不伪造 Skill 版本记录，
+但仍经过统一的模型解析、上下文工具策略、生命周期事件和审计链路。
+
+AgentProfile 的创建、更新、启用和停用复用统一 Resource API（`kind=AgentProfile`），
+因此沿用现有资源目录的 Scope、RBAC 和审计行为；执行请求只传递
+`agent_profile_id`，不会把提示词或工具白名单直接从客户端注入运行时。
+
+AgentProfile 的契约快照通过以下版本 API 管理：
+
+- `POST/GET /api/v1/agent-profiles/{profileID}/versions`：创建或查询版本；
+- `POST /api/v1/agent-profiles/{profileID}/versions/{versionID}/publish`：发布版本；
+- `POST /api/v1/agent-profiles/{profileID}/versions/{versionID}/disable`：停用版本。
+
+执行时优先使用该 Profile 的最新已发布版本；没有已发布版本时才使用 Resource 初始配置。
+版本发布后不可修改，新的变更必须创建新版本。
+
 ## 4. AIProvider 数据模型
 
 ### 4.1 Resource 配置
@@ -168,7 +193,7 @@ Provider 本身不保存诊断、巡检或工作流标签。标签属于 Scope �
 
 ## 5. Scope 场景默认标签
 
-Provider 的 `default_model` 和模型能力保存在 Provider；`default`、`diagnosis`、`inspection`、`workflow` 标签保存在 Scope 与 Provider 的绑定关系中。标签表示该场景的默认 Provider，不表示模型用途许可。
+Provider 的 `default_model` 和模型能力保存在 Provider；`default`、`diagnosis`、`inspection`、`workflow` purpose 保存在 Scope 与 Provider 的绑定关系中（数据库列名为 `tag`）。Purpose 表示该场景的默认 Provider，不表示模型用途许可。
 
 默认 Provider 按级别逐级回退：先检查当前级别的具体标签，再检查当前级别的 `default` 标签；当前级别两者都没有时，才检查上级级别的具体标签和 `default` 标签。
 

@@ -10,11 +10,12 @@ import (
 )
 
 type Runtime struct {
-	runner   Runner
-	resolver ContextResolver
-	gateway  *PolicyGateway
-	store    EventStore
-	active   sync.Map
+	runner        Runner
+	resolver      ContextResolver
+	agentProfiles AgentProfileResolver
+	gateway       *PolicyGateway
+	store         EventStore
+	active        sync.Map
 }
 
 type activeExecution struct{ cancel context.CancelFunc }
@@ -27,6 +28,13 @@ func NewWithContext(runner Runner, resolver ContextResolver, gateway *PolicyGate
 
 func NewWithContextAndStore(runner Runner, resolver ContextResolver, gateway *PolicyGateway, store EventStore) *Runtime {
 	return &Runtime{runner: runner, resolver: resolver, gateway: gateway, store: store}
+}
+
+// WithAgentProfileResolver attaches the resource-backed expert profile
+// resolver without changing the existing constructor signatures.
+func (r *Runtime) WithAgentProfileResolver(resolver AgentProfileResolver) *Runtime {
+	r.agentProfiles = resolver
+	return r
 }
 
 func (r *Runtime) Name() string { return "AIEngine" }
@@ -88,6 +96,21 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	}
 	request.EventSink = sink
 	_ = sink(Event{Type: "execution.started", Status: StatusRunning, Payload: map[string]any{"profile": request.Profile}})
+	if request.AgentProfileID != "" {
+		if r.agentProfiles == nil {
+			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "agent_profile_unavailable", ErrorMessage: "agent profile resolver is unavailable"}
+			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+			return result, errors.New(result.ErrorMessage)
+		}
+		profile, profileErr := r.agentProfiles.Resolve(ctx, request.ScopeID, request.AgentProfileID)
+		if profileErr != nil {
+			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "agent_profile_resolution", ErrorMessage: profileErr.Error()}
+			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+			return result, profileErr
+		}
+		request.ResolvedAgentProfile = &profile
+		_ = sink(Event{Type: "agent_profile.resolved", Status: StatusRunning, Payload: map[string]any{"resource_id": profile.ResourceID, "name": profile.Name, "version": profile.Version, "capabilities": profile.Capabilities, "allowed_tool_count": len(profile.AllowedTools)}})
+	}
 	if r.resolver != nil && len(request.Context.ResourceIDs) > 0 {
 		resolved, resolveErr := r.resolver.Resolve(ctx, request.Context)
 		if resolveErr != nil {

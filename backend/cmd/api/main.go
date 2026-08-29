@@ -133,7 +133,11 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentialService)
 	skillStore := skill.NewStore(pool)
 	skillService := skill.NewService(skillStore, resourceService)
-	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore)
+	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
+	agentProfileService := skill.NewAgentProfileService(resourceService, agentProfileVersions)
+	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
+	agentProfileResolver.Versions = agentProfileVersions
+	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore).WithAgentProfileResolver(agentProfileResolver)
 	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
@@ -144,7 +148,8 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	)
 	aiStore := aiengine.NewPostgresStore(pool)
 	contextTooling.Gateway.AuditStore = aiStore
-	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore)
+	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore).
+		WithAgentProfileResolver(agentProfileResolver)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
@@ -170,6 +175,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Connectors:         connectorService,
 			LLMs:               llmService,
 			Skills:             skillService,
+			AgentProfiles:      agentProfileService,
 			SkillRunner:        skillRunner,
 			AIEngine:           aiEngine,
 			AIEngineEvents:     aiStore,

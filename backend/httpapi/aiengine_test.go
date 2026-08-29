@@ -43,3 +43,18 @@ func TestAIEngineHandlerUsesAuthenticatedActorAndStructuredInput(t *testing.T) {
 		t.Fatalf("response=%s err=%v", response.Body.String(), err)
 	}
 }
+
+func TestAIEngineHandlerPassesSkillAndAgentProfileSelection(t *testing.T) {
+	engine := &fakeAIEngine{}
+	handler := aiEngineHandler{engine: engine}
+	request := httptest.NewRequest(http.MethodPost, "/ai-executions", strings.NewReader(`{"scope_id":"scope-1","purpose":"diagnosis","skill_resource_id":"skill-1","skill_version_id":"version-2","agent_profile_id":"agent-1","task":"inspect"}`))
+	request = request.WithContext(context.WithValue(request.Context(), authenticatedUserContextKey{}, identity.User{ID: "user-1"}))
+	response := httptest.NewRecorder()
+	handler.execute(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if engine.request.Purpose != aiengine.PurposeDiagnosis || engine.request.SkillResourceID != "skill-1" || engine.request.SkillVersionID != "version-2" || engine.request.AgentProfileID != "agent-1" {
+		t.Fatalf("request selection=%+v", engine.request)
+	}
+}

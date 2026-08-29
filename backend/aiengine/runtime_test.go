@@ -147,6 +147,32 @@ func TestRuntimeLoadsContextBeforeRunner(t *testing.T) {
 	}
 }
 
+func TestRuntimeResolvesAgentProfileBeforeRunner(t *testing.T) {
+	profile := AgentProfile{ResourceID: "profile-1", ScopeID: "scope-1", Name: "diagnostic expert", Version: 3, Instruction: "Use evidence.", Capabilities: []string{"tool_calling"}, Enabled: true}
+	var events []Event
+	runtime := New(fakeRunner{run: func(_ context.Context, request Request) (Result, error) {
+		if request.ResolvedAgentProfile == nil || request.ResolvedAgentProfile.ResourceID != profile.ResourceID || request.ResolvedAgentProfile.Version != 3 {
+			t.Fatalf("runner did not receive resolved AgentProfile: %+v", request.ResolvedAgentProfile)
+		}
+		return Result{Output: "ok"}, nil
+	}}).WithAgentProfileResolver(fakeAgentProfileResolver{profile: profile})
+	if _, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", AgentProfileID: "profile-1", Task: "diagnose", EventSink: func(event Event) error {
+		events = append(events, event)
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 || events[1].Type != "agent_profile.resolved" || events[2].Type != "execution.completed" {
+		t.Fatalf("unexpected profile lifecycle events: %+v", events)
+	}
+}
+
+type fakeAgentProfileResolver struct{ profile AgentProfile }
+
+func (f fakeAgentProfileResolver) Resolve(context.Context, string, string) (AgentProfile, error) {
+	return f.profile, nil
+}
+
 func TestRuntimeFailsWhenContextResolutionFails(t *testing.T) {
 	resolver := fakeRuntimeContextResolver{err: errors.New("resource is forbidden")}
 	runtime := NewWithContext(fakeRunner{run: func(context.Context, Request) (Result, error) {

@@ -4,6 +4,7 @@ package aiengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -60,6 +61,30 @@ type ContextRequest struct {
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
 }
 
+// AgentProfile is a versioned, resource-backed expert prompt contract. It
+// narrows the tools and model capabilities an execution may use; it never
+// carries provider credentials or an upstream URL.
+type AgentProfile struct {
+	ResourceID   string          `json:"resource_id"`
+	ScopeID      string          `json:"scope_id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	Version      int             `json:"version"`
+	Instruction  string          `json:"instruction"`
+	Capabilities []string        `json:"capabilities,omitempty"`
+	AllowedTools []string        `json:"allowed_tools,omitempty"`
+	TargetKinds  []string        `json:"target_kinds,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	Enabled      bool            `json:"enabled"`
+}
+
+// AgentProfileResolver resolves and authorizes a profile for an execution
+// scope. Implementations should return only active, permitted profiles.
+type AgentProfileResolver interface {
+	Resolve(context.Context, string, string) (AgentProfile, error)
+}
+
 type Requirements struct {
 	Capabilities  []string `json:"capabilities,omitempty"`
 	MinContext    int      `json:"min_context,omitempty"`
@@ -99,9 +124,10 @@ type Request struct {
 	Budget               Budget         `json:"budget,omitempty"`
 	Stream               bool           `json:"stream,omitempty"`
 
-	EventSink       EventSink        `json:"-"`
-	ResolvedContext *ResolvedContext `json:"-"`
-	ToolGateway     *PolicyGateway   `json:"-"`
+	EventSink            EventSink        `json:"-"`
+	ResolvedContext      *ResolvedContext `json:"-"`
+	ToolGateway          *PolicyGateway   `json:"-"`
+	ResolvedAgentProfile *AgentProfile    `json:"-"`
 }
 
 func (r *Request) Normalize() error {

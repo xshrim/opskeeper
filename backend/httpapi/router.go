@@ -32,6 +32,7 @@ type Options struct {
 	Connectors         connectorService
 	LLMs               llmService
 	Skills             skillService
+	AgentProfiles      agentProfileService
 	SkillRunner        skillRunner
 	AIEngine           aiengine.Engine
 	AIEngineEvents     aiengine.EventStore
@@ -114,7 +115,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.SkillRunner, options.AIEngine, options.Authorization, options.Auditor, requirePermission)
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.SkillRunner, options.AIEngine, options.Authorization, options.Auditor, requirePermission)
 				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
 				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
 				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)

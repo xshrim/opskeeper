@@ -28,11 +28,13 @@ func (a AIEngineAdapter) Run(ctx context.Context, request aiengine.Request) (aie
 		input["resolved_context"] = request.ResolvedContext
 	}
 	runInput := RunInput{
-		ActorID: request.ActorID, ScopeID: request.ScopeID, TargetResourceID: firstResourceID(request.Context),
+		ExecutionID: request.ExecutionID, ActorID: request.ActorID, ScopeID: request.ScopeID, TargetResourceID: firstResourceID(request.Context),
 		SkillResourceID: request.SkillResourceID, SkillVersionID: request.SkillVersionID,
 		AIProviderResourceID: request.AIProviderResourceID, ModelName: request.ModelName, Purpose: request.Purpose,
-		Input:         input,
-		MaxIterations: request.Budget.MaxIterations, MaxToolCalls: request.Budget.MaxToolCalls, MaxTokens: request.Budget.MaxTokens,
+		AgentProfileID: request.AgentProfileID, AgentProfile: request.ResolvedAgentProfile,
+		RequiredCapabilities: request.Requirements.Capabilities,
+		Input:                input,
+		MaxIterations:        request.Budget.MaxIterations, MaxToolCalls: request.Budget.MaxToolCalls, MaxTokens: request.Budget.MaxTokens,
 		MaxOutputBytes: request.Budget.MaxOutputBytes, Timeout: request.Budget.Timeout,
 		Stream: request.Stream, EventSink: request.EventSink,
 		ResolvedContext: request.ResolvedContext, ToolGateway: request.ToolGateway,

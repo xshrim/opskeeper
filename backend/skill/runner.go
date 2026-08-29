@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -39,22 +40,25 @@ type Connector interface {
 }
 
 type RunInput struct {
-	ActorID, ScopeID, TargetResourceID string
-	SkillResourceID, SkillVersionID    string
-	AIProviderResourceID, ModelName    string
-	Purpose                            aiengine.Purpose
-	Input                              map[string]any
-	MaxIterations                      int
-	MaxToolCalls                       int
-	MaxTokens                          int64
-	MaxOutputBytes                     int
-	Timeout                            time.Duration
-	Stream                             bool
-	EvidenceObserver                   func(ObservedEvidence)
-	EventSink                          aiengine.EventSink
-	ToolCallAudit                      aiengine.ToolCallStore
-	ResolvedContext                    *aiengine.ResolvedContext
-	ToolGateway                        *aiengine.PolicyGateway
+	ExecutionID, ActorID, ScopeID, TargetResourceID string
+	SkillResourceID, SkillVersionID                 string
+	AIProviderResourceID, ModelName                 string
+	Purpose                                         aiengine.Purpose
+	AgentProfileID                                  string
+	AgentProfile                                    *aiengine.AgentProfile
+	RequiredCapabilities                            []string
+	Input                                           map[string]any
+	MaxIterations                                   int
+	MaxToolCalls                                    int
+	MaxTokens                                       int64
+	MaxOutputBytes                                  int
+	Timeout                                         time.Duration
+	Stream                                          bool
+	EvidenceObserver                                func(ObservedEvidence)
+	EventSink                                       aiengine.EventSink
+	ToolCallAudit                                   aiengine.ToolCallStore
+	ResolvedContext                                 *aiengine.ResolvedContext
+	ToolGateway                                     *aiengine.PolicyGateway
 }
 
 // ObservedEvidence is emitted only after a Connector has returned a typed,
@@ -71,19 +75,25 @@ type RunResult struct {
 }
 
 type Runner struct {
-	Skills     *Service
-	Models     *llm.Service
-	Connector  Connector
-	Executions Store
-	AppName    string
+	Skills        *Service
+	Models        *llm.Service
+	Connector     Connector
+	Executions    Store
+	AgentProfiles aiengine.AgentProfileResolver
+	AppName       string
 }
 
 func NewRunner(skills *Service, models *llm.Service, connectorService Connector, executions Store) *Runner {
 	return &Runner{Skills: skills, Models: models, Connector: connectorService, Executions: executions, AppName: "opskeeper-skill"}
 }
 
+func (r *Runner) WithAgentProfileResolver(resolver aiengine.AgentProfileResolver) *Runner {
+	r.AgentProfiles = resolver
+	return r
+}
+
 func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
-	if r.Skills == nil || r.Models == nil || r.Executions == nil {
+	if r.Skills == nil || r.Models == nil || (r.Executions == nil && strings.TrimSpace(input.SkillResourceID) != "") {
 		return RunResult{}, errors.New("Skill Runner dependencies are unavailable")
 	}
 	if input.Timeout <= 0 {
@@ -103,11 +113,26 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, input.Timeout)
 	defer cancel()
-	version, err := r.Skills.Resolve(ctx, input.ScopeID, input.SkillResourceID, input.SkillVersionID)
+	if input.AgentProfile == nil && strings.TrimSpace(input.AgentProfileID) != "" {
+		if r.AgentProfiles == nil {
+			return RunResult{}, invalid("agent profile resolver is unavailable")
+		}
+		profile, profileErr := r.AgentProfiles.Resolve(ctx, input.ScopeID, input.AgentProfileID)
+		if profileErr != nil {
+			return RunResult{}, profileErr
+		}
+		input.AgentProfile = &profile
+	}
+	if input.AgentProfile != nil {
+		if profileErr := validateAgentProfile(*input.AgentProfile, input.ScopeID); profileErr != nil {
+			return RunResult{}, profileErr
+		}
+	}
+	version, err := r.resolveVersion(ctx, input)
 	if err != nil {
 		return RunResult{}, err
 	}
-	if input.TargetResourceID != "" {
+	if input.TargetResourceID != "" && len(version.Manifest.TargetKinds) > 0 {
 		if _, err := r.Skills.ValidateTarget(ctx, version, input.TargetResourceID); err != nil {
 			return RunResult{}, err
 		}
@@ -116,6 +141,13 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
+	requiredCapabilities := append([]string(nil), input.RequiredCapabilities...)
+	if input.AgentProfile != nil {
+		requiredCapabilities = append(requiredCapabilities, input.AgentProfile.Capabilities...)
+	}
+	if missing := missingCapabilities(resolved.Model.Capabilities, requiredCapabilities); len(missing) > 0 {
+		return RunResult{}, invalid("AgentProfile requires model capabilities: " + strings.Join(missing, ", "))
+	}
 	encodedInput, err := json.Marshal(input.Input)
 	if err != nil {
 		return RunResult{}, invalid("Skill input must be JSON serializable")
@@ -123,15 +155,37 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if err := validateJSON(version.InputSchema, encodedInput); err != nil {
 		return RunResult{}, fmt.Errorf("validate Skill input: %w", err)
 	}
+	if input.AgentProfile != nil && len(input.AgentProfile.InputSchema) > 0 {
+		if err := validateJSON(input.AgentProfile.InputSchema, encodedInput); err != nil {
+			return RunResult{}, fmt.Errorf("validate AgentProfile input: %w", err)
+		}
+	}
 	digest := sha256.Sum256(encodedInput)
-	execution, err := r.Executions.StartExecution(ctx, StartExecutionInput{ScopeID: input.ScopeID, ActorUserID: input.ActorID, TargetResourceID: input.TargetResourceID, SkillResourceID: version.SkillResourceID, SkillVersionID: version.ID, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, InputDigest: hex.EncodeToString(digest[:])})
-	if err != nil {
-		return RunResult{}, err
+	persistExecution := version.SkillResourceID != "" && version.ID != ""
+	var execution Execution
+	if persistExecution {
+		execution, err = r.Executions.StartExecution(ctx, StartExecutionInput{ScopeID: input.ScopeID, ActorUserID: input.ActorID, TargetResourceID: input.TargetResourceID, SkillResourceID: version.SkillResourceID, SkillVersionID: version.ID, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, InputDigest: hex.EncodeToString(digest[:])})
+		if err != nil {
+			return RunResult{}, err
+		}
+	} else {
+		execution = Execution{ID: input.ExecutionID, ScopeID: input.ScopeID, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Status: "running", InputDigest: hex.EncodeToString(digest[:])}
+		if execution.ID == "" {
+			execution.ID = fmt.Sprintf("exec-%d", time.Now().UnixNano())
+		}
 	}
 	finish := func(result FinishExecutionInput) (RunResult, error) {
 		observability.RecordLLM(context.Background(), result.Status, result.TotalTokens)
 		if result.Status != "succeeded" {
 			observability.RecordError(context.Background(), "llm", result.ErrorCode)
+		}
+		if !persistExecution {
+			execution.Status, execution.OutputPreview = result.Status, result.OutputPreview
+			execution.PromptTokens, execution.CompletionTokens, execution.TotalTokens = result.PromptTokens, result.CompletionTokens, result.TotalTokens
+			execution.ToolCallCount, execution.ErrorCode, execution.ErrorMessage = result.ToolCallCount, result.ErrorCode, result.ErrorMessage
+			now := time.Now().UTC()
+			execution.CompletedAt = &now
+			return RunResult{Execution: execution, Output: result.OutputPreview}, nil
 		}
 		completed, finishErr := r.Executions.FinishExecution(context.Background(), execution.ID, result)
 		if finishErr != nil {
@@ -144,12 +198,20 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	}
 
 	resourceFilter, _ := authorization.ResourceFilterFromContext(ctx)
-	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, resourceFilter: resourceFilter, calls: input.MaxToolCalls, resolvedContext: input.ResolvedContext, gateway: input.ToolGateway}
+	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, resourceFilter: resourceFilter, calls: input.MaxToolCalls, resolvedContext: input.ResolvedContext, gateway: input.ToolGateway, allowedAgentTools: profileToolSet(input.AgentProfile), persistExecution: persistExecution, skipToolCallStore: !persistExecution}
 	tools, err := policy.tools(ctx)
 	if err != nil {
 		return finish(FinishExecutionInput{Status: "failed", ErrorCode: "tool_setup", ErrorMessage: publicError(err)})
 	}
-	agentConfig := llmagent.Config{Name: "skill_runner", Model: modelClient, Instruction: version.Manifest.Instruction, Tools: tools, BeforeToolCallbacks: []llmagent.BeforeToolCallback{policy.beforeTool}, DisallowTransferToParent: true, DisallowTransferToPeers: true}
+	instruction := version.Manifest.Instruction
+	if input.AgentProfile != nil && strings.TrimSpace(input.AgentProfile.Instruction) != "" {
+		if version.SkillResourceID == "" {
+			instruction = input.AgentProfile.Instruction
+		} else {
+			instruction = input.AgentProfile.Instruction + "\n\n" + instruction
+		}
+	}
+	agentConfig := llmagent.Config{Name: "skill_runner", Model: modelClient, Instruction: instruction, Tools: tools, BeforeToolCallbacks: []llmagent.BeforeToolCallback{policy.beforeTool}, DisallowTransferToParent: true, DisallowTransferToPeers: true}
 	agentRoot, err := llmagent.New(agentConfig)
 	if err != nil {
 		return finish(FinishExecutionInput{Status: "failed", ErrorCode: "agent_setup", ErrorMessage: publicError(err)})
@@ -212,6 +274,11 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if err := validateJSON(version.OutputSchema, []byte(text)); err != nil {
 		return finish(FinishExecutionInput{Status: "failed", ErrorCode: "output_schema", ErrorMessage: publicError(err), PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: totalTokens, ToolCallCount: policy.used()})
 	}
+	if input.AgentProfile != nil && len(input.AgentProfile.OutputSchema) > 0 {
+		if err := validateJSON(input.AgentProfile.OutputSchema, []byte(text)); err != nil {
+			return finish(FinishExecutionInput{Status: "failed", ErrorCode: "agent_output_schema", ErrorMessage: publicError(err), PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: totalTokens, ToolCallCount: policy.used()})
+		}
+	}
 	result, resultErr := finish(FinishExecutionInput{Status: "succeeded", OutputPreview: safePreview(text, 4000), PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: totalTokens, ToolCallCount: policy.used()})
 	result.Output = text
 	result.Events = events
@@ -220,6 +287,43 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 
 func countsModelIteration(partial bool, role string) bool {
 	return !partial && role == genai.RoleModel
+}
+
+func (r *Runner) resolveVersion(ctx context.Context, input RunInput) (Version, error) {
+	if strings.TrimSpace(input.SkillResourceID) != "" || strings.TrimSpace(input.SkillVersionID) != "" {
+		return r.Skills.Resolve(ctx, input.ScopeID, input.SkillResourceID, input.SkillVersionID)
+	}
+	if input.AgentProfile == nil {
+		return Version{}, invalid("skill_resource_id or agent_profile_id is required")
+	}
+	return Version{
+		Manifest:    Manifest{Name: input.AgentProfile.Name, Description: input.AgentProfile.Description, Instruction: input.AgentProfile.Instruction, TargetKinds: input.AgentProfile.TargetKinds},
+		InputSchema: input.AgentProfile.InputSchema, OutputSchema: input.AgentProfile.OutputSchema,
+		Status: "published",
+	}, nil
+}
+
+func missingCapabilities(actual, required []string) []string {
+	missing := make([]string, 0)
+	for _, capability := range required {
+		capability = strings.TrimSpace(capability)
+		if capability == "" || slices.Contains(actual, capability) || slices.Contains(missing, capability) {
+			continue
+		}
+		missing = append(missing, capability)
+	}
+	return missing
+}
+
+func profileToolSet(profile *aiengine.AgentProfile) map[string]struct{} {
+	if profile == nil || len(profile.AllowedTools) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(profile.AllowedTools))
+	for _, name := range profile.AllowedTools {
+		set[strings.TrimSpace(name)] = struct{}{}
+	}
+	return set
 }
 
 func streamingMode(stream bool) agent.StreamingMode {
@@ -279,12 +383,20 @@ type policy struct {
 	resourceFilter                authorization.ResourceFilter
 	resolvedContext               *aiengine.ResolvedContext
 	gateway                       *aiengine.PolicyGateway
+	allowedAgentTools             map[string]struct{}
+	persistExecution              bool
+	skipToolCallStore             bool
 	calls                         int
 	usedCalls, recordedCalls      atomic.Int64
 }
 
 func (p *policy) used() int { return int(p.usedCalls.Load()) }
 func (p *policy) beforeTool(_ agent.Context, t tool.Tool, args map[string]any) (map[string]any, error) {
+	if len(p.allowedAgentTools) > 0 {
+		if _, allowed := p.allowedAgentTools[t.Name()]; !allowed {
+			return p.rejectTool(t.Name(), args, "agent_tool_not_allowed", fmt.Errorf("tool %q is not allowed by AgentProfile", t.Name()))
+		}
+	}
 	if p.contextTool(t.Name()) {
 		used := p.usedCalls.Add(1)
 		if used > int64(p.calls) {
@@ -332,6 +444,11 @@ func (p *policy) beforeTool(_ agent.Context, t tool.Tool, args map[string]any) (
 }
 
 func (p *policy) rejectTool(name string, args map[string]any, code string, cause error) (map[string]any, error) {
+	if p.skipToolCallStore {
+		p.recordAudit(name, args, nil, "rejected", cause)
+		p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"error": publicError(cause)})
+		return nil, cause
+	}
 	if p.runner == nil || p.runner.Executions == nil || p.executionID == "" {
 		return nil, cause
 	}
