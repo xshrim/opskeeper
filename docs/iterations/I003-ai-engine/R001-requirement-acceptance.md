@@ -118,3 +118,22 @@ T02 的上下文解析、Connector/MCP 工具接入、权限策略和第一阶�
 - AgentProfile 管理 API（创建/查询/发布/停用版本）已接入 Resource 权限边界；前端 Agent 专家管理页面 E2E：通过。
 
 T03 增强项已完成：新增 AgentProfile 版本表、版本发布/停用 API、运行时优先读取已发布版本，并在前端增加 Agent 专家独立管理页面。Resource 元数据仍通过统一 Resource API 管理。
+
+## T04 流式事件与工具调用审计
+
+**状态：** 已完成（2026-08-29）
+
+本任务已完成：Tool Call 审计记录实际 Provider、模型、开始/结束时间、耗时和错误码；审计入参、出参递归脱敏；SSE 在发送 `execution.completed`、`execution.failed` 或 `execution.cancelled` 后主动关闭连接，客户端可使用最后事件序号续读。并修正 Skill Runner 上下文工具回调返回值，确保 ADK 继续执行真实 MCP Tool，而不是仅增加调用计数。
+
+本轮自动验证：`go test -count=1 ./...`、目标包 `go test -race`、`go vet ./...`、迁移集成测试、前端 `npm run check/test/build` 均通过。
+
+### T04 真实模型与 HTTP 验收记录（2026-08-29）
+
+- `make llm-provider-test` 使用 `.env` 中的 GLM-4-Flash 通过普通和 SSE 两种模式完成真实文本生成，均返回有效输出和 token 用量。
+- 直接向同一 Provider 发送函数声明，模型返回 `finish_reason=tool_calls` 和有效函数参数，确认模型支持 Tool Calling。
+- 通过 API 登录管理员 `admin`，登记真实 MCP 资源 `http://127.0.0.1:3100/mcp`，发现并调用 `docker:list_containers` 成功，返回当前 Docker 容器清单。
+- 真实 AIEngine 请求使用 `ai_provider_resource_id`、`model_name`、AgentProfile 和 MCP 上下文执行；事件顺序包含 `execution.started`、`agent_profile.resolved`、`context.loaded`、`tool.requested`、`tool.started`、`tool.completed` 及终态事件，工具完成事件包含实际 `duration_ms`。
+- `GET /api/v1/ai-executions/{id}/tool-calls` 返回审计记录，包含 Provider ID、`GLM-4-Flash`、MCP Resource ID、工具名、`started_at`、`completed_at`、`duration_ms`、脱敏后的参数和出参；未出现 API Key 或其他凭证。
+- `GET /api/v1/ai-executions/{id}/events?after=3` 只返回序号 4 之后的事件并在终态后关闭；`Last-Event-ID: 5` 只返回序号 6、7，确认断线续读不重复发送历史事件。
+- 一次真实执行的模型输出未满足 AgentProfile JSON Schema，Runtime 正确记录 `execution.failed` / `output_schema`；工具调用本身仍成功并完整入审计，说明工具失败与最终输出校验失败可区分追踪。
+- 增加回归测试，确保上下文 Tool 的 `BeforeToolCallback` 返回 `nil` 继续执行 ADK 函数工具；此前返回参数会短路真实 MCP 调用。

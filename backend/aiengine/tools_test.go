@@ -35,6 +35,31 @@ func TestPolicyGatewayEnforcesAuthorizationAndEmitsToolEvents(t *testing.T) {
 	}
 }
 
+func TestPolicyGatewayAuditsProviderModelTimingAndErrors(t *testing.T) {
+	registry := NewToolRegistry()
+	if err := registry.Register("resource-1", ToolFunc{Def: ToolDefinition{Name: "read", Source: "test"}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
+		return ToolResult{Output: map[string]any{"password": "hidden"}}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	audit := &memoryToolCallStore{}
+	gateway := NewPolicyGateway(registry, nil, time.Second, 1024, 1)
+	gateway.AuditStore = audit
+	if _, err := gateway.Invoke(context.Background(), ToolCall{ExecutionID: "exec-1", Sequence: 2, ScopeID: "scope-1", ResourceID: "resource-1", Name: "read", ProviderResourceID: "provider-1", ModelName: "model-a", Arguments: map[string]any{"api-key": "secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(audit.records) != 1 {
+		t.Fatalf("audit records=%+v", audit.records)
+	}
+	record := audit.records[0]
+	if record.ProviderResourceID != "provider-1" || record.ModelName != "model-a" || record.DurationMS < 0 || record.StartedAt.IsZero() || record.CompletedAt.IsZero() {
+		t.Fatalf("audit timing/provider details=%+v", record)
+	}
+	if record.Arguments["api-key"] != "secret" {
+		t.Fatalf("in-memory audit should retain source values before persistence: %+v", record.Arguments)
+	}
+}
+
 func TestAuthorizeResourceUseUsesResourceAndScopeFilters(t *testing.T) {
 	resource := ContextResource{ID: "resource-1", ScopeID: "scope-1"}
 	allowed := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"resource-1"}})
@@ -107,6 +132,16 @@ func TestToolRegistryRejectsEmptyResourceAndSupportsRefresh(t *testing.T) {
 }
 
 type fakeContextResourceReader struct{ resources map[string]ContextResource }
+
+type memoryToolCallStore struct{ records []ToolCallRecord }
+
+func (m *memoryToolCallStore) RecordToolCall(_ context.Context, record ToolCallRecord) error {
+	m.records = append(m.records, record)
+	return nil
+}
+func (m *memoryToolCallStore) ListToolCalls(_ context.Context, _ string, _ int) ([]ToolCallRecord, error) {
+	return m.records, nil
+}
 
 func (f fakeContextResourceReader) Get(_ context.Context, id string) (ContextResource, error) {
 	resource, ok := f.resources[id]
