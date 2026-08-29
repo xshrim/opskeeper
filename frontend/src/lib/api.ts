@@ -168,12 +168,19 @@ export interface TopologyNode {
   depth: number;
 }
 
-export interface LLMConnectionResult {
-  provider_resource_id: string;
+export interface AIConnectionResult {
+  provider_resource_id?: string;
   model_name: string;
   status: string;
   latency_ms: number;
   message: string;
+}
+
+export interface AIProviderAvailability {
+  provider_resource_id: string;
+  name: string;
+  models: Array<{ name: string; capabilities: string[] }>;
+  default: boolean;
 }
 
 export interface SkillVersion {
@@ -697,8 +704,6 @@ export const api = {
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
     request<Resource>(`api/v1/resources/${id}/`, patch(body)),
-  setAIModelDefault: (id: string, enabled: boolean) =>
-    request<Resource>(`api/v1/resources/${id}/ai-default`, patch({ default: enabled })),
   deleteResource: (id: string) =>
     request<void>(`api/v1/resources/${id}/`, { method: 'DELETE' }),
   testResourceConnection: (id: string) =>
@@ -707,20 +712,25 @@ export const api = {
     }),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
-  testLLMProvider: (
+  testAIProvider: (
     id: string,
     body: { scope_id: string; model_name: string; stream: boolean }
   ) =>
-    request<LLMConnectionResult>(`api/v1/llm-providers/${id}/test`, json(body)),
-  testAIModelEndpoint: (
-    id: string,
-    endpointIndex: number,
-    body: { scope_id: string; stream: boolean }
-  ) =>
-    request<LLMConnectionResult>(
-      `api/v1/ai-models/${id}/endpoints/${endpointIndex}/test`,
-      json(body)
+    request<AIConnectionResult>(`api/v1/ai-providers/${id}/test`, json(body)),
+  availableAIProviders: (scopeId: string, purpose = 'default') =>
+    request<AIProviderAvailability[]>(
+      `api/v1/ai-providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
     ),
+  aiProviderBindings: (scopeId: string) =>
+    request<Array<{ scope_id: string; provider_resource_id: string; tag: string }>>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings`
+    ),
+  setAIProviderBinding: (scopeId: string, purpose: string, providerResourceId: string) =>
+    request(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`, {
+      method: 'PUT', body: JSON.stringify({ provider_resource_id: providerResourceId })
+    }),
+  removeAIProviderBinding: (scopeId: string, purpose: string) =>
+    request<void>(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`, { method: 'DELETE' }),
   testDraftLLM: (body: {
     scope_id: string;
     provider_type: string;
@@ -732,12 +742,7 @@ export const api = {
     capabilities: string[];
     stream: boolean;
   }) =>
-    request<LLMConnectionResult>('api/v1/llm-providers/test-draft', json(body)),
-  setLLMDefault: (body: {
-    scope_id: string;
-    provider_resource_id: string;
-    model_name: string;
-  }) => request('api/v1/llm-defaults', { ...json(body), method: 'PUT' }),
+    request<AIConnectionResult>('api/v1/ai-providers/test-draft', json(body)),
   skillVersions: (skillId: string) =>
     request<SkillVersion[]>(`api/v1/skills/${skillId}/versions`),
   createSkillVersion: (skillId: string, body: Record<string, unknown>) =>
@@ -769,6 +774,8 @@ export const api = {
     title?: string;
     question: string;
     target_resource_ids: string[];
+    ai_provider_resource_id?: string;
+    model_name?: string;
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
   addDiagnosisTarget: (sessionId: string, resourceId: string) =>
     request<DiagnosisTarget>(

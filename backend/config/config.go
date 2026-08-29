@@ -50,6 +50,7 @@ type Config struct {
 	InspectionScheduleInterval   time.Duration
 	InspectionWorkerPollInterval time.Duration
 	InspectionLeaseDuration      time.Duration
+	MCPEnhancedSecurity          bool
 }
 
 func Load() (Config, error) {
@@ -114,6 +115,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.InspectionLeaseDuration, err = durationFromEnv("OPSK_INSPECTION_LEASE_DURATION", 45*time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.MCPEnhancedSecurity, err = boolFromEnv("OPSK_MCP_ENHANCED_SECURITY", false); err != nil {
 		return Config{}, err
 	}
 

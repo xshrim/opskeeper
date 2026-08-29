@@ -22,12 +22,17 @@ type ResourceReader interface {
 }
 
 type Service struct {
-	resources ResourceReader
-	store     SnapshotStore
+	resources        ResourceReader
+	store            SnapshotStore
+	enhancedSecurity bool
 }
 
 func NewService(resources ResourceReader, store SnapshotStore) *Service {
 	return &Service{resources: resources, store: store}
+}
+
+func NewServiceWithSecurity(resources ResourceReader, store SnapshotStore, enhancedSecurity bool) *Service {
+	return &Service{resources: resources, store: store, enhancedSecurity: enhancedSecurity}
 }
 
 func (s *Service) Discover(ctx context.Context, resourceID string) (Snapshot, error) {
@@ -35,7 +40,7 @@ func (s *Service) Discover(ctx context.Context, resourceID string) (Snapshot, er
 	if err != nil {
 		return Snapshot{}, err
 	}
-	item, discoverErr := Discover(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second)
+	item, discoverErr := DiscoverWithSecurity(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second, s.enhancedSecurity)
 	item.ServerResourceID, item.ScopeID, item.Status, item.Untrusted = server.ID, server.ScopeID, "succeeded", true
 	if discoverErr != nil {
 		item.Status = "failed"
@@ -72,7 +77,7 @@ func (s *Service) Call(ctx context.Context, resourceID, name string, arguments m
 	for _, tool := range config.ToolAllowlist {
 		allowed[tool] = true
 	}
-	return CallBounded(ctx, config.URL, name, allowed, arguments, time.Duration(config.TimeoutSeconds)*time.Second, config.MaxResponseBytes)
+	return CallBoundedWithSecurity(ctx, config.URL, name, allowed, arguments, time.Duration(config.TimeoutSeconds)*time.Second, config.MaxResponseBytes, s.enhancedSecurity)
 }
 
 func (s *Service) server(ctx context.Context, resourceID string) (resource.Resource, Config, error) {
@@ -83,7 +88,7 @@ func (s *Service) server(ctx context.Context, resourceID string) (resource.Resou
 	if server.Kind != "MCPServer" || server.Status != resource.StatusActive || !allows(ctx, server.ScopeID, server.ID) {
 		return resource.Resource{}, Config{}, authorization.ErrForbidden
 	}
-	config, err := configFrom(server.Config)
+	config, err := configFromWithSecurity(server.Config, s.enhancedSecurity)
 	if err != nil {
 		return resource.Resource{}, Config{}, err
 	}
@@ -91,6 +96,10 @@ func (s *Service) server(ctx context.Context, resourceID string) (resource.Resou
 }
 
 func configFrom(input map[string]any) (Config, error) {
+	return configFromWithSecurity(input, false)
+}
+
+func configFromWithSecurity(input map[string]any, enhancedSecurity bool) (Config, error) {
 	raw, err := json.Marshal(input)
 	if err != nil {
 		return Config{}, ErrInvalid
@@ -102,7 +111,7 @@ func configFrom(input map[string]any) (Config, error) {
 	if config.Transport != "streamable_http" || len(config.ToolAllowlist) == 0 {
 		return Config{}, ErrInvalid
 	}
-	if _, err := safeEndpoint(config.URL); err != nil {
+	if _, err := endpointURL(config.URL, enhancedSecurity); err != nil {
 		return Config{}, ErrInvalid
 	}
 	if config.TimeoutSeconds <= 0 || config.TimeoutSeconds > 60 {
@@ -112,7 +121,7 @@ func configFrom(input map[string]any) (Config, error) {
 		config.MaxResponseBytes = defaultMaxResponseBytes
 	}
 	seen := map[string]bool{}
-	toolName := regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	toolName := regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`)
 	for _, name := range config.ToolAllowlist {
 		if !toolName.MatchString(name) || seen[name] {
 			return Config{}, ErrInvalid

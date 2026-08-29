@@ -19,6 +19,7 @@ import (
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
 	"google.golang.org/genai"
+	"opskeeper/backend/aiengine"
 
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/connector"
@@ -40,14 +41,20 @@ type Connector interface {
 type RunInput struct {
 	ActorID, ScopeID, TargetResourceID string
 	SkillResourceID, SkillVersionID    string
-	ProviderResourceID, ModelName      string
+	AIProviderResourceID, ModelName    string
+	Purpose                            aiengine.Purpose
 	Input                              map[string]any
+	MaxIterations                      int
 	MaxToolCalls                       int
 	MaxTokens                          int64
 	MaxOutputBytes                     int
 	Timeout                            time.Duration
 	Stream                             bool
 	EvidenceObserver                   func(ObservedEvidence)
+	EventSink                          aiengine.EventSink
+	ToolCallAudit                      aiengine.ToolCallStore
+	ResolvedContext                    *aiengine.ResolvedContext
+	ToolGateway                        *aiengine.PolicyGateway
 }
 
 // ObservedEvidence is emitted only after a Connector has returned a typed,
@@ -85,6 +92,9 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if input.MaxToolCalls <= 0 {
 		input.MaxToolCalls = 12
 	}
+	if input.MaxIterations <= 0 {
+		input.MaxIterations = 12
+	}
 	if input.MaxOutputBytes <= 0 {
 		input.MaxOutputBytes = 64 << 10
 	}
@@ -102,7 +112,7 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 			return RunResult{}, err
 		}
 	}
-	resolved, modelClient, err := r.Models.BuildModel(ctx, input.ScopeID, input.ProviderResourceID, input.ModelName)
+	resolved, modelClient, err := r.Models.BuildModel(ctx, input.ScopeID, input.AIProviderResourceID, input.ModelName, purposeFromEngine(input.Purpose))
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -134,7 +144,7 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	}
 
 	resourceFilter, _ := authorization.ResourceFilterFromContext(ctx)
-	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, resourceFilter: resourceFilter, calls: input.MaxToolCalls}
+	policy := &policy{runner: r, runCtx: ctx, input: input, version: version, executionID: execution.ID, targetResourceID: input.TargetResourceID, resourceFilter: resourceFilter, calls: input.MaxToolCalls, resolvedContext: input.ResolvedContext, gateway: input.ToolGateway}
 	tools, err := policy.tools(ctx)
 	if err != nil {
 		return finish(FinishExecutionInput{Status: "failed", ErrorCode: "tool_setup", ErrorMessage: publicError(err)})
@@ -152,7 +162,7 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	message := genai.NewContentFromText(string(messageBytes), genai.RoleUser)
 	var output strings.Builder
 	var promptTokens, completionTokens, totalTokens int64
-	var events int
+	var events, iterations int
 	for event, eventErr := range adkRunner.Run(ctx, input.ActorID, execution.ID, message, agent.RunConfig{StreamingMode: streamingMode(input.Stream)}) {
 		if eventErr != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(eventErr, context.DeadlineExceeded) {
@@ -167,6 +177,12 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 			continue
 		}
 		events++
+		if event.Content != nil && countsModelIteration(event.Partial, event.Content.Role) {
+			iterations++
+			if iterations > input.MaxIterations {
+				return finish(FinishExecutionInput{Status: "failed", ErrorCode: "iteration_budget", ErrorMessage: "iteration budget exceeded", PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: totalTokens, ToolCallCount: policy.used()})
+			}
+		}
 		if event.UsageMetadata != nil {
 			promptTokens += int64(event.UsageMetadata.PromptTokenCount)
 			completionTokens += int64(event.UsageMetadata.CandidatesTokenCount)
@@ -200,6 +216,10 @@ func (r *Runner) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	result.Output = text
 	result.Events = events
 	return result, resultErr
+}
+
+func countsModelIteration(partial bool, role string) bool {
+	return !partial && role == genai.RoleModel
 }
 
 func streamingMode(stream bool) agent.StreamingMode {
@@ -257,12 +277,22 @@ type policy struct {
 	version                       Version
 	executionID, targetResourceID string
 	resourceFilter                authorization.ResourceFilter
+	resolvedContext               *aiengine.ResolvedContext
+	gateway                       *aiengine.PolicyGateway
 	calls                         int
 	usedCalls, recordedCalls      atomic.Int64
 }
 
 func (p *policy) used() int { return int(p.usedCalls.Load()) }
 func (p *policy) beforeTool(_ agent.Context, t tool.Tool, args map[string]any) (map[string]any, error) {
+	if p.contextTool(t.Name()) {
+		used := p.usedCalls.Add(1)
+		if used > int64(p.calls) {
+			p.usedCalls.Add(-1)
+			return p.rejectTool(t.Name(), args, "tool_budget", ErrBudget)
+		}
+		return args, nil
+	}
 	spec, declared := declaredTool(p.version.Tools, t.Name())
 	if !declared {
 		return p.rejectTool(t.Name(), args, "tool_not_declared", fmt.Errorf("tool %q is not declared by Skill", t.Name()))
@@ -315,6 +345,8 @@ func (p *policy) rejectTool(name string, args map[string]any, code string, cause
 	if _, err := p.runner.Executions.FinishToolCall(context.Background(), call.ID, "rejected", "", code, publicError(cause)); err != nil {
 		return nil, fmt.Errorf("finish rejected tool call: %w", err)
 	}
+	p.recordAudit(name, args, nil, "rejected", cause)
+	p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"error": publicError(cause)})
 	return nil, cause
 }
 func declaredTool(tools []ToolSpec, name string) (ToolSpec, bool) {
@@ -324,6 +356,18 @@ func declaredTool(tools []ToolSpec, name string) (ToolSpec, bool) {
 		}
 	}
 	return ToolSpec{}, false
+}
+
+func (p *policy) contextTool(name string) bool {
+	if p.resolvedContext == nil || p.gateway == nil {
+		return false
+	}
+	for _, definition := range p.resolvedContext.Tools {
+		if definition.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 type k8sArgs struct {
@@ -425,7 +469,35 @@ func (p *policy) tools(ctx context.Context) ([]tool.Tool, error) {
 		}
 		result = append(result, item)
 	}
+	for _, definition := range p.contextDefinitions() {
+		definition := definition
+		item, err := functiontool.New(functiontool.Config{Name: definition.Name, Description: definition.Description}, func(_ agent.Context, args map[string]any) (map[string]any, error) {
+			call := aiengine.ToolCall{ExecutionID: p.executionID, ActorID: p.input.ActorID, ScopeID: p.input.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, Arguments: args, EventSink: p.input.EventSink}
+			toolResult, invokeErr := p.gateway.Invoke(ctx, call)
+			if invokeErr != nil {
+				return nil, invokeErr
+			}
+			return map[string]any{"output": toolResult.Output, "untrusted": toolResult.Untrusted}, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
 	return result, nil
+}
+
+func (p *policy) contextDefinitions() []aiengine.ToolDefinition {
+	if p.resolvedContext == nil || p.gateway == nil {
+		return nil
+	}
+	definitions := make([]aiengine.ToolDefinition, 0, len(p.resolvedContext.Tools))
+	for _, definition := range p.resolvedContext.Tools {
+		if definition.Name != "" && definition.ResourceID != "" {
+			definitions = append(definitions, definition)
+		}
+	}
+	return definitions
 }
 
 func evidenceMap(evidence connector.Evidence, err error) (map[string]any, error) {
@@ -452,6 +524,8 @@ func (p *policy) execute(ctx context.Context, name, targetID string, args any, r
 	evidence, runErr := run()
 	if runErr != nil {
 		_, _ = p.runner.Executions.FinishToolCall(context.Background(), call.ID, "failed", "", "connector", publicError(runErr))
+		p.recordAudit(name, args, nil, "failed", runErr)
+		p.emitToolEvent(name, "tool.failed", aiengine.StatusFailed, map[string]any{"resource_id": targetID, "error": publicError(runErr)})
 		return nil, runErr
 	}
 	if p.input.EvidenceObserver != nil {
@@ -463,5 +537,40 @@ func (p *policy) execute(ctx context.Context, name, targetID string, args any, r
 	if finishErr != nil {
 		return nil, finishErr
 	}
+	p.recordAudit(name, args, result, "succeeded", nil)
+	p.emitToolEvent(name, "tool.completed", aiengine.StatusSucceeded, map[string]any{"resource_id": targetID})
 	return result, err
+}
+
+func (p *policy) recordAudit(name string, args, output any, status string, cause error) {
+	if p.input.ToolCallAudit == nil {
+		return
+	}
+	arguments := make(map[string]any)
+	if encoded, encodeErr := json.Marshal(args); encodeErr == nil {
+		_ = json.Unmarshal(encoded, &arguments)
+	}
+	message := ""
+	if cause != nil {
+		message = publicError(cause)
+	}
+	_ = p.input.ToolCallAudit.RecordToolCall(context.Background(), aiengine.ToolCallRecord{ExecutionID: p.executionID, Sequence: int(p.recordedCalls.Load()), ResourceID: p.targetResourceID, ToolName: name, Arguments: arguments, Output: output, Status: statusValue(status), Error: message})
+}
+
+func statusValue(status string) aiengine.Status {
+	if status == "succeeded" {
+		return aiengine.StatusSucceeded
+	}
+	return aiengine.StatusFailed
+}
+
+func (p *policy) emitToolEvent(name, eventType string, status aiengine.Status, payload map[string]any) {
+	if p.input.EventSink == nil {
+		return
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["tool"] = name
+	_ = p.input.EventSink(aiengine.Event{ExecutionID: p.executionID, Type: eventType, Status: status, Payload: payload})
 }

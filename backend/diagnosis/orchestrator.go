@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/skill"
 )
@@ -100,7 +101,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	for _, message := range messages {
 		conversation = append(conversation, map[string]string{"role": message.Role, "content": message.Content})
 	}
-	result, err := o.runner.Run(ctx, skill.RunInput{ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, TargetResourceID: targets[0].ResourceID, Input: map[string]any{"question": messages[len(messages)-1].Content, "target_resource_ids": targetIDs, "conversation": conversation}, MaxToolCalls: 12, MaxTokens: 20000, MaxOutputBytes: 64 << 10, Timeout: o.timeout, Stream: true, EvidenceObserver: func(observed skill.ObservedEvidence) { o.captureEvidence(session.ID, observed) }})
+	result, err := o.runner.Run(ctx, skill.RunInput{ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, TargetResourceID: targets[0].ResourceID, AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName, Purpose: aiengine.PurposeDiagnosis, Input: map[string]any{"question": messages[len(messages)-1].Content, "target_resource_ids": targetIDs, "conversation": conversation}, MaxToolCalls: 12, MaxTokens: 20000, MaxOutputBytes: 64 << 10, Timeout: o.timeout, Stream: true, EvidenceObserver: func(observed skill.ObservedEvidence) { o.captureEvidence(session.ID, observed) }})
 	if err != nil {
 		o.fail(session.ID, runnerErrorCode(err), err)
 		return

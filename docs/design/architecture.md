@@ -17,7 +17,7 @@ OpsKeeper 以业务项目为最终运维对象，以团队为基础设施和共�
 - 部署在 Kubernetes 上的业务应用和工作负载。
 - 部署在任意环境中的 PostgreSQL、Redis、Kafka 等中间件。
 - Prometheus、Loki、Tempo、Elastic 等外部可观测平台。
-- AIModel（内部包含大模型节点 LLMEndpoint）、MCP Server、Skill 等 AI 运维能力。
+- AIProvider、MCP Server、Skill 等 AI 运维能力。
 - 平台、团队和项目三级用户、角色及授权关系。
 
 首版按单平台部署设计，数据模型预留 `tenant_id`，但不在首版暴露多租户能力。
@@ -58,7 +58,7 @@ flowchart LR
     Skills --> Middleware[Middleware APIs]
     Skills --> Observability[Metrics Logs Traces]
     Skills --> MCP[MCP Servers]
-    AI --> LLM[AIModel / 大模型节点]
+    AI --> LLM[AIEngine / AIProvider]
     AI --> Skills
     Worker --> PG
 ```
@@ -96,7 +96,7 @@ flowchart LR
 | Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
 | Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
-| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 AIModel 在后续目标设计中扩展 |
+| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 AIProvider 在后续目标设计中扩展 |
 | Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现，T10-T14；Markdown Skill 编辑体验见 OI-006 |
 | AI Orchestrator | Scope 默认解析、受控 Tool Calling、预算、执行记录和高风险审批 | 已实现，T10-T14 |
 | Diagnosis | 对话会话、消息、工具调用、证据和诊断报告 | 已实现，T11-T12 |
@@ -148,7 +148,7 @@ flowchart LR
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 已实现，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 已实现，T13 |
 | `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults`、`/opskeeper/api/v1/skill-executions` | 已实现，T10 |
-| `/opskeeper/api/v1/ai-models`、`/opskeeper/api/v1/ai-models/{id}/test` | 目标设计；替代历史 LLM Provider 接口 |
+| `/opskeeper/api/v1/ai-providers/{id}/test` | AIProvider 与指定模型的连接测试 |
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。
 

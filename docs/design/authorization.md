@@ -66,7 +66,6 @@ resource:create
 resource:update
 resource:delete
 resource:use
-model:manage
 credential:manage
 credential:test
 relation:manage
@@ -93,7 +92,6 @@ audit:read
 | `resource:update` | 编辑资源配置 |
 | `resource:delete` | 删除或停用资源 |
 | `resource:use` | 使用资源执行连接测试或业务调用 |
-| `model:manage` | 设置或取消对应级别的默认 AI 模型 |
 | `credential:manage` | 管理凭据及其关联配置 |
 | `credential:test` | 测试凭据连接 |
 | `relation:manage` | 管理资源之间的关联关系 |
@@ -106,7 +104,7 @@ audit:read
 | `operation:approve` | 审批受控操作 |
 | `audit:read` | 查看审计日志 |
 
-`resource:use` 与 `resource:read` 分离。例如项目运维人员可以使用团队级 AIModel 或监控平台完成诊断，但不能查看 AIModel 内部大模型节点的地址、密钥或修改配置。大模型节点（LLMEndpoint）不作为独立授权主体，所有授权判断都以所属 AIModel 为准。
+`resource:use` 与 `resource:read` 分离。AIEngine 执行时直接使用有权限的 AIProvider 和模型；Provider 的地址和凭据仍不向业务请求暴露。
 
 ## 5. 授权数据模型
 

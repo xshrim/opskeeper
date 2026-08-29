@@ -159,7 +159,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           {
             id: ids.provider,
             scope_id: ids.platform,
-            kind: 'LLMProvider',
+            kind: 'AIProvider',
             schema_version: 1,
             name: 'Test Provider',
             labels: {},
@@ -572,7 +572,7 @@ test.describe('T07 console', () => {
     await expect(dialog.getByLabel('名称')).toBeVisible();
     await expect(dialog.getByLabel('团队名称')).toHaveCount(0);
     await dialog.getByLabel('选择团队图标').click();
-    const picker = page.getByRole('dialog', { name: '选择团队图标' });
+    const picker = page.getByRole('dialog').filter({ hasText: '选择图标' });
     await picker.getByLabel('搜索图标').fill('PostgreSQL');
     await picker.getByRole('button', { name: '选择图标 PostgreSQL' }).click();
     await dialog.getByLabel('选择团队图标').click();
@@ -660,13 +660,11 @@ test.describe('T10 and T11 workbenches', () => {
   test('shows provider and Skill versions', async ({ page }) => {
     await pageData(page);
     await page.goto('/');
-    await page.getByRole('button', { name: '模型与 Skill' }).click();
+    await expect(page.getByRole('button', { name: 'AI 引擎' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await expect(
-      page.getByRole('heading', { name: '模型与 Skill' })
+      page.getByRole('heading', { name: 'Skill', exact: true })
     ).toBeVisible();
-    await expect(
-      page.locator('option').filter({ hasText: 'Test Provider' })
-    ).toHaveCount(1);
     await expect(
       page.locator('option').filter({ hasText: 'Default Diagnostic' })
     ).toHaveCount(1);
@@ -684,7 +682,7 @@ test.describe('T10 and T11 workbenches', () => {
     await expect(
       page.getByRole('heading', { name: '支付服务诊断' })
     ).toBeVisible();
-    await expect(page.getByText('succeeded').first()).toBeVisible();
+    await expect(page.getByText('已完成').first()).toBeVisible();
   });
 });
 

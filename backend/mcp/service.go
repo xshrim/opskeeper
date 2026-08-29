@@ -57,7 +57,15 @@ type Config struct {
 // HTTPS streamable HTTP is allowed for the first release; stdio commands are
 // reserved for the Kubernetes Job sandbox rather than API/Worker processes.
 func Discover(ctx context.Context, endpoint string, timeout time.Duration) (Snapshot, error) {
-	u, err := safeEndpoint(endpoint)
+	return discoverWithSecurity(ctx, endpoint, timeout, false)
+}
+
+func DiscoverWithSecurity(ctx context.Context, endpoint string, timeout time.Duration, enhancedSecurity bool) (Snapshot, error) {
+	return discoverWithSecurity(ctx, endpoint, timeout, enhancedSecurity)
+}
+
+func discoverWithSecurity(ctx context.Context, endpoint string, timeout time.Duration, enhancedSecurity bool) (Snapshot, error) {
+	u, err := endpointURL(endpoint, enhancedSecurity)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -67,7 +75,7 @@ func Discover(ctx context.Context, endpoint string, timeout time.Duration) (Snap
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := gomcp.NewClient(&gomcp.Implementation{Name: "opskeeper", Version: "t14"}, nil)
-	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: u.String(), HTTPClient: restrictedClient(timeout), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
+	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: u.String(), HTTPClient: httpClient(timeout, enhancedSecurity), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("connect MCP server: %w", err)
 	}
@@ -90,17 +98,21 @@ func Discover(ctx context.Context, endpoint string, timeout time.Duration) (Snap
 // Call invokes only a previously discovered, explicit whitelist entry and
 // returns a response bounded before persistence or presentation to a model.
 func Call(ctx context.Context, endpoint, name string, allowed map[string]bool, arguments map[string]any, timeout time.Duration) (json.RawMessage, error) {
-	return CallBounded(ctx, endpoint, name, allowed, arguments, timeout, defaultMaxResponseBytes)
+	return CallBoundedWithSecurity(ctx, endpoint, name, allowed, arguments, timeout, defaultMaxResponseBytes, false)
 }
 
 func CallBounded(ctx context.Context, endpoint, name string, allowed map[string]bool, arguments map[string]any, timeout time.Duration, limit int64) (json.RawMessage, error) {
+	return CallBoundedWithSecurity(ctx, endpoint, name, allowed, arguments, timeout, limit, false)
+}
+
+func CallBoundedWithSecurity(ctx context.Context, endpoint, name string, allowed map[string]bool, arguments map[string]any, timeout time.Duration, limit int64, enhancedSecurity bool) (json.RawMessage, error) {
 	if !allowed[strings.TrimSpace(name)] {
 		return nil, errors.New("MCP tool is not allowlisted")
 	}
-	if _, err := safeEndpoint(endpoint); err != nil {
+	if _, err := endpointURL(endpoint, enhancedSecurity); err != nil {
 		return nil, err
 	}
-	if _, err := Discover(ctx, endpoint, timeout); err != nil {
+	if _, err := DiscoverWithSecurity(ctx, endpoint, timeout, enhancedSecurity); err != nil {
 		return nil, err
 	}
 	if timeout <= 0 {
@@ -109,7 +121,7 @@ func CallBounded(ctx context.Context, endpoint, name string, allowed map[string]
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := gomcp.NewClient(&gomcp.Implementation{Name: "opskeeper", Version: "t14"}, nil)
-	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: restrictedClient(timeout), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
+	session, err := client.Connect(ctx, &gomcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient(timeout, enhancedSecurity), DisableStandaloneSSE: true, MaxRetries: 0}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,19 +143,33 @@ func CallBounded(ctx context.Context, endpoint, name string, allowed map[string]
 	return raw, nil
 }
 
-func safeEndpoint(value string) (*url.URL, error) {
+func endpointURL(value string, enhancedSecurity bool) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(value))
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-		return nil, errors.New("MCP endpoint must be an HTTPS URL without user info")
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return nil, errors.New("MCP endpoint must be an absolute HTTP(S) URL without user info")
 	}
-	host := u.Hostname()
-	if host == "" || host == "localhost" {
-		return nil, errors.New("MCP endpoint host is not permitted")
-	}
-	if addr, err := netip.ParseAddr(host); err == nil && !isPublicAddress(addr) {
-		return nil, errors.New("MCP endpoint address is not permitted")
+	if enhancedSecurity {
+		if u.Scheme != "https" {
+			return nil, errors.New("MCP endpoint must use HTTPS when enhanced security is enabled")
+		}
+		host := u.Hostname()
+		if host == "" || host == "localhost" {
+			return nil, errors.New("MCP endpoint host is not permitted by enhanced security")
+		}
+		if addr, err := netip.ParseAddr(host); err == nil && !isPublicAddress(addr) {
+			return nil, errors.New("MCP endpoint address is not permitted by enhanced security")
+		}
 	}
 	return u, nil
+}
+
+func safeEndpoint(value string) (*url.URL, error) { return endpointURL(value, true) }
+
+func httpClient(timeout time.Duration, enhancedSecurity bool) *http.Client {
+	if enhancedSecurity {
+		return restrictedClient(timeout)
+	}
+	return &http.Client{Timeout: timeout}
 }
 
 func restrictedClient(timeout time.Duration) *http.Client {

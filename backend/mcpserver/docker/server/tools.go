@@ -42,9 +42,10 @@ type ContainerLogsInput struct {
 	client.ConnectionInput
 	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
 	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
-	Tail          string `json:"tail,omitempty" jsonschema:"Number of lines from the end. Defaults to 100."`
+	Tail          string `json:"tail,omitempty" jsonschema:"Number of lines from the end. Defaults to 300."`
 	Since         string `json:"since,omitempty" jsonschema:"Show logs since this timestamp or duration."`
 	Until         string `json:"until,omitempty" jsonschema:"Show logs until this timestamp."`
+	Keyword       string `json:"keyword,omitempty" jsonschema:"Only return log lines containing this keyword, case-insensitive."`
 	Timestamps    bool   `json:"timestamps,omitempty" jsonschema:"Include timestamps."`
 	Details       bool   `json:"details,omitempty" jsonschema:"Include extra log attributes."`
 }
@@ -91,6 +92,7 @@ func RegisterTools(s *mcp.Server) {
 		"tail":           map[string]any{"type": "string"},
 		"since":          map[string]any{"type": "string"},
 		"until":          map[string]any{"type": "string"},
+		"keyword":        map[string]any{"type": "string"},
 		"timestamps":     map[string]any{"type": "boolean"},
 		"details":        map[string]any{"type": "boolean"},
 	})}, containerLogsTool)
@@ -208,7 +210,7 @@ func containerLogs(ctx context.Context, _ *mcp.CallToolRequest, input ContainerL
 	defer cli.Close()
 	tail := input.Tail
 	if strings.TrimSpace(tail) == "" {
-		tail = "100"
+		tail = "300"
 	}
 	reader, err := cli.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true, ShowStderr: true, Since: input.Since, Until: input.Until,
@@ -227,6 +229,7 @@ func containerLogs(ctx context.Context, _ *mcp.CallToolRequest, input ContainerL
 		raw = raw[:maxLogBytes]
 	}
 	logs := decodeLogs(raw)
+	logs = filterLogLines(logs, input.Keyword)
 	return nil, LogsOutput{ContainerID: id, Logs: logs, Truncated: truncated}, nil
 }
 
@@ -303,4 +306,22 @@ func decodeLogs(raw []byte) string {
 		return stdout.String() + stderr.String()
 	}
 	return string(raw)
+}
+
+// filterLogLines applies keyword matching after Docker has applied its time
+// range and tail selection. Matching is case-insensitive and preserves each
+// selected line's original newline delimiter.
+func filterLogLines(logs, keyword string) string {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" || logs == "" {
+		return logs
+	}
+	foldedKeyword := strings.ToLower(keyword)
+	var filtered strings.Builder
+	for _, line := range strings.SplitAfter(logs, "\n") {
+		if strings.Contains(strings.ToLower(strings.TrimSuffix(line, "\n")), foldedKeyword) {
+			filtered.WriteString(line)
+		}
+	}
+	return filtered.String()
 }

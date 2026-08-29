@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/credential"
@@ -81,7 +82,11 @@ func main() {
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentials)
 	skillService := skill.NewService(skill.NewStore(pool), resourceService)
 	skillRunner := skill.NewRunner(skillService, llmService, connectors, skill.NewStore(pool))
-	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{runner: skillRunner, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
+	contextTooling := aiengine.NewContextTooling(aiengine.ResourceServiceReader{Reader: resourceService}, connectors.AIEngineProvider())
+	aiStore := aiengine.NewPostgresStore(pool)
+	contextTooling.Gateway.AuditStore = aiStore
+	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore)
+	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{runner: skillRunner, engine: aiEngine, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
 	var operationReconciler *operation.Reconciler
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
 		operationReconciler, err = operation.NewInClusterReconciler(operation.NewStore(pool))
@@ -230,6 +235,7 @@ func (c connectorChecker) connectivity(ctx context.Context, id string) ([]inspec
 
 type inspectionExplainer struct {
 	runner *skill.Runner
+	engine aiengine.Engine
 	store  interface {
 		RecordExplanation(context.Context, string, string) error
 	}
@@ -259,23 +265,37 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 				}
 				break
 			}
-			result, err := e.runner.Run(ctx, skill.RunInput{ScopeID: policy.ScopeID, SkillResourceID: skillID, TargetResourceID: targetID, Input: map[string]any{"target_resource_id": targetID}, MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout})
+			var output, status string
+			var toolCalls int
+			var totalTokens int64
+			var err error
+			if e.engine != nil {
+				result, executeErr := e.engine.Execute(ctx, aiengine.Request{
+					ScopeID: policy.ScopeID, Profile: aiengine.ProfileInspection, SkillResourceID: skillID,
+					Input: map[string]any{"target_resource_id": targetID}, Context: aiengine.ContextRequest{ResourceIDs: []string{targetID}},
+					Budget: aiengine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
+				})
+				output, toolCalls, totalTokens, status, err = result.Output, result.ToolCallCount, result.TotalTokens, string(result.Status), executeErr
+			} else {
+				result, runErr := e.runner.Run(ctx, skill.RunInput{ScopeID: policy.ScopeID, SkillResourceID: skillID, TargetResourceID: targetID, Purpose: aiengine.PurposeInspection, Input: map[string]any{"target_resource_id": targetID}, MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout})
+				output, toolCalls, totalTokens, status, err = result.Output, result.Execution.ToolCallCount, result.Execution.TotalTokens, result.Execution.Status, runErr
+			}
 			if err != nil {
 				if firstErr == nil {
 					firstErr = err
 				}
 				continue
 			}
-			remainingTools -= result.Execution.ToolCallCount
-			remainingTokens -= result.Execution.TotalTokens
-			if result.Execution.Status != "succeeded" {
+			remainingTools -= toolCalls
+			remainingTokens -= totalTokens
+			if status != "succeeded" {
 				if firstErr == nil {
-					firstErr = fmt.Errorf("inspection Skill execution ended with status %s", result.Execution.Status)
+					firstErr = fmt.Errorf("inspection Skill execution ended with status %s", status)
 				}
 				continue
 			}
 			succeeded++
-			if err := e.store.RecordExplanation(ctx, run.ID, result.Output); err != nil {
+			if err := e.store.RecordExplanation(ctx, run.ID, output); err != nil {
 				return err
 			}
 		}

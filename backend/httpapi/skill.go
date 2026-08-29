@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/llm"
@@ -20,10 +21,7 @@ import (
 )
 
 type llmService interface {
-	SetDefault(context.Context, string, string, string, string) (llm.Default, error)
-	Resolve(context.Context, string, string, string) (llm.ResolvedModel, error)
 	TestConnection(context.Context, string, string, string, bool) (llm.ConnectionResult, error)
-	TestAIModelEndpoint(context.Context, string, string, int, bool) (llm.ConnectionResult, error)
 	TestDraftConnection(context.Context, llm.DraftConnection, bool) (llm.ConnectionResult, error)
 }
 
@@ -46,25 +44,17 @@ type aiHandler struct {
 	llms          llmService
 	skills        skillService
 	runner        skillRunner
+	engine        aiengine.Engine
 	authorization authorizationService
 	auditor       audit.Logger
 }
 
-type setLLMDefaultRequest struct {
-	ScopeID            string `json:"scope_id"`
-	ProviderResourceID string `json:"provider_resource_id"`
-	ModelName          string `json:"model_name"`
-}
-type testLLMRequest struct {
+type testAIProviderRequest struct {
 	ScopeID   string `json:"scope_id"`
 	ModelName string `json:"model_name"`
 	Stream    bool   `json:"stream"`
 }
-type testAIModelEndpointRequest struct {
-	ScopeID string `json:"scope_id"`
-	Stream  bool   `json:"stream"`
-}
-type testDraftLLMRequest struct {
+type testDraftAIProviderRequest struct {
 	ScopeID       string   `json:"scope_id"`
 	ProviderType  string   `json:"provider_type"`
 	BaseURL       string   `json:"base_url"`
@@ -88,22 +78,28 @@ type setSkillDefaultRequest struct {
 	SkillVersionID  string `json:"skill_version_id"`
 }
 type executeSkillRequest struct {
-	ScopeID            string         `json:"scope_id"`
-	TargetResourceID   string         `json:"target_resource_id"`
-	SkillResourceID    string         `json:"skill_resource_id,omitempty"`
-	SkillVersionID     string         `json:"skill_version_id,omitempty"`
-	ProviderResourceID string         `json:"provider_resource_id,omitempty"`
-	ModelName          string         `json:"model_name,omitempty"`
-	Input              map[string]any `json:"input"`
-	MaxToolCalls       int            `json:"max_tool_calls,omitempty"`
-	MaxTokens          int64          `json:"max_tokens,omitempty"`
-	MaxOutputBytes     int            `json:"max_output_bytes,omitempty"`
-	TimeoutSeconds     int            `json:"timeout_seconds,omitempty"`
-	Stream             bool           `json:"stream,omitempty"`
+	ScopeID              string         `json:"scope_id"`
+	TargetResourceID     string         `json:"target_resource_id"`
+	AIProviderResourceID string         `json:"ai_provider_resource_id,omitempty"`
+	ModelName            string         `json:"model_name,omitempty"`
+	SkillResourceID      string         `json:"skill_resource_id,omitempty"`
+	SkillVersionID       string         `json:"skill_version_id,omitempty"`
+	Input                map[string]any `json:"input"`
+	MaxToolCalls         int            `json:"max_tool_calls,omitempty"`
+	MaxTokens            int64          `json:"max_tokens,omitempty"`
+	MaxOutputBytes       int            `json:"max_output_bytes,omitempty"`
+	TimeoutSeconds       int            `json:"timeout_seconds,omitempty"`
+	Stream               bool           `json:"stream,omitempty"`
 }
 
-func registerAIRoutes(router chi.Router, llms llmService, skills skillService, runnerService skillRunner, authorizer authorizationService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
-	h := aiHandler{llms: llms, skills: skills, runner: runnerService, authorization: authorizer, auditor: auditor}
+func registerAIRoutes(router chi.Router, llms llmService, skills skillService, runnerService skillRunner, engine aiengine.Engine, authorizer authorizationService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+	h := aiHandler{llms: llms, skills: skills, runner: runnerService, engine: engine, authorization: authorizer, auditor: auditor}
+	if bindings, ok := llms.(aiProviderBindingService); ok {
+		registerAIProviderBindingRoutes(router, bindings, requirePermission)
+	}
+	if availability, ok := llms.(aiProviderAvailabilityService); ok {
+		registerAIProviderAvailabilityRoute(router, availability, requirePermission)
+	}
 	guard := func(permission authorization.Permission) func(http.Handler) http.Handler {
 		if requirePermission == nil {
 			return func(next http.Handler) http.Handler { return next }
@@ -111,11 +107,8 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, r
 		return requirePermission(permission)
 	}
 	if llms != nil {
-		router.With(guard(authorization.ResourceUpdate)).Put("/llm-defaults", h.setLLMDefault)
-		router.With(guard(authorization.ResourceRead)).Get("/llm-defaults", h.resolveLLMDefault)
-		router.With(guard(authorization.ResourceUse)).Post("/llm-providers/{providerID}/test", h.testLLM)
-		router.With(guard(authorization.ResourceUse)).Post("/ai-models/{modelID}/endpoints/{endpointIndex}/test", h.testAIModelEndpoint)
-		router.With(guard(authorization.ResourceUpdate)).Post("/llm-providers/test-draft", h.testDraftLLM)
+		router.With(guard(authorization.ResourceUse)).Post("/ai-providers/{providerID}/test", h.testAIProvider)
+		router.With(guard(authorization.ResourceUpdate)).Post("/ai-providers/test-draft", h.testDraftAIProvider)
 	}
 	if skills != nil {
 		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions", h.createVersion)
@@ -127,36 +120,13 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, r
 		router.With(guard(authorization.ResourceRead)).Get("/skill-executions", h.listExecutions)
 		router.With(guard(authorization.ResourceRead)).Get("/skill-executions/{executionID}", h.getExecution)
 	}
-	if runnerService != nil {
+	if runnerService != nil || engine != nil {
 		router.Post("/skill-executions", h.executeSkill)
 	}
 }
 
-func (h aiHandler) setLLMDefault(w http.ResponseWriter, r *http.Request) {
-	var body setLLMDefaultRequest
-	if !decodeRequest(w, r, &body) {
-		return
-	}
-	item, err := h.llms.SetDefault(r.Context(), currentUser(r).ID, body.ScopeID, body.ProviderResourceID, body.ModelName)
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	h.record(r, "llm.default.set", "scope", body.ScopeID, body.ScopeID)
-	writeJSON(w, http.StatusOK, item)
-}
-func (h aiHandler) resolveLLMDefault(w http.ResponseWriter, r *http.Request) {
-	item, err := h.llms.Resolve(r.Context(), r.URL.Query().Get("scope_id"), "", "")
-	if err != nil {
-		writeAIError(w, r, err)
-		return
-	}
-	item.APIKey = ""
-	item.Provider.CredentialID = ""
-	writeJSON(w, http.StatusOK, item)
-}
-func (h aiHandler) testLLM(w http.ResponseWriter, r *http.Request) {
-	var body testLLMRequest
+func (h aiHandler) testAIProvider(w http.ResponseWriter, r *http.Request) {
+	var body testAIProviderRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
@@ -165,30 +135,12 @@ func (h aiHandler) testLLM(w http.ResponseWriter, r *http.Request) {
 		writeAIError(w, r, err)
 		return
 	}
-	h.record(r, "llm.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
+	h.record(r, "ai_provider.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (h aiHandler) testAIModelEndpoint(w http.ResponseWriter, r *http.Request) {
-	var body testAIModelEndpointRequest
-	if !decodeRequest(w, r, &body) {
-		return
-	}
-	endpointIndex, err := strconv.Atoi(chi.URLParam(r, "endpointIndex"))
-	if err != nil || endpointIndex < 0 {
-		writeError(w, r, http.StatusBadRequest, "invalid_request", "endpoint_index must be a non-negative integer")
-		return
-	}
-	item, err := h.llms.TestAIModelEndpoint(r.Context(), body.ScopeID, chi.URLParam(r, "modelID"), endpointIndex, body.Stream)
-	if err != nil {
-		writeAIConnectionError(w, r, err)
-		return
-	}
-	h.record(r, "llm.ai_model_endpoint.test", "resource", item.ProviderResourceID, body.ScopeID)
-	writeJSON(w, http.StatusOK, item)
-}
-func (h aiHandler) testDraftLLM(w http.ResponseWriter, r *http.Request) {
-	var body testDraftLLMRequest
+func (h aiHandler) testDraftAIProvider(w http.ResponseWriter, r *http.Request) {
+	var body testDraftAIProviderRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
@@ -324,7 +276,31 @@ func (h aiHandler) executeSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := authorization.WithResourceFilter(r.Context(), resourceFilter)
-	result, err := h.runner.Run(ctx, skill.RunInput{ActorID: user.ID, ScopeID: body.ScopeID, TargetResourceID: body.TargetResourceID, SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID, ProviderResourceID: body.ProviderResourceID, ModelName: body.ModelName, Input: body.Input, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Stream: body.Stream})
+	if h.engine != nil {
+		contextRequest := aiengine.ContextRequest{}
+		if strings.TrimSpace(body.TargetResourceID) != "" {
+			contextRequest.ResourceIDs = []string{body.TargetResourceID}
+		}
+		result, err := h.engine.Execute(ctx, aiengine.Request{
+			ActorID: user.ID, ScopeID: body.ScopeID, AIProviderResourceID: body.AIProviderResourceID,
+			ModelName: body.ModelName, Purpose: aiengine.PurposeDefault,
+			Profile: aiengine.ProfileSkill, Input: body.Input, Context: contextRequest,
+			SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID,
+			Budget: aiengine.Budget{MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second},
+		})
+		if err != nil {
+			writeAIError(w, r, err)
+			return
+		}
+		h.record(r, "ai_engine.execute", "ai_execution", result.ExecutionID, body.ScopeID)
+		writeJSON(w, http.StatusCreated, result)
+		return
+	}
+	if h.runner == nil {
+		writeError(w, r, http.StatusInternalServerError, "internal_error", "AI execution service is unavailable")
+		return
+	}
+	result, err := h.runner.Run(ctx, skill.RunInput{ActorID: user.ID, ScopeID: body.ScopeID, TargetResourceID: body.TargetResourceID, SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID, AIProviderResourceID: body.AIProviderResourceID, ModelName: body.ModelName, Purpose: aiengine.PurposeDefault, Input: body.Input, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Stream: body.Stream})
 	if err != nil {
 		writeAIError(w, r, err)
 		return

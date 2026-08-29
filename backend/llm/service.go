@@ -19,102 +19,158 @@ import (
 type ResourceReader interface {
 	Get(context.Context, string) (resource.Resource, error)
 }
-
+type ResourceLister interface {
+	List(context.Context, resource.Pagination, string, map[string]string) (resource.Page[resource.Resource], error)
+}
 type CredentialReader interface {
 	RevealLinked(context.Context, string) ([]byte, error)
 }
-
 type Service struct {
 	store       Store
 	resources   ResourceReader
 	credentials CredentialReader
 }
 
+type AvailableModel struct {
+	Name         string   `json:"name"`
+	Capabilities []string `json:"capabilities"`
+}
+type AvailableProvider struct {
+	ResourceID string           `json:"provider_resource_id"`
+	Name       string           `json:"name"`
+	Models     []AvailableModel `json:"models"`
+	Default    bool             `json:"default"`
+}
+
+func (s *Service) Available(ctx context.Context, scopeID string, purpose Purpose) ([]AvailableProvider, error) {
+	lister, ok := s.resources.(ResourceLister)
+	if !ok {
+		return nil, fmt.Errorf("resource listing is unavailable")
+	}
+	page, err := lister.List(ctx, resource.Pagination{Page: 1, PageSize: 100}, AIProviderKind, nil)
+	if err != nil {
+		return nil, err
+	}
+	binding, _ := s.store.ResolveBinding(ctx, scopeID, purpose)
+	items := make([]AvailableProvider, 0, len(page.Items))
+	for _, item := range page.Items {
+		if item.Status != resource.StatusActive || !allowsProviderResource(ctx, item) {
+			continue
+		}
+		provider, err := s.readAIProvider(ctx, item.ID, true)
+		if err != nil {
+			continue
+		}
+		models := make([]AvailableModel, 0)
+		for _, model := range provider.Config.Models {
+			if model.Enabled && len(missingCapabilities(model, requiredCapabilities(purpose))) == 0 {
+				models = append(models, AvailableModel{Name: model.Name, Capabilities: model.Capabilities})
+			}
+		}
+		if len(models) > 0 {
+			items = append(items, AvailableProvider{ResourceID: item.ID, Name: item.Name, Models: models, Default: binding.ProviderID == item.ID})
+		}
+	}
+	return items, nil
+}
+
 func NewService(store Store, resources ResourceReader, credentials CredentialReader) *Service {
 	return &Service{store: store, resources: resources, credentials: credentials}
 }
 
-func (s *Service) SetDefault(ctx context.Context, actorID, scopeID, providerID, modelName string) (Default, error) {
-	scopeID = strings.TrimSpace(scopeID)
-	providerID = strings.TrimSpace(providerID)
-	modelName = strings.TrimSpace(modelName)
-	if scopeID == "" || providerID == "" || modelName == "" {
-		return Default{}, invalid("scope_id, provider_resource_id and model_name are required")
-	}
-	if !allowsScope(ctx, scopeID) {
-		return Default{}, authorization.ErrForbidden
-	}
-	provider, err := s.readProvider(ctx, providerID, false)
-	if err != nil {
-		return Default{}, err
-	}
-	if _, ok := findModel(provider.Config.Models, modelName); !ok {
-		return Default{}, invalid("model_name is not declared by the provider")
-	}
-	return s.store.SetDefault(ctx, Default{ScopeID: scopeID, ProviderResourceID: providerID, ModelName: modelName}, strings.TrimSpace(actorID))
+func (s *Service) AIProvider(ctx context.Context, id string) (AIProvider, error) {
+	return s.readAIProvider(ctx, strings.TrimSpace(id), false)
 }
 
-func (s *Service) Resolve(ctx context.Context, scopeID, explicitProviderID, explicitModel string) (ResolvedModel, error) {
+func (s *Service) ListBindings(ctx context.Context, scopeID string) ([]ScopeProviderBinding, error) {
+	if strings.TrimSpace(scopeID) == "" || !allowsScope(ctx, scopeID) {
+		return nil, authorization.ErrForbidden
+	}
+	return s.store.ListBindings(ctx, strings.TrimSpace(scopeID))
+}
+
+func (s *Service) SetBinding(ctx context.Context, actorID, scopeID string, purpose Purpose, providerID string) (ScopeProviderBinding, error) {
+	scopeID, providerID = strings.TrimSpace(scopeID), strings.TrimSpace(providerID)
+	if scopeID == "" || providerID == "" || !validPurpose(purpose) {
+		return ScopeProviderBinding{}, invalid("scope_id, purpose and provider_resource_id are required")
+	}
+	if !allowsExactScope(ctx, scopeID) {
+		return ScopeProviderBinding{}, authorization.ErrForbidden
+	}
+	provider, err := s.readAIProvider(ctx, providerID, true)
+	if err != nil {
+		return ScopeProviderBinding{}, err
+	}
+	model, ok := selectedDefaultModel(provider.Config)
+	if !ok {
+		return ScopeProviderBinding{}, invalid("AIProvider default_model must reference an enabled model")
+	}
+	if missing := missingCapabilities(model, requiredCapabilities(purpose)); len(missing) > 0 {
+		return ScopeProviderBinding{}, invalid("default model lacks capabilities: " + strings.Join(missing, ", "))
+	}
+	return s.store.SetBinding(ctx, ScopeProviderBinding{ScopeID: scopeID, ProviderID: providerID, Tag: purpose}, strings.TrimSpace(actorID))
+}
+
+func (s *Service) RemoveBinding(ctx context.Context, scopeID string, purpose Purpose) error {
+	if strings.TrimSpace(scopeID) == "" || !validPurpose(purpose) || !allowsExactScope(ctx, scopeID) {
+		return authorization.ErrForbidden
+	}
+	return s.store.RemoveBinding(ctx, strings.TrimSpace(scopeID), purpose)
+}
+
+// Resolve chooses a Provider directly. A blank provider ID resolves the
+// nearest Scope binding for the requested purpose, falling back to
+// the default purpose at each scope before moving to its parent.
+func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName string, purpose Purpose) (ResolvedProvider, error) {
 	scopeID = strings.TrimSpace(scopeID)
 	if scopeID == "" {
-		return ResolvedModel{}, authorization.ErrForbidden
+		return ResolvedProvider{}, authorization.ErrForbidden
 	}
-	definedAt := scopeID
-	providerID := strings.TrimSpace(explicitProviderID)
-	modelName := strings.TrimSpace(explicitModel)
+	providerID, modelName = strings.TrimSpace(providerID), strings.TrimSpace(modelName)
+	definedAt, reason := scopeID, "explicit_provider"
 	if providerID == "" {
 		if !allowsScope(ctx, scopeID) {
-			return ResolvedModel{}, authorization.ErrForbidden
+			return ResolvedProvider{}, authorization.ErrForbidden
 		}
-		binding, err := s.store.ResolveDefault(ctx, scopeID)
+		if !validPurpose(purpose) {
+			purpose = PurposeDefault
+		}
+		binding, err := s.store.ResolveBinding(ctx, scopeID, purpose)
 		if err != nil {
-			return ResolvedModel{}, err
+			return ResolvedProvider{}, invalid("no default AIProvider is configured for purpose " + string(purpose))
 		}
-		providerID, modelName, definedAt = binding.ProviderResourceID, binding.ModelName, binding.ScopeID
+		providerID, definedAt, reason = binding.ProviderID, binding.ScopeID, "scope_purpose_"+string(binding.Tag)
 	}
-	provider, err := s.readProvider(ctx, providerID, true)
+	provider, err := s.readAIProvider(ctx, providerID, true)
 	if err != nil {
-		return ResolvedModel{}, err
+		return ResolvedProvider{}, err
 	}
-	if modelName == "" && len(provider.Config.Models) == 1 {
-		modelName = provider.Config.Models[0].Name
+	if modelName == "" {
+		modelName = provider.Config.DefaultModel
+		if modelName == "" {
+			for _, candidate := range provider.Config.Models {
+				if candidate.Enabled {
+					modelName = candidate.Name
+					break
+				}
+			}
+		}
 	}
-	modelConfig, ok := findModel(provider.Config.Models, modelName)
+	selected, ok := findEnabledModel(provider.Config.Models, modelName)
 	if !ok {
-		return ResolvedModel{}, invalid("model_name is not declared by the provider")
+		return ResolvedProvider{}, invalid("model_name is not an enabled model of the AIProvider")
 	}
-	result := ResolvedModel{Provider: provider, Model: modelConfig, DefinedAtScopeID: definedAt}
-	if provider.CredentialID != "" {
-		if s.credentials == nil {
-			return ResolvedModel{}, fmt.Errorf("credential service is unavailable")
-		}
-		secret, err := s.credentials.RevealLinked(ctx, provider.CredentialID)
-		if err != nil {
-			return ResolvedModel{}, fmt.Errorf("read LLM credential: %w", err)
-		}
-		result.APIKey = apiKeyFromCredential(secret)
+	if missing := missingCapabilities(selected, requiredCapabilities(purpose)); len(missing) > 0 {
+		return ResolvedProvider{}, invalid("selected model lacks capabilities: " + strings.Join(missing, ", "))
 	}
-	return result, nil
+	result := ResolvedProvider{ProviderResourceID: provider.ResourceID, ProviderName: provider.Name, Provider: provider, Model: selected, DefinedAtScopeID: definedAt, SelectionReason: reason}
+	return s.attachCredential(ctx, result)
 }
 
-func apiKeyFromCredential(secret []byte) string {
-	var fields map[string]string
-	if json.Unmarshal(secret, &fields) == nil {
-		return strings.TrimSpace(fields["token"])
-	}
-	// Keep compatibility with credentials created before resource schemas
-	// declared the token field as structured sensitive data.
-	return strings.TrimSpace(string(secret))
-}
-
-func (s *Service) Provider(ctx context.Context, providerID string) (Provider, error) {
-	return s.readProvider(ctx, strings.TrimSpace(providerID), false)
-}
-
-func (s *Service) BuildModel(ctx context.Context, scopeID, providerID, modelName string) (ResolvedModel, model.LLM, error) {
-	resolved, err := s.Resolve(ctx, scopeID, providerID, modelName)
+func (s *Service) BuildModel(ctx context.Context, scopeID, providerID, modelName string, purpose Purpose) (ResolvedProvider, model.LLM, error) {
+	resolved, err := s.Resolve(ctx, scopeID, providerID, modelName, purpose)
 	if err != nil {
-		return ResolvedModel{}, nil, err
+		return ResolvedProvider{}, nil, err
 	}
 	if resolved.Provider.Config.ProviderType == "openai" {
 		client, err := openaimodel.NewModel(ctx, resolved.Model.Name, &openaimodel.ClientConfig{APIKey: resolved.APIKey, BaseURL: resolved.Provider.Config.BaseURL})
@@ -126,121 +182,31 @@ func (s *Service) BuildModel(ctx context.Context, scopeID, providerID, modelName
 
 func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, modelName string, stream bool) (ConnectionResult, error) {
 	started := time.Now()
-	resolved, client, err := s.BuildModel(ctx, scopeID, providerID, modelName)
+	resolved, client, err := s.BuildModel(ctx, scopeID, providerID, modelName, PurposeDefault)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
-	request := &model.LLMRequest{Model: resolved.Model.Name, Contents: []*genai.Content{genai.NewContentFromText("Reply with OK only.", genai.RoleUser)}}
-	var responseText strings.Builder
-	for response, generateErr := range client.GenerateContent(ctx, request, stream) {
-		if generateErr != nil {
-			return ConnectionResult{}, generateErr
-		}
-		if response != nil && response.Content != nil {
-			for _, part := range response.Content.Parts {
-				if part != nil {
-					responseText.WriteString(part.Text)
-				}
-			}
-		}
+	text, err := runProbe(ctx, client, resolved.Model.Name, stream)
+	if err != nil {
+		return ConnectionResult{}, err
 	}
-	if strings.TrimSpace(responseText.String()) == "" {
-		return ConnectionResult{}, fmt.Errorf("LLM connection returned no text")
+	if strings.TrimSpace(text) == "" {
+		return ConnectionResult{}, fmt.Errorf("AIProvider connection returned no text")
 	}
 	return ConnectionResult{ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
-}
-
-// TestAIModelEndpoint runs a real completion against one endpoint in an
-// AIModel. Model endpoints may use different providers, URLs, and linked
-// credentials, so they cannot be represented by the legacy provider test
-// operation which resolves only the preferred endpoint.
-func (s *Service) TestAIModelEndpoint(ctx context.Context, scopeID, modelID string, endpointIndex int, stream bool) (ConnectionResult, error) {
-	if endpointIndex < 0 || s.resources == nil {
-		return ConnectionResult{}, invalid("endpoint_index is invalid")
-	}
-	item, err := s.resources.Get(ctx, strings.TrimSpace(modelID))
-	if err != nil {
-		return ConnectionResult{}, err
-	}
-	if item.Kind != AIModelKind {
-		return ConnectionResult{}, invalid("resource is not an AIModel")
-	}
-	if item.Status != resource.StatusActive {
-		return ConnectionResult{}, invalid("AIModel is not active")
-	}
-	if !allowsProviderResource(ctx, item) {
-		return ConnectionResult{}, authorization.ErrForbidden
-	}
-	encoded, err := json.Marshal(item.Config)
-	if err != nil {
-		return ConnectionResult{}, fmt.Errorf("encode AIModel config: %w", err)
-	}
-	var config struct {
-		Endpoints []struct {
-			ProviderType  string   `json:"provider_type"`
-			BaseURL       string   `json:"base_url"`
-			ModelName     string   `json:"model_name"`
-			ContextWindow int      `json:"context_window"`
-			Temperature   float64  `json:"temperature"`
-			Capabilities  []string `json:"capabilities"`
-			CredentialID  string   `json:"credential_id"`
-			Enabled       bool     `json:"enabled"`
-		} `json:"endpoints"`
-	}
-	if err := json.Unmarshal(encoded, &config); err != nil || endpointIndex >= len(config.Endpoints) {
-		return ConnectionResult{}, invalid("endpoint_index is out of range")
-	}
-	endpoint := config.Endpoints[endpointIndex]
-	if !endpoint.Enabled {
-		return ConnectionResult{}, invalid("AIModel endpoint is disabled")
-	}
-	apiKey := ""
-	credentialID := strings.TrimSpace(endpoint.CredentialID)
-	if credentialID == "" && item.CredentialID != nil {
-		credentialID = strings.TrimSpace(*item.CredentialID)
-	}
-	if credentialID != "" {
-		if s.credentials == nil {
-			return ConnectionResult{}, fmt.Errorf("credential service is unavailable")
-		}
-		secret, err := s.credentials.RevealLinked(ctx, credentialID)
-		if err != nil {
-			return ConnectionResult{}, fmt.Errorf("read LLM credential: %w", err)
-		}
-		apiKey = apiKeyFromCredential(secret)
-	}
-	result, err := s.TestDraftConnection(ctx, DraftConnection{
-		ScopeID: scopeID, ProviderType: endpoint.ProviderType, BaseURL: endpoint.BaseURL,
-		ModelName: endpoint.ModelName, APIKey: apiKey, ContextWindow: endpoint.ContextWindow,
-		Temperature: endpoint.Temperature, Capabilities: endpoint.Capabilities,
-	}, stream)
-	if err != nil {
-		return ConnectionResult{}, err
-	}
-	result.ProviderResourceID = item.ID
-	return result, nil
 }
 
 func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	draft.ScopeID = strings.TrimSpace(draft.ScopeID)
-	draft.ProviderType = strings.TrimSpace(draft.ProviderType)
-	draft.BaseURL = strings.TrimSpace(draft.BaseURL)
-	draft.ModelName = strings.TrimSpace(draft.ModelName)
+	draft.ScopeID, draft.ProviderType, draft.BaseURL, draft.ModelName = strings.TrimSpace(draft.ScopeID), strings.TrimSpace(draft.ProviderType), strings.TrimSpace(draft.BaseURL), strings.TrimSpace(draft.ModelName)
 	if draft.ScopeID == "" || !allowsScope(ctx, draft.ScopeID) {
 		return ConnectionResult{}, authorization.ErrForbidden
 	}
-	config := ProviderConfig{
-		ProviderType:   draft.ProviderType,
-		BaseURL:        draft.BaseURL,
-		Models:         []ModelConfig{{Name: draft.ModelName, ContextWindow: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities}},
-		TimeoutSeconds: 60,
-	}
-	if err := validateProviderConfig(config); err != nil {
+	config := AIProviderConfig{ProviderType: draft.ProviderType, BaseURL: draft.BaseURL, Enabled: true, Models: []ProviderModel{{Name: draft.ModelName, ContextWindowTokens: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities, Enabled: true}}, DefaultModel: draft.ModelName, TimeoutSeconds: 60}
+	if err := validateAIProviderConfig(config); err != nil {
 		return ConnectionResult{}, err
 	}
-	started := time.Now()
 	var client model.LLM
 	var err error
 	if config.ProviderType == "openai" {
@@ -251,113 +217,117 @@ func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection
 	if err != nil {
 		return ConnectionResult{}, err
 	}
-	temperature := float32(draft.Temperature)
-	request := &model.LLMRequest{Model: draft.ModelName, Config: &genai.GenerateContentConfig{Temperature: &temperature}, Contents: []*genai.Content{genai.NewContentFromText("Reply with OK only.", genai.RoleUser)}}
-	var responseText strings.Builder
-	for response, generateErr := range client.GenerateContent(ctx, request, stream) {
-		if generateErr != nil {
-			return ConnectionResult{}, generateErr
+	if _, err := runProbe(ctx, client, draft.ModelName, stream); err != nil {
+		return ConnectionResult{}, err
+	}
+	return ConnectionResult{ModelName: draft.ModelName, Status: "succeeded", Message: "模型连接测试通过"}, nil
+}
+
+func (s *Service) attachCredential(ctx context.Context, result ResolvedProvider) (ResolvedProvider, error) {
+	if result.Provider.CredentialID == "" {
+		return result, nil
+	}
+	if s.credentials == nil {
+		return ResolvedProvider{}, fmt.Errorf("credential service is unavailable")
+	}
+	secret, err := s.credentials.RevealLinked(ctx, result.Provider.CredentialID)
+	if err != nil {
+		return ResolvedProvider{}, fmt.Errorf("read AIProvider credential: %w", err)
+	}
+	result.APIKey = apiKeyFromCredential(secret)
+	return result, nil
+}
+
+func apiKeyFromCredential(secret []byte) string {
+	var fields map[string]string
+	if json.Unmarshal(secret, &fields) == nil {
+		return strings.TrimSpace(fields["token"])
+	}
+	return strings.TrimSpace(string(secret))
+}
+
+func runProbe(ctx context.Context, client model.LLM, modelName string, stream bool) (string, error) {
+	request := &model.LLMRequest{Model: modelName, Contents: []*genai.Content{genai.NewContentFromText("Reply with OK only.", genai.RoleUser)}}
+	var out strings.Builder
+	for response, err := range client.GenerateContent(ctx, request, stream) {
+		if err != nil {
+			return "", err
 		}
 		if response != nil && response.Content != nil {
 			for _, part := range response.Content.Parts {
 				if part != nil {
-					responseText.WriteString(part.Text)
+					out.WriteString(part.Text)
 				}
 			}
 		}
 	}
-	if strings.TrimSpace(responseText.String()) == "" {
-		return ConnectionResult{}, fmt.Errorf("LLM connection returned no text")
-	}
-	return ConnectionResult{ModelName: draft.ModelName, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
+	return out.String(), nil
 }
 
-func (s *Service) readProvider(ctx context.Context, providerID string, requireActive bool) (Provider, error) {
-	if providerID == "" || s.resources == nil {
-		return Provider{}, invalid("provider_resource_id is required")
+func (s *Service) readAIProvider(ctx context.Context, id string, requireActive bool) (AIProvider, error) {
+	if id == "" || s.resources == nil {
+		return AIProvider{}, invalid("ai_provider_resource_id is required")
 	}
-	item, err := s.resources.Get(ctx, providerID)
+	item, err := s.resources.Get(ctx, id)
 	if err != nil {
-		return Provider{}, err
+		return AIProvider{}, err
 	}
-	if item.Kind != ProviderKind && item.Kind != AIModelKind {
-		return Provider{}, invalid("resource is not an AIModel or LLMProvider")
+	if item.Kind != AIProviderKind {
+		return AIProvider{}, invalid("resource is not an AIProvider")
 	}
 	if !allowsProviderResource(ctx, item) {
-		return Provider{}, authorization.ErrForbidden
+		return AIProvider{}, authorization.ErrForbidden
 	}
-	if requireActive && item.Status != resource.StatusActive {
-		return Provider{}, invalid("AIModel is not active")
+	if requireActive && (item.Status != resource.StatusActive) {
+		return AIProvider{}, invalid("AIProvider is not active")
 	}
 	encoded, err := json.Marshal(item.Config)
 	if err != nil {
-		return Provider{}, fmt.Errorf("encode LLMProvider config: %w", err)
+		return AIProvider{}, fmt.Errorf("encode AIProvider config: %w", err)
 	}
-	var config ProviderConfig
-	if item.Kind == AIModelKind {
-		var model struct {
-			Endpoints []struct {
-				ProviderType   string   `json:"provider_type"`
-				BaseURL        string   `json:"base_url"`
-				ModelName      string   `json:"model_name"`
-				ContextWindow  int      `json:"context_window"`
-				Temperature    float64  `json:"temperature"`
-				Capabilities   []string `json:"capabilities"`
-				TimeoutSeconds int      `json:"timeout_seconds"`
-				Enabled        bool     `json:"enabled"`
-			} `json:"endpoints"`
-		}
-		if err := json.Unmarshal(encoded, &model); err != nil || len(model.Endpoints) == 0 {
-			return Provider{}, invalid("AIModel config is invalid")
-		}
-		for _, endpoint := range model.Endpoints {
-			if !endpoint.Enabled {
-				continue
-			}
-			config = ProviderConfig{
-				ProviderType:   endpoint.ProviderType,
-				BaseURL:        endpoint.BaseURL,
-				Models:         []ModelConfig{{Name: endpoint.ModelName, ContextWindow: endpoint.ContextWindow, Temperature: endpoint.Temperature, Capabilities: endpoint.Capabilities}},
-				TimeoutSeconds: endpoint.TimeoutSeconds,
-			}
-			break
-		}
-		if len(config.Models) == 0 {
-			return Provider{}, invalid("AIModel has no enabled endpoint")
-		}
-	} else if err := json.Unmarshal(encoded, &config); err != nil {
-		return Provider{}, invalid("LLMProvider config is invalid")
+	var config AIProviderConfig
+	if err := json.Unmarshal(encoded, &config); err != nil {
+		return AIProvider{}, invalid("AIProvider config is invalid")
 	}
-	if err := validateProviderConfig(config); err != nil {
-		return Provider{}, err
+	if err := validateAIProviderConfig(config); err != nil {
+		return AIProvider{}, err
+	}
+	if requireActive && !config.Enabled {
+		return AIProvider{}, invalid("AIProvider is disabled")
 	}
 	credentialID := ""
 	if item.CredentialID != nil {
 		credentialID = *item.CredentialID
 	}
-	return Provider{ResourceID: item.ID, ScopeID: item.ScopeID, Name: item.Name, CredentialID: credentialID, Config: config}, nil
+	return AIProvider{ResourceID: item.ID, ScopeID: item.ScopeID, Name: item.Name, CredentialID: credentialID, Config: config}, nil
 }
 
-func validateProviderConfig(config ProviderConfig) error {
+func validateAIProviderConfig(config AIProviderConfig) error {
 	if !supportedProviderType(config.ProviderType) {
 		return invalid("provider_type is not supported")
 	}
 	parsed, err := url.ParseRequestURI(config.BaseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return invalid("base_url must be an absolute HTTP URL")
 	}
 	if len(config.Models) == 0 || len(config.Models) > 100 {
 		return invalid("models must contain 1 to 100 entries")
 	}
 	names := make([]string, 0, len(config.Models))
-	for _, model := range config.Models {
-		if strings.TrimSpace(model.Name) == "" || model.ContextWindow <= 0 || model.Temperature < 0 || model.Temperature > 2 {
-			return invalid("every model requires a name and positive context_window")
+	for _, item := range config.Models {
+		if strings.TrimSpace(item.Name) == "" || item.ContextWindowTokens <= 0 || item.Temperature < 0 || item.Temperature > 2 {
+			return invalid("every provider model requires a name and positive context_window_tokens")
 		}
-		if slices.Contains(names, model.Name) {
-			return invalid("model names must be unique")
+		if slices.Contains(names, item.Name) {
+			return invalid("provider model names must be unique")
 		}
-		names = append(names, model.Name)
+		names = append(names, item.Name)
+	}
+	if config.DefaultModel != "" {
+		selected, ok := findModel(config.Models, config.DefaultModel)
+		if !ok || !selected.Enabled {
+			return invalid("default_model must reference an enabled model")
+		}
 	}
 	if config.TimeoutSeconds < 0 || config.TimeoutSeconds > int((5*time.Minute).Seconds()) {
 		return invalid("timeout_seconds must not exceed 300")
@@ -373,21 +343,61 @@ func supportedProviderType(provider string) bool {
 		return false
 	}
 }
-
-func findModel(models []ModelConfig, name string) (ModelConfig, bool) {
+func findModel(models []ProviderModel, name string) (ProviderModel, bool) {
 	for _, item := range models {
 		if item.Name == name {
 			return item, true
 		}
 	}
-	return ModelConfig{}, false
+	return ProviderModel{}, false
 }
-
+func findEnabledModel(models []ProviderModel, name string) (ProviderModel, bool) {
+	if name != "" {
+		item, ok := findModel(models, name)
+		return item, ok && item.Enabled
+	}
+	for _, item := range models {
+		if item.Enabled {
+			return item, true
+		}
+	}
+	return ProviderModel{}, false
+}
+func selectedDefaultModel(config AIProviderConfig) (ProviderModel, bool) {
+	return findEnabledModel(config.Models, config.DefaultModel)
+}
+func validPurpose(purpose Purpose) bool {
+	switch purpose {
+	case PurposeDefault, PurposeDiagnosis, PurposeInspection, PurposeWorkflow:
+		return true
+	default:
+		return false
+	}
+}
+func requiredCapabilities(purpose Purpose) []string {
+	switch purpose {
+	case PurposeDiagnosis:
+		return []string{"text", "tool_calling", "stream"}
+	case PurposeInspection, PurposeWorkflow:
+		return []string{"text", "tool_calling", "structured_output"}
+	default:
+		return []string{"text"}
+	}
+}
+func missingCapabilities(model ProviderModel, required []string) []string {
+	missing := make([]string, 0)
+	for _, capability := range required {
+		if !slices.Contains(model.Capabilities, capability) {
+			missing = append(missing, capability)
+		}
+	}
+	return missing
+}
 func allowsScope(ctx context.Context, scopeID string) bool {
 	filter, ok := authorization.ScopeFilterFromContext(ctx)
 	return !ok || filter.Allows(scopeID)
 }
-
+func allowsExactScope(ctx context.Context, scopeID string) bool { return allowsScope(ctx, scopeID) }
 func allowsProviderResource(ctx context.Context, item resource.Resource) bool {
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
 		return filter.Allows(item.ScopeID, item.ID)
