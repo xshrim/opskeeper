@@ -13,11 +13,19 @@ import (
 
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool/functiontool"
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/llm"
 	"opskeeper/backend/resource"
 )
+
+func TestAIEngineAdapterPreservesProviderSelection(t *testing.T) {
+	request := aiengine.Request{AIProviderResourceID: "provider-1", ModelName: "model-a"}
+	if request.AIProviderResourceID != "provider-1" || request.ModelName != "model-a" {
+		t.Fatalf("request did not preserve AIProvider selection")
+	}
+}
 
 func TestRunnerUsesADKToolLoopAndPersistsPinnedExecution(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -39,7 +47,7 @@ func TestRunnerUsesADKToolLoopAndPersistsPinnedExecution(t *testing.T) {
 	defer server.Close()
 
 	resources := fakeResourceReader{items: map[string]resource.Resource{
-		"provider-1": {ID: "provider-1", ScopeID: "scope-1", Kind: llm.ProviderKind, Name: "mock provider", Status: resource.StatusActive, Config: map[string]any{"provider_type": "openai_compatible", "base_url": server.URL, "models": []any{map[string]any{"name": "mock", "context_window": 8192.0}}}},
+		"provider-1": {ID: "provider-1", ScopeID: "scope-1", Kind: llm.AIProviderKind, Name: "mock provider", Status: resource.StatusActive, Config: map[string]any{"provider_type": "openai_compatible", "base_url": server.URL, "enabled": true, "default_model": "mock", "models": []any{map[string]any{"name": "mock", "context_window_tokens": 8192.0, "temperature": 0.7, "capabilities": []any{"text", "tool_calling", "stream"}, "enabled": true}}}},
 		"skill-1":    {ID: "skill-1", ScopeID: "scope-1", Kind: Kind, Name: "health", Status: resource.StatusActive},
 		"target-1":   {ID: "target-1", ScopeID: "scope-1", Kind: "Application", Name: "api", Status: resource.StatusActive},
 	}}
@@ -50,7 +58,7 @@ func TestRunnerUsesADKToolLoopAndPersistsPinnedExecution(t *testing.T) {
 	connectorService := &fakeConnector{}
 	runtime := NewRunner(skillService, modelService, connectorService, store)
 
-	result, err := runtime.Run(context.Background(), RunInput{ActorID: "actor-1", ScopeID: "scope-1", TargetResourceID: "target-1", SkillResourceID: "skill-1", SkillVersionID: "version-1", ProviderResourceID: "provider-1", ModelName: "mock", Input: map[string]any{"question": "health"}, MaxToolCalls: 2, MaxTokens: 100, Timeout: 5 * time.Second})
+	result, err := runtime.Run(context.Background(), RunInput{ActorID: "actor-1", ScopeID: "scope-1", TargetResourceID: "target-1", SkillResourceID: "skill-1", SkillVersionID: "version-1", AIProviderResourceID: "provider-1", Input: map[string]any{"question": "health"}, MaxIterations: 2, MaxToolCalls: 2, MaxTokens: 100, Timeout: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -68,6 +76,25 @@ func TestRunnerUsesADKToolLoopAndPersistsPinnedExecution(t *testing.T) {
 	}
 	if len(store.toolCalls) != 1 || store.toolCalls[0].Status != "succeeded" {
 		t.Fatalf("tool calls = %#v", store.toolCalls)
+	}
+}
+
+func TestCountsOnlyCompletedModelResponsesAsIterations(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		partial     bool
+		role        string
+		wantCounted bool
+	}{
+		{name: "completed model turn", role: "model", wantCounted: true},
+		{name: "partial model chunk", partial: true, role: "model"},
+		{name: "tool result", role: "user"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := countsModelIteration(test.partial, test.role); got != test.wantCounted {
+				t.Fatalf("countsModelIteration() = %v, want %v", got, test.wantCounted)
+			}
+		})
 	}
 }
 
@@ -160,11 +187,17 @@ func (f fakeResourceReader) Get(_ context.Context, id string) (resource.Resource
 
 type fakeLLMStore struct{}
 
-func (fakeLLMStore) SetDefault(context.Context, llm.Default, string) (llm.Default, error) {
-	return llm.Default{}, errors.New("not implemented")
+func (fakeLLMStore) SetBinding(context.Context, llm.ScopeProviderBinding, string) (llm.ScopeProviderBinding, error) {
+	return llm.ScopeProviderBinding{}, errors.New("not implemented")
 }
-func (fakeLLMStore) ResolveDefault(context.Context, string) (llm.Default, error) {
-	return llm.Default{}, llm.ErrNotFound
+func (fakeLLMStore) RemoveBinding(context.Context, string, llm.Purpose) error {
+	return errors.New("not implemented")
+}
+func (fakeLLMStore) ListBindings(context.Context, string) ([]llm.ScopeProviderBinding, error) {
+	return nil, nil
+}
+func (fakeLLMStore) ResolveBinding(context.Context, string, llm.Purpose) (llm.ScopeProviderBinding, error) {
+	return llm.ScopeProviderBinding{}, llm.ErrNotFound
 }
 
 type fakeConnector struct{ reads int }

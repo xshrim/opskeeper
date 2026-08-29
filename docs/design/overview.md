@@ -6,7 +6,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 
 ## 文档入口
 
-- 项目设计：[总体架构](architecture.md)、[授权设计](authorization.md)、[资源模型](resource-model.md)、[AIModel 设计](ai-model.md)、[运维工作流](operations-workflows.md)
+- 项目设计：[总体架构](architecture.md)、[授权设计](authorization.md)、[资源模型](resource-model.md)、[AIProvider + AIEngine 设计](ai-engine.md)、[运维工作流](operations-workflows.md)
 - 当前计划：[I002 UI 与功能优化](../iterations/I002-ui-function-optimization/iteration.md)
 - 跨迭代事项：[backlog](../backlog.md)
 - 工程约束：[文档规范](../standards/documentation.md)、[Go 规范](../standards/go-coding-conventions.md)、[版本控制规范](../standards/version-control.md)

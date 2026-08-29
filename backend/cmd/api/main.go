@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
@@ -135,7 +136,15 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	skillRunner := skill.NewRunner(skillService, llmService, connectorService, skillStore)
 	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), skillRunner, 2*time.Minute)
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
-	mcpService := mcp.NewService(resourceService, mcp.NewStore(pool))
+	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
+	contextTooling := aiengine.NewContextTooling(
+		aiengine.ResourceServiceReader{Reader: resourceService},
+		connectorService.AIEngineProvider(),
+		mcpService.AIEngineProvider(),
+	)
+	aiStore := aiengine.NewPostgresStore(pool)
+	contextTooling.Gateway.AuditStore = aiStore
+	aiEngine := aiengine.NewWithContextAndStore(skillRunner.AIEngineAdapter(), contextTooling.Resolver, contextTooling.Gateway, aiStore)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
@@ -162,6 +171,9 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			LLMs:               llmService,
 			Skills:             skillService,
 			SkillRunner:        skillRunner,
+			AIEngine:           aiEngine,
+			AIEngineEvents:     aiStore,
+			AIEngineToolCalls:  aiStore,
 			Diagnosis:          diagnosisService,
 			Inspection:         inspectionService,
 			MCP:                mcpService,

@@ -14,6 +14,7 @@ import (
 )
 
 func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
+	var logsQuery map[string]string
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +32,8 @@ func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
 		case "/v1.51/containers/json":
 			writeJSON(writer, []map[string]any{{"Id": "container-id", "Image": "example:test", "State": "running"}})
 		case "/v1.51/containers/container-id/logs":
-			payload := []byte("hello from docker\n")
+			logsQuery = map[string]string{"tail": request.URL.Query().Get("tail"), "since": request.URL.Query().Get("since"), "until": request.URL.Query().Get("until")}
+			payload := []byte("INFO hello from docker\nERROR failed request\ninfo healthy\n")
 			frame := make([]byte, 8+len(payload))
 			frame[0] = 1
 			binary.BigEndian.PutUint32(frame[4:8], uint32(len(payload)))
@@ -60,8 +62,17 @@ func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
 	if _, output, err := listContainers(context.Background(), nil, ListContainersInput{ConnectionInput: input}); err != nil || len(output.Containers) != 1 {
 		t.Fatalf("docker containers: output=%v err=%v", output, err)
 	}
-	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.Logs != "hello from docker\n" {
+	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
 		t.Fatalf("docker logs: output=%+v err=%v", output, err)
+	}
+	if logsQuery["tail"] != "300" || logsQuery["since"] != "" || logsQuery["until"] != "" {
+		t.Fatalf("unexpected default log query: %#v", logsQuery)
+	}
+	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id", Since: "2h", Until: "1h", Tail: "20", Keyword: "ERROR"}); err != nil || output.Logs != "ERROR failed request\n" {
+		t.Fatalf("filtered docker logs: output=%+v err=%v", output, err)
+	}
+	if logsQuery["tail"] != "20" || logsQuery["since"] == "" || logsQuery["until"] == "" {
+		t.Fatalf("unexpected bounded log query: %#v", logsQuery)
 	}
 	if _, output, err := containerInspect(context.Background(), nil, ContainerInspectInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.ID != "container-id" || output.Config == nil || len(output.Config.EnvNames) != 2 || output.Config.EnvNames[0] != "PASSWORD" {
 		t.Fatalf("docker inspect: output=%v err=%v", output, err)
@@ -113,6 +124,19 @@ func TestResolveContainerIdentifier(t *testing.T) {
 	}
 	if _, err := resolveContainerIdentifier(" ", " "); err == nil {
 		t.Fatal("expected missing identifier error")
+	}
+}
+
+func TestFilterLogLines(t *testing.T) {
+	logs := "INFO ready\nerror: failed\nwarning pending"
+	if got := filterLogLines(logs, "ERROR"); got != "error: failed\n" {
+		t.Fatalf("case-insensitive keyword filter = %q", got)
+	}
+	if got := filterLogLines(logs, " "); got != logs {
+		t.Fatalf("empty keyword changed logs: %q", got)
+	}
+	if got := filterLogLines("one\ntwo\n", "two"); got != "two\n" {
+		t.Fatalf("keyword filter did not preserve newline: %q", got)
 	}
 }
 

@@ -51,7 +51,7 @@ func (s *store) Start(ctx context.Context, input StartInput) (Session, error) {
 	}
 	defer tx.Rollback(ctx)
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, actor_user_id, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, 'queued', $3) RETURNING id::text`, input.ScopeID, input.ActorUserID, input.Title).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, actor_user_id, provider_resource_id, model_name, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, NULLIF($4, ''), 'queued', $5) RETURNING id::text`, input.ScopeID, input.ActorUserID, input.ProviderResourceID, input.ModelName, input.Title).Scan(&id)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -399,13 +399,13 @@ func (s *store) Plan(ctx context.Context, sessionID string) (Plan, error) {
 	return s.plan(ctx, sessionID)
 }
 
-const sessionSelect = `SELECT id::text, scope_id::text, actor_user_id::text, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at FROM diagnosis_sessions`
+const sessionSelect = `SELECT id::text, scope_id::text, actor_user_id::text, COALESCE(provider_resource_id::text, ''), COALESCE(model_name, ''), status, title, error_code, error_message, started_at, completed_at, created_at, updated_at FROM diagnosis_sessions`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanSession(row rowScanner) (Session, error) {
 	var item Session
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.ActorUserID, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.ActorUserID, &item.ProviderResourceID, &item.ModelName, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrNotFound
 		}

@@ -54,7 +54,8 @@ func main() {
 	phone := firstNonBlank(options.phone, os.Getenv("OPSK_BOOTSTRAP_PHONE"))
 	displayName := firstNonBlank(options.displayName, os.Getenv("OPSK_BOOTSTRAP_DISPLAY_NAME"), username)
 	passwordFile := firstNonBlank(options.passwordFile, os.Getenv("OPSK_BOOTSTRAP_PASSWORD_FILE"))
-	password, generated, err := loadPassword(options.password, passwordFile)
+	passwordInput := firstNonBlank(options.password, os.Getenv("OPSK_BOOTSTRAP_PASSWORD"))
+	password, generated, err := loadPassword(passwordInput, passwordFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read password: %v\n", err)
 		os.Exit(1)

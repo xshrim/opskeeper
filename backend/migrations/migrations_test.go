@@ -7,8 +7,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load() error = %v", err)
 	}
-	if len(items) != 15 {
-		t.Fatalf("load() returned %d migrations, want fifteen migrations", len(items))
+	if len(items) != 23 {
+		t.Fatalf("load() returned %d migrations, want twenty-three migrations", len(items))
 	}
 	if items[0].version != 1 || items[0].name != "initial" {
 		t.Fatalf("loaded migration = %#v, want version 1 initial", items[0])
@@ -54,6 +54,30 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	}
 	if items[14].version != 15 || items[14].name != "ai_model_schema_labels" {
 		t.Fatalf("loaded migration = %#v, want version 15 ai_model_schema_labels", items[14])
+	}
+	if items[15].version != 16 || items[15].name != "ai_engine_events" {
+		t.Fatalf("loaded migration = %#v, want version 16 ai_engine_events", items[15])
+	}
+	if items[16].version != 17 || items[16].name != "mcp_endpoint_policy" {
+		t.Fatalf("loaded migration = %#v, want version 17 mcp_endpoint_policy", items[16])
+	}
+	if items[17].version != 18 || items[17].name != "ai_provider_ai_endpoint" {
+		t.Fatalf("loaded migration = %#v, want version 18 ai_provider_ai_endpoint", items[17])
+	}
+	if items[18].version != 19 || items[18].name != "ai_endpoint_defaults" {
+		t.Fatalf("loaded migration = %#v, want version 19 ai_endpoint_defaults", items[18])
+	}
+	if items[19].version != 20 || items[19].name != "reset_ai_catalog" {
+		t.Fatalf("loaded migration = %#v, want version 20 reset_ai_catalog", items[19])
+	}
+	if items[20].version != 21 || items[20].name != "hard_delete_legacy_ai_resources" {
+		t.Fatalf("loaded migration = %#v, want version 21 hard_delete_legacy_ai_resources", items[20])
+	}
+	if items[21].version != 22 || items[21].name != "ai_access_display_names" {
+		t.Fatalf("loaded migration = %#v, want version 22 ai_access_display_names", items[21])
+	}
+	if items[22].version != 23 || items[22].name != "ai_provider_engine_hard_cut" {
+		t.Fatalf("loaded migration = %#v, want version 23 ai_provider_engine_hard_cut", items[22])
 	}
 	for _, item := range items {
 		if item.sql == "" || item.downSQL == "" || item.checksum == "" {

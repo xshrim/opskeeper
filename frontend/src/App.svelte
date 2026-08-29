@@ -65,7 +65,7 @@
     type RoleBinding,
     type RoleDefinition,
     type Team,
-    type LLMConnectionResult,
+    type AIConnectionResult,
     type InspectionPolicy,
     type InspectionRun,
     type InspectionFinding,
@@ -84,7 +84,6 @@
     | 'organization'
     | 'discovery'
     | 'resources'
-    | 'ai'
     | 'skill'
     | 'operations'
     | 'diagnosis'
@@ -125,34 +124,6 @@
     description: string;
     inputSchema: Record<string, unknown>;
   };
-
-  type AIEndpointDraft = {
-    provider_type: string;
-    base_url: string;
-    model_name: string;
-    credential: string;
-    temperature: number;
-    context_window: number;
-    capabilities: string[];
-    timeout_seconds: number;
-    priority: number;
-    enabled: boolean;
-    testStatus: 'idle' | 'testing' | 'succeeded' | 'failed';
-    testMessage?: string;
-    latencyMs?: number;
-  };
-  type AIEndpointTestState = {
-    status: AIEndpointDraft['testStatus'];
-    message?: string;
-    latencyMs?: number;
-  };
-  type AIProviderOption = {
-    value: string;
-    label: string;
-    icon: string;
-    baseUrl: string;
-  };
-
   const legacyTeamIconNames: Record<string, string> = {
     platform: 'Boxes',
     team: 'UsersRound',
@@ -205,31 +176,12 @@
     Search: '检索',
     BookOpen: '手册',
     Sparkles: 'Skill',
-    BrainCircuit: 'AI 模型',
+    BrainCircuit: 'AI 接入',
     Bot: 'MCP',
     HardDrive: '存储',
     KeyRound: '凭据',
     Package: '资源'
   };
-
-  const aiProviderOptions: AIProviderOption[] = [
-    { value: 'openai_compatible', label: 'OpenAI 兼容', icon: 'Waypoints', baseUrl: 'https://api.example.com/v1' },
-    { value: 'openai', label: 'OpenAI', icon: 'Sparkles', baseUrl: 'https://api.openai.com/v1' },
-    { value: 'anthropic', label: 'Anthropic', icon: 'BrainCircuit', baseUrl: 'https://api.anthropic.com/v1' },
-    { value: 'gemini', label: 'Gemini', icon: 'Orbit', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
-    { value: 'grok', label: 'Grok', icon: 'Bot', baseUrl: 'https://api.x.ai/v1' },
-    { value: 'deepseek', label: 'DeepSeek', icon: 'Search', baseUrl: 'https://api.deepseek.com/v1' },
-    { value: 'qwen', label: 'Qwen', icon: 'Cloud', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-    { value: 'kimi', label: 'Kimi', icon: 'Moon', baseUrl: 'https://api.moonshot.cn/v1' },
-    { value: 'glm', label: 'GLM', icon: 'CircuitBoard', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
-    { value: 'minimax', label: 'MiniMax', icon: 'Boxes', baseUrl: 'https://api.minimax.chat/v1' },
-    { value: 'mimo', label: 'MiMo', icon: 'Cpu', baseUrl: 'https://api.xiaomimimo.com/v1' },
-    { value: 'longcat', label: 'LongCat', icon: 'Cat', baseUrl: 'https://api.longcat.chat/v1' },
-    { value: 'doubao', label: 'Doubao', icon: 'CloudCog', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
-    { value: 'openrouter', label: 'OpenRouter', icon: 'Network', baseUrl: 'https://openrouter.ai/api/v1' },
-    { value: 'siliconflow', label: 'SiliconFlow', icon: 'Waves', baseUrl: 'https://api.siliconflow.cn/v1' },
-    { value: 'ollama', label: 'Ollama', icon: 'ServerCog', baseUrl: 'http://localhost:11434/v1' }
-  ];
 
   const teamIconOptions: TeamIconOption[] = Object.keys(lucideIcons)
     .sort((left, right) => left.localeCompare(right))
@@ -388,40 +340,9 @@
   let resourceBindings: ResourceRoleBinding[] = [];
   let aiLoaded = false;
   let selectedProviderId = '';
-  let selectedAIModelId = '';
-  let selectedAIModelResource: Resource | null = null;
-  let expandedAIModelId = '';
-  let aiModelSearch = '';
-  let aiModelStatusFilter = 'all';
-  let aiModelScopeFilter = 'all';
-  let aiModelCreateOpen = false;
-  let aiModelCreateStep = 1;
-  let aiModelCreateDescription = '';
-  let aiModelCreateFallback = ['timeout', 'rate_limit', 'server_error'];
-  let aiModelCreateEndpoints: AIEndpointDraft[] = [];
-  let aiModelCreateDraft = defaultAIEndpoint();
-  let aiModelEditingEndpointIndex = -1;
-  let aiModelIcon = 'BrainCircuit';
-  let aiModelCredentialVisible = false;
-  let aiProviderMenuOpen = false;
-  let aiModelCreateDefault = false;
-  let aiModelModelError = '';
-  let aiModelModelMissing: string[] = [];
-  let aiModelModelTesting = false;
-  let aiModelRefreshing = false;
-  let aiModelEndpointTestBusy = false;
-  let aiModelEndpointTests: Record<string, AIEndpointTestState> = {};
-  let aiModelName = '';
-  let aiModelStrategy = 'priority';
-  let aiModelEditName = '';
-  let aiModelEditEndpoints = '[]';
-  let aiModelEditStatus = 'active';
-  let aiModelEndpoints =
-    '[\n  {\n    "provider_type": "openai_compatible",\n    "base_url": "https://api.example.com/v1",\n    "model_name": "model-name",\n    "context_window": 32768,\n    "capabilities": ["chat", "stream"],\n    "timeout_seconds": 60,\n    "priority": 100,\n    "enabled": true\n  }\n]';
   let selectedSkillId = '';
   let selectedSkillVersionId = '';
   let llmModelName = '';
-  let llmConnection: LLMConnectionResult | null = null;
   let skillVersions: SkillVersion[] = [];
   let skillExecutions: SkillExecution[] = [];
   let skillInstruction = '';
@@ -544,7 +465,7 @@
   let selectedAccessTeamIds: string[] = [];
   let selectedAccessUserIds: string[] = [];
   let teamDialogOpen = false;
-  let iconPickerTarget: 'create' | 'edit' | 'ai-model' | null = null;
+  let iconPickerTarget: 'create' | 'edit' | null = null;
   let teamIconSearch = '';
   let userDialogOpen = false;
   let editingTeam: Team | null = null;
@@ -646,57 +567,26 @@
   $: applicationCandidates = discoveryItems.filter(
     (item) => item.kind === 'Application'
   );
-  $: aiModels = resources.filter(
-    (item) => item.kind === 'AIModel' || item.kind === 'LLMProvider'
-  );
-  $: if (view === 'diagnosis' && !selectedAIModelId && aiModels[0]) {
-    selectedAIModelId = aiModels[0].id;
+  $: aiProviders = resources.filter((item) => item.kind === 'AIProvider');
+  $: if (view === 'diagnosis' && !selectedProviderId && aiProviders[0]) {
+    selectedProviderId = aiProviders[0].id;
   }
-  $: visibleAIModels = aiModels.filter((model) => {
-    if (
-      aiModelStatusFilter !== 'all' &&
-      model.status !== aiModelStatusFilter
-    )
-      return false;
-    if (
-      aiModelScopeFilter !== 'all' &&
-      scopeType(model.scope_id) !== aiModelScopeFilter
-    )
-      return false;
-    const query = aiModelSearch.trim().toLowerCase();
-    return (
-      !query ||
-      `${model.name} ${scopeName(model.scope_id)} ${aiModelDescription(model)}`
-        .toLowerCase()
-        .includes(query)
-    );
-  });
-  $: aiModelHealthyCount = aiModels.filter(
-    (model) => aiModelStatus(model) === 'healthy'
-  ).length;
-  $: aiModelRepairCount = aiModels.filter(
-    (model) => aiModelStatus(model) === 'repair'
-  ).length;
-  $: aiModelEndpointCount = aiModels.reduce(
-    (count, model) => count + aiModelEndpointsFor(model).length,
-    0
-  );
-  $: aiModelHealthyEndpointCount = aiModels.reduce(
-    (count, model) =>
-      count +
-      aiModelEndpointsFor(model).filter(
-        (endpoint) => endpointStatus(endpoint) === 'healthy'
-      ).length,
-    0
-  );
-  $: selectedAIModelResource =
-    aiModels.find((item) => item.id === selectedAIModelId) ?? null;
-  $: llmProviders = aiModels;
+  $: if (view === 'diagnosis' && !llmModelName && selectedProviderId) {
+    const provider = aiProviders.find((item) => item.id === selectedProviderId);
+    const models = Array.isArray(provider?.config?.models) ? provider?.config?.models as Array<Record<string, unknown>> : [];
+    llmModelName = String(provider?.config?.default_model ?? models[0]?.name ?? '');
+  }
+  $: diagnosisProviderModels = (() => {
+    const provider = aiProviders.find((item) => item.id === selectedProviderId);
+    return Array.isArray(provider?.config?.models)
+      ? (provider?.config?.models as Array<Record<string, unknown>>)
+      : [];
+  })();
+  $: llmProviders = aiProviders;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
   $: executableTargets = visibleResources.filter(
     (item) =>
-      item.kind !== 'LLMProvider' &&
-      item.kind !== 'AIModel' &&
+      item.kind !== 'AIProvider' &&
       item.kind !== 'Skill'
   );
   $: diagnosisTargets = visibleResources.filter(
@@ -959,7 +849,7 @@
     teamMenuOpen = false;
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
-    if ((nextView === 'ai' || nextView === 'skill') && !aiLoaded) void loadAI();
+    if (nextView === 'skill' && !aiLoaded) void loadAI();
     if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
     if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
     if (nextView === 'operations' && !operationsLoaded) void loadOperations();
@@ -1147,7 +1037,7 @@
     if (teamMenuOpen && !target.closest('.workspace-team-wrap')) {
       teamMenuOpen = false;
     }
-    if (accessMenuOpen && !target.closest('.nav-group')) {
+    if (accessMenuOpen && view !== 'access' && !target.closest('.nav-group')) {
       accessMenuOpen = false;
     }
     if (
@@ -1481,7 +1371,9 @@
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
         question: diagnosisQuestion,
-        target_resource_ids: diagnosisTargetIds
+        target_resource_ids: diagnosisTargetIds,
+        ai_provider_resource_id: selectedProviderId || undefined,
+        model_name: llmModelName || undefined
       });
       diagnosisSessions = [session, ...diagnosisSessions];
       diagnosisQuestion = '';
@@ -1710,579 +1602,19 @@
 
   async function loadAI() {
     aiLoaded = true;
-    selectedAIModelId = selectedAIModelId || aiModels[0]?.id || '';
-    selectedProviderId = selectedAIModelId;
+    selectedProviderId = selectedProviderId || aiProviders[0]?.id || '';
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
-    const selectedModel = aiModels.find(
-      (item) => item.id === selectedAIModelId
-    );
-    const endpoints = selectedModel?.config.endpoints as
-      Array<{ model_name?: string }> | undefined;
-    const legacyModels = selectedModel?.config.models as
-      Array<{ name?: string }> | undefined;
-    llmModelName =
-      llmModelName ||
-      endpoints?.[0]?.model_name ||
-      legacyModels?.[0]?.name ||
-      '';
-    syncAIModelEditor(selectedModel ?? null);
+    if (!llmModelName && selectedProviderId) {
+      const provider = aiProviders.find((item) => item.id === selectedProviderId);
+      const models = Array.isArray(provider?.config?.models)
+        ? (provider.config.models as Array<Record<string, unknown>>)
+        : [];
+      llmModelName = String(provider?.config?.default_model ?? models[0]?.name ?? '');
+    }
     if (selectedSkillId) await loadSkillVersions();
     if (selectedScopeId) {
-      try {
-        skillExecutions = await api.skillExecutions(selectedScopeId);
-      } catch {
-        skillExecutions = [];
-      }
+      try { skillExecutions = await api.skillExecutions(selectedScopeId); } catch { skillExecutions = []; }
     }
-  }
-
-  async function refreshAIModels() {
-    if (aiModelRefreshing) return;
-    aiModelRefreshing = true;
-    errorMessage = '';
-    try {
-      const resourcePage = await api.resources();
-      resources = resourcePage.items;
-      await loadResourceConnectionChecks(resources);
-      await Promise.all(
-        resourcePage.items
-          .filter((item) => item.kind === 'AIModel')
-          .map((model) => testAIModel(model, false))
-      );
-    } catch (error) {
-      errorMessage = describeError(error, 'AI 模型状态刷新失败');
-    } finally {
-      aiModelRefreshing = false;
-    }
-  }
-
-  function syncAIModelEditor(model: Resource | null) {
-    if (!model) {
-      aiModelEditName = '';
-      aiModelEditEndpoints = '[]';
-      aiModelEditStatus = 'active';
-      return;
-    }
-    aiModelEditName = model.name;
-    aiModelEditEndpoints = JSON.stringify(
-      model.config.endpoints ?? model.config.models ?? [],
-      null,
-      2
-    );
-    aiModelEditStatus = model.status;
-  }
-
-  function aiModelDescription(model: Resource) {
-    return String(
-      model.config.description ?? model.labels?.description ?? ''
-    );
-  }
-
-  function aiModelIconFor(model: Resource) {
-    return String(model.config.icon ?? 'BrainCircuit');
-  }
-
-  function aiModelEndpointsFor(model: Resource | null): AIEndpointDraft[] {
-    if (!model) return [];
-    const raw = Array.isArray(model.config.endpoints)
-      ? model.config.endpoints
-      : Array.isArray(model.config.models)
-        ? model.config.models
-        : [];
-    return raw.map((value, index) => {
-      const endpoint = (value ?? {}) as Record<string, unknown>;
-      const test = aiModelEndpointTests[`${model.id}:${index}`];
-      return {
-        provider_type: String(endpoint.provider_type ?? 'openai_compatible'),
-        base_url: String(endpoint.base_url ?? ''),
-        model_name: String(endpoint.model_name ?? endpoint.name ?? ''),
-        credential: '',
-        context_window: Number(endpoint.context_window ?? 128000),
-        temperature: Number(endpoint.temperature ?? 0.7),
-        capabilities: Array.isArray(endpoint.capabilities)
-          ? endpoint.capabilities.map(String)
-          : ['chat', 'tool_calling', 'structured_output', 'stream', 'deep_thinking'],
-        timeout_seconds: Number(endpoint.timeout_seconds ?? 60),
-        priority: Number(endpoint.priority ?? 100 - index),
-        enabled: endpoint.enabled !== false,
-        testStatus: test?.status ?? 'idle',
-        testMessage: test?.message,
-        latencyMs: test?.latencyMs
-      };
-    });
-  }
-
-  function endpointStatus(endpoint: AIEndpointDraft) {
-    if (!endpoint.enabled) return 'disabled';
-    if (endpoint.testStatus === 'failed') return 'repair';
-    if (endpoint.testStatus === 'succeeded') return 'healthy';
-    return 'pending';
-  }
-
-  function aiModelStatus(model: Resource) {
-    if (model.status !== 'active') return 'disabled';
-    const endpoints = aiModelEndpointsFor(model);
-    if (endpoints.some((endpoint) => endpoint.testStatus === 'testing'))
-      return 'testing';
-    if (
-      endpoints.length === 0 ||
-      endpoints.every((endpoint) => !endpoint.enabled)
-    )
-      return 'repair';
-    return endpoints.some((endpoint) => endpoint.testStatus === 'failed')
-      ? 'repair'
-      : 'healthy';
-  }
-
-  function aiModelStatusLabel(model: Resource) {
-    const status = aiModelStatus(model);
-    return status === 'healthy'
-      ? '正常'
-      : status === 'repair'
-        ? '异常'
-        : status === 'testing'
-          ? '测试中'
-        : '已停用';
-  }
-
-  function aiModelHealthRatio(model: Resource) {
-    const endpoints = aiModelEndpointsFor(model);
-    const healthy =
-      model.status === 'active'
-        ? endpoints.filter(
-            (endpoint) => endpoint.enabled && endpoint.testStatus !== 'failed'
-          ).length
-        : 0;
-    return `${healthy}/${endpoints.length}`;
-  }
-
-  function aiModelStatusClass(model: Resource) {
-    const status = aiModelStatus(model);
-    return status === 'healthy'
-      ? 'healthy'
-      : status === 'repair'
-        ? 'warning'
-        : status === 'testing'
-          ? 'pending'
-          : 'disabled';
-  }
-
-  function aiModelCapabilities(model: Resource) {
-    return aiCapabilitiesForEndpoints(aiModelEndpointsFor(model));
-  }
-
-  function aiCapabilitiesForEndpoints(endpoints: AIEndpointDraft[]) {
-    endpoints = endpoints.filter((endpoint) => endpoint.enabled);
-    if (endpoints.length === 0) return [];
-    return endpoints.reduce<string[]>(
-      (intersection, endpoint) =>
-        intersection.filter((capability) =>
-          endpoint.capabilities.includes(capability)
-        ),
-      [...endpoints[0].capabilities]
-    );
-  }
-
-  function deriveAIEndpointCapabilities(endpoint: AIEndpointDraft) {
-    const model =
-      `${endpoint.provider_type} ${endpoint.model_name}`.toLowerCase();
-    const capabilities = new Set<string>(['chat', 'stream']);
-    if (/vision|multimodal|gpt-4o|gpt-4\.1|gemini|claude-3|qwen-vl/.test(model))
-      capabilities.add('vision');
-    if (/audio|omni|gemini|gpt-4o/.test(model)) capabilities.add('audio');
-    if (/tool|function|gpt-|claude|gemini|qwen/.test(model))
-      capabilities.add('tool_calling');
-    if (/json|structured|gpt-|claude|gemini|qwen/.test(model))
-      capabilities.add('structured_output');
-    if (/reason|think|o1|o3|r1|deepseek-r1/.test(model))
-      capabilities.add('deep_thinking');
-    if (endpoint.context_window >= 128000 || /long|128k|200k|1m/.test(model))
-      capabilities.add('long_context');
-    return [...capabilities];
-  }
-
-  function aiCapabilityLabel(capability: string) {
-    const labels: Record<string, string> = {
-      chat: '文本',
-      vision: '视觉',
-      audio: '音频',
-      tool_calling: '工具调用',
-      structured_output: '结构化输出',
-      stream: '流式输出',
-      long_context: '长上下文',
-      deep_thinking: '深度思考'
-    };
-    return labels[capability] ?? capability;
-  }
-
-  function aiEndpointHealthLabel(endpoint: AIEndpointDraft) {
-    const status = endpointStatus(endpoint);
-    return status === 'healthy'
-      ? '健康'
-      : status === 'repair'
-        ? '失败'
-        : status === 'disabled'
-          ? '已停用'
-          : '未测试';
-  }
-
-  function aiEndpointHealthClass(endpoint: AIEndpointDraft) {
-    const status = endpointStatus(endpoint);
-    return status === 'healthy'
-      ? 'healthy'
-      : status === 'repair'
-        ? 'warning'
-        : status === 'disabled'
-          ? 'disabled'
-          : 'pending';
-  }
-
-  function aiEndpointConnectionLabel(endpoint: AIEndpointDraft) {
-    if (!endpoint.enabled) return '已停用';
-    if (endpoint.testStatus === 'testing') return '连接中...';
-    if (endpoint.testStatus === 'succeeded')
-      return `正常 · ${endpoint.latencyMs ?? 35} ms`;
-    if (endpoint.testStatus === 'failed') return '连接失败';
-    if (!endpoint.model_name.trim() || !endpoint.base_url.trim())
-      return '待配置';
-    return '待测试';
-  }
-
-  function defaultAIEndpoint(): AIEndpointDraft {
-    return {
-      provider_type: 'openai_compatible',
-      base_url: 'https://api.example.com/v1',
-      model_name: '',
-      credential: '',
-      context_window: 128000,
-      capabilities: ['chat', 'tool_calling', 'structured_output', 'stream', 'deep_thinking'],
-      temperature: 0.7,
-      timeout_seconds: 60,
-      priority: 100,
-      enabled: true,
-      testStatus: 'idle'
-    };
-  }
-
-  function aiProviderOption(value: string) {
-    return aiProviderOptions.find((option) => option.value === value) ?? aiProviderOptions[0];
-  }
-
-  function selectAIProvider(value: string) {
-    const option = aiProviderOption(value);
-    aiModelCreateDraft = {
-      ...aiModelCreateDraft,
-      provider_type: option.value,
-      base_url: option.baseUrl
-    };
-    aiProviderMenuOpen = false;
-    clearAIModelModelFieldError('provider');
-  }
-
-  function openAIModelCreate() {
-    aiModelCreateOpen = true;
-    aiModelCreateStep = 1;
-    aiModelName = '';
-    aiModelCreateDescription = '';
-    aiModelCreateFallback = ['timeout', 'rate_limit', 'server_error'];
-    aiModelCreateEndpoints = [];
-    aiModelCreateDraft = defaultAIEndpoint();
-    aiModelEditingEndpointIndex = -1;
-    aiModelIcon = 'BrainCircuit';
-    aiModelCredentialVisible = false;
-    aiProviderMenuOpen = false;
-    aiModelCreateDefault = false;
-    aiModelModelError = '';
-    aiModelModelMissing = [];
-    aiModelModelTesting = false;
-  }
-
-  function closeAIModelCreate() {
-    aiModelCreateOpen = false;
-    aiModelCreateStep = 1;
-  }
-
-  function toggleAIModelFallback(value: string) {
-    aiModelCreateFallback = aiModelCreateFallback.includes(value)
-      ? aiModelCreateFallback.filter((item) => item !== value)
-      : [...aiModelCreateFallback, value];
-  }
-
-  function aiProviderLabel(provider: string) {
-    return aiProviderOption(provider)?.label ?? provider;
-  }
-
-  function toggleAIEndpointCapability(capability: string) {
-    const selected = aiModelCreateDraft.capabilities;
-    aiModelCreateDraft = {
-      ...aiModelCreateDraft,
-      capabilities: selected.includes(capability)
-        ? selected.filter((item) => item !== capability)
-        : [...selected, capability]
-    };
-  }
-
-  function aiModelCreateDraftIsComplete() {
-    return Boolean(
-      aiModelCreateDraft.base_url.trim() &&
-      aiModelCreateDraft.model_name.trim() &&
-      aiModelCreateDraft.credential.trim()
-    );
-  }
-
-  function aiModelModelFieldMissing(field: string) {
-    return aiModelModelMissing.includes(field);
-  }
-
-  function clearAIModelModelFieldError(field: string) {
-    if (!aiModelModelMissing.includes(field)) return;
-    const value =
-      field === 'provider'
-        ? aiModelCreateDraft.provider_type
-        : field === 'base_url'
-          ? aiModelCreateDraft.base_url
-          : field === 'model_name'
-            ? aiModelCreateDraft.model_name
-            : aiModelCreateDraft.credential;
-    if (!value.trim()) return;
-    aiModelModelMissing = aiModelModelMissing.filter(
-      (item) => item !== field
-    );
-    if (aiModelModelMissing.length === 0) aiModelModelError = '';
-  }
-
-  async function addAIEndpoint() {
-    if (!aiModelCreateDraftIsComplete()) {
-      const missing: string[] = [];
-      if (!aiModelCreateDraft.provider_type.trim()) missing.push('provider');
-      if (!aiModelCreateDraft.base_url.trim()) missing.push('base_url');
-      if (!aiModelCreateDraft.model_name.trim()) missing.push('model_name');
-      if (!aiModelCreateDraft.credential.trim()) missing.push('credential');
-      aiModelModelMissing = missing;
-      const labels = missing.map((field) =>
-        field === 'provider'
-          ? '模型厂商'
-          : field === 'base_url'
-            ? '模型地址'
-            : field === 'model_name'
-              ? '模型名称'
-              : '模型凭证'
-      );
-      aiModelModelError = `请填写${labels.join('、')}`;
-      return;
-    }
-    aiModelModelTesting = true;
-    aiModelModelError = '正在测试模型连接...';
-    try {
-      const connection = await api.testDraftLLM({
-        scope_id: selectedScopeId,
-        provider_type: aiModelCreateDraft.provider_type,
-        base_url: aiModelCreateDraft.base_url,
-        model_name: aiModelCreateDraft.model_name,
-        api_key: aiModelCreateDraft.credential,
-        context_window: aiModelCreateDraft.context_window,
-        temperature: aiModelCreateDraft.temperature,
-        capabilities: aiModelCreateDraft.capabilities,
-        stream: true
-      });
-      addAIEndpointAfterTest(connection.latency_ms);
-    } catch (error) {
-      aiModelModelError = describeError(
-        error,
-        '模型连接测试失败，请检查地址、凭证和模型名称'
-      );
-    } finally {
-      aiModelModelTesting = false;
-    }
-  }
-
-  function addAIEndpointAfterTest(latencyMs: number) {
-    const nextPriority =
-      Math.max(
-        0,
-        ...aiModelCreateEndpoints.map((endpoint) => endpoint.priority)
-      ) + 10;
-    const endpoint = {
-      ...aiModelCreateDraft,
-      priority:
-        aiModelEditingEndpointIndex >= 0
-          ? (aiModelCreateEndpoints[aiModelEditingEndpointIndex]?.priority ??
-            nextPriority)
-          : nextPriority,
-      capabilities: aiModelCreateDraft.capabilities,
-      testStatus: 'succeeded' as const,
-      latencyMs
-    };
-    if (aiModelEditingEndpointIndex >= 0) {
-      aiModelCreateEndpoints = aiModelCreateEndpoints.map((item, index) =>
-        index === aiModelEditingEndpointIndex ? endpoint : item
-      );
-    } else {
-      aiModelCreateEndpoints = [...aiModelCreateEndpoints, endpoint];
-    }
-    aiModelCreateDraft = defaultAIEndpoint();
-    aiModelEditingEndpointIndex = -1;
-    aiModelCredentialVisible = false;
-    aiModelModelError = '';
-    aiModelModelMissing = [];
-  }
-
-  function removeAIEndpoint(index: number) {
-    aiModelCreateEndpoints = aiModelCreateEndpoints.filter(
-      (_, itemIndex) => itemIndex !== index
-    );
-    if (aiModelEditingEndpointIndex === index) {
-      aiModelCreateDraft = defaultAIEndpoint();
-      aiModelEditingEndpointIndex = -1;
-    }
-  }
-
-  function editAIEndpoint(index: number) {
-    const endpoint = aiModelCreateEndpoints[index];
-    if (!endpoint) return;
-    aiModelCreateDraft = { ...endpoint, testStatus: 'idle' };
-    aiModelEditingEndpointIndex = index;
-    aiModelCredentialVisible = Boolean(endpoint.credential);
-    aiModelModelError = '';
-    aiModelModelMissing = [];
-  }
-
-  function updateAIEndpoint(index: number, patch: Partial<AIEndpointDraft>) {
-    const next = aiModelCreateEndpoints.map((endpoint, itemIndex) => {
-      if (itemIndex !== index) return endpoint;
-      const updated = { ...endpoint, ...patch, testStatus: 'idle' as const };
-      return {
-        ...updated,
-        capabilities: deriveAIEndpointCapabilities(updated)
-      };
-    });
-    aiModelCreateEndpoints = next;
-    const endpoint = next[index];
-    if (endpoint?.model_name.trim() && endpoint.base_url.trim()) {
-      window.setTimeout(() => {
-        if (
-          aiModelCreateEndpoints[index]?.model_name === endpoint.model_name &&
-          aiModelCreateEndpoints[index]?.base_url === endpoint.base_url
-        ) {
-          aiModelCreateEndpoints = aiModelCreateEndpoints.map(
-            (item, itemIndex) =>
-              itemIndex === index
-                ? {
-                    ...item,
-                    testStatus: 'succeeded',
-                    latencyMs: 35 + index * 8
-                  }
-                : item
-          );
-        }
-      }, 250);
-    }
-  }
-
-  function aiEndpointPayload(endpoint: AIEndpointDraft, credentialId = '') {
-    return {
-      provider_type: endpoint.provider_type,
-      base_url: endpoint.base_url,
-      model_name: endpoint.model_name,
-      context_window: endpoint.context_window,
-      temperature: endpoint.temperature,
-      capabilities: endpoint.capabilities,
-      timeout_seconds: endpoint.timeout_seconds,
-      priority: endpoint.priority,
-      enabled: endpoint.enabled,
-      ...(credentialId ? { credential_id: credentialId } : {})
-    };
-  }
-
-  function editAIModel(model: Resource) {
-    selectedAIModelId = model.id;
-    selectedAIModelResource = model;
-    syncAIModelEditor(model);
-    expandedAIModelId = model.id;
-  }
-
-  async function testAIModel(model: Resource, showError = true) {
-    const scopeID = selectedScopeId || model.scope_id;
-    if (!scopeID) return;
-    const endpoints = aiModelEndpointsFor(model);
-    const enabled = endpoints
-      .map((endpoint, index) => ({ endpoint, index }))
-      .filter(({ endpoint }) => endpoint.enabled);
-    if (enabled.length === 0) return;
-    aiModelEndpointTestBusy = true;
-    aiModelEndpointTests = {
-      ...aiModelEndpointTests,
-      ...Object.fromEntries(
-        enabled.map(({ index }) => [
-          `${model.id}:${index}`,
-          { status: 'testing' as const }
-        ])
-      )
-    };
-    const results = await Promise.all(
-      enabled.map(async ({ index }) => {
-        const key = `${model.id}:${index}`;
-        try {
-          const result = await api.testAIModelEndpoint(model.id, index, {
-            scope_id: scopeID,
-            stream: true
-          });
-          const state = {
-            status: 'succeeded' as const,
-            message: result.message,
-            latencyMs: result.latency_ms
-          };
-          aiModelEndpointTests = { ...aiModelEndpointTests, [key]: state };
-          return [key, state] as const;
-        } catch (error) {
-          const state = {
-            status: 'failed' as const,
-            message: describeError(error, '连接测试失败')
-          };
-          aiModelEndpointTests = { ...aiModelEndpointTests, [key]: state };
-          return [key, state] as const;
-        }
-      })
-    );
-    aiModelEndpointTests = {
-      ...aiModelEndpointTests,
-      ...Object.fromEntries(results)
-    };
-    aiModelEndpointTestBusy = false;
-    if (showError && results.some(([, state]) => state.status === 'failed')) {
-      errorMessage = `${model.name} 存在大模型节点连接失败，请查看状态详情`;
-    }
-  }
-
-  async function saveAIModel() {
-    if (
-      !selectedAIModelResource ||
-      !selectedScopeId ||
-      !aiModelEditName.trim()
-    )
-      return;
-    await action(async () => {
-      const currentModel = selectedAIModelResource as Resource;
-      const endpoints = JSON.parse(aiModelEditEndpoints) as unknown;
-      if (!Array.isArray(endpoints) || endpoints.length === 0) {
-        throw new Error('至少需要配置一个模型连接');
-      }
-      const updated = await api.updateResource(currentModel.id, {
-        name: aiModelEditName.trim(),
-        status: aiModelEditStatus,
-        config: {
-          ...currentModel.config,
-          strategy: 'priority',
-          fallback_on: ['timeout', 'rate_limit', 'server_error'],
-          endpoints
-        }
-      });
-      resources = resources.map((resource) =>
-        resource.id === updated.id ? updated : resource
-      );
-      syncAIModelEditor(updated);
-      notice = `AI 模型“${updated.name}”已更新`;
-    });
   }
 
   async function loadSkillVersions() {
@@ -2296,108 +1628,6 @@
     } catch (error) {
       errorMessage = describeError(error, 'Skill 版本加载失败');
     }
-  }
-
-  async function testLLMProvider() {
-    if (!selectedAIModelId || !selectedScopeId || !llmModelName) return;
-    await action(async () => {
-      llmConnection = await api.testLLMProvider(selectedAIModelId, {
-        scope_id: selectedScopeId,
-        model_name: llmModelName,
-        stream: true
-      });
-      notice = `${llmConnection.message}，耗时 ${llmConnection.latency_ms} ms`;
-    });
-  }
-
-  async function createAIModel() {
-    if (!selectedScopeId || !aiModelName.trim()) return;
-    await action(async () => {
-      const normalizedName = aiModelName.trim().toLocaleLowerCase();
-      const duplicate = resources.some(
-        (item) =>
-          item.kind === 'AIModel' &&
-          item.scope_id === selectedScopeId &&
-          item.name.trim().toLocaleLowerCase() === normalizedName
-      );
-      if (duplicate) {
-        throw new Error('当前级别下已有同名 AI 模型，请更换名称后再发布');
-      }
-      if (
-        aiModelCreateEndpoints.length === 0 ||
-        aiModelCreateEndpoints.some(
-          (endpoint) => !endpoint.model_name.trim() || !endpoint.base_url.trim()
-        )
-      ) {
-        throw new Error('至少需要配置一个模型连接');
-      }
-      const endpoints: Record<string, unknown>[] = [];
-      for (const [index, endpoint] of aiModelCreateEndpoints.entries()) {
-        let credentialId = '';
-        if (endpoint.credential.trim()) {
-          const credential = await api.createCredential({
-            scope_id: selectedScopeId,
-            name: `${aiModelName.trim()} ${endpoint.provider_type} API Token ${index + 1}`,
-            purpose: 'AIModel 大模型节点',
-            secret: JSON.stringify({ token: endpoint.credential.trim() })
-          });
-          credentialId = credential.id;
-        }
-        endpoints.push(aiEndpointPayload(endpoint, credentialId));
-      }
-      const created = await api.createResource({
-        scope_id: selectedScopeId,
-        kind: 'AIModel',
-        name: aiModelName.trim(),
-        status: 'active',
-        labels: aiModelCreateDescription.trim()
-          ? { description: aiModelCreateDescription.trim() }
-          : {},
-        config: {
-          strategy: aiModelStrategy,
-          fallback_on: aiModelCreateFallback,
-          icon: aiModelIcon,
-          default: false,
-          endpoints
-        }
-      });
-      const finalized = aiModelCreateDefault
-        ? await api.setAIModelDefault(created.id, true)
-        : created;
-      resources = [finalized, ...resources];
-      selectedAIModelId = finalized.id;
-      selectedProviderId = finalized.id;
-      aiModelName = '';
-      aiModelCreateOpen = false;
-      aiModelCreateStep = 1;
-      notice = `AI 模型“${finalized.name}”已创建`;
-    });
-  }
-
-  async function toggleAIModelDefault(model: Resource) {
-    await action(async () => {
-      const updated = await api.setAIModelDefault(model.id, !Boolean(model.config.default));
-      resources = resources.map((item) =>
-        item.kind === 'AIModel' && item.scope_id === model.scope_id
-          ? item.id === updated.id
-            ? updated
-            : { ...item, config: { ...item.config, default: false } }
-          : item
-      );
-      notice = updated.config.default ? `已将“${updated.name}”设为默认模型` : `已取消“${updated.name}”的默认设置`;
-    });
-  }
-
-  async function setLLMDefault() {
-    if (!selectedAIModelId || !selectedScopeId || !llmModelName) return;
-    await action(async () => {
-      await api.setLLMDefault({
-        scope_id: selectedScopeId,
-        provider_resource_id: selectedAIModelId,
-        model_name: llmModelName
-      });
-      notice = '默认模型已更新';
-    });
   }
 
   async function createSkillVersion() {
@@ -2759,15 +1989,9 @@
     iconPickerTarget = target;
   }
 
-  function openAIModelIconPicker() {
-    teamIconSearch = '';
-    iconPickerTarget = 'ai-model';
-  }
-
   function selectTeamIcon(icon: string) {
     if (iconPickerTarget === 'create') teamIcon = icon;
     if (iconPickerTarget === 'edit') editTeamIcon = icon;
-    if (iconPickerTarget === 'ai-model') aiModelIcon = icon;
     iconPickerTarget = null;
     teamIconSearch = '';
   }
@@ -2963,6 +2187,7 @@
   }
 
   function resourceEndpointFor(resource: Resource) {
+    if (resource.kind === 'AIProvider') return String(resource.config?.base_url ?? '未设置服务地址');
     return String(
       resource.config?.url ??
         resource.config?.endpoint ??
@@ -3251,7 +2476,7 @@
         error.status === 409 &&
         error.message === 'Resource conflicts with existing data'
       ) {
-        return '当前级别下已有同名 AI 模型或凭据冲突，请更换名称后重试。';
+        return '当前级别下已有同名 AI 接入或凭据冲突，请更换名称后重试。';
       }
       return error.message || fallback;
     }
@@ -3399,7 +2624,7 @@
     'resource:update': '编辑资源配置',
     'resource:delete': '删除或停用资源',
     'resource:use': '使用资源执行连接测试或业务调用',
-    'model:manage': '设置或取消对应级别的默认 AI 模型',
+    'engine:manage': '管理 AI 引擎及其级别内的默认 AIProvider',
     'credential:manage': '管理凭据及其关联配置',
     'credential:test': '测试凭据连接',
     'relation:manage': '管理资源之间的关联关系',
@@ -3838,7 +3063,6 @@
       organization: '项目管理',
       discovery: '集群项目与应用导入',
       resources: '资源目录',
-      ai: 'AI 模型',
       skill: 'Skill',
       operations: '受控操作与 MCP',
       diagnosis: 'AI 诊断工作台',
@@ -3856,7 +3080,6 @@
       organization: '项目',
       discovery: '集群导入',
       resources: '资源',
-      ai: 'AI 模型',
       skill: 'Skill',
       operations: '受控操作',
       diagnosis: 'AI 诊断',
@@ -3902,7 +3125,7 @@
     Kubernetes: ['API', 'Agent'],
     MCPServer: ['StreamHTTP', 'SSE'],
     Skill: ['诊断', '监控', '优化', '维护'],
-    'AI 模型': ['AI 模型'],
+    AI: ['模型服务商'],
     监控: ['指标', '日志', '链路', '告警']
   };
 
@@ -3911,8 +3134,7 @@
     config?: Record<string, unknown>;
     subtype?: string;
   }) {
-    if (resource.kind === 'LLMProvider' || resource.kind === 'AIModel')
-      return 'AI 模型';
+    if (resource.kind === 'AIProvider') return 'AI';
     if (resource.kind === 'MCPServer') return 'MCPServer';
     if (resource.kind === 'GenericAPI') return 'Docker';
     if (resource.kind === 'Application') return '应用';
@@ -3974,17 +3196,14 @@
       Repository: 'Git',
       MCPServer: 'StreamHTTP',
       GenericAPI: 'API',
-      LLMProvider: 'OpenAI',
-      AIModel: 'AI 模型',
+      AIProvider: 'OpenAI',
       Prometheus: '指标',
       Loki: '日志',
       Tempo: '链路',
       Alertmanager: '告警'
     };
     const explicit = String(resource.subtype || resource.config?.subtype || '');
-    if (resource.kind === 'AIModel') {
-      return 'AI 模型';
-    }
+    if (resource.kind === 'AIProvider') return '模型服务商';
     return String(
       explicit ||
         resource.config?.provider ||
@@ -4005,7 +3224,7 @@
       Kubernetes: '⬡',
       MCPServer: '⌁',
       Skill: '✧',
-      'AI 模型': '✦',
+      AI: '✦',
       监控: '◌'
     };
     return icons[category] ?? '◇';
@@ -4100,6 +3319,7 @@
   }
 
   function resourceSchemaName(kind: string) {
+    if (kind === 'AIProvider') return '模型服务商';
     const schema = schemas.find((item) => item.kind === kind);
     return schema ? schemaName(schema) : kind;
   }
@@ -4417,16 +3637,6 @@
           data-tooltip={sidebarCompact ? '集群导入' : undefined}
           ><CloudDownload size={18} strokeWidth={1.8} aria-hidden="true" /><span
             class="nav-item-label">集群导入</span
-          ></button
-        >
-        <button
-          aria-label="AI 模型"
-          class:active={view === 'ai'}
-          class="nav-item"
-          on:click={() => chooseView('ai')}
-          data-tooltip={sidebarCompact ? 'AI 模型' : undefined}
-          ><Sparkles size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">AI 模型</span
           ></button
         >
         <button
@@ -6362,7 +5572,7 @@
             <form class="diagnosis-composer-f" on:submit|preventDefault={() => void submitDiagnosisMessage()}>
               <div class="diagnosis-composer-shell">
                 <textarea bind:value={diagnosisComposerText} on:keydown={handleDiagnosisComposerKeydown} placeholder="描述问题，或输入 / 调用 Skill…" aria-label="输入诊断问题" rows="3" maxlength="16000"></textarea>
-                <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedAIModelId} aria-label="选择 AIModel">{#each aiModels as model}<option value={model.id}>{model.name} · AIModel</option>{:else}<option value="">当前作用域暂无 AIModel</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
+              <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedProviderId} aria-label="选择模型服务商">{#each aiProviders as provider}<option value={provider.id}>{provider.name} · 模型服务商</option>{:else}<option value="">当前作用域暂无模型服务商</option>{/each}</select><select bind:value={llmModelName} aria-label="选择模型"><option value="">选择模型</option>{#each diagnosisProviderModels as model}<option value={String(model.name ?? '')}>{String(model.name ?? '')}</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
               </div>
               <small class="diagnosis-composer-note"><span>Enter 发送 · Shift + Enter 换行</span><span>当前模型支持：文本、工具调用、流式输出</span></small>
             </form>
@@ -6383,776 +5593,7 @@
             </aside>
           {/if}
         </section>
-      {:else if view === 'ai' || view === 'skill'}
-        {#if view === 'ai'}
-          <section class="ai-health-page">
-            <div class="ai-health-metrics">
-              <div class="ai-health-metric">
-                <span>可用模型</span><strong>{aiModelHealthyCount}</strong
-                ><small>可被业务调用</small>
-              </div>
-              <div class="ai-health-metric">
-                <span>健康大模型节点</span><strong
-                  >{aiModelHealthyEndpointCount} / {aiModelEndpointCount}</strong
-                ><small>当前 Scope 可见成员</small>
-              </div>
-              <div class="ai-health-metric">
-                <span>默认模型</span><strong
-                  >{aiModels.filter((model) => Boolean(model.config.default))
-                    .length}</strong
-                ><small>平台、团队或项目</small>
-              </div>
-              <div class="ai-health-metric">
-                <span>待处理</span><strong>{aiModelRepairCount}</strong><small
-                  >需要重新测试</small
-                >
-              </div>
-            </div>
-            {#if !aiModelCreateOpen}
-              <section class="panel ai-model-list-panel">
-                <div class="ai-model-toolbar">
-                  <div>
-                    <h2>模型列表</h2>
-                    <small
-                      >AI 模型是可包含多个大模型节点的统一能力入口.</small
-                    >
-                  </div>
-                  <div class="ai-model-toolbar-actions">
-                    <div class="ai-model-filters">
-                      <input
-                        class="ai-model-search"
-                        bind:value={aiModelSearch}
-                        placeholder="搜索名称、级别或用途"
-                        aria-label="搜索 AI 模型"
-                      /><select
-                        bind:value={aiModelStatusFilter}
-                        aria-label="模型状态"
-                        ><option value="all">全部状态</option><option
-                          value="active">启用</option
-                        ><option value="disabled">已停用</option></select
-                      ><select
-                        bind:value={aiModelScopeFilter}
-                        aria-label="模型级别"
-                        ><option value="all">全部级别</option><option
-                          value="platform">平台</option
-                        ><option value="team">团队</option><option
-                          value="project">项目</option
-                        ></select
-                      >
-                    </div>
-                    <button
-                      class="secondary"
-                      type="button"
-                      on:click={() => void refreshAIModels()}
-                      disabled={busy || aiModelRefreshing}
-                      ><RefreshCw
-                        size={14}
-                        aria-hidden="true"
-                      />刷新状态</button
-                    ><button
-                      class="primary"
-                      type="button"
-                      on:click={openAIModelCreate}
-                      ><Plus size={14} aria-hidden="true" />添加 AI 模型</button
-                    >
-                  </div>
-                </div>
-                <div class="ai-model-list">
-                  {#each visibleAIModels as model}
-                    {@const endpoints = aiModelEndpointsFor(model)}
-                    {@const capabilities = aiModelCapabilities(model)}
-                    <article
-                      class="ai-model-row"
-                      class:expanded={expandedAIModelId === model.id}
-                    >
-                      <div
-                        class="ai-model-row-main"
-                        role="button"
-                        tabindex="0"
-                        on:click={() =>
-                          (expandedAIModelId =
-                            expandedAIModelId === model.id ? '' : model.id)}
-                        on:keydown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            expandedAIModelId =
-                              expandedAIModelId === model.id ? '' : model.id;
-                          }
-                        }}
-                        aria-expanded={expandedAIModelId === model.id}
-                      >
-                        <span class="ai-model-icon"
-                          ><svelte:component
-                            this={teamIconComponent(aiModelIconFor(model))}
-                            size={18}
-                            aria-hidden="true"
-                          /></span
-                        ><span class="ai-model-identity"
-                          ><small class="ai-model-column-label">模型</small><strong
-                            >{model.name}</strong
-                          ><small class="ai-model-description"
-                            >大模型统一能力入口</small
-                          ></span
-                        ><span class="ai-model-scope"
-                          ><small class="ai-model-column-label">级别</small><b
-                            class="ai-scope-badge {scopeType(model.scope_id)}"
-                            >{scopeLevelLabel(scopeType(model.scope_id))}</b
-                          ><span class="ai-model-scope-name"
-                            >{scopeName(model.scope_id)}</span
-                          ></span
-                        ><span class="ai-model-default"
-                          ><small class="ai-model-column-label">默认</small><button
-                            class="ai-switch"
-                            class:on={Boolean(model.config.default)}
-                            type="button"
-                            role="switch"
-                            aria-checked={Boolean(model.config.default)}
-                            aria-label={model.config.default ? `取消 ${model.name} 默认` : `设为 ${model.name} 默认`}
-                            on:click={(event) => {
-                              event.stopPropagation();
-                              void toggleAIModelDefault(model);
-                            }}
-                            ><span></span></button><small
-                            class="ai-model-column-hint">级别内唯一</small></span
-                        ><span class="ai-model-capabilities"
-                          ><small class="ai-model-column-label">能力</small><span
-                            >{#each capabilities as capability}<em
-                                >{aiCapabilityLabel(capability)}</em
-                              >{:else}<em class="muted-chip">待计算</em
-                              >{/each}</span><small
-                            class="ai-model-column-hint"
-                            >大模型节点能力交集</small
-                          ></span
-                        ><span class="ai-model-health">
-                          <small class="ai-model-column-label">状态</small>
-                          <span class="ai-model-health-status">
-                            {#if aiModelRefreshing}
-                              <span class="ai-model-refreshing-state">
-                                <RefreshCw
-                                  class="ai-refreshing-icon"
-                                  size={15}
-                                  aria-label="正在刷新"
-                                /><span class="sr-only">正在刷新</span>
-                              </span>
-                            {:else}
-                              <span class="status-label {aiModelStatusClass(model)}">
-                                {aiModelStatusLabel(model)} {aiModelHealthRatio(model)}
-                              </span>
-                            {/if}
-                            <button
-                              class="icon-button ai-inline-test-button"
-                              type="button"
-                              data-tooltip="测试全部大模型节点"
-                              aria-label={`测试 ${model.name} 的全部大模型节点`}
-                              on:click={(event) => {
-                                event.stopPropagation();
-                                void testAIModel(model);
-                              }}
-                              disabled={aiModelEndpointTestBusy || !endpoints.some((endpoint) => endpoint.enabled)}
-                            ><PlugZap size={14} aria-hidden="true" /></button>
-                          </span>
-                          <span class="ai-model-health-meta">
-                            {endpoints.length} 个成员 · {String(model.config.strategy || 'priority')} 路由
-                          </span>
-                        </span>
-                        <span class="ai-model-chevron">
-                          <ChevronDown size={17} aria-hidden="true" />
-                          <span class="sr-only">
-                            {expandedAIModelId === model.id
-                              ? '收起模型详情'
-                              : '展开模型详情'}
-                          </span>
-                        </span>
-                      </div>
-                      {#if expandedAIModelId === model.id}
-                        <div class="ai-model-row-details">
-                          <div class="ai-endpoint-list">
-                            {#each endpoints as endpoint, endpointIndex}<div
-                                class="ai-endpoint-row"
-                              >
-                                <span
-                                  class="endpoint-health-dot {aiEndpointHealthClass(
-                                    endpoint
-                                  )}"
-                                ></span><span
-                                  ><strong
-                                    >{endpoint.provider_type} · {endpoint.model_name}</strong
-                                  ><small
-                                    >优先级 {endpoint.priority} · {endpoint.context_window.toLocaleString()}
-                                    上下文 · {endpoint.base_url}</small
-                                  ></span
-                                ><span class="ai-endpoint-caps"
-                                  >{#each endpoint.capabilities as capability}<em
-                                      >{aiCapabilityLabel(capability)}</em
-                                    >{/each}</span
-                                ><span
-                                  class="status-label {aiEndpointHealthClass(
-                                    endpoint
-                                  )}"
-                                  title={endpoint.testMessage ?? '尚未进行连接测试'}
-                                  >{aiEndpointConnectionLabel(endpoint)}</span
-                                >
-                              </div>{/each}
-                          </div>
-                          <aside class="ai-model-detail-aside">
-                            <h3>路由与权限</h3>
-                            <p>
-                              按优先级调用。超时、限流和服务端错误允许切换；已经开始流式输出时不会切换。
-                            </p>
-                            <div>
-                              <span>默认状态</span><strong
-                                >{model.config.default
-                                  ? '当前 Scope 默认'
-                                  : '未设置'}</strong
-                              >
-                            </div>
-                            <div>
-                              <span>故障切换</span><strong
-                                >受限可恢复错误</strong
-                              >
-                            </div>
-                            <div>
-                              <span>凭据</span><strong
-                                >加密引用，不展示明文</strong
-                              >
-                            </div>
-                            <div class="ai-detail-actions">
-                              <button
-                                class="secondary"
-                                type="button"
-                                on:click={() => void testAIModel(model)}
-                                disabled={aiModelEndpointTestBusy ||
-                                  !endpoints.some((endpoint) => endpoint.enabled)}
-                                ><PlugZap
-                                  size={14}
-                                  aria-hidden="true"
-                                />测试全部大模型节点</button
-                              ><button
-                                class="quiet-button"
-                                type="button"
-                                on:click={() => editAIModel(model)}
-                                ><Pencil
-                                  size={14}
-                                  aria-hidden="true"
-                                />编辑配置</button
-                              >
-                            </div>
-                          </aside>
-                        </div>
-                      {/if}
-                    </article>
-                  {:else}<div class="empty-state">
-                      <span class="empty-icon">✦</span>
-                      <h2>暂无 AI 模型</h2>
-                      <p>当前 Scope 还没有可用的统一模型入口。</p>
-                    </div>{/each}
-                </div>
-              </section>
-            {:else}
-              <section
-                class="panel ai-model-create-panel"
-                aria-labelledby="ai-model-create-title"
-              >
-                <div class="panel-heading">
-                  <div>
-                    <p class="eyebrow">NEW ai model</p>
-                    <h2 id="ai-model-create-title">创建 AI 模型</h2>
-                  </div>
-                  <button
-                    class="quiet-button"
-                    type="button"
-                    on:click={closeAIModelCreate}>关闭</button
-                  >
-                </div>
-                <div class="ai-wizard">
-                  <nav class="ai-wizard-steps" aria-label="创建步骤">
-                    {#each ['基础信息', '添加模型', '路由策略', '发布总结'] as step, index}<button
-                        type="button"
-                        class:active={aiModelCreateStep === index + 1}
-                        class:done={aiModelCreateStep > index + 1}
-                        on:click={() => (aiModelCreateStep = index + 1)}
-                        ><b
-                          >{aiModelCreateStep > index + 1 ? '✓' : index + 1}</b
-                        ><span>{step}</span></button
-                      >{/each}
-                  </nav>
-                  <form
-                    class="ai-wizard-content"
-                    on:submit|preventDefault={() =>
-                      aiModelCreateStep < 4
-                        ? (aiModelCreateStep += 1)
-                        : void createAIModel()}
-                  >
-                    <div class="ai-step-heading">
-                      <h3>
-                        {aiModelCreateStep === 1
-                          ? '基础信息'
-                          : aiModelCreateStep === 2
-                            ? '添加模型'
-                            : aiModelCreateStep === 3
-                              ? '路由策略'
-                              : '发布总结'}
-                      </h3>
-                      {#if aiModelCreateStep === 2 && aiModelModelError}
-                        <span
-                          class="ai-step-error"
-                          class:testing={aiModelModelTesting}
-                          role="alert">{aiModelModelError}</span
-                        >
-                      {/if}
-                      <div class="ai-step-actions">
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() =>
-                            aiModelCreateStep > 1
-                              ? (aiModelCreateStep -= 1)
-                              : closeAIModelCreate()}
-                          >{aiModelCreateStep > 1 ? '上一步' : '取消'}</button
-                        ><button
-                          class="primary"
-                          type="submit"
-                          disabled={busy ||
-                            (aiModelCreateStep === 1 &&
-                              !aiModelName.trim()) ||
-                            (aiModelCreateStep === 2 &&
-                              aiModelCreateEndpoints.length === 0)}
-                          >{aiModelCreateStep < 4
-                            ? '下一步'
-                            : '发布 AI 模型'}</button
-                        >
-                      </div>
-                    </div>
-                    {#if aiModelCreateStep === 1}
-                      <p>
-                        定义用户大模型的统一能力入口；AI
-                        模型可从多个大模型节点中进行调度。
-                      </p>
-                      <div class="ai-form-grid">
-                        <div class="ai-model-name-field">
-                          <button
-                            class="team-icon-picker-trigger"
-                            type="button"
-                            aria-label="选择 AI 模型图标"
-                            data-tooltip="选择 AI 模型图标"
-                            on:click={openAIModelIconPicker}
-                            ><span class="entity-icon team-icon"
-                              ><svelte:component
-                                this={teamIconComponent(aiModelIcon)}
-                                size={16}
-                                strokeWidth={1.8}
-                              /></span
-                            ></button
-                          >
-                          <label
-                            ><span
-                              >名称<span
-                                class="required-mark"
-                                aria-hidden="true">*</span
-                              ></span
-                            ><input
-                              bind:value={aiModelName}
-                              required
-                              placeholder="例如：生产诊断中枢"
-                            /></label
-                          >
-                        </div>
-                        <div class="ai-model-scope-default-fields">
-                          <label
-                            ><span
-                              >级别<span class="required-mark" aria-hidden="true"
-                                >*</span
-                              ></span
-                            ><select bind:value={selectedScopeId} required
-                              >{#each scopeChoices as scope}<option
-                                  value={scope.id}
-                                  >{scope.type === 'platform'
-                                    ? scopeLevelLabel(scope.type)
-                                    : `${scope.name} · ${scopeLevelLabel(scope.type)}`}</option
-                                >{/each}</select
-                            ></label
-                          ><label class="ai-default-field"
-                            ><span>默认模型</span><button
-                              class="ai-switch"
-                              class:on={aiModelCreateDefault}
-                              type="button"
-                              role="switch"
-                              aria-checked={aiModelCreateDefault}
-                              aria-label="设置为默认 AI 模型"
-                              on:click={() => (aiModelCreateDefault = !aiModelCreateDefault)}
-                              ><span></span></button></label>
-                        </div>
-                        <label class="full"
-                          >用途说明<textarea
-                            bind:value={aiModelCreateDescription}
-                            placeholder="例如：截图诊断、日志分析和受控 Skill"
-                          ></textarea></label
-                        >
-                      </div>{:else if aiModelCreateStep === 2}
-                      <p>
-                        先填写模型连接信息，再添加到模型；添加后会自动计算能力并检查连接状态。
-                      </p>
-                      <div class="ai-model-entry-form">
-                        <div class="ai-model-form-row">
-                          <label
-                            ><span
-                              >模型厂商<span
-                                class="required-mark"
-                                aria-hidden="true">*</span
-                              ></span
-                            ><div
-                              class="ai-provider-picker"
-                              class:ai-field-invalid={aiModelModelFieldMissing('provider')}
-                            ><button
-                                class="ai-provider-trigger"
-                                type="button"
-                                aria-label="选择模型厂商"
-                                aria-expanded={aiProviderMenuOpen}
-                                on:click={() => (aiProviderMenuOpen = !aiProviderMenuOpen)}
-                                ><svelte:component this={teamIconComponent(aiProviderOption(aiModelCreateDraft.provider_type).icon)} size={15} aria-hidden="true" /><span>{aiProviderOption(aiModelCreateDraft.provider_type).label}</span><ChevronDown size={14} aria-hidden="true" /></button
-                              >{#if aiProviderMenuOpen}<div class="ai-provider-menu" role="listbox">
-                                {#each aiProviderOptions as provider}<button
-                                    type="button"
-                                    role="option"
-                                    aria-selected={provider.value === aiModelCreateDraft.provider_type}
-                                    on:click={() => selectAIProvider(provider.value)}
-                                    ><svelte:component this={teamIconComponent(provider.icon)} size={15} aria-hidden="true" /><span>{provider.label}</span></button
-                                  >{/each}
-                              </div>{/if}</div
-                            ></label
-                          ><label
-                            ><span
-                              >模型地址<span
-                                class="required-mark"
-                                aria-hidden="true">*</span
-                              ></span
-                            ><input
-                              class:ai-field-invalid={aiModelModelFieldMissing(
-                                'base_url'
-                              )}
-                              aria-label="模型地址"
-                              bind:value={aiModelCreateDraft.base_url}
-                              on:input={() =>
-                                clearAIModelModelFieldError('base_url')}
-                              placeholder="https://api.example.com/v1"
-                            /></label
-                          ><label
-                            ><span
-                              >模型凭证<span
-                                class="required-mark"
-                                aria-hidden="true">*</span
-                              ></span
-                            ><span class="password-control"
-                              ><input
-                                class:ai-field-invalid={aiModelModelFieldMissing('credential')}
-                                aria-label="模型凭证"
-                                type={aiModelCredentialVisible ? 'text' : 'password'}
-                                bind:value={aiModelCreateDraft.credential}
-                                on:input={() => clearAIModelModelFieldError('credential')}
-                                placeholder="输入 API Token"
-                              /><button
-                                class="password-toggle"
-                                type="button"
-                                aria-label={aiModelCredentialVisible ? '隐藏模型凭证' : '显示模型凭证'}
-                                on:click={() => (aiModelCredentialVisible = !aiModelCredentialVisible)}
-                                >{#if aiModelCredentialVisible}<EyeOff size={15} aria-hidden="true" />{:else}<Eye size={15} aria-hidden="true" />{/if}</button
-                              ></span
-                            ></label
-                          >
-                        </div>
-                        <div class="ai-model-form-row">
-                          <label
-                            ><span>模型名称<span class="required-mark" aria-hidden="true">*</span></span><input
-                              class:ai-field-invalid={aiModelModelFieldMissing('model_name')}
-                              aria-label="模型名称"
-                              bind:value={aiModelCreateDraft.model_name}
-                              on:input={() => clearAIModelModelFieldError('model_name')}
-                              placeholder="例如：gpt-4.1"
-                            /></label
-                          ><label
-                            >温度<input
-                              aria-label="温度"
-                              type="number"
-                              bind:value={aiModelCreateDraft.temperature}
-                              min="0"
-                              max="2"
-                              step="0.1"
-                            /></label
-                          ><label
-                            >上下文窗口<input
-                              aria-label="上下文窗口"
-                              type="number"
-                              bind:value={aiModelCreateDraft.context_window}
-                              min="1"
-                            /></label
-                          ><label
-                            >支持的能力
-                            <div class="ai-capability-card-picker">
-                              {#each ['chat', 'vision', 'audio', 'tool_calling', 'structured_output', 'stream', 'long_context', 'deep_thinking'] as capability}<button
-                                  class:active={aiModelCreateDraft.capabilities.includes(
-                                    capability
-                                  )}
-                                  type="button"
-                                  on:click={() =>
-                                    toggleAIEndpointCapability(capability)}
-                                  >{aiCapabilityLabel(capability)}</button
-                                >{/each}
-                            </div></label
-                          >
-                          <div class="ai-model-form-actions">
-                            <button
-                              class="secondary"
-                              type="button"
-                              on:click={addAIEndpoint}
-                              disabled={busy || aiModelModelTesting}
-                              ><Plus
-                                size={14}
-                                aria-hidden="true"
-                              />{aiModelEditingEndpointIndex >= 0
-                                ? '保存模型'
-                                : '添加模型'}</button
-                            >
-                          </div>
-                        </div>
-                      </div>
-                      <div class="ai-model-entry-list" aria-label="已添加模型">
-                        {#if aiModelCreateEndpoints.length === 0}<div
-                            class="ai-model-empty"
-                          >
-                            尚未添加模型，填写上方表单后点击添加模型。
-                          </div>{:else}<div
-                            class="ai-model-table-head"
-                            aria-hidden="true"
-                          >
-                            <span>模型厂商 / 地址</span><span>模型名称</span
-                            ><span>能力</span><span>上下文</span><span
-                              >状态</span
-                            ><span>操作</span>
-                          </div>
-                          {#each aiModelCreateEndpoints as endpoint, index}<div
-                              class="ai-model-entry-row"
-                            >
-                              <span class="ai-model-endpoint"
-                                ><strong
-                                  >{aiProviderLabel(
-                                    endpoint.provider_type
-                                  )}</strong
-                                ><small>{endpoint.base_url}</small></span
-                              ><span class="ai-model-name"
-                                >{endpoint.model_name}</span
-                              ><span class="ai-model-entry-capabilities"
-                                >{aiCapabilitiesForEndpoints([endpoint])
-                                  .map(aiCapabilityLabel)
-                                  .join(' · ')}</span
-                              ><span class="ai-model-context"
-                                >{endpoint.context_window.toLocaleString()}</span
-                              ><span
-                                class="ai-model-connection {aiEndpointHealthClass(
-                                  endpoint
-                                )}">{aiEndpointConnectionLabel(endpoint)}</span
-                              ><span class="ai-model-actions"
-                                ><button
-                                  class="icon-button"
-                                  type="button"
-                                  aria-label={`编辑 ${endpoint.model_name}`}
-                                  on:click={() => editAIEndpoint(index)}
-                                  ><Pencil
-                                    size={14}
-                                    aria-hidden="true"
-                                  /></button
-                                ><button
-                                  class="icon-button danger-action"
-                                  type="button"
-                                  aria-label={`删除 ${endpoint.model_name}`}
-                                  on:click={() => removeAIEndpoint(index)}
-                                  ><Trash2
-                                    size={14}
-                                    aria-hidden="true"
-                                  /></button
-                                ></span
-                              >
-                            </div>{/each}{/if}
-                      </div>
-                      <div class="ai-form-note">
-                        当前模型能力：{aiCapabilitiesForEndpoints(
-                          aiModelCreateEndpoints
-                        )
-                          .map(aiCapabilityLabel)
-                          .join('、') || '添加并填写模型后自动计算'}
-                      </div>{:else if aiModelCreateStep === 3}
-                      <p>
-                        首版固定使用优先级路由，数字越大越先调用；仅在可恢复错误时切换。
-                      </p>
-                      <div class="ai-route-choice">
-                        <button type="button" class="active"
-                          ><strong>优先级路由</strong><small
-                            >按成员优先级从高到低尝试，稳定且可解释。</small
-                          ></button
-                        >
-                      </div>
-                      <fieldset class="ai-fallback-picker">
-                        <legend>故障切换条件</legend
-                        >{#each [['timeout', '连接超时'], ['rate_limit', 'Provider 限流'], ['server_error', 'Provider 5xx']] as fallback}<label
-                            ><input
-                              type="checkbox"
-                              checked={aiModelCreateFallback.includes(
-                                fallback[0]
-                              )}
-                              on:change={() =>
-                                toggleAIModelFallback(fallback[0])}
-                            />{fallback[1]}</label
-                          >{/each}
-                      </fieldset>
-                      <div class="ai-form-note">
-                        参数错误、权限不足、能力不足、凭据错误和已开始流式输出时不会自动切换。
-                      </div>{:else}
-                      <p>发布前确认基础信息、模型连接和路由策略；发布后业务只感知统一的 AI 模型入口。</p>
-                      <div class="ai-review-grid">
-                        <section class="ai-review-section" aria-labelledby="ai-review-basics-title">
-                          <div class="ai-review-section-heading">
-                            <h4 id="ai-review-basics-title">基础信息</h4>
-                            <span>{scopeLevelLabel(scopeType(selectedScopeId))}</span>
-                          </div>
-                          <div class="ai-review-list">
-                            <div><span>名称</span><strong>{aiModelName || '未填写'}</strong></div>
-                            <div><span>所属级别</span><strong>{scopeName(selectedScopeId)} · {scopeLevelLabel(scopeType(selectedScopeId))}</strong></div>
-                            <div><span>用途说明</span><strong>{aiModelCreateDescription || '未填写'}</strong></div>
-                            <div><span>默认模型</span><strong>{aiModelCreateDefault ? '是 · 将接管该级别默认入口' : '否'}</strong></div>
-                            <div><span>模型图标</span><strong>{commonTeamIconLabels[aiModelIcon] ?? formatIconName(aiModelIcon)}</strong></div>
-                          </div>
-                        </section>
-
-                        <section class="ai-review-section ai-review-models" aria-labelledby="ai-review-models-title">
-                          <div class="ai-review-section-heading">
-                            <h4 id="ai-review-models-title">模型连接</h4>
-                            <span>{aiModelCreateEndpoints.length} 个模型</span>
-                          </div>
-                          {#if aiModelCreateEndpoints.length === 0}
-                            <div class="ai-review-empty">尚未添加模型，返回“添加模型”步骤完成连接测试。</div>
-                          {:else}
-                            <div class="ai-review-endpoints">
-                              {#each aiModelCreateEndpoints as endpoint}
-                                <article class="ai-review-endpoint">
-                                  <div class="ai-review-endpoint-heading">
-                                    <div><strong>{aiProviderLabel(endpoint.provider_type)} · {endpoint.model_name}</strong><small>{endpoint.base_url}</small></div>
-                                    <span class="ai-review-status {aiEndpointHealthClass(endpoint)}">{aiEndpointConnectionLabel(endpoint)}</span>
-                                  </div>
-                                  <div class="ai-review-endpoint-meta">
-                                    <span>优先级 {endpoint.priority}</span>
-                                    <span>上下文 {endpoint.context_window.toLocaleString()}</span>
-                                    <span>温度 {Number(endpoint.temperature ?? 0.7).toFixed(1)}</span>
-                                    <span>{endpoint.credential.trim() ? '凭据已配置' : '未配置凭据'}</span>
-                                  </div>
-                                  <div class="ai-review-capabilities">
-                                    {#each endpoint.capabilities.map(aiCapabilityLabel) as capability}<span>{capability}</span>{/each}
-                                  </div>
-                                </article>
-                              {/each}
-                            </div>
-                          {/if}
-                        </section>
-
-                        <section class="ai-review-section" aria-labelledby="ai-review-routing-title">
-                          <div class="ai-review-section-heading">
-                            <h4 id="ai-review-routing-title">模型能力与路由</h4>
-                            <span>优先级路由</span>
-                          </div>
-                          <div class="ai-review-list">
-                            <div><span>能力交集</span><strong>{aiCapabilitiesForEndpoints(aiModelCreateEndpoints).map(aiCapabilityLabel).join('、') || '待添加模型'}</strong></div>
-                            <div><span>调用顺序</span><strong>按模型优先级从高到低尝试</strong></div>
-                            <div><span>故障切换</span><strong>{aiModelCreateFallback.map((item) => item === 'timeout' ? '连接超时' : item === 'rate_limit' ? 'Provider 限流' : 'Provider 5xx').join('、') || '不自动切换'}</strong></div>
-                            <div><span>不可切换</span><strong>参数、权限、凭据或能力错误；已开始流式输出</strong></div>
-                          </div>
-                        </section>
-
-                        <section class="ai-review-section" aria-labelledby="ai-review-checks-title">
-                          <div class="ai-review-section-heading">
-                            <h4 id="ai-review-checks-title">发布检查</h4>
-                            <span>发布前状态</span>
-                          </div>
-                          <div class="ai-review-checks">
-                            <div class:passed={aiModelCreateEndpoints.length > 0}>
-                              <span>模型数量</span><strong>{aiModelCreateEndpoints.length > 0 ? '已满足，至少 1 个模型' : '未满足，需要添加模型'}</strong>
-                            </div>
-                            <div class:passed={aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded')}>
-                              <span>连接测试</span><strong>{aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.testStatus === 'succeeded') ? '全部通过真实连接测试' : '存在未测试或失败的模型'}</strong>
-                            </div>
-                            <div class:passed={aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.credential.trim())}>
-                              <span>模型凭据</span><strong>{aiModelCreateEndpoints.length > 0 && aiModelCreateEndpoints.every((endpoint) => endpoint.credential.trim()) ? '每个模型均已配置' : '存在未配置凭据的模型'}</strong>
-                            </div>
-                            <div class:passed={Boolean(aiModelName.trim())}>
-                              <span>名称校验</span><strong>{aiModelName.trim() ? '已填写' : '未填写模型名称'}</strong>
-                            </div>
-                          </div>
-                        </section>
-                      </div>
-                      <div class="ai-form-note">
-                        发布后可在模型列表展开模型连接并单独刷新状态。模型凭据将保存为加密凭据，业务调用只选择模型，不直接选择具体模型。
-                      </div>{/if}
-                  </form>
-                </div>
-              </section>
-              {#if iconPickerTarget === 'ai-model'}
-                <div
-                  class="dialog-backdrop"
-                  role="presentation"
-                  on:click={(event) => {
-                    if (event.currentTarget === event.target)
-                      iconPickerTarget = null;
-                  }}
-                >
-                  <dialog
-                    open
-                    class="dialog icon-picker-dialog"
-                    aria-labelledby="ai-model-icon-picker-title"
-                  >
-                    <div class="dialog-heading">
-                      <div>
-                        <p class="eyebrow">ICON PICKER</p>
-                        <h2 id="ai-model-icon-picker-title">
-                          选择 AI 模型图标
-                        </h2>
-                      </div>
-                      <button
-                        class="icon-button"
-                        type="button"
-                        aria-label="关闭"
-                        on:click={() => (iconPickerTarget = null)}>×</button
-                      >
-                    </div>
-                    <div class="icon-picker-body">
-                      <label class="icon-search"
-                        ><Search size={16} aria-hidden="true" /><span
-                          class="sr-only">搜索图标</span
-                        ><input
-                          bind:value={teamIconSearch}
-                          placeholder="搜索图标，如 AI、模型、平台"
-                          aria-label="搜索图标"
-                        /></label
-                      >
-                      <div class="team-icon-grid" aria-label="AI 模型图标列表">
-                        {#each filteredTeamIconOptions as option}
-                          {@const TeamIcon = teamIconComponent(option.value)}
-                          <button
-                            class:active={aiModelIcon === option.value}
-                            type="button"
-                            on:click={() => selectTeamIcon(option.value)}
-                            aria-label={`选择图标 ${option.label}`}
-                            ><span class="entity-icon team-icon"
-                              ><TeamIcon size={18} strokeWidth={1.8} /></span
-                            ><span>{option.label}</span></button
-                          >
-                        {:else}
-                          <p class="icon-picker-empty">没有匹配的图标。</p>
-                        {/each}
-                      </div>
-                    </div>
-                  </dialog>
-                </div>
-              {/if}
-            {/if}
-          </section>
-        {:else}
+      {:else if view === 'skill'}
           <section class="content-grid two-column ai-runtime">
             <section class="panel">
               <div class="panel-heading">
@@ -7336,7 +5777,6 @@
               </div>
             </section>
           </section>
-        {/if}
       {:else if view === 'access'}
         <section class="access-page">
           <section class="panel access-workbench">
@@ -8191,9 +6631,7 @@
                     <button
                       class:active={(iconPickerTarget === 'create'
                         ? teamIcon
-                        : iconPickerTarget === 'edit'
-                          ? editTeamIcon
-                          : aiModelIcon) === option.value}
+                        : editTeamIcon) === option.value}
                       type="button"
                       on:click={() => selectTeamIcon(option.value)}
                       aria-label={`选择图标 ${option.label}`}

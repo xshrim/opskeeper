@@ -1,0 +1,1 @@
+-- Deleted AI resources cannot be reconstructed from a down migration.

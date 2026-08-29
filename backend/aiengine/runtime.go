@@ -1,0 +1,190 @@
+package aiengine
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+type Runtime struct {
+	runner   Runner
+	resolver ContextResolver
+	gateway  *PolicyGateway
+	store    EventStore
+	active   sync.Map
+}
+
+type activeExecution struct{ cancel context.CancelFunc }
+
+func New(runner Runner) *Runtime { return &Runtime{runner: runner} }
+
+func NewWithContext(runner Runner, resolver ContextResolver, gateway *PolicyGateway) *Runtime {
+	return &Runtime{runner: runner, resolver: resolver, gateway: gateway}
+}
+
+func NewWithContextAndStore(runner Runner, resolver ContextResolver, gateway *PolicyGateway, store EventStore) *Runtime {
+	return &Runtime{runner: runner, resolver: resolver, gateway: gateway, store: store}
+}
+
+func (r *Runtime) Name() string { return "AIEngine" }
+
+func (r *Runtime) Execute(parent context.Context, request Request) (Result, error) {
+	if err := request.Normalize(); err != nil {
+		return Result{}, err
+	}
+	if r.runner == nil {
+		return Result{}, ErrRunnerUnavailable
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	if request.ExecutionID == "" {
+		request.ExecutionID = fmt.Sprintf("exec-%d", time.Now().UnixNano())
+	}
+	ctx, cancel := context.WithTimeout(parent, request.Budget.Timeout)
+	if _, loaded := r.active.LoadOrStore(request.ExecutionID, activeExecution{cancel: cancel}); loaded {
+		cancel()
+		return Result{}, ErrAlreadyRunning
+	}
+	defer func() {
+		cancel()
+		r.active.Delete(request.ExecutionID)
+	}()
+
+	var sequence atomic.Int64
+	originalSink := request.EventSink
+	sink := func(event Event) error {
+		if event.ExecutionID == "" {
+			event.ExecutionID = request.ExecutionID
+		}
+		if event.Timestamp.IsZero() {
+			event.Timestamp = time.Now().UTC()
+		}
+		if event.Sequence <= 0 {
+			event.Sequence = sequence.Add(1)
+		} else {
+			for {
+				current := sequence.Load()
+				next := event.Sequence
+				if next <= current {
+					next = current + 1
+				}
+				if sequence.CompareAndSwap(current, next) {
+					event.Sequence = next
+					break
+				}
+			}
+		}
+		if r.store != nil {
+			_ = r.store.AppendEvent(context.Background(), event)
+		}
+		if originalSink == nil {
+			return nil
+		}
+		return originalSink(event)
+	}
+	request.EventSink = sink
+	_ = sink(Event{Type: "execution.started", Status: StatusRunning, Payload: map[string]any{"profile": request.Profile}})
+	if r.resolver != nil && len(request.Context.ResourceIDs) > 0 {
+		resolved, resolveErr := r.resolver.Resolve(ctx, request.Context)
+		if resolveErr != nil {
+			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "context_resolution", ErrorMessage: resolveErr.Error()}
+			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+			return result, resolveErr
+		}
+		request.ResolvedContext = &resolved
+		request.ToolGateway = r.gateway
+		_ = sink(Event{Type: "context.loaded", Status: StatusRunning, Payload: map[string]any{"resource_count": len(resolved.Resources), "tool_count": len(resolved.Tools), "fact_count": len(resolved.Facts)}})
+	}
+
+	var result Result
+	var err error
+	if streaming, ok := r.runner.(StreamingRunner); ok && request.Stream {
+		result, err = streaming.RunStream(ctx, request, sink)
+	} else {
+		result, err = r.runner.Run(ctx, request)
+	}
+	if err != nil {
+		status, code := StatusFailed, "runtime"
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+			status, code = StatusCancelled, "timeout"
+		} else if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+			status, code = StatusCancelled, "cancelled"
+		}
+		result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, status, code
+		result.ErrorMessage = err.Error()
+		eventType := "execution.failed"
+		if status == StatusCancelled {
+			eventType = "execution.cancelled"
+		}
+		_ = sink(Event{Type: eventType, Status: status, Payload: map[string]any{"error_code": code, "error": err.Error()}})
+		return result, err
+	}
+	if err := ctx.Err(); err != nil {
+		result.ExecutionID, result.Status, result.ErrorCode, result.ErrorMessage = request.ExecutionID, StatusCancelled, "cancelled", err.Error()
+		_ = sink(Event{Type: "execution.cancelled", Status: StatusCancelled, Payload: map[string]any{"error": err.Error()}})
+		return result, err
+	}
+	result.ExecutionID = request.ExecutionID
+	if result.Status == "" {
+		result.Status = StatusSucceeded
+	}
+	if result.Status == StatusFailed {
+		_ = sink(Event{Type: "execution.failed", Status: result.Status, Payload: map[string]any{
+			"error_code": result.ErrorCode, "error": result.ErrorMessage,
+			"tool_call_count": result.ToolCallCount, "total_tokens": result.TotalTokens,
+		}})
+	} else if result.Status == StatusCancelled {
+		_ = sink(Event{Type: "execution.cancelled", Status: result.Status, Payload: map[string]any{
+			"error_code": result.ErrorCode, "error": result.ErrorMessage,
+			"tool_call_count": result.ToolCallCount, "total_tokens": result.TotalTokens,
+		}})
+	} else {
+		_ = sink(Event{Type: "execution.completed", Status: result.Status, Payload: map[string]any{"tool_call_count": result.ToolCallCount, "total_tokens": result.TotalTokens}})
+	}
+	return result, nil
+}
+
+func (r *Runtime) Stream(ctx context.Context, request Request) (<-chan Event, error) {
+	if err := request.Normalize(); err != nil {
+		return nil, err
+	}
+	if r.runner == nil {
+		return nil, ErrRunnerUnavailable
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	events := make(chan Event, 32)
+	original := request.EventSink
+	request.Stream = true
+	request.EventSink = func(event Event) error {
+		if original != nil {
+			if err := original(event); err != nil {
+				return err
+			}
+		}
+		select {
+		case events <- event:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	go func() {
+		defer close(events)
+		_, _ = r.Execute(ctx, request)
+	}()
+	return events, nil
+}
+
+func (r *Runtime) Cancel(_ context.Context, executionID string) error {
+	if value, ok := r.active.Load(executionID); ok {
+		value.(activeExecution).cancel()
+		return nil
+	}
+	return fmt.Errorf("execution %q is not running", executionID)
+}

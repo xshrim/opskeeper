@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/health"
@@ -32,6 +33,9 @@ type Options struct {
 	LLMs               llmService
 	Skills             skillService
 	SkillRunner        skillRunner
+	AIEngine           aiengine.Engine
+	AIEngineEvents     aiengine.EventStore
+	AIEngineToolCalls  aiengine.ToolCallStore
 	Diagnosis          diagnosisService
 	Inspection         inspectionService
 	MCP                mcpService
@@ -104,13 +108,16 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
-			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.SkillRunner != nil) {
+			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.SkillRunner != nil || options.AIEngine != nil) {
 				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.SkillRunner, options.Authorization, options.Auditor, requirePermission)
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.SkillRunner, options.AIEngine, options.Authorization, options.Auditor, requirePermission)
+				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
+				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
+				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)
 			}
 			if options.Identity != nil && options.Diagnosis != nil {
 				diagnosisRouter := router.With(authHandler{service: options.Identity}.requireAuth)

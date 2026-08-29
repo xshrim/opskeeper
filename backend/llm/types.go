@@ -2,50 +2,71 @@ package llm
 
 import "time"
 
-const ProviderKind = "LLMProvider"
-const AIModelKind = "AIModel"
+const AIProviderKind = "AIProvider"
 
-type ModelConfig struct {
-	Name                  string   `json:"name"`
-	ContextWindow         int      `json:"context_window"`
-	Temperature           float64  `json:"temperature"`
-	InputPricePerMillion  float64  `json:"input_price_per_million,omitempty"`
-	OutputPricePerMillion float64  `json:"output_price_per_million,omitempty"`
-	Capabilities          []string `json:"capabilities,omitempty"`
+// Purpose identifies the execution scenario whose default provider is used.
+type Purpose string
+
+const (
+	PurposeDefault    Purpose = "default"
+	PurposeDiagnosis  Purpose = "diagnosis"
+	PurposeInspection Purpose = "inspection"
+	PurposeWorkflow   Purpose = "workflow"
+)
+
+func (p Purpose) String() string { return string(p) }
+
+type ProviderModel struct {
+	Name                string   `json:"name"`
+	ContextWindowTokens int      `json:"context_window_tokens"`
+	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
+	Temperature         float64  `json:"temperature,omitempty"`
+	TemperatureMutable  bool     `json:"temperature_mutable,omitempty"`
+	Capabilities        []string `json:"capabilities"`
+	Enabled             bool     `json:"enabled"`
+	Priority            int      `json:"priority,omitempty"`
 }
 
-type ProviderConfig struct {
-	ProviderType   string        `json:"provider_type"`
-	BaseURL        string        `json:"base_url"`
-	Models         []ModelConfig `json:"models"`
-	TimeoutSeconds int           `json:"timeout_seconds,omitempty"`
+type AIProviderConfig struct {
+	ProviderType       string          `json:"provider_type"`
+	Protocol           string          `json:"protocol,omitempty"`
+	BaseURL            string          `json:"base_url"`
+	TimeoutSeconds     int             `json:"timeout_seconds,omitempty"`
+	MaxConcurrency     int             `json:"max_concurrency,omitempty"`
+	RateLimitPerMinute int             `json:"rate_limit_per_minute,omitempty"`
+	Enabled            bool            `json:"enabled"`
+	DefaultModel       string          `json:"default_model,omitempty"`
+	Models             []ProviderModel `json:"models"`
 }
 
-type Provider struct {
-	ResourceID   string         `json:"resource_id"`
-	ScopeID      string         `json:"scope_id"`
-	Name         string         `json:"name"`
-	CredentialID string         `json:"-"`
-	Config       ProviderConfig `json:"config"`
+type AIProvider struct {
+	ResourceID   string           `json:"resource_id"`
+	ScopeID      string           `json:"scope_id"`
+	Name         string           `json:"name"`
+	CredentialID string           `json:"-"`
+	Config       AIProviderConfig `json:"config"`
 }
 
-type Default struct {
-	ScopeID            string    `json:"scope_id"`
-	ProviderResourceID string    `json:"provider_resource_id"`
-	ModelName          string    `json:"model_name"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+type ScopeProviderBinding struct {
+	ScopeID    string    `json:"scope_id"`
+	ProviderID string    `json:"provider_resource_id"`
+	Tag        Purpose   `json:"tag"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-type ResolvedModel struct {
-	Provider         Provider    `json:"provider"`
-	Model            ModelConfig `json:"model"`
-	DefinedAtScopeID string      `json:"defined_at_scope_id"`
-	APIKey           string      `json:"-"`
+type ResolvedProvider struct {
+	ProviderResourceID string        `json:"provider_resource_id"`
+	ProviderName       string        `json:"provider_name"`
+	Provider           AIProvider    `json:"provider"`
+	Model              ProviderModel `json:"model"`
+	DefinedAtScopeID   string        `json:"defined_at_scope_id"`
+	SelectionReason    string        `json:"selection_reason,omitempty"`
+	APIKey             string        `json:"-"`
 }
 
 type ConnectionResult struct {
-	ProviderResourceID string `json:"provider_resource_id"`
+	ProviderResourceID string `json:"provider_resource_id,omitempty"`
 	ModelName          string `json:"model_name"`
 	Status             string `json:"status"`
 	LatencyMS          int64  `json:"latency_ms"`

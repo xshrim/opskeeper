@@ -31,3 +31,9 @@ func TestConfigRejectsPromptInjectionAsToolName(t *testing.T) {
 		t.Fatal("prompt-like tool name was accepted")
 	}
 }
+
+func TestConfigAcceptsNamespacedMCPToolName(t *testing.T) {
+	if _, err := configFrom(map[string]any{"transport": "streamable_http", "url": "http://127.0.0.1:3100/mcp", "tool_allowlist": []string{"docker:list_containers"}}); err != nil {
+		t.Fatalf("namespaced MCP tool name rejected: %v", err)
+	}
+}

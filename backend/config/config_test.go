@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/netip"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -275,5 +276,19 @@ func TestLoadRejectsInvalidBasePath(t *testing.T) {
 				t.Fatalf("Load() error = nil for OPSK_BASE_PATH=%q", basePath)
 			}
 		})
+	}
+}
+
+func TestLoadMCPEnhancedSecurityDefaultsOffAndCanBeEnabled(t *testing.T) {
+	t.Cleanup(func() { _ = os.Unsetenv("OPSK_MCP_ENHANCED_SECURITY") })
+	_ = os.Unsetenv("OPSK_MCP_ENHANCED_SECURITY")
+	cfg, err := Load()
+	if err != nil || cfg.MCPEnhancedSecurity {
+		t.Fatalf("default MCP security=%v err=%v, want disabled", cfg.MCPEnhancedSecurity, err)
+	}
+	t.Setenv("OPSK_MCP_ENHANCED_SECURITY", "true")
+	cfg, err = Load()
+	if err != nil || !cfg.MCPEnhancedSecurity {
+		t.Fatalf("enabled MCP security=%v err=%v, want enabled", cfg.MCPEnhancedSecurity, err)
 	}
 }

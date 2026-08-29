@@ -1,0 +1,1 @@
+-- Retired resources are intentionally not restored automatically.

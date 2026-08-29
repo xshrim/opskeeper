@@ -9,9 +9,18 @@ import (
 
 func TestDiscoverRejectsUnsafeEndpoints(t *testing.T) {
 	for _, endpoint := range []string{"http://localhost:8080/mcp", "stdio://tool", "https://"} {
-		if _, err := Discover(t.Context(), endpoint, 0); err == nil {
+		if _, err := DiscoverWithSecurity(t.Context(), endpoint, 0, true); err == nil {
 			t.Fatalf("expected %q to fail", endpoint)
 		}
+	}
+}
+
+func TestEndpointAllowsLocalHTTPWhenEnhancedSecurityDisabled(t *testing.T) {
+	if _, err := endpointURL("http://127.0.0.1:3100/mcp", false); err != nil {
+		t.Fatalf("local development endpoint rejected: %v", err)
+	}
+	if _, err := endpointURL("http://127.0.0.1:3100/mcp", true); err == nil {
+		t.Fatal("enhanced security accepted local HTTP endpoint")
 	}
 }
 
