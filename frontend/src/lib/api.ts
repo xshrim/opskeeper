@@ -206,6 +206,16 @@ export interface SkillVersion {
   published_at?: string;
 }
 
+export interface AgentProfileVersion {
+  id: string;
+  agent_profile_id: string;
+  version: number;
+  config: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  published_at?: string;
+}
+
 export interface SkillExecution {
   id: string;
   scope_id: string;
@@ -752,6 +762,14 @@ export const api = {
       `api/v1/skills/${skillId}/versions/${versionId}/publish`,
       { method: 'POST' }
     ),
+  agentProfileVersions: (profileId: string) =>
+    request<AgentProfileVersion[]>(`api/v1/agent-profiles/${profileId}/versions`),
+  createAgentProfileVersion: (profileId: string, config: Record<string, unknown>) =>
+    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions`, json({ config })),
+  publishAgentProfileVersion: (profileId: string, versionId: string) =>
+    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions/${versionId}/publish`, { method: 'POST' }),
+  disableAgentProfileVersion: (profileId: string, versionId: string) =>
+    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions/${versionId}/disable`, { method: 'POST' }),
   setSkillDefault: (body: {
     scope_id: string;
     skill_resource_id: string;

@@ -670,6 +670,18 @@ test.describe('T10 and T11 workbenches', () => {
     ).toHaveCount(1);
   });
 
+  test('opens the independent Agent profile management page', async ({ page }) => {
+    await pageData(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Agent 专家' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Agent 专家配置', exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: '创建 AgentProfile', exact: true })
+    ).toBeVisible();
+  });
+
   test('restores a diagnosis session and its SSE-backed workbench', async ({
     page
   }) => {

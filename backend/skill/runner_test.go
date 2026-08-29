@@ -27,6 +27,37 @@ func TestAIEngineAdapterPreservesProviderSelection(t *testing.T) {
 	}
 }
 
+func TestRunnerExecutesAgentProfileWithoutSkillResource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"model":"mock","choices":[{"finish_reason":"stop","message":{"content":"{\"status\":\"healthy\"}"}}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
+	}))
+	defer server.Close()
+	resources := fakeResourceReader{items: map[string]resource.Resource{
+		"provider-1": {ID: "provider-1", ScopeID: "scope-1", Kind: llm.AIProviderKind, Name: "mock provider", Status: resource.StatusActive, Config: map[string]any{"provider_type": "openai_compatible", "base_url": server.URL, "enabled": true, "default_model": "mock", "models": []any{map[string]any{"name": "mock", "context_window_tokens": 8192.0, "temperature": 0.7, "capabilities": []any{"text"}, "enabled": true}}}},
+	}}
+	store := &memoryStore{}
+	runtime := NewRunner(NewService(store, resources), llm.NewService(fakeLLMStore{}, resources, nil), &fakeConnector{}, store)
+	result, err := runtime.Run(context.Background(), RunInput{
+		ExecutionID: "agent-execution-1", ActorID: "actor-1", ScopeID: "scope-1", AIProviderResourceID: "provider-1", ModelName: "mock",
+		AgentProfileID: "profile-1", AgentProfile: &aiengine.AgentProfile{ResourceID: "profile-1", ScopeID: "scope-1", Name: "expert", Version: 1, Instruction: "Return a health object.", InputSchema: json.RawMessage(`{"type":"object"}`), OutputSchema: json.RawMessage(`{"type":"object","required":["status"]}`), Capabilities: []string{"text"}, Enabled: true},
+		Input: map[string]any{"question": "health"}, MaxIterations: 2, MaxToolCalls: 1, MaxTokens: 100, Timeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Execution.ID != "agent-execution-1" || result.Execution.SkillResourceID != "" || result.Execution.Status != "succeeded" || result.Output != `{"status":"healthy"}` {
+		t.Fatalf("agent-only result = %+v", result)
+	}
+}
+
+func TestMissingCapabilitiesReturnsUniqueModelGaps(t *testing.T) {
+	got := missingCapabilities([]string{"text", "stream"}, []string{"text", "vision", "vision", "tool_calling"})
+	if fmt.Sprint(got) != "[vision tool_calling]" {
+		t.Fatalf("missing capabilities = %v", got)
+	}
+}
+
 func TestRunnerUsesADKToolLoopAndPersistsPinnedExecution(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		var body struct {

@@ -74,6 +74,7 @@
     type MCPSnapshot,
     type SkillExecution,
     type SkillVersion,
+    type AgentProfileVersion,
     type TopologyNode,
     type User,
     type UserPreferences
@@ -85,6 +86,7 @@
     | 'discovery'
     | 'resources'
     | 'skill'
+    | 'agent'
     | 'operations'
     | 'diagnosis'
     | 'inspection'
@@ -353,6 +355,17 @@
   let skillTargetResourceId = '';
   let skillOutput = '';
   let selectedSkillToolNames: string[] = [];
+  let agentProfileResources: Resource[] = [];
+  let selectedAgentProfileId = '';
+  let selectedAgentProfileVersionId = '';
+  let agentProfileVersions: AgentProfileVersion[] = [];
+  let agentProfileName = '';
+  let agentProfileInstruction = '';
+  let agentProfileCapabilities = 'text, tool_calling, stream';
+  let agentProfileAllowedTools = '';
+  let agentProfileTargetKinds = 'Application';
+  let agentProfileInputSchema = '{"type":"object","additionalProperties":true}';
+  let agentProfileOutputSchema = '{"type":"object","additionalProperties":true}';
   let diagnosisLoaded = false;
   let diagnosisSessions: DiagnosisSession[] = [];
   let selectedDiagnosisId = '';
@@ -584,6 +597,7 @@
   })();
   $: llmProviders = aiProviders;
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
+  $: agentProfileResources = resources.filter((item) => item.kind === 'AgentProfile');
   $: executableTargets = visibleResources.filter(
     (item) =>
       item.kind !== 'AIProvider' &&
@@ -850,6 +864,7 @@
     if (nextView === 'access' && !accessLoaded) void loadAccess();
     if (nextView === 'discovery' && !discoveryLoaded) void loadDiscovery();
     if (nextView === 'skill' && !aiLoaded) void loadAI();
+    if (nextView === 'agent' && !aiLoaded) void loadAI();
     if (nextView === 'diagnosis' && !diagnosisLoaded) void loadDiagnosis();
     if (nextView === 'inspection' && !inspectionLoaded) void loadInspection();
     if (nextView === 'operations' && !operationsLoaded) void loadOperations();
@@ -1604,6 +1619,7 @@
     aiLoaded = true;
     selectedProviderId = selectedProviderId || aiProviders[0]?.id || '';
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
+    selectedAgentProfileId = selectedAgentProfileId || agentProfileResources[0]?.id || '';
     if (!llmModelName && selectedProviderId) {
       const provider = aiProviders.find((item) => item.id === selectedProviderId);
       const models = Array.isArray(provider?.config?.models)
@@ -1612,9 +1628,54 @@
       llmModelName = String(provider?.config?.default_model ?? models[0]?.name ?? '');
     }
     if (selectedSkillId) await loadSkillVersions();
+    if (selectedAgentProfileId) await loadAgentProfileVersions();
     if (selectedScopeId) {
       try { skillExecutions = await api.skillExecutions(selectedScopeId); } catch { skillExecutions = []; }
     }
+  }
+
+  async function loadAgentProfileVersions() {
+    if (!selectedAgentProfileId) return;
+    try {
+      agentProfileVersions = await api.agentProfileVersions(selectedAgentProfileId);
+      selectedAgentProfileVersionId = agentProfileVersions.find((item) => item.status === 'published')?.id || agentProfileVersions[0]?.id || '';
+    } catch (error) {
+      errorMessage = describeError(error, 'AgentProfile 版本加载失败');
+    }
+  }
+
+  async function createAgentProfile() {
+    if (!selectedScopeId || !agentProfileName.trim() || !agentProfileInstruction.trim()) return;
+    await action(async () => {
+      const config = {
+        version: 1,
+        instruction: agentProfileInstruction.trim(),
+        capabilities: agentProfileCapabilities.split(',').map((item) => item.trim()).filter(Boolean),
+        allowed_tools: agentProfileAllowedTools.split(',').map((item) => item.trim()).filter(Boolean),
+        target_kinds: agentProfileTargetKinds.split(',').map((item) => item.trim()).filter(Boolean),
+        input_schema: JSON.parse(agentProfileInputSchema),
+        output_schema: JSON.parse(agentProfileOutputSchema),
+        enabled: true
+      };
+      const resource = await api.createResource({ scope_id: selectedScopeId, kind: 'AgentProfile', schema_version: 1, name: agentProfileName.trim(), labels: {}, config, status: 'active' });
+      const version = await api.createAgentProfileVersion(resource.id, config);
+      await api.publishAgentProfileVersion(resource.id, version.id);
+      resources = [resource, ...resources];
+      selectedAgentProfileId = resource.id;
+      agentProfileVersions = [version];
+      agentProfileName = '';
+      agentProfileInstruction = '';
+      notice = 'AgentProfile 已创建并发布 v1';
+    });
+  }
+
+  async function publishAgentProfileVersion() {
+    if (!selectedAgentProfileId || !selectedAgentProfileVersionId) return;
+    await action(async () => {
+      await api.publishAgentProfileVersion(selectedAgentProfileId, selectedAgentProfileVersionId);
+      await loadAgentProfileVersions();
+      notice = 'AgentProfile 版本已发布';
+    });
   }
 
   async function loadSkillVersions() {
@@ -3064,6 +3125,7 @@
       discovery: '集群项目与应用导入',
       resources: '资源目录',
       skill: 'Skill',
+      agent: 'Agent 专家',
       operations: '受控操作与 MCP',
       diagnosis: 'AI 诊断工作台',
       inspection: '自动巡检与健康',
@@ -3081,6 +3143,7 @@
       discovery: '集群导入',
       resources: '资源',
       skill: 'Skill',
+      agent: 'Agent 专家',
       operations: '受控操作',
       diagnosis: 'AI 诊断',
       inspection: '自动巡检',
@@ -3650,6 +3713,14 @@
             strokeWidth={1.8}
             aria-hidden="true"
           /><span class="nav-item-label">Skill</span></button
+        >
+        <button
+          aria-label="Agent 专家"
+          class:active={view === 'agent'}
+          class="nav-item"
+          on:click={() => chooseView('agent')}
+          data-tooltip={sidebarCompact ? 'Agent 专家' : undefined}
+          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">Agent 专家</span></button
         >
         <button
           aria-label="AI 诊断"
@@ -5592,6 +5663,32 @@
               {/if}
             </aside>
           {/if}
+        </section>
+      {:else if view === 'agent'}
+        <section class="content-grid two-column ai-runtime">
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">AGENT PROFILES</p><h2>Agent 专家配置</h2></div><span class="count">{agentProfileResources.length}</span></div>
+            <div class="stack-form compact-form">
+              <label>AgentProfile<select bind:value={selectedAgentProfileId} on:change={loadAgentProfileVersions}><option value="" disabled>选择 AgentProfile</option>{#each agentProfileResources as item}<option value={item.id}>{item.name} · {scopeName(item.scope_id)}</option>{/each}</select></label>
+              <label>已发布版本<select bind:value={selectedAgentProfileVersionId}><option value="">选择版本</option>{#each agentProfileVersions as version}<option value={version.id}>v{version.version} · {version.status}</option>{/each}</select></label>
+              <button class="primary" type="button" disabled={busy || !selectedAgentProfileId || !selectedAgentProfileVersionId} on:click={publishAgentProfileVersion}>发布版本</button>
+              {#if agentProfileVersions.length === 0}<p class="muted-copy">版本发布后，AIEngine 执行时会固定使用已发布的专家指令和工具契约。</p>{/if}
+            </div>
+          </section>
+          <section class="panel wide-panel">
+            <div class="panel-heading"><div><p class="eyebrow">NEW PROFILE</p><h2>创建 AgentProfile</h2></div><span class="scope-type">版本化契约</span></div>
+            <form class="stack-form" on:submit|preventDefault={createAgentProfile}>
+              <div class="form-row"><label>名称<input bind:value={agentProfileName} required placeholder="例如：PostgreSQL 故障专家" /></label><label>适用资源类型<input bind:value={agentProfileTargetKinds} required placeholder="Application, PostgreSQL" /></label></div>
+              <label>专家指令<textarea bind:value={agentProfileInstruction} rows="5" required placeholder="描述诊断范围、判断原则和输出要求"></textarea></label>
+              <div class="form-row"><label>模型能力<input bind:value={agentProfileCapabilities} placeholder="text, tool_calling, stream" /></label><label>允许工具<input bind:value={agentProfileAllowedTools} placeholder="connector_postgresql_inspect" /></label></div>
+              <div class="form-row"><label>输入 Schema<textarea bind:value={agentProfileInputSchema} rows="4" spellcheck="false"></textarea></label><label>输出 Schema<textarea bind:value={agentProfileOutputSchema} rows="4" spellcheck="false"></textarea></label></div>
+              <button class="primary" disabled={busy || !selectedScopeId}>创建并发布 v1</button>
+            </form>
+          </section>
+          <section class="panel wide-panel">
+            <div class="panel-heading"><div><p class="eyebrow">RELEASE HISTORY</p><h2>版本历史</h2></div><span class="count">{agentProfileVersions.length}</span></div>
+            <div class="table-list">{#each agentProfileVersions as version}<div class="list-row static"><span><strong>v{version.version}</strong><small>{formatDate(version.created_at)} · {version.status}</small></span><span class="status-label {version.status}">{version.status === 'published' ? '已发布' : version.status === 'disabled' ? '已停用' : '草稿'}</span></div>{:else}<div class="empty-state">选择 AgentProfile 后显示版本历史。</div>{/each}</div>
+          </section>
         </section>
       {:else if view === 'skill'}
           <section class="content-grid two-column ai-runtime">

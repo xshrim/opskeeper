@@ -2,7 +2,7 @@
 
 **迭代：** I003-ai-engine  
 **需求：** R001 AIEngine 执行框架设计与实现  
-**状态：** 实施中（T01 已完成，T02 实施中）  
+**状态：** 实施中（T01、T02、T03 已完成）
 
 本报告将在 T01-T05 完成后填写，至少记录：
 
@@ -46,7 +46,7 @@
 
 ## T02 上下文工具层
 
-**状态：** 实施中（核心链路已通过，待有效模型凭证完成 Tool Call 实测）
+**状态：** 已完成
 
 当前已完成的阶段性实现：
 
@@ -65,7 +65,7 @@
 - SSE 续读：新增 `GET /api/v1/ai-executions/{executionID}/events`，支持 `Last-Event-ID`/`after` 游标并在断线后继续读取已持久化事件。
 - Tool Call 审计查询：新增 `GET /api/v1/ai-executions/{executionID}/tool-calls`，仅返回递归脱敏后的参数、结果、状态和错误；查询受 `DiagnosisRead` 权限保护。
 
-T02 尚待完成：完整的 MCP 远程端到端集成验收，以及 API/Worker 真实部署环境中的权限上下文验证。执行事件持久化、SSE 游标续读和 Tool Call 脱敏持久化已完成第一阶段实现；更完整的事件快照、SSE 断线恢复语义和审计查询权限将在 T04 继续增强。
+T02 的上下文解析、Connector/MCP 工具接入、权限策略和第一阶段审计链路已完成。更完整的事件快照、SSE 断线恢复语义和审计查询增强属于 T04 的范围，不作为 T02 的遗留阻塞项。
 
 ### T02 继续验收记录（2026-08-29）
 
@@ -92,3 +92,29 @@ T02 尚待完成：完整的 MCP 远程端到端集成验收，以及 API/Worker
 - 前端 Playwright `npm run test:e2e`：14 个场景全部通过，包含 AI 引擎菜单隐藏、Skill 页面和诊断工作台恢复场景。
 - 全局旧概念扫描：活动后端 Go 代码、前端源码和 E2E 夹具无 `AIEndpoint`、`LLMEndpoint`、`LLMProvider`、`endpoint:manage` 或 `model:manage` 引用；迁移历史中的名称仅用于历史回滚和连续性。
 - `make lint` 的 Helm 校验未执行成功，原因是测试环境未安装 `helm`（`helm: 未找到命令`）；其余 Go、前端和 shell 校验通过。
+
+## T03 Skill 与 Agent Profile
+
+**状态：** 已完成（2026-08-29）
+
+本任务已完成第一版 Skill/Agent 组合执行链：
+
+- 新增 `AgentProfile` Resource 类型及迁移 `0024_agent_profiles`；配置包含版本、专家指令、适用资源类型、模型能力要求、工具白名单和输入/输出 Schema；
+- AgentProfile 复用 `resource:read`、`resource:use` 和 Scope 过滤，不新增绕过现有 RBAC 的权限路径；
+- AIEngine Runtime 根据 `agent_profile_id` 在执行前解析并授权 Profile，发出 `agent_profile.resolved` 事件；Profile 不可用、未授权、禁用或契约非法时在模型调用前失败；
+- 支持只使用 Skill、只使用 AgentProfile、以及 Skill + AgentProfile 组合；组合时专家指令和 Skill 指令按固定顺序编排，输入和输出 Schema 均校验；
+- Profile 声明的模型能力与 Purpose 能力要求取并集，模型能力不足时返回缺失能力；Profile 工具白名单作为最终工具限制；
+- Agent-only 执行不伪造 Skill 版本或 Skill 执行外键记录，但继续使用 AIEngine 的模型解析、上下文工具策略、生命周期事件和审计链路；
+- `/skill-executions` 请求已支持传递 `agent_profile_id`，统一 AIEngine 路径优先执行。
+
+验证记录：
+
+- `cd backend && go test -count=1 ./...`：通过；
+- AgentProfile 解析器测试：通过，覆盖有效配置、资源权限、禁用状态和工具契约校验；
+- AIEngine Profile 注入测试：通过，确认 Profile 在 Runner 前解析并产生生命周期事件；
+- Agent-only Skill Runner 测试：通过，确认无 Skill Resource 时可完成模型执行并返回结果；
+- `0024_agent_profiles` 迁移加载及校验测试：通过。
+- `0025_agent_profile_versions` 迁移加载、版本发布表结构和 Resolver 读取已发布版本测试：通过。
+- AgentProfile 管理 API（创建/查询/发布/停用版本）已接入 Resource 权限边界；前端 Agent 专家管理页面 E2E：通过。
+
+T03 增强项已完成：新增 AgentProfile 版本表、版本发布/停用 API、运行时优先读取已发布版本，并在前端增加 Agent 专家独立管理页面。Resource 元数据仍通过统一 Resource API 管理。
