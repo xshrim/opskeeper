@@ -37,8 +37,8 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 		return Session{}, invalid("diagnosis title or question is too long")
 	}
 	input.TargetResourceIDs = distinctIDs(input.TargetResourceIDs)
-	if len(input.TargetResourceIDs) == 0 || len(input.TargetResourceIDs) > 20 {
-		return Session{}, invalid("a diagnosis requires 1 to 20 target resources")
+	if len(input.TargetResourceIDs) > 20 {
+		return Session{}, invalid("a session may load at most 20 context resources")
 	}
 	if !allowsScope(ctx, input.ScopeID) {
 		return Session{}, authorization.ErrForbidden
@@ -83,7 +83,11 @@ func (s *Service) Get(ctx context.Context, sessionID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	result := Snapshot{Session: session, Targets: targets, Messages: messages, Evidence: evidence, Hypotheses: hypotheses}
+	events, err := s.store.EventsAfter(ctx, session.ID, 0, 500)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	result := Snapshot{Session: session, Targets: targets, Messages: messages, Evidence: evidence, Hypotheses: hypotheses, Events: events}
 	if plan, err := s.store.Plan(ctx, session.ID); err == nil {
 		result.Plan = &plan
 	} else if !errors.Is(err, ErrNotFound) {
@@ -106,6 +110,17 @@ func (s *Service) List(ctx context.Context, scopeID string, limit int) ([]Sessio
 		limit = 50
 	}
 	return s.store.List(ctx, scopeID, limit)
+}
+
+func (s *Service) Delete(ctx context.Context, sessionID string) error {
+	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
+	if err != nil {
+		return err
+	}
+	if !allowsScope(ctx, session.ScopeID) {
+		return authorization.ErrForbidden
+	}
+	return s.store.Delete(ctx, session.ID)
 }
 
 func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (Target, error) {

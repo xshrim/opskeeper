@@ -17,6 +17,7 @@ type Store interface {
 	Start(context.Context, StartInput) (Session, error)
 	Get(context.Context, string) (Session, error)
 	List(context.Context, string, int) ([]Session, error)
+	Delete(context.Context, string) error
 	Targets(context.Context, string) ([]Target, error)
 	AddTarget(context.Context, string, string) (Target, error)
 	Messages(context.Context, string, int) ([]Message, error)
@@ -92,6 +93,17 @@ func (s *store) List(ctx context.Context, scopeID string, limit int) ([]Session,
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *store) Delete(ctx context.Context, sessionID string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM diagnosis_sessions WHERE id = $1::uuid`, sessionID)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *store) Targets(ctx context.Context, sessionID string) ([]Target, error) {

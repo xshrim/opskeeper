@@ -2,7 +2,7 @@
 
 **状态：** I003 实施版本  
 **适用范围：** I003 后续 AIEngine 改造  
-**最后更新：** 2026-08-29
+**最后更新：** 2026-08-30
 
 ## 1. 设计结论
 
@@ -81,7 +81,15 @@ Skill 不是执行运行时。Skill 只提供可选的专家指令、工具声�
 
 当前实现由 `aiengine.Runtime` 统一管理生命周期、上下文、取消和计划解析：无 Skill 的请求直接进入 `aiengine.AgentRunner`；带 `skill_resource_id` 或 `skill_version_id` 的请求先经 `PlanResolver` 注入执行计划，然后仍进入同一个 `aiengine.AgentRunner`。Diagnosis、Inspection 和 Workflow 都直接使用该路径；巡检未配置 AgentProfile 时使用内置契约。不存在 Skill Runner 回退路径或第二套 Agent Loop。
 
-### 3.4 AgentProfile
+### 3.5 统一对话与可选资源上下文
+
+AI 诊断工作台不再根据用户文本把会话拆分为“普通对话”与“诊断模式”，也不维护第二个 Runner 或通用聊天 Agent。每一条消息都由同一个 AIEngine Runtime 执行；工作台请求使用 `PurposeDiagnosis` 仅用于按当前 Scope 解析该场景的默认 Provider，而不强制模型输出诊断报告。
+
+资源上下文完全由用户在会话中显式选择：未选择资源时，AIEngine 直接完成普通问答；选择资源时，只有当前用户具备 `resource:use` 权限且资源处于活动状态的资源会出现在选择列表，并被解析为受控只读工具。模型根据问题自主决定是否调用工具。后端在会话创建、上下文解析和每次工具调用时都再次执行 `resource:use` 授权校验，以应对绕过界面、权限在会话期间撤销或历史会话保留资源 ID 的情形。
+
+无资源上下文的回答不需要 Evidence 或诊断假设；已选择资源但模型未调用工具时，回答会保留原文，同时标注资源相关结论尚待核验。只有产生工具证据时，系统才持久化 Evidence、受支持假设和相应的可追溯建议。
+
+### 3.6 AgentProfile
 
 AgentProfile 是资源目录中的可复用专家智能体配置，不是模型资源，也不直接保存
 Provider 地址或凭据。它包含版本、专家指令、适用资源类型、所需模型能力、工具白名单

@@ -38,7 +38,7 @@ func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 	}
 }
 
-func TestOrchestratorMarksOutputWithoutEvidenceAsNeedsVerification(t *testing.T) {
+func TestOrchestratorMarksResourceAnswerWithoutEvidenceAsNeedsVerification(t *testing.T) {
 	store := newRecordingStore()
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
 		return aiengine.Result{Output: "可能是上游依赖变慢。"}, nil
@@ -50,6 +50,27 @@ func TestOrchestratorMarksOutputWithoutEvidenceAsNeedsVerification(t *testing.T)
 	}
 	if len(store.hypotheses) != 1 || store.hypotheses[0].Status != "needs_verification" || store.hypotheses[0].Confidence != 0 {
 		t.Fatalf("hypothesis = %#v, want unverified", store.hypotheses)
+	}
+}
+
+func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T) {
+	store := newRecordingStore()
+	store.targets = nil
+	var captured aiengine.Request
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		captured = request
+		return aiengine.Result{Output: "Go 的 defer 会在函数返回前执行。"}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if captured.Profile != aiengine.ProfileInteractive || captured.Purpose != aiengine.PurposeDiagnosis || len(captured.Context.ResourceIDs) != 0 {
+		t.Fatalf("request = %#v, want interactive diagnosis purpose without context resources", captured)
+	}
+	if store.session.Status != StatusSucceeded || store.report.Status != "succeeded" || store.report.Conclusion != "Go 的 defer 会在函数返回前执行。" {
+		t.Fatalf("session/report = %#v / %#v", store.session, store.report)
+	}
+	if len(store.hypotheses) != 0 || len(store.report.EvidenceIDs) != 0 {
+		t.Fatalf("hypotheses/report evidence = %#v / %#v", store.hypotheses, store.report.EvidenceIDs)
 	}
 }
 
@@ -112,6 +133,7 @@ func (s *recordingStore) Get(context.Context, string) (Session, error)       { r
 func (s *recordingStore) List(context.Context, string, int) ([]Session, error) {
 	return []Session{s.session}, nil
 }
+func (*recordingStore) Delete(context.Context, string) error                { return nil }
 func (s *recordingStore) Targets(context.Context, string) ([]Target, error) { return s.targets, nil }
 func (s *recordingStore) AddTarget(context.Context, string, string) (Target, error) {
 	return Target{}, nil

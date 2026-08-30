@@ -62,6 +62,9 @@ func (stubCredentialService) List(context.Context, string) ([]credential.Credent
 func (stubCredentialService) Get(context.Context, string, string) (credential.Credential, error) {
 	return credential.Credential{ID: handlerTestUUID}, nil
 }
+func (stubCredentialService) Reveal(context.Context, string, string) ([]byte, error) {
+	return []byte("test-secret"), nil
+}
 func (stubCredentialService) Update(context.Context, string, string, credential.UpdateInput) (credential.Credential, error) {
 	return credential.Credential{ID: handlerTestUUID}, nil
 }

@@ -62,6 +62,7 @@ func (m *memoryStore) Get(context.Context, string) (Session, error) { return m.s
 func (m *memoryStore) List(context.Context, string, int) ([]Session, error) {
 	return []Session{m.session}, nil
 }
+func (*memoryStore) Delete(context.Context, string) error                      { return nil }
 func (*memoryStore) Targets(context.Context, string) ([]Target, error)         { return nil, nil }
 func (*memoryStore) AddTarget(context.Context, string, string) (Target, error) { return Target{}, nil }
 func (*memoryStore) Messages(context.Context, string, int) ([]Message, error)  { return nil, nil }

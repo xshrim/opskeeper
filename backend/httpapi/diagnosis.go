@@ -25,6 +25,14 @@ type diagnosisService interface {
 	EventsAfter(context.Context, string, int64, int) ([]diagnosis.Event, error)
 }
 
+type diagnosisCanceller interface {
+	Cancel(context.Context, string) error
+}
+
+type diagnosisDeleter interface {
+	Delete(context.Context, string) error
+}
+
 type diagnosisHandler struct {
 	service diagnosisService
 	auditor audit.Logger
@@ -63,8 +71,36 @@ func registerDiagnosisRoutes(router chi.Router, service diagnosisService, audito
 		router.With(guard(authorization.DiagnosisRead)).Get("/", h.get)
 		router.With(guard(authorization.DiagnosisStart)).Post("/targets", h.addTarget)
 		router.With(guard(authorization.DiagnosisStart)).Post("/messages", h.ask)
+		router.With(guard(authorization.DiagnosisStart)).Post("/cancel", h.cancel)
+		router.With(guard(authorization.DiagnosisStart)).Delete("/", h.delete)
 		router.With(guard(authorization.DiagnosisRead)).Get("/events", h.events)
 	})
+}
+
+func (h diagnosisHandler) cancel(w http.ResponseWriter, r *http.Request) {
+	canceller, ok := h.service.(diagnosisCanceller)
+	if !ok {
+		writeError(w, r, http.StatusNotImplemented, "cancel_unavailable", "Diagnosis cancellation is unavailable")
+		return
+	}
+	if err := canceller.Cancel(r.Context(), chi.URLParam(r, "sessionID")); err != nil {
+		writeDiagnosisError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h diagnosisHandler) delete(w http.ResponseWriter, r *http.Request) {
+	deleter, ok := h.service.(diagnosisDeleter)
+	if !ok {
+		writeError(w, r, http.StatusNotImplemented, "delete_unavailable", "Diagnosis deletion is unavailable")
+		return
+	}
+	if err := deleter.Delete(r.Context(), chi.URLParam(r, "sessionID")); err != nil {
+		writeDiagnosisError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h diagnosisHandler) start(w http.ResponseWriter, r *http.Request) {

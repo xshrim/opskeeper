@@ -122,6 +122,7 @@ type Snapshot struct {
 	Evidence   []Evidence   `json:"evidence"`
 	Hypotheses []Hypothesis `json:"hypotheses"`
 	Report     *Report      `json:"report,omitempty"`
+	Events     []Event      `json:"events,omitempty"`
 }
 
 type StartInput struct {

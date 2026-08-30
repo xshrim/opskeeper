@@ -103,6 +103,7 @@ export interface ResourceSchema {
   kind: string;
   version: number;
   schema: {
+    required?: string[];
     properties?: Record<
       string,
       {
@@ -421,6 +422,7 @@ export interface DiagnosisSnapshot {
   evidence: DiagnosisEvidence[];
   hypotheses: DiagnosisHypothesis[];
   report?: DiagnosisReport;
+  events?: DiagnosisEvent[];
 }
 
 export interface DiagnosisEvent {
@@ -677,9 +679,13 @@ export const api = {
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
     ),
+  contextResources: () =>
+    request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),
   schemas: () => request<ResourceSchema[]>('api/v1/resources/schemas'),
   credentials: () => request<Credential[]>('api/v1/credentials'),
+  credentialSecret: (id: string) =>
+    request<{ secret: string }>(`api/v1/credentials/${encodeURIComponent(id)}/secret`),
   createCredential: (body: {
     scope_id: string;
     name: string;
@@ -717,7 +723,7 @@ export const api = {
     }),
   removeAIProviderBinding: (scopeId: string, purpose: string) =>
     request<void>(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`, { method: 'DELETE' }),
-  testDraftLLM: (body: {
+  testDraftAIProvider: (body: {
     scope_id: string;
     provider_type: string;
     base_url: string;
@@ -775,6 +781,14 @@ export const api = {
       `api/v1/diagnosis-sessions/${sessionId}/messages`,
       json({ content })
     ),
+  cancelDiagnosis: (sessionId: string) =>
+    request<void>(`api/v1/diagnosis-sessions/${sessionId}/cancel`, {
+      method: 'POST'
+    }),
+  deleteDiagnosis: (sessionId: string) =>
+    request<void>(`api/v1/diagnosis-sessions/${sessionId}/`, {
+      method: 'DELETE'
+    }),
   diagnosisEventsURL: (sessionId: string, after = 0) =>
     appURL(
       `api/v1/diagnosis-sessions/${sessionId}/events?after=${encodeURIComponent(String(after))}`

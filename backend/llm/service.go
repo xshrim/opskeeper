@@ -197,6 +197,7 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 }
 
 func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	draft.ScopeID, draft.ProviderType, draft.BaseURL, draft.ModelName = strings.TrimSpace(draft.ScopeID), strings.TrimSpace(draft.ProviderType), strings.TrimSpace(draft.BaseURL), strings.TrimSpace(draft.ModelName)
@@ -220,7 +221,7 @@ func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection
 	if _, err := runProbe(ctx, client, draft.ModelName, stream); err != nil {
 		return ConnectionResult{}, err
 	}
-	return ConnectionResult{ModelName: draft.ModelName, Status: "succeeded", Message: "模型连接测试通过"}, nil
+	return ConnectionResult{ModelName: draft.ModelName, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
 }
 
 func (s *Service) attachCredential(ctx context.Context, result ResolvedProvider) (ResolvedProvider, error) {

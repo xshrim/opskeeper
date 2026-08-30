@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+import { onMount } from 'svelte';
   import {
     Boxes,
     Bot,
@@ -105,6 +105,11 @@
     name: string;
     parentId?: string;
   };
+  type AIProviderBindingSummary = {
+    scope_id: string;
+    provider_resource_id: string;
+    tag: string;
+  };
   type NewUserResourceGrant = {
     resourceID: string;
     roleID: string;
@@ -125,6 +130,16 @@
     title: string;
     description: string;
     inputSchema: Record<string, unknown>;
+  };
+  type ProviderModelDraft = {
+    name: string;
+    contextWindowTokens: number;
+    maxOutputTokens: number;
+    temperature: number;
+    temperatureMutable: boolean;
+    capabilities: string[];
+    enabled: boolean;
+    priority: number;
   };
   const commonTeamIconLabels: Record<string, string> = {
     Boxes: '平台',
@@ -162,6 +177,88 @@
       label: commonTeamIconLabels[value] ?? formatIconName(value),
       keywords: `${value} ${formatIconName(value)} ${commonTeamIconLabels[value] ?? ''}`
     }));
+
+  const providerTypeOptions = [
+    { value: 'openai_compatible', label: 'OpenAI 兼容', baseURL: '' },
+    { value: 'openai', label: 'OpenAI', baseURL: 'https://api.openai.com/v1' },
+    {
+      value: 'anthropic',
+      label: 'Anthropic',
+      baseURL: 'https://api.anthropic.com/v1'
+    },
+    {
+      value: 'gemini',
+      label: 'Gemini',
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai'
+    },
+    { value: 'grok', label: 'Grok', baseURL: 'https://api.x.ai/v1' },
+    {
+      value: 'deepseek',
+      label: 'DeepSeek',
+      baseURL: 'https://api.deepseek.com/v1'
+    },
+    {
+      value: 'qwen',
+      label: 'Qwen',
+      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    },
+    { value: 'kimi', label: 'Kimi', baseURL: 'https://api.moonshot.cn/v1' },
+    {
+      value: 'glm',
+      label: 'GLM',
+      baseURL: 'https://open.bigmodel.cn/api/paas/v4'
+    },
+    {
+      value: 'minimax',
+      label: 'MiniMax',
+      baseURL: 'https://api.minimaxi.com/v1'
+    },
+    { value: 'mimo', label: 'MiMo', baseURL: 'https://api.xiaomimimo.com/v1' },
+    { value: 'longcat', label: 'LongCat', baseURL: '' },
+    {
+      value: 'doubao',
+      label: 'Doubao',
+      baseURL: 'https://ark.cn-beijing.volces.com/api/v3'
+    },
+    {
+      value: 'openrouter',
+      label: 'OpenRouter',
+      baseURL: 'https://openrouter.ai/api/v1'
+    },
+    {
+      value: 'siliconflow',
+      label: 'SiliconFlow',
+      baseURL: 'https://api.siliconflow.cn/v1'
+    },
+    { value: 'ollama', label: 'Ollama', baseURL: 'http://localhost:11434/v1' }
+  ];
+  const providerCapabilityOptions = [
+    { value: 'text', label: '文本' },
+    { value: 'vision', label: '视觉' },
+    { value: 'audio', label: '音频' },
+    { value: 'tool_calling', label: '工具调用' },
+    { value: 'structured_output', label: '结构化输出' },
+    { value: 'stream', label: '流式输出' },
+    { value: 'deep_thinking', label: '深度思考' }
+  ];
+  const providerPurposeOptions = [
+    { value: 'default', label: '默认', requiredCapabilities: ['text'] },
+    {
+      value: 'diagnosis',
+      label: '诊断',
+      requiredCapabilities: ['text', 'tool_calling', 'stream']
+    },
+    {
+      value: 'inspection',
+      label: '巡检',
+      requiredCapabilities: ['text', 'tool_calling', 'structured_output']
+    },
+    {
+      value: 'workflow',
+      label: '工作流',
+      requiredCapabilities: ['text', 'tool_calling', 'structured_output']
+    }
+  ];
 
   const skillToolOptions: SkillToolOption[] = [
     {
@@ -292,6 +389,8 @@
   let teams: Team[] = [];
   let projects: Project[] = [];
   let resources: Resource[] = [];
+  let contextResources: Resource[] = [];
+  let aiProviderBindings: AIProviderBindingSummary[] = [];
   let schemas: ResourceSchema[] = [];
   let health: HealthReport | null = null;
   let healthController: AbortController | null = null;
@@ -332,7 +431,8 @@
   let agentProfileAllowedTools = '';
   let agentProfileTargetKinds = 'Application';
   let agentProfileInputSchema = '{"type":"object","additionalProperties":true}';
-  let agentProfileOutputSchema = '{"type":"object","additionalProperties":true}';
+  let agentProfileOutputSchema =
+    '{"type":"object","additionalProperties":true}';
   let diagnosisLoaded = false;
   let diagnosisSessions: DiagnosisSession[] = [];
   let diagnosisAvailableProviders: AIProviderAvailability[] = [];
@@ -353,10 +453,15 @@
   let diagnosisEditDraft = '';
   let diagnosisInterruptedReason = '';
   let diagnosisGenerating = false;
+  let diagnosisStreamingText = '';
+  let diagnosisStreamingPending = '';
+  let diagnosisStreamingFrame = 0;
+  let diagnosisStreamingStartedAt = 0;
   let diagnosisActionExpanded: Record<string, boolean> = {};
   let diagnosisActionChildren: Record<string, boolean> = {};
   let diagnosisHiddenMessageIds: string[] = [];
   let diagnosisEvents: EventSource | null = null;
+  let diagnosisRefreshToken = 0;
   let inspectionLoaded = false;
   let inspectionPolicies: InspectionPolicy[] = [];
   let inspectionRuns: InspectionRun[] = [];
@@ -412,8 +517,69 @@
   let expandedResourceCategory = '';
   let resourceEditorOpen = false;
   let resourceAddMenuOpen = false;
+  let resourceAddStep = 1;
   let resourceAddCategory = '';
   let resourceAddSubtype = '';
+  let providerType = 'openai_compatible';
+  let providerProtocol = 'chat_completions';
+  let providerBaseURL = '';
+  let providerAPIKey = '';
+  let providerAPIKeyVisible = false;
+  let providerAPIKeyLoading = false;
+  let providerTimeoutSeconds = 60;
+  let providerMaxConcurrency = 5;
+  let providerRateLimitPerMinute = 0;
+  let providerEnabled = true;
+  let providerModels: ProviderModelDraft[] = [];
+  let providerModelDraft: ProviderModelDraft = emptyProviderModelDraft();
+  let editingProviderModelName = '';
+  let providerDefaultModel = '';
+  let providerPurposeTags: string[] = [];
+  let editingProviderResourceId = '';
+  let providerConfigurationAttempted = false;
+  let providerModelConfigurationAttempted = false;
+  let providerModelValidationMessage = '';
+  let providerSummaryAttempted = false;
+  let resourceTypeSelectionAttempted = false;
+  let providerDraftTest: {
+    signature: string;
+    result?: AIConnectionResult;
+    error?: string;
+  } | null = null;
+  let providerDraftTestBusy = false;
+  let providerDraftTestPassedState = false;
+  let providerDraftCurrentSignature = '';
+  $: providerDraftCurrentSignature = JSON.stringify({
+    scope: selectedScopeId,
+    providerType,
+    baseURL: providerBaseURL.trim(),
+    apiKey: providerAPIKey,
+    model: (() => {
+      const defaultModel = providerModels.find(
+        (model) => model.name === providerDefaultModel
+      );
+      return defaultModel
+        ? {
+            name: defaultModel.name,
+            contextWindowTokens: defaultModel.contextWindowTokens,
+            temperature: defaultModel.temperature,
+            capabilities: defaultModel.capabilities
+          }
+        : null;
+    })()
+  });
+  $: providerDraftTestPassedState = Boolean(
+    providerDraftTest?.signature === providerDraftCurrentSignature &&
+      providerDraftTest.result?.status === 'succeeded'
+  );
+  $: {
+    const availableTags = providerPurposeTags.filter((tag) =>
+      providerPurposeAvailable(tag)
+    );
+    if (availableTags.length !== providerPurposeTags.length) {
+      providerPurposeTags = availableTags;
+    }
+  }
   let resourceName = '';
   let resourceStatus = 'active';
   let resourceLabels = '';
@@ -483,6 +649,11 @@
   $: selectedProject =
     selectedTeamProjects.find((project) => project.id === selectedProjectId) ??
     null;
+  $: workspaceProjects = selectedTeamId
+    ? selectedTeamProjects
+    : hasPlatformRole
+      ? projects
+      : [];
   $: visibleProjects = selectedScopeId
     ? activeScope?.type === 'platform'
       ? projects
@@ -536,9 +707,14 @@
   );
   $: selectedResourceHasConnector = Boolean(
     selectedResource &&
-    ['Kubernetes', 'Prometheus', 'Loki'].includes(selectedResource.kind)
+    ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki'].includes(
+      selectedResource.kind
+    )
   );
   $: createSchema = schemas.find((schema) => schema.kind === resourceKind);
+  $: resourceAddSubtypeOptions = resourceAddCategory
+    ? (resourceCategoryOptions[resourceAddCategory] ?? [])
+    : [];
   $: kubernetesClusters = resources.filter(
     (resource) => resource.kind === 'Kubernetes'
   );
@@ -549,23 +725,27 @@
     (item) => item.kind === 'Application'
   );
   $: if (view === 'diagnosis' && !llmModelName && selectedProviderId) {
-    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    const available = diagnosisAvailableProviders.find(
+      (item) => item.provider_resource_id === selectedProviderId
+    );
     llmModelName = String(available?.models[0]?.name ?? '');
   }
   $: diagnosisProviderModels = (() => {
-    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    const available = diagnosisAvailableProviders.find(
+      (item) => item.provider_resource_id === selectedProviderId
+    );
     if (available) return available.models;
     return [];
   })();
   $: skillResources = resources.filter((item) => item.kind === 'Skill');
-  $: agentProfileResources = resources.filter((item) => item.kind === 'AgentProfile');
-  $: executableTargets = visibleResources.filter(
-    (item) =>
-      item.kind !== 'AIProvider' &&
-      item.kind !== 'Skill'
+  $: agentProfileResources = resources.filter(
+    (item) => item.kind === 'AgentProfile'
   );
-  $: diagnosisTargets = visibleResources.filter(
-    (item) => item.status === 'active'
+  $: executableTargets = visibleResources.filter(
+    (item) => item.kind !== 'AIProvider' && item.kind !== 'Skill'
+  );
+  $: diagnosisTargets = contextResources.filter(
+    (item) => item.status === 'active' && resourceInActiveWorkspace(item)
   );
   $: sidebarCompact =
     preferences.sidebar_mode === 'hover'
@@ -753,11 +933,30 @@
       teams = teamPage.items;
       schemas = loadedSchemas;
       resources = resourcePage.items;
+      const contextResourceResult = await Promise.allSettled([
+        api.contextResources()
+      ]);
+      const contextPage = contextResourceResult[0];
+      contextResources =
+        contextPage.status === 'fulfilled' ? contextPage.value.items : [];
       await loadResourceConnectionChecks(resources);
       const projectPages = await Promise.all(
         teams.map((team) => api.projects(team.id))
       );
       projects = projectPages.flatMap((page) => page.items);
+      const scopeIDs = [
+        loadedPlatform.scope.id,
+        ...teams.map((team) => team.scope.id),
+        ...projects.map((project) => project.scope.id)
+      ];
+      const bindingPages = await Promise.allSettled(
+        [...new Set(scopeIDs)].map((scopeID) =>
+          api.aiProviderBindings(scopeID)
+        )
+      );
+      aiProviderBindings = bindingPages.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value : []
+      );
       const defaultTeam = hasPlatformRole ? undefined : teams[0];
       selectedTeamId = defaultTeam?.id ?? '';
       projectTeamId = defaultTeam?.id ?? '';
@@ -1001,6 +1200,7 @@
       teamMenuOpen = false;
       accessMenuOpen = false;
       resourceAddMenuOpen = false;
+      resourceEditorOpen = false;
     }
   }
 
@@ -1016,15 +1216,17 @@
     if (accessMenuOpen && view !== 'access' && !target.closest('.nav-group')) {
       accessMenuOpen = false;
     }
-    if (
-      resourceAddMenuOpen &&
-      !target.closest('.resource-add-menu, .resource-add-menu-trigger')
-    ) {
-      resourceAddMenuOpen = false;
-    }
   }
 
   function chooseTeam(teamID: string) {
+    if (!teamID && hasPlatformRole) {
+      selectedTeamId = '';
+      projectTeamId = '';
+      selectedProjectId = '';
+      selectedScopeId = platform?.scope.id ?? '';
+      selectedResourceId = '';
+      return;
+    }
     const team = teams.find((item) => item.id === teamID);
     if (!team) return;
     selectedTeamId = team.id;
@@ -1036,7 +1238,17 @@
   }
 
   function chooseProject(projectID: string) {
-    const project = selectedTeamProjects.find((item) => item.id === projectID);
+    if (!projectID) {
+      selectedProjectId = '';
+      selectedScopeId = selectedTeam?.scope.id ?? platform?.scope.id ?? '';
+      selectedResourceId = '';
+      return;
+    }
+    const project = projects.find((item) => item.id === projectID);
+    if (project && project.team_id !== selectedTeamId) {
+      selectedTeamId = project.team_id;
+      projectTeamId = project.team_id;
+    }
     selectedProjectId = project?.id ?? '';
     selectedScopeId = project?.scope.id ?? selectedTeam?.scope.id ?? '';
     selectedResourceId = '';
@@ -1228,9 +1440,19 @@
     diagnosisLoaded = true;
     if (selectedScopeId) {
       try {
-        diagnosisAvailableProviders = await api.availableAIProviders(selectedScopeId, 'diagnosis');
-        if (diagnosisAvailableProviders.length > 0 && (!selectedProviderId || !diagnosisAvailableProviders.some((item) => item.provider_resource_id === selectedProviderId))) {
-          selectedProviderId = diagnosisAvailableProviders[0].provider_resource_id;
+        diagnosisAvailableProviders = await api.availableAIProviders(
+          selectedScopeId,
+          'diagnosis'
+        );
+        if (
+          diagnosisAvailableProviders.length > 0 &&
+          (!selectedProviderId ||
+            !diagnosisAvailableProviders.some(
+              (item) => item.provider_resource_id === selectedProviderId
+            ))
+        ) {
+          selectedProviderId =
+            diagnosisAvailableProviders[0].provider_resource_id;
           llmModelName = diagnosisAvailableProviders[0].models[0]?.name ?? '';
         }
       } catch (error) {
@@ -1260,6 +1482,11 @@
     diagnosisEditingMessageId = '';
     diagnosisEditDraft = '';
     diagnosisInterruptedReason = '';
+    diagnosisStreamingText = '';
+    diagnosisStreamingPending = '';
+    if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+    diagnosisStreamingFrame = 0;
+    diagnosisStreamingStartedAt = 0;
     try {
       diagnosisSnapshot = await api.diagnosisSession(id);
       diagnosisSnapshot = {
@@ -1268,14 +1495,18 @@
           (message) => !diagnosisHiddenMessageIds.includes(message.id)
         )
       };
-      diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
+      diagnosisTargetIds = diagnosisSnapshot.targets.map(
+        (target) => target.resource_id
+      );
       if (diagnosisSnapshot.session.ai_provider_resource_id) {
         selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
       }
       if (diagnosisSnapshot.session.model_name) {
         llmModelName = diagnosisSnapshot.session.model_name;
       }
-      diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
+      diagnosisGenerating = isDiagnosisRunning(
+        diagnosisSnapshot.session.status
+      );
       diagnosisEventCursor = 0;
       openDiagnosisEvents(id);
     } catch (error) {
@@ -1289,12 +1520,21 @@
       api.diagnosisEventsURL(id, diagnosisEventCursor)
     );
     diagnosisEvents = stream;
-    stream.onmessage = () => void refreshDiagnosis(id);
+    stream.onmessage = (event) => handleDiagnosisEvent(id, event);
     for (const type of [
       'session.created',
       'phase.changed',
       'plan.created',
+      'execution.started',
+      'execution.completed',
+      'execution.cancelled',
+      'execution.failed',
+      'assistant.delta',
+      'assistant.completed',
+      'tool.requested',
+      'tool.started',
       'tool.completed',
+      'tool.failed',
       'evidence.collected',
       'report.ready',
       'diagnosis.failed',
@@ -1302,9 +1542,7 @@
       'target.added'
     ]) {
       stream.addEventListener(type, (event) => {
-        diagnosisEventCursor =
-          Number((event as MessageEvent).lastEventId) || diagnosisEventCursor;
-        void refreshDiagnosis(id);
+        handleDiagnosisEvent(id, event as MessageEvent);
       });
     }
     stream.onerror = () => {
@@ -1312,15 +1550,101 @@
     };
   }
 
+  function handleDiagnosisEvent(id: string, event: MessageEvent) {
+    if (id !== selectedDiagnosisId) return;
+    diagnosisEventCursor = Number(event.lastEventId) || diagnosisEventCursor;
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = event.data ? JSON.parse(event.data) : {};
+    } catch {
+      payload = {};
+    }
+    const eventType = event.type || 'message';
+    appendDiagnosisEvent(eventType, payload, diagnosisEventCursor);
+    if (eventType === 'assistant.delta') {
+      const text = String(payload.text ?? '');
+      if (text) {
+        diagnosisStreamingPending += text;
+        if (!diagnosisStreamingFrame) {
+          diagnosisStreamingFrame = requestAnimationFrame(() => {
+            diagnosisStreamingText += diagnosisStreamingPending;
+            diagnosisStreamingPending = '';
+            diagnosisStreamingFrame = 0;
+          });
+        }
+        diagnosisStreamingStartedAt ||= Date.now();
+      }
+      diagnosisGenerating = true;
+      return;
+    }
+    if (eventType === 'assistant.completed') {
+      if (!diagnosisStreamingText && payload.text) {
+        diagnosisStreamingText = String(payload.text);
+      }
+      diagnosisGenerating = true;
+      void refreshDiagnosis(id);
+      return;
+    }
+    if (eventType === 'execution.started' || eventType === 'tool.requested' || eventType === 'tool.started' || eventType === 'phase.changed') {
+      diagnosisGenerating = true;
+      diagnosisStreamingStartedAt ||= Date.now();
+      void refreshDiagnosis(id);
+      return;
+    }
+    if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed') {
+      const reason = String(payload.error ?? payload.message ?? payload.error_message ?? '').trim();
+      diagnosisInterruptedReason = reason || (eventType === 'execution.cancelled' ? '回答被取消。' : '回答生成失败。');
+      diagnosisGenerating = false;
+      void refreshDiagnosis(id);
+      return;
+    }
+    if (eventType === 'execution.completed' || eventType === 'report.ready') {
+      void refreshDiagnosis(id).finally(() => {
+        if (diagnosisStreamingPending) {
+          diagnosisStreamingText += diagnosisStreamingPending;
+          diagnosisStreamingPending = '';
+        }
+        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+        diagnosisStreamingFrame = 0;
+        diagnosisGenerating = false;
+        diagnosisStreamingText = '';
+        diagnosisStreamingStartedAt = 0;
+      });
+      return;
+    }
+    void refreshDiagnosis(id);
+  }
+
+  function appendDiagnosisEvent(type: string, payload: Record<string, unknown>, id: number) {
+    if (!diagnosisSnapshot || !id) return;
+    const current = diagnosisSnapshot.events ?? [];
+    if (current.some((item) => item.id === id)) return;
+    const item = {
+      id,
+      session_id: diagnosisSnapshot.session.id,
+      type,
+      payload,
+      created_at: new Date().toISOString()
+    };
+    diagnosisSnapshot = {
+      ...diagnosisSnapshot,
+      events: [...current, item].sort((a, b) => a.id - b.id)
+    };
+  }
+
   function closeDiagnosisEvents() {
     diagnosisEvents?.close();
     diagnosisEvents = null;
+    if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+    diagnosisStreamingFrame = 0;
   }
 
   async function refreshDiagnosis(id = selectedDiagnosisId) {
     if (!id || id !== selectedDiagnosisId) return;
+    const refreshToken = ++diagnosisRefreshToken;
     try {
       const snapshot = await api.diagnosisSession(id);
+      if (refreshToken !== diagnosisRefreshToken || id !== selectedDiagnosisId) return;
       diagnosisSnapshot = {
         ...snapshot,
         messages: snapshot.messages.filter(
@@ -1357,10 +1681,6 @@
       errorMessage = '请先选择一个可用级别。';
       return;
     }
-    if (diagnosisTargetIds.length === 0) {
-      errorMessage = '请在右侧上下文中至少选择一个资源。';
-      return;
-    }
     await action(async () => {
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
@@ -1374,7 +1694,6 @@
       diagnosisTargetIds = [];
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
-      notice = '诊断会话已创建，正在建立受控证据链。';
       await openDiagnosis(session.id);
     });
   }
@@ -1430,16 +1749,26 @@
     }
   }
 
-  function startDiagnosisResize(side: 'history' | 'context', event: PointerEvent) {
+  function startDiagnosisResize(
+    side: 'history' | 'context',
+    event: PointerEvent
+  ) {
     if (window.innerWidth <= 850) return;
     const startX = event.clientX;
-    const startWidth = side === 'history' ? diagnosisHistoryWidth : diagnosisContextWidth;
+    const startWidth =
+      side === 'history' ? diagnosisHistoryWidth : diagnosisContextWidth;
     const move = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX;
       if (side === 'history') {
-        diagnosisHistoryWidth = Math.max(180, Math.min(360, startWidth + delta));
+        diagnosisHistoryWidth = Math.max(
+          180,
+          Math.min(360, startWidth + delta)
+        );
       } else {
-        diagnosisContextWidth = Math.max(220, Math.min(380, startWidth - delta));
+        diagnosisContextWidth = Math.max(
+          220,
+          Math.min(380, startWidth - delta)
+        );
       }
     };
     const stop = () => {
@@ -1457,7 +1786,6 @@
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
       diagnosisGenerating = true;
-      notice = '追问已提交，正在重新诊断。';
       await refreshDiagnosis();
       openDiagnosisEvents(selectedDiagnosisId);
     });
@@ -1480,17 +1808,25 @@
     diagnosisEditDraft = '';
     diagnosisInterruptedReason = '';
     diagnosisGenerating = false;
+    diagnosisStreamingText = '';
+    diagnosisStreamingStartedAt = 0;
   }
 
-  function clearDiagnosisHistory() {
-    closeDiagnosisEvents();
-    diagnosisSessions = [];
-    newDiagnosisSession();
-    notice = '已清空当前作用域的会话列表。';
+  async function clearDiagnosisHistory() {
+    const sessions = [...diagnosisSessions];
+    await action(async () => {
+      await Promise.all(sessions.map((session) => api.deleteDiagnosis(session.id)));
+      closeDiagnosisEvents();
+      diagnosisSessions = [];
+      newDiagnosisSession();
+    });
   }
 
   function renameDiagnosisSession(session: DiagnosisSession) {
-    const title = window.prompt('重命名诊断会话', session.title || '未命名诊断');
+    const title = window.prompt(
+      '重命名诊断会话',
+      session.title || '未命名诊断'
+    );
     if (!title?.trim()) return;
     diagnosisSessions = diagnosisSessions.map((item) =>
       item.id === session.id ? { ...item, title: title.trim() } : item
@@ -1503,10 +1839,14 @@
     }
   }
 
-  function deleteDiagnosisSession(session: DiagnosisSession) {
-    if (!window.confirm(`删除“${session.title || '未命名诊断'}”的列表记录？`)) return;
-    diagnosisSessions = diagnosisSessions.filter((item) => item.id !== session.id);
-    if (selectedDiagnosisId === session.id) newDiagnosisSession();
+  async function deleteDiagnosisSession(session: DiagnosisSession) {
+    if (!window.confirm(`删除“${session.title || '未命名诊断'}”的列表记录？`))
+      return;
+    await action(async () => {
+      await api.deleteDiagnosis(session.id);
+      diagnosisSessions = diagnosisSessions.filter((item) => item.id !== session.id);
+      if (selectedDiagnosisId === session.id) newDiagnosisSession();
+    });
   }
 
   function beginDiagnosisEdit(message: DiagnosisMessage) {
@@ -1524,7 +1864,9 @@
       diagnosisSnapshot = {
         ...diagnosisSnapshot!,
         messages: [
-          ...diagnosisSnapshot!.messages.filter((message) => message.id !== originalID),
+          ...diagnosisSnapshot!.messages.filter(
+            (message) => message.id !== originalID
+          ),
           created
         ]
       };
@@ -1532,7 +1874,6 @@
       diagnosisEditDraft = '';
       diagnosisFollowup = '';
       diagnosisGenerating = true;
-      notice = '问题已更新，正在重新诊断。';
       openDiagnosisEvents(selectedDiagnosisId);
     });
   }
@@ -1541,14 +1882,23 @@
     if (!selectedDiagnosisId || !diagnosisGenerating) return;
     closeDiagnosisEvents();
     diagnosisGenerating = false;
-    diagnosisInterruptedReason = '用户手动停止了当前流式诊断。后台任务仍会继续记录审计事件。';
-    notice = '已停止当前页面的流式输出。';
+    diagnosisInterruptedReason = '用户手动停止了当前回答。';
+    void api.cancelDiagnosis(selectedDiagnosisId).catch((error) => {
+      diagnosisInterruptedReason = `停止请求失败：${describeError(error, '无法停止后台执行')}`;
+    });
   }
 
   function diagnosisStatusLabel(status: string) {
     const labels: Record<string, string> = {
-      queued: '排队中', planning: '规划中', collecting: '采集中', analyzing: '分析中',
-      succeeded: '已完成', failed: '失败', cancelled: '已取消'
+      queued: '排队中',
+      planning: '规划中',
+      collecting: '采集中',
+      analyzing: '分析中',
+      succeeded: '已完成',
+      failed: '失败',
+      cancelled: '已取消'
+      ,skipped: '已跳过'
+      ,warning: '需核验'
     };
     return labels[status] ?? status;
   }
@@ -1558,46 +1908,164 @@
     const finish = end ? new Date(end).getTime() : Date.now();
     if (!Number.isFinite(begin) || !Number.isFinite(finish)) return '—';
     const seconds = Math.max(0, Math.round((finish - begin) / 1000));
-    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    return seconds < 60
+      ? `${seconds}s`
+      : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   }
 
-  function diagnosisActionData(snapshot: DiagnosisSnapshot) {
-    const steps = snapshot.plan?.steps ?? [];
-    return steps.map((step) => {
-      const evidence = snapshot.evidence.filter((item) =>
-        step.title.toLowerCase().includes(item.capability.toLowerCase()) ||
-        item.capability.toLowerCase().includes(step.phase)
-      );
-      return {
-        id: step.id,
-        title: step.title,
-        status: diagnosisStatusLabel(step.status),
-        duration: diagnosisDuration(step.created_at, step.updated_at),
-        children: evidence.length
-          ? evidence.map((item) => ({
-              id: item.id,
-              title: item.capability || 'Connector 只读查询',
-              status: item.partial ? '部分结果' : '完成',
-              duration: diagnosisDuration(item.created_at, item.collected_at),
-              input: JSON.stringify({ target_resource_id: item.target_resource_id, source_resource_id: item.source_resource_id }, null, 2),
-              output: JSON.stringify(item.content, null, 2)
-            }))
-          : [{
-              id: `${step.id}-execution`,
-              title: step.detail || '执行受控诊断动作',
-              status: diagnosisStatusLabel(step.status),
-              duration: diagnosisDuration(step.created_at, step.updated_at),
-              input: JSON.stringify({ phase: step.phase, sequence: step.sequence }, null, 2),
-              output: JSON.stringify({ status: step.status }, null, 2)
-            }]
+  function diagnosisActionData(snapshot: DiagnosisSnapshot): any[] {
+    const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
+    type ToolAction = {
+      id: string;
+      icon: 'tool';
+      title: string;
+      status: string;
+      duration: string;
+      input: string;
+      output: string;
+      created_at: string;
+      updated_at: string;
+      tool: string;
+      resourceID: string;
+    };
+    type ToolGroup = {
+      id: string;
+      title: string;
+      status: string;
+      duration: string;
+      children: ToolAction[];
+    };
+    const titleForTool = (name: string) => {
+      const titles: Record<string, string> = {
+        'connector.query_metrics': '查询监控指标',
+        'connector.get_alerts': '查询告警',
+        'connector.query_logs': '查询日志',
+        'connector.inspect_postgresql': '检查 PostgreSQL',
+        'connector.read_kubernetes': '查询 Kubernetes'
       };
-    });
+      return titles[name] ?? `调用 ${name}`;
+    };
+    const groups: ToolGroup[] = [];
+    let currentGroup: ToolGroup | null = null;
+
+    for (const event of events) {
+      // Text is the only user-visible boundary: tool calls on either side
+      // belong to different Codex-style collapsed action groups.
+      if (event.type === 'assistant.delta') {
+        if (String(event.payload?.text ?? '').trim()) currentGroup = null;
+        continue;
+      }
+      if (!event.type.startsWith('tool.')) continue;
+      const payload = event.payload ?? {};
+      const tool = String(payload.tool ?? '');
+      const resourceID = String(payload.resource_id ?? '');
+      // Evidence bookkeeping also emits tool.completed, but it is not an
+      // AIEngine invocation and therefore must not appear in this trace.
+      if (!tool || !resourceID) continue;
+      if (!currentGroup) {
+        currentGroup = {
+          id: `tool-group-${event.id}`,
+          title: '工具调用',
+          status: '进行中',
+          duration: '—',
+          children: []
+        };
+        groups.push(currentGroup);
+      }
+      let action = [...currentGroup.children]
+        .reverse()
+        .find((item) => item.tool === tool && item.resourceID === resourceID && item.status === '进行中');
+      if (!action) {
+        action = {
+          id: `tool-${event.id}`,
+          icon: 'tool',
+          title: titleForTool(tool),
+          status: '进行中',
+          duration: '—',
+          input: JSON.stringify({ tool, resource_id: resourceID }, null, 2),
+          output: '等待工具执行结果…',
+          created_at: event.created_at,
+          updated_at: event.created_at,
+          tool,
+          resourceID
+        };
+        currentGroup.children.push(action);
+      }
+      action.updated_at = event.created_at;
+      if (event.type === 'tool.completed') {
+        action.status = '已完成';
+        const duration = Number(payload.duration_ms ?? 0);
+        action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
+        action.output = JSON.stringify({ status: 'succeeded', duration_ms: payload.duration_ms ?? 0 }, null, 2);
+      } else if (event.type === 'tool.failed') {
+        action.status = '失败';
+        const duration = Number(payload.duration_ms ?? 0);
+        action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
+        action.output = JSON.stringify({ status: 'failed', error: payload.error ?? '工具调用失败' }, null, 2);
+      }
+      const completed = currentGroup.children.every((item) => item.status !== '进行中');
+      currentGroup.status = completed ? (currentGroup.children.some((item) => item.status === '失败') ? '失败' : '已完成') : '进行中';
+      currentGroup.duration = diagnosisDuration(currentGroup.children[0].created_at, action.updated_at);
+    }
+    return groups;
+  }
+
+  function renderDiagnosisMarkdown(value: string) {
+    const escape = (text: string) =>
+      text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const escaped = escape(value ?? '');
+    const lines = escaped.split(/\r?\n/);
+    let html = '';
+    let inList = false;
+    const inline = (line: string) =>
+      line
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/_([^_]+)_/g, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    const closeList = () => {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+    };
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      const listItem = line.match(/^\s*[-*]\s+(.+)$/);
+      if (listItem) {
+        if (!inList) {
+          html += '<ul>';
+          inList = true;
+        }
+        html += `<li>${inline(listItem[1])}</li>`;
+        continue;
+      }
+      closeList();
+      if (!line.trim()) continue;
+      const heading = line.match(/^\s*(#{1,3})\s+(.+)$/);
+      if (heading) {
+        const level = heading[1].length;
+        html += `<h${level}>${inline(heading[2])}</h${level}>`;
+      } else {
+        html += `<p>${inline(line)}</p>`;
+      }
+    }
+    closeList();
+    return html;
   }
 
   async function loadAI() {
     aiLoaded = true;
     selectedSkillId = selectedSkillId || skillResources[0]?.id || '';
-    selectedAgentProfileId = selectedAgentProfileId || agentProfileResources[0]?.id || '';
+    selectedAgentProfileId =
+      selectedAgentProfileId || agentProfileResources[0]?.id || '';
     if (selectedSkillId) await loadSkillVersions();
     if (selectedAgentProfileId) await loadAgentProfileVersions();
   }
@@ -1605,27 +2073,54 @@
   async function loadAgentProfileVersions() {
     if (!selectedAgentProfileId) return;
     try {
-      agentProfileVersions = await api.agentProfileVersions(selectedAgentProfileId);
-      selectedAgentProfileVersionId = agentProfileVersions.find((item) => item.status === 'published')?.id || agentProfileVersions[0]?.id || '';
+      agentProfileVersions = await api.agentProfileVersions(
+        selectedAgentProfileId
+      );
+      selectedAgentProfileVersionId =
+        agentProfileVersions.find((item) => item.status === 'published')?.id ||
+        agentProfileVersions[0]?.id ||
+        '';
     } catch (error) {
       errorMessage = describeError(error, 'AgentProfile 版本加载失败');
     }
   }
 
   async function createAgentProfile() {
-    if (!selectedScopeId || !agentProfileName.trim() || !agentProfileInstruction.trim()) return;
+    if (
+      !selectedScopeId ||
+      !agentProfileName.trim() ||
+      !agentProfileInstruction.trim()
+    )
+      return;
     await action(async () => {
       const config = {
         version: 1,
         instruction: agentProfileInstruction.trim(),
-        capabilities: agentProfileCapabilities.split(',').map((item) => item.trim()).filter(Boolean),
-        allowed_tools: agentProfileAllowedTools.split(',').map((item) => item.trim()).filter(Boolean),
-        target_kinds: agentProfileTargetKinds.split(',').map((item) => item.trim()).filter(Boolean),
+        capabilities: agentProfileCapabilities
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        allowed_tools: agentProfileAllowedTools
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        target_kinds: agentProfileTargetKinds
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
         input_schema: JSON.parse(agentProfileInputSchema),
         output_schema: JSON.parse(agentProfileOutputSchema),
         enabled: true
       };
-      const resource = await api.createResource({ scope_id: selectedScopeId, kind: 'AgentProfile', schema_version: 1, name: agentProfileName.trim(), labels: {}, config, status: 'active' });
+      const resource = await api.createResource({
+        scope_id: selectedScopeId,
+        kind: 'AgentProfile',
+        schema_version: 1,
+        name: agentProfileName.trim(),
+        labels: {},
+        config,
+        status: 'active'
+      });
       const version = await api.createAgentProfileVersion(resource.id, config);
       await api.publishAgentProfileVersion(resource.id, version.id);
       resources = [resource, ...resources];
@@ -1640,7 +2135,10 @@
   async function publishAgentProfileVersion() {
     if (!selectedAgentProfileId || !selectedAgentProfileVersionId) return;
     await action(async () => {
-      await api.publishAgentProfileVersion(selectedAgentProfileId, selectedAgentProfileVersionId);
+      await api.publishAgentProfileVersion(
+        selectedAgentProfileId,
+        selectedAgentProfileVersionId
+      );
       await loadAgentProfileVersions();
       notice = 'AgentProfile 版本已发布';
     });
@@ -1717,7 +2215,6 @@
       notice = '默认 Skill 已更新';
     });
   }
-
 
   async function loadDiscovery() {
     discoveryLoaded = true;
@@ -2059,15 +2556,19 @@
 
   async function createResource() {
     await action(async () => {
-      const config = buildSchemaConfig(
-        createSchema,
-        resourceConfigValues,
-        resourceConfig
-      );
-      const credentialId = await createResourceCredential(
-        createSchema,
-        resourceSensitiveValues
-      );
+      const isProvider = resourceKind === 'AIProvider';
+      if (isProvider && providerNameDuplicate()) {
+        throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
+      }
+      if (isProvider && !providerDraftTestPassed()) {
+        throw new Error('请先完成默认 Model 的连接测试并确认测试通过。');
+      }
+      const config = isProvider
+        ? providerConfigForCreate()
+        : buildSchemaConfig(createSchema, resourceConfigValues, resourceConfig);
+      const credentialId = isProvider
+        ? await createProviderCredential()
+        : await createResourceCredential(createSchema, resourceSensitiveValues);
       const created = await api.createResource({
         scope_id: selectedScopeId,
         kind: resourceKind,
@@ -2080,6 +2581,20 @@
         config,
         ...(credentialId ? { credential_id: credentialId } : {})
       });
+      if (isProvider && providerPurposeTags.length > 0) {
+        await Promise.all(
+          providerPurposeTags.map((purpose) =>
+            api.setAIProviderBinding(selectedScopeId, purpose, created.id)
+          )
+        );
+        const currentScopeBindings = await api.aiProviderBindings(selectedScopeId);
+        aiProviderBindings = [
+          ...aiProviderBindings.filter(
+            (binding) => binding.scope_id !== selectedScopeId
+          ),
+          ...currentScopeBindings
+        ];
+      }
       resources = [created, ...resources];
       selectedResourceId = created.id;
       resourceName = '';
@@ -2089,7 +2604,64 @@
       resourceSensitiveValues = {};
       notice = `资源“${created.name}”已创建`;
       resourceEditorOpen = false;
+      resourceAddMenuOpen = false;
+      resourceAddStep = 1;
       await loadResourceDetails(created.id);
+    });
+  }
+
+  async function updateProviderFromWorkflow() {
+    const provider = resources.find(
+      (resource) => resource.id === editingProviderResourceId
+    );
+    if (!provider) return;
+    await action(async () => {
+      if (providerNameDuplicate()) {
+        throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
+      }
+      const credentialId = await createProviderCredential(resourceName);
+      const updated = await api.updateResource(provider.id, {
+        name: resourceName.trim(),
+        subtype: resourceSubtypeFor({
+          kind: 'AIProvider',
+          config: providerConfigForCreate()
+        }),
+        status: resourceStatus,
+        labels: parseLabels(resourceLabels),
+        config: providerConfigForCreate(),
+        ...(credentialId ? { credential_id: credentialId } : {})
+      });
+      const existingTags = aiProviderBindings
+        .filter(
+          (binding) =>
+            binding.scope_id === selectedScopeId &&
+            binding.provider_resource_id === provider.id
+        )
+        .map((binding) => binding.tag);
+      await Promise.all([
+        ...existingTags
+          .filter((tag) => !providerPurposeTags.includes(tag))
+          .map((tag) => api.removeAIProviderBinding(selectedScopeId, tag)),
+        ...providerPurposeTags.map((tag) =>
+          api.setAIProviderBinding(selectedScopeId, tag, provider.id)
+        )
+      ]);
+      const currentScopeBindings = await api.aiProviderBindings(selectedScopeId);
+      aiProviderBindings = [
+        ...aiProviderBindings.filter(
+          (binding) => binding.scope_id !== selectedScopeId
+        ),
+        ...currentScopeBindings
+      ];
+      resources = resources.map((resource) =>
+        resource.id === updated.id ? updated : resource
+      );
+      selectedResourceId = updated.id;
+      editingProviderResourceId = '';
+      resourceAddMenuOpen = false;
+      resourceAddStep = 1;
+      notice = `Provider“${updated.name}”已更新`;
+      await loadResourceDetails(updated.id);
     });
   }
 
@@ -2127,10 +2699,14 @@
 
   async function loadConnectionCheck(id: string) {
     const current = resources.find((item) => item.id === id);
+    // AIProvider checks use the provider-specific test endpoint and do not
+    // have entries in the generic connector check history API. Preserve a
+    // just-completed provider result instead of clearing it here.
     if (!current || !resourceHasConnector(current)) {
       resourceConnectionChecks = { ...resourceConnectionChecks, [id]: null };
       return;
     }
+    if (current.kind === 'AIProvider') return;
     try {
       const check = await api.latestResourceConnectionCheck(id);
       resourceConnectionChecks = { ...resourceConnectionChecks, [id]: check };
@@ -2146,7 +2722,9 @@
   }
 
   async function loadResourceConnectionChecks(items: Resource[]) {
-    const connectorItems = items.filter(resourceHasConnector);
+    const connectorItems = items.filter(
+      (resource) => resource.kind !== 'AIProvider' && resourceHasConnector(resource)
+    );
     if (!connectorItems.length) return;
     const checks = await Promise.all(
       connectorItems.map(async (resource) => {
@@ -2162,41 +2740,113 @@
         }
       })
     );
-    resourceConnectionChecks = Object.fromEntries(checks);
+    resourceConnectionChecks = {
+      ...resourceConnectionChecks,
+      ...Object.fromEntries(checks)
+    };
   }
 
-  async function testSelectedResourceConnection() {
-    if (!selectedResource || !selectedResourceHasConnector) return;
+  async function testResourceConnectionFor(resource: Resource) {
+    if (!resourceHasConnector(resource)) return;
     connectionBusy = true;
     errorMessage = '';
     try {
-      connectionCheck = await api.testResourceConnection(selectedResource.id);
+      let check: ConnectionCheck;
+      if (resource.kind === 'AIProvider') {
+        const config = resource.config ?? {};
+        const models = Array.isArray(config.models)
+          ? (config.models as Array<Record<string, unknown>>)
+          : [];
+        const configuredDefault = String(config.default_model ?? '').trim();
+        const defaultModel =
+          models.find((model) => String(model.name ?? '').trim() === configuredDefault) ??
+          models.find((model) => Boolean(model.enabled ?? true));
+        const modelName = String(defaultModel?.name ?? '').trim();
+        if (!modelName) {
+          throw new Error('该 AI Provider 尚未配置可用的默认 Model。');
+        }
+        const result = await api.testAIProvider(resource.id, {
+          scope_id: selectedScopeId || resource.scope_id,
+          model_name: modelName,
+          stream: Array.isArray(defaultModel?.capabilities) &&
+            (defaultModel?.capabilities as unknown[]).includes('stream')
+        });
+        check = {
+          id: `ai-provider-${resource.id}`,
+          resource_id: resource.id,
+          status: result.status === 'succeeded' ? 'succeeded' : 'failed',
+          message: result.message,
+          latency_ms: result.latency_ms,
+          capabilities: [],
+          checked_at: new Date().toISOString()
+        };
+        // Provider checks are intentionally reflected in the catalog only;
+        // the detail panel does not show a separate result notification.
+      } else {
+        check = await api.testResourceConnection(resource.id);
+      }
+      if (selectedResourceId === resource.id) connectionCheck = check;
       resourceConnectionChecks = {
         ...resourceConnectionChecks,
-        [selectedResource.id]: connectionCheck
+        [resource.id]: check
       };
-      notice =
-        connectionCheck.status === 'succeeded'
-          ? `资源“${selectedResource.name}”连接测试通过`
-          : `资源“${selectedResource.name}”连接测试失败`;
+      if (resource.kind !== 'AIProvider') {
+        notice =
+          check.status === 'succeeded'
+            ? `资源“${resource.name}”连接测试通过`
+            : `资源“${resource.name}”连接测试失败`;
+      }
     } catch (error) {
-      errorMessage = describeError(error, '连接测试失败');
+      const message = describeError(error, '连接测试失败');
+      if (resource.kind === 'AIProvider') {
+        const failedCheck: ConnectionCheck = {
+          id: `ai-provider-${resource.id}`,
+          resource_id: resource.id,
+          status: 'failed',
+          message,
+          latency_ms: 0,
+          capabilities: [],
+          checked_at: new Date().toISOString()
+        };
+        if (selectedResourceId === resource.id) connectionCheck = failedCheck;
+        resourceConnectionChecks = {
+          ...resourceConnectionChecks,
+          [resource.id]: failedCheck
+        };
+      } else {
+        errorMessage = message;
+      }
     } finally {
       connectionBusy = false;
     }
   }
 
+  async function testSelectedResourceConnection() {
+    if (!selectedResource || !selectedResourceHasConnector) return;
+    await testResourceConnectionFor(selectedResource);
+  }
+
   async function testResourceRowConnection(resource: Resource) {
-    await loadResourceDetails(resource.id);
-    await testSelectedResourceConnection();
+    // Select the row synchronously so the result is immediately reflected in
+    // the row/detail state. Relationship, topology, and historical check
+    // loading are supplementary and must not block the actual Provider test.
+    selectedResourceId = resource.id;
+    syncResourceEditor(resource);
+    void loadResourceDetails(resource.id);
+    // Use the clicked row's resource directly. The selectedResource reactive
+    // value may still refer to the previous row while Svelte flushes updates.
+    await testResourceConnectionFor(resource);
   }
 
   function resourceHasConnector(resource: Resource) {
-    return ['Kubernetes', 'Prometheus', 'Loki'].includes(resource.kind);
+    return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki'].includes(
+      resource.kind
+    );
   }
 
   function resourceEndpointFor(resource: Resource) {
-    if (resource.kind === 'AIProvider') return String(resource.config?.base_url ?? '未设置服务地址');
+    if (resource.kind === 'AIProvider')
+      return String(resource.config?.base_url ?? '未设置服务地址');
     return String(
       resource.config?.url ??
         resource.config?.endpoint ??
@@ -2230,23 +2880,65 @@
     return labels[scopeType(resource.scope_id)] ?? '资源';
   }
 
-  async function openResourceEditor(resource: Resource) {
-    await loadResourceDetails(resource.id);
+  function providerPurposeLabel(tag: string) {
+    const labels: Record<string, string> = {
+      default: '默认',
+      diagnosis: '诊断',
+      inspection: '巡检',
+      workflow: '工作流'
+    };
+    return labels[tag] ?? tag;
+  }
+
+  function providerBindingsFor(resource: Resource) {
+    return aiProviderBindings
+      .filter((binding) => binding.provider_resource_id === resource.id)
+      .sort((left, right) => {
+        const scopeOrder = { platform: 0, team: 1, project: 2 } as Record<
+          string,
+          number
+        >;
+        const scopeDifference =
+          (scopeOrder[scopeType(left.scope_id)] ?? 9) -
+          (scopeOrder[scopeType(right.scope_id)] ?? 9);
+        return scopeDifference || left.tag.localeCompare(right.tag);
+      });
+  }
+
+  function activeScopeSummary() {
+    const labels: Record<string, string> = {
+      platform: '平台级',
+      team: '团队级',
+      project: '项目级'
+    };
+    const type = activeScope?.type ?? 'platform';
+    return `${labels[type] ?? '当前级别'} · ${activeScope?.name ?? '平台'}`;
+  }
+
+  function openResourceEditor(resource: Resource) {
+    if (resource.kind === 'AIProvider') {
+      openProviderWorkflowForEdit(resource);
+      return;
+    }
+    // Select and hydrate the editor immediately. Relationship and topology
+    // requests are supplementary and must not make the edit action appear
+    // unresponsive.
+    selectedResourceId = resource.id;
+    syncResourceEditor(resource);
     resourceEditorOpen = true;
+    void loadResourceDetails(resource.id);
   }
 
   async function updateSelectedResource() {
     if (!selectedResource) return;
     await action(async () => {
-      const config = buildSchemaConfig(
-        selectedSchema,
-        resourceConfigValues,
-        editResourceConfig
-      );
-      const credentialId = await createResourceCredential(
-        selectedSchema,
-        editResourceSensitiveValues
-      );
+      const isProvider = selectedResource.kind === 'AIProvider';
+      const config = isProvider
+        ? providerConfigForCreate()
+        : buildSchemaConfig(selectedSchema, resourceConfigValues, editResourceConfig);
+      const credentialId = isProvider
+        ? await createProviderCredential()
+        : await createResourceCredential(selectedSchema, editResourceSensitiveValues);
       const updated = await api.updateResource(selectedResource.id, {
         name: editResourceName,
         subtype: resourceSubtypeFor({ kind: selectedResource.kind, config }),
@@ -2277,12 +2969,350 @@
       ])
     );
     editResourceSensitiveValues = {};
+    if (resource.kind === 'AIProvider') syncProviderEditor(resource);
+  }
+
+  function syncProviderEditor(resource: Resource) {
+    resourceName = resource.name;
+    resourceStatus = resource.status;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join(', ');
+    const config = resource.config ?? {};
+    providerType = String(config.provider_type ?? 'openai_compatible');
+    providerProtocol = String(config.protocol ?? 'chat_completions');
+    providerBaseURL = String(config.base_url ?? '');
+    providerAPIKey = '';
+    providerAPIKeyVisible = false;
+    providerTimeoutSeconds = Number(config.timeout_seconds ?? 60);
+    providerMaxConcurrency = Number(config.max_concurrency ?? 5);
+    providerRateLimitPerMinute = Number(config.rate_limit_per_minute ?? 0);
+    providerEnabled = config.enabled !== false;
+    const models = Array.isArray(config.models) ? config.models : [];
+    providerModels = models.map((item) => {
+      const model = item as Record<string, unknown>;
+      return {
+        name: String(model.name ?? ''),
+        contextWindowTokens: Number(model.context_window_tokens ?? model.context_window ?? 128000),
+        maxOutputTokens: Number(model.max_output_tokens ?? 8192),
+        temperature: Number(model.temperature ?? 0.7),
+        temperatureMutable: model.temperature_mutable !== false,
+        capabilities: Array.isArray(model.capabilities) ? model.capabilities.map(String) : ['text'],
+        enabled: model.enabled !== false,
+        priority: Number(model.priority ?? 0)
+      };
+    });
+    providerDefaultModel = String(config.default_model ?? providerModels[0]?.name ?? '');
+    providerModelDraft = emptyProviderModelDraft();
+    editingProviderModelName = '';
   }
 
   function resetResourceConfig() {
     resourceConfigValues = {};
     resourceSensitiveValues = {};
     resourceConfig = '{}';
+  }
+
+  function emptyProviderModelDraft(): ProviderModelDraft {
+    return {
+      name: '',
+      contextWindowTokens: 128000,
+      maxOutputTokens: 8192,
+      temperature: 0.7,
+      temperatureMutable: true,
+      capabilities: ['text', 'tool_calling', 'structured_output', 'stream'],
+      enabled: true,
+      priority: 0
+    };
+  }
+
+  function resetProviderDraft() {
+    providerType = 'openai_compatible';
+    providerProtocol = 'chat_completions';
+    providerBaseURL = '';
+    providerAPIKey = '';
+    providerAPIKeyVisible = false;
+    providerAPIKeyLoading = false;
+    providerTimeoutSeconds = 60;
+    providerMaxConcurrency = 5;
+    providerRateLimitPerMinute = 0;
+    providerEnabled = true;
+    providerModels = [];
+    providerModelDraft = emptyProviderModelDraft();
+    editingProviderModelName = '';
+    providerDefaultModel = '';
+    providerPurposeTags = [];
+    editingProviderResourceId = '';
+    providerConfigurationAttempted = false;
+    providerModelConfigurationAttempted = false;
+    providerModelValidationMessage = '';
+    providerSummaryAttempted = false;
+    providerDraftTest = null;
+  }
+
+  function providerConfigForCreate(): Record<string, unknown> {
+    return {
+      provider_type: providerType,
+      protocol: providerProtocol,
+      base_url: providerBaseURL.trim(),
+      timeout_seconds: providerTimeoutSeconds,
+      max_concurrency: providerMaxConcurrency,
+      rate_limit_per_minute: providerRateLimitPerMinute,
+      enabled: providerEnabled,
+      default_model: providerDefaultModel,
+      models: providerModels.map((model) => ({
+        name: model.name.trim(),
+        context_window_tokens: model.contextWindowTokens,
+        max_output_tokens: model.maxOutputTokens,
+        temperature: model.temperature,
+        temperature_mutable: model.temperatureMutable,
+        capabilities: model.capabilities,
+        enabled: model.enabled,
+        priority: model.priority
+      }))
+    };
+  }
+
+  function providerTypeLabel(type: unknown) {
+    return providerTypeOptions.find((option) => option.value === String(type))?.label ?? String(type || 'Provider');
+  }
+
+  function providerModelsForResource(resource: Resource) {
+    const models = Array.isArray(resource.config?.models) ? resource.config.models : [];
+    return models as Array<Record<string, unknown>>;
+  }
+
+  function providerDefaultModelForResource(resource: Resource) {
+    const models = providerModelsForResource(resource);
+    const configured = String(resource.config?.default_model ?? '').trim();
+    return (
+      models.find((model) => String(model.name ?? '').trim() === configured) ??
+      models.find((model) => model.enabled !== false) ??
+      models[0]
+    );
+  }
+
+  function providerModelCapabilities(model: Record<string, unknown> | undefined) {
+    if (!model || !Array.isArray(model.capabilities)) return [];
+    return (model.capabilities as unknown[]).map((capability) =>
+      providerCapabilityOptions.find((item) => item.value === String(capability))?.label ?? String(capability)
+    );
+  }
+
+  function providerDefaultModelDraft() {
+    return providerModels.find((model) => model.name === providerDefaultModel);
+  }
+
+  function providerPurposeMissingCapabilities(purpose: string) {
+    const option = providerPurposeOptions.find((item) => item.value === purpose);
+    const defaultModel = providerDefaultModelDraft();
+    if (!option || !defaultModel) return option?.requiredCapabilities ?? [];
+    return option.requiredCapabilities.filter(
+      (capability) => !defaultModel.capabilities.includes(capability)
+    );
+  }
+
+  function providerPurposeAvailable(purpose: string) {
+    return Boolean(providerDefaultModelDraft()) &&
+      providerPurposeMissingCapabilities(purpose).length === 0;
+  }
+
+  function providerPurposeUnavailableReason(purpose: string) {
+    if (!providerDefaultModelDraft()) return '尚未选择默认 Model。';
+    const missing = providerPurposeMissingCapabilities(purpose)
+      .map(
+        (capability) =>
+          providerCapabilityOptions.find((item) => item.value === capability)
+            ?.label ?? capability
+      )
+      .join('、');
+    return missing ? `当前默认 Model 缺失：${missing}` : '';
+  }
+
+  function toggleProviderPurpose(purpose: string) {
+    if (!providerPurposeAvailable(purpose)) return;
+    providerPurposeTags = providerPurposeTags.includes(purpose)
+      ? providerPurposeTags.filter((tag) => tag !== purpose)
+      : [...providerPurposeTags, purpose];
+  }
+
+  function providerDraftSignature() {
+    return providerDraftCurrentSignature;
+  }
+
+  function providerDraftTestPassed() {
+    return Boolean(
+      providerDraftTest?.signature === providerDraftSignature() &&
+        providerDraftTest.result?.status === 'succeeded'
+    );
+  }
+
+  async function testProviderDraftConnection() {
+    providerDraftTestBusy = true;
+    // Keep a visible in-flight result so the summary never falls back to
+    // "尚未核验" while the request is being processed.
+    providerDraftTest = {
+      signature: providerDraftSignature(),
+      error: '正在测试默认 Model，请稍候…'
+    };
+    const defaultModel = providerModels.find(
+      (model) => model.name === providerDefaultModel
+    );
+    if (!selectedScopeId) {
+      providerDraftTest = {
+        signature: providerDraftSignature(),
+        error: '未选择资源归属级别，无法执行连接测试。'
+      };
+      providerDraftTestBusy = false;
+      return;
+    }
+    if (!providerAPIKey.trim()) {
+      providerDraftTest = {
+        signature: providerDraftSignature(),
+        error: 'API Key 为必填项，请先填写后再进行连接测试。'
+      };
+      providerDraftTestBusy = false;
+      return;
+    }
+    if (!defaultModel) {
+      providerDraftTest = {
+        signature: providerDraftSignature(),
+        error: '尚未选择默认 Model，请先在 Model 配置步骤中选择。'
+      };
+      providerDraftTestBusy = false;
+      return;
+    }
+    if (!providerBaseURLValid()) {
+      providerDraftTest = {
+        signature: providerDraftSignature(),
+        error: '服务地址无效，请返回 Provider 配置检查地址。'
+      };
+      providerDraftTestBusy = false;
+      return;
+    }
+    const signature = providerDraftSignature();
+    try {
+      const result = await api.testDraftAIProvider({
+        scope_id: selectedScopeId,
+        provider_type: providerType,
+        base_url: providerBaseURL.trim(),
+        model_name: defaultModel.name,
+        api_key: providerAPIKey,
+        context_window: defaultModel.contextWindowTokens,
+        temperature: defaultModel.temperature,
+        capabilities: defaultModel.capabilities,
+        stream: defaultModel.capabilities.includes('stream')
+      });
+      providerDraftTest = { signature, result };
+    } catch (error) {
+      providerDraftTest = {
+        signature,
+        error: describeError(error, 'Provider 连接测试失败')
+      };
+    } finally {
+      providerDraftTestBusy = false;
+    }
+  }
+
+  async function createProviderCredential(name = resourceName) {
+    if (!providerAPIKey.trim() || !selectedScopeId) {
+      throw new Error('API Key 为必填项，请填写后再继续。');
+    }
+    const credential = await api.createCredential({
+      scope_id: selectedScopeId,
+      name: `${name || 'AI Provider'} API Key`,
+      purpose: 'AI Provider 访问凭据',
+      secret: providerAPIKey.trim()
+    });
+    return credential.id;
+  }
+
+  function addProviderModel() {
+    providerModelConfigurationAttempted = true;
+    if (!providerModelDraftComplete()) {
+      providerModelValidationMessage =
+        '请补全带 * 的 Model 字段，并至少选择一项能力。';
+      return;
+    }
+    const model = {
+      ...providerModelDraft,
+      name: providerModelDraft.name.trim(),
+      capabilities: [...providerModelDraft.capabilities]
+    };
+    if (
+      providerModels.some(
+        (item) =>
+          item.name === model.name && item.name !== editingProviderModelName
+      )
+    ) {
+      providerModelValidationMessage = `Model “${model.name}”已存在，请使用其他名称。`;
+      return;
+    }
+    if (editingProviderModelName) {
+      const previousName = editingProviderModelName;
+      providerModels = providerModels.map((item) =>
+        item.name === previousName ? model : item
+      );
+      if (providerDefaultModel === previousName) providerDefaultModel = model.name;
+    } else {
+      providerModels = [...providerModels, model];
+      if (!providerDefaultModel) providerDefaultModel = model.name;
+    }
+    providerModelDraft = emptyProviderModelDraft();
+    editingProviderModelName = '';
+    providerModelConfigurationAttempted = false;
+    providerModelValidationMessage = '';
+  }
+
+  function editProviderModel(model: ProviderModelDraft) {
+    editingProviderModelName = model.name;
+    providerModelDraft = {
+      ...model,
+      capabilities: [...model.capabilities]
+    };
+    providerModelConfigurationAttempted = false;
+    providerModelValidationMessage = '';
+  }
+
+  function removeProviderModel(name: string) {
+    providerModels = providerModels.filter((model) => model.name !== name);
+    if (editingProviderModelName === name) {
+      providerModelDraft = emptyProviderModelDraft();
+      editingProviderModelName = '';
+    }
+    if (providerDefaultModel === name) {
+      providerDefaultModel = providerModels[0]?.name ?? '';
+      if (providerDefaultModel) setProviderDefaultModel(providerDefaultModel);
+    }
+  }
+
+  function setProviderDefaultModel(name: string) {
+    providerDefaultModel = name;
+    providerModels = providerModels.map((model) =>
+      model.name === name ? { ...model, enabled: true } : model
+    );
+  }
+
+  function setProviderModelEnabled(name: string, enabled: boolean) {
+    if (name === providerDefaultModel && !enabled) return;
+    providerModels = providerModels.map((model) =>
+      model.name === name ? { ...model, enabled } : model
+    );
+  }
+
+  function toggleProviderModelCapability(capability: string) {
+    providerModelDraft = {
+      ...providerModelDraft,
+      capabilities: providerModelDraft.capabilities.includes(capability)
+        ? providerModelDraft.capabilities.filter((item) => item !== capability)
+        : [...providerModelDraft.capabilities, capability]
+    };
+  }
+
+  function selectProviderType(type: string) {
+    providerType = type;
+    const preset = providerTypeOptions.find((item) => item.value === type);
+    if (preset?.baseURL) providerBaseURL = preset.baseURL;
   }
 
   function resourceSchemaForSelection(category: string, subtype: string) {
@@ -2304,14 +3334,12 @@
 
   function toggleResourceAddMenu() {
     resourceAddMenuOpen = !resourceAddMenuOpen;
+    resourceEditorOpen = false;
+    resourceAddStep = 1;
+    resourceTypeSelectionAttempted = false;
     if (resourceAddMenuOpen) {
-      resourceAddCategory =
-        resourceCategory === '全部'
-          ? (Object.keys(resourceCategoryOptions).find(
-              (item) => item !== '全部'
-            ) ?? '')
-          : resourceCategory;
-      resourceAddSubtype = '';
+      resourceAddCategory = resourceCategory === '全部' ? '' : resourceCategory;
+      resourceAddSubtype = resourceSubtype === '全部' ? '' : resourceSubtype;
     }
   }
 
@@ -2319,12 +3347,227 @@
     const schema = resourceSchemaForSelection(category, subtype);
     resourceAddCategory = category;
     resourceAddSubtype = subtype;
-    resourceKind = schema?.kind ?? '';
+    resourceKind =
+      category === 'LLM' && subtype === 'Provider'
+        ? 'AIProvider'
+        : (schema?.kind ?? '');
     resourceCategory = category;
     resourceSubtype = subtype;
     resetResourceConfig();
-    resourceEditorOpen = true;
-    resourceAddMenuOpen = false;
+    resetProviderDraft();
+    resourceAddStep = 2;
+    resourceTypeSelectionAttempted = false;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+
+  function selectResourceAddCategory(category: string) {
+    resourceAddCategory = category;
+    resourceAddSubtype = '';
+  }
+
+  function continueResourceAdd() {
+    resourceTypeSelectionAttempted = true;
+    if (!resourceAddCategory || !resourceAddSubtype) return;
+    resourceTypeSelectionAttempted = false;
+    chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
+  }
+
+  function providerConfigurationComplete() {
+    return Boolean(
+      resourceName.trim() &&
+        !providerNameDuplicate() &&
+        providerType &&
+        providerBaseURLValid() &&
+        providerAPIKey.trim()
+    );
+  }
+
+  function providerNameDuplicate() {
+    const name = resourceName.trim().toLocaleLowerCase();
+    if (!name) return false;
+    return resources.some(
+      (resource) =>
+        resource.kind === 'AIProvider' &&
+        resource.scope_id === selectedScopeId &&
+        resource.id !== editingProviderResourceId &&
+        resource.name.trim().toLocaleLowerCase() === name
+    );
+  }
+
+  function openProviderWorkflowForEdit(resource: Resource) {
+    const project = projects.find((item) => item.scope.id === resource.scope_id);
+    const team = teams.find((item) => item.scope.id === resource.scope_id);
+    if (project) {
+      selectedTeamId = project.team_id;
+      projectTeamId = project.team_id;
+      selectedProjectId = project.id;
+    } else if (team) {
+      selectedTeamId = team.id;
+      projectTeamId = team.id;
+      selectedProjectId = '';
+    } else {
+      selectedTeamId = '';
+      projectTeamId = '';
+      selectedProjectId = '';
+    }
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'AIProvider';
+    resourceAddCategory = 'LLM';
+    resourceAddSubtype = 'Provider';
+    resourceCategory = 'LLM';
+    resourceSubtype = 'Provider';
+    editingProviderResourceId = resource.id;
+    syncProviderEditor(resource);
+    providerPurposeTags = aiProviderBindings
+      .filter(
+        (binding) =>
+          binding.scope_id === resource.scope_id &&
+          binding.provider_resource_id === resource.id
+      )
+      .map((binding) => binding.tag);
+    providerDraftTest = null;
+    resourceAddStep = 2;
+    resourceEditorOpen = false;
+    resourceAddMenuOpen = true;
+    if (resource.credential_id) {
+      providerAPIKeyLoading = true;
+      void api.credentialSecret(resource.credential_id).then(
+        (credential) => {
+          // Keep the existing credential in the editor so editing a Provider
+          // does not silently invalidate its required connection secret.
+          if (editingProviderResourceId === resource.id) {
+            providerAPIKey = credential.secret;
+            providerAPIKeyLoading = false;
+          }
+        },
+        (error) => {
+          if (editingProviderResourceId === resource.id) {
+            providerAPIKey = '';
+            providerAPIKeyLoading = false;
+            errorMessage = describeError(error, '无法读取 Provider API Key');
+          }
+        }
+      );
+    } else {
+      providerAPIKeyLoading = false;
+    }
+  }
+
+  function providerBaseURLValid() {
+    try {
+      const url = new URL(providerBaseURL.trim());
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  function providerConfigurationIssues() {
+    const issues: string[] = [];
+    if (!resourceName.trim()) issues.push('Provider 名称');
+    else if (providerNameDuplicate()) issues.push('Provider 名称已存在');
+    if (!providerType) issues.push('Provider 类型');
+    if (!providerBaseURL.trim()) issues.push('服务地址');
+    else if (!providerBaseURLValid()) issues.push('服务地址格式');
+    if (!providerAPIKey.trim()) issues.push('API Key');
+    return issues;
+  }
+
+  function providerModelDraftComplete() {
+    return Boolean(
+      providerModelDraft.name.trim() &&
+      providerModelDraft.contextWindowTokens > 0 &&
+      providerModelDraft.capabilities.length > 0
+    );
+  }
+
+  function continueProviderAdd() {
+    if (resourceAddStep === 2) {
+      providerConfigurationAttempted = true;
+      if (providerConfigurationComplete()) {
+        providerConfigurationAttempted = false;
+        resourceAddStep = 3;
+      }
+      return;
+    }
+    if (resourceAddStep === 3) {
+      providerModelConfigurationAttempted = true;
+      if (providerModels.length > 0) {
+        providerModelConfigurationAttempted = false;
+        resourceAddStep = 4;
+      }
+      return;
+    }
+    if (resourceAddStep === 4) {
+      resourceAddStep = 5;
+    }
+  }
+
+  function resourceAddStepValidationMessage() {
+    if (resourceAddStep === 1 && resourceTypeSelectionAttempted)
+      return '请选择资源类型和资源子类型。';
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 2 &&
+      providerConfigurationAttempted &&
+      !providerConfigurationComplete()
+    )
+      return `请检查：${providerConfigurationIssues().join('、')}。`;
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 3 &&
+      providerModelValidationMessage
+    )
+      return providerModelValidationMessage;
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 3 &&
+      providerModelConfigurationAttempted &&
+      providerModels.length === 0
+    )
+      return '请至少添加一个 Model 后继续。';
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 5 &&
+      providerDraftTest?.error
+    )
+      return `连接测试失败：${providerDraftTest.error}`;
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 5 &&
+      providerSummaryAttempted &&
+      !providerDraftTestPassed()
+    )
+      return '请先完成默认 Model 的连接测试并确认测试通过。';
+    return '';
+  }
+
+  async function submitProviderCreate() {
+    providerSummaryAttempted = true;
+    if (providerAPIKeyLoading) {
+      return;
+    }
+    if (!providerDraftTestPassed()) return;
+    if (editingProviderResourceId) {
+      await updateProviderFromWorkflow();
+      return;
+    }
+    await createResource();
+  }
+
+  function resourceAddStepTitle(step: number, kind: string) {
+    if (step === 1) return '类型选择';
+    if (kind !== 'AIProvider') return '配置资源';
+    return (
+      ['Provider 配置', 'Model 配置', '标签配置', '总结核验'][step - 2] ??
+      '配置资源'
+    );
+  }
+
+  function resourceSchemaFieldRequired(key: string) {
+    return createSchema?.schema.required?.includes(key) ?? false;
   }
 
   function buildSchemaConfig(
@@ -3136,7 +4379,7 @@
     Kubernetes: ['API', 'Agent'],
     MCPServer: ['StreamHTTP', 'SSE'],
     Skill: ['诊断', '监控', '优化', '维护'],
-    AI: ['模型服务商'],
+    LLM: ['Provider'],
     监控: ['指标', '日志', '链路', '告警']
   };
 
@@ -3145,7 +4388,7 @@
     config?: Record<string, unknown>;
     subtype?: string;
   }) {
-    if (resource.kind === 'AIProvider') return 'AI';
+    if (resource.kind === 'AIProvider') return 'LLM';
     if (resource.kind === 'MCPServer') return 'MCPServer';
     if (resource.kind === 'GenericAPI') return 'Docker';
     if (resource.kind === 'Application') return '应用';
@@ -3214,7 +4457,7 @@
       Alertmanager: '告警'
     };
     const explicit = String(resource.subtype || resource.config?.subtype || '');
-    if (resource.kind === 'AIProvider') return '模型服务商';
+    if (resource.kind === 'AIProvider') return 'Provider';
     return String(
       explicit ||
         resource.config?.provider ||
@@ -3235,7 +4478,7 @@
       Kubernetes: '⬡',
       MCPServer: '⌁',
       Skill: '✧',
-      AI: '✦',
+      LLM: '✦',
       监控: '◌'
     };
     return icons[category] ?? '◇';
@@ -3330,7 +4573,7 @@
   }
 
   function resourceSchemaName(kind: string) {
-    if (kind === 'AIProvider') return '模型服务商';
+    if (kind === 'AIProvider') return 'Provider';
     const schema = schemas.find((item) => item.kind === kind);
     return schema ? schemaName(schema) : kind;
   }
@@ -3668,7 +4911,9 @@
           class="nav-item"
           on:click={() => chooseView('agent')}
           data-tooltip={sidebarCompact ? 'Agent 专家' : undefined}
-          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">Agent 专家</span></button
+          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">Agent 专家</span
+          ></button
         >
         <button
           aria-label="AI 诊断"
@@ -3808,7 +5053,10 @@
       </div>
     </aside>
 
-    <main class="main-content" class:diagnosis-main-content={view === 'diagnosis'}>
+    <main
+      class="main-content"
+      class:diagnosis-main-content={view === 'diagnosis'}
+    >
       <header class="topbar">
         <div>
           <p class="breadcrumb">
@@ -3819,54 +5067,39 @@
           <h1>{viewTitle(view)}</h1>
         </div>
         <div class="topbar-actions">
-          {#if !hasPlatformRole}<div
-              class="workspace-switcher topbar-workspace-switcher"
-            >
-              <div class="workspace-team-wrap">
-                {#if teams.length > 1}
-                  <button
-                    class="workspace-team"
-                    aria-label="切换团队"
-                    aria-expanded={teamMenuOpen}
-                    on:click={() => (teamMenuOpen = !teamMenuOpen)}
-                  >
-                    <span>{selectedTeam?.name ?? '暂无可见团队'}</span
-                    ><ChevronDown
-                      size={15}
-                      strokeWidth={1.8}
-                      aria-hidden="true"
-                    />
-                  </button>
-                {:else}
-                  <span class="workspace-team workspace-team-static"
-                    >{selectedTeam?.name ?? '暂无可见团队'}</span
-                  >
-                {/if}
-                {#if teamMenuOpen}<div class="team-menu" role="menu">
-                    {#each teams as team}<button
-                        role="menuitem"
-                        class:selected={team.id === selectedTeamId}
-                        on:click={() => chooseTeam(team.id)}>{team.name}</button
-                      >{/each}
-                  </div>{/if}
-              </div>
+          <div class="workspace-switcher topbar-workspace-switcher">
+              <label class="workspace-team workspace-team-select"
+                ><select
+                  aria-label="切换团队"
+                  value={selectedTeamId}
+                  on:change={(event) =>
+                    chooseTeam(
+                      (event.currentTarget as HTMLSelectElement).value
+                    )}
+                >
+                  {#if hasPlatformRole}<option value="">全部团队</option>{/if}
+                  {#each teams as team}<option value={team.id}
+                      >{team.name}</option
+                    >{/each}
+                </select></label
+              >
               <label class="workspace-project"
                 ><select
                   aria-label="切换项目"
                   value={selectedProjectId}
-                  disabled={!selectedTeamProjects.length}
+                  disabled={!workspaceProjects.length}
                   on:change={(event) =>
                     chooseProject(
                       (event.currentTarget as HTMLSelectElement).value
                     )}
                 >
                   <option value="">全部项目</option>
-                  {#each selectedTeamProjects as project}<option
+                  {#each workspaceProjects as project}<option
                       value={project.id}>{project.name}</option
                     >{/each}
                 </select></label
               >
-            </div>{/if}
+            </div>
         </div>
       </header>
 
@@ -4632,8 +5865,10 @@
               </div>
               <div class="table-list resource-list">
                 {#each resourceCatalogItems as resource}
+                  {@const resourceCheck = resourceConnectionChecks[resource.id]}
                   <details
                     class:selected={selectedResourceId === resource.id}
+                    class:provider-resource-row={resource.kind === 'AIProvider'}
                     class="resource-catalog-row"
                     on:toggle={() => void loadResourceDetails(resource.id)}
                   >
@@ -4645,36 +5880,57 @@
                               size={18}
                             />{:else}{resourceIcon(resource.kind)}{/if}</span
                         ><span
-                          ><strong>{resource.name}</strong><small
-                            >{resourceEndpointFor(resource)}</small
-                          ></span
+                          ><strong>{resource.name}</strong><small>{resourceEndpointFor(resource)}</small></span
                         ></span
                       >
-                      <span class="resource-cell resource-category-cell"
-                        ><strong>{resourceCategoryFor(resource)}</strong><small
-                          >{resourceSubtypeFor(resource)}</small
-                        ></span
-                      >
+                      <span class="resource-cell resource-category-cell">
+                        {#if resource.kind === 'AIProvider'}
+                          {@const models = providerModelsForResource(resource)}
+                          {@const currentModel = providerDefaultModelForResource(resource)}
+                          <strong>{providerTypeLabel(resource.config?.provider_type)} · {String(currentModel?.name ?? '未设置')}</strong><small>模型 · 共 {models.length} 个</small>
+                        {:else}
+                          <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
+                        {/if}
+                      </span>
                       <span class="resource-cell resource-scope-cell"
                         ><strong
                           class="scope-pill {scopeType(resource.scope_id)}"
                           >{resourceScopeLabel(resource)}</strong
-                        ><small>管理范围</small></span
+                        ><small>级别</small></span
                       >
-                      <span class="resource-tags" aria-label="资源标签">
-                        {#each Object.entries(resource.labels ?? {}) as [key, value]}
-                          <span class="resource-tag"
-                            >{key}{value ? `=${value}` : ''}</span
-                          >
+                      {#if resource.kind === 'AIProvider'}
+                        <span class="resource-cell provider-purpose-cell"
+                          ><span class="provider-purpose-tags">
+                            {#each providerBindingsFor(resource) as binding}
+                              <span class="resource-tag provider-purpose-tag"
+                                >{providerPurposeLabel(binding.tag)}</span
+                              >
+                            {:else}
+                              <small class="resource-tags-empty">未设置</small>
+                            {/each}
+                          </span><small>用途</small></span
+                        >
+                      {/if}
+                      <span class="resource-tags" aria-label={resource.kind === 'AIProvider' ? '模型能力' : '资源标签'}>
+                        {#if resource.kind === 'AIProvider'}
+                          {#each providerModelCapabilities(providerDefaultModelForResource(resource)) as capability}<span class="resource-tag provider-capability-tag">{capability}</span>{:else}<small class="resource-tags-empty">未声明能力</small>{/each}
                         {:else}
-                          <small class="resource-tags-empty">未设置标签</small>
-                        {/each}
+                          {#each Object.entries(resource.labels ?? {}) as [key, value]}<span class="resource-tag">{key}{value ? `=${value}` : ''}</span>{:else}<small class="resource-tags-empty">未设置标签</small>{/each}
+                        {/if}
                       </span>
                       <span class="resource-cell resource-connection-cell"
                         ><span
-                          class="status-label {resourceConnectionClass(
-                            resource
-                          )}">{resourceConnectionLabel(resource)}</span
+                          class="status-label {resourceCheck
+                            ? resourceCheck.status === 'succeeded'
+                              ? 'active'
+                              : 'unknown'
+                            : resource.status}">{resourceCheck
+                            ? `${resourceCheck.status === 'succeeded' ? '正常' : '失败'}·${resourceCheck.latency_ms}ms`
+                            : resource.status === 'active'
+                              ? '正常'
+                              : resource.status === 'disabled'
+                                ? '已停用'
+                                : '未知'}</span
                         ><small>连接状态</small></span
                       >
                       <span class="resource-row-actions" aria-label="资源操作">
@@ -4722,158 +5978,742 @@
                         >
                       </span>
                     </summary>
-                    <div class="resource-row-details">
-                      <div>
-                        <span>资源地址</span><strong
-                          >{resourceEndpointFor(resource)}</strong
-                        >
+                    {#if resource.kind === 'AIProvider'}
+                      {@const providerConfig = resource.config ?? {}}
+                      {@const providerModels = providerModelsForResource(resource)}
+                      <div class="provider-resource-details">
+                        <div class="provider-resource-meta">
+                          <div>
+                            <span>Provider 类型</span><strong>{providerTypeLabel(providerConfig.provider_type)}</strong>
+                          </div>
+                          <div>
+                            <span>协议</span><strong>{String(providerConfig.protocol ?? 'chat_completions')}</strong>
+                          </div>
+                          <div class="provider-resource-meta-wide">
+                            <span>服务地址</span><strong>{resourceEndpointFor(resource)}</strong>
+                          </div>
+                          <div>
+                            <span>请求超时</span><strong>{Number(providerConfig.timeout_seconds ?? 60)} 秒</strong>
+                          </div>
+                          <div>
+                            <span>最大并发</span><strong>{Number(providerConfig.max_concurrency ?? 5)}</strong>
+                          </div>
+                          <div>
+                            <span>限流</span><strong>{Number(providerConfig.rate_limit_per_minute ?? 0) > 0 ? `${Number(providerConfig.rate_limit_per_minute)} 次/分钟` : '不限流'}</strong>
+                          </div>
+                          <div>
+                            <span>默认 Model</span><strong>{String(providerConfig.default_model ?? providerModels[0]?.name ?? '未设置')}</strong>
+                          </div>
+                          <div>
+                            <span>API Key</span><strong>{resource.credential_id ? '已配置凭据' : '未配置凭据'}</strong>
+                          </div>
+                          <div>
+                            <span>Provider 状态</span><strong>{providerConfig.enabled === false ? '已停用' : '已启用'}</strong>
+                          </div>
+                          <div>
+                            <span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前级别可管理' : '继承资源，仅限查看'}</strong>
+                          </div>
+                          <div>
+                            <span>连接测试</span><strong>{resourceCheck ? (resourceCheck.status === 'succeeded' ? `正常 · ${resourceCheck.latency_ms} ms` : '失败') : '尚未测试'}</strong>
+                          </div>
+                        </div>
+                        <div class="provider-resource-models">
+                          <div class="provider-resource-models-heading">
+                            <strong>Model 配置</strong><span>{providerModels.length} 个</span>
+                          </div>
+                          {#each providerModels as model}
+                            {@const modelName = String(model.name ?? '未命名 Model')}
+                            {@const modelIsDefault = modelName === String(providerConfig.default_model ?? '').trim() || (!providerConfig.default_model && model === providerModels[0])}
+                            <div class="provider-resource-model-row">
+                              <div class="provider-resource-model-name">
+                                <strong>{modelName}</strong>
+                                <small>{modelIsDefault ? '默认 Model' : '备用 Model'} · {model.enabled === false ? '已停用' : '已启用'}</small>
+                              </div>
+                              <div><span>能力</span><strong>{providerModelCapabilities(model).join('、') || '未声明'}</strong></div>
+                              <div><span>上下文</span><strong>{Number(model.context_window_tokens ?? model.context_window ?? 128000).toLocaleString()} Token</strong></div>
+                              <div><span>最大输出</span><strong>{Number(model.max_output_tokens ?? 8192).toLocaleString()} Token</strong></div>
+                              <div><span>温度</span><strong>{Number(model.temperature ?? 0.7)}</strong></div>
+                              <div><span>优先级</span><strong>{Number(model.priority ?? 0)}</strong></div>
+                            </div>
+                          {:else}
+                            <div class="empty-state">尚未配置 Model。</div>
+                          {/each}
+                        </div>
                       </div>
-                      <div>
-                        <span>连接测试</span><strong
-                          >{selectedResourceId === resource.id &&
-                          connectionCheck
-                            ? connectionCheck.status === 'succeeded'
-                              ? '连接正常'
-                              : '连接失败'
-                            : '展开后可测试'}</strong
-                        >
+                    {:else}
+                      <div class="resource-row-details">
+                        <div>
+                          <span>资源地址</span><strong
+                            >{resourceEndpointFor(resource)}</strong
+                          >
+                        </div>
+                        <div>
+                          <span>连接测试</span><strong
+                            >{selectedResourceId === resource.id &&
+                            connectionCheck
+                              ? connectionCheck.status === 'succeeded'
+                                ? '连接正常'
+                                : '连接失败'
+                              : '展开后可测试'}</strong
+                          >
+                        </div>
+                        <div>
+                          <span>管理范围</span><strong
+                            >{resourceCanManage(resource, 'resource:update')
+                              ? '当前 Scope 可管理'
+                              : '继承资源，仅限查看'}</strong
+                          >
+                        </div>
                       </div>
-                      <div>
-                        <span>管理范围</span><strong
-                          >{resourceCanManage(resource, 'resource:update')
-                            ? '当前 Scope 可管理'
-                            : '继承资源，仅限查看'}</strong
-                        >
-                      </div>
-                    </div>
+                    {/if}
                   </details>
                 {:else}<div class="empty-state">没有匹配的资源。</div>{/each}
               </div>
             </section>
             {#if resourceAddMenuOpen}
-              <div class="resource-add-menu" role="menu">
-                <div class="resource-add-menu-heading">
-                  选择要添加的资源子类
-                </div>
-                {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部' && (resourceCategory === '全部' || name === resourceCategory)) as [category, subtypes]}
-                  <div class="resource-add-menu-group">
-                    <strong>{category}</strong>
-                    <div>
-                      {#each subtypes as subtype}
-                        <button
-                          type="button"
-                          on:click={() =>
-                            chooseResourceAddSubtype(category, subtype)}
-                          >{subtype}</button
-                        >
-                      {/each}
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-            {#if resourceEditorOpen}
-              <div
-                class="resource-add-dialog-backdrop"
-                role="presentation"
-                on:click={() => (resourceEditorOpen = false)}
+              <section
+                class="panel resource-add-workflow"
+                aria-labelledby="resource-add-title"
               >
-                <section
-                  class="panel resource-add-dialog"
-                  aria-labelledby="resource-add-title"
-                >
-                  <div class="panel-heading">
-                    <div>
-                      <p class="eyebrow">ADD RESOURCE</p>
-                      <h2 id="resource-add-title">
-                        添加{resourceAddCategory} · {resourceAddSubtype}
-                      </h2>
-                    </div>
-                    <button
-                      class="quiet-button"
-                      type="button"
-                      on:click={() => (resourceEditorOpen = false)}>关闭</button
-                    >
+                <header class="resource-add-main-heading">
+                  <div>
+                    <p class="eyebrow">{editingProviderResourceId ? 'EDIT PROVIDER' : 'ADD RESOURCE'}</p>
+                    <h2 id="resource-add-title">{editingProviderResourceId ? '编辑 Provider' : '添加资源'}</h2>
                   </div>
-                  <form
-                    class="stack-form"
-                    on:submit|preventDefault={createResource}
+                  <button
+                    class="secondary"
+                    type="button"
+                    on:click={() => {
+                      resourceAddMenuOpen = false;
+                      resourceAddStep = 1;
+                      editingProviderResourceId = '';
+                    }}>取消</button
                   >
-                    <label
-                      >名称<input
-                        bind:value={resourceName}
-                        required
-                        placeholder="例如 production-postgres"
-                      /></label
+                </header>
+                <aside class="resource-add-steps" aria-label="添加资源步骤">
+                  <button
+                    class:active={resourceAddStep === 1}
+                    class:done={resourceAddStep > 1}
+                    type="button"
+                    on:click={() => (resourceAddStep = 1)}
+                    ><b>1</b><span>类型选择</span></button
+                  >
+                  {#if resourceKind === 'AIProvider'}
+                    <button
+                      class:active={resourceAddStep === 2}
+                      class:done={resourceAddStep > 2}
+                      disabled={!resourceAddCategory || !resourceAddSubtype}
+                      type="button"
+                      on:click={() => {
+                        if (resourceAddCategory && resourceAddSubtype)
+                          resourceAddStep = 2;
+                      }}><b>2</b><span>Provider 配置</span></button
                     >
-                    <div class="form-row">
+                    <button
+                      class:active={resourceAddStep === 3}
+                      class:done={resourceAddStep > 3}
+                      disabled={!providerConfigurationComplete()}
+                      type="button"
+                      on:click={() => {
+                        if (providerConfigurationComplete())
+                          resourceAddStep = 3;
+                      }}><b>3</b><span>Model 配置</span></button
+                    >
+                    <button
+                      class:active={resourceAddStep === 4}
+                      class:done={resourceAddStep > 4}
+                      disabled={providerModels.length === 0}
+                      type="button"
+                      on:click={() => {
+                        if (providerModels.length > 0) resourceAddStep = 4;
+                      }}><b>4</b><span>标签配置</span></button
+                    >
+                    <button
+                      class:active={resourceAddStep === 5}
+                      disabled={providerModels.length === 0}
+                      type="button"
+                      on:click={() => {
+                        if (providerModels.length > 0) resourceAddStep = 5;
+                      }}><b>5</b><span>总结核验</span></button
+                    >
+                  {:else}
+                    <button
+                      class:active={resourceAddStep === 2}
+                      disabled={!resourceAddCategory || !resourceAddSubtype}
+                      type="button"
+                      on:click={continueResourceAdd}
+                      ><b>2</b><span>配置资源</span></button
+                    >
+                  {/if}
+                </aside>
+                <div
+                  class="resource-add-content"
+                  class:type-selection-content={resourceAddStep === 1}
+                >
+                  <div class="resource-add-step-heading">
+                    <h3>{resourceAddStepTitle(resourceAddStep, resourceKind)}</h3>
+                    {#if resourceAddStepValidationMessage()}
+                      <p class="resource-add-step-validation" role="alert">
+                        {resourceAddStepValidationMessage()}
+                      </p>
+                    {/if}
+                    <div class="resource-add-step-actions">
+                      {#if resourceKind === 'AIProvider' && resourceAddStep === 2}
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() => (resourceAddStep = 1)}>上一步</button
+                        >
+                        <button
+                          class="primary"
+                          type="button"
+                          on:click={continueProviderAdd}>下一步</button
+                        >
+                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 3}
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() => (resourceAddStep = 2)}>上一步</button
+                        >
+                        <button
+                          class="primary"
+                          type="button"
+                          on:click={continueProviderAdd}>下一步</button
+                        >
+                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 4}
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() => (resourceAddStep = 3)}>上一步</button
+                        >
+                        <button
+                          class="primary"
+                          type="button"
+                          on:click={continueProviderAdd}>下一步</button
+                        >
+                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 5}
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() => (resourceAddStep = 4)}>上一步</button
+                        >
+                        <button
+                          class="primary"
+                          type="submit"
+                          form="provider-create-form"
+                          disabled={busy || !selectedScopeId}
+                          >{editingProviderResourceId ? '保存 Provider' : '创建 Provider'}</button
+                        >
+                      {:else if resourceAddStep === 2}
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={() => (resourceAddStep = 1)}>上一步</button
+                        >
+                        <button
+                          class="primary"
+                          type="submit"
+                          form="resource-create-form"
+                          disabled={busy || !selectedScopeId}>创建资源</button
+                        >
+                      {:else}
+                      <button
+                        class="primary"
+                        type="button"
+                        on:click={continueResourceAdd}>下一步</button
+                        >
+                      {/if}
+                    </div>
+                  </div>
+                  {#if resourceAddStep === 1}
+                    <p class="resource-add-description">
+                      先选择资源大类与子类型，随后填写对应的受控配置字段。
+                    </p>
+                    <div class="resource-type-selection">
                       <label
-                        >状态<select bind:value={resourceStatus}
-                          ><option value="active">active</option><option
-                            value="disabled">disabled</option
-                          ><option value="unknown">unknown</option></select
+                        class:invalid={resourceTypeSelectionAttempted &&
+                          !resourceAddCategory}
+                        ><span><i>*</i>资源类型</span><select
+                          bind:value={resourceAddCategory}
+                          on:change={(event) =>
+                            selectResourceAddCategory(
+                              (event.currentTarget as HTMLSelectElement).value
+                            )}
+                          ><option value="">请选择资源类型</option
+                          >{#each Object.keys(resourceCategoryOptions).filter((category) => category !== '全部') as category}<option
+                              value={category}>{category}</option
+                            >{/each}</select
                         ></label
-                      ><label
-                        >标签<input
-                          bind:value={resourceLabels}
-                          placeholder="env=prod, owner=platform"
+                      >
+                      <label
+                        class:invalid={resourceTypeSelectionAttempted &&
+                          !resourceAddSubtype}
+                        ><span><i>*</i>资源子类型</span><select
+                          bind:value={resourceAddSubtype}
+                          disabled={!resourceAddCategory}
+                          ><option value="">请选择资源子类型</option
+                          >{#each resourceAddSubtypeOptions as subtype}<option
+                              value={subtype}>{subtype}</option
+                            >{/each}</select
+                        ></label
+                      >
+                    </div>
+                  {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
+                    <div class="provider-config-description-row">
+                      <p class="resource-add-description">
+                        配置服务连接与运行边界。凭据会作为独立加密对象保存，不会写入资源配置。
+                      </p>
+                      <label
+                        class="provider-enabled-toggle"
+                        data-tooltip={providerEnabled ? 'Provider 已启用，可被 AI 引擎调用' : 'Provider 已停用，不会被 AI 引擎调用'}
+                        ><span class="visually-hidden">是否启用 Provider</span><span class="provider-toggle-control"><input
+                            type="checkbox"
+                            bind:checked={providerEnabled}
+                            aria-label="是否启用 Provider"
+                          /><i aria-hidden="true"></i></span></label
+                      >
+                    </div>
+                    <div class="provider-config-form">
+                      <label
+                        class="provider-config-name"
+                        class:invalid={providerConfigurationAttempted &&
+                          (!resourceName.trim() || providerNameDuplicate())}
+                        ><span><i>*</i>Provider 名称</span><input
+                          bind:value={resourceName}
+                          required
+                          placeholder="例如 production-openai"
+                        /></label
+                      >
+                      <label
+                        class="provider-config-type"
+                        class:invalid={providerConfigurationAttempted && !providerType}
+                        ><span><i>*</i>Provider 类型</span><select
+                          bind:value={providerType}
+                          on:change={(event) =>
+                            selectProviderType(
+                              (event.currentTarget as HTMLSelectElement).value
+                            )}
+                          >{#each providerTypeOptions as option}<option
+                              value={option.value}>{option.label}</option
+                            >{/each}</select
+                        ></label
+                      >
+                      <label class="provider-config-protocol"
+                        ><span>协议</span><select bind:value={providerProtocol}
+                          ><option value="chat_completions"
+                            >Chat Completions</option
+                          ></select
+                        ></label
+                      >
+                      <label class="provider-config-url"
+                        class:invalid={providerConfigurationAttempted &&
+                          !providerBaseURLValid()}
+                        ><span><i>*</i>服务地址</span><input
+                          bind:value={providerBaseURL}
+                          required
+                          type="url"
+                          placeholder="https://api.example.com/v1"
                           autocomplete="off"
                         /></label
                       >
-                    </div>
-                    {#if createSchema?.schema.properties}
-                      <div class="schema-inputs">
-                        <p class="eyebrow">SCHEMA FIELDS</p>
-                        {#each Object.entries(createSchema.schema.properties) as [key, field]}
-                          <label
-                            >{field.title || key}{#if field.sensitive}<input
-                                type="password"
-                                bind:value={resourceSensitiveValues[key]}
-                                placeholder="敏感信息将加密保存"
-                                autocomplete="new-password"
-                              />{:else if field.enum}<select
-                                bind:value={resourceConfigValues[key]}
-                                ><option value="">未设置</option
-                                >{#each field.enum as option}<option
-                                    value={option}>{option}</option
-                                  >{/each}</select
-                              >{:else if field.type === 'array'}<textarea
-                                bind:value={resourceConfigValues[key]}
-                                rows="4"
-                                placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
-                                spellcheck="false"
-                              ></textarea>{:else}<input
-                                bind:value={resourceConfigValues[key]}
-                                type={field.type === 'number' ||
-                                field.type === 'integer'
-                                  ? 'number'
-                                  : field.type === 'url' ||
-                                      field.format === 'uri'
-                                    ? 'url'
-                                    : 'text'}
-                                placeholder={field.description || key}
-                                autocomplete="off"
-                              />{/if}</label
-                          >
-                        {/each}
-                      </div>
-                    {:else}
-                      <label
-                        >配置 JSON<textarea
-                          bind:value={resourceConfig}
-                          rows="4"
-                          spellcheck="false"
-                        ></textarea></label
+                      <label class="provider-config-api-key"
+                        class:invalid={providerConfigurationAttempted && !providerAPIKey.trim()}
+                        ><span>API Key</span><span class="provider-api-key-control"><input
+                            bind:value={providerAPIKey}
+                            required
+                            type={providerAPIKeyVisible ? 'text' : 'password'}
+                            placeholder={providerAPIKeyLoading ? '正在读取 API Key…' : '请输入 API Key'}
+                            autocomplete="new-password"
+                          /><button
+                            class="provider-api-key-toggle"
+                            type="button"
+                            aria-label={providerAPIKeyVisible ? '隐藏 API Key' : '显示 API Key'}
+                            aria-pressed={providerAPIKeyVisible}
+                            data-tooltip={providerAPIKeyVisible ? '隐藏 API Key' : '显示 API Key'}
+                            on:click={() => (providerAPIKeyVisible = !providerAPIKeyVisible)}
+                            >{#if providerAPIKeyVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button
+                          ></span></label
                       >
-                    {/if}<button
-                      class="primary"
-                      disabled={busy || !selectedScopeId}>创建资源</button
+                      <label class="provider-config-timeout"
+                        ><span>请求超时（秒）</span><input
+                          bind:value={providerTimeoutSeconds}
+                          min="1"
+                          max="300"
+                          type="number"
+                        /></label
+                      >
+                      <label class="provider-config-concurrency"
+                        ><span>最大并发</span><input
+                          bind:value={providerMaxConcurrency}
+                          min="1"
+                          type="number"
+                        /></label
+                      >
+                      <label class="provider-config-rate-limit"
+                        ><span>限流（请求/分钟）</span><input
+                          bind:value={providerRateLimitPerMinute}
+                          min="0"
+                          type="number"
+                        /></label
+                      >
+                    </div>
+                  {:else if resourceKind === 'AIProvider' && resourceAddStep === 3}
+                    <p class="resource-add-description">
+                      添加此 Provider
+                      可用的模型；第一个添加的模型会自动设为默认模型，也可在下方调整。
+                    </p>
+                    <div class="provider-model-editor">
+                      <div class="provider-model-grid">
+                        <label
+                          class:invalid={providerModelConfigurationAttempted &&
+                            (!providerModelDraft.name.trim() ||
+                              providerModels.some(
+                                (model) =>
+                                  model.name === providerModelDraft.name.trim() &&
+                                  model.name !== editingProviderModelName
+                              ))}
+                          ><span><i>*</i>Model 名称</span><input
+                            bind:value={providerModelDraft.name}
+                            required
+                            placeholder="例如 gpt-4.1"
+                            autocomplete="off"
+                          /></label
+                        >
+                        <label
+                          class:invalid={providerModelConfigurationAttempted &&
+                            providerModelDraft.contextWindowTokens <= 0}
+                          ><span><i>*</i>上下文窗口</span><input
+                            bind:value={providerModelDraft.contextWindowTokens}
+                            min="1"
+                            required
+                            type="number"
+                          /></label
+                        >
+                        <label
+                          ><span>最大输出 Token</span><input
+                            bind:value={providerModelDraft.maxOutputTokens}
+                            min="1"
+                            type="number"
+                          /></label
+                        >
+                        <label
+                          ><span>优先级</span><input
+                            bind:value={providerModelDraft.priority}
+                            min="0"
+                            type="number"
+                          /></label
+                        >
+                        <label
+                          ><span>温度</span><span class="provider-temperature-control"><input
+                            bind:value={providerModelDraft.temperature}
+                            min="0"
+                            max="2"
+                            step="0.1"
+                            type="number"
+                          /><span
+                            class="provider-temperature-toggle"
+                            data-tooltip="允许调用时调整温度参数"
+                            ><input
+                              type="checkbox"
+                              bind:checked={providerModelDraft.temperatureMutable}
+                              aria-label="温度可调"
+                            /><i aria-hidden="true"></i></span
+                          ></span></label
+                        >
+                      </div>
+                      <div class="provider-model-capabilities-row">
+                        <div
+                          class="provider-model-flags"
+                          class:invalid={providerModelConfigurationAttempted &&
+                            providerModelDraft.capabilities.length === 0}
+                        >
+                          <span><i>*</i>支持能力</span
+                          >{#each providerCapabilityOptions as capability}<button
+                              class:active={providerModelDraft.capabilities.includes(
+                                capability.value
+                              )}
+                              type="button"
+                              on:click={() =>
+                                toggleProviderModelCapability(capability.value)}
+                              >{capability.label}</button
+                            >{/each}
+                        </div>
+                        <button
+                          class="secondary"
+                          type="button"
+                          on:click={addProviderModel}
+                          >{editingProviderModelName ? '保存修改' : '添加模型'}</button
+                        >
+                      </div>
+                    </div>
+                    <div class="provider-model-list">
+                      <div class="provider-model-list-heading">
+                        <strong>已配置模型</strong><span
+                          >{providerModels.length} 个</span
+                        >
+                      </div>
+                      {#each providerModels as model}<div
+                          class="provider-model-row"
+                        >
+                          <strong>{model.name}</strong><span
+                            >{model.contextWindowTokens.toLocaleString()} Token ·
+                            温度 {model.temperature}</span
+                          ><span
+                            >{model.capabilities
+                              .map(
+                                (capability) =>
+                                  providerCapabilityOptions.find(
+                                    (item) => item.value === capability
+                                  )?.label ?? capability
+                              )
+                              .join('、')}</span
+                          ><label class="provider-model-default"
+                            ><input
+                              type="radio"
+                              name="provider-default-model"
+                              value={model.name}
+                              checked={providerDefaultModel === model.name}
+                              on:change={() => setProviderDefaultModel(model.name)}
+                            /> 默认</label
+                          ><label
+                            class="provider-model-enabled"
+                            data-tooltip={model.name === providerDefaultModel
+                              ? '默认模型必须保持启用'
+                              : model.enabled
+                                ? '模型已启用，可被 Provider 调用'
+                                : '模型已停用，不会被 Provider 调用'}
+                            ><span class="visually-hidden">启用 {model.name}</span><span class="provider-toggle-control"><input
+                                type="checkbox"
+                                checked={model.enabled}
+                                disabled={model.name === providerDefaultModel}
+                                aria-label={'启用 ' + model.name}
+                                on:change={(event) =>
+                                  setProviderModelEnabled(
+                                    model.name,
+                                    (event.currentTarget as HTMLInputElement).checked
+                                  )}
+                              /><i aria-hidden="true"></i></span></label
+                          ><button
+                            class="icon-button"
+                            type="button"
+                            aria-label={`编辑 ${model.name}`}
+                            title="编辑模型"
+                            on:click={() => editProviderModel(model)}
+                            ><Pencil size={14} aria-hidden="true" /></button
+                          ><button
+                            class="icon-button danger-action"
+                            type="button"
+                            aria-label={`删除 ${model.name}`}
+                            title="删除模型"
+                            on:click={() => removeProviderModel(model.name)}
+                            ><Trash2 size={14} aria-hidden="true" /></button
+                          >
+                        </div>{:else}<div class="empty-state">
+                          尚未添加模型。
+                        </div>{/each}
+                    </div>
+                  {:else if resourceKind === 'AIProvider' && resourceAddStep === 4}
+                    <p class="resource-add-description">
+                      用途标签决定当前级别下各场景默认使用的 Provider；同级相同标签只能归属一个 Provider。
+                    </p>
+                    <section class="provider-purpose-configuration" aria-label="Provider 标签配置">
+                      <div class="provider-purpose-scope">
+                        <span>资源级别</span><strong>{scopeLevelLabel(activeScope?.type ?? scopeType(selectedScopeId))}</strong>
+                        <small>{activeScope?.name ?? '平台'} · 由当前团队和项目选择自动确定</small>
+                      </div>
+                      <div class="provider-purpose-options">
+                        <span>用途标签</span>
+                        <div>
+                          {#each providerPurposeOptions as purpose}
+                            {@const unavailableReason = providerPurposeUnavailableReason(purpose.value)}
+                            <button
+                              class:active={providerPurposeTags.includes(purpose.value)}
+                              class:unavailable={!providerPurposeAvailable(purpose.value)}
+                              type="button"
+                              disabled={!providerPurposeAvailable(purpose.value)}
+                              data-tooltip={unavailableReason || undefined}
+                              aria-pressed={providerPurposeTags.includes(purpose.value)}
+                              on:click={() => toggleProviderPurpose(purpose.value)}
+                            >{purpose.label}</button>
+                          {/each}
+                        </div>
+                        <small>默认 Model 的能力决定可选择的用途标签。</small>
+                      </div>
+                    </section>
+                    <section class="provider-purpose-help" aria-label="用途标签说明">
+                      <div>
+                        <strong>用途标签含义</strong>
+                        <p><b>默认</b>：未指定专用用途时的通用 Provider。<b>诊断</b>：AI 诊断对话与故障分析。<b>巡检</b>：自动巡检、监控分析与告警判断。<b>工作流</b>：编排流程中的任务执行与结构化结果。</p>
+                      </div>
+                      <div>
+                        <strong>级别优先级</strong>
+                        <p>按项目 → 团队 → 平台逐级查找；在同一级别内，专用用途标签优先于“默认”标签。当前级别没有对应标签时，先使用当前级别的默认 Provider，再回退到上级级别。</p>
+                      </div>
+                    </section>
+                  {:else if resourceKind === 'AIProvider' && resourceAddStep === 5}
+                    <p class="resource-add-description">
+                      使用默认 Model 完成连接核验后，才可创建 Provider 并发布以下 Model 列表。
+                    </p>
+                    <form
+                      id="provider-create-form"
+                      class="provider-summary"
+                      on:submit|preventDefault={submitProviderCreate}
                     >
-                  </form>
-                </section>
-              </div>
+                      <div>
+                        <span>Provider</span><strong>{resourceName}</strong
+                        ><small
+                          >{providerTypeOptions.find(
+                            (item) => item.value === providerType
+                          )?.label} · {providerEnabled
+                            ? '已启用'
+                            : '未启用'}</small
+                        >
+                      </div>
+                      <div>
+                        <span>服务地址</span><strong>{providerBaseURL}</strong
+                        ><small
+                          >{providerProtocol} · 超时 {providerTimeoutSeconds} 秒 ·
+                          并发 {providerMaxConcurrency}</small
+                        >
+                      </div>
+                      <div>
+                        <span>默认 Model</span><strong
+                          >{providerDefaultModel}</strong
+                        ><small
+                          >共 {providerModels.length} 个 Model，凭据将加密保存</small
+                        >
+                      </div>
+                      <div class="provider-test-summary">
+                        <span>连接核验</span>
+                        {#if providerDraftTestBusy}
+                          <strong>正在测试默认 Model...</strong>
+                          <small>请求正在发送至 {providerDefaultModel}。</small>
+                        {:else if providerDraftTestPassedState}
+                          <strong class="success">连接正常 · {providerDraftTest?.result?.latency_ms} ms</strong>
+                          <small>{providerDraftTest?.result?.message}</small>
+                        {:else if providerDraftTest?.error}
+                          <strong class="failed">连接失败</strong>
+                          <small>{providerDraftTest.error}</small>
+                        {:else}
+                          <strong>尚未核验</strong>
+                          <small>需验证默认 Model 可成功响应后才能创建。</small>
+                        {/if}
+                        <button
+                          class="secondary provider-test-button"
+                          type="button"
+                          disabled={providerDraftTestBusy}
+                          on:click={() => void testProviderDraftConnection()}
+                          >{providerDraftTestBusy ? '测试中' : '连接测试'}</button
+                        >
+                      </div>
+                      <div>
+                        <span>资源归属</span><strong>{activeScopeSummary()}</strong
+                        ><small>创建后仅归属于当前选择的 Scope。</small>
+                      </div>
+                      <div>
+                        <span>用途标签</span><strong>{providerPurposeTags.length > 0 ? providerPurposeTags.map(providerPurposeLabel).join('、') : '未设置'}</strong
+                        ><small>同级别同一标签会自动切换至此 Provider。</small>
+                      </div>
+                      <div class="provider-summary-models">
+                        <span>Model 列表</span
+                        >{#each providerModels as model}<div>
+                            <strong>{model.name}</strong><small
+                              >{model.contextWindowTokens.toLocaleString()} Token
+                              · {model.capabilities
+                                .map(
+                                  (capability) =>
+                                    providerCapabilityOptions.find(
+                                      (item) => item.value === capability
+                                    )?.label ?? capability
+                                )
+                                .join('、')}</small
+                            >
+                          </div>{/each}
+                      </div>
+                    </form>
+                  {:else}
+                    <p class="resource-add-description">
+                      配置将按 {resourceAddCategory} · {resourceAddSubtype} 的资源契约保存；敏感字段会单独加密存储。
+                    </p>
+                    <form
+                      id="resource-create-form"
+                      class="stack-form resource-create-form"
+                      on:submit|preventDefault={createResource}
+                    >
+                      <label
+                        ><span><i>*</i>名称</span><input
+                          bind:value={resourceName}
+                          required
+                          placeholder="例如 production-postgres"
+                        /></label
+                      >
+                      <div class="form-row">
+                        <label
+                          >状态<select bind:value={resourceStatus}
+                            ><option value="active">active</option><option
+                              value="disabled">disabled</option
+                            ><option value="unknown">unknown</option></select
+                          ></label
+                        ><label
+                          >标签<input
+                            bind:value={resourceLabels}
+                            placeholder="env=prod, owner=platform"
+                            autocomplete="off"
+                          /></label
+                        >
+                      </div>
+                      {#if createSchema?.schema.properties}
+                        <div class="schema-inputs">
+                          <p class="eyebrow">SCHEMA FIELDS</p>
+                          {#each Object.entries(createSchema.schema.properties) as [key, field]}<label
+                              >{field.title || key}{#if field.sensitive}<input
+                                  type="password"
+                                  bind:value={resourceSensitiveValues[key]}
+                                  placeholder="敏感信息将加密保存"
+                                  autocomplete="new-password"
+                                />{:else if field.enum}<select
+                                  bind:value={resourceConfigValues[key]}
+                                  ><option value="">未设置</option
+                                  >{#each field.enum as option}<option
+                                      value={option}>{option}</option
+                                    >{/each}</select
+                                >{:else if field.type === 'array'}<textarea
+                                  bind:value={resourceConfigValues[key]}
+                                  rows="4"
+                                  placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
+                                  spellcheck="false"
+                                ></textarea>{:else}<input
+                                  bind:value={resourceConfigValues[key]}
+                                  type={field.type === 'number' ||
+                                  field.type === 'integer'
+                                    ? 'number'
+                                    : field.type === 'url' ||
+                                        field.format === 'uri'
+                                      ? 'url'
+                                      : 'text'}
+                                  placeholder={field.description || key}
+                                  autocomplete="off"
+                                />{/if}</label
+                            >{/each}
+                        </div>
+                      {:else}
+                        <label
+                          >配置 JSON<textarea
+                            bind:value={resourceConfig}
+                            rows="4"
+                            spellcheck="false"
+                          ></textarea></label
+                        >
+                      {/if}
+                    </form>
+                  {/if}
+                </div>
+              </section>
             {/if}
-            {#if selectedResource}<section class="panel detail-panel">
+            {#if selectedResource}<section
+                class="panel detail-panel"
+                class:open={resourceEditorOpen}
+              >
                 <div class="panel-heading">
                   <div>
                     <p class="eyebrow">RESOURCE DETAIL</p>
@@ -4899,7 +6739,7 @@
                     >更新于 {formatDate(selectedResource.updated_at)}</span
                   >
                 </div>
-                {#if selectedResourceHasConnector}
+                {#if selectedResourceHasConnector && selectedResource.kind !== 'AIProvider'}
                   <div class="connection-status">
                     <div class="connection-summary">
                       <span
@@ -4944,6 +6784,32 @@
                   class="stack-form editor-form"
                   on:submit|preventDefault={updateSelectedResource}
                 >
+                  {#if selectedResource.kind === 'AIProvider'}
+                    <div class="provider-edit-form">
+                      <div class="provider-config-form">
+                        <label><span>Provider 名称</span><input bind:value={editResourceName} required /></label>
+                        <label><span>状态</span><select bind:value={editResourceStatus}><option value="active">正常</option><option value="disabled">停用</option><option value="unknown">未知</option></select></label>
+                        <label><span>Provider 类型</span><select bind:value={providerType}>{#each providerTypeOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+                        <label><span>协议</span><select bind:value={providerProtocol}><option value="chat_completions">Chat Completions</option></select></label>
+                        <label><span>服务地址</span><input bind:value={providerBaseURL} type="url" required /></label>
+                        <label><span>请求超时（秒）</span><input bind:value={providerTimeoutSeconds} type="number" min="1" /></label>
+                        <label><span>最大并发</span><input bind:value={providerMaxConcurrency} type="number" min="1" /></label>
+                        <label><span>限流（请求/分钟）</span><input bind:value={providerRateLimitPerMinute} type="number" min="0" /></label>
+                        <label class="provider-enabled-edit"><span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" bind:checked={providerEnabled} /><i aria-hidden="true"></i></span></label>
+                      </div>
+                      <div class="provider-model-editor">
+                        <div class="provider-model-grid">
+                          <label><span>Model 名称</span><input bind:value={providerModelDraft.name} /></label>
+                          <label><span>上下文窗口</span><input bind:value={providerModelDraft.contextWindowTokens} type="number" min="1" /></label>
+                          <label><span>最大输出 Token</span><input bind:value={providerModelDraft.maxOutputTokens} type="number" min="1" /></label>
+                          <label><span>优先级</span><input bind:value={providerModelDraft.priority} type="number" min="0" /></label>
+                          <label><span>温度</span><span class="provider-temperature-control"><input bind:value={providerModelDraft.temperature} type="number" min="0" max="2" step="0.1" /><span class="provider-temperature-toggle" data-tooltip="允许调用时调整温度参数"><input type="checkbox" bind:checked={providerModelDraft.temperatureMutable} aria-label="温度可调" /><i aria-hidden="true"></i></span></span></label>
+                        </div>
+                        <div class="provider-model-capabilities-row"><div class="provider-model-flags"><span>支持能力</span>{#each providerCapabilityOptions as capability}<button class:active={providerModelDraft.capabilities.includes(capability.value)} type="button" on:click={() => toggleProviderModelCapability(capability.value)}>{capability.label}</button>{/each}</div><button class="secondary" type="button" on:click={addProviderModel}>{editingProviderModelName ? '保存修改' : '添加模型'}</button></div>
+                        <div class="provider-model-list">{#each providerModels as model}<div class="provider-model-row"><strong>{model.name}</strong><span>{model.contextWindowTokens.toLocaleString()} Token · 温度 {model.temperature}</span><span>{providerModelCapabilities(model).join('、')}</span><label class="provider-model-default"><input type="radio" name="provider-default-model-edit" value={model.name} checked={providerDefaultModel === model.name} on:change={() => setProviderDefaultModel(model.name)} /> 默认</label><button class="icon-button" type="button" aria-label={`编辑 ${model.name}`} on:click={() => editProviderModel(model)}><Pencil size={14} /></button><button class="icon-button danger-action" type="button" aria-label={`删除 ${model.name}`} on:click={() => removeProviderModel(model.name)}><Trash2 size={14} /></button></div>{:else}<div class="empty-state">尚未添加模型。</div>{/each}</div>
+                      </div>
+                    </div>
+                  {:else}
                   <div class="form-row">
                     <label
                       >名称<input
@@ -4970,7 +6836,7 @@
                       <p class="eyebrow">SCHEMA FIELDS</p>
                       {#each Object.entries(selectedSchema.schema.properties) as [key, field]}
                         <label
-                          >{field.title || key}{#if field.sensitive}<input
+                          ><span>{#if resourceSchemaFieldRequired(key)}<i>*</i>{/if}{field.title || key}</span>{#if field.sensitive}<input
                               type="password"
                               bind:value={editResourceSensitiveValues[key]}
                               placeholder={selectedResource.credential_id
@@ -5009,6 +6875,7 @@
                         spellcheck="false"
                       ></textarea></label
                     >
+                  {/if}
                   {/if}
                   <button
                     class="secondary"
@@ -5193,12 +7060,18 @@
                   {/each}
                 </div>
               </fieldset>
-              <label>解释 AgentProfile（可选）<select bind:value={inspectionAgentProfileId}>
-                <option value="">使用内置巡检解释 Agent</option>
-                {#each agentProfileResources.filter((item) => resourceInActiveWorkspace(item) && item.status === 'active') as profile}
-                  <option value={profile.id}>{profile.name} · {scopeName(profile.scope_id)}</option>
-                {/each}
-              </select></label>
+              <label
+                >解释 AgentProfile（可选）<select
+                  bind:value={inspectionAgentProfileId}
+                >
+                  <option value="">使用内置巡检解释 Agent</option>
+                  {#each agentProfileResources.filter((item) => resourceInActiveWorkspace(item) && item.status === 'active') as profile}
+                    <option value={profile.id}
+                      >{profile.name} · {scopeName(profile.scope_id)}</option
+                    >
+                  {/each}
+                </select></label
+              >
               <button
                 class="primary"
                 disabled={busy ||
@@ -5513,31 +7386,89 @@
           {#if !diagnosisHistoryCollapsed}
             <aside class="diagnosis-history-panel">
               <div class="diagnosis-panel-top">
-                <div><h2>会话历史</h2><small>{diagnosisSessions.length} 个会话</small></div>
+                <div>
+                  <h2>会话历史</h2>
+                  <small>{diagnosisSessions.length} 个会话</small>
+                </div>
                 <div class="diagnosis-heading-actions">
-                  <button class="icon-button" aria-label="清空会话历史" title="清空会话历史" on:click={clearDiagnosisHistory}><Trash2 size={15} /></button>
-                  <button class="icon-button" aria-label="新建诊断会话" title="新建诊断会话" on:click={newDiagnosisSession}><Plus size={16} /></button>
+                  <button
+                    class="icon-button"
+                    aria-label="清空会话历史"
+                    title="清空会话历史"
+                    on:click={clearDiagnosisHistory}
+                    ><Trash2 size={15} /></button
+                  >
+                  <button
+                    class="icon-button"
+                    aria-label="新建诊断会话"
+                    title="新建诊断会话"
+                    on:click={newDiagnosisSession}><Plus size={16} /></button
+                  >
                 </div>
               </div>
-              <input class="diagnosis-session-search" bind:value={diagnosisSessionSearch} placeholder="搜索会话" aria-label="搜索会话" />
+              <input
+                class="diagnosis-session-search"
+                bind:value={diagnosisSessionSearch}
+                placeholder="搜索会话"
+                aria-label="搜索会话"
+              />
               <div class="diagnosis-session-list-f">
-                {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '').toLowerCase().includes(diagnosisSessionSearch.toLowerCase())) as session}
+                {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '')
+                      .toLowerCase()
+                      .includes(diagnosisSessionSearch.toLowerCase())) as session}
                   <div class="diagnosis-session-item">
-                    <button class:active={selectedDiagnosisId === session.id} class="diagnosis-session-row-f" on:click={() => void openDiagnosis(session.id)}>
-                      <strong class="diagnosis-session-title-f">{session.title || '未命名诊断'}</strong>
-                      <span class="diagnosis-session-meta-f"><small>{formatDate(session.created_at)}</small><em class={`diagnosis-session-status-f ${session.status}`}>{diagnosisStatusLabel(session.status)}</em></span>
+                    <button
+                      class:active={selectedDiagnosisId === session.id}
+                      class="diagnosis-session-row-f"
+                      on:click={() => void openDiagnosis(session.id)}
+                    >
+                      <strong class="diagnosis-session-title-f"
+                        >{session.title || '未命名诊断'}</strong
+                      >
+                      <span class="diagnosis-session-meta-f"
+                        ><small>{formatDate(session.created_at)}</small><em
+                          class={`diagnosis-session-status-f ${session.status}`}
+                          >{diagnosisStatusLabel(session.status)}</em
+                        ></span
+                      >
                     </button>
                     <div class="diagnosis-session-actions">
-                      <button aria-label="重命名会话" title="重命名会话" on:click|stopPropagation={() => renameDiagnosisSession(session)}><Pencil size={13} /></button>
-                      <button aria-label="删除会话" title="删除会话" on:click|stopPropagation={() => deleteDiagnosisSession(session)}><Trash2 size={13} /></button>
+                      <button
+                        aria-label="重命名会话"
+                        title="重命名会话"
+                        on:click|stopPropagation={() =>
+                          renameDiagnosisSession(session)}
+                        ><Pencil size={13} /></button
+                      >
+                      <button
+                        aria-label="删除会话"
+                        title="删除会话"
+                        on:click|stopPropagation={() =>
+                          deleteDiagnosisSession(session)}
+                        ><Trash2 size={13} /></button
+                      >
                     </div>
                   </div>
                 {:else}<p class="diagnosis-empty">还没有诊断会话。</p>{/each}
               </div>
             </aside>
           {/if}
-          <div class="diagnosis-splitter left" role="separator" aria-orientation="vertical" on:pointerdown={(event) => startDiagnosisResize('history', event)}>
-            <button aria-label={diagnosisHistoryCollapsed ? '展开会话历史' : '折叠会话历史'} on:click={() => (diagnosisHistoryCollapsed = !diagnosisHistoryCollapsed)}>{#if diagnosisHistoryCollapsed}<ChevronRight size={16} />{:else}<ChevronLeft size={16} />{/if}</button>
+          <div
+            class="diagnosis-splitter left"
+            role="separator"
+            aria-orientation="vertical"
+            on:pointerdown={(event) => startDiagnosisResize('history', event)}
+          >
+            <button
+              aria-label={diagnosisHistoryCollapsed
+                ? '展开会话历史'
+                : '折叠会话历史'}
+              on:click={() =>
+                (diagnosisHistoryCollapsed = !diagnosisHistoryCollapsed)}
+              >{#if diagnosisHistoryCollapsed}<ChevronRight
+                  size={16}
+                />{:else}<ChevronLeft size={16} />{/if}</button
+            >
           </div>
           <section class="diagnosis-conversation-f">
             <header class="diagnosis-conversation-head">
@@ -5547,54 +7478,323 @@
               </div>
               <div class="diagnosis-loaded-context">
                 <span>已加载上下文</span>
-                {#each diagnosisTargets.filter((resource) => diagnosisTargetIds.includes(resource.id)).slice(0, 3) as resource}<span class="diagnosis-context-chip">{resource.name}</span>{/each}
-                {#if diagnosisTargetIds.length > 3}<span class="diagnosis-context-chip accent">+{diagnosisTargetIds.length - 3}</span>{/if}
-                {#if diagnosisTargetIds.length === 0}<span class="diagnosis-context-chip muted">未选择</span>{/if}
+                {#each diagnosisTargets
+                  .filter( (resource) => diagnosisTargetIds.includes(resource.id) )
+                  .slice(0, 3) as resource}<span class="diagnosis-context-chip"
+                    >{resource.name}</span
+                  >{/each}
+                {#if diagnosisTargetIds.length > 3}<span
+                    class="diagnosis-context-chip accent"
+                    >+{diagnosisTargetIds.length - 3}</span
+                  >{/if}
+                {#if diagnosisTargetIds.length === 0}<span
+                    class="diagnosis-context-chip muted">未选择</span
+                  >{/if}
               </div>
               <div class="diagnosis-head-actions">
-                <button class="icon-button super-session-button" aria-label="超级会话" title="超级会话" on:click={() => (notice = '超级会话已启用，将持续保留当前上下文。')}><Sparkles size={16} /></button>
-                <span class="diagnosis-head-status"><i class:running={diagnosisGenerating}></i>{diagnosisGenerating ? '正在生成诊断' : diagnosisSnapshot ? diagnosisStatusLabel(diagnosisSnapshot.session.status) : '等待提问'}</span>
+                <button
+                  class="icon-button super-session-button"
+                  aria-label="超级会话"
+                  title="超级会话"
+                  on:click={() =>
+                    (notice = '超级会话已启用，将持续保留当前上下文。')}
+                  ><Sparkles size={16} /></button
+                >
+                <span class="diagnosis-head-status"
+                  ><i class:running={diagnosisGenerating}
+                  ></i>{diagnosisGenerating
+                    ? '正在生成回答'
+                    : diagnosisSnapshot
+                      ? diagnosisStatusLabel(diagnosisSnapshot.session.status)
+                      : '等待提问'}</span
+                >
               </div>
             </header>
             <div class="diagnosis-message-list-f">
-              {#if !diagnosisSnapshot}<div class="diagnosis-welcome"><span class="diagnosis-welcome-icon"><Stethoscope size={23} /></span><h2>从一个问题开始</h2><p>选择右侧上下文资源，描述现象后发送。Agent 会沿着可审计的只读证据链进行诊断。</p></div>{/if}
+              {#if !diagnosisSnapshot}<div class="diagnosis-welcome">
+                  <span class="diagnosis-welcome-icon"
+                    ><Stethoscope size={23} /></span
+                  >
+                  <h2>从一个问题开始</h2>
+                  <p>
+                    可直接提问；如需查询资源状态、内容或性能，请在右侧选择已授权的上下文资源。
+                    AIEngine 会按需调用受控只读工具。
+                  </p>
+                </div>{/if}
               {#if diagnosisSnapshot}{#each diagnosisSnapshot.messages as message, index}
-                <article class="diagnosis-message-f {message.role}">
-                  <span class="diagnosis-message-avatar">{message.role === 'assistant' ? 'AI' : '你'}</span>
+                  <article class="diagnosis-message-f {message.role}">
+                    <span class="diagnosis-message-avatar"
+                      >{message.role === 'assistant' ? 'AI' : '你'}</span
+                    >
+                    <div class="diagnosis-message-content">
+                      <div class="diagnosis-message-meta">
+                        {#if message.role === 'assistant'}<strong
+                            >AI 助手</strong
+                          >{/if}<small>{formatDate(message.created_at)}</small>
+                      </div>
+                      {#if diagnosisEditingMessageId === message.id}
+                        <div class="diagnosis-edit-box">
+                          <textarea
+                            bind:value={diagnosisEditDraft}
+                            aria-label="编辑诊断问题"
+                            rows="3"
+                          ></textarea>
+                          <div>
+                            <button
+                              class="secondary"
+                              on:click={() => (diagnosisEditingMessageId = '')}
+                              >取消</button
+                            ><button
+                              class="primary"
+                              on:click={() => void saveDiagnosisEdit()}
+                              disabled={busy}>重新发送</button
+                            >
+                          </div>
+                        </div>
+                      {:else}
+                        {#if message.role === 'assistant' && !diagnosisGenerating && index === diagnosisSnapshot.messages
+                              .map((item) => item.role)
+                              .lastIndexOf('assistant')}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
+                            <div class="diagnosis-action-group">
+                              <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
+                              {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}</div>{/each}</div>{/if}
+                            </div>
+                          {/each}{/if}
+                        <div class="diagnosis-bubble-f">
+                          <div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(message.content)}</div>
+                          {#if diagnosisInterruptedReason && message.role === 'assistant' && index === diagnosisSnapshot.messages
+                                .map((item) => item.role)
+                                .lastIndexOf('assistant')}<span
+                              class="diagnosis-interruption"
+                              ><i
+                              ></i>回答已中断：{diagnosisInterruptedReason}</span
+                            >{/if}{#if message.role === 'assistant'}<button
+                              class="bubble-icon copy"
+                              aria-label="复制回答"
+                              title="复制回答"
+                              on:click={() =>
+                                copyDiagnosisAnswer(message.content)}
+                              ><Copy size={14} /></button
+                            >{/if}{#if message.role === 'user' && isLastDiagnosisUser(index)}<button
+                              class="bubble-icon edit"
+                              aria-label="编辑并重新发送"
+                              title="编辑并重新发送"
+                              on:click={() => beginDiagnosisEdit(message)}
+                              ><Pencil size={14} /></button
+                            >{/if}
+                        </div>
+                      {/if}
+                    </div>
+                  </article>
+                {/each}{/if}
+              {#if diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason}
+                {#each diagnosisSnapshot ? diagnosisActionData(diagnosisSnapshot) : [] as actionGroup}
+                  <div class="diagnosis-action-group diagnosis-live-actions">
+                    <button
+                      class="diagnosis-action-row"
+                      aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])}
+                      on:click={() =>
+                        (diagnosisActionExpanded = {
+                          ...diagnosisActionExpanded,
+                          [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id]
+                        })}
+                    ><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
+                    {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">
+                      {#each actionGroup.children as child}<div>
+                        <button
+                          class="diagnosis-action-row child"
+                          aria-expanded={Boolean(diagnosisActionChildren[child.id])}
+                          on:click={() =>
+                            (diagnosisActionChildren = {
+                              ...diagnosisActionChildren,
+                              [child.id]: !diagnosisActionChildren[child.id]
+                            })}
+                        ><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>
+                        {#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}
+                      </div>{/each}
+                    </div>{/if}
+                  </div>
+                {/each}
+                <article class="diagnosis-message-f assistant diagnosis-streaming-message">
+                  <span class="diagnosis-message-avatar">AI</span>
                   <div class="diagnosis-message-content">
-                    <div class="diagnosis-message-meta">{#if message.role === 'assistant'}<strong>AI 诊断 Agent</strong>{/if}<small>{formatDate(message.created_at)}</small></div>
-                    {#if diagnosisEditingMessageId === message.id}
-                      <div class="diagnosis-edit-box"><textarea bind:value={diagnosisEditDraft} aria-label="编辑诊断问题" rows="3"></textarea><div><button class="secondary" on:click={() => (diagnosisEditingMessageId = '')}>取消</button><button class="primary" on:click={() => void saveDiagnosisEdit()} disabled={busy}>重新发送</button></div></div>
-                    {:else}
-                      <div class="diagnosis-bubble-f"><p>{message.content}</p>{#if diagnosisInterruptedReason && message.role === 'assistant' && index === diagnosisSnapshot.messages.map((item) => item.role).lastIndexOf('assistant')}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}{#if message.role === 'assistant'}<button class="bubble-icon copy" aria-label="复制回答" title="复制回答" on:click={() => copyDiagnosisAnswer(message.content)}><Copy size={14} /></button>{/if}{#if message.role === 'user' && isLastDiagnosisUser(index)}<button class="bubble-icon edit" aria-label="编辑并重新发送" title="编辑并重新发送" on:click={() => beginDiagnosisEdit(message)}><Pencil size={14} /></button>{/if}</div>
-                    {/if}
-                    {#if message.role === 'assistant' && index === diagnosisSnapshot.messages.map((item) => item.role).lastIndexOf('assistant')}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
-                      <div class="diagnosis-action-group"><button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span>{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>{#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span>{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}</div>{/each}</div>{/if}</div>
-                    {/each}{/if}
+                    <div class="diagnosis-message-meta"><strong>AI 助手</strong><small>实时响应</small></div>
+                    <div class="diagnosis-bubble-f diagnosis-streaming-bubble">
+                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(diagnosisStreamingText)}</div>{:else}<span class="diagnosis-thinking"><i></i><i></i><i></i><span>正在思考</span></span>{/if}
+                      {#if diagnosisInterruptedReason}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}
+                    </div>
                   </div>
                 </article>
-              {/each}{/if}
+              {/if}
             </div>
-            <form class="diagnosis-composer-f" on:submit|preventDefault={() => void submitDiagnosisMessage()}>
+            <form
+              class="diagnosis-composer-f"
+              on:submit|preventDefault={() => void submitDiagnosisMessage()}
+            >
               <div class="diagnosis-composer-shell">
-                <textarea bind:value={diagnosisComposerText} on:keydown={handleDiagnosisComposerKeydown} placeholder="描述问题，或输入 / 调用 Skill…" aria-label="输入诊断问题" rows="3" maxlength="16000"></textarea>
-              <div class="diagnosis-composer-tools"><div><button type="button" class="diagnosis-tool" title="添加附件" on:click={() => (notice = '附件入口已打开。')}><Paperclip size={15} />附件</button><button type="button" class="diagnosis-tool" title="添加链接" on:click={() => (notice = '链接入口已打开。')}><Link2 size={15} />链接</button><button type="button" class="diagnosis-tool" title="选择 Skills" on:click={() => (notice = 'Skills：指标查询、日志查询、Kubernetes 只读查询。')}><Sparkles size={15} />Skills</button><button type="button" class="diagnosis-tool" title="选择 Agent" on:click={() => (notice = 'Agent：故障定位 Agent。')}><Bot size={15} />Agent</button></div><div><select bind:value={selectedProviderId} aria-label="选择模型服务商">{#each diagnosisAvailableProviders as provider}<option value={provider.provider_resource_id}>{provider.name}</option>{:else}<option value="">当前作用域暂无可用模型服务商</option>{/each}</select><select bind:value={llmModelName} aria-label="选择模型"><option value="">选择模型</option>{#each diagnosisProviderModels as model}<option value={String(model.name ?? '')}>{String(model.name ?? '')}</option>{/each}</select><button class="primary diagnosis-send-button" type="button" disabled={busy || (!diagnosisComposerText.trim() && !diagnosisGenerating)} on:click={() => diagnosisGenerating ? stopDiagnosisGeneration() : void submitDiagnosisMessage()}>{#if diagnosisGenerating}<Square size={14} fill="currentColor" />停止{:else}<Send size={14} />发送{/if}</button></div></div>
+                <textarea
+                  bind:value={diagnosisComposerText}
+                  on:keydown={handleDiagnosisComposerKeydown}
+                  placeholder="描述问题，或输入 / 调用 Skill…"
+                  aria-label="输入诊断问题"
+                  rows="3"
+                  maxlength="16000"
+                ></textarea>
+                <div class="diagnosis-composer-tools">
+                  <div>
+                    <button
+                      type="button"
+                      class="diagnosis-tool"
+                      title="添加附件"
+                      on:click={() => (notice = '附件入口已打开。')}
+                      ><Paperclip size={15} />附件</button
+                    ><button
+                      type="button"
+                      class="diagnosis-tool"
+                      title="添加链接"
+                      on:click={() => (notice = '链接入口已打开。')}
+                      ><Link2 size={15} />链接</button
+                    ><button
+                      type="button"
+                      class="diagnosis-tool"
+                      title="选择 Skills"
+                      on:click={() =>
+                        (notice =
+                          'Skills：指标查询、日志查询、Kubernetes 只读查询。')}
+                      ><Sparkles size={15} />Skills</button
+                    ><button
+                      type="button"
+                      class="diagnosis-tool"
+                      title="选择 Agent"
+                      on:click={() => (notice = 'Agent：故障定位 Agent。')}
+                      ><Bot size={15} />Agent</button
+                    >
+                  </div>
+                  <div>
+                    <select
+                      bind:value={selectedProviderId}
+                      aria-label="选择模型服务商"
+                      >{#each diagnosisAvailableProviders as provider}<option
+                          value={provider.provider_resource_id}
+                          >{provider.name}</option
+                        >{:else}<option value=""
+                          >当前作用域暂无可用模型服务商</option
+                        >{/each}</select
+                    ><select bind:value={llmModelName} aria-label="选择模型"
+                      ><option value="">选择模型</option
+                      >{#each diagnosisProviderModels as model}<option
+                          value={String(model.name ?? '')}
+                          >{String(model.name ?? '')}</option
+                        >{/each}</select
+                    ><button
+                      class="primary diagnosis-send-button"
+                      type="button"
+                      disabled={busy ||
+                        (!diagnosisComposerText.trim() && !diagnosisGenerating)}
+                      on:click={() =>
+                        diagnosisGenerating
+                          ? stopDiagnosisGeneration()
+                          : void submitDiagnosisMessage()}
+                      >{#if diagnosisGenerating}<Square
+                          size={14}
+                          fill="currentColor"
+                        />停止{:else}<Send size={14} />发送{/if}</button
+                    >
+                  </div>
+                </div>
               </div>
-              <small class="diagnosis-composer-note"><span>Enter 发送 · Shift + Enter 换行</span><span>当前模型支持：文本、工具调用、流式输出</span></small>
+              <small class="diagnosis-composer-note"
+                ><span>Enter 发送 · Shift + Enter 换行</span><span
+                  >当前模型支持：文本、工具调用、流式输出</span
+                ></small
+              >
             </form>
           </section>
-          <div class="diagnosis-splitter right" role="separator" aria-orientation="vertical" on:pointerdown={(event) => startDiagnosisResize('context', event)}>
-            <button aria-label={diagnosisContextCollapsed ? '展开诊断上下文' : '折叠诊断上下文'} on:click={() => (diagnosisContextCollapsed = !diagnosisContextCollapsed)}>{#if diagnosisContextCollapsed}<ChevronLeft size={16} />{:else}<ChevronRight size={16} />{/if}</button>
+          <div
+            class="diagnosis-splitter right"
+            role="separator"
+            aria-orientation="vertical"
+            on:pointerdown={(event) => startDiagnosisResize('context', event)}
+          >
+            <button
+              aria-label={diagnosisContextCollapsed
+                ? '展开诊断上下文'
+                : '折叠诊断上下文'}
+              on:click={() =>
+                (diagnosisContextCollapsed = !diagnosisContextCollapsed)}
+              >{#if diagnosisContextCollapsed}<ChevronLeft
+                  size={16}
+                />{:else}<ChevronRight size={16} />{/if}</button
+            >
           </div>
           {#if !diagnosisContextCollapsed}
             <aside class="diagnosis-context-panel-f">
-              <div class="diagnosis-panel-top"><div><h2>诊断上下文</h2><small>{diagnosisTargetIds.length} / {diagnosisTargets.length} 已加载</small></div></div>
-              <div class="diagnosis-context-tabs"><button class:active={diagnosisContextTab === 'context'} on:click={() => (diagnosisContextTab = 'context')}>上下文</button><button class:active={diagnosisContextTab === 'evidence'} on:click={() => (diagnosisContextTab = 'evidence')}>证据链</button></div>
+              <div class="diagnosis-panel-top">
+                <div>
+                  <h2>诊断上下文</h2>
+                  <small
+                    >{diagnosisTargetIds.length} / {diagnosisTargets.length} 已加载</small
+                  >
+                </div>
+              </div>
+              <div class="diagnosis-context-tabs">
+                <button
+                  class:active={diagnosisContextTab === 'context'}
+                  on:click={() => (diagnosisContextTab = 'context')}
+                  >上下文</button
+                ><button
+                  class:active={diagnosisContextTab === 'evidence'}
+                  on:click={() => (diagnosisContextTab = 'evidence')}
+                  >证据链</button
+                >
+              </div>
               {#if diagnosisContextTab === 'context'}
-                <p class="diagnosis-context-note"><strong>上下文开关</strong><br />只把打开的资源提供给当前 Agent；关闭不会删除资源，也不会影响权限。</p>
-                <div class="diagnosis-resource-list-f">{#each diagnosisTargets as resource}<label class:selected={diagnosisTargetIds.includes(resource.id)}><span class="diagnosis-resource-icon">{resourceIcon(resource.kind)}</span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span><input type="checkbox" checked={diagnosisTargetIds.includes(resource.id)} on:change={() => toggleDiagnosisContext(resource.id)} /></label>{:else}<p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>{/each}</div>
+                <p class="diagnosis-context-note">
+                  <strong>上下文开关</strong><br />只把打开的资源提供给当前
+                  Agent；关闭不会删除资源，也不会影响权限。
+                </p>
+                <div class="diagnosis-resource-list-f">
+                  {#each diagnosisTargets as resource}<label
+                      class:selected={diagnosisTargetIds.includes(resource.id)}
+                      ><span class="diagnosis-resource-icon"
+                        >{resourceIcon(resource.kind)}</span
+                      ><span
+                        ><strong>{resource.name}</strong><small
+                          >{resourceSchemaName(resource.kind)} · {scopeName(
+                            resource.scope_id
+                          )}</small
+                        ></span
+                      ><input
+                        type="checkbox"
+                        checked={diagnosisTargetIds.includes(resource.id)}
+                        on:change={() => toggleDiagnosisContext(resource.id)}
+                      /></label
+                    >{:else}<p class="diagnosis-empty">
+                      当前作用域没有可用于诊断的活动资源。
+                    </p>{/each}
+                </div>
               {:else}
-                <div class="diagnosis-evidence-list-f">{#each diagnosisSnapshot?.evidence ?? [] as evidence}<button class:active={selectedEvidence?.id === evidence.id} on:click={() => (selectedEvidence = evidence)}><strong>{evidence.capability || 'Connector 只读结果'}</strong><small>{formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'} · 不可信输入</small></button>{:else}<p class="diagnosis-empty">执行完成后，Connector 返回的只读结果会出现在这里。</p>{/each}</div>{#if selectedEvidence}<pre class="diagnosis-evidence-detail">{JSON.stringify(selectedEvidence.content, null, 2)}</pre>{/if}
+                <div class="diagnosis-evidence-list-f">
+                  {#each diagnosisSnapshot?.evidence ?? [] as evidence}<button
+                      class:active={selectedEvidence?.id === evidence.id}
+                      on:click={() => (selectedEvidence = evidence)}
+                      ><strong
+                        >{evidence.capability || 'Connector 只读结果'}</strong
+                      ><small
+                        >{formatDate(evidence.collected_at)} · {evidence.partial
+                          ? '部分结果'
+                          : '完整结果'} · 不可信输入</small
+                      ></button
+                    >{:else}<p class="diagnosis-empty">
+                      执行完成后，Connector 返回的只读结果会出现在这里。
+                    </p>{/each}
+                </div>
+                {#if selectedEvidence}<pre
+                    class="diagnosis-evidence-detail">{JSON.stringify(
+                      selectedEvidence.content,
+                      null,
+                      2
+                    )}</pre>{/if}
               {/if}
             </aside>
           {/if}
@@ -5602,153 +7802,265 @@
       {:else if view === 'agent'}
         <section class="content-grid two-column ai-runtime">
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">AGENT PROFILES</p><h2>Agent 专家配置</h2></div><span class="count">{agentProfileResources.length}</span></div>
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">AGENT PROFILES</p>
+                <h2>Agent 专家配置</h2>
+              </div>
+              <span class="count">{agentProfileResources.length}</span>
+            </div>
             <div class="stack-form compact-form">
-              <label>AgentProfile<select bind:value={selectedAgentProfileId} on:change={loadAgentProfileVersions}><option value="" disabled>选择 AgentProfile</option>{#each agentProfileResources as item}<option value={item.id}>{item.name} · {scopeName(item.scope_id)}</option>{/each}</select></label>
-              <label>已发布版本<select bind:value={selectedAgentProfileVersionId}><option value="">选择版本</option>{#each agentProfileVersions as version}<option value={version.id}>v{version.version} · {version.status}</option>{/each}</select></label>
-              <button class="primary" type="button" disabled={busy || !selectedAgentProfileId || !selectedAgentProfileVersionId} on:click={publishAgentProfileVersion}>发布版本</button>
-              {#if agentProfileVersions.length === 0}<p class="muted-copy">版本发布后，AIEngine 执行时会固定使用已发布的专家指令和工具契约。</p>{/if}
+              <label
+                >AgentProfile<select
+                  bind:value={selectedAgentProfileId}
+                  on:change={loadAgentProfileVersions}
+                  ><option value="" disabled>选择 AgentProfile</option
+                  >{#each agentProfileResources as item}<option value={item.id}
+                      >{item.name} · {scopeName(item.scope_id)}</option
+                    >{/each}</select
+                ></label
+              >
+              <label
+                >已发布版本<select bind:value={selectedAgentProfileVersionId}
+                  ><option value="">选择版本</option
+                  >{#each agentProfileVersions as version}<option
+                      value={version.id}
+                      >v{version.version} · {version.status}</option
+                    >{/each}</select
+                ></label
+              >
+              <button
+                class="primary"
+                type="button"
+                disabled={busy ||
+                  !selectedAgentProfileId ||
+                  !selectedAgentProfileVersionId}
+                on:click={publishAgentProfileVersion}>发布版本</button
+              >
+              {#if agentProfileVersions.length === 0}<p class="muted-copy">
+                  版本发布后，AIEngine
+                  执行时会固定使用已发布的专家指令和工具契约。
+                </p>{/if}
             </div>
           </section>
           <section class="panel wide-panel">
-            <div class="panel-heading"><div><p class="eyebrow">NEW PROFILE</p><h2>创建 AgentProfile</h2></div><span class="scope-type">版本化契约</span></div>
-            <form class="stack-form" on:submit|preventDefault={createAgentProfile}>
-              <div class="form-row"><label>名称<input bind:value={agentProfileName} required placeholder="例如：PostgreSQL 故障专家" /></label><label>适用资源类型<input bind:value={agentProfileTargetKinds} required placeholder="Application, PostgreSQL" /></label></div>
-              <label>专家指令<textarea bind:value={agentProfileInstruction} rows="5" required placeholder="描述诊断范围、判断原则和输出要求"></textarea></label>
-              <div class="form-row"><label>模型能力<input bind:value={agentProfileCapabilities} placeholder="text, tool_calling, stream" /></label><label>允许工具<input bind:value={agentProfileAllowedTools} placeholder="connector_postgresql_inspect" /></label></div>
-              <div class="form-row"><label>输入 Schema<textarea bind:value={agentProfileInputSchema} rows="4" spellcheck="false"></textarea></label><label>输出 Schema<textarea bind:value={agentProfileOutputSchema} rows="4" spellcheck="false"></textarea></label></div>
-              <button class="primary" disabled={busy || !selectedScopeId}>创建并发布 v1</button>
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NEW PROFILE</p>
+                <h2>创建 AgentProfile</h2>
+              </div>
+              <span class="scope-type">版本化契约</span>
+            </div>
+            <form
+              class="stack-form"
+              on:submit|preventDefault={createAgentProfile}
+            >
+              <div class="form-row">
+                <label
+                  >名称<input
+                    bind:value={agentProfileName}
+                    required
+                    placeholder="例如：PostgreSQL 故障专家"
+                  /></label
+                ><label
+                  >适用资源类型<input
+                    bind:value={agentProfileTargetKinds}
+                    required
+                    placeholder="Application, PostgreSQL"
+                  /></label
+                >
+              </div>
+              <label
+                >专家指令<textarea
+                  bind:value={agentProfileInstruction}
+                  rows="5"
+                  required
+                  placeholder="描述诊断范围、判断原则和输出要求"
+                ></textarea></label
+              >
+              <div class="form-row">
+                <label
+                  >模型能力<input
+                    bind:value={agentProfileCapabilities}
+                    placeholder="text, tool_calling, stream"
+                  /></label
+                ><label
+                  >允许工具<input
+                    bind:value={agentProfileAllowedTools}
+                    placeholder="connector_postgresql_inspect"
+                  /></label
+                >
+              </div>
+              <div class="form-row">
+                <label
+                  >输入 Schema<textarea
+                    bind:value={agentProfileInputSchema}
+                    rows="4"
+                    spellcheck="false"
+                  ></textarea></label
+                ><label
+                  >输出 Schema<textarea
+                    bind:value={agentProfileOutputSchema}
+                    rows="4"
+                    spellcheck="false"
+                  ></textarea></label
+                >
+              </div>
+              <button class="primary" disabled={busy || !selectedScopeId}
+                >创建并发布 v1</button
+              >
             </form>
           </section>
           <section class="panel wide-panel">
-            <div class="panel-heading"><div><p class="eyebrow">RELEASE HISTORY</p><h2>版本历史</h2></div><span class="count">{agentProfileVersions.length}</span></div>
-            <div class="table-list">{#each agentProfileVersions as version}<div class="list-row static"><span><strong>v{version.version}</strong><small>{formatDate(version.created_at)} · {version.status}</small></span><span class="status-label {version.status}">{version.status === 'published' ? '已发布' : version.status === 'disabled' ? '已停用' : '草稿'}</span></div>{:else}<div class="empty-state">选择 AgentProfile 后显示版本历史。</div>{/each}</div>
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">RELEASE HISTORY</p>
+                <h2>版本历史</h2>
+              </div>
+              <span class="count">{agentProfileVersions.length}</span>
+            </div>
+            <div class="table-list">
+              {#each agentProfileVersions as version}<div
+                  class="list-row static"
+                >
+                  <span
+                    ><strong>v{version.version}</strong><small
+                      >{formatDate(version.created_at)} · {version.status}</small
+                    ></span
+                  ><span class="status-label {version.status}"
+                    >{version.status === 'published'
+                      ? '已发布'
+                      : version.status === 'disabled'
+                        ? '已停用'
+                        : '草稿'}</span
+                  >
+                </div>{:else}<div class="empty-state">
+                  选择 AgentProfile 后显示版本历史。
+                </div>{/each}
+            </div>
           </section>
         </section>
       {:else if view === 'skill'}
-          <section class="content-grid two-column ai-runtime">
-            <section class="panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">SKILL REGISTRY</p>
-                  <h2>Skill 版本</h2>
-                </div>
-                <span class="count">{skillVersions.length}</span>
+        <section class="content-grid two-column ai-runtime">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">SKILL REGISTRY</p>
+                <h2>Skill 版本</h2>
               </div>
-              <div class="stack-form compact-form">
-                <label
-                  >Skill<select
-                    bind:value={selectedSkillId}
-                    required
-                    on:change={loadSkillVersions}
-                    ><option value="" disabled>选择 Skill 资源</option
-                    >{#each skillResources as item}<option value={item.id}
-                        >{item.name} · {scopeName(item.scope_id)}</option
-                      >{/each}</select
-                  ></label
-                >
-                <label
-                  >版本<select bind:value={selectedSkillVersionId}
-                    ><option value="" disabled>选择版本</option
-                    >{#each skillVersions as version}<option value={version.id}
-                        >v{version.version} · {version.status} · {version.risk_level}</option
-                      >{/each}</select
-                  ></label
-                >
-                <div class="form-actions">
-                  <button
-                    class="secondary"
-                    type="button"
-                    on:click={setSkillDefault}
-                    disabled={busy || !selectedSkillVersionId}
-                    >设为当前 Scope 默认</button
-                  >
-                  <button
-                    class="primary"
-                    type="button"
-                    on:click={publishSkillVersion}
-                    disabled={busy || !selectedSkillVersionId}>发布版本</button
-                  >
-                </div>
-              </div>
-            </section>
-
-            <section class="panel wide-panel">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">NEW VERSION</p>
-                  <h2>创建 Skill 草稿</h2>
-                </div>
-                <span class="scope-type">不可变版本</span>
-              </div>
-              <form
-                class="stack-form"
-                on:submit|preventDefault={createSkillVersion}
+              <span class="count">{skillVersions.length}</span>
+            </div>
+            <div class="stack-form compact-form">
+              <label
+                >Skill<select
+                  bind:value={selectedSkillId}
+                  required
+                  on:change={loadSkillVersions}
+                  ><option value="" disabled>选择 Skill 资源</option
+                  >{#each skillResources as item}<option value={item.id}
+                      >{item.name} · {scopeName(item.scope_id)}</option
+                    >{/each}</select
+                ></label
               >
+              <label
+                >版本<select bind:value={selectedSkillVersionId}
+                  ><option value="" disabled>选择版本</option
+                  >{#each skillVersions as version}<option value={version.id}
+                      >v{version.version} · {version.status} · {version.risk_level}</option
+                    >{/each}</select
+                ></label
+              >
+              <div class="form-actions">
+                <button
+                  class="secondary"
+                  type="button"
+                  on:click={setSkillDefault}
+                  disabled={busy || !selectedSkillVersionId}
+                  >设为当前 Scope 默认</button
+                >
+                <button
+                  class="primary"
+                  type="button"
+                  on:click={publishSkillVersion}
+                  disabled={busy || !selectedSkillVersionId}>发布版本</button
+                >
+              </div>
+            </div>
+          </section>
+
+          <section class="panel wide-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NEW VERSION</p>
+                <h2>创建 Skill 草稿</h2>
+              </div>
+              <span class="scope-type">不可变版本</span>
+            </div>
+            <form
+              class="stack-form"
+              on:submit|preventDefault={createSkillVersion}
+            >
+              <label
+                >Agent Instruction<textarea
+                  bind:value={skillInstruction}
+                  rows="5"
+                  required
+                  placeholder="明确目标、边界与输出 JSON 结构"
+                ></textarea></label
+              >
+              <label
+                >适用资源类型<input
+                  bind:value={skillTargetKinds}
+                  required
+                  placeholder="Application, Kubernetes"
+                /></label
+              >
+              <fieldset class="skill-tool-picker">
+                <legend>允许调用的 Connector 工具</legend>
+                <p>仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。</p>
+                <div class="skill-tool-grid">
+                  {#each skillToolOptions as tool}
+                    <label
+                      class:selected={selectedSkillToolNames.includes(
+                        tool.name
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSkillToolNames.includes(tool.name)}
+                        on:change={() => toggleSkillTool(tool.name)}
+                      />
+                      <span
+                        ><strong>{tool.title}</strong><small
+                          >{tool.description}</small
+                        ></span
+                      >
+                    </label>
+                  {/each}
+                </div>
+              </fieldset>
+              <div class="form-row">
                 <label
-                  >Agent Instruction<textarea
-                    bind:value={skillInstruction}
+                  >输入 Schema<textarea
+                    bind:value={skillInputSchema}
                     rows="5"
-                    required
-                    placeholder="明确目标、边界与输出 JSON 结构"
+                    spellcheck="false"
                   ></textarea></label
                 >
                 <label
-                  >适用资源类型<input
-                    bind:value={skillTargetKinds}
-                    required
-                    placeholder="Application, Kubernetes"
-                  /></label
+                  >输出 Schema<textarea
+                    bind:value={skillOutputSchema}
+                    rows="5"
+                    spellcheck="false"
+                  ></textarea></label
                 >
-                <fieldset class="skill-tool-picker">
-                  <legend>允许调用的 Connector 工具</legend>
-                  <p>
-                    仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。
-                  </p>
-                  <div class="skill-tool-grid">
-                    {#each skillToolOptions as tool}
-                      <label
-                        class:selected={selectedSkillToolNames.includes(
-                          tool.name
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedSkillToolNames.includes(tool.name)}
-                          on:change={() => toggleSkillTool(tool.name)}
-                        />
-                        <span
-                          ><strong>{tool.title}</strong><small
-                            >{tool.description}</small
-                          ></span
-                        >
-                      </label>
-                    {/each}
-                  </div>
-                </fieldset>
-                <div class="form-row">
-                  <label
-                    >输入 Schema<textarea
-                      bind:value={skillInputSchema}
-                      rows="5"
-                      spellcheck="false"
-                    ></textarea></label
-                  >
-                  <label
-                    >输出 Schema<textarea
-                      bind:value={skillOutputSchema}
-                      rows="5"
-                      spellcheck="false"
-                    ></textarea></label
-                  >
-                </div>
-                <button class="primary" disabled={busy || !selectedSkillId}
-                  >创建版本</button
-                >
-              </form>
-            </section>
-
+              </div>
+              <button class="primary" disabled={busy || !selectedSkillId}
+                >创建版本</button
+              >
+            </form>
           </section>
+        </section>
       {:else if view === 'access'}
         <section class="access-page">
           <section class="panel access-workbench">
@@ -6110,7 +8422,9 @@
                     </div>
                     <div class="permission-list">
                       {#each role.permissions as permission}<span
-                          data-tooltip={permissionDescription(String(permission))}
+                          data-tooltip={permissionDescription(
+                            String(permission)
+                          )}
                           title={permissionDescription(String(permission))}
                           >{permission}</span
                         >{/each}

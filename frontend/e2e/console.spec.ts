@@ -38,7 +38,10 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         body: JSON.stringify(body)
       });
     if (path.endsWith('/auth/me/context'))
-      return json({ platform_admin: platformAdmin, platform_role: platformAdmin });
+      return json({
+        platform_admin: platformAdmin,
+        platform_role: platformAdmin
+      });
     if (path.endsWith('/auth/me'))
       return authenticated
         ? json(user)
@@ -449,6 +452,27 @@ test.describe('T07 console', () => {
     await expect(
       page.getByRole('heading', { name: '资源目录' }).first()
     ).toBeVisible();
+    await page.getByRole('button', { name: '添加资源' }).click();
+    await expect(
+      page.getByRole('heading', { name: '类型选择' })
+    ).toBeVisible();
+    await expect(page.locator('.resource-list-panel')).toBeHidden();
+    const resourceAddWorkflow = page.locator('.resource-add-workflow');
+    const resourceCategory = resourceAddWorkflow.getByLabel('资源类型');
+    const resourceSubtype = resourceAddWorkflow.getByLabel('资源子类型');
+    await resourceCategory.selectOption('LLM');
+    await expect(resourceSubtype).toHaveValue('');
+    await expect(
+      resourceSubtype.locator('option', { hasText: 'Provider' })
+    ).toHaveCount(1);
+    await resourceSubtype.selectOption('Provider');
+    await resourceAddWorkflow.getByRole('button', { name: '下一步' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Provider 配置' })
+    ).toBeVisible();
+    await resourceAddWorkflow.getByRole('button', { name: '上一步' }).click();
+    await resourceAddWorkflow.getByRole('button', { name: '取消' }).click();
+    await expect(page.locator('.resource-list-panel')).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
       page.getByRole('button', { name: '资源', exact: true })
@@ -458,6 +482,96 @@ test.describe('T07 console', () => {
         () => document.documentElement.scrollWidth <= window.innerWidth
       )
     ).toBeTruthy();
+  });
+
+  test('tests a draft Provider connection from the summary step', async ({
+    page
+  }) => {
+    await pageData(page, false, true);
+    let releaseConnectionTest: (() => void) | undefined;
+    const connectionTestPending = new Promise<void>((resolve) => {
+      releaseConnectionTest = resolve;
+    });
+    // The app is served below /opskeeper/ in both the preview server and the
+    // embedded production UI, so include the deployment prefix in the route.
+    await page.route('**/opskeeper/api/v1/ai-providers/test-draft', async (route) => {
+      await connectionTestPending;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          model_name: 'test-model',
+          status: 'succeeded',
+          latency_ms: 42,
+          message: '模型连接测试通过'
+        })
+      });
+    });
+
+    await page.goto('/');
+    await page.getByRole('button', { name: '资源', exact: true }).click();
+    await page.getByRole('button', { name: '添加资源' }).click();
+    const workflow = page.locator('.resource-add-workflow');
+    await workflow.getByLabel('资源类型').selectOption('LLM');
+    await workflow.getByLabel('资源子类型').selectOption('Provider');
+    await workflow.getByRole('button', { name: '下一步' }).click();
+    await workflow.getByLabel('Provider 名称').fill('draft-provider');
+    await workflow.getByLabel('服务地址').fill('https://llm.test/v1');
+    await workflow.getByRole('button', { name: '下一步' }).click();
+    await workflow.getByLabel('Model 名称').fill('test-model');
+    await workflow.getByRole('button', { name: '添加模型' }).click();
+    await workflow.getByLabel('Model 名称').fill('second-model');
+    await workflow.getByRole('button', { name: '添加模型' }).click();
+    const secondModelRow = workflow.locator('.provider-model-row').filter({
+      hasText: 'second-model'
+    });
+    await secondModelRow.getByRole('button', { name: '编辑 second-model' }).click();
+    await expect(workflow.getByLabel('Model 名称')).toHaveValue('second-model');
+    await workflow.getByLabel('上下文窗口').fill('64000');
+    await workflow.getByRole('button', { name: '保存修改' }).click();
+    await expect(secondModelRow).toContainText('64,000 Token');
+    await workflow.getByRole('button', { name: '下一步' }).click();
+
+    await expect(
+      workflow.getByRole('heading', { name: '总结核验' })
+    ).toBeVisible();
+    await workflow.getByRole('button', { name: '连接测试' }).click();
+    await expect(workflow.getByText('正在测试默认 Model...')).toBeVisible();
+    await expect(
+      workflow.getByRole('button', { name: '测试中' })
+    ).toBeDisabled();
+
+    releaseConnectionTest?.();
+    await expect(workflow.getByText('连接正常 · 42 ms')).toBeVisible();
+    await expect(workflow.getByText('模型连接测试通过')).toBeVisible();
+  });
+
+  test('edits and tests an existing Provider from the resource list', async ({
+    page
+  }) => {
+    await pageData(page, false, true);
+    await page.route(`**/opskeeper/api/v1/ai-providers/${ids.provider}/test`, async (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          provider_resource_id: ids.provider,
+          model_name: 'test-model',
+          status: 'succeeded',
+          latency_ms: 18,
+          message: '模型连接测试通过'
+        })
+      })
+    );
+    await page.goto('/');
+    await page.getByRole('button', { name: '资源', exact: true }).click();
+    const row = page.locator('.resource-catalog-row').filter({
+      hasText: 'Test Provider'
+    });
+    await row.getByRole('button', { name: '编辑资源' }).click();
+    await expect(page.getByRole('heading', { name: 'Test Provider' })).toBeVisible();
+    await row.getByRole('button', { name: '连接测试' }).click();
+    await expect(row.getByText('正常·18ms')).toBeVisible();
   });
 
   test('shows team members, projects, user roles and permissions', async ({
@@ -470,7 +584,10 @@ test.describe('T07 console', () => {
     await expect(
       page.getByRole('heading', { name: '团队管理', level: 1 })
     ).toBeVisible();
-    await page.locator('.access-team-trigger').filter({ hasText: '平台工程' }).click();
+    await page
+      .locator('.access-team-trigger')
+      .filter({ hasText: '平台工程' })
+      .click();
     await expect(
       page.getByText('支付负责人', { exact: true }).first()
     ).toBeVisible();
@@ -529,9 +646,11 @@ test.describe('T07 console', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect
       .poll(() =>
-        page.locator('html').evaluate((element) =>
-          getComputedStyle(element).getPropertyValue('--color-primary').trim()
-        )
+        page
+          .locator('html')
+          .evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--color-primary').trim()
+          )
       )
       .toBe('#18a27d');
 
@@ -576,7 +695,9 @@ test.describe('T07 console', () => {
     await picker.getByRole('button', { name: '选择图标 PostgreSQL' }).click();
     await dialog.getByLabel('选择团队图标').click();
     await picker.getByLabel('搜索图标').fill('Activity');
-    await expect(picker.getByRole('button', { name: '选择图标 Activity' })).toBeVisible();
+    await expect(
+      picker.getByRole('button', { name: '选择图标 Activity' })
+    ).toBeVisible();
     await picker.getByRole('button', { name: '选择图标 Activity' }).click();
     await dialog.getByLabel('名称').fill('数据库平台');
     await dialog.getByLabel('团队编码').fill('database');
@@ -596,9 +717,15 @@ test.describe('T07 console', () => {
     const dialog = page.getByRole('dialog', { name: '新增用户' });
     await dialog.getByLabel('用户名').fill('database-operator');
     await expect(dialog.getByLabel('显示名')).toHaveValue('database-operator');
-    await expect(dialog.locator('.new-user-grant-header')).toContainText('级别');
-    await expect(dialog.locator('.new-user-grant-header')).toContainText('对象');
-    await expect(dialog.locator('.new-user-grant-header')).toContainText('角色');
+    await expect(dialog.locator('.new-user-grant-header')).toContainText(
+      '级别'
+    );
+    await expect(dialog.locator('.new-user-grant-header')).toContainText(
+      '对象'
+    );
+    await expect(dialog.locator('.new-user-grant-header')).toContainText(
+      '角色'
+    );
     await dialog.getByLabel('授权级别').selectOption('team');
     await dialog.getByLabel('授权对象').selectOption(ids.team);
     await dialog.getByLabel('角色').selectOption('role-team-owner');
@@ -606,13 +733,15 @@ test.describe('T07 console', () => {
     await expect(dialog.locator('.created-credentials-inline')).toContainText(
       'GeneratedPassword123!'
     );
-    await expect(dialog.locator('.created-credentials-inline')).not.toContainText(
-      'database-operator'
-    );
+    await expect(
+      dialog.locator('.created-credentials-inline')
+    ).not.toContainText('database-operator');
     await expect(dialog.getByLabel('复制一次性密码')).toBeVisible();
   });
 
-  test('offers same-scope resource grants for viewer roles', async ({ page }) => {
+  test('offers same-scope resource grants for viewer roles', async ({
+    page
+  }) => {
     await pageData(page, false, true);
     await page.goto('/');
     await page.getByRole('button', { name: '展开成员菜单' }).click();
@@ -624,11 +753,15 @@ test.describe('T07 console', () => {
     await dialog.getByLabel('授权级别').selectOption('project');
     await dialog.getByLabel('授权对象').selectOption(ids.project);
     await dialog.getByLabel('角色').selectOption('role-project-viewer');
-    await expect(dialog.getByText('项目观察员默认可读取该范围资源')).toBeVisible();
+    await expect(
+      dialog.getByText('项目观察员默认可读取该范围资源')
+    ).toBeVisible();
     await expect(dialog.getByText('范围资源权限')).toBeVisible();
   });
 
-  test('does not allow an administrator to edit a username', async ({ page }) => {
+  test('does not allow an administrator to edit a username', async ({
+    page
+  }) => {
     await pageData(page, false, true);
     await page.goto('/');
     await page.getByRole('button', { name: '展开成员菜单' }).click();
@@ -647,9 +780,11 @@ test.describe('T07 console', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect
       .poll(() =>
-        page.locator('html').evaluate((element) =>
-          getComputedStyle(element).getPropertyValue('--color-primary').trim()
-        )
+        page
+          .locator('html')
+          .evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('--color-primary').trim()
+          )
       )
       .toBe('#e7601b');
   });
@@ -669,7 +804,9 @@ test.describe('T10 and T11 workbenches', () => {
     ).toHaveCount(1);
   });
 
-  test('opens the independent Agent profile management page', async ({ page }) => {
+  test('opens the independent Agent profile management page', async ({
+    page
+  }) => {
     await pageData(page);
     await page.goto('/');
     await page.getByRole('button', { name: 'Agent 专家' }).click();

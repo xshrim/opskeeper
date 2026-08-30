@@ -33,6 +33,7 @@ type credentialService interface {
 	Create(context.Context, string, credential.CreateInput) (credential.Credential, error)
 	List(context.Context, string) ([]credential.Credential, error)
 	Get(context.Context, string, string) (credential.Credential, error)
+	Reveal(context.Context, string, string) ([]byte, error)
 	Update(context.Context, string, string, credential.UpdateInput) (credential.Credential, error)
 	Delete(context.Context, string, string) error
 }
@@ -106,6 +107,8 @@ func registerResourceRoutes(router chi.Router, services resourceService, credent
 		return requirePermission(permission)
 	}
 	if services != nil {
+		// Context selection must only expose resources the caller can use.
+		router.With(guard(authorization.ResourceUse)).Get("/resources/context", handler.listResources)
 		router.With(guard(authorization.ResourceRead)).Get("/resources", handler.listResources)
 		router.With(guard(authorization.ResourceCreate)).Post("/resources", handler.createResource)
 		router.With(guard(authorization.ResourceRead)).Get("/resources/schemas", handler.listSchemas)
@@ -126,6 +129,7 @@ func registerResourceRoutes(router chi.Router, services resourceService, credent
 		router.With(guard(authorization.CredentialManage)).Post("/credentials", handler.createCredential)
 		router.Route("/credentials/{credentialID}", func(router chi.Router) {
 			router.With(guard(authorization.CredentialManage)).Get("/", handler.getCredential)
+			router.With(guard(authorization.CredentialManage)).Get("/secret", handler.getCredentialSecret)
 			router.With(guard(authorization.CredentialManage)).Patch("/", handler.updateCredential)
 			router.With(guard(authorization.CredentialManage)).Delete("/", handler.deleteCredential)
 		})
@@ -316,6 +320,18 @@ func (h resourceHandler) getCredential(writer http.ResponseWriter, request *http
 		return
 	}
 	writeJSON(writer, http.StatusOK, item)
+}
+
+func (h resourceHandler) getCredentialSecret(writer http.ResponseWriter, request *http.Request) {
+	secret, err := h.credentials.Reveal(request.Context(), currentUser(request).ID, chi.URLParam(request, "credentialID"))
+	if err != nil {
+		writeResourceError(writer, request, err)
+		return
+	}
+	// This endpoint is restricted to credential managers and returns only the
+	// decrypted value required by the Provider editor; it is never audited or
+	// included in a normal credential response.
+	writeJSON(writer, http.StatusOK, map[string]string{"secret": string(secret)})
 }
 
 func (h resourceHandler) updateCredential(writer http.ResponseWriter, request *http.Request) {
