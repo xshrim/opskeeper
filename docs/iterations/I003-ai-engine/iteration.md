@@ -2,7 +2,7 @@
 
 **迭代编号：** I003  
 **目录标识：** I003-ai-engine  
-**状态：** 实施中  
+**状态：** 待封板
 **计划开始：** 待定  
 **计划封板：** 待定
 
@@ -31,7 +31,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 
 | 需求 | 名称 | 任务 | 状态 | 需求文档 | 验收报告 |
 |---|---|---:|---|---|---|
-| R001 | AIEngine 执行框架设计与实现 | T01-T06 | 实施中 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
+| R001 | AIEngine 执行框架设计与实现 | T01-T06 | 已完成 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
 
 ## 4. 任务总览
 
@@ -41,7 +41,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 | T02 | 上下文工具层 | 自动解析上下文资源，接入 Connector 和远程 MCP Tool Gateway | T01 | 已完成 |
 | T03 | Skill 与 Agent Profile | 支持指定 Skill、专家 Agent 和组合执行 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 完整记录流式输出、工具入参出参、错误、耗时和恢复 | T01-T03 | 已完成 |
-| T05 | 知识库与工作流编排 | 支持知识检索、引用、DAG、并行、审批和断点恢复 | T01-T04 | 实施中 |
+| T05 | 知识库与工作流编排 | 支持知识检索、引用、DAG、并行、审批和断点恢复 | T01-T04 | 已完成 |
 | T06 | AI 诊断页面接入 AIEngine | 前端可选择 AIProvider/模型，通过 AIEngine 完成真实诊断并展示状态、证据和错误 | T01-T04 | 已完成 |
 
 ## 5. 进入条件
@@ -54,7 +54,7 @@ AIEngine 必须同时支持交互式 AI 对话/故障诊断和后台自动监控
 
 ## 6. 退出条件
 
-- T01-T05 全部完成验收，或明确记录未完成项及转移迭代；
+- T01-T06 全部完成验收，或明确记录未完成项及转移迭代；
 - 对话、诊断、Skill 和巡检都可以使用同一个 AIEngine 入口；
 - 选择 PostgreSQL、Kubernetes、监控平台或远程 MCP Server 资源后，AIEngine 可以自动建立并调用受控工具；
 - 指定 Skill、Agent 和知识库后，执行记录能够追溯完整的 Prompt、工具、证据和最终模型节点；

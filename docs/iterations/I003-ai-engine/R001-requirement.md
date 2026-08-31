@@ -1,7 +1,7 @@
 # I003-R001 AIEngine（AI引擎）执行框架设计与实现
 
 **迭代：** I003-ai-engine  
-**需求状态：** 实施中  
+**需求状态：** 已完成
 **设计文档：** [AIEngine（AI引擎）设计](../../design/ai-engine.md)  
 **验收报告：** [R001-requirement-acceptance.md](R001-requirement-acceptance.md)
 
@@ -102,7 +102,7 @@
 | T02 | 上下文工具层 | Context Resolver、Tool Registry、Policy Gateway、Connector/MCP 工具 | T01 | 已完成 |
 | T03 | Skill 与 Agent Profile | Skill 版本、专家 Agent、组合 Prompt 和契约校验 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 事件持久化、SSE 续读、Tool Call 脱敏审计 | T01-T03 | 已完成 |
-| T05 | 知识库与工作流编排 | 知识检索、引用、持久化 DAG、审批和恢复 | T01-T04 | 实施中 |
+| T05 | 知识库与工作流编排 | 知识检索、引用、持久化 DAG、审批和恢复 | T01-T04 | 已完成 |
 | T06 | AI 诊断页面接入 AIEngine | Provider/模型选择、真实诊断执行、流式状态和证据展示 | T01-T04 | 已完成 |
 
 ## 7. 依赖与风险

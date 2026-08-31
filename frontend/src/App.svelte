@@ -41,6 +41,7 @@ import { onMount } from 'svelte';
   } from 'lucide-svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import BrandIcon from './lib/BrandIcon.svelte';
+  import MessageBanner from './lib/MessageBanner.svelte';
   import {
     api,
     ApiError,
@@ -352,9 +353,14 @@ import { onMount } from 'svelte';
   let password = '';
   let passwordVisible = false;
   let loginError = '';
+  let loginErrorTimer: number | null = null;
   let notice = '';
   let noticeTimer: number | null = null;
   let errorMessage = '';
+  let errorTimer: number | null = null;
+  let activeMessage = '';
+  let activeMessageTone: 'success' | 'error' = 'success';
+  let messageInChildSurface = false;
   let busy = false;
   let view: View = 'overview';
   let preferences: UserPreferences = {
@@ -529,18 +535,23 @@ import { onMount } from 'svelte';
   let providerTimeoutSeconds = 60;
   let providerMaxConcurrency = 5;
   let providerRateLimitPerMinute = 0;
-  let providerEnabled = true;
   let providerModels: ProviderModelDraft[] = [];
   let providerModelDraft: ProviderModelDraft = emptyProviderModelDraft();
   let editingProviderModelName = '';
   let providerDefaultModel = '';
   let providerPurposeTags: string[] = [];
   let editingProviderResourceId = '';
+  let mcpTransport = 'streamable_http';
+  let mcpURL = '';
+  let mcpToolAllowlist = '';
+  let mcpTimeoutSeconds = 10;
+  let mcpMaxResponseBytes = 1048576;
   let providerConfigurationAttempted = false;
   let providerModelConfigurationAttempted = false;
   let providerModelValidationMessage = '';
   let providerSummaryAttempted = false;
   let resourceTypeSelectionAttempted = false;
+  let resourceBasicConfigurationAttempted = false;
   let providerDraftTest: {
     signature: string;
     result?: AIConnectionResult;
@@ -572,14 +583,6 @@ import { onMount } from 'svelte';
     providerDraftTest?.signature === providerDraftCurrentSignature &&
       providerDraftTest.result?.status === 'succeeded'
   );
-  $: {
-    const availableTags = providerPurposeTags.filter((tag) =>
-      providerPurposeAvailable(tag)
-    );
-    if (availableTags.length !== providerPurposeTags.length) {
-      providerPurposeTags = availableTags;
-    }
-  }
   let resourceName = '';
   let resourceStatus = 'active';
   let resourceLabels = '';
@@ -688,7 +691,7 @@ import { onMount } from 'svelte';
     const query = resourceSearch.trim().toLowerCase();
     return (
       !query ||
-      `${resource.name} ${resource.kind} ${resourceSchemaName(resource.kind)} ${scopeName(resource.scope_id)}`
+      `${resource.name} ${resource.kind} ${resourceSchemaName(resource.kind)} ${scopeName(resource.scope_id)} ${resourceLabelsText(resource)}`
         .toLowerCase()
         .includes(query)
     );
@@ -852,6 +855,8 @@ import { onMount } from 'svelte';
     document.addEventListener('pointerdown', handleDocumentPointerDown);
     return () => {
       if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+      if (errorTimer !== null) window.clearTimeout(errorTimer);
+      if (loginErrorTimer !== null) window.clearTimeout(loginErrorTimer);
       stopHealthPolling();
       closeDiagnosisEvents();
       media.removeEventListener('change', refreshTheme);
@@ -866,6 +871,26 @@ import { onMount } from 'svelte';
       noticeTimer = null;
     }, 5_000);
   }
+
+  $: if (errorMessage) {
+    if (errorTimer !== null) window.clearTimeout(errorTimer);
+    errorTimer = window.setTimeout(() => {
+      errorMessage = '';
+      errorTimer = null;
+    }, 5_000);
+  }
+
+  $: if (loginError) {
+    if (loginErrorTimer !== null) window.clearTimeout(loginErrorTimer);
+    loginErrorTimer = window.setTimeout(() => {
+      loginError = '';
+      loginErrorTimer = null;
+    }, 5_000);
+  }
+
+  $: activeMessage = errorMessage || notice;
+  $: activeMessageTone = errorMessage ? 'error' : 'success';
+  $: messageInChildSurface = resourceAddMenuOpen || teamDialogOpen || userDialogOpen || Boolean(editingTeam) || Boolean(editingUser) || Boolean(iconPickerTarget) || Boolean(disableTarget);
 
   function startHealthPolling() {
     if (healthInterval !== null) return;
@@ -2556,6 +2581,9 @@ import { onMount } from 'svelte';
 
   async function createResource() {
     await action(async () => {
+      if (!resourceAddCategory || !resourceAddSubtype || !resourceName.trim()) {
+        throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
+      }
       const isProvider = resourceKind === 'AIProvider';
       if (isProvider && providerNameDuplicate()) {
         throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
@@ -2563,8 +2591,13 @@ import { onMount } from 'svelte';
       if (isProvider && !providerDraftTestPassed()) {
         throw new Error('请先完成默认 Model 的连接测试并确认测试通过。');
       }
+      if (resourceKind === 'MCPServer' && !mcpConfigurationValid()) {
+        throw new Error('请填写 HTTPS 服务地址并至少配置一个允许的工具。');
+      }
       const config = isProvider
         ? providerConfigForCreate()
+        : resourceKind === 'MCPServer'
+          ? mcpConfigForSave()
         : buildSchemaConfig(createSchema, resourceConfigValues, resourceConfig);
       const credentialId = isProvider
         ? await createProviderCredential()
@@ -2880,6 +2913,12 @@ import { onMount } from 'svelte';
     return labels[scopeType(resource.scope_id)] ?? '资源';
   }
 
+  function resourceLabelsText(resource: Resource) {
+    return Object.entries(resource.labels ?? {})
+      .map(([key, value]) => (value ? `${key}=${value}` : key))
+      .join(', ');
+  }
+
   function providerPurposeLabel(tag: string) {
     const labels: Record<string, string> = {
       default: '默认',
@@ -2933,8 +2972,13 @@ import { onMount } from 'svelte';
     if (!selectedResource) return;
     await action(async () => {
       const isProvider = selectedResource.kind === 'AIProvider';
+      if (selectedResource.kind === 'MCPServer' && !mcpConfigurationValid()) {
+        throw new Error('请填写 HTTPS 服务地址并至少配置一个允许的工具。');
+      }
       const config = isProvider
         ? providerConfigForCreate()
+        : selectedResource.kind === 'MCPServer'
+          ? mcpConfigForSave()
         : buildSchemaConfig(selectedSchema, resourceConfigValues, editResourceConfig);
       const credentialId = isProvider
         ? await createProviderCredential()
@@ -2955,6 +2999,21 @@ import { onMount } from 'svelte';
     });
   }
 
+  async function toggleResourceEnabled(resource: Resource, enabled: boolean) {
+    if (!resourceCanManage(resource, 'resource:update')) return;
+    await action(async () => {
+      const updated = await api.updateResource(resource.id, {
+        status: enabled ? 'active' : 'disabled',
+        ...(resource.kind === 'AIProvider'
+          ? { config: { ...(resource.config ?? {}), enabled } }
+          : {})
+      });
+      resources = resources.map((item) => (item.id === updated.id ? updated : item));
+      if (selectedResourceId === updated.id) syncResourceEditor(updated);
+      notice = `资源“${updated.name}”已${enabled ? '启用' : '停用'}`;
+    });
+  }
+
   function syncResourceEditor(resource: Resource) {
     editResourceName = resource.name;
     editResourceStatus = resource.status;
@@ -2969,15 +3028,27 @@ import { onMount } from 'svelte';
       ])
     );
     editResourceSensitiveValues = {};
+    if (resource.kind === 'MCPServer') {
+      const config = resource.config ?? {};
+      mcpTransport = String(config.transport ?? 'streamable_http');
+      mcpURL = String(config.url ?? '');
+      mcpToolAllowlist = Array.isArray(config.tool_allowlist)
+        ? config.tool_allowlist.map(String).join('\n')
+        : String(config.tool_allowlist ?? '');
+      mcpTimeoutSeconds = Number(config.timeout_seconds ?? 10);
+      mcpMaxResponseBytes = Number(config.max_response_bytes ?? 1048576);
+    }
     if (resource.kind === 'AIProvider') syncProviderEditor(resource);
   }
 
   function syncProviderEditor(resource: Resource) {
     resourceName = resource.name;
     resourceStatus = resource.status;
-    resourceLabels = Object.entries(resource.labels ?? {})
+    const serializedLabels = Object.entries(resource.labels ?? {})
       .map(([key, value]) => `${key}=${value}`)
       .join(', ');
+    resourceLabels = serializedLabels;
+    editResourceLabels = serializedLabels;
     const config = resource.config ?? {};
     providerType = String(config.provider_type ?? 'openai_compatible');
     providerProtocol = String(config.protocol ?? 'chat_completions');
@@ -2987,7 +3058,6 @@ import { onMount } from 'svelte';
     providerTimeoutSeconds = Number(config.timeout_seconds ?? 60);
     providerMaxConcurrency = Number(config.max_concurrency ?? 5);
     providerRateLimitPerMinute = Number(config.rate_limit_per_minute ?? 0);
-    providerEnabled = config.enabled !== false;
     const models = Array.isArray(config.models) ? config.models : [];
     providerModels = models.map((item) => {
       const model = item as Record<string, unknown>;
@@ -3011,6 +3081,11 @@ import { onMount } from 'svelte';
     resourceConfigValues = {};
     resourceSensitiveValues = {};
     resourceConfig = '{}';
+    mcpTransport = 'streamable_http';
+    mcpURL = '';
+    mcpToolAllowlist = '';
+    mcpTimeoutSeconds = 10;
+    mcpMaxResponseBytes = 1048576;
   }
 
   function emptyProviderModelDraft(): ProviderModelDraft {
@@ -3036,7 +3111,6 @@ import { onMount } from 'svelte';
     providerTimeoutSeconds = 60;
     providerMaxConcurrency = 5;
     providerRateLimitPerMinute = 0;
-    providerEnabled = true;
     providerModels = [];
     providerModelDraft = emptyProviderModelDraft();
     editingProviderModelName = '';
@@ -3058,7 +3132,9 @@ import { onMount } from 'svelte';
       timeout_seconds: providerTimeoutSeconds,
       max_concurrency: providerMaxConcurrency,
       rate_limit_per_minute: providerRateLimitPerMinute,
-      enabled: providerEnabled,
+      // Resource status is the single source of truth for whether a Provider
+      // can be used. Keep the legacy config field in sync for older readers.
+      enabled: resourceStatus === 'active',
       default_model: providerDefaultModel,
       models: providerModels.map((model) => ({
         name: model.name.trim(),
@@ -3071,6 +3147,31 @@ import { onMount } from 'svelte';
         priority: model.priority
       }))
     };
+  }
+
+  function mcpConfigForSave(): Record<string, unknown> {
+    return {
+      transport: mcpTransport,
+      url: mcpURL.trim(),
+      tool_allowlist: mcpToolAllowlist
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      timeout_seconds: mcpTimeoutSeconds,
+      max_response_bytes: mcpMaxResponseBytes
+    };
+  }
+
+  function mcpConfigurationValid() {
+    if (mcpTransport !== 'streamable_http' || !mcpURL.trim()) return false;
+    try {
+      const url = new URL(mcpURL.trim());
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+    } catch {
+      return false;
+    }
+    const tools = mcpConfigForSave().tool_allowlist;
+    return Array.isArray(tools) && tools.length > 0;
   }
 
   function providerTypeLabel(type: unknown) {
@@ -3337,13 +3438,19 @@ import { onMount } from 'svelte';
     resourceEditorOpen = false;
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
+    resourceBasicConfigurationAttempted = false;
     if (resourceAddMenuOpen) {
+      resourceStatus = 'active';
       resourceAddCategory = resourceCategory === '全部' ? '' : resourceCategory;
       resourceAddSubtype = resourceSubtype === '全部' ? '' : resourceSubtype;
     }
   }
 
-  function chooseResourceAddSubtype(category: string, subtype: string) {
+  function chooseResourceAddSubtype(
+    category: string,
+    subtype: string,
+    resetDraft = true
+  ) {
     const schema = resourceSchemaForSelection(category, subtype);
     resourceAddCategory = category;
     resourceAddSubtype = subtype;
@@ -3353,10 +3460,13 @@ import { onMount } from 'svelte';
         : (schema?.kind ?? '');
     resourceCategory = category;
     resourceSubtype = subtype;
-    resetResourceConfig();
-    resetProviderDraft();
-    resourceAddStep = 2;
+    if (resetDraft) {
+      resetResourceConfig();
+      resetProviderDraft();
+    }
+    resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
+    resourceBasicConfigurationAttempted = false;
     resourceAddMenuOpen = true;
     resourceEditorOpen = false;
   }
@@ -3364,19 +3474,35 @@ import { onMount } from 'svelte';
   function selectResourceAddCategory(category: string) {
     resourceAddCategory = category;
     resourceAddSubtype = '';
+    resourceKind = '';
   }
 
   function continueResourceAdd() {
     resourceTypeSelectionAttempted = true;
-    if (!resourceAddCategory || !resourceAddSubtype) return;
+    resourceBasicConfigurationAttempted = true;
+    if (!resourceBasicConfigurationComplete()) return;
     resourceTypeSelectionAttempted = false;
-    chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
+    resourceBasicConfigurationAttempted = false;
+    chooseResourceAddSubtype(
+      resourceAddCategory,
+      resourceAddSubtype,
+      !editingProviderResourceId
+    );
+    resourceAddStep = 2;
+  }
+
+  function resourceBasicConfigurationComplete() {
+    return Boolean(
+      resourceAddCategory &&
+        resourceAddSubtype &&
+        resourceName.trim() &&
+        selectedScopeId
+    );
   }
 
   function providerConfigurationComplete() {
     return Boolean(
-      resourceName.trim() &&
-        !providerNameDuplicate() &&
+      !providerNameDuplicate() &&
         providerType &&
         providerBaseURLValid() &&
         providerAPIKey.trim()
@@ -3428,7 +3554,8 @@ import { onMount } from 'svelte';
       )
       .map((binding) => binding.tag);
     providerDraftTest = null;
-    resourceAddStep = 2;
+    resourceAddStep = 1;
+    resourceBasicConfigurationAttempted = false;
     resourceEditorOpen = false;
     resourceAddMenuOpen = true;
     if (resource.credential_id) {
@@ -3466,8 +3593,7 @@ import { onMount } from 'svelte';
 
   function providerConfigurationIssues() {
     const issues: string[] = [];
-    if (!resourceName.trim()) issues.push('Provider 名称');
-    else if (providerNameDuplicate()) issues.push('Provider 名称已存在');
+    if (providerNameDuplicate()) issues.push('资源名称已存在');
     if (!providerType) issues.push('Provider 类型');
     if (!providerBaseURL.trim()) issues.push('服务地址');
     else if (!providerBaseURLValid()) issues.push('服务地址格式');
@@ -3500,14 +3626,16 @@ import { onMount } from 'svelte';
       }
       return;
     }
-    if (resourceAddStep === 4) {
-      resourceAddStep = 5;
-    }
   }
 
   function resourceAddStepValidationMessage() {
-    if (resourceAddStep === 1 && resourceTypeSelectionAttempted)
-      return '请选择资源类型和资源子类型。';
+    if (resourceAddStep === 1 && resourceBasicConfigurationAttempted) {
+      const issues: string[] = [];
+      if (!resourceAddCategory) issues.push('资源类型');
+      if (!resourceAddSubtype) issues.push('资源子类型');
+      if (!resourceName.trim()) issues.push('资源名称');
+      return issues.length ? `请填写：${issues.join('、')}。` : '';
+    }
     if (
       resourceKind === 'AIProvider' &&
       resourceAddStep === 2 &&
@@ -3530,13 +3658,20 @@ import { onMount } from 'svelte';
       return '请至少添加一个 Model 后继续。';
     if (
       resourceKind === 'AIProvider' &&
-      resourceAddStep === 5 &&
+      resourceAddStep === 4 &&
+      providerSummaryAttempted &&
+      !providerPurposeConfigurationValid()
+    )
+      return '当前选择的用途与默认 Model 的能力不匹配，请调整用途标记或 Model 能力。';
+    if (
+      resourceKind === 'AIProvider' &&
+      resourceAddStep === 4 &&
       providerDraftTest?.error
     )
       return `连接测试失败：${providerDraftTest.error}`;
     if (
       resourceKind === 'AIProvider' &&
-      resourceAddStep === 5 &&
+      resourceAddStep === 4 &&
       providerSummaryAttempted &&
       !providerDraftTestPassed()
     )
@@ -3549,6 +3684,7 @@ import { onMount } from 'svelte';
     if (providerAPIKeyLoading) {
       return;
     }
+    if (!providerPurposeConfigurationValid()) return;
     if (!providerDraftTestPassed()) return;
     if (editingProviderResourceId) {
       await updateProviderFromWorkflow();
@@ -3557,13 +3693,14 @@ import { onMount } from 'svelte';
     await createResource();
   }
 
+  function providerPurposeConfigurationValid() {
+    return providerPurposeTags.every((purpose) => providerPurposeAvailable(purpose));
+  }
+
   function resourceAddStepTitle(step: number, kind: string) {
-    if (step === 1) return '类型选择';
+    if (step === 1) return '基础配置';
     if (kind !== 'AIProvider') return '配置资源';
-    return (
-      ['Provider 配置', 'Model 配置', '标签配置', '总结核验'][step - 2] ??
-      '配置资源'
-    );
+    return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
   }
 
   function resourceSchemaFieldRequired(key: string) {
@@ -4466,6 +4603,16 @@ import { onMount } from 'svelte';
     );
   }
 
+  function resourceSubtypeOptionsFor(resource: {
+    kind: string;
+    config?: Record<string, unknown>;
+    subtype?: string;
+  }) {
+    const current = resourceSubtypeFor(resource);
+    const options = resourceCategoryOptions[resourceCategoryFor(resource)] ?? [];
+    return options.includes(current) ? options : [current, ...options];
+  }
+
   function resourceCategoryIcon(category: string) {
     const icons: Record<string, string> = {
       全部: '◇',
@@ -4676,10 +4823,8 @@ import { onMount } from 'svelte';
         <p class="login-kicker">账号登录</p>
         <h1 id="login-heading">欢迎回来</h1>
         <p class="login-intro">使用平台账号继续访问 OpsKeeper。</p>
+        {#if loginError}<MessageBanner message={loginError} tone="error" />{/if}
       </header>
-      {#if loginError}<div class="alert error" role="alert">
-          {loginError}
-        </div>{/if}
       <form class="stack-form login-form" on:submit|preventDefault={login}>
         <div class="login-field">
           <label for="login-identifier">账号</label>
@@ -4751,10 +4896,8 @@ import { onMount } from 'svelte';
         <p class="login-kicker">安全验证</p>
         <h1 id="required-password-heading">请修改一次性密码</h1>
         <p class="login-intro">为保护账号安全，完成修改前无法访问平台内容。</p>
+        {#if errorMessage}<MessageBanner message={errorMessage} tone="error" />{/if}
       </header>
-      {#if errorMessage}<div class="alert error" role="alert">
-          {errorMessage}
-        </div>{/if}
       <form
         class="stack-form login-form"
         on:submit|preventDefault={() => changeOwnPassword(true)}
@@ -5101,12 +5244,12 @@ import { onMount } from 'svelte';
               >
             </div>
         </div>
+        {#if activeMessage && !messageInChildSurface}
+          <div class="topbar-message-slot">
+            <MessageBanner message={activeMessage} tone={activeMessageTone} />
+          </div>
+        {/if}
       </header>
-
-      {#if notice}<div class="alert success" role="status">{notice}</div>{/if}
-      {#if errorMessage}<div class="alert error" role="alert">
-          {errorMessage}
-        </div>{/if}
 
       {#if view === 'overview'}
         <section class="content-grid">
@@ -5911,7 +6054,7 @@ import { onMount } from 'svelte';
                           </span><small>用途</small></span
                         >
                       {/if}
-                      <span class="resource-tags" aria-label={resource.kind === 'AIProvider' ? '模型能力' : '资源标签'}>
+                      <span class="resource-tags" class:provider-capabilities-cell={resource.kind === 'AIProvider'} aria-label={resource.kind === 'AIProvider' ? '模型能力' : '资源标签'}>
                         {#if resource.kind === 'AIProvider'}
                           {#each providerModelCapabilities(providerDefaultModelForResource(resource)) as capability}<span class="resource-tag provider-capability-tag">{capability}</span>{:else}<small class="resource-tags-empty">未声明能力</small>{/each}
                         {:else}
@@ -5934,6 +6077,16 @@ import { onMount } from 'svelte';
                         ><small>连接状态</small></span
                       >
                       <span class="resource-row-actions" aria-label="资源操作">
+                        <span class="resource-enabled-control" title="是否启用">
+                          <span class="provider-toggle-control"><input
+                            type="checkbox"
+                            checked={resource.status === 'active'}
+                            disabled={busy || !resourceCanManage(resource, 'resource:update')}
+                            aria-label={`是否启用 ${resource.name}`}
+                            on:click|stopPropagation
+                            on:change={(event) => void toggleResourceEnabled(resource, (event.currentTarget as HTMLInputElement).checked)}
+                          /><i aria-hidden="true"></i></span>
+                        </span>
                         <button
                           class="icon-button"
                           type="button"
@@ -5981,6 +6134,7 @@ import { onMount } from 'svelte';
                     {#if resource.kind === 'AIProvider'}
                       {@const providerConfig = resource.config ?? {}}
                       {@const providerModels = providerModelsForResource(resource)}
+                      {@const resourceLabelText = resourceLabelsText(resource)}
                       <div class="provider-resource-details">
                         <div class="provider-resource-meta">
                           <div>
@@ -6008,12 +6162,15 @@ import { onMount } from 'svelte';
                             <span>API Key</span><strong>{resource.credential_id ? '已配置凭据' : '未配置凭据'}</strong>
                           </div>
                           <div>
-                            <span>Provider 状态</span><strong>{providerConfig.enabled === false ? '已停用' : '已启用'}</strong>
+                            <span>Provider 状态</span><strong>{resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知'}</strong>
                           </div>
-                          <div>
-                            <span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前级别可管理' : '继承资源，仅限查看'}</strong>
+                          <div
+                            class="provider-resource-labels"
+                            data-tooltip={resourceLabelText || undefined}
+                          >
+                            <span>标签</span><strong>{resourceLabelText || '未设置标签'}</strong>
                           </div>
-                          <div>
+                          <div class="provider-resource-connection">
                             <span>连接测试</span><strong>{resourceCheck ? (resourceCheck.status === 'succeeded' ? `正常 · ${resourceCheck.latency_ms} ms` : '失败') : '尚未测试'}</strong>
                           </div>
                         </div>
@@ -6078,7 +6235,10 @@ import { onMount } from 'svelte';
                 <header class="resource-add-main-heading">
                   <div>
                     <p class="eyebrow">{editingProviderResourceId ? 'EDIT PROVIDER' : 'ADD RESOURCE'}</p>
-                    <h2 id="resource-add-title">{editingProviderResourceId ? '编辑 Provider' : '添加资源'}</h2>
+                    <h2 id="resource-add-title">
+                      <span>{editingProviderResourceId ? '编辑资源' : '添加资源'}</span>
+                      {#if resourceAddCategory && resourceAddSubtype}<small>{resourceAddCategory} · {resourceAddSubtype}</small>{/if}
+                    </h2>
                   </div>
                   <button
                     class="secondary"
@@ -6096,52 +6256,42 @@ import { onMount } from 'svelte';
                     class:done={resourceAddStep > 1}
                     type="button"
                     on:click={() => (resourceAddStep = 1)}
-                    ><b>1</b><span>类型选择</span></button
+                    ><b>1</b><span>基础配置</span></button
                   >
                   {#if resourceKind === 'AIProvider'}
                     <button
                       class:active={resourceAddStep === 2}
                       class:done={resourceAddStep > 2}
-                      disabled={!resourceAddCategory || !resourceAddSubtype}
+                      disabled={!resourceBasicConfigurationComplete()}
                       type="button"
                       on:click={() => {
-                        if (resourceAddCategory && resourceAddSubtype)
+                        if (resourceBasicConfigurationComplete())
                           resourceAddStep = 2;
                       }}><b>2</b><span>Provider 配置</span></button
                     >
                     <button
                       class:active={resourceAddStep === 3}
                       class:done={resourceAddStep > 3}
-                      disabled={!providerConfigurationComplete()}
                       type="button"
-                      on:click={() => {
-                        if (providerConfigurationComplete())
-                          resourceAddStep = 3;
-                      }}><b>3</b><span>Model 配置</span></button
+                      on:click={() => (resourceAddStep = 3)}
+                      ><b>3</b><span>Model 配置</span></button
                     >
                     <button
                       class:active={resourceAddStep === 4}
-                      class:done={resourceAddStep > 4}
                       disabled={providerModels.length === 0}
                       type="button"
                       on:click={() => {
                         if (providerModels.length > 0) resourceAddStep = 4;
-                      }}><b>4</b><span>标签配置</span></button
-                    >
-                    <button
-                      class:active={resourceAddStep === 5}
-                      disabled={providerModels.length === 0}
-                      type="button"
-                      on:click={() => {
-                        if (providerModels.length > 0) resourceAddStep = 5;
-                      }}><b>5</b><span>总结核验</span></button
+                      }}><b>4</b><span>总结核验</span></button
                     >
                   {:else}
                     <button
                       class:active={resourceAddStep === 2}
-                      disabled={!resourceAddCategory || !resourceAddSubtype}
+                      disabled={!resourceBasicConfigurationComplete()}
                       type="button"
-                      on:click={continueResourceAdd}
+                      on:click={() => {
+                        if (resourceBasicConfigurationComplete()) resourceAddStep = 2;
+                      }}
                       ><b>2</b><span>配置资源</span></button
                     >
                   {/if}
@@ -6151,6 +6301,9 @@ import { onMount } from 'svelte';
                   class:type-selection-content={resourceAddStep === 1}
                 >
                   <div class="resource-add-step-heading">
+                    {#if activeMessage}
+                      <MessageBanner message={activeMessage} tone={activeMessageTone} />
+                    {/if}
                     <h3>{resourceAddStepTitle(resourceAddStep, resourceKind)}</h3>
                     {#if resourceAddStepValidationMessage()}
                       <p class="resource-add-step-validation" role="alert">
@@ -6158,7 +6311,13 @@ import { onMount } from 'svelte';
                       </p>
                     {/if}
                     <div class="resource-add-step-actions">
-                      {#if resourceKind === 'AIProvider' && resourceAddStep === 2}
+                      {#if resourceAddStep === 1}
+                        <button
+                          class="primary"
+                          type="button"
+                          on:click={continueResourceAdd}>下一步</button
+                        >
+                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
                         <button
                           class="secondary"
                           type="button"
@@ -6188,17 +6347,6 @@ import { onMount } from 'svelte';
                         >
                         <button
                           class="primary"
-                          type="button"
-                          on:click={continueProviderAdd}>下一步</button
-                        >
-                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 5}
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() => (resourceAddStep = 4)}>上一步</button
-                        >
-                        <button
-                          class="primary"
                           type="submit"
                           form="provider-create-form"
                           disabled={busy || !selectedScopeId}
@@ -6216,25 +6364,21 @@ import { onMount } from 'svelte';
                           form="resource-create-form"
                           disabled={busy || !selectedScopeId}>创建资源</button
                         >
-                      {:else}
-                      <button
-                        class="primary"
-                        type="button"
-                        on:click={continueResourceAdd}>下一步</button
-                        >
                       {/if}
                     </div>
                   </div>
                   {#if resourceAddStep === 1}
                     <p class="resource-add-description">
-                      先选择资源大类与子类型，随后填写对应的受控配置字段。
+                      配置资源的基础身份、归属和标签；资源类型、子类型与名称为必填项。
                     </p>
-                    <div class="resource-type-selection">
+                      <div class="resource-type-selection">
+                      <div class="resource-basic-type-row">
                       <label
                         class:invalid={resourceTypeSelectionAttempted &&
                           !resourceAddCategory}
                         ><span><i>*</i>资源类型</span><select
                           bind:value={resourceAddCategory}
+                          disabled={Boolean(editingProviderResourceId)}
                           on:change={(event) =>
                             selectResourceAddCategory(
                               (event.currentTarget as HTMLSelectElement).value
@@ -6250,44 +6394,55 @@ import { onMount } from 'svelte';
                           !resourceAddSubtype}
                         ><span><i>*</i>资源子类型</span><select
                           bind:value={resourceAddSubtype}
-                          disabled={!resourceAddCategory}
+                          disabled={!resourceAddCategory || Boolean(editingProviderResourceId)}
+                          on:change={(event) => {
+                            resourceAddSubtype = (event.currentTarget as HTMLSelectElement).value;
+                            const schema = resourceSchemaForSelection(resourceAddCategory, resourceAddSubtype);
+                            resourceKind = resourceAddCategory === 'LLM' && resourceAddSubtype === 'Provider' ? 'AIProvider' : (schema?.kind ?? '');
+                          }}
                           ><option value="">请选择资源子类型</option
                           >{#each resourceAddSubtypeOptions as subtype}<option
                               value={subtype}>{subtype}</option
                             >{/each}</select
                         ></label
                       >
+                      </div>
+                      <div class="resource-basic-identity-row">
+                      <label class="resource-basic-name" class:invalid={resourceBasicConfigurationAttempted && !resourceName.trim()}>
+                        <span><i>*</i>资源名称</span><input bind:value={resourceName} required placeholder="例如 production-resource" autocomplete="off" />
+                      </label>
+                      <label class="resource-basic-level">
+                        <span>资源级别</span><input value={activeScopeSummary()} readonly aria-readonly="true" />
+                      </label>
+                      <label class="resource-basic-enabled">
+                        <span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" checked={resourceStatus === 'active'} on:change={(event) => (resourceStatus = (event.currentTarget as HTMLInputElement).checked ? 'active' : 'disabled')} aria-label="是否启用资源" /><i aria-hidden="true"></i></span>
+                      </label>
+                      </div>
+                      <label class="resource-basic-labels">
+                        <span>资源标签</span><input bind:value={resourceLabels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" />
+                      </label>
                     </div>
+                  {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
+                    <p class="resource-add-description">
+                      通过安全的 Streamable HTTP 接入 MCP 服务。服务地址、工具白名单和响应上限会在每次调用前重新校验。
+                    </p>
+                    <form id="resource-create-form" class="stack-form resource-create-form" on:submit|preventDefault={createResource}>
+                      <div class="mcp-resource-form">
+                      <label><span><i>*</i>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
+                      <label class="mcp-url-field"><span><i>*</i>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
+                      <label class="mcp-tools-field"><span><i>*</i>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="5" placeholder="每行一个工具，例如 inventory.read&#10;alerts.list" spellcheck="false"></textarea><small>仅精确匹配的工具会被允许，不能使用通配符。</small></label>
+                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                      </div>
+                    </form>
                   {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
-                    <div class="provider-config-description-row">
-                      <p class="resource-add-description">
-                        配置服务连接与运行边界。凭据会作为独立加密对象保存，不会写入资源配置。
-                      </p>
-                      <label
-                        class="provider-enabled-toggle"
-                        data-tooltip={providerEnabled ? 'Provider 已启用，可被 AI 引擎调用' : 'Provider 已停用，不会被 AI 引擎调用'}
-                        ><span class="visually-hidden">是否启用 Provider</span><span class="provider-toggle-control"><input
-                            type="checkbox"
-                            bind:checked={providerEnabled}
-                            aria-label="是否启用 Provider"
-                          /><i aria-hidden="true"></i></span></label
-                      >
-                    </div>
+                    <p class="resource-add-description">
+                      配置 Provider 连接、运行边界和用途标记。凭据会作为独立加密对象保存，不会写入资源配置。
+                    </p>
                     <div class="provider-config-form">
-                      <label
-                        class="provider-config-name"
-                        class:invalid={providerConfigurationAttempted &&
-                          (!resourceName.trim() || providerNameDuplicate())}
-                        ><span><i>*</i>Provider 名称</span><input
-                          bind:value={resourceName}
-                          required
-                          placeholder="例如 production-openai"
-                        /></label
-                      >
                       <label
                         class="provider-config-type"
                         class:invalid={providerConfigurationAttempted && !providerType}
-                        ><span><i>*</i>Provider 类型</span><select
+                        ><span><i>*</i>Provider类型</span><select
                           bind:value={providerType}
                           on:change={(event) =>
                             selectProviderType(
@@ -6299,12 +6454,21 @@ import { onMount } from 'svelte';
                         ></label
                       >
                       <label class="provider-config-protocol"
-                        ><span>协议</span><select bind:value={providerProtocol}
+                        ><span>Provider协议</span><select bind:value={providerProtocol}
                           ><option value="chat_completions"
                             >Chat Completions</option
                           ></select
-                        ></label
+                      ></label
                       >
+                      <div class="provider-purpose-options provider-config-purpose">
+                        <span>Provider用途</span>
+                        <div>
+                          {#each providerPurposeOptions as purpose}
+                            {@const unavailableReason = providerPurposeUnavailableReason(purpose.value)}
+                            <button class:active={providerPurposeTags.includes(purpose.value)} class:unavailable={!providerPurposeAvailable(purpose.value)} type="button" disabled={!providerPurposeAvailable(purpose.value)} data-tooltip={unavailableReason || undefined} aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>
+                          {/each}
+                        </div>
+                      </div>
                       <label class="provider-config-url"
                         class:invalid={providerConfigurationAttempted &&
                           !providerBaseURLValid()}
@@ -6514,44 +6678,6 @@ import { onMount } from 'svelte';
                     </div>
                   {:else if resourceKind === 'AIProvider' && resourceAddStep === 4}
                     <p class="resource-add-description">
-                      用途标签决定当前级别下各场景默认使用的 Provider；同级相同标签只能归属一个 Provider。
-                    </p>
-                    <section class="provider-purpose-configuration" aria-label="Provider 标签配置">
-                      <div class="provider-purpose-scope">
-                        <span>资源级别</span><strong>{scopeLevelLabel(activeScope?.type ?? scopeType(selectedScopeId))}</strong>
-                        <small>{activeScope?.name ?? '平台'} · 由当前团队和项目选择自动确定</small>
-                      </div>
-                      <div class="provider-purpose-options">
-                        <span>用途标签</span>
-                        <div>
-                          {#each providerPurposeOptions as purpose}
-                            {@const unavailableReason = providerPurposeUnavailableReason(purpose.value)}
-                            <button
-                              class:active={providerPurposeTags.includes(purpose.value)}
-                              class:unavailable={!providerPurposeAvailable(purpose.value)}
-                              type="button"
-                              disabled={!providerPurposeAvailable(purpose.value)}
-                              data-tooltip={unavailableReason || undefined}
-                              aria-pressed={providerPurposeTags.includes(purpose.value)}
-                              on:click={() => toggleProviderPurpose(purpose.value)}
-                            >{purpose.label}</button>
-                          {/each}
-                        </div>
-                        <small>默认 Model 的能力决定可选择的用途标签。</small>
-                      </div>
-                    </section>
-                    <section class="provider-purpose-help" aria-label="用途标签说明">
-                      <div>
-                        <strong>用途标签含义</strong>
-                        <p><b>默认</b>：未指定专用用途时的通用 Provider。<b>诊断</b>：AI 诊断对话与故障分析。<b>巡检</b>：自动巡检、监控分析与告警判断。<b>工作流</b>：编排流程中的任务执行与结构化结果。</p>
-                      </div>
-                      <div>
-                        <strong>级别优先级</strong>
-                        <p>按项目 → 团队 → 平台逐级查找；在同一级别内，专用用途标签优先于“默认”标签。当前级别没有对应标签时，先使用当前级别的默认 Provider，再回退到上级级别。</p>
-                      </div>
-                    </section>
-                  {:else if resourceKind === 'AIProvider' && resourceAddStep === 5}
-                    <p class="resource-add-description">
                       使用默认 Model 完成连接核验后，才可创建 Provider 并发布以下 Model 列表。
                     </p>
                     <form
@@ -6564,7 +6690,7 @@ import { onMount } from 'svelte';
                         ><small
                           >{providerTypeOptions.find(
                             (item) => item.value === providerType
-                          )?.label} · {providerEnabled
+                          )?.label} · {resourceStatus === 'active'
                             ? '已启用'
                             : '未启用'}</small
                         >
@@ -6607,12 +6733,12 @@ import { onMount } from 'svelte';
                         >
                       </div>
                       <div>
-                        <span>资源归属</span><strong>{activeScopeSummary()}</strong
-                        ><small>创建后仅归属于当前选择的 Scope。</small>
+                        <span>资源属性</span><strong>{activeScopeSummary()}</strong
+                        ><small>{resourceLabelsText({ labels: parseLabels(resourceLabels) } as Resource) ? '已配置的资源标签' : '未配置资源标签'}</small>
                       </div>
                       <div>
-                        <span>用途标签</span><strong>{providerPurposeTags.length > 0 ? providerPurposeTags.map(providerPurposeLabel).join('、') : '未设置'}</strong
-                        ><small>同级别同一标签会自动切换至此 Provider。</small>
+                        <span>用途标记</span><strong>{providerPurposeTags.length > 0 ? providerPurposeTags.map(providerPurposeLabel).join('、') : '未设置'}</strong
+                        ><small>同级别同一标记会自动切换至此 Provider。</small>
                       </div>
                       <div class="provider-summary-models">
                         <span>Model 列表</span
@@ -6631,6 +6757,15 @@ import { onMount } from 'svelte';
                           </div>{/each}
                       </div>
                     </form>
+                  {:else if selectedResource?.kind === 'MCPServer'}
+                    <div class="mcp-resource-form editor-mcp-form">
+                      <div class="form-row"><label><span>资源名称</span><input bind:value={editResourceName} required /></label><label><span>状态</span><select bind:value={editResourceStatus}><option value="active">正常</option><option value="disabled">停用</option><option value="unknown">未知</option></select></label></div>
+                      <label><span>标签</span><input bind:value={editResourceLabels} placeholder="env=prod, owner=platform" /></label>
+                      <label><span>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
+                      <label><span>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
+                      <label><span>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="每行一个工具"></textarea><small>只允许登记的工具，调用前会再次发现并校验。</small></label>
+                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                    </div>
                   {:else}
                     <p class="resource-add-description">
                       配置将按 {resourceAddCategory} · {resourceAddSubtype} 的资源契约保存；敏感字段会单独加密存储。
@@ -6640,28 +6775,6 @@ import { onMount } from 'svelte';
                       class="stack-form resource-create-form"
                       on:submit|preventDefault={createResource}
                     >
-                      <label
-                        ><span><i>*</i>名称</span><input
-                          bind:value={resourceName}
-                          required
-                          placeholder="例如 production-postgres"
-                        /></label
-                      >
-                      <div class="form-row">
-                        <label
-                          >状态<select bind:value={resourceStatus}
-                            ><option value="active">active</option><option
-                              value="disabled">disabled</option
-                            ><option value="unknown">unknown</option></select
-                          ></label
-                        ><label
-                          >标签<input
-                            bind:value={resourceLabels}
-                            placeholder="env=prod, owner=platform"
-                            autocomplete="off"
-                          /></label
-                        >
-                      </div>
                       {#if createSchema?.schema.properties}
                         <div class="schema-inputs">
                           <p class="eyebrow">SCHEMA FIELDS</p>
@@ -6717,7 +6830,13 @@ import { onMount } from 'svelte';
                 <div class="panel-heading">
                   <div>
                     <p class="eyebrow">RESOURCE DETAIL</p>
-                    <h2>{selectedResource.name}</h2>
+                    <h2 class="resource-editor-title">
+                      <span>编辑资源</span>
+                      {#if resourceCategoryFor(selectedResource) && resourceSubtypeFor(selectedResource)}
+                        <small>{resourceCategoryFor(selectedResource)} · {resourceSubtypeFor(selectedResource)}</small>
+                      {/if}
+                    </h2>
+                    <p class="resource-editor-name">{selectedResource.name}</p>
                     <p class="muted">
                       {selectedResource.kind} · {scopeName(
                         selectedResource.scope_id
@@ -6787,15 +6906,13 @@ import { onMount } from 'svelte';
                   {#if selectedResource.kind === 'AIProvider'}
                     <div class="provider-edit-form">
                       <div class="provider-config-form">
-                        <label><span>Provider 名称</span><input bind:value={editResourceName} required /></label>
-                        <label><span>状态</span><select bind:value={editResourceStatus}><option value="active">正常</option><option value="disabled">停用</option><option value="unknown">未知</option></select></label>
-                        <label><span>Provider 类型</span><select bind:value={providerType}>{#each providerTypeOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
-                        <label><span>协议</span><select bind:value={providerProtocol}><option value="chat_completions">Chat Completions</option></select></label>
+                        <label><span>Provider类型</span><select bind:value={providerType}>{#each providerTypeOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+                        <label><span>Provider协议</span><select bind:value={providerProtocol}><option value="chat_completions">Chat Completions</option></select></label>
+                        <div class="provider-purpose-options provider-config-purpose"><span>Provider用途</span><div>{#each providerPurposeOptions as purpose}<button class:active={providerPurposeTags.includes(purpose.value)} class:unavailable={!providerPurposeAvailable(purpose.value)} type="button" disabled={!providerPurposeAvailable(purpose.value)} data-tooltip={providerPurposeUnavailableReason(purpose.value) || undefined} aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>{/each}</div></div>
                         <label><span>服务地址</span><input bind:value={providerBaseURL} type="url" required /></label>
                         <label><span>请求超时（秒）</span><input bind:value={providerTimeoutSeconds} type="number" min="1" /></label>
                         <label><span>最大并发</span><input bind:value={providerMaxConcurrency} type="number" min="1" /></label>
                         <label><span>限流（请求/分钟）</span><input bind:value={providerRateLimitPerMinute} type="number" min="0" /></label>
-                        <label class="provider-enabled-edit"><span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" bind:checked={providerEnabled} /><i aria-hidden="true"></i></span></label>
                       </div>
                       <div class="provider-model-editor">
                         <div class="provider-model-grid">
@@ -6810,28 +6927,32 @@ import { onMount } from 'svelte';
                       </div>
                     </div>
                   {:else}
-                  <div class="form-row">
-                    <label
-                      >名称<input
-                        bind:value={editResourceName}
-                        required
-                      /></label
-                    ><label
-                      >状态<select bind:value={editResourceStatus}
-                        ><option value="active">active</option><option
-                          value="disabled">disabled</option
-                        ><option value="unknown">unknown</option></select
-                      ></label
-                    >
+                  <h3 class="editor-section-title">基础配置</h3>
+                  <p class="editor-section-description">资源类型和子类型只读，资源名称、启用状态与资源标签可在此调整。</p>
+                  <div class="resource-basic-edit-grid">
+                    <div class="resource-basic-type-row">
+                    <label><span>资源类型</span><select value={resourceCategoryFor(selectedResource)} disabled aria-label="资源类型">
+                      {#each Object.keys(resourceCategoryOptions).filter((category) => category !== '全部') as category}<option value={category}>{category}</option>{/each}
+                    </select></label>
+                    <label><span>资源子类型</span><select value={resourceSubtypeFor(selectedResource)} disabled aria-label="资源子类型">
+                      {#each resourceSubtypeOptionsFor(selectedResource) as subtype}<option value={subtype}>{subtype}</option>{/each}
+                    </select></label>
+                    </div>
+                    <div class="resource-basic-identity-row">
+                    <label><span><i>*</i>资源名称</span><input bind:value={editResourceName} required /></label>
+                    <label><span>资源级别</span><input value={scopeName(selectedResource.scope_id)} readonly /></label>
+                    <label class="resource-basic-enabled"><span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" checked={editResourceStatus === 'active'} on:change={(event) => (editResourceStatus = (event.currentTarget as HTMLInputElement).checked ? 'active' : 'disabled')} aria-label="是否启用资源" /><i aria-hidden="true"></i></span></label>
+                    </div>
+                    <label class="resource-basic-labels"><span>资源标签</span><input bind:value={editResourceLabels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" /></label>
                   </div>
-                  <label
-                    >标签<input
-                      bind:value={editResourceLabels}
-                      placeholder="env=prod, owner=platform"
-                      autocomplete="off"
-                    /></label
-                  >
-                  {#if selectedSchema?.schema.properties}
+                  {#if selectedResource.kind === 'MCPServer'}
+                    <div class="mcp-resource-form editor-mcp-form">
+                      <label><span><i>*</i>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
+                      <label class="mcp-url-field"><span><i>*</i>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
+                      <label class="mcp-tools-field"><span><i>*</i>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="每行一个工具"></textarea><small>只允许登记的工具，调用前会再次发现并校验。</small></label>
+                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                    </div>
+                  {:else if selectedSchema?.schema.properties}
                     <div class="schema-inputs">
                       <p class="eyebrow">SCHEMA FIELDS</p>
                       {#each Object.entries(selectedSchema.schema.properties) as [key, field]}
@@ -8450,6 +8571,7 @@ import { onMount } from 'svelte';
                   <p class="eyebrow">TEAM</p>
                   <h2 id="team-dialog-title">新增团队</h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <button
                   class="icon-button"
                   type="button"
@@ -8515,6 +8637,7 @@ import { onMount } from 'svelte';
                   <p class="eyebrow">USER ACCESS</p>
                   <h2 id="user-dialog-title">新增用户</h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <button
                   class="icon-button"
                   type="button"
@@ -8827,6 +8950,7 @@ import { onMount } from 'svelte';
                   <p class="eyebrow">TEAM</p>
                   <h2 id="edit-team-dialog-title">编辑团队</h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <button
                   class="icon-button"
                   type="button"
@@ -8894,6 +9018,7 @@ import { onMount } from 'svelte';
                   <p class="eyebrow">ICON PICKER</p>
                   <h2 id="icon-picker-title">选择图标</h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <button
                   class="icon-button"
                   type="button"
@@ -8951,6 +9076,7 @@ import { onMount } from 'svelte';
                   <p class="eyebrow">USER ACCESS</p>
                   <h2 id="edit-user-dialog-title">编辑用户与授权</h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <button
                   class="icon-button"
                   type="button"
@@ -9159,6 +9285,7 @@ import { onMount } from 'svelte';
                       : '用户'}？
                   </h2>
                 </div>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
               </div>
               <p class="confirm-copy">
                 {disableTarget.kind === 'team'
