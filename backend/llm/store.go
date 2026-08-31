@@ -79,7 +79,7 @@ func (s *store) ResolveBinding(ctx context.Context, scopeID string, purpose Purp
 		SELECT bindings.scope_id::text, bindings.provider_resource_id::text,
 		       bindings.tag, bindings.created_at, bindings.updated_at
 		  FROM chain JOIN scope_ai_provider_bindings bindings ON bindings.scope_id = chain.id
-		 WHERE bindings.tag IN ($2, 'default')
+		 WHERE bindings.tag IN ($2, 'general')
 		 ORDER BY chain.depth ASC,
 		          CASE WHEN bindings.tag = $2 THEN 0 ELSE 1 END
 		 LIMIT 1`, scopeID, purpose).Scan(

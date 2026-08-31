@@ -243,7 +243,7 @@ import { onMount } from 'svelte';
     { value: 'deep_thinking', label: '深度思考' }
   ];
   const providerPurposeOptions = [
-    { value: 'default', label: '默认', requiredCapabilities: ['text'] },
+    { value: 'general', label: '通用', requiredCapabilities: ['text'] },
     {
       value: 'diagnosis',
       label: '诊断',
@@ -2652,7 +2652,7 @@ import { onMount } from 'svelte';
       if (providerNameDuplicate()) {
         throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
       }
-      const credentialId = await createProviderCredential(resourceName);
+      const credentialId = await saveProviderCredential(provider);
       const updated = await api.updateResource(provider.id, {
         name: resourceName.trim(),
         subtype: resourceSubtypeFor({
@@ -2921,7 +2921,7 @@ import { onMount } from 'svelte';
 
   function providerPurposeLabel(tag: string) {
     const labels: Record<string, string> = {
-      default: '默认',
+      general: '通用',
       diagnosis: '诊断',
       inspection: '巡检',
       workflow: '工作流'
@@ -3231,7 +3231,6 @@ import { onMount } from 'svelte';
   }
 
   function toggleProviderPurpose(purpose: string) {
-    if (!providerPurposeAvailable(purpose)) return;
     providerPurposeTags = providerPurposeTags.includes(purpose)
       ? providerPurposeTags.filter((tag) => tag !== purpose)
       : [...providerPurposeTags, purpose];
@@ -3326,6 +3325,16 @@ import { onMount } from 'svelte';
       secret: providerAPIKey.trim()
     });
     return credential.id;
+  }
+
+  async function saveProviderCredential(provider: Resource) {
+    if (!provider.credential_id) return createProviderCredential(resourceName);
+    await api.updateCredential(provider.credential_id, {
+      name: `${resourceName.trim() || 'AI Provider'} API Key`,
+      purpose: 'AI Provider 访问凭据',
+      secret: providerAPIKey.trim()
+    });
+    return provider.credential_id;
   }
 
   function addProviderModel() {
@@ -3662,7 +3671,7 @@ import { onMount } from 'svelte';
       providerSummaryAttempted &&
       !providerPurposeConfigurationValid()
     )
-      return '当前选择的用途与默认 Model 的能力不匹配，请调整用途标记或 Model 能力。';
+      return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
     if (
       resourceKind === 'AIProvider' &&
       resourceAddStep === 4 &&
@@ -3681,11 +3690,11 @@ import { onMount } from 'svelte';
 
   async function submitProviderCreate() {
     providerSummaryAttempted = true;
-    if (providerAPIKeyLoading) {
+    const validationMessage = providerSummaryValidationMessage();
+    if (validationMessage) {
+      errorMessage = validationMessage;
       return;
     }
-    if (!providerPurposeConfigurationValid()) return;
-    if (!providerDraftTestPassed()) return;
     if (editingProviderResourceId) {
       await updateProviderFromWorkflow();
       return;
@@ -3695,6 +3704,17 @@ import { onMount } from 'svelte';
 
   function providerPurposeConfigurationValid() {
     return providerPurposeTags.every((purpose) => providerPurposeAvailable(purpose));
+  }
+
+  function providerSummaryValidationMessage() {
+    if (providerAPIKeyLoading) return '正在读取 Provider API Key，请稍候后再保存。';
+    if (!providerPurposeConfigurationValid())
+      return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
+    if (providerDraftTest?.error)
+      return `连接测试失败：${providerDraftTest.error}`;
+    if (!providerDraftTestPassed())
+      return '请先完成默认 Model 的连接测试并确认测试通过。';
+    return '';
   }
 
   function resourceAddStepTitle(step: number, kind: string) {
@@ -6051,7 +6071,7 @@ import { onMount } from 'svelte';
                             {:else}
                               <small class="resource-tags-empty">未设置</small>
                             {/each}
-                          </span><small>用途</small></span
+                          </span><small>角色表示特定场景的调用优先级；同级别每个角色最多绑定一个 Provider。</small></span
                         >
                       {/if}
                       <span class="resource-tags" class:provider-capabilities-cell={resource.kind === 'AIProvider'} aria-label={resource.kind === 'AIProvider' ? '模型能力' : '资源标签'}>
@@ -6436,7 +6456,7 @@ import { onMount } from 'svelte';
                     </form>
                   {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
                     <p class="resource-add-description">
-                      配置 Provider 连接、运行边界和用途标记。凭据会作为独立加密对象保存，不会写入资源配置。
+                      配置 Provider 连接、运行边界和角色。凭据会作为独立加密对象保存，不会写入资源配置。
                     </p>
                     <div class="provider-config-form">
                       <label
@@ -6461,11 +6481,10 @@ import { onMount } from 'svelte';
                       ></label
                       >
                       <div class="provider-purpose-options provider-config-purpose">
-                        <span>Provider用途</span>
+                        <span>Provider角色</span>
                         <div>
                           {#each providerPurposeOptions as purpose}
-                            {@const unavailableReason = providerPurposeUnavailableReason(purpose.value)}
-                            <button class:active={providerPurposeTags.includes(purpose.value)} class:unavailable={!providerPurposeAvailable(purpose.value)} type="button" disabled={!providerPurposeAvailable(purpose.value)} data-tooltip={unavailableReason || undefined} aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>
+                            <button class:active={providerPurposeTags.includes(purpose.value)} type="button" aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>
                           {/each}
                         </div>
                       </div>
@@ -6737,8 +6756,8 @@ import { onMount } from 'svelte';
                         ><small>{resourceLabelsText({ labels: parseLabels(resourceLabels) } as Resource) ? '已配置的资源标签' : '未配置资源标签'}</small>
                       </div>
                       <div>
-                        <span>用途标记</span><strong>{providerPurposeTags.length > 0 ? providerPurposeTags.map(providerPurposeLabel).join('、') : '未设置'}</strong
-                        ><small>同级别同一标记会自动切换至此 Provider。</small>
+                        <span>Provider角色</span><strong>{providerPurposeTags.length > 0 ? providerPurposeTags.map(providerPurposeLabel).join('、') : '未设置'}</strong
+                        ><small>同级别同一角色会自动路由至此 Provider。</small>
                       </div>
                       <div class="provider-summary-models">
                         <span>Model 列表</span
@@ -6908,7 +6927,7 @@ import { onMount } from 'svelte';
                       <div class="provider-config-form">
                         <label><span>Provider类型</span><select bind:value={providerType}>{#each providerTypeOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
                         <label><span>Provider协议</span><select bind:value={providerProtocol}><option value="chat_completions">Chat Completions</option></select></label>
-                        <div class="provider-purpose-options provider-config-purpose"><span>Provider用途</span><div>{#each providerPurposeOptions as purpose}<button class:active={providerPurposeTags.includes(purpose.value)} class:unavailable={!providerPurposeAvailable(purpose.value)} type="button" disabled={!providerPurposeAvailable(purpose.value)} data-tooltip={providerPurposeUnavailableReason(purpose.value) || undefined} aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>{/each}</div></div>
+                        <div class="provider-purpose-options provider-config-purpose"><span>Provider角色</span><div>{#each providerPurposeOptions as purpose}<button class:active={providerPurposeTags.includes(purpose.value)} type="button" aria-pressed={providerPurposeTags.includes(purpose.value)} on:click={() => toggleProviderPurpose(purpose.value)}>{purpose.label}</button>{/each}</div></div>
                         <label><span>服务地址</span><input bind:value={providerBaseURL} type="url" required /></label>
                         <label><span>请求超时（秒）</span><input bind:value={providerTimeoutSeconds} type="number" min="1" /></label>
                         <label><span>最大并发</span><input bind:value={providerMaxConcurrency} type="number" min="1" /></label>

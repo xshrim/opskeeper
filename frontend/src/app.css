@@ -2808,23 +2808,26 @@ textarea:focus {
 .resource-basic-enabled,
 .resource-basic-identity-row > .resource-basic-enabled,
 .resource-basic-edit-grid .resource-basic-enabled {
-  position: relative;
-  display: block;
-  align-self: stretch;
+  display: grid;
+  grid-template-rows: auto 36px;
+  gap: 7px;
+  align-self: end;
   justify-self: end;
-  width: max-content;
-  min-width: max-content;
-  padding-right: 44px;
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
   white-space: nowrap;
 }
 .resource-basic-enabled > span:first-child {
-  display: block;
+  position: static;
+  justify-self: center;
+  width: max-content;
 }
 .resource-basic-enabled > .provider-toggle-control {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
+  position: static;
+  align-self: center;
+  justify-self: center;
+  transform: none;
 }
 .resource-basic-labels {
   grid-column: 1 / -1;

@@ -4,11 +4,11 @@ import "time"
 
 const AIProviderKind = "AIProvider"
 
-// Purpose identifies the execution scenario whose default provider is used.
+// Purpose identifies the execution scenario whose routed provider is used.
 type Purpose string
 
 const (
-	PurposeDefault    Purpose = "default"
+	PurposeGeneral    Purpose = "general"
 	PurposeDiagnosis  Purpose = "diagnosis"
 	PurposeInspection Purpose = "inspection"
 	PurposeWorkflow   Purpose = "workflow"

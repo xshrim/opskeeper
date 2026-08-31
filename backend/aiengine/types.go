@@ -17,7 +17,7 @@ import (
 type Purpose string
 
 const (
-	PurposeDefault    Purpose = "default"
+	PurposeGeneral    Purpose = "general"
 	PurposeDiagnosis  Purpose = "diagnosis"
 	PurposeInspection Purpose = "inspection"
 	PurposeWorkflow   Purpose = "workflow"
@@ -200,10 +200,10 @@ func (r *Request) Normalize() error {
 		r.Profile = ProfileInteractive
 	}
 	if r.Purpose == "" {
-		r.Purpose = PurposeDefault
+		r.Purpose = PurposeGeneral
 	}
 	switch r.Purpose {
-	case PurposeDefault, PurposeDiagnosis, PurposeInspection, PurposeWorkflow:
+	case PurposeGeneral, PurposeDiagnosis, PurposeInspection, PurposeWorkflow:
 	default:
 		return &ValidationError{Message: "purpose is unsupported"}
 	}

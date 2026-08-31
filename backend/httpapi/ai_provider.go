@@ -52,7 +52,7 @@ func registerAIProviderAvailabilityRoute(router chi.Router, service aiProviderAv
 	router.With(guard).Get("/ai-providers/available", func(w http.ResponseWriter, r *http.Request) {
 		purpose, ok := parseProviderPurpose(r.URL.Query().Get("purpose"))
 		if !ok {
-			purpose = llm.PurposeDefault
+			purpose = llm.PurposeGeneral
 		}
 		items, err := service.Available(r.Context(), r.URL.Query().Get("scope_id"), purpose)
 		if err != nil {
@@ -77,7 +77,7 @@ func (h aiProviderBindingHandler) list(w http.ResponseWriter, r *http.Request) {
 func parseProviderPurpose(raw string) (llm.Purpose, bool) {
 	purpose := llm.Purpose(strings.TrimSpace(raw))
 	switch purpose {
-	case llm.PurposeDefault, llm.PurposeDiagnosis, llm.PurposeInspection, llm.PurposeWorkflow:
+	case llm.PurposeGeneral, llm.PurposeDiagnosis, llm.PurposeInspection, llm.PurposeWorkflow:
 		return purpose, true
 	default:
 		return "", false

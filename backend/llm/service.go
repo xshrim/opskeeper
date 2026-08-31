@@ -119,8 +119,8 @@ func (s *Service) RemoveBinding(ctx context.Context, scopeID string, purpose Pur
 }
 
 // Resolve chooses a Provider directly. A blank provider ID resolves the
-// nearest Scope binding for the requested purpose, falling back to
-// the default purpose at each scope before moving to its parent.
+// nearest Scope binding for the requested role, falling back to
+// the general role at each scope before moving to its parent.
 func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName string, purpose Purpose) (ResolvedProvider, error) {
 	scopeID = strings.TrimSpace(scopeID)
 	if scopeID == "" {
@@ -137,7 +137,7 @@ func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName st
 		}
 		binding, err := s.store.ResolveBinding(ctx, scopeID, purpose)
 		if err != nil {
-			return ResolvedProvider{}, invalid("no default AIProvider is configured for purpose " + string(purpose))
+			return ResolvedProvider{}, invalid("no AIProvider is configured for role " + string(purpose))
 		}
 		providerID, definedAt, reason = binding.ProviderID, binding.ScopeID, "scope_purpose_"+string(binding.Tag)
 	}
@@ -182,7 +182,7 @@ func (s *Service) BuildModel(ctx context.Context, scopeID, providerID, modelName
 
 func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, modelName string, stream bool) (ConnectionResult, error) {
 	started := time.Now()
-	resolved, client, err := s.BuildModel(ctx, scopeID, providerID, modelName, PurposeDefault)
+	resolved, client, err := s.BuildModel(ctx, scopeID, providerID, modelName, PurposeGeneral)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
@@ -369,7 +369,7 @@ func selectedDefaultModel(config AIProviderConfig) (ProviderModel, bool) {
 }
 func validPurpose(purpose Purpose) bool {
 	switch purpose {
-	case PurposeDefault, PurposeDiagnosis, PurposeInspection, PurposeWorkflow:
+	case PurposeGeneral, PurposeDiagnosis, PurposeInspection, PurposeWorkflow:
 		return true
 	default:
 		return false

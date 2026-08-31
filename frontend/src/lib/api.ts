@@ -692,6 +692,10 @@ export const api = {
     purpose: string;
     secret: string;
   }) => request<Credential>('api/v1/credentials', json(body)),
+  updateCredential: (
+    id: string,
+    body: { name?: string; purpose?: string; secret?: string }
+  ) => request<Credential>(`api/v1/credentials/${encodeURIComponent(id)}/`, patch(body)),
   createResource: (body: Record<string, unknown>) =>
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
@@ -709,7 +713,7 @@ export const api = {
     body: { scope_id: string; model_name: string; stream: boolean }
   ) =>
     request<AIConnectionResult>(`api/v1/ai-providers/${id}/test`, json(body)),
-  availableAIProviders: (scopeId: string, purpose = 'default') =>
+  availableAIProviders: (scopeId: string, purpose = 'general') =>
     request<AIProviderAvailability[]>(
       `api/v1/ai-providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
     ),
