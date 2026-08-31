@@ -1,0 +1,4 @@
+UPDATE resource_schemas
+SET schema = '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["transport","url"],"properties":{"transport":{"title":"传输方式","type":"string","enum":["streamable_http","sse"]},"url":{"title":"Server 地址","type":"string","format":"uri"},"request_headers":{"title":"请求 Header","type":"object","additionalProperties":{"type":"string"}},"tool_allowlist":{"title":"工具白名单","type":"array","items":{"type":"string","maxLength":128}},"timeout_seconds":{"title":"超时时间（秒）","type":"integer","minimum":1,"maximum":600,"default":120},"max_response_bytes":{"title":"响应体大小限制（字节）","type":"integer","minimum":1,"maximum":16777216,"default":4194304}}}'::jsonb,
+    description = '通过 Streamable HTTP 或 SSE 接入 MCP 服务。Token 使用独立加密凭据；工具白名单支持通配符，空白表示不限制。'
+WHERE kind = 'MCPServer' AND version = 3;
