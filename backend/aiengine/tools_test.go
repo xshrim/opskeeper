@@ -23,7 +23,7 @@ func TestPolicyGatewayEnforcesAuthorizationAndEmitsToolEvents(t *testing.T) {
 		}
 		return nil
 	}, time.Second, 1024, 1)
-	result, err := gateway.Invoke(context.Background(), ToolCall{ScopeID: "scope-1", ResourceID: "resource-1", Name: "read", EventSink: func(event Event) error {
+	result, err := gateway.Invoke(context.Background(), ToolCall{ScopeID: "scope-1", ResourceID: "resource-1", Name: "read", Arguments: map[string]any{"query": "orders", "limit": 5}, EventSink: func(event Event) error {
 		events = append(events, event)
 		return nil
 	}})
@@ -32,6 +32,19 @@ func TestPolicyGatewayEnforcesAuthorizationAndEmitsToolEvents(t *testing.T) {
 	}
 	if events[0].Type != "tool.requested" || events[1].Type != "tool.started" || events[2].Type != "tool.completed" {
 		t.Fatalf("unexpected events=%+v", events)
+	}
+	for _, event := range events {
+		arguments, ok := event.Payload["arguments"].(map[string]any)
+		if !ok || arguments["query"] != "orders" {
+			t.Fatalf("tool event did not preserve arguments: %+v", event)
+		}
+		if limit := arguments["limit"]; limit != 5 && limit != float64(5) {
+			t.Fatalf("tool event did not preserve numeric argument: %+v", event)
+		}
+	}
+	output, ok := events[2].Payload["output"].(map[string]any)
+	if !ok || output["ok"] != true {
+		t.Fatalf("tool.completed did not include tool output: %+v", events[2])
 	}
 }
 

@@ -1654,10 +1654,14 @@ h3 {
 }
 .resource-catalog-row.provider-resource-row .entity-summary > span:last-child strong {
   color: var(--theme-fg-strong);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 650;
 }
 .resource-catalog-row.provider-resource-row .entity-summary > span:last-child small {
+  color: var(--theme-fg-subtle);
+  font-size: 10px;
+}
+.resource-catalog-row.mcp-resource-row .entity-summary > span:last-child small {
   color: var(--theme-fg-subtle);
   font-size: 10px;
 }
@@ -2187,7 +2191,7 @@ textarea:focus {
   display: grid;
   grid-template-columns:
     minmax(170px, 1.35fr) minmax(86px, 0.72fr) minmax(82px, 0.65fr)
-    minmax(120px, 1fr) minmax(100px, 0.8fr) auto 18px;
+    minmax(120px, 1fr) minmax(100px, 0.8fr) auto;
   align-items: center;
   gap: 16px;
   min-height: 66px;
@@ -2203,17 +2207,19 @@ textarea:focus {
 .resource-catalog-row.provider-resource-row summary::after {
   display: none;
 }
+.resource-catalog-row.mcp-resource-row summary {
+  grid-template-columns:
+    minmax(170px, 1.35fr) minmax(86px, 0.72fr) minmax(82px, 0.65fr)
+    minmax(120px, 1fr) minmax(100px, 0.8fr) auto;
+}
+.resource-catalog-row.mcp-resource-row summary::after {
+  display: none;
+}
 .resource-catalog-row summary::-webkit-details-marker {
   display: none;
 }
 .resource-catalog-row summary::after {
-  content: '⌄';
-  color: var(--theme-fg-subtle);
-  font-size: 12px;
-  transform: rotate(0deg);
-}
-.resource-catalog-row[open] summary::after {
-  transform: rotate(180deg);
+  display: none;
 }
 .resource-row-details {
   display: grid;
@@ -2432,6 +2438,13 @@ textarea:focus {
 .provider-resource-model-row:last-child {
   border-bottom: 0;
 }
+.mcp-resource-tool-row {
+  grid-template-columns: minmax(170px, 1fr) minmax(0, 2fr);
+}
+.mcp-tool-description strong {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .provider-resource-model-name strong {
   color: var(--theme-fg-strong);
 }
@@ -2628,10 +2641,8 @@ textarea:focus {
   min-width: 0;
 }
 .mcp-resource-form .mcp-url-field,
-.mcp-resource-form .mcp-tools-field,
-.mcp-resource-form .mcp-number-grid {
-  grid-column: 1 / -1;
-}
+.mcp-resource-form .mcp-tools-field { grid-column: auto; }
+.mcp-resource-form .mcp-number-grid { grid-column: 1 / -1; }
 .mcp-resource-form label {
   display: grid;
   gap: 6px;
@@ -2652,6 +2663,47 @@ textarea:focus {
 }
 .editor-mcp-form {
   padding: 0 20px 20px;
+}
+.mcp-summary {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+}
+.mcp-summary dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.mcp-summary dl > div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+.mcp-summary dt {
+  color: var(--theme-fg-muted);
+  font-size: 12px;
+}
+.mcp-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--theme-fg-strong);
+  font-size: 13px;
+}
+.mcp-summary .success {
+  color: var(--theme-success, #1f8f55);
+  font-size: 13px;
+}
+@media (max-width: 720px) {
+  .mcp-resource-form {
+    grid-template-columns: 1fr;
+  }
+  .mcp-summary dl > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 .resource-add-steps {
   display: grid;
@@ -5782,9 +5834,12 @@ textarea:focus {
     white-space: nowrap;
   }
   .resource-catalog-row summary {
-    grid-template-columns: minmax(0, 1fr) auto auto 18px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
   .resource-catalog-row.provider-resource-row summary {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .resource-catalog-row.mcp-resource-row summary {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
   .resource-catalog-row summary .resource-category-cell,
@@ -5806,7 +5861,8 @@ textarea:focus {
   .provider-resource-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .provider-resource-meta-wide {
+  .provider-resource-meta-wide,
+  .provider-resource-address {
     grid-column: 1 / -1;
   }
   .provider-resource-models {
@@ -8025,6 +8081,15 @@ button.workspace-team:hover {
   font-size: 9px;
   line-height: 1.4;
   white-space: pre-wrap;
+}
+.diagnosis-action-detail > div {
+  min-width: 0;
+}
+.diagnosis-action-detail > div > small {
+  display: block;
+  margin: 0 0 3px;
+  color: var(--diagnosis-subtle);
+  font-size: 9px;
 }
 .diagnosis-welcome {
   display: grid;

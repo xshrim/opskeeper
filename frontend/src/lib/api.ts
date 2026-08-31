@@ -314,6 +314,7 @@ export interface MCPSnapshot {
   error_message?: string;
   created_at: string;
   untrusted: true;
+  latency_ms?: number;
 }
 
 export type DiagnosisStatus =
@@ -858,6 +859,15 @@ export const api = {
     request<MCPSnapshot[]>(
       `api/v1/mcp-servers/${resourceId}/snapshots?limit=20`
     ),
+  testDraftMCP: (body: {
+    transport: string;
+    url: string;
+    token?: string;
+    request_headers?: Record<string, string>;
+    tool_allowlist?: string[];
+    timeout_seconds?: number;
+    max_response_bytes?: number;
+  }) => request<MCPSnapshot>('api/v1/mcp-servers/test-draft', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

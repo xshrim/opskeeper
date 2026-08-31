@@ -149,7 +149,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
 	agentProfileResolver.Versions = agentProfileVersions
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
-	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
+	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentialService)
 	contextTooling := aiengine.NewContextTooling(
 		aiengine.ResourceServiceReader{Reader: resourceService},
 		connectorService.AIEngineProvider(),

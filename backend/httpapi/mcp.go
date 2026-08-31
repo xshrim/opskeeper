@@ -20,12 +20,24 @@ type mcpService interface {
 	ListSnapshots(context.Context, string, int) ([]mcp.Snapshot, error)
 	Call(context.Context, string, string, map[string]any) (json.RawMessage, error)
 }
+type mcpDraftService interface {
+	TestDraft(context.Context, mcp.DraftConfig) (mcp.Snapshot, error)
+}
 type mcpHandler struct {
 	service mcpService
 	auditor audit.Logger
 }
 type callMCPToolBody struct {
 	Arguments map[string]any `json:"arguments"`
+}
+type testMCPDraftBody struct {
+	Transport        string            `json:"transport"`
+	URL              string            `json:"url"`
+	Token            string            `json:"token"`
+	RequestHeaders   map[string]string `json:"request_headers"`
+	ToolAllowlist    []string          `json:"tool_allowlist"`
+	TimeoutSeconds   int               `json:"timeout_seconds"`
+	MaxResponseBytes int64             `json:"max_response_bytes"`
 }
 
 func registerMCPRoutes(router chi.Router, service mcpService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -39,6 +51,20 @@ func registerMCPRoutes(router chi.Router, service mcpService, auditor audit.Logg
 		return requirePermission(p)
 	}
 	h := mcpHandler{service, auditor}
+	if draft, ok := service.(mcpDraftService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/mcp-servers/test-draft", func(w http.ResponseWriter, r *http.Request) {
+			var body testMCPDraftBody
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			item, err := draft.TestDraft(r.Context(), mcp.DraftConfig{Transport: body.Transport, URL: body.URL, Token: body.Token, RequestHeaders: body.RequestHeaders, ToolAllowlist: body.ToolAllowlist, TimeoutSeconds: body.TimeoutSeconds, MaxResponseBytes: body.MaxResponseBytes})
+			if err != nil {
+				writeMCPError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, item)
+		})
+	}
 	router.With(guard(authorization.ResourceUse)).Post("/mcp-servers/{resourceID}/discover", h.discover)
 	router.With(guard(authorization.ResourceRead)).Get("/mcp-servers/{resourceID}/snapshots", h.snapshots)
 	router.With(guard(authorization.ResourceUse)).Post("/mcp-servers/{resourceID}/tools/{toolName}", h.call)

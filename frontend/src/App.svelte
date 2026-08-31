@@ -463,6 +463,7 @@ import { onMount } from 'svelte';
   let diagnosisStreamingPending = '';
   let diagnosisStreamingFrame = 0;
   let diagnosisStreamingStartedAt = 0;
+  let diagnosisStreamingAssistantBaseline = 0;
   let diagnosisActionExpanded: Record<string, boolean> = {};
   let diagnosisActionChildren: Record<string, boolean> = {};
   let diagnosisHiddenMessageIds: string[] = [];
@@ -541,11 +542,17 @@ import { onMount } from 'svelte';
   let providerDefaultModel = '';
   let providerPurposeTags: string[] = [];
   let editingProviderResourceId = '';
+  let editingResourceId = '';
   let mcpTransport = 'streamable_http';
   let mcpURL = '';
+  let mcpToken = '';
+  let mcpRequestHeaders = '';
   let mcpToolAllowlist = '';
-  let mcpTimeoutSeconds = 10;
-  let mcpMaxResponseBytes = 1048576;
+  let mcpTimeoutSeconds = 120;
+  let mcpMaxResponseBytes = 4 * 1024 * 1024;
+  let mcpDraftTest: { signature: string; result?: MCPSnapshot; error?: string } | null = null;
+  let mcpDraftTestBusy = false;
+  let mcpConfigurationAttempted = false;
   let providerConfigurationAttempted = false;
   let providerModelConfigurationAttempted = false;
   let providerModelValidationMessage = '';
@@ -1407,6 +1414,16 @@ import { onMount } from 'svelte';
       errorMessage = describeError(error, '受控操作数据加载失败');
     }
   }
+  async function loadMCPSnapshots(resourceId: string) {
+    try {
+      operationSnapshots = {
+        ...operationSnapshots,
+        [resourceId]: await api.mcpSnapshots(resourceId)
+      };
+    } catch (error) {
+      errorMessage = describeError(error, 'MCP 工具快照加载失败');
+    }
+  }
   async function createOperationRequest() {
     await action(async () => {
       const created = await api.createOperationRequest({
@@ -1520,6 +1537,9 @@ import { onMount } from 'svelte';
           (message) => !diagnosisHiddenMessageIds.includes(message.id)
         )
       };
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter(
+        (message) => message.role === 'assistant'
+      ).length;
       diagnosisTargetIds = diagnosisSnapshot.targets.map(
         (target) => target.resource_id
       );
@@ -1585,7 +1605,7 @@ import { onMount } from 'svelte';
       payload = {};
     }
     const eventType = event.type || 'message';
-    appendDiagnosisEvent(eventType, payload, diagnosisEventCursor);
+    if (!appendDiagnosisEvent(eventType, payload, diagnosisEventCursor)) return;
     if (eventType === 'assistant.delta') {
       const text = String(payload.text ?? '');
       if (text) {
@@ -1641,9 +1661,9 @@ import { onMount } from 'svelte';
   }
 
   function appendDiagnosisEvent(type: string, payload: Record<string, unknown>, id: number) {
-    if (!diagnosisSnapshot || !id) return;
+    if (!diagnosisSnapshot || !id) return false;
     const current = diagnosisSnapshot.events ?? [];
-    if (current.some((item) => item.id === id)) return;
+    if (current.some((item) => item.id === id)) return false;
     const item = {
       id,
       session_id: diagnosisSnapshot.session.id,
@@ -1655,6 +1675,7 @@ import { onMount } from 'svelte';
       ...diagnosisSnapshot,
       events: [...current, item].sort((a, b) => a.id - b.id)
     };
+    return true;
   }
 
   function closeDiagnosisEvents() {
@@ -1670,13 +1691,36 @@ import { onMount } from 'svelte';
     try {
       const snapshot = await api.diagnosisSession(id);
       if (refreshToken !== diagnosisRefreshToken || id !== selectedDiagnosisId) return;
+      const localEvents = diagnosisSnapshot?.session.id === id
+        ? diagnosisSnapshot.events ?? []
+        : [];
+      const mergedByID = new Map<number, NonNullable<DiagnosisSnapshot['events']>[number]>();
+      for (const event of snapshot.events ?? []) mergedByID.set(event.id, event);
+      // SSE events can arrive before the database-backed snapshot catches up.
+      // Keep the locally received payload when both sides have the same ID.
+      for (const event of localEvents) mergedByID.set(event.id, event);
+      const mergedEvents = [...mergedByID.values()].sort((left, right) => left.id - right.id);
       diagnosisSnapshot = {
         ...snapshot,
+        events: mergedEvents,
         messages: snapshot.messages.filter(
           (message) => !diagnosisHiddenMessageIds.includes(message.id)
         )
       };
-      diagnosisGenerating = isDiagnosisRunning(snapshot.session.status);
+      const assistantMessageCount = diagnosisSnapshot.messages.filter(
+        (message) => message.role === 'assistant'
+      ).length;
+      if (assistantMessageCount > diagnosisStreamingAssistantBaseline) {
+        diagnosisStreamingAssistantBaseline = assistantMessageCount;
+        diagnosisStreamingText = '';
+        diagnosisStreamingPending = '';
+        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+        diagnosisStreamingFrame = 0;
+        diagnosisStreamingStartedAt = 0;
+        diagnosisGenerating = false;
+      } else {
+        diagnosisGenerating = isDiagnosisRunning(snapshot.session.status);
+      }
       diagnosisSessions = diagnosisSessions.map((item) =>
         item.id === diagnosisSnapshot?.session.id
           ? diagnosisSnapshot.session
@@ -1707,6 +1751,9 @@ import { onMount } from 'svelte';
       return;
     }
     await action(async () => {
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot
+        ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
+        : 0;
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
         question: diagnosisQuestion,
@@ -1807,6 +1854,9 @@ import { onMount } from 'svelte';
   async function sendDiagnosisFollowup() {
     if (!selectedDiagnosisId || !diagnosisFollowup.trim()) return;
     await action(async () => {
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot
+        ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
+        : 0;
       await api.askDiagnosis(selectedDiagnosisId, diagnosisFollowup);
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
@@ -1835,6 +1885,7 @@ import { onMount } from 'svelte';
     diagnosisGenerating = false;
     diagnosisStreamingText = '';
     diagnosisStreamingStartedAt = 0;
+    diagnosisStreamingAssistantBaseline = 0;
   }
 
   async function clearDiagnosisHistory() {
@@ -1884,6 +1935,9 @@ import { onMount } from 'svelte';
     if (!content || !selectedDiagnosisId || !diagnosisSnapshot) return;
     const originalID = diagnosisEditingMessageId;
     await action(async () => {
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot!.messages.filter(
+        (message) => message.role === 'assistant'
+      ).length;
       const created = await api.askDiagnosis(selectedDiagnosisId, content);
       diagnosisHiddenMessageIds = [...diagnosisHiddenMessageIds, originalID];
       diagnosisSnapshot = {
@@ -1970,6 +2024,21 @@ import { onMount } from 'svelte';
       };
       return titles[name] ?? `调用 ${name}`;
     };
+    const jsonText = (value: unknown, fallback: string) => {
+      if (value === undefined) return fallback;
+      if (typeof value === 'string') {
+        try {
+          return JSON.stringify(JSON.parse(value), null, 2);
+        } catch {
+          return JSON.stringify(value, null, 2);
+        }
+      }
+      try {
+        return JSON.stringify(value, null, 2) ?? fallback;
+      } catch {
+        return fallback;
+      }
+    };
     const groups: ToolGroup[] = [];
     let currentGroup: ToolGroup | null = null;
 
@@ -2007,7 +2076,7 @@ import { onMount } from 'svelte';
           title: titleForTool(tool),
           status: '进行中',
           duration: '—',
-          input: JSON.stringify({ tool, resource_id: resourceID }, null, 2),
+          input: jsonText(payload.arguments, JSON.stringify({ tool, resource_id: resourceID }, null, 2)),
           output: '等待工具执行结果…',
           created_at: event.created_at,
           updated_at: event.created_at,
@@ -2017,22 +2086,39 @@ import { onMount } from 'svelte';
         currentGroup.children.push(action);
       }
       action.updated_at = event.created_at;
+      if (Object.prototype.hasOwnProperty.call(payload, 'arguments')) {
+        action.input = jsonText(payload.arguments, action.input);
+      }
       if (event.type === 'tool.completed') {
         action.status = '已完成';
         const duration = Number(payload.duration_ms ?? 0);
         action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
-        action.output = JSON.stringify({ status: 'succeeded', duration_ms: payload.duration_ms ?? 0 }, null, 2);
+        action.output = jsonText(payload.output, JSON.stringify({ status: 'succeeded', duration_ms: payload.duration_ms ?? 0 }, null, 2));
       } else if (event.type === 'tool.failed') {
         action.status = '失败';
         const duration = Number(payload.duration_ms ?? 0);
         action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
-        action.output = JSON.stringify({ status: 'failed', error: payload.error ?? '工具调用失败' }, null, 2);
+        action.output = jsonText(payload.output, JSON.stringify({ status: 'failed', error: payload.error ?? '工具调用失败' }, null, 2));
       }
       const completed = currentGroup.children.every((item) => item.status !== '进行中');
       currentGroup.status = completed ? (currentGroup.children.some((item) => item.status === '失败') ? '失败' : '已完成') : '进行中';
       currentGroup.duration = diagnosisDuration(currentGroup.children[0].created_at, action.updated_at);
     }
     return groups;
+  }
+
+  function diagnosisHasRunningActions(snapshot: DiagnosisSnapshot | null) {
+    return Boolean(
+      snapshot && diagnosisActionData(snapshot).some((group) => group.status === '进行中')
+    );
+  }
+
+  function diagnosisHasPersistedNewAnswer(snapshot: DiagnosisSnapshot | null) {
+    return Boolean(
+      snapshot &&
+      snapshot.messages.filter((message) => message.role === 'assistant').length >
+        diagnosisStreamingAssistantBaseline
+    );
   }
 
   function renderDiagnosisMarkdown(value: string) {
@@ -2592,7 +2678,10 @@ import { onMount } from 'svelte';
         throw new Error('请先完成默认 Model 的连接测试并确认测试通过。');
       }
       if (resourceKind === 'MCPServer' && !mcpConfigurationValid()) {
-        throw new Error('请填写 HTTPS 服务地址并至少配置一个允许的工具。');
+        throw new Error('请填写有效的 MCP Server 地址和配置。');
+      }
+      if (resourceKind === 'MCPServer' && !mcpDraftTestPassed()) {
+        throw new Error('请先在总结核验步骤完成 MCP Server 连接测试。');
       }
       const config = isProvider
         ? providerConfigForCreate()
@@ -2601,6 +2690,8 @@ import { onMount } from 'svelte';
         : buildSchemaConfig(createSchema, resourceConfigValues, resourceConfig);
       const credentialId = isProvider
         ? await createProviderCredential()
+        : resourceKind === 'MCPServer'
+          ? await createMCPCredential()
         : await createResourceCredential(createSchema, resourceSensitiveValues);
       const created = await api.createResource({
         scope_id: selectedScopeId,
@@ -2698,6 +2789,38 @@ import { onMount } from 'svelte';
     });
   }
 
+  async function updateMCPFromWorkflow() {
+    const server = resources.find((resource) => resource.id === editingResourceId);
+    if (!server) return;
+    await action(async () => {
+      if (!mcpConfigurationValid()) {
+        throw new Error('请填写有效的 MCP Server 地址和配置。');
+      }
+      if (!mcpDraftTestPassed()) {
+        throw new Error('请先在总结核验步骤完成 MCP Server 连接测试。');
+      }
+      const config = mcpConfigForSave();
+      const credentialId = await saveMCPCredential(server);
+      const updated = await api.updateResource(server.id, {
+        name: resourceName.trim(),
+        subtype: resourceSubtypeFor({ kind: 'MCPServer', subtype: resourceAddSubtype, config }),
+        status: resourceStatus,
+        labels: parseLabels(resourceLabels),
+        config,
+        ...(credentialId ? { credential_id: credentialId } : {})
+      });
+      resources = resources.map((resource) =>
+        resource.id === updated.id ? updated : resource
+      );
+      selectedResourceId = updated.id;
+      editingResourceId = '';
+      resourceAddMenuOpen = false;
+      resourceAddStep = 1;
+      notice = `MCPServer“${updated.name}”已更新`;
+      await loadResourceDetails(updated.id);
+    });
+  }
+
   async function deleteSelectedResource() {
     if (!selectedResource) return;
     await action(async () => {
@@ -2739,7 +2862,9 @@ import { onMount } from 'svelte';
       resourceConnectionChecks = { ...resourceConnectionChecks, [id]: null };
       return;
     }
-    if (current.kind === 'AIProvider') return;
+    // Provider and MCP Server checks use dedicated test/discovery endpoints;
+    // the generic connector check history must not overwrite their result.
+    if (current.kind === 'AIProvider' || current.kind === 'MCPServer') return;
     try {
       const check = await api.latestResourceConnectionCheck(id);
       resourceConnectionChecks = { ...resourceConnectionChecks, [id]: check };
@@ -2756,7 +2881,10 @@ import { onMount } from 'svelte';
 
   async function loadResourceConnectionChecks(items: Resource[]) {
     const connectorItems = items.filter(
-      (resource) => resource.kind !== 'AIProvider' && resourceHasConnector(resource)
+      (resource) =>
+        resource.kind !== 'AIProvider' &&
+        resource.kind !== 'MCPServer' &&
+        resourceHasConnector(resource)
     );
     if (!connectorItems.length) return;
     const checks = await Promise.all(
@@ -2815,6 +2943,21 @@ import { onMount } from 'svelte';
         };
         // Provider checks are intentionally reflected in the catalog only;
         // the detail panel does not show a separate result notification.
+      } else if (resource.kind === 'MCPServer') {
+        const snapshot = await api.discoverMCP(resource.id);
+        operationSnapshots = {
+          ...operationSnapshots,
+          [resource.id]: [snapshot, ...(operationSnapshots[resource.id] ?? [])]
+        };
+        check = {
+          id: `mcp-server-${resource.id}`,
+          resource_id: resource.id,
+          status: snapshot.status === 'succeeded' ? 'succeeded' : 'failed',
+          message: snapshot.error_message || (snapshot.status === 'succeeded' ? 'MCP Server 连接正常' : 'MCP Server 连接失败'),
+          latency_ms: snapshot.latency_ms ?? 0,
+          capabilities: [],
+          checked_at: new Date().toISOString()
+        };
       } else {
         check = await api.testResourceConnection(resource.id);
       }
@@ -2872,7 +3015,7 @@ import { onMount } from 'svelte';
   }
 
   function resourceHasConnector(resource: Resource) {
-    return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki'].includes(
+    return ['AIProvider', 'MCPServer', 'Kubernetes', 'Prometheus', 'Loki'].includes(
       resource.kind
     );
   }
@@ -2959,6 +3102,10 @@ import { onMount } from 'svelte';
       openProviderWorkflowForEdit(resource);
       return;
     }
+    if (resource.kind === 'MCPServer') {
+      openMCPWorkflowForEdit(resource);
+      return;
+    }
     // Select and hydrate the editor immediately. Relationship and topology
     // requests are supplementary and must not make the edit action appear
     // unresponsive.
@@ -2973,7 +3120,7 @@ import { onMount } from 'svelte';
     await action(async () => {
       const isProvider = selectedResource.kind === 'AIProvider';
       if (selectedResource.kind === 'MCPServer' && !mcpConfigurationValid()) {
-        throw new Error('请填写 HTTPS 服务地址并至少配置一个允许的工具。');
+        throw new Error('请填写有效的 MCP Server 地址和配置。');
       }
       const config = isProvider
         ? providerConfigForCreate()
@@ -2982,6 +3129,8 @@ import { onMount } from 'svelte';
         : buildSchemaConfig(selectedSchema, resourceConfigValues, editResourceConfig);
       const credentialId = isProvider
         ? await createProviderCredential()
+        : selectedResource.kind === 'MCPServer'
+          ? await saveMCPCredential(selectedResource)
         : await createResourceCredential(selectedSchema, editResourceSensitiveValues);
       const updated = await api.updateResource(selectedResource.id, {
         name: editResourceName,
@@ -3030,13 +3179,31 @@ import { onMount } from 'svelte';
     editResourceSensitiveValues = {};
     if (resource.kind === 'MCPServer') {
       const config = resource.config ?? {};
-      mcpTransport = String(config.transport ?? 'streamable_http');
+      mcpTransport = mcpTransportForSubtype(resource.subtype || String(config.subtype ?? ''));
       mcpURL = String(config.url ?? '');
+      mcpToken = '';
+      mcpRequestHeaders = Object.entries((config.request_headers ?? {}) as Record<string, unknown>)
+        .map(([key, value]) => `${key}: ${String(value)}`).join('\n');
       mcpToolAllowlist = Array.isArray(config.tool_allowlist)
         ? config.tool_allowlist.map(String).join('\n')
         : String(config.tool_allowlist ?? '');
-      mcpTimeoutSeconds = Number(config.timeout_seconds ?? 10);
-      mcpMaxResponseBytes = Number(config.max_response_bytes ?? 1048576);
+      mcpTimeoutSeconds = Number(config.timeout_seconds ?? 120);
+      mcpMaxResponseBytes = Number(config.max_response_bytes ?? 4 * 1024 * 1024);
+      mcpDraftTest = null;
+      mcpConfigurationAttempted = false;
+      if (resource.credential_id) {
+        void api.credentialSecret(resource.credential_id).then((credential) => {
+          if (selectedResourceId !== resource.id) return;
+          try {
+            const secret = JSON.parse(credential.secret) as { token?: string; headers?: Record<string, unknown> };
+            mcpToken = String(secret.token ?? '');
+            if (secret.headers) mcpRequestHeaders = Object.entries(secret.headers).map(([key, value]) => `${key}: ${String(value)}`).join('\n');
+          } catch {
+            // Legacy plain-token credentials have no request headers.
+            mcpToken = credential.secret.trim();
+          }
+        }).catch(() => undefined);
+      }
     }
     if (resource.kind === 'AIProvider') syncProviderEditor(resource);
   }
@@ -3083,9 +3250,13 @@ import { onMount } from 'svelte';
     resourceConfig = '{}';
     mcpTransport = 'streamable_http';
     mcpURL = '';
+    mcpToken = '';
+    mcpRequestHeaders = '';
     mcpToolAllowlist = '';
-    mcpTimeoutSeconds = 10;
-    mcpMaxResponseBytes = 1048576;
+    mcpTimeoutSeconds = 120;
+    mcpMaxResponseBytes = 4 * 1024 * 1024;
+    mcpDraftTest = null;
+    mcpConfigurationAttempted = false;
   }
 
   function emptyProviderModelDraft(): ProviderModelDraft {
@@ -3162,16 +3333,64 @@ import { onMount } from 'svelte';
     };
   }
 
+  function mcpTransportForSubtype(subtype: string) {
+    return subtype.trim().toLowerCase().replace(/[^a-z]/g, '') === 'sse'
+      ? 'sse'
+      : 'streamable_http';
+  }
+
   function mcpConfigurationValid() {
-    if (mcpTransport !== 'streamable_http' || !mcpURL.trim()) return false;
+    if (!['streamable_http', 'sse'].includes(mcpTransport) || !mcpURL.trim()) return false;
     try {
       const url = new URL(mcpURL.trim());
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
     } catch {
       return false;
     }
-    const tools = mcpConfigForSave().tool_allowlist;
-    return Array.isArray(tools) && tools.length > 0;
+    try { parseMCPHeaders(mcpRequestHeaders); } catch { return false; }
+    return true;
+  }
+
+  function parseMCPHeaders(raw: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+    for (const line of raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)) {
+      const separator = line.indexOf(':');
+      if (separator <= 0) throw new Error('请求 Header 格式应为“名称: 值”，每行一个。');
+      const key = line.slice(0, separator).trim();
+      const value = line.slice(separator + 1).trim();
+      if (!key || /[\r\n:]/.test(key) || /[\r\n]/.test(value)) throw new Error('请求 Header 名称或值无效。');
+      headers[key] = value;
+    }
+    return headers;
+  }
+  function mcpHeaderCount() {
+    try { return Object.keys(parseMCPHeaders(mcpRequestHeaders)).length; } catch { return 0; }
+  }
+
+  function mcpDraftSignature() {
+    return JSON.stringify({ transport: mcpTransport, url: mcpURL.trim(), token: mcpToken, headers: mcpRequestHeaders, tools: mcpToolAllowlist, timeout: mcpTimeoutSeconds, max: mcpMaxResponseBytes });
+  }
+
+  function mcpDraftTestPassed() {
+    return Boolean(mcpDraftTest?.signature === mcpDraftSignature() && mcpDraftTest.result?.status === 'succeeded');
+  }
+
+  async function testMCPDraftConnection() {
+    const signature = mcpDraftSignature();
+    mcpDraftTestBusy = true;
+    mcpDraftTest = { signature };
+    try {
+      if (!mcpConfigurationValid()) throw new Error('请填写有效的 Server 地址和请求 Header。');
+      const result = await api.testDraftMCP({
+        transport: mcpTransport, url: mcpURL.trim(), token: mcpToken.trim(),
+        request_headers: parseMCPHeaders(mcpRequestHeaders),
+        tool_allowlist: mcpToolAllowlist.split(/[\n,]/).map((item) => item.trim()).filter(Boolean),
+        timeout_seconds: Number(mcpTimeoutSeconds), max_response_bytes: Number(mcpMaxResponseBytes)
+      });
+      mcpDraftTest = result.status === 'succeeded' ? { signature, result } : { signature, result, error: result.error_message || 'MCP Server 不可用。' };
+    } catch (error) {
+      mcpDraftTest = { signature, error: describeError(error, 'MCP Server 验证失败') };
+    } finally { mcpDraftTestBusy = false; }
   }
 
   function providerTypeLabel(type: unknown) {
@@ -3445,6 +3664,8 @@ import { onMount } from 'svelte';
   function toggleResourceAddMenu() {
     resourceAddMenuOpen = !resourceAddMenuOpen;
     resourceEditorOpen = false;
+    editingProviderResourceId = '';
+    editingResourceId = '';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
@@ -3467,6 +3688,7 @@ import { onMount } from 'svelte';
       category === 'LLM' && subtype === 'Provider'
         ? 'AIProvider'
         : (schema?.kind ?? '');
+    if (resourceKind === 'MCPServer') mcpTransport = mcpTransportForSubtype(subtype);
     resourceCategory = category;
     resourceSubtype = subtype;
     if (resetDraft) {
@@ -3495,7 +3717,7 @@ import { onMount } from 'svelte';
     chooseResourceAddSubtype(
       resourceAddCategory,
       resourceAddSubtype,
-      !editingProviderResourceId
+      !editingProviderResourceId && !editingResourceId
     );
     resourceAddStep = 2;
   }
@@ -3554,6 +3776,7 @@ import { onMount } from 'svelte';
     resourceCategory = 'LLM';
     resourceSubtype = 'Provider';
     editingProviderResourceId = resource.id;
+    editingResourceId = '';
     syncProviderEditor(resource);
     providerPurposeTags = aiProviderBindings
       .filter(
@@ -3589,6 +3812,31 @@ import { onMount } from 'svelte';
     } else {
       providerAPIKeyLoading = false;
     }
+  }
+
+  function openMCPWorkflowForEdit(resource: Resource) {
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'MCPServer';
+    resourceAddCategory = 'MCPServer';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    resourceCategory = 'MCPServer';
+    resourceSubtype = resourceAddSubtype;
+    editingProviderResourceId = '';
+    editingResourceId = resource.id;
+    resourceName = resource.name;
+    resourceStatus = resource.status;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join(', ');
+    syncResourceEditor(resource);
+    mcpDraftTest = null;
+    mcpConfigurationAttempted = false;
+    resourceAddStep = 1;
+    resourceTypeSelectionAttempted = false;
+    resourceBasicConfigurationAttempted = false;
+    resourceEditorOpen = false;
+    resourceAddMenuOpen = true;
   }
 
   function providerBaseURLValid() {
@@ -3645,6 +3893,13 @@ import { onMount } from 'svelte';
       if (!resourceName.trim()) issues.push('资源名称');
       return issues.length ? `请填写：${issues.join('、')}。` : '';
     }
+    if (
+      resourceKind === 'MCPServer' &&
+      resourceAddStep === 2 &&
+      mcpConfigurationAttempted &&
+      !mcpConfigurationValid()
+    )
+      return '请填写有效的 Server 地址和请求 Header。';
     if (
       resourceKind === 'AIProvider' &&
       resourceAddStep === 2 &&
@@ -3719,6 +3974,7 @@ import { onMount } from 'svelte';
 
   function resourceAddStepTitle(step: number, kind: string) {
     if (step === 1) return '基础配置';
+    if (kind === 'MCPServer') return ['MCP 配置', '总结核验'][step - 2] ?? 'MCP 配置';
     if (kind !== 'AIProvider') return '配置资源';
     return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
   }
@@ -3781,6 +4037,46 @@ import { onMount } from 'svelte';
       secret: JSON.stringify(secret)
     });
     return credential.id;
+  }
+
+  async function createMCPCredential() {
+    const token = mcpToken.trim();
+    const headers = parseMCPHeaders(mcpRequestHeaders);
+    if (!selectedScopeId || (!token && Object.keys(headers).length === 0)) return '';
+    const credential = await api.createCredential({
+      scope_id: selectedScopeId,
+      name: `${resourceName || 'MCP Server'} 访问凭据`,
+      purpose: 'MCP Server Token 与请求 Header',
+      secret: JSON.stringify({ token, headers })
+    });
+    return credential.id;
+  }
+
+  async function saveMCPCredential(existing: Resource) {
+    const headers = parseMCPHeaders(mcpRequestHeaders);
+    if (!existing.credential_id) return createMCPCredential();
+    let token = mcpToken.trim();
+    if (!token) {
+      try {
+        const current = await api.credentialSecret(existing.credential_id);
+        try {
+          const parsed = JSON.parse(current.secret) as { token?: string };
+          token = String(parsed.token ?? '').trim();
+        } catch {
+          token = current.secret.trim();
+        }
+      } catch {
+        // Legacy/plain credentials cannot be read as JSON; leave them intact
+        // unless the operator supplied a replacement token.
+      }
+    }
+    if (!token && Object.keys(headers).length === 0) return existing.credential_id;
+    await api.updateCredential(existing.credential_id, {
+      name: `${(editResourceName.trim() || resourceName.trim() || 'MCP Server')} 访问凭据`,
+      purpose: 'MCP Server Token 与请求 Header',
+      secret: JSON.stringify({ token, headers })
+    });
+    return existing.credential_id;
   }
 
   async function createRelation() {
@@ -6032,8 +6328,9 @@ import { onMount } from 'svelte';
                   <details
                     class:selected={selectedResourceId === resource.id}
                     class:provider-resource-row={resource.kind === 'AIProvider'}
+                    class:mcp-resource-row={resource.kind === 'MCPServer'}
                     class="resource-catalog-row"
-                    on:toggle={() => void loadResourceDetails(resource.id)}
+                    on:toggle={() => { void loadResourceDetails(resource.id); if (resource.kind === 'MCPServer') void loadMCPSnapshots(resource.id); }}
                   >
                     <summary>
                       <span class="entity-summary"
@@ -6051,6 +6348,8 @@ import { onMount } from 'svelte';
                           {@const models = providerModelsForResource(resource)}
                           {@const currentModel = providerDefaultModelForResource(resource)}
                           <strong>{providerTypeLabel(resource.config?.provider_type)} · {String(currentModel?.name ?? '未设置')}</strong><small>模型 · 共 {models.length} 个</small>
+                        {:else if resource.kind === 'MCPServer'}
+                          <strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>
                         {:else}
                           <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
                         {/if}
@@ -6062,7 +6361,9 @@ import { onMount } from 'svelte';
                         ><small>级别</small></span
                       >
                       {#if resource.kind === 'AIProvider'}
-                        <span class="resource-cell provider-purpose-cell"
+                        <span
+                          class="resource-cell provider-purpose-cell"
+                          title="角色表示特定场景的调用优先级；同级别每个角色最多绑定一个 Provider。"
                           ><span class="provider-purpose-tags">
                             {#each providerBindingsFor(resource) as binding}
                               <span class="resource-tag provider-purpose-tag"
@@ -6071,7 +6372,7 @@ import { onMount } from 'svelte';
                             {:else}
                               <small class="resource-tags-empty">未设置</small>
                             {/each}
-                          </span><small>角色表示特定场景的调用优先级；同级别每个角色最多绑定一个 Provider。</small></span
+                          </span><small>角色</small></span
                         >
                       {/if}
                       <span class="resource-tags" class:provider-capabilities-cell={resource.kind === 'AIProvider'} aria-label={resource.kind === 'AIProvider' ? '模型能力' : '资源标签'}>
@@ -6163,8 +6464,11 @@ import { onMount } from 'svelte';
                           <div>
                             <span>协议</span><strong>{String(providerConfig.protocol ?? 'chat_completions')}</strong>
                           </div>
-                          <div class="provider-resource-meta-wide">
+                          <div class="provider-resource-address">
                             <span>服务地址</span><strong>{resourceEndpointFor(resource)}</strong>
+                          </div>
+                          <div>
+                            <span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong>
                           </div>
                           <div>
                             <span>请求超时</span><strong>{Number(providerConfig.timeout_seconds ?? 60)} 秒</strong>
@@ -6196,7 +6500,7 @@ import { onMount } from 'svelte';
                         </div>
                         <div class="provider-resource-models">
                           <div class="provider-resource-models-heading">
-                            <strong>Model 配置</strong><span>{providerModels.length} 个</span>
+                            <strong>Model 列表</strong><span>{providerModels.length} 个</span>
                           </div>
                           {#each providerModels as model}
                             {@const modelName = String(model.name ?? '未命名 Model')}
@@ -6217,12 +6521,40 @@ import { onMount } from 'svelte';
                           {/each}
                         </div>
                       </div>
+                    {:else if resource.kind === 'MCPServer'}
+                      {@const mcpConfig = resource.config ?? {}}
+                      {@const mcpSnapshot = (operationSnapshots[resource.id] ?? [])[0]}
+                      <div class="provider-resource-details mcp-resource-details">
+                        <div class="provider-resource-meta">
+                          <div><span>传输方式</span><strong>{String(mcpConfig.transport ?? 'streamable_http') === 'sse' ? 'SSE' : 'Streamable HTTP'}</strong></div>
+                          <div class="provider-resource-address"><span>Server 地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
+                          <div><span>工具数量</span><strong>{mcpSnapshot?.tools?.length ?? 0} 个</strong></div>
+                          <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
+                          <div><span>超时时间</span><strong>{Number(mcpConfig.timeout_seconds ?? 120)} 秒</strong></div>
+                          <div><span>响应体大小限制</span><strong>{Math.round(Number(mcpConfig.max_response_bytes ?? 4 * 1024 * 1024) / 1024 / 1024)} MiB</strong></div>
+                          <div><span>自定义 Header</span><strong>{resource.credential_id ? '已配置' : '未配置'}</strong></div>
+                          <div><span>工具白名单</span><strong>{Array.isArray(mcpConfig.tool_allowlist) && mcpConfig.tool_allowlist.length ? `${mcpConfig.tool_allowlist.length} 条规则` : '不限制'}</strong></div>
+                          <div><span>访问凭据</span><strong>{resource.credential_id ? '已配置 Token / Header' : '未配置'}</strong></div>
+                          <div class="provider-resource-labels"><span>标签</span><strong>{resourceLabelsText(resource) || '未设置标签'}</strong></div>
+                          <div><span>MCPServer状态</span><strong>{resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知'}</strong></div>
+                          <div><span>连接测试</span><strong>{mcpSnapshot ? (mcpSnapshot.status === 'succeeded' ? `正常 · ${mcpSnapshot.latency_ms ?? 0} ms` : '失败') : '尚未测试'}</strong></div>
+                        </div>
+                        <div class="provider-resource-models mcp-resource-tools">
+                          <div class="provider-resource-models-heading"><strong>工具列表</strong><span>{mcpSnapshot?.tools?.length ?? 0} 个</span></div>
+                          {#each mcpSnapshot?.tools ?? [] as tool}
+                            <div class="provider-resource-model-row mcp-resource-tool-row"><div><span>工具名称</span><strong>{tool.name}</strong></div><div class="mcp-tool-description"><span>工具说明</span><strong>{tool.description || '未提供说明'}</strong></div></div>
+                          {:else}<div class="empty-state">尚未发现工具，请先执行连接测试。</div>{/each}
+                        </div>
+                      </div>
                     {:else}
                       <div class="resource-row-details">
                         <div>
                           <span>资源地址</span><strong
                             >{resourceEndpointFor(resource)}</strong
                           >
+                        </div>
+                        <div>
+                          <span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong>
                         </div>
                         <div>
                           <span>连接测试</span><strong
@@ -6254,9 +6586,9 @@ import { onMount } from 'svelte';
               >
                 <header class="resource-add-main-heading">
                   <div>
-                    <p class="eyebrow">{editingProviderResourceId ? 'EDIT PROVIDER' : 'ADD RESOURCE'}</p>
+                    <p class="eyebrow">{editingProviderResourceId || editingResourceId ? 'EDIT RESOURCE' : 'ADD RESOURCE'}</p>
                     <h2 id="resource-add-title">
-                      <span>{editingProviderResourceId ? '编辑资源' : '添加资源'}</span>
+                      <span>{editingProviderResourceId || editingResourceId ? '编辑资源' : '添加资源'}</span>
                       {#if resourceAddCategory && resourceAddSubtype}<small>{resourceAddCategory} · {resourceAddSubtype}</small>{/if}
                     </h2>
                   </div>
@@ -6267,6 +6599,7 @@ import { onMount } from 'svelte';
                       resourceAddMenuOpen = false;
                       resourceAddStep = 1;
                       editingProviderResourceId = '';
+                      editingResourceId = '';
                     }}>取消</button
                   >
                 </header>
@@ -6303,6 +6636,20 @@ import { onMount } from 'svelte';
                       on:click={() => {
                         if (providerModels.length > 0) resourceAddStep = 4;
                       }}><b>4</b><span>总结核验</span></button
+                    >
+                  {:else if resourceKind === 'MCPServer'}
+                    <button
+                      class:active={resourceAddStep === 2}
+                      class:done={resourceAddStep > 2}
+                      disabled={!resourceBasicConfigurationComplete()}
+                      type="button"
+                      on:click={() => { if (resourceBasicConfigurationComplete()) resourceAddStep = 2; }}><b>2</b><span>MCP 配置</span></button
+                    >
+                    <button
+                      class:active={resourceAddStep === 3}
+                      disabled={!mcpConfigurationValid()}
+                      type="button"
+                      on:click={() => { if (mcpConfigurationValid()) resourceAddStep = 3; }}><b>3</b><span>总结核验</span></button
                     >
                   {:else}
                     <button
@@ -6370,8 +6717,14 @@ import { onMount } from 'svelte';
                           type="submit"
                           form="provider-create-form"
                           disabled={busy || !selectedScopeId}
-                          >{editingProviderResourceId ? '保存 Provider' : '创建 Provider'}</button
+                          >{editingProviderResourceId ? '保存' : '创建'}</button
                         >
+                      {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
+                        <button class="secondary" type="button" on:click={() => (resourceAddStep = 1)}>上一步</button>
+                        <button class="primary" type="button" on:click={() => { mcpConfigurationAttempted = true; if (mcpConfigurationValid()) { mcpConfigurationAttempted = false; resourceAddStep = 3; } }}>下一步</button>
+                      {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
+                        <button class="secondary" type="button" on:click={() => (resourceAddStep = 2)}>上一步</button>
+                        <button class="primary" type="button" on:click={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())} disabled={busy || !selectedScopeId}>{editingResourceId ? '保存' : '创建'}</button>
                       {:else if resourceAddStep === 2}
                         <button
                           class="secondary"
@@ -6382,7 +6735,7 @@ import { onMount } from 'svelte';
                           class="primary"
                           type="submit"
                           form="resource-create-form"
-                          disabled={busy || !selectedScopeId}>创建资源</button
+                          disabled={busy || !selectedScopeId}>创建</button
                         >
                       {/if}
                     </div>
@@ -6398,7 +6751,7 @@ import { onMount } from 'svelte';
                           !resourceAddCategory}
                         ><span><i>*</i>资源类型</span><select
                           bind:value={resourceAddCategory}
-                          disabled={Boolean(editingProviderResourceId)}
+                          disabled={Boolean(editingProviderResourceId || editingResourceId)}
                           on:change={(event) =>
                             selectResourceAddCategory(
                               (event.currentTarget as HTMLSelectElement).value
@@ -6414,7 +6767,7 @@ import { onMount } from 'svelte';
                           !resourceAddSubtype}
                         ><span><i>*</i>资源子类型</span><select
                           bind:value={resourceAddSubtype}
-                          disabled={!resourceAddCategory || Boolean(editingProviderResourceId)}
+                          disabled={!resourceAddCategory || Boolean(editingProviderResourceId || editingResourceId)}
                           on:change={(event) => {
                             resourceAddSubtype = (event.currentTarget as HTMLSelectElement).value;
                             const schema = resourceSchemaForSelection(resourceAddCategory, resourceAddSubtype);
@@ -6444,16 +6797,31 @@ import { onMount } from 'svelte';
                     </div>
                   {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
                     <p class="resource-add-description">
-                      通过安全的 Streamable HTTP 接入 MCP 服务。服务地址、工具白名单和响应上限会在每次调用前重新校验。
+                      配置 MCP Server 的连接参数。增强安全模式下服务地址必须使用 HTTPS。
                     </p>
                     <form id="resource-create-form" class="stack-form resource-create-form" on:submit|preventDefault={createResource}>
                       <div class="mcp-resource-form">
-                      <label><span><i>*</i>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
-                      <label class="mcp-url-field"><span><i>*</i>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
-                      <label class="mcp-tools-field"><span><i>*</i>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="5" placeholder="每行一个工具，例如 inventory.read&#10;alerts.list" spellcheck="false"></textarea><small>仅精确匹配的工具会被允许，不能使用通配符。</small></label>
-                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                      <label class="mcp-url-field"><span><i>*</i>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
+                      <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="保存于加密凭据" autocomplete="new-password" /></label>
+                      <div class="mcp-number-grid"><label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label><label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label></div>
+                      <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
+                      <label class="mcp-tools-field"><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="4" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具" spellcheck="false"></textarea></label>
                       </div>
                     </form>
+                  {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
+                    <div class="provider-summary mcp-summary">
+                      <div><span>传输方式</span><strong>{mcpTransport === 'sse' ? 'SSE' : 'Streamable HTTP'}</strong></div>
+                      <div><span>Server 地址</span><strong>{mcpURL || '未设置'}</strong></div>
+                      <div><span>Token / Header</span><strong>{mcpToken.trim() ? 'Token 已配置' : 'Token 未配置'}</strong><small>{mcpHeaderCount()} 个请求 Header</small></div>
+                      <div><span>工具白名单</span><strong>{mcpToolAllowlist.trim() || '不限制'}</strong><small>支持通配符，空白表示允许全部工具</small></div>
+                      <div><span>超时时间</span><strong>{mcpTimeoutSeconds} 秒</strong></div>
+                      <div><span>响应体大小限制</span><strong>{Math.round(Number(mcpMaxResponseBytes) / 1024 / 1024)} MiB</strong></div>
+                      <div class="provider-test-summary">
+                        <span>连接核验</span>
+                        {#if mcpDraftTest?.result?.status === 'succeeded'}<strong class="success">连接正常 · 发现 {mcpDraftTest.result.tools.length} 个工具{mcpDraftTest.result.latency_ms ? ` · ${mcpDraftTest.result.latency_ms} ms` : ''}</strong><small>Server 初始化和工具发现已完成</small>{:else if mcpDraftTest?.error}<strong class="failed">{mcpDraftTest.error}</strong><small>请修正配置后重新测试</small>{:else}<strong>尚未核验</strong><small>创建前必须完成连接测试</small>{/if}
+                        <button class="secondary provider-test-button" type="button" on:click={() => void testMCPDraftConnection()} disabled={mcpDraftTestBusy}>{mcpDraftTestBusy ? '连接中…' : '连接测试'}</button>
+                      </div>
+                    </div>
                   {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
                     <p class="resource-add-description">
                       配置 Provider 连接、运行边界和角色。凭据会作为独立加密对象保存，不会写入资源配置。
@@ -6780,10 +7148,11 @@ import { onMount } from 'svelte';
                     <div class="mcp-resource-form editor-mcp-form">
                       <div class="form-row"><label><span>资源名称</span><input bind:value={editResourceName} required /></label><label><span>状态</span><select bind:value={editResourceStatus}><option value="active">正常</option><option value="disabled">停用</option><option value="unknown">未知</option></select></label></div>
                       <label><span>标签</span><input bind:value={editResourceLabels} placeholder="env=prod, owner=platform" /></label>
-                      <label><span>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
-                      <label><span>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
-                      <label><span>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="每行一个工具"></textarea><small>只允许登记的工具，调用前会再次发现并校验。</small></label>
-                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                      <label><span>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
+                      <div class="mcp-number-grid"><label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label><label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label></div>
+                      <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="留空保持原凭据" /></label>
+                      <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
+                      <label><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="5" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具"></textarea></label>
                     </div>
                   {:else}
                     <p class="resource-add-description">
@@ -6966,10 +7335,11 @@ import { onMount } from 'svelte';
                   </div>
                   {#if selectedResource.kind === 'MCPServer'}
                     <div class="mcp-resource-form editor-mcp-form">
-                      <label><span><i>*</i>传输方式</span><select bind:value={mcpTransport}><option value="streamable_http">Streamable HTTP</option></select></label>
-                      <label class="mcp-url-field"><span><i>*</i>HTTPS 服务地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
-                      <label class="mcp-tools-field"><span><i>*</i>允许的工具</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="每行一个工具"></textarea><small>只允许登记的工具，调用前会再次发现并校验。</small></label>
-                      <div class="mcp-number-grid"><label><span>调用超时（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="60" /></label><label><span>最大响应字节</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="1048576" step="1024" /></label></div>
+                      <label class="mcp-url-field"><span><i>*</i>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
+                      <div class="mcp-number-grid"><label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label><label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label></div>
+                      <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="留空保持原凭据" /></label>
+                      <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
+                      <label class="mcp-tools-field"><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具"></textarea></label>
                     </div>
                   {:else if selectedSchema?.schema.properties}
                     <div class="schema-inputs">
@@ -7022,7 +7392,7 @@ import { onMount } from 'svelte';
                     disabled={busy || !selectedResourceCanUpdate}
                     title={selectedResourceCanUpdate
                       ? '保存资源修改'
-                      : '继承资源仅可查看'}>保存修改</button
+                      : '继承资源仅可查看'}>保存</button
                   >
                 </form>
                 {#if selectedSchema?.schema.properties}<div
@@ -7668,9 +8038,7 @@ import { onMount } from 'svelte';
                     >
                     <div class="diagnosis-message-content">
                       <div class="diagnosis-message-meta">
-                        {#if message.role === 'assistant'}<strong
-                            >AI 助手</strong
-                          >{/if}<small>{formatDate(message.created_at)}</small>
+                        <small>{formatDate(message.created_at)}</small>
                       </div>
                       {#if diagnosisEditingMessageId === message.id}
                         <div class="diagnosis-edit-box">
@@ -7697,7 +8065,7 @@ import { onMount } from 'svelte';
                               .lastIndexOf('assistant')}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
                             <div class="diagnosis-action-group">
                               <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
-                              {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}</div>{/each}</div>{/if}
+                              {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}</div>{/each}</div>{/if}
                             </div>
                           {/each}{/if}
                         <div class="diagnosis-bubble-f">
@@ -7727,7 +8095,7 @@ import { onMount } from 'svelte';
                     </div>
                   </article>
                 {/each}{/if}
-              {#if diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason}
+              {#if (diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot)) && !diagnosisHasPersistedNewAnswer(diagnosisSnapshot)}
                 {#each diagnosisSnapshot ? diagnosisActionData(diagnosisSnapshot) : [] as actionGroup}
                   <div class="diagnosis-action-group diagnosis-live-actions">
                     <button
@@ -7750,7 +8118,7 @@ import { onMount } from 'svelte';
                               [child.id]: !diagnosisActionChildren[child.id]
                             })}
                         ><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>
-                        {#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><pre>{child.input}</pre><pre>{child.output}</pre></div>{/if}
+                        {#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}
                       </div>{/each}
                     </div>{/if}
                   </div>
