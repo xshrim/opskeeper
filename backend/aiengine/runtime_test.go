@@ -134,6 +134,13 @@ func (s *fakeEventStore) ListEvents(_ context.Context, _ string, _ int64, _ int)
 	return s.events, nil
 }
 
+type failingEventStore struct{ err error }
+
+func (s failingEventStore) AppendEvent(context.Context, Event) error { return s.err }
+func (s failingEventStore) ListEvents(context.Context, string, int64, int) ([]Event, error) {
+	return nil, s.err
+}
+
 func TestRuntimePersistsLifecycleEvents(t *testing.T) {
 	store := &fakeEventStore{}
 	runtime := NewWithContextAndStore(fakeRunner{run: func(context.Context, Request) (Result, error) {
@@ -144,6 +151,17 @@ func TestRuntimePersistsLifecycleEvents(t *testing.T) {
 	}
 	if len(store.events) != 2 || store.events[0].Type != "execution.started" || store.events[1].Type != "execution.completed" {
 		t.Fatalf("persisted events=%+v", store.events)
+	}
+}
+
+func TestRuntimeDoesNotCompleteWhenEventPersistenceFails(t *testing.T) {
+	storeErr := errors.New("event database unavailable")
+	runtime := NewWithContextAndStore(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Output: "should not be accepted as durable"}, nil
+	}}, nil, nil, failingEventStore{err: storeErr})
+	result, err := runtime.Execute(context.Background(), Request{ExecutionID: "exec-store-failure", ScopeID: "scope-1", Task: "inspect"})
+	if err == nil || result.Status != StatusFailed || result.ErrorCode != "event_sink" {
+		t.Fatalf("result=%+v err=%v, want event persistence failure", result, err)
 	}
 }
 
@@ -168,6 +186,23 @@ func TestRuntimeLoadsContextBeforeRunner(t *testing.T) {
 	}
 	if len(events) != 3 || events[1].Type != "context.loaded" {
 		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestRuntimePreservesRequestToolGatewayWhenRuntimeHasNone(t *testing.T) {
+	gateway := NewPolicyGateway(NewToolRegistry(), nil, 0, 0, 0)
+	var received Request
+	runtime := New(fakeRunner{run: func(_ context.Context, request Request) (Result, error) {
+		received = request
+		return Result{Output: "ok"}, nil
+	}})
+	if _, err := runtime.Execute(context.Background(), Request{
+		ScopeID: "scope-1", Task: "inspect", ToolGateway: gateway,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if received.ToolGateway != gateway {
+		t.Fatalf("runtime replaced caller-provided gateway: got %p, want %p", received.ToolGateway, gateway)
 	}
 }
 

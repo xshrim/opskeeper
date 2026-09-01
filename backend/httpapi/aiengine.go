@@ -202,15 +202,27 @@ func writeAIEngineError(w http.ResponseWriter, r *http.Request, err error) {
 	if err == nil {
 		return
 	}
+	message := aiengine.SafeErrorMessage(err)
+	if message == "" {
+		message = "AI execution failed"
+	}
 	if errorsIsContext(err) {
-		writeError(w, r, http.StatusGatewayTimeout, "timeout", err.Error())
+		code := "cancelled"
+		status := http.StatusRequestTimeout
+		message = "AI execution was cancelled"
+		if errors.Is(err, context.DeadlineExceeded) {
+			code = "timeout"
+			status = http.StatusGatewayTimeout
+			message = "AI execution timed out"
+		}
+		writeError(w, r, status, code, message)
 		return
 	}
-	if strings.Contains(err.Error(), "request is invalid") || strings.Contains(err.Error(), "required") {
-		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
+	if strings.Contains(strings.ToLower(err.Error()), "request is invalid") || strings.Contains(strings.ToLower(err.Error()), "required") {
+		writeError(w, r, http.StatusBadRequest, "invalid_request", message)
 		return
 	}
-	writeError(w, r, http.StatusBadGateway, "ai_runtime_error", err.Error())
+	writeError(w, r, http.StatusBadGateway, "ai_runtime_error", message)
 }
 
 func errorsIsContext(err error) bool {

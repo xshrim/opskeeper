@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/resource"
@@ -17,6 +18,7 @@ type ResourceReader interface {
 type Service struct {
 	store     Store
 	resources ResourceReader
+	eventMu   sync.Mutex
 }
 
 func NewService(store Store, resources ResourceReader) *Service {
@@ -83,7 +85,10 @@ func (s *Service) Get(ctx context.Context, sessionID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	events, err := s.store.EventsAfter(ctx, session.ID, 0, 500)
+	// Keep enough history for long-running Agentic loops. The SSE endpoint
+	// remains the live transport; this snapshot bound is only the reconnect and
+	// page-reload baseline and must not silently discard earlier iterations.
+	events, err := s.store.EventsAfter(ctx, session.ID, 0, 5000)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -138,7 +143,7 @@ func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (
 	if err != nil {
 		return Target{}, err
 	}
-	_, _ = s.store.AppendEvent(ctx, session.ID, CreateEventInput{Type: "target.added", Payload: map[string]any{"resource_id": item.ResourceID}})
+	s.appendEvent(ctx, session.ID, CreateEventInput{Type: "target.added", Payload: map[string]any{"resource_id": item.ResourceID}})
 	return item, nil
 }
 
@@ -163,8 +168,19 @@ func (s *Service) Ask(ctx context.Context, sessionID, content string) (Message, 
 	if err != nil {
 		return Message{}, err
 	}
-	_, _ = s.store.AppendEvent(ctx, session.ID, CreateEventInput{Type: "message.created", Payload: map[string]any{"message_id": item.ID, "role": item.Role}})
+	s.appendEvent(ctx, session.ID, CreateEventInput{Type: "message.created", Payload: map[string]any{"message_id": item.ID, "role": item.Role}})
 	return item, nil
+}
+
+// appendEvent is shared by the user-facing Service mutations and the
+// Orchestrator's background Agentic loop. A follow-up message or target can
+// arrive while tools are completing, so all diagnosis timeline writes must
+// use the same lock before obtaining the database event ID.
+func (s *Service) appendEvent(ctx context.Context, sessionID string, input CreateEventInput) error {
+	s.eventMu.Lock()
+	defer s.eventMu.Unlock()
+	_, err := s.store.AppendEvent(ctx, sessionID, input)
+	return err
 }
 
 func (s *Service) EventsAfter(ctx context.Context, sessionID string, after int64, limit int) ([]Event, error) {

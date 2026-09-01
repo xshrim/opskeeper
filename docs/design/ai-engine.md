@@ -2,7 +2,7 @@
 
 **状态：** I003 实施版本  
 **适用范围：** I003 后续 AIEngine 改造  
-**最后更新：** 2026-08-30
+**最后更新：** 2026-09-01
 
 ## 1. 设计结论
 
@@ -383,10 +383,14 @@ provider.resolved
 context.loaded
 prompt.composed
 model.started
-model.delta
+assistant.delta
+assistant.progress
+tool.requested
 tool.started
 tool.completed
 tool.failed
+model.resumed
+assistant.completed
 execution.completed
 execution.failed
 execution.cancelled
@@ -394,9 +398,58 @@ execution.cancelled
 
 每个事件包含 `execution_id`、单调递增 `sequence`、事件时间、状态和脱敏 Payload。
 
+### 8.1 Agentic Loop 与 ReAct 执行契约
+
+AIEngine 的 AgentRunner 必须以可持续推进的 **Agentic Loop（多轮 Tool-Use Loop）** 为基本执行模型，而不是把一次模型请求和一次工具调用拼接成固定流程。每一轮都必须遵循以下状态转换：
+
+```text
+Reasoning summary（阶段性分析摘要）
+  -> Action（选择一个或多个已授权工具及参数）
+  -> Observation（接收工具结果、错误或超时）
+  -> 重新评估目标与上下文
+  -> 下一轮 Reasoning / Action
+  -> 明确完成信号后 Final Answer
+```
+
+运行时要求：
+
+1. **交替循环。** 模型每次产生工具调用后，AIEngine 必须先完成工具策略校验和执行，再把脱敏的工具结果作为下一轮模型输入；在收到工具结果之前不得生成最终完成状态。一次模型响应包含多个彼此独立的工具调用时，可以并行执行，不要求在每个工具之间插入额外模型回合；但每个调用都必须有独立的开始、完成或失败事件，并在该批调用全部返回后以一个批次级 Observation 边界进入下一轮模型决策。
+2. **明确终止。** 循环只能在模型返回无待执行工具的最终回答、达到取消/超时/预算上限，或触发受控错误时结束。`execution.completed` 只能在最终回答已经产生并持久化之后发送。
+3. **动态规划与纠错。** 工具错误、部分结果、空结果、权限拒绝、超时和环境状态变化都必须作为 Observation 回传模型。模型可以据此更换工具、修正参数、缩小范围、重试或明确告知无法完成；运行时不得把失败结果静默吞掉，也不得无条件沿用原计划。
+4. **环境反馈优先。** 代码运行结果、编译器/测试输出、Git 状态、容器或集群状态、Connector/MCP 返回值等外部环境事实，是后续推理的主要输入。静态 Prompt 只定义角色、边界和目标，不得替代最新环境观察。Context Resolver 在资源解析阶段得到的初始快照会以脱敏、限长的 `environment_facts` 字段注入首轮输入；后续事实必须以工具 Observation 为准。
+5. **长程任务。** 循环必须支持数十乃至上百次连续的“分析-行动-观察”步骤。`MaxIterations`、`MaxToolCalls`、Token、输出大小、超时和取消是硬上限；达到上限时发送可解释的预算事件和终态，不得悄悄截断或继续调用工具。
+6. **可恢复性。** 每个阶段和工具步骤都要持久化事件，客户端可用事件游标续读；断线重连不得重复展示事件，也不得在没有幂等保护时重复产生工具副作用。
+
+这里的 Reasoning summary 是面向用户的、经过脱敏和长度限制的阶段性进展（例如“正在确认可用工具”“已获得容器清单，继续查询目标容器日志”），不是模型的私有 Chain-of-Thought。AIEngine 不得要求或展示隐藏思维链、逐 token 的内部推理或敏感 Prompt；模型未提供安全可展示摘要时，运行时应发送稳定的阶段状态文本。
+
+### 8.2 阶段性流式输出
+
+当 `Request.Stream=true` 时，AIEngine 必须在循环过程中实时发出可消费的中间事件，而不是等所有工具完成后一次性返回。事件至少覆盖：
+
+| 阶段 | 事件 | Payload 最低要求 |
+|---|---|---|
+| 执行启动 | `execution.started` | profile、执行时间 |
+| 阶段变更 | `phase.changed` | `phase`、可选 `detail` |
+| 模型回合开始 | `model.started` | iteration、目标摘要 |
+| 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、是否最终文本 |
+| 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration |
+| 工具执行 | `tool.started` | 工具名、资源、调用序号 |
+| 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、耗时 |
+| 回合继续 | `model.resumed` | iteration、观察摘要；并行批次包含全部工具结果 |
+| 最终回答 | `assistant.completed` | 最终文本 |
+| 执行终止 | `execution.completed` / `execution.failed` / `execution.cancelled` | 终态、错误/预算原因 |
+
+事件必须按实际发生顺序写入持久化 Store 并通过 SSE 推送。前端应按 `sequence` 将阶段文本、工具决策、工具结果和下一轮分析合并为一条时间线；不得把工具记录统一移动到最终回答之后，也不得用轮询快照覆盖已经收到的更新事件。耗时工具开始前应先推送进度，完成或失败后应立即推送观察摘要，然后才允许进入下一轮模型请求。
+
+### 8.3 诊断页面验收契约
+
+诊断页面订阅 `model.started`、`assistant.progress`、`assistant.delta`、`tool.*` 和 `model.resumed` 事件，并在同一条“实时执行过程”时间线上按事件 ID 展示。模型回合开始、工具决策、工具执行、Observation 和下一轮分析必须能够在页面上逐步出现；工具明细可折叠查看，但不得等最终回答持久化后才首次出现。页面刷新快照时须合并本地已收到的 SSE 事件，只有确认终态或新的助手消息已经持久化后才能清理实时占位内容。取消/超时应以 `execution.cancelled` 和 `diagnosis.cancelled` 结束，失败应以 `execution.failed` 和 `diagnosis.failed` 结束；成功则在报告持久化后发送 `report.ready`。
+
 ## 9. 上下文、Tool Calling、Skill 和 Agent
 
 AIEngine 不直接读取数据库、容器或 MCP Server。所有外部信息必须通过 Context Resolver 和 Tool Gateway：
+
+当一次执行选择了多个资源，而这些资源暴露了同名工具时，Context Resolver 保留每个资源自己的工具实现；AgentRunner 只在模型声明侧为冲突名称生成稳定的资源限定别名（例如 `query_logs__resource_2`）。网关、审计记录、Observation 和前端时间线继续使用规范工具名及 `resource_id`，因此别名不会改变权限边界或隐藏实际调用目标。
 
 - PostgreSQL、Redis、Kafka、Kubernetes、Prometheus、Loki 等 Connector 提供受限工具；
 - 远程 MCP Server 先发现工具，再通过 MCP Service 调用；
@@ -635,3 +688,9 @@ Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这�
 6. 同步、SSE、取消、超时、预算、失败原因和断线续读测试通过。
 7. 执行记录能够明确回答“使用了哪个 Provider 的哪个模型”。
 8. 业务 API、前端和后台 Worker 均只依赖 AIProvider、模型名称和 AIEngine 统一执行契约。
+9. 真实或模拟模型执行能够完成至少两轮“Reasoning summary -> Action -> Observation -> 下一轮 Reasoning”，并证明工具结果进入了下一轮模型输入。
+10. 工具调用前后和每轮模型回合均能通过 SSE 实时收到有序阶段事件；前端按事件序列展示分析摘要、工具调用、工具结果和后续分析，不把工具过程延迟到最终回答之后。
+11. 工具返回错误、空结果、部分结果、权限拒绝或超时后，模型能够基于 Observation 修正工具或参数，或输出明确的不可完成原因；错误不得被静默忽略。
+12. 在配置的迭代、工具、Token、输出大小和时间预算内，执行可持续完成长程任务；达到任一硬上限时返回明确的预算终止事件和原因。
+13. 执行过程中产生的环境反馈（命令、测试、编译、Git、容器、集群、Connector/MCP 结果）可追溯到对应 Observation，并参与后续模型决策。
+14. 事件断线续读、取消和失败恢复测试通过；重连不重复展示事件，且不会在无幂等保护时重复产生工具副作用。

@@ -73,8 +73,23 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	}()
 
 	var sequence atomic.Int64
+	var sinkMu sync.Mutex
+	var sinkErrMu sync.Mutex
+	var sinkErr error
+	recordSinkErr := func(err error) {
+		if err == nil {
+			return
+		}
+		sinkErrMu.Lock()
+		if sinkErr == nil {
+			sinkErr = err
+		}
+		sinkErrMu.Unlock()
+	}
 	originalSink := request.EventSink
 	sink := func(event Event) error {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
 		if event.ExecutionID == "" {
 			event.ExecutionID = request.ExecutionID
 		}
@@ -96,16 +111,37 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 				}
 			}
 		}
+		var persistenceErr error
 		if r.store != nil {
-			_ = r.store.AppendEvent(context.Background(), event)
+			if err := r.store.AppendEvent(context.Background(), event); err != nil {
+				persistenceErr = fmt.Errorf("persist AIEngine event: %w", err)
+				recordSinkErr(persistenceErr)
+			}
 		}
 		if originalSink == nil {
-			return nil
+			return persistenceErr
 		}
-		return originalSink(event)
+		if err := originalSink(event); err != nil {
+			recordSinkErr(err)
+			return err
+		}
+		return persistenceErr
 	}
 	request.EventSink = sink
-	_ = sink(Event{Type: "execution.started", Status: StatusRunning, Payload: map[string]any{"profile": request.Profile}})
+	// Keep the gateway available to the runner even when no context resources
+	// were resolved. Besides normal tool dispatch, it owns the optional audit
+	// sink used to record unknown or argument-invalid tool attempts.
+	if r.gateway != nil {
+		request.ToolGateway = r.gateway
+	}
+	if err := sink(Event{Type: "execution.started", Status: StatusRunning, Payload: map[string]any{"profile": request.Profile}}); err != nil {
+		// Do not execute model or tool side effects when the durable event path
+		// is already unavailable. A run without an auditable start cannot be
+		// reported as successful or safely resumed.
+		result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "event_sink", ErrorMessage: publicError(err)}
+		_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+		return result, err
+	}
 	if request.SkillResourceID != "" || request.SkillVersionID != "" {
 		if r.plans == nil {
 			return failedRuntimeResult(request, sink, "plan_unavailable", "execution plan resolver is unavailable")
@@ -139,7 +175,8 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		}
 		profile, profileErr := r.agentProfiles.Resolve(ctx, request.ScopeID, request.AgentProfileID)
 		if profileErr != nil {
-			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "agent_profile_resolution", ErrorMessage: profileErr.Error()}
+			message := publicError(profileErr)
+			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "agent_profile_resolution", ErrorMessage: message}
 			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
 			return result, profileErr
 		}
@@ -154,12 +191,15 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	if r.resolver != nil && len(request.Context.ResourceIDs) > 0 {
 		resolved, resolveErr := r.resolver.Resolve(ctx, request.Context)
 		if resolveErr != nil {
-			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "context_resolution", ErrorMessage: resolveErr.Error()}
+			message := publicError(resolveErr)
+			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "context_resolution", ErrorMessage: message}
 			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
 			return result, resolveErr
 		}
 		request.ResolvedContext = &resolved
-		request.ToolGateway = r.gateway
+		if r.gateway != nil {
+			request.ToolGateway = r.gateway
+		}
 		_ = sink(Event{Type: "context.loaded", Status: StatusRunning, Payload: map[string]any{"resource_count": len(resolved.Resources), "tool_count": len(resolved.Tools), "fact_count": len(resolved.Facts)}})
 	}
 
@@ -171,6 +211,15 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		result, err = r.runner.Run(ctx, request)
 	}
 	if err != nil {
+		sinkErrMu.Lock()
+		eventErr := sinkErr
+		sinkErrMu.Unlock()
+		if eventErr != nil {
+			result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, StatusFailed, "event_sink"
+			result.ErrorMessage = publicError(eventErr)
+			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+			return result, eventErr
+		}
 		status, code := StatusFailed, "runtime"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 			status, code = StatusCancelled, "timeout"
@@ -178,17 +227,26 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 			status, code = StatusCancelled, "cancelled"
 		}
 		result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, status, code
-		result.ErrorMessage = err.Error()
+		result.ErrorMessage = publicError(err)
 		eventType := "execution.failed"
 		if status == StatusCancelled {
 			eventType = "execution.cancelled"
 		}
-		_ = sink(Event{Type: eventType, Status: status, Payload: map[string]any{"error_code": code, "error": err.Error()}})
+		_ = sink(Event{Type: eventType, Status: status, Payload: map[string]any{"error_code": code, "error": publicError(err)}})
 		return result, err
 	}
+	sinkErrMu.Lock()
+	eventErr := sinkErr
+	sinkErrMu.Unlock()
+	if eventErr != nil {
+		result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, StatusFailed, "event_sink"
+		result.ErrorMessage = publicError(eventErr)
+		_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
+		return result, eventErr
+	}
 	if err := ctx.Err(); err != nil {
-		result.ExecutionID, result.Status, result.ErrorCode, result.ErrorMessage = request.ExecutionID, StatusCancelled, "cancelled", err.Error()
-		_ = sink(Event{Type: "execution.cancelled", Status: StatusCancelled, Payload: map[string]any{"error": err.Error()}})
+		result.ExecutionID, result.Status, result.ErrorCode, result.ErrorMessage = request.ExecutionID, StatusCancelled, "cancelled", publicError(err)
+		_ = sink(Event{Type: "execution.cancelled", Status: StatusCancelled, Payload: map[string]any{"error": publicError(err)}})
 		return result, err
 	}
 	result.ExecutionID = request.ExecutionID
@@ -262,7 +320,8 @@ func failedRuntimeError(request Request, sink EventSink, code string, err error)
 	if err == nil {
 		return failedRuntimeResult(request, sink, code, "execution plan resolution failed")
 	}
-	result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: code, ErrorMessage: err.Error()}
-	_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": code, "error": err.Error()}})
+	message := publicError(err)
+	result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: code, ErrorMessage: message}
+	_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": code, "error": message}})
 	return result, err
 }

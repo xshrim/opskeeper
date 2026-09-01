@@ -196,12 +196,28 @@ func (h diagnosisHandler) events(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			after = event.ID
+			// A diagnosis execution may emit execution.completed before its
+			// report is persisted. Keep the stream open through that
+			// post-processing window, then close after the durable report or
+			// diagnosis terminal marker so clients do not leak an EventSource.
+			if terminalDiagnosisEvent(event) {
+				return
+			}
 		}
 		select {
 		case <-r.Context().Done():
 			return
 		case <-time.After(300 * time.Millisecond):
 		}
+	}
+}
+
+func terminalDiagnosisEvent(event diagnosis.Event) bool {
+	switch event.Type {
+	case "report.ready", "diagnosis.failed", "diagnosis.cancelled":
+		return true
+	default:
+		return false
 	}
 }
 

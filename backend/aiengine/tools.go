@@ -2,6 +2,8 @@ package aiengine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,12 +132,19 @@ func (r *ToolRegistry) List(resourceID string) []ToolDefinition {
 }
 
 type ToolCall struct {
-	ExecutionID        string
-	Sequence           int
-	ActorID            string
-	ScopeID            string
-	ResourceID         string
-	Name               string
+	ExecutionID string
+	Sequence    int
+	Iteration   int
+	CallID      string
+	ActorID     string
+	ScopeID     string
+	ResourceID  string
+	Name        string
+	// ModelToolName is the name exposed to the model. It differs from Name
+	// when two selected resources expose the same MCP/connector tool name. The
+	// gateway and audit trail always use Name, while the alias keeps the ADK
+	// function declaration set globally unique.
+	ModelToolName      string
 	ProviderResourceID string
 	ModelName          string
 	Arguments          map[string]any
@@ -154,6 +163,16 @@ type PolicyGateway struct {
 	semaphore        chan struct{}
 	semaphoreOnce    sync.Once
 	toolSequence     atomic.Int64
+}
+
+func (g *PolicyGateway) recordToolCall(record ToolCallRecord) {
+	if g == nil || g.AuditStore == nil {
+		return
+	}
+	// Audit failures must not turn a provider/tool failure into a successful
+	// execution, but the gateway deliberately keeps the execution path
+	// available when the optional audit sink is unavailable.
+	_ = g.AuditStore.RecordToolCall(context.Background(), record)
 }
 
 func NewPolicyGateway(registry *ToolRegistry, authorize ToolAuthorizer, timeout time.Duration, maxResponseBytes int64, maxConcurrent int) *PolicyGateway {
@@ -193,29 +212,72 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 		call.Sequence = int(g.toolSequence.Add(1))
 	}
 	if call.ResourceID == "" || call.Name == "" {
-		return ToolResult{}, fmt.Errorf("%w: resource_id and tool name are required", ErrToolInvalid)
+		err := fmt.Errorf("%w: resource_id and tool name are required", ErrToolInvalid)
+		message := publicError(err)
+		at := time.Now().UTC()
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, call.Name, map[string]any{"arguments": redactValue(call.Arguments)})})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, call.Name, map[string]any{
+			"error":       message,
+			"error_code":  "tool_validation",
+			"output":      map[string]any{"error": message},
+			"duration_ms": int64(0),
+		})})
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_validation", Error: message, StartedAt: at, CompletedAt: at})
+		return ToolResult{}, err
 	}
 	tool, ok := g.Registry.Get(call.ResourceID, call.Name)
 	if !ok {
-		return ToolResult{}, fmt.Errorf("%w: %s", ErrToolNotFound, call.Name)
+		err := fmt.Errorf("%w: %s", ErrToolNotFound, call.Name)
+		message := publicError(err)
+		at := time.Now().UTC()
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_not_found", Error: message, StartedAt: at, CompletedAt: at})
+		// Keep registry races and stale context definitions visible in the
+		// same requested -> failed lifecycle as ordinary tool invocations.
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, call.Name, map[string]any{"arguments": redactValue(call.Arguments)})})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, call.Name, map[string]any{
+			"error":       message,
+			"error_code":  "tool_not_found",
+			"output":      map[string]any{"error": message},
+			"duration_ms": int64(0),
+		})})
+		return ToolResult{}, err
 	}
 	definition := tool.Definition()
+	if err := emitToolEvent(call.EventSink, Event{Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(call.Arguments)})}); err != nil {
+		return ToolResult{}, err
+	}
 	if g.Authorize != nil {
 		if err := g.Authorize(ctx, call, definition); err != nil {
-			return ToolResult{}, fmt.Errorf("%w: %v", ErrToolDenied, err)
+			denied := fmt.Errorf("%w: %v", ErrToolDenied, err)
+			message := publicError(denied)
+			at := time.Now().UTC()
+			_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{
+				"error":       message,
+				"error_code":  "tool_denied",
+				"output":      map[string]any{"error": message},
+				"duration_ms": int64(0),
+			})})
+			g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_denied", Error: message, StartedAt: at, CompletedAt: at})
+			return ToolResult{}, denied
 		}
 	}
 	select {
 	case g.semaphore <- struct{}{}:
 		defer func() { <-g.semaphore }()
 	case <-ctx.Done():
+		message := publicError(ctx.Err())
+		at := time.Now().UTC()
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "cancelled", Error: message, StartedAt: at, CompletedAt: at})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{
+			"error":       message,
+			"error_code":  "cancelled",
+			"output":      map[string]any{"error": message},
+			"duration_ms": int64(0),
+		})})
 		return ToolResult{}, ctx.Err()
 	}
 	started := time.Now().UTC()
-	if err := emitToolEvent(call.EventSink, Event{Type: "tool.requested", Status: StatusRunning, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "arguments": redactValue(call.Arguments)}}); err != nil {
-		return ToolResult{}, err
-	}
-	if err := emitToolEvent(call.EventSink, Event{Type: "tool.started", Status: StatusRunning, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "arguments": redactValue(call.Arguments)}}); err != nil {
+	if err := emitToolEvent(call.EventSink, Event{Type: "tool.started", Status: StatusRunning, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(call.Arguments)})}); err != nil {
 		return ToolResult{}, err
 	}
 	runCtx, cancel := context.WithTimeout(ctx, g.Timeout)
@@ -224,39 +286,157 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 	completedAt := time.Now().UTC()
 	durationMS := completedAt.Sub(started).Milliseconds()
 	if err != nil {
-		if g.AuditStore != nil {
-			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_execution", Error: err.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
-		}
-		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "arguments": redactValue(call.Arguments), "output": map[string]any{"error": err.Error()}, "error": err.Error(), "duration_ms": time.Since(started).Milliseconds()}})
+		message := publicError(err)
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_execution", Error: message, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(call.Arguments), "output": map[string]any{"error": message}, "error": message, "duration_ms": time.Since(started).Milliseconds()})})
 		return ToolResult{}, err
 	}
 	encoded, marshalErr := json.Marshal(result.Output)
 	if marshalErr != nil {
-		if g.AuditStore != nil {
-			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "output_not_serializable", Error: marshalErr.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
-		}
-		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{
-			"tool": definition.Name, "resource_id": call.ResourceID,
+		message := publicError(marshalErr)
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "output_not_serializable", Error: message, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{
 			"arguments": redactValue(call.Arguments),
-			"output":    map[string]any{"error": marshalErr.Error()},
-			"error":     marshalErr.Error(), "duration_ms": time.Since(started).Milliseconds(),
-		}})
+			"output":    map[string]any{"error": message},
+			"error":     message, "duration_ms": time.Since(started).Milliseconds(),
+		})})
 		return ToolResult{}, fmt.Errorf("%w: output is not JSON serializable: %v", ErrToolInvalid, marshalErr)
 	}
 	if int64(len(encoded)) > g.MaxResponseBytes {
-		if g.AuditStore != nil {
-			_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "response_too_large", Error: ErrToolLimited.Error(), StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
-		}
-		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "arguments": redactValue(call.Arguments), "output": map[string]any{"error": ErrToolLimited.Error()}, "error": ErrToolLimited.Error(), "duration_ms": time.Since(started).Milliseconds()}})
+		message := publicError(ErrToolLimited)
+		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "response_too_large", Error: message, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+		_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(call.Arguments), "output": map[string]any{"error": message}, "error": message, "duration_ms": time.Since(started).Milliseconds()})})
 		return ToolResult{}, ErrToolLimited
 	}
-	if g.AuditStore != nil {
-		_ = g.AuditStore.RecordToolCall(context.Background(), ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Output: result.Output, Status: StatusSucceeded, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
-	}
-	if err := emitToolEvent(call.EventSink, Event{Type: "tool.completed", Status: StatusSucceeded, Payload: map[string]any{"tool": definition.Name, "resource_id": call.ResourceID, "arguments": redactValue(call.Arguments), "output": redactValue(result.Output), "duration_ms": time.Since(started).Milliseconds()}}); err != nil {
+	g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderResourceID: call.ProviderResourceID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: definition.Name, Arguments: call.Arguments, Output: result.Output, Status: StatusSucceeded, StartedAt: started, CompletedAt: completedAt, DurationMS: durationMS})
+	if err := emitToolEvent(call.EventSink, Event{Type: "tool.completed", Status: StatusSucceeded, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(call.Arguments), "output": summarizeObservation(result.Output), "duration_ms": time.Since(started).Milliseconds()})}); err != nil {
 		return ToolResult{}, err
 	}
 	return result, nil
+}
+
+func toolEventPayload(call ToolCall, name string, extra map[string]any) map[string]any {
+	payload := map[string]any{"tool": name, "resource_id": call.ResourceID}
+	if call.ModelToolName != "" && call.ModelToolName != name {
+		payload["model_tool"] = call.ModelToolName
+	}
+	if call.Sequence > 0 {
+		payload["call_sequence"] = call.Sequence
+	}
+	if call.Iteration > 0 {
+		payload["iteration"] = call.Iteration
+	}
+	if call.CallID != "" {
+		payload["call_id"] = call.CallID
+	}
+	for key, value := range extra {
+		payload[key] = value
+	}
+	return payload
+}
+
+// toolBinding is the execution-time mapping between the canonical tool name
+// used by PolicyGateway and the globally unique name advertised to an LLM.
+// MCP servers are independent resources, so the same tool name (for example
+// "query_logs") can legitimately be exposed by more than one selected server.
+// ADK and most model APIs require function declaration names to be unique;
+// aliases are therefore generated only for collisions and remain stable for a
+// given resource/name pair within an execution.
+type toolBinding struct {
+	definition ToolDefinition
+	modelName  string
+}
+
+func buildToolBindings(definitions []ToolDefinition) []toolBinding {
+	valid := make([]ToolDefinition, 0, len(definitions))
+	nameCounts := make(map[string]int)
+	for _, definition := range definitions {
+		definition.Name = strings.TrimSpace(definition.Name)
+		definition.ResourceID = strings.TrimSpace(definition.ResourceID)
+		if definition.Name == "" || definition.ResourceID == "" {
+			continue
+		}
+		valid = append(valid, definition)
+		nameCounts[definition.Name]++
+	}
+
+	bindings := make([]toolBinding, 0, len(valid))
+	used := make(map[string]struct{}, len(valid))
+	for _, definition := range valid {
+		modelName := definition.Name
+		if nameCounts[definition.Name] > 1 {
+			modelName = collisionToolAlias(definition.Name, definition.ResourceID)
+		}
+		// A malformed resolver may return the same name/resource more than once.
+		// Keep the declaration set valid even in that case; the registry's
+		// resource/name key still determines which implementation is invoked.
+		modelName = uniqueModelToolName(modelName, used)
+		used[modelName] = struct{}{}
+		bindings = append(bindings, toolBinding{definition: definition, modelName: modelName})
+	}
+	return bindings
+}
+
+func collisionToolAlias(name, resourceID string) string {
+	// Resource IDs are usually UUIDs and fit alongside the tool name. For
+	// longer IDs/names use a short digest so aliases stay within common model
+	// function-name limits (64 bytes) without sacrificing determinism.
+	resourcePart := sanitizeToolNamePart(resourceID)
+	alias := name + "__" + resourcePart
+	if len(alias) <= 64 {
+		return alias
+	}
+	digest := sha256.Sum256([]byte(resourceID))
+	resourcePart = hex.EncodeToString(digest[:])[:10]
+	maxName := 64 - len("__") - len(resourcePart)
+	if maxName < 1 {
+		maxName = 1
+	}
+	name = truncateASCII(name, maxName)
+	return name + "__" + resourcePart
+}
+
+func uniqueModelToolName(name string, used map[string]struct{}) string {
+	if _, exists := used[name]; !exists {
+		return name
+	}
+	for index := 2; ; index++ {
+		suffix := fmt.Sprintf("_%d", index)
+		candidate := name
+		if len(candidate)+len(suffix) > 64 {
+			candidate = truncateASCII(candidate, 64-len(suffix))
+		}
+		candidate += suffix
+		if _, exists := used[candidate]; !exists {
+			return candidate
+		}
+	}
+}
+
+func sanitizeToolNamePart(value string) string {
+	var builder strings.Builder
+	for _, character := range value {
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z', character >= '0' && character <= '9':
+			builder.WriteRune(character)
+		default:
+			builder.WriteByte('_')
+		}
+	}
+	if builder.Len() == 0 {
+		return "resource"
+	}
+	return builder.String()
+}
+
+func truncateASCII(value string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	return value[:maxBytes]
 }
 
 func emitToolEvent(sink EventSink, event Event) error {

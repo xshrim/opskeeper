@@ -1552,7 +1552,10 @@ import { onMount } from 'svelte';
       diagnosisGenerating = isDiagnosisRunning(
         diagnosisSnapshot.session.status
       );
-      diagnosisEventCursor = 0;
+      diagnosisEventCursor = Math.max(
+        0,
+        ...(diagnosisSnapshot.events ?? []).map((event) => Number(event.id) || 0)
+      );
       openDiagnosisEvents(id);
     } catch (error) {
       errorMessage = describeError(error, '诊断详情加载失败');
@@ -1574,6 +1577,9 @@ import { onMount } from 'svelte';
       'execution.completed',
       'execution.cancelled',
       'execution.failed',
+      'model.started',
+      'model.resumed',
+      'assistant.progress',
       'assistant.delta',
       'assistant.completed',
       'tool.requested',
@@ -1583,6 +1589,7 @@ import { onMount } from 'svelte';
       'evidence.collected',
       'report.ready',
       'diagnosis.failed',
+      'diagnosis.cancelled',
       'message.created',
       'target.added'
     ]) {
@@ -1606,6 +1613,15 @@ import { onMount } from 'svelte';
     }
     const eventType = event.type || 'message';
     if (!appendDiagnosisEvent(eventType, payload, diagnosisEventCursor)) return;
+    if (eventType === 'model.started') {
+      diagnosisStreamingText = '';
+      diagnosisStreamingPending = '';
+      if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+      diagnosisStreamingFrame = 0;
+      diagnosisStreamingStartedAt ||= Date.now();
+      diagnosisGenerating = true;
+      return;
+    }
     if (eventType === 'assistant.delta') {
       const text = String(payload.text ?? '');
       if (text) {
@@ -1622,6 +1638,19 @@ import { onMount } from 'svelte';
       diagnosisGenerating = true;
       return;
     }
+    if (eventType === 'assistant.progress') {
+      diagnosisGenerating = true;
+      diagnosisStreamingStartedAt ||= Date.now();
+      return;
+    }
+    if (eventType === 'model.resumed') {
+      diagnosisStreamingText = '';
+      diagnosisStreamingPending = '';
+      if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+      diagnosisStreamingFrame = 0;
+      diagnosisGenerating = true;
+      return;
+    }
     if (eventType === 'assistant.completed') {
       if (!diagnosisStreamingText && payload.text) {
         diagnosisStreamingText = String(payload.text);
@@ -1630,20 +1659,27 @@ import { onMount } from 'svelte';
       void refreshDiagnosis(id);
       return;
     }
-    if (eventType === 'execution.started' || eventType === 'tool.requested' || eventType === 'tool.started' || eventType === 'phase.changed') {
+    if (eventType === 'execution.started' || eventType === 'tool.requested' || eventType === 'tool.started' || eventType === 'tool.completed' || eventType === 'tool.failed' || eventType === 'phase.changed') {
       diagnosisGenerating = true;
       diagnosisStreamingStartedAt ||= Date.now();
-      void refreshDiagnosis(id);
+      if (eventType !== 'tool.requested' && eventType !== 'tool.started') void refreshDiagnosis(id);
       return;
     }
-    if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed') {
+    if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed' || eventType === 'diagnosis.cancelled') {
       const reason = String(payload.error ?? payload.message ?? payload.error_message ?? '').trim();
-      diagnosisInterruptedReason = reason || (eventType === 'execution.cancelled' ? '回答被取消。' : '回答生成失败。');
+      diagnosisInterruptedReason = reason || (eventType === 'execution.cancelled' || eventType === 'diagnosis.cancelled' ? '回答被取消。' : '回答生成失败。');
       diagnosisGenerating = false;
       void refreshDiagnosis(id);
       return;
     }
-    if (eventType === 'execution.completed' || eventType === 'report.ready') {
+    if (eventType === 'execution.completed') {
+      // AIEngine completes before the diagnosis orchestrator persists the
+      // assistant message, report and terminal session status. Keep the live
+      // stream open so those post-processing events cannot race the UI.
+      void refreshDiagnosis(id);
+      return;
+    }
+    if (eventType === 'report.ready') {
       void refreshDiagnosis(id).finally(() => {
         if (diagnosisStreamingPending) {
           diagnosisStreamingText += diagnosisStreamingPending;
@@ -1700,6 +1736,10 @@ import { onMount } from 'svelte';
       // Keep the locally received payload when both sides have the same ID.
       for (const event of localEvents) mergedByID.set(event.id, event);
       const mergedEvents = [...mergedByID.values()].sort((left, right) => left.id - right.id);
+      diagnosisEventCursor = Math.max(
+        diagnosisEventCursor,
+        ...mergedEvents.map((event) => Number(event.id) || 0)
+      );
       diagnosisSnapshot = {
         ...snapshot,
         events: mergedEvents,
@@ -1719,7 +1759,11 @@ import { onMount } from 'svelte';
         diagnosisStreamingStartedAt = 0;
         diagnosisGenerating = false;
       } else {
-        diagnosisGenerating = isDiagnosisRunning(snapshot.session.status);
+        // A snapshot can race the SSE stream and still contain the previous
+        // session status. Preserve local activity until a terminal snapshot or
+        // a persisted assistant answer confirms that this run is over.
+        diagnosisGenerating = !diagnosisInterruptedReason &&
+          (diagnosisGenerating || isDiagnosisRunning(snapshot.session.status));
       }
       diagnosisSessions = diagnosisSessions.map((item) =>
         item.id === diagnosisSnapshot?.session.id
@@ -1952,6 +1996,7 @@ import { onMount } from 'svelte';
       diagnosisEditingMessageId = '';
       diagnosisEditDraft = '';
       diagnosisFollowup = '';
+      diagnosisInterruptedReason = '';
       diagnosisGenerating = true;
       openDiagnosisEvents(selectedDiagnosisId);
     });
@@ -2006,6 +2051,7 @@ import { onMount } from 'svelte';
       updated_at: string;
       tool: string;
       resourceID: string;
+      callID: string;
     };
     type ToolGroup = {
       id: string;
@@ -2043,9 +2089,13 @@ import { onMount } from 'svelte';
     let currentGroup: ToolGroup | null = null;
 
     for (const event of events) {
-      // Text is the only user-visible boundary: tool calls on either side
-      // belong to different Codex-style collapsed action groups.
-      if (event.type === 'assistant.delta') {
+      // A new model turn or progress summary is a user-visible boundary:
+      // tool calls on either side belong to different collapsed groups.
+      if (event.type === 'model.started') {
+        currentGroup = null;
+        continue;
+      }
+      if (event.type === 'assistant.delta' || event.type === 'assistant.progress') {
         if (String(event.payload?.text ?? '').trim()) currentGroup = null;
         continue;
       }
@@ -2053,9 +2103,13 @@ import { onMount } from 'svelte';
       const payload = event.payload ?? {};
       const tool = String(payload.tool ?? '');
       const resourceID = String(payload.resource_id ?? '');
+      const callID = String(payload.call_id ?? payload.call_sequence ?? '');
       // Evidence bookkeeping also emits tool.completed, but it is not an
-      // AIEngine invocation and therefore must not appear in this trace.
-      if (!tool || !resourceID) continue;
+      // AIEngine invocation and therefore must not appear in this trace. An
+      // unknown-tool failure intentionally has an empty resource_id, so the
+      // presence of the AIEngine lifecycle field is the discriminator.
+      const isAIEngineToolEvent = Object.prototype.hasOwnProperty.call(payload, 'resource_id') || Boolean(callID);
+      if (!tool || !isAIEngineToolEvent) continue;
       if (!currentGroup) {
         currentGroup = {
           id: `tool-group-${event.id}`,
@@ -2068,7 +2122,8 @@ import { onMount } from 'svelte';
       }
       let action = [...currentGroup.children]
         .reverse()
-        .find((item) => item.tool === tool && item.resourceID === resourceID && item.status === '进行中');
+        .find((item) => item.tool === tool && item.resourceID === resourceID && item.status === '进行中' &&
+          (callID ? item.callID === callID : !item.callID));
       if (!action) {
         action = {
           id: `tool-${event.id}`,
@@ -2081,7 +2136,8 @@ import { onMount } from 'svelte';
           created_at: event.created_at,
           updated_at: event.created_at,
           tool,
-          resourceID
+          resourceID,
+          callID
         };
         currentGroup.children.push(action);
       }
@@ -2105,6 +2161,102 @@ import { onMount } from 'svelte';
       currentGroup.duration = diagnosisDuration(currentGroup.children[0].created_at, action.updated_at);
     }
     return groups;
+  }
+
+  type DiagnosisTraceItem = {
+    id: number;
+    kind: 'analysis' | 'action' | 'observation' | 'phase';
+    text: string;
+    iteration?: number;
+  };
+
+  function diagnosisTraceData(snapshot: DiagnosisSnapshot | null): DiagnosisTraceItem[] {
+    if (!snapshot) return [];
+    const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
+    const items: DiagnosisTraceItem[] = [];
+    const toolTitle = (name: string) => {
+      const titles: Record<string, string> = {
+        'connector.query_metrics': '查询监控指标',
+        'connector.get_alerts': '查询告警',
+        'connector.query_logs': '查询日志',
+        'connector.inspect_postgresql': '检查 PostgreSQL',
+        'connector.read_kubernetes': '查询 Kubernetes'
+      };
+      return titles[name] ?? (name || '受控工具');
+    };
+    const phaseTitle = (value: string) => {
+      const labels: Record<string, string> = {
+        planning: '规划执行路径',
+        collecting: '采集环境信息',
+        analyzing: '分析环境观察',
+        budget_exceeded: '达到执行预算'
+      };
+      return labels[value] ?? value;
+    };
+    const observationPreview = (value: unknown) => {
+      if (value === undefined || value === null) return '';
+      let text = '';
+      if (typeof value === 'string') text = value;
+      else {
+        try {
+          text = JSON.stringify(value);
+        } catch {
+          text = '';
+        }
+      }
+      text = String(text ?? '').replace(/\s+/g, ' ').trim();
+      return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    };
+    for (const event of events) {
+      const payload = event.payload ?? {};
+      const iteration = Number(payload.iteration ?? 0) || undefined;
+      if (event.type === 'model.started') {
+        items.push({ id: event.id, kind: 'analysis', iteration, text: String(payload.detail ?? '正在分析当前目标并评估下一步') });
+      } else if (event.type === 'assistant.progress') {
+        const text = String(payload.text ?? '').trim();
+        if (text) items.push({ id: event.id, kind: 'analysis', iteration, text });
+      } else if (event.type === 'tool.requested') {
+        if (!Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+        const tool = toolTitle(String(payload.tool ?? ''));
+        items.push({ id: event.id, kind: 'action', iteration, text: `准备调用 ${tool}` });
+      } else if (event.type === 'tool.started') {
+        if (!Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+        const tool = toolTitle(String(payload.tool ?? ''));
+        items.push({ id: event.id, kind: 'action', iteration, text: `${tool} 执行中` });
+      } else if (event.type === 'tool.completed') {
+        if (!Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+        const tool = toolTitle(String(payload.tool ?? ''));
+        items.push({ id: event.id, kind: 'observation', iteration, text: `${tool} 已返回结果` });
+      } else if (event.type === 'tool.failed') {
+        if (!Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+        const tool = toolTitle(String(payload.tool ?? ''));
+        items.push({ id: event.id, kind: 'observation', iteration, text: `${tool} 返回错误，正在重新评估` });
+      } else if (event.type === 'model.resumed') {
+        const batch = Array.isArray(payload.observations) ? payload.observations : [];
+        if (batch.length > 1) {
+          const names = batch
+            .map((item) => toolTitle(String((item as Record<string, unknown>)?.tool ?? '')))
+            .filter(Boolean);
+          const failed = batch.filter((item) => String((item as Record<string, unknown>)?.outcome ?? '') === 'error').length;
+          const summary = failed > 0 ? `，其中 ${failed} 项返回错误` : '';
+          items.push({
+            id: event.id,
+            kind: 'observation',
+            iteration,
+            text: `已收到 ${names.join('、') || `${batch.length} 个工具`} 的并行结果${summary}，正在重新评估下一步`
+          });
+        } else {
+          const tool = toolTitle(String(payload.tool ?? ''));
+          const outcome = String(payload.outcome ?? '') === 'error' ? '错误' : '结果';
+          const preview = observationPreview(payload.observation);
+          items.push({ id: event.id, kind: 'observation', iteration, text: `已收到 ${tool} 的${outcome}${preview ? `：${preview}` : ''}，正在重新评估下一步` });
+        }
+      } else if (event.type === 'phase.changed') {
+        const phase = String(payload.phase ?? '').trim();
+        if (phase) items.push({ id: event.id, kind: 'phase', iteration, text: phaseTitle(phase) });
+      }
+    }
+    return items;
   }
 
   function diagnosisHasRunningActions(snapshot: DiagnosisSnapshot | null) {
@@ -8062,7 +8214,7 @@ import { onMount } from 'svelte';
                       {:else}
                         {#if message.role === 'assistant' && !diagnosisGenerating && index === diagnosisSnapshot.messages
                               .map((item) => item.role)
-                              .lastIndexOf('assistant')}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
+                              .lastIndexOf('assistant')}{#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace"><div class="diagnosis-trace-title">执行过程</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
                             <div class="diagnosis-action-group">
                               <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
                               {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}</div>{/each}</div>{/if}
@@ -8096,33 +8248,7 @@ import { onMount } from 'svelte';
                   </article>
                 {/each}{/if}
               {#if (diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot)) && !diagnosisHasPersistedNewAnswer(diagnosisSnapshot)}
-                {#each diagnosisSnapshot ? diagnosisActionData(diagnosisSnapshot) : [] as actionGroup}
-                  <div class="diagnosis-action-group diagnosis-live-actions">
-                    <button
-                      class="diagnosis-action-row"
-                      aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])}
-                      on:click={() =>
-                        (diagnosisActionExpanded = {
-                          ...diagnosisActionExpanded,
-                          [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id]
-                        })}
-                    ><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
-                    {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">
-                      {#each actionGroup.children as child}<div>
-                        <button
-                          class="diagnosis-action-row child"
-                          aria-expanded={Boolean(diagnosisActionChildren[child.id])}
-                          on:click={() =>
-                            (diagnosisActionChildren = {
-                              ...diagnosisActionChildren,
-                              [child.id]: !diagnosisActionChildren[child.id]
-                            })}
-                        ><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>
-                        {#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}
-                      </div>{/each}
-                    </div>{/if}
-                  </div>
-                {/each}
+                {#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace diagnosis-live-trace"><div class="diagnosis-trace-title">实时执行过程</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}
                 <article class="diagnosis-message-f assistant diagnosis-streaming-message">
                   <span class="diagnosis-message-avatar">AI</span>
                   <div class="diagnosis-message-content">

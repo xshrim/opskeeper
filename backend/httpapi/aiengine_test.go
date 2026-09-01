@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,5 +68,57 @@ func TestTerminalAIEventClosesStreamAfterFinalLifecycleEvent(t *testing.T) {
 	}
 	if terminalAIEvent(aiengine.Event{Type: "tool.completed"}) {
 		t.Fatal("tool.completed must not close the execution stream")
+	}
+}
+
+func TestAIEngineErrorResponseRedactsUpstreamCredentials(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		code string
+	}{
+		{name: "runtime", err: errors.New("upstream returned authorization: Bearer super-secret-token"), code: "ai_runtime_error"},
+		{name: "json", err: errors.New(`upstream payload: {"api_key":"super-secret-json-key"}`), code: "ai_runtime_error"},
+		{name: "invalid", err: errors.New("request is invalid: api_key=super-secret-key"), code: "invalid_request"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/ai-executions", nil)
+			response := httptest.NewRecorder()
+			writeAIEngineError(response, request, test.err)
+			if response.Code != http.StatusBadGateway && test.code == "ai_runtime_error" {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.code == "invalid_request" && response.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			body := response.Body.String()
+			if strings.Contains(body, "super-secret") {
+				t.Fatalf("credential leaked in response: %s", body)
+			}
+			if !strings.Contains(body, test.code) {
+				t.Fatalf("error code missing from response: %s", body)
+			}
+		})
+	}
+}
+
+func TestAIEngineErrorResponseUsesTerminalContextMessages(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+		text   string
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, status: http.StatusGatewayTimeout, text: "AI execution timed out"},
+		{name: "cancelled", err: context.Canceled, status: http.StatusRequestTimeout, text: "AI execution was cancelled"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/ai-executions", nil)
+			response := httptest.NewRecorder()
+			writeAIEngineError(response, request, test.err)
+			if response.Code != test.status || !strings.Contains(response.Body.String(), test.text) {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
 	}
 }

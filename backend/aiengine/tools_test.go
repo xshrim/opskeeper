@@ -2,7 +2,9 @@ package aiengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +47,26 @@ func TestPolicyGatewayEnforcesAuthorizationAndEmitsToolEvents(t *testing.T) {
 	output, ok := events[2].Payload["output"].(map[string]any)
 	if !ok || output["ok"] != true {
 		t.Fatalf("tool.completed did not include tool output: %+v", events[2])
+	}
+}
+
+func TestPolicyGatewayInvalidCallEmitsRequestedAndFailed(t *testing.T) {
+	gateway := NewPolicyGateway(NewToolRegistry(), nil, time.Second, 1024, 1)
+	var events []Event
+	_, err := gateway.Invoke(context.Background(), ToolCall{
+		ExecutionID: "exec-invalid", Name: "missing", EventSink: func(event Event) error {
+			events = append(events, event)
+			return nil
+		},
+	})
+	if !errors.Is(err, ErrToolInvalid) {
+		t.Fatalf("error=%v, want ErrToolInvalid", err)
+	}
+	if len(events) != 2 || events[0].Type != "tool.requested" || events[1].Type != "tool.failed" {
+		t.Fatalf("events=%+v, want requested then failed", events)
+	}
+	if events[1].Payload["error_code"] != "tool_validation" {
+		t.Fatalf("invalid call error payload=%+v", events[1].Payload)
 	}
 }
 
@@ -121,6 +143,34 @@ func TestPolicyGatewayRejectsOversizedOutput(t *testing.T) {
 	gateway := NewPolicyGateway(registry, nil, time.Second, 2, 1)
 	if _, err := gateway.Invoke(context.Background(), ToolCall{ResourceID: "resource-1", Name: "large"}); !errors.Is(err, ErrToolLimited) {
 		t.Fatalf("error=%v, want ErrToolLimited", err)
+	}
+}
+
+func TestRedactValueRecursesThroughTypedJSONValues(t *testing.T) {
+	type credentials struct {
+		Password string `json:"password"`
+		APIKey   string `json:"api_key"`
+	}
+	type output struct {
+		Credentials credentials   `json:"credentials"`
+		Items       []credentials `json:"items"`
+	}
+	redacted := redactValue(output{
+		Credentials: credentials{Password: "password-value", APIKey: "api-key-value"},
+		Items:       []credentials{{Password: "nested-password", APIKey: "nested-api-key"}},
+	})
+	encoded, err := json.Marshal(redacted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	for _, secret := range []string{"password-value", "api-key-value", "nested-password", "nested-api-key"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("typed secret was not redacted: %s", text)
+		}
+	}
+	if !strings.Contains(text, "[REDACTED]") {
+		t.Fatalf("redaction marker missing: %s", text)
 	}
 }
 

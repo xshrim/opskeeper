@@ -174,9 +174,11 @@ type Request struct {
 // adapters may turn it into domain evidence without coupling AIEngine to a
 // Connector or Skill package.
 type ToolObservation struct {
-	ToolName   string
-	ResourceID string
-	Result     ToolResult
+	ToolName   string     `json:"tool_name"`
+	ResourceID string     `json:"resource_id"`
+	Iteration  int        `json:"iteration,omitempty"`
+	CallID     string     `json:"call_id,omitempty"`
+	Result     ToolResult `json:"result"`
 }
 
 func (r *Request) Normalize() error {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -74,6 +75,73 @@ func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T
 	}
 }
 
+func TestOrchestratorPersistsAssistantBeforeCompletionEvents(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "已完成回答。"}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		if err := request.EventSink(aiengine.Event{Type: "execution.completed"}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{Output: "已完成回答。"}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	assistantIndex, assistantEventIndex, completionIndex := -1, -1, -1
+	for index, entry := range store.log {
+		switch entry {
+		case "message:assistant":
+			assistantIndex = index
+		case "event:assistant.completed":
+			assistantEventIndex = index
+		case "event:execution.completed":
+			completionIndex = index
+		}
+	}
+	if assistantIndex < 0 || assistantEventIndex < 0 || completionIndex < 0 || !(assistantIndex < assistantEventIndex && assistantEventIndex < completionIndex) {
+		t.Fatalf("persistence order=%v, want assistant message < assistant.completed < execution.completed", store.log)
+	}
+}
+
+func TestOrchestratorDefersEmptyCompletionUntilResultIsPersisted(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": ""}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		if err := request.EventSink(aiengine.Event{Type: "execution.completed"}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{Output: "由 Execute 返回的最终回答。"}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	assistantIndex, assistantEventIndex, completionIndex := -1, -1, -1
+	var completionPayload map[string]any
+	for index, entry := range store.log {
+		switch entry {
+		case "message:assistant":
+			assistantIndex = index
+		case "event:assistant.completed":
+			assistantEventIndex = index
+			for _, event := range store.events {
+				if event.Type == "assistant.completed" {
+					_ = json.Unmarshal(event.Payload, &completionPayload)
+				}
+			}
+		case "event:execution.completed":
+			completionIndex = index
+		}
+	}
+	if assistantIndex < 0 || assistantEventIndex < 0 || completionIndex < 0 || !(assistantIndex < assistantEventIndex && assistantEventIndex < completionIndex) {
+		t.Fatalf("persistence order=%v, want assistant message < assistant.completed < execution.completed", store.log)
+	}
+	if completionPayload["text"] != "由 Execute 返回的最终回答。" {
+		t.Fatalf("completion payload=%v, want final result text", completionPayload)
+	}
+}
+
 func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing.T) {
 	store := newRecordingStore()
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
@@ -94,6 +162,38 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 	orchestrator.run(context.Background(), "session-1")
 	if calls != 0 || store.session.Status != StatusQueued {
 		t.Fatalf("unclaimed session invoked runner=%d and status=%q", calls, store.session.Status)
+	}
+}
+
+func TestOrchestratorPreservesCancellationTerminalState(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "execution.cancelled", Status: aiengine.StatusCancelled, Payload: map[string]any{"error_code": "cancelled", "error": "context canceled"}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "cancelled", ErrorMessage: "context canceled"}, context.Canceled
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if store.session.Status != StatusCancelled || store.session.ErrorCode != "cancelled" {
+		t.Fatalf("cancelled run left session = %#v", store.session)
+	}
+	if !store.hasEvent("execution.cancelled") || !store.hasEvent("diagnosis.cancelled") {
+		t.Fatalf("events = %#v, want cancellation terminal events", store.events)
+	}
+	if store.hasEvent("diagnosis.failed") {
+		t.Fatalf("cancelled run was incorrectly marked failed: %#v", store.events)
+	}
+}
+
+func TestSafeTextRedactsBearerAndPreservesUTF8Boundaries(t *testing.T) {
+	redacted := safeText("Authorization: Bearer super-secret", 100)
+	if strings.Contains(redacted, "super-secret") || !strings.Contains(redacted, "[REDACTED]") {
+		t.Fatalf("bearer credential leaked: %q", redacted)
+	}
+	bounded := safeText("诊断结果很长", 3)
+	if bounded != "诊断结" || len([]rune(bounded)) != 3 {
+		t.Fatalf("safeText truncated UTF-8 incorrectly: %q", bounded)
 	}
 }
 
@@ -120,6 +220,7 @@ type recordingStore struct {
 	hypotheses []Hypothesis
 	report     Report
 	events     []Event
+	log        []string
 	claimed    bool
 }
 
@@ -146,6 +247,7 @@ func (s *recordingStore) AppendMessage(_ context.Context, sessionID string, inpu
 	defer s.mu.Unlock()
 	message := Message{ID: fmt.Sprintf("message-%d", len(s.messages)+1), SessionID: sessionID, Role: input.Role, Content: input.Content, CreatedAt: time.Now()}
 	s.messages = append(s.messages, message)
+	s.log = append(s.log, "message:"+input.Role)
 	return message, nil
 }
 func (s *recordingStore) CreatePlan(_ context.Context, sessionID, summary string, steps []PlanStep) (Plan, error) {
@@ -180,6 +282,7 @@ func (s *recordingStore) AppendEvent(_ context.Context, sessionID string, input 
 	payload, _ := json.Marshal(input.Payload)
 	event := Event{ID: int64(len(s.events) + 1), SessionID: sessionID, Type: input.Type, Payload: payload}
 	s.events = append(s.events, event)
+	s.log = append(s.log, "event:"+input.Type)
 	return event, nil
 }
 func (s *recordingStore) EventsAfter(context.Context, string, int64, int) ([]Event, error) {

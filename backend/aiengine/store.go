@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -146,8 +147,7 @@ func redactValue(value any) any {
 	case map[string]any:
 		result := make(map[string]any, len(item))
 		for key, nested := range item {
-			lower := strings.ToLower(key)
-			if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "api_key") || strings.Contains(lower, "api-key") || strings.Contains(lower, "authorization") || lower == "key" {
+			if sensitiveValueKey(key) {
 				result[key] = "[REDACTED]"
 				continue
 			}
@@ -161,8 +161,44 @@ func redactValue(value any) any {
 		}
 		return result
 	default:
-		return value
+		// Tool adapters commonly return typed structs, slices or maps rather
+		// than map[string]any. Normalize those JSON-shaped values before the
+		// recursive key pass so audit payloads receive the same protection as
+		// model observations and UI events.
+		rv := reflect.ValueOf(value)
+		if !rv.IsValid() {
+			return nil
+		}
+		switch rv.Kind() {
+		case reflect.Pointer, reflect.Interface, reflect.Struct, reflect.Array, reflect.Slice, reflect.Map:
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return "[UNSERIALIZABLE]"
+			}
+			var normalized any
+			if err := json.Unmarshal(encoded, &normalized); err != nil {
+				return "[UNSERIALIZABLE]"
+			}
+			return redactValue(normalized)
+		default:
+			return value
+		}
 	}
+}
+
+func sensitiveValueKey(key string) bool {
+	lower := strings.ToLower(strings.TrimSpace(key))
+	normalizedKey := strings.NewReplacer("_", "", "-", "", " ", "").Replace(lower)
+	return strings.Contains(lower, "token") ||
+		strings.Contains(lower, "secret") ||
+		strings.Contains(lower, "password") ||
+		strings.Contains(lower, "credential") ||
+		strings.Contains(lower, "authorization") ||
+		strings.Contains(normalizedKey, "apikey") ||
+		strings.Contains(normalizedKey, "privatekey") ||
+		strings.Contains(normalizedKey, "accesskey") ||
+		strings.Contains(normalizedKey, "clientsecret") ||
+		lower == "key"
 }
 
 var _ EventStore = (*PostgresStore)(nil)
