@@ -7810,21 +7810,30 @@ button.workspace-team:hover {
 }
 .diagnosis-message-f {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: 29px minmax(0, 1fr);
+  gap: 10px;
   width: 100%;
   max-width: none;
 }
 .diagnosis-message-f.user {
   margin-left: auto;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 29px;
 }
 .diagnosis-message-f.user .diagnosis-message-avatar {
+  order: 2;
   color: var(--theme-fg);
   background: var(--theme-bg-accent-soft);
 }
 .diagnosis-message-avatar {
-  display: none;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  color: var(--theme-accent-contrast);
+  background: var(--diagnosis-teal);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
 }
 .diagnosis-message-content {
   display: grid;
@@ -7834,6 +7843,7 @@ button.workspace-team:hover {
 }
 .diagnosis-message-f.user .diagnosis-message-content {
   justify-items: end;
+  justify-self: end;
   width: min(82%, 760px);
 }
 .diagnosis-message-meta {
@@ -8702,13 +8712,14 @@ button.workspace-team:hover {
     display: none;
   }
   .diagnosis-message-f {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 7px;
   }
   .diagnosis-message-f.user {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 24px;
   }
   .diagnosis-message-avatar {
+    display: grid;
     width: 24px;
     height: 24px;
   }
