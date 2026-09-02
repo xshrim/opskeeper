@@ -2196,6 +2196,77 @@ import { onMount } from 'svelte';
     return diagnosisDuration(started.created_at, finished?.created_at);
   }
 
+  type DiagnosisEvidenceTimelineItem = {
+    id: string;
+    kind: 'analysis' | 'phase' | 'tool' | 'observation' | 'status';
+    title: string;
+    detail?: string;
+    status?: string;
+    tool?: string;
+    input?: string;
+    output?: string;
+    duration?: string;
+  };
+
+  function diagnosisEvidenceTimeline(snapshot: DiagnosisSnapshot | null): DiagnosisEvidenceTimelineItem[] {
+    if (!snapshot) return [];
+    const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
+    const items: DiagnosisEvidenceTimelineItem[] = [];
+    const tools = new Map<string, DiagnosisEvidenceTimelineItem>();
+    const jsonText = (value: unknown, fallback = '暂无数据') => {
+      if (value === undefined || value === null) return fallback;
+      if (typeof value === 'string') {
+        try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+      }
+      try { return JSON.stringify(value, null, 2) ?? fallback; } catch { return fallback; }
+    };
+    const toolName = (value: unknown) => String(value ?? '').trim() || '受控工具';
+    for (const event of events) {
+      const payload = event.payload ?? {};
+      if (event.type === 'model.started') {
+        items.push({ id: `event-${event.id}`, kind: 'analysis', title: '开始分析', detail: String(payload.detail ?? '正在评估问题并决定下一步行动') });
+        continue;
+      }
+      if (event.type === 'assistant.progress') {
+        const text = String(payload.text ?? '').trim();
+        if (text) items.push({ id: `event-${event.id}`, kind: 'analysis', title: '阶段说明', detail: text });
+        continue;
+      }
+      if (event.type === 'phase.changed') {
+        const phase = String(payload.phase ?? '').trim();
+        if (phase) items.push({ id: `event-${event.id}`, kind: 'phase', title: diagnosisStatusLabel(phase), detail: String(payload.detail ?? '') || undefined });
+        continue;
+      }
+      if (event.type === 'model.resumed') {
+        const observation = payload.observation ?? payload.observations;
+        if (observation !== undefined) items.push({ id: `event-${event.id}`, kind: 'observation', title: '收到工具结果，重新评估', detail: jsonText(observation) });
+        continue;
+      }
+      if (event.type === 'execution.completed' || event.type === 'execution.failed' || event.type === 'execution.cancelled') {
+        items.push({ id: `event-${event.id}`, kind: 'status', title: event.type === 'execution.completed' ? '本轮执行完成' : event.type === 'execution.cancelled' ? '本轮执行已取消' : '本轮执行失败', detail: String(payload.error ?? payload.message ?? '') || undefined });
+        continue;
+      }
+      if (!event.type.startsWith('tool.') || !Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+      const key = String(payload.call_id ?? payload.call_sequence ?? event.id);
+      let item = tools.get(key);
+      if (!item) {
+        item = { id: `tool-${key}`, kind: 'tool', title: toolName(payload.tool), tool: toolName(payload.tool), status: '等待执行', input: jsonText(payload.arguments), output: '等待工具执行结果…' };
+        tools.set(key, item);
+        items.push(item);
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'arguments')) item.input = jsonText(payload.arguments);
+      if (event.type === 'tool.requested') item.status = '等待执行';
+      if (event.type === 'tool.started') item.status = '执行中';
+      if (event.type === 'tool.completed' || event.type === 'tool.failed') {
+        item.status = event.type === 'tool.completed' ? '已完成' : '失败';
+        item.output = jsonText(payload.output, payload.error ? jsonText({ error: payload.error }) : '暂无出参');
+        const duration = Number(payload.duration_ms ?? 0);
+        if (duration > 0) item.duration = diagnosisDurationMilliseconds(duration);
+      }
+    }
+    return items;
+  }
+
   type DiagnosisTraceItem = {
     id: number;
     kind: 'analysis' | 'action' | 'observation' | 'phase';
@@ -8690,27 +8761,42 @@ import { onMount } from 'svelte';
                     </p>{/each}
                 </div>
               {:else}
-                <div class="diagnosis-evidence-list-f">
-                  {#each diagnosisSnapshot?.evidence ?? [] as evidence}<button
-                      class:active={selectedEvidence?.id === evidence.id}
-                      on:click={() => (selectedEvidence = evidence)}
-                      ><strong
-                        >{evidence.capability || 'Connector 只读结果'}</strong
-                      ><small
-                        >{formatDate(evidence.collected_at)} · {evidence.partial
-                          ? '部分结果'
-                          : '完整结果'} · 不可信输入</small
-                      ></button
-                    >{:else}<p class="diagnosis-empty">
-                      执行完成后，Connector 返回的只读结果会出现在这里。
-                    </p>{/each}
+                <div class="diagnosis-evidence-timeline">
+                  {#each diagnosisEvidenceTimeline(diagnosisSnapshot) as item (item.id)}
+                    {#if item.kind === 'tool'}
+                      <details class="diagnosis-evidence-event tool-event">
+                        <summary>
+                          <span class="diagnosis-evidence-marker tool"></span>
+                          <span class="diagnosis-evidence-event-main"><strong>{item.tool}</strong><small>{item.status}{#if item.duration} · {item.duration}{/if}</small></span>
+                          <span class="diagnosis-evidence-chevron">›</span>
+                        </summary>
+                        <div class="diagnosis-evidence-tool-detail">
+                          <div><small>入参 JSON</small><pre>{item.input ?? '暂无入参'}</pre></div>
+                          <div><small>出参 JSON</small><pre>{item.output ?? '暂无出参'}</pre></div>
+                        </div>
+                      </details>
+                    {:else}
+                      <div class="diagnosis-evidence-event">
+                        <span class="diagnosis-evidence-marker {item.kind}"></span>
+                        <div class="diagnosis-evidence-event-main"><strong>{item.title}</strong>{#if item.detail}<p>{item.detail}</p>{/if}</div>
+                      </div>
+                    {/if}
+                  {:else}
+                    <p class="diagnosis-empty">开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。</p>
+                  {/each}
                 </div>
-                {#if selectedEvidence}<pre
-                    class="diagnosis-evidence-detail">{JSON.stringify(
-                      selectedEvidence.content,
-                      null,
-                      2
-                    )}</pre>{/if}
+                {#if diagnosisSnapshot?.evidence?.length}
+                  <div class="diagnosis-evidence-snapshots">
+                    <div class="diagnosis-evidence-section-title">已采集证据</div>
+                    {#each diagnosisSnapshot.evidence as evidence}
+                      <button class:active={selectedEvidence?.id === evidence.id} on:click={() => (selectedEvidence = evidence)}>
+                        <strong>{evidence.capability || 'Connector 只读结果'}</strong>
+                        <small>{formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'}</small>
+                      </button>
+                    {/each}
+                    {#if selectedEvidence}<pre class="diagnosis-evidence-detail">{JSON.stringify(selectedEvidence.content, null, 2)}</pre>{/if}
+                  </div>
+                {/if}
               {/if}
             </aside>
           {/if}
