@@ -132,10 +132,16 @@ type Budget struct {
 	MaxTokens      int64         `json:"max_tokens,omitempty"`
 	MaxOutputBytes int           `json:"max_output_bytes,omitempty"`
 	Timeout        time.Duration `json:"timeout,omitempty"`
+	// MaxOutputTokens caps one provider response independently from the
+	// cumulative execution token budget. Zero lets the selected model decide.
+	MaxOutputTokens int `json:"max_output_tokens,omitempty"`
 }
 
 func DefaultBudget() Budget {
-	return Budget{MaxIterations: 12, MaxToolCalls: 12, MaxTokens: 20000, MaxOutputBytes: 64 << 10, Timeout: 2 * time.Minute}
+	// Long-running diagnosis may require many model/tool turns. Keep a finite
+	// upper bound, but leave enough time for the execution loop to react to
+	// real environment feedback instead of failing after a couple of minutes.
+	return Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 200000, MaxOutputTokens: 128000, MaxOutputBytes: 64 << 10, Timeout: 30 * time.Minute}
 }
 
 type Request struct {
@@ -226,6 +232,9 @@ func (r *Request) Normalize() error {
 	if r.Budget.MaxTokens <= 0 {
 		r.Budget.MaxTokens = DefaultBudget().MaxTokens
 	}
+	if r.Budget.MaxOutputTokens <= 0 {
+		r.Budget.MaxOutputTokens = DefaultBudget().MaxOutputTokens
+	}
 	if r.Budget.MaxOutputBytes <= 0 {
 		r.Budget.MaxOutputBytes = DefaultBudget().MaxOutputBytes
 	}
@@ -281,10 +290,12 @@ type Engine interface {
 // the llm package; the execution runtime only receives a model client and
 // the capabilities of the selected model.
 type ModelBuildResult struct {
-	Client             model.LLM
-	ProviderResourceID string
-	ModelName          string
-	Capabilities       []string
+	Client              model.LLM
+	ProviderResourceID  string
+	ModelName           string
+	Capabilities        []string
+	ContextWindowTokens int
+	MaxOutputTokens     int
 }
 
 // ModelBuilder resolves an AIProvider and model for one execution. Keeping

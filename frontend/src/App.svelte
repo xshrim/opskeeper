@@ -48,6 +48,7 @@ import { onMount } from 'svelte';
     type ConnectionCheck,
     type ConnectorCapability,
     type DiagnosisEvidence,
+    type DiagnosisEvent,
     type DiagnosisMessage,
     type DiagnosisSession,
     type DiagnosisSnapshot,
@@ -1639,6 +1640,14 @@ import { onMount } from 'svelte';
       return;
     }
     if (eventType === 'assistant.progress') {
+      // A tool-decision sentence may have arrived earlier as a provider delta.
+      // Keep the canonical progress event and remove that duplicate draft.
+      if (String(payload.kind ?? '') === 'tool_decision') {
+        diagnosisStreamingText = '';
+        diagnosisStreamingPending = '';
+        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
+        diagnosisStreamingFrame = 0;
+      }
       diagnosisGenerating = true;
       diagnosisStreamingStartedAt ||= Date.now();
       return;
@@ -1667,7 +1676,10 @@ import { onMount } from 'svelte';
     }
     if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed' || eventType === 'diagnosis.cancelled') {
       const reason = String(payload.error ?? payload.message ?? payload.error_message ?? '').trim();
-      diagnosisInterruptedReason = reason || (eventType === 'execution.cancelled' || eventType === 'diagnosis.cancelled' ? '回答被取消。' : '回答生成失败。');
+      const timedOut = /(?:context\s+)?deadline exceeded/i.test(reason) || String(payload.error_code ?? payload.code ?? '').toLowerCase() === 'timeout';
+      diagnosisInterruptedReason = timedOut
+        ? '诊断执行超时，已保留已生成内容。'
+        : reason || (eventType === 'execution.cancelled' || eventType === 'diagnosis.cancelled' ? '回答被取消。' : '回答生成失败。');
       diagnosisGenerating = false;
       void refreshDiagnosis(id);
       return;
@@ -2254,6 +2266,112 @@ import { onMount } from 'svelte';
       } else if (event.type === 'phase.changed') {
         const phase = String(payload.phase ?? '').trim();
         if (phase) items.push({ id: event.id, kind: 'phase', iteration, text: phaseTitle(phase) });
+      }
+    }
+    return items;
+  }
+
+  type DiagnosisLiveTimelineItem = {
+    id: number;
+    kind: 'analysis' | 'action';
+    text?: string;
+    tool?: string;
+    status?: string;
+    duration?: string;
+    elapsed?: string;
+    remaining?: string;
+    iteration?: number;
+    input?: string;
+    output?: string;
+    actions?: DiagnosisLiveTimelineItem[];
+  };
+
+  function diagnosisMilliseconds(value: unknown, fallback = 0) {
+    const milliseconds = Number(value);
+    return Number.isFinite(milliseconds) && milliseconds >= 0 ? milliseconds : fallback;
+  }
+
+  function diagnosisDurationMilliseconds(milliseconds: number) {
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) return '—';
+    return milliseconds < 1000
+      ? `${Math.max(1, Math.round(milliseconds))}ms`
+      : `${(milliseconds / 1000).toFixed(milliseconds >= 10000 ? 1 : 2).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1')}s`;
+  }
+
+  function diagnosisLiveTimeline(snapshot: DiagnosisSnapshot | null): DiagnosisLiveTimelineItem[] {
+    if (!snapshot) return [];
+    const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
+    const runStart = [...events].reverse().findIndex((event) => event.type === 'execution.started');
+    const activeEvents = runStart < 0 ? events : events.slice(events.length - runStart - 1);
+    const items: DiagnosisLiveTimelineItem[] = [];
+    const startedAt = activeEvents.find((event) => event.type === 'execution.started')?.created_at;
+    const toolStarted = new Map<string, string>();
+    let lastAnalysis = '';
+    let lastAction: DiagnosisLiveTimelineItem | null = null;
+    const toolName = (event: DiagnosisEvent) => String(event.payload?.tool ?? '').trim();
+    const toolKey = (event: DiagnosisEvent) => String(event.payload?.call_id ?? event.payload?.call_sequence ?? event.id);
+    const progressCount = (payload: Record<string, unknown>) => {
+      const remaining = payload.remaining_actions;
+      if (typeof remaining === 'number' && Number.isFinite(remaining)) return `还有 ${Math.max(0, Math.round(remaining))} 个动作`;
+      return '后续动作待评估';
+    };
+    for (const event of activeEvents) {
+      const payload = event.payload ?? {};
+      const iteration = Number(payload.iteration ?? 0) || undefined;
+      if (event.type === 'assistant.progress') {
+        lastAction = null;
+        const text = String(payload.text ?? '').trim();
+        if (text && text !== lastAnalysis) {
+          items.push({ id: event.id, kind: 'analysis', text, iteration });
+          lastAnalysis = text;
+        }
+        continue;
+      }
+      if (event.type === 'model.started' || event.type === 'model.resumed') {
+        lastAction = null;
+        continue;
+      }
+      if (!event.type.startsWith('tool.')) continue;
+      const tool = toolName(event);
+      if (!tool || !Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
+      const key = toolKey(event);
+      if (event.type === 'tool.started') {
+        toolStarted.set(key, event.created_at);
+        continue;
+      }
+      if (event.type !== 'tool.completed' && event.type !== 'tool.failed') continue;
+      const started = toolStarted.get(key) ?? event.created_at;
+      const inferredDuration = Math.max(0, new Date(event.created_at).getTime() - new Date(started).getTime());
+      const duration = diagnosisMilliseconds(payload.duration_ms, inferredDuration);
+      const elapsedFallback = startedAt
+        ? Math.max(0, new Date(event.created_at).getTime() - new Date(startedAt).getTime())
+        : 0;
+      const elapsed = diagnosisMilliseconds(payload.elapsed_ms, elapsedFallback);
+      const action: DiagnosisLiveTimelineItem = {
+        id: event.id,
+        kind: 'action',
+        tool,
+        status: event.type === 'tool.completed' ? '已完成' : '返回错误，正在重新评估',
+        duration: diagnosisDurationMilliseconds(duration),
+        elapsed: diagnosisDurationMilliseconds(elapsed),
+        remaining: progressCount(payload),
+        iteration,
+        input: payload.arguments === undefined ? undefined : JSON.stringify(payload.arguments, null, 2),
+        output: payload.output === undefined
+          ? JSON.stringify(payload.error ? { error: payload.error } : {}, null, 2)
+          : JSON.stringify(payload.output, null, 2)
+      };
+      if (lastAction && items[items.length - 1] === lastAction) {
+        lastAction.actions = [...(lastAction.actions ?? [lastAction]), action];
+        lastAction.tool = action.tool;
+        lastAction.status = action.status;
+        lastAction.duration = action.duration;
+        lastAction.elapsed = action.elapsed;
+        lastAction.remaining = action.remaining;
+        lastAction.iteration = action.iteration;
+      } else {
+        items.push(action);
+        lastAction = action;
       }
     }
     return items;
@@ -3383,7 +3501,7 @@ import { onMount } from 'svelte';
       return {
         name: String(model.name ?? ''),
         contextWindowTokens: Number(model.context_window_tokens ?? model.context_window ?? 128000),
-        maxOutputTokens: Number(model.max_output_tokens ?? 8192),
+        maxOutputTokens: Number(model.max_output_tokens ?? 128000),
         temperature: Number(model.temperature ?? 0.7),
         temperatureMutable: model.temperature_mutable !== false,
         capabilities: Array.isArray(model.capabilities) ? model.capabilities.map(String) : ['text'],
@@ -3415,7 +3533,7 @@ import { onMount } from 'svelte';
     return {
       name: '',
       contextWindowTokens: 128000,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 128000,
       temperature: 0.7,
       temperatureMutable: true,
       capabilities: ['text', 'tool_calling', 'structured_output', 'stream'],
@@ -4975,13 +5093,21 @@ import { onMount } from 'svelte';
 
   const resourceCategoryOptions: Record<string, string[]> = {
     全部: [],
-    应用: ['虚拟机', '容器化', '云原生'],
-    中间件: ['Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'ElasticSearch'],
-    数据库: ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'],
-    制品库: ['Generic', 'Docker', 'Helm'],
-    代码库: ['Git', 'Bundle'],
-    Docker: ['API', 'Agent'],
-    Kubernetes: ['API', 'Agent'],
+    Application: ['虚拟机', '容器化', '云原生'],
+    Artifact: ['Generic', 'Docker', 'Helm'],
+    Repository: ['Git', 'Bundle'],
+    Host: ['Direct', 'Agent'],
+    Docker: ['Direct', 'Agent'],
+    Kubernetes: ['Direct', 'Agent'],
+    Redis: ['Direct', 'Agent'],
+    TongRDS: ['Direct', 'Agent'],
+    Kafka: ['Direct', 'Agent'],
+    RabbitMQ: ['Direct', 'Agent'],
+    Elasticsearch: ['Direct', 'Agent'],
+    OceanBase: ['Direct', 'Agent'],
+    Oracle: ['Direct', 'Agent'],
+    MySQL: ['Direct', 'Agent'],
+    PostgreSQL: ['Direct', 'Agent'],
     MCPServer: ['StreamHTTP', 'SSE'],
     Skill: ['诊断', '监控', '优化', '维护'],
     LLM: ['Provider'],
@@ -4995,29 +5121,12 @@ import { onMount } from 'svelte';
   }) {
     if (resource.kind === 'AIProvider') return 'LLM';
     if (resource.kind === 'MCPServer') return 'MCPServer';
-    if (resource.kind === 'GenericAPI') return 'Docker';
-    if (resource.kind === 'Application') return '应用';
-    if (
-      [
-        'Redis',
-        'Kafka',
-        'Elasticsearch',
-        'GenericMiddleware',
-        'RabbitMQ',
-        'TongRDS'
-      ].includes(resource.kind)
-    )
-      return '中间件';
-    if (
-      ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL', 'Database'].includes(
-        resource.kind
-      )
-    )
-      return '数据库';
-    if (['ArtifactRepository', 'ArtifactStore'].includes(resource.kind))
-      return '制品库';
-    if (['CodeRepository', 'Repository'].includes(resource.kind))
-      return '代码库';
+    if (resource.kind === 'Application') return 'Application';
+    if (resource.kind === 'Artifact') return 'Artifact';
+    if (resource.kind === 'Repository') return 'Repository';
+    if (resource.kind === 'Host') return 'Host';
+    if (['Redis', 'Kafka', 'Elasticsearch', 'RabbitMQ', 'TongRDS', 'OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'].includes(resource.kind))
+      return resource.kind;
     if (resource.kind === 'Docker') return 'Docker';
     if (resource.kind === 'Kubernetes') return 'Kubernetes';
     if (resource.kind === 'Skill') return 'Skill';
@@ -5041,20 +5150,23 @@ import { onMount } from 'svelte';
     config?: Record<string, unknown>;
     subtype?: string;
   }) {
-    const category = resourceCategoryFor(resource);
     const labelMap: Record<string, string> = {
       Application: '虚拟机',
-      Kubernetes: 'API',
-      KubernetesCluster: 'API',
-      Middleware: 'Redis',
-      GenericMiddleware: 'Redis',
-      Database: 'PostgreSQL',
-      ArtifactRepository: 'Generic',
-      ArtifactStore: 'Generic',
-      CodeRepository: 'Git',
+      Artifact: 'Generic',
+      Kubernetes: 'Direct',
+      Host: 'Direct',
+      Docker: 'Direct',
+      Redis: 'Direct',
+      Kafka: 'Direct',
+      Elasticsearch: 'Direct',
+      RabbitMQ: 'Direct',
+      TongRDS: 'Direct',
+      OceanBase: 'Direct',
+      Oracle: 'Direct',
+      MySQL: 'Direct',
+      PostgreSQL: 'Direct',
       Repository: 'Git',
       MCPServer: 'StreamHTTP',
-      GenericAPI: 'API',
       AIProvider: 'OpenAI',
       Prometheus: '指标',
       Loki: '日志',
@@ -5063,6 +5175,9 @@ import { onMount } from 'svelte';
     };
     const explicit = String(resource.subtype || resource.config?.subtype || '');
     if (resource.kind === 'AIProvider') return 'Provider';
+    if (['Host', 'Docker', 'Kubernetes', 'Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'Elasticsearch', 'OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'].includes(resource.kind)) {
+      return explicit || 'Direct';
+    }
     return String(
       explicit ||
         resource.config?.provider ||
@@ -5084,13 +5199,21 @@ import { onMount } from 'svelte';
   function resourceCategoryIcon(category: string) {
     const icons: Record<string, string> = {
       全部: '◇',
-      应用: '⌘',
-      中间件: '◒',
-      数据库: '◉',
-      制品库: '▤',
-      代码库: '⌘',
+      Application: '⌘',
+      Artifact: '▤',
+      Repository: '⌘',
+      Host: '▣',
       Docker: '◈',
       Kubernetes: '⬡',
+      Redis: '◒',
+      TongRDS: '◒',
+      Kafka: '◒',
+      RabbitMQ: '◒',
+      Elasticsearch: '◒',
+      OceanBase: '◉',
+      Oracle: '◉',
+      MySQL: '◉',
+      PostgreSQL: '◉',
       MCPServer: '⌁',
       Skill: '✧',
       LLM: '✦',
@@ -6664,7 +6787,7 @@ import { onMount } from 'svelte';
                               </div>
                               <div><span>能力</span><strong>{providerModelCapabilities(model).join('、') || '未声明'}</strong></div>
                               <div><span>上下文</span><strong>{Number(model.context_window_tokens ?? model.context_window ?? 128000).toLocaleString()} Token</strong></div>
-                              <div><span>最大输出</span><strong>{Number(model.max_output_tokens ?? 8192).toLocaleString()} Token</strong></div>
+                              <div><span>最大输出</span><strong>{Number(model.max_output_tokens ?? 128000).toLocaleString()} Token</strong></div>
                               <div><span>温度</span><strong>{Number(model.temperature ?? 0.7)}</strong></div>
                               <div><span>优先级</span><strong>{Number(model.priority ?? 0)}</strong></div>
                             </div>
@@ -8248,13 +8371,95 @@ import { onMount } from 'svelte';
                   </article>
                 {/each}{/if}
               {#if (diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot)) && !diagnosisHasPersistedNewAnswer(diagnosisSnapshot)}
-                {#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace diagnosis-live-trace"><div class="diagnosis-trace-title">实时执行过程</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}
                 <article class="diagnosis-message-f assistant diagnosis-streaming-message">
                   <span class="diagnosis-message-avatar">AI</span>
                   <div class="diagnosis-message-content">
                     <div class="diagnosis-message-meta"><strong>AI 助手</strong><small>实时响应</small></div>
                     <div class="diagnosis-bubble-f diagnosis-streaming-bubble">
-                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(diagnosisStreamingText)}</div>{:else}<span class="diagnosis-thinking"><i></i><i></i><i></i><span>正在思考</span></span>{/if}
+                      {#if diagnosisLiveTimeline(diagnosisSnapshot).length}
+                        <div class="diagnosis-live-timeline" aria-live="polite">
+                          {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
+                            {#if item.kind === 'analysis'}
+                              <p class="diagnosis-live-analysis">{item.text}</p>
+                            {:else}
+                              {@const actions = item.actions ?? [item]}
+                              {@const grouped = actions.length > 1}
+                              {@const groupKey = `live-group-${item.id}`}
+                              <div class:diagnosis-live-action-group={grouped} class="diagnosis-live-action-wrap">
+                                {#if grouped}
+                                  <button
+                                    class="diagnosis-live-action"
+                                    aria-expanded={Boolean(diagnosisActionExpanded[groupKey])}
+                                    on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [groupKey]: !diagnosisActionExpanded[groupKey] })}
+                                  >
+                                    <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[groupKey] ? '⌄' : '›'}</span>
+                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span>
+                                    <code>{item.tool}</code>
+                                    <span class="diagnosis-live-action-count">连续 {actions.length} 个动作</span>
+                                    <span class="diagnosis-live-action-status" class:error={item.status !== '已完成'}>{item.status}</span>
+                                    <small>{item.duration}</small>
+                                    <small>总耗时 {item.elapsed}</small>
+                                  </button>
+                                  {#if diagnosisActionExpanded[groupKey]}
+                                    <div class="diagnosis-live-action-children">
+                                      {#each actions as action (action.id)}
+                                        {@const actionKey = `live-action-${action.id}`}
+                                        <div class="diagnosis-live-action-child-wrap">
+                                          <button
+                                            class="diagnosis-live-action child"
+                                            aria-expanded={Boolean(diagnosisActionExpanded[actionKey])}
+                                            on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}
+                                          >
+                                            <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span>
+                                            <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={12} /></span>
+                                            <code>{action.tool}</code>
+                                            <span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span>
+                                            <small>{action.duration}</small>
+                                          </button>
+                                          {#if diagnosisActionExpanded[actionKey]}
+                                            <div class="diagnosis-live-action-detail child-detail">
+                                              <div><small>入参 JSON</small><pre>{action.input ?? '暂无入参'}</pre></div>
+                                              <div><small>出参 JSON</small><pre>{action.output ?? '暂无出参'}</pre></div>
+                                            </div>
+                                          {/if}
+                                        </div>
+                                      {/each}
+                                    </div>
+                                  {/if}
+                                {:else}
+                                  {@const action = actions[0]}
+                                  {@const actionKey = `live-action-${action.id}`}
+                                  <button
+                                    class="diagnosis-live-action"
+                                    aria-expanded={Boolean(diagnosisActionExpanded[actionKey])}
+                                    on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}
+                                  >
+                                    <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span>
+                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span>
+                                    <code>{action.tool}</code>
+                                    <span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span>
+                                    <small>{action.duration}</small>
+                                    <small>{action.remaining}</small>
+                                    <small>总耗时 {action.elapsed}</small>
+                                  </button>
+                                  {#if diagnosisActionExpanded[actionKey]}
+                                    <div class="diagnosis-live-action-detail">
+                                      <div><small>入参 JSON</small><pre>{action.input ?? '暂无入参'}</pre></div>
+                                      <div><small>出参 JSON</small><pre>{action.output ?? '暂无出参'}</pre></div>
+                                    </div>
+                                  {/if}
+                                {/if}
+                              </div>
+                            {/if}
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(diagnosisStreamingText)}</div>{/if}
+                      {#if diagnosisGenerating || diagnosisHasRunningActions(diagnosisSnapshot)}
+                        <span class="diagnosis-thinking diagnosis-thinking-inline" aria-live="polite"><i></i><i></i><i></i><span>正在思考</span></span>
+                      {:else if !diagnosisStreamingText && !diagnosisLiveTimeline(diagnosisSnapshot).length && !diagnosisInterruptedReason}
+                        <span class="diagnosis-thinking" aria-live="polite"><i></i><i></i><i></i><span>正在思考</span></span>
+                      {/if}
                       {#if diagnosisInterruptedReason}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}
                     </div>
                   </div>

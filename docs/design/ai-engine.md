@@ -2,7 +2,7 @@
 
 **状态：** I003 实施版本  
 **适用范围：** I003 后续 AIEngine 改造  
-**最后更新：** 2026-09-01
+**最后更新：** 2026-09-02
 
 ## 1. 设计结论
 
@@ -35,6 +35,41 @@ AIEngine（统一执行、工具、上下文、流式响应和审计）
 - 第一版不做跨 Provider 的自动模型聚合和隐式路由。
 - 第一版不允许业务绕过 AIEngine 直接访问 Provider 地址或凭据。
 - 第一版不把任意 Provider 请求参数原样透传给上游。
+
+### 2.3 AIEngine 强制执行能力
+
+以下能力是 AIEngine 的必选契约，而不是某个诊断页面或特定模型的可选增强。任何
+新的业务适配器（对话、诊断、巡检或工作流）都必须复用同一套语义；适配器不得把
+执行降级为“单次模型请求 -> 单次工具调用 -> 最终回答”。
+
+1. **ReAct（Reasoning and Acting）。** 每轮执行按
+   `Reasoning summary -> Action -> Observation` 交替推进。Reasoning summary 是
+   面向用户的、脱敏且限长的阶段摘要；Action 是经过授权和策略检查的工具调用；
+   Observation 是工具返回的结果、错误、超时或环境事实。只有在 Observation 完成
+   后才能开始依赖该结果的下一轮推理。
+2. **智能体循环（Agentic Loop / Multi-turn Tool-Use Loop）。** Runtime 必须持续
+   驱动模型回合和工具回合，直到模型给出无待执行工具的最终回答，或触发明确终止
+   信号（`stop`、取消、超时、预算耗尽或受控错误）。不得在第一轮工具返回后强制
+   结束，也不得在没有终止信号时静默截断。
+3. **流式阶段性输出（Progress Streaming）。** 在模型回合开始、阶段摘要、工具
+   请求、工具开始、工具完成/失败、Observation 汇总和下一轮恢复等边界，Runtime
+   必须按实际发生顺序持久化并通过 SSE 推送事件。耗时工具前后都要有可消费的进度
+   反馈，客户端无需等待最终回答即可看到执行过程。
+4. **动态规划与自我纠错（Dynamic Planning & Self-Correction）。** 每个工具
+   Observation 都必须进入下一轮模型输入。模型可根据错误、空结果、部分结果、权限
+   拒绝、超时或环境变化改换工具、修正参数、缩小范围、重试或说明无法完成；Runtime
+   不得吞掉错误、伪造结果或无条件沿用旧计划。
+5. **长程/多轮任务执行（Long-horizon Execution）。** Runtime 必须支持数十乃至
+   上百次连续的“推理-行动-反馈”步骤，并以 `MaxIterations`、`MaxToolCalls`、
+   Token、输出大小、总耗时和取消信号实施硬上限。达到任一上限时要发出带原因的预算
+   事件和终态，且不得再发起新的工具副作用。
+6. **环境反馈驱动推理（Environment-driven Reasoning）。** 代码运行、编译器和
+   测试输出、Git 状态、容器/集群状态、实例指标以及 Connector/MCP 返回值都是后续
+   决策的主要输入。静态 Prompt 只规定角色、目标和边界；最新环境 Observation 优先
+   于过时的 Prompt 假设。所有环境事实必须可追溯到对应事件和工具审计记录。
+
+上述能力必须在同步和流式执行中保持一致。`Request.Stream=false` 只改变传输方式，
+不改变循环、终止、纠错、预算或审计语义。
 
 ## 3. 核心概念
 
@@ -134,7 +169,7 @@ AIProvider 仍然作为统一 Resource 保存。凭据通过 `resource.credentia
     {
       "name": "deepseek-chat",
       "context_window_tokens": 128000,
-      "max_output_tokens": 8192,
+      "max_output_tokens": 128000,
       "temperature": 0.7,
       "temperature_mutable": true,
       "capabilities": [
@@ -173,7 +208,7 @@ Provider 本身不保存诊断、巡检或工作流标签。标签属于 Scope �
 |---|---:|---|
 | `name` | 是 | 上游实际模型名称，Provider 内唯一 |
 | `context_window_tokens` | 是 | 输入上下文和输出预算可使用的总窗口 |
-| `max_output_tokens` | 否 | 模型允许的最大输出 Token |
+| `max_output_tokens` | 否 | 模型允许的最大输出 Token；未填写时默认 `128000`，仍受 Provider 实际模型能力和上下文窗口约束 |
 | `temperature` | 否 | 模型默认温度，建议范围 0-2 |
 | `temperature_mutable` | 否 | 是否允许执行请求覆盖温度 |
 | `capabilities` | 是 | 模型能力集合 |
@@ -429,23 +464,93 @@ Reasoning summary（阶段性分析摘要）
 | 阶段 | 事件 | Payload 最低要求 |
 |---|---|---|
 | 执行启动 | `execution.started` | profile、执行时间 |
-| 阶段变更 | `phase.changed` | `phase`、可选 `detail` |
-| 模型回合开始 | `model.started` | iteration、目标摘要 |
-| 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、是否最终文本 |
-| 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration |
-| 工具执行 | `tool.started` | 工具名、资源、调用序号 |
-| 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、耗时 |
-| 回合继续 | `model.resumed` | iteration、观察摘要；并行批次包含全部工具结果 |
+| 阶段变更 | `phase.changed` | `phase`、可选 `detail`、`elapsed_ms` |
+| 模型回合开始 | `model.started` | iteration、目标摘要、`elapsed_ms` |
+| 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、`kind`、是否最终文本、动作计数 |
+| 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration、动作计数 |
+| 工具执行 | `tool.started` | 工具名、资源、调用序号、`started_at`、动作计数 |
+| 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、`duration_ms`、`elapsed_ms`、动作计数 |
+| 回合继续 | `model.resumed` | iteration、观察摘要、`elapsed_ms`；并行批次包含全部工具结果 |
 | 最终回答 | `assistant.completed` | 最终文本 |
 | 执行终止 | `execution.completed` / `execution.failed` / `execution.cancelled` | 终态、错误/预算原因 |
 
 事件必须按实际发生顺序写入持久化 Store 并通过 SSE 推送。前端应按 `sequence` 将阶段文本、工具决策、工具结果和下一轮分析合并为一条时间线；不得把工具记录统一移动到最终回答之后，也不得用轮询快照覆盖已经收到的更新事件。耗时工具开始前应先推送进度，完成或失败后应立即推送观察摘要，然后才允许进入下一轮模型请求。
 
+阶段事件中涉及动作进度时，统一使用以下字段（字段缺省时按事件类型推导）：
+
+| 字段 | 类型 | 语义 |
+|---|---|---|
+| `action_index` | integer | 当前动作在本次执行中的 1-based 序号 |
+| `action_count` | integer | 已请求或已完成的动作总数，包含并行批次中的每个工具调用 |
+| `remaining_actions` | integer/null | 运行时已知、尚未结束的动作数；未知时为 `null`，不得伪造精确值 |
+| `duration_ms` | integer | 当前模型回合或工具调用的耗时；仅在完成/失败后稳定 |
+| `elapsed_ms` | integer | 从 `execution.started` 到当前事件的单调耗时 |
+| `iteration` | integer | 当前模型回合序号，从 1 开始 |
+| `kind` | string | `analysis`、`tool_decision`、`observation`、`final` 或 `budget` |
+
+`action_count` 和 `remaining_actions` 必须以服务端事件为准，前端不得通过本地轮询猜测。并行工具调用时，所有 `tool.requested`/`tool.started`/`tool.completed` 事件共享同一个 `iteration`，但每个调用拥有独立的 `action_index`、调用序号和耗时；只有该批次全部结束后，才能发送带汇总 Observation 的 `model.resumed`。
+
 ### 8.3 诊断页面验收契约
 
-诊断页面订阅 `model.started`、`assistant.progress`、`assistant.delta`、`tool.*` 和 `model.resumed` 事件，并在同一条“实时执行过程”时间线上按事件 ID 展示。模型回合开始、工具决策、工具执行、Observation 和下一轮分析必须能够在页面上逐步出现；工具明细可折叠查看，但不得等最终回答持久化后才首次出现。页面刷新快照时须合并本地已收到的 SSE 事件，只有确认终态或新的助手消息已经持久化后才能清理实时占位内容。取消/超时应以 `execution.cancelled` 和 `diagnosis.cancelled` 结束，失败应以 `execution.failed` 和 `diagnosis.failed` 结束；成功则在报告持久化后发送 `report.ready`。
+诊断页面订阅 `model.started`、`assistant.progress`、`assistant.delta`、`tool.*` 和 `model.resumed` 事件，并在同一条“实时执行过程”时间线上按事件 ID 展示。模型回合开始、工具决策、工具执行、Observation 和下一轮分析必须能够在页面上逐步出现；连续或同一并行批次的工具调用默认聚合为一个可折叠批次，收起时只显示最新动作、批次数量、状态和耗时，展开批次后再逐个展开单个动作的脱敏入参和出参，避免大量相同工具调用平铺占用回答区域。工具明细不得等最终回答持久化后才首次出现。页面刷新快照时须合并本地已收到的 SSE 事件，只有确认终态或新的助手消息已经持久化后才能清理实时占位内容。取消/超时应以 `execution.cancelled` 和 `diagnosis.cancelled` 结束，失败应以 `execution.failed` 和 `diagnosis.failed` 结束；成功则在报告持久化后发送 `report.ready`。
+
+### 8.4 诊断进度叙事与前端展示契约
+
+诊断场景的实时过程应让用户看到“当前判断 -> 正在做什么 -> 得到什么 -> 下一步为什么这样做”，而不是只看到一串工具名称。`assistant.progress` 的文本应使用自然语言说明阶段目标和决策依据；工具事件负责提供可折叠的调用明细；`model.resumed` 负责明确 Observation 已经回到模型并触发重新规划。推荐的展示形式如下（工具名和耗时仅为示例）：
+
+```text
+收到，用户反馈响应慢和超时，属于典型性能问题。我现在开始诊断流程，首先进行首次评估：获取实例/表信息、性能与 VACUUM 配置、扩展情况，同时查看慢查询和当前活动查询。
+
+postgresql_e9483c86__getCurrentActiveQueries 已完成 982ms · 还有 4 个动作 · 总耗时 1.02s
+
+初步评估已完成。数据库表都非常小，慢查询记录为空，当前无活动查询，说明数据量和查询本身不是直接瓶颈。接下来我并行检查连接状态、锁等待、实例指标和应用容器状态。
+
+postgresql_e9483c86__pg_core_connection_saturation 已完成 1.6s · 还有 5 个动作 · 总耗时 2.73s
+
+数据库侧检查结果很关键：连接利用率仅 18%，无锁等待、无阻塞查询、无慢查询，数据库本身并不是瓶颈。下一步转向应用层日志和连接池配置。
+```
+
+对应的最小事件序列为：
+
+```text
+assistant.progress  {kind:"analysis", text:"收到……开始诊断流程……", iteration:1,
+                     action_count:0, remaining_actions:6, elapsed_ms:120}
+tool.requested      {tool:"postgresql…getCurrentActiveQueries", action_index:1,
+                     action_count:1, remaining_actions:6, iteration:1}
+tool.started        {tool:"postgresql…getCurrentActiveQueries", action_index:1,
+                     action_count:1, remaining_actions:6, iteration:1}
+tool.completed      {tool:"postgresql…getCurrentActiveQueries", duration_ms:982,
+                     elapsed_ms:1102, action_index:1, action_count:1,
+                     remaining_actions:4, iteration:1}
+model.resumed       {iteration:1, kind:"observation", observations:[…],
+                     action_count:1, remaining_actions:4, elapsed_ms:1110}
+assistant.progress  {kind:"analysis", text:"初步评估已完成……接下来并行检查……",
+                     iteration:2, action_count:1, remaining_actions:5, elapsed_ms:1180}
+```
+
+文本约束：
+
+- 可以展示阶段摘要、工具用途、环境观察摘要、耗时和动作计数，但不得展示隐藏 Chain-of-Thought、逐 token 推理、系统 Prompt、凭据或未脱敏工具参数/结果。
+- 阶段摘要必须是事实性、可验证、限长的陈述；如果模型没有提供安全摘要，运行时使用稳定模板（如“正在整理工具结果并重新评估下一步”），不能用空白或虚构内容替代。
+- 阶段摘要应采用自然语言，禁止“阶段 1”“阶段 2”或其他机械编号；没有新观察或路径变化时不得重复上一条摘要。工具决策摘要应与同一轮的临时流式文本去重，用户只看到一份阶段说明。
+- `总耗时` 使用 `elapsed_ms`，`已完成` 使用当前工具的 `duration_ms`；两者不能互换。
+- `还有 N 个动作` 仅在运行时确实知道 N 时展示；否则显示“后续动作待评估”，避免把动态规划误报成预先固定的计划。
+- 工具失败时使用“返回错误，正在重新评估”一类中性叙事，并在可折叠明细中保留脱敏后的错误分类和 Observation；不得把失败吞掉后继续显示“已完成”。
 
 ## 9. 上下文、Tool Calling、Skill 和 Agent
+
+### 9.1 长程执行上下文治理
+
+长程诊断不能把所有历史消息和原始工具输出无限累积到下一次请求。AIEngine 对每次模型请求执行以下治理策略：
+
+1. **上下文窗口感知。** Provider Model 的 `context_window_tokens` 和 `max_output_tokens` 会随模型解析结果传入运行时；`BeforeModelCallback` 在每轮调用前按序列化请求大小估算输入 Token，动态压缩上下文并计算本轮可用输出上限。
+2. **滑动窗口与历史压缩。** 保留系统约束、初始任务和最近的完整回合；较早普通文本和工具响应被替换为压缩标记。模型调用与函数响应按成对消息保留，避免裁剪出非法的 Tool Calling 历史。
+3. **Observation 压缩。** 工具结果先递归脱敏，再限制文本字段和整体字节数；错误、状态、统计等结构化字段优先保留，超大日志不会原样复制到每一轮 Prompt。
+4. **结构化诊断状态。** 执行级状态维护 `confirmed_facts`、`hypotheses`、`eliminated_causes`、`open_questions` 和 `next_actions`，以短状态快照注入下一轮系统指令，减少模型反复阅读旧历史。
+5. **Observation 按需回读。** 完整脱敏结果保存在执行级 Observation Store；模型只收到 `observation_id` 与摘要。具备长上下文窗口的模型可通过受控 `read_observation(observation_id, offset, limit)` 分页读取精确内容，读取动作同样计入工具预算和审计事件。
+6. **分层预算。** `MaxOutputTokens` 是单轮输出上限，`context_window_tokens` 是 Provider 输入/输出总窗口，`MaxTokens` 是执行累计 Token 上限；`MaxIterations`、`MaxToolCalls`、`MaxOutputBytes` 和 `Timeout` 分别约束回合、工具、最终文本和总耗时。任一硬上限触发时发送带原因的终态事件。
+
+这些限制用于保护 Provider 上下文容量、避免单次异常日志耗尽预算、控制成本并保证 SSE 事件和审计记录可持续写入；它们不会把长程任务降级成单轮执行，因为历史压缩与 Observation 回读为后续推理保留了可追溯路径。
 
 AIEngine 不直接读取数据库、容器或 MCP Server。所有外部信息必须通过 Context Resolver 和 Tool Gateway：
 
@@ -694,3 +799,5 @@ Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这�
 12. 在配置的迭代、工具、Token、输出大小和时间预算内，执行可持续完成长程任务；达到任一硬上限时返回明确的预算终止事件和原因。
 13. 执行过程中产生的环境反馈（命令、测试、编译、Git、容器、集群、Connector/MCP 结果）可追溯到对应 Observation，并参与后续模型决策。
 14. 事件断线续读、取消和失败恢复测试通过；重连不重复展示事件，且不会在无幂等保护时重复产生工具副作用。
+15. 诊断流式事件能够呈现“阶段摘要 -> 工具动作 -> Observation -> 下一轮分析”的连续叙事；每个动作提供稳定的动作序号、完成耗时和执行总耗时，剩余动作未知时明确标记为待评估而不是猜测。
+16. 诊断前端能够按事件 `sequence` 实时展示阶段性文本、并行工具动作、成功/失败 Observation 和纠错后的下一步；示例中的“已完成 982ms、还有 N 个动作、总耗时”均来自服务端事件字段，不由客户端拼接或轮询推断。

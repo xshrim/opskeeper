@@ -59,3 +59,20 @@ func TestValidateConfigEnforcesNestedSchemaConstraints(t *testing.T) {
 		t.Fatal("validateConfig(nested minItems) error = nil")
 	}
 }
+
+func TestResourceSubtypeDirectAgentKinds(t *testing.T) {
+	if got := normalizeResourceSubtype("Kafka", ""); got != "Direct" {
+		t.Fatalf("normalizeResourceSubtype(Kafka, empty) = %q, want Direct", got)
+	}
+	for _, subtype := range []string{"Direct", "Agent"} {
+		if err := validateResourceSubtype("Host", subtype); err != nil {
+			t.Fatalf("validateResourceSubtype(Host, %q) error = %v", subtype, err)
+		}
+	}
+	if err := validateResourceSubtype("PostgreSQL", "API"); err == nil {
+		t.Fatal("validateResourceSubtype(PostgreSQL, API) error = nil")
+	}
+	if err := validateResourceSubtype("Application", "虚拟机"); err != nil {
+		t.Fatalf("validateResourceSubtype(Application) error = %v", err)
+	}
+}

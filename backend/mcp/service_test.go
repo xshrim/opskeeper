@@ -2,10 +2,24 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestNormalizeToolResultPrefersStructuredContent(t *testing.T) {
+	raw := json.RawMessage(`{"content":[{"type":"text","text":"{\"containers\":[{\"id\":\"abc\"}]}"}],"structuredContent":{"containers":[{"id":"abc"}]}}`)
+	got := normalizeToolResult(raw)
+	if strings.Contains(string(got), `\"`) || strings.Contains(string(got), `\\`) {
+		t.Fatalf("normalized result still contains escaped JSON: %s", got)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(got, &decoded); err != nil || decoded["containers"] == nil {
+		t.Fatalf("normalized result is not structured JSON: %s err=%v", got, err)
+	}
+}
 
 func TestDiscoverRejectsUnsafeEndpoints(t *testing.T) {
 	for _, endpoint := range []string{"http://localhost:8080/mcp", "stdio://tool", "https://"} {

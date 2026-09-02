@@ -109,7 +109,7 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 | `DOCKER_MCP_DOCKER_SERVER_NAME` | TLS ServerName 覆盖值 |
 | `DOCKER_MCP_DOCKER_TLS_SKIP_VERIFY` | `true` 时跳过 TLS 证书校验；只应在明确受信任的开发环境使用 |
 
-也可以使用 Docker CLI 兼容的 `DOCKER_CERT_PATH`（目录内包含 `ca.pem`、`cert.pem`、`key.pem`）和 `DOCKER_TLS_VERIFY`。CA、客户端证书、私钥必须成套配置；不完整的配置会直接报错。默认不会跳过证书校验，且不会在日志、错误或工具响应中返回证书内容。
+也可以使用 Docker CLI 兼容的 `DOCKER_CERT_PATH`（目录内包含 `ca.pem`、`cert.pem`、`key.pem`）和 `DOCKER_TLS_VERIFY`。CA、客户端证书、私钥必须成套配置。若工具调用显式传入的 host、证书或 TLS 参数无法解析、文件不存在、TLS 握手失败或 host 无法访问，服务会自动改用 Docker 默认 Unix socket（不会再次使用 `DOCKER_HOST`、`DOCKER_MCP_DOCKER_HOST` 或其他 TLS 环境参数）执行一次；成功时结果会带有 `connection_fallback.custom_connection_error` 和 `connection_fallback.fallback`，便于诊断但不会返回证书内容。普通 Docker 业务错误（例如容器不存在）不会触发回退。环境变量本身配置错误不会重复回退。
 
 ## 工具清单
 
@@ -118,17 +118,19 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 | `docker_info` | Docker Engine 信息 | 只读 |
 | `docker_images` | 镜像列表 | 支持 `all` 和过滤器 |
 | `docker_containers` | 容器列表 | 支持 `all`、过滤器，最多 500 条 |
-| `docker_container_logs` | 容器日志 | 永不 follow，默认最近 300 行，支持时间范围和 keyword 行筛选，最多 256 KiB |
+| `docker_container_logs` | 容器日志 | 永不 follow，默认请求最近 1000 行，支持时间范围和 keyword 上下文筛选，最终最多返回 200 行、256 KiB |
 | `docker_container_inspect` | 容器详情 | 只读，敏感环境变量和凭据字段脱敏 |
 | `docker_container_stats` | 容器资源快照 | 使用一次性 stats，不建立持续流 |
 
-所有工具仍返回 JSON 对象形式的结构化内容，但服务端不发布由复杂 DTO 自动生成的 `outputSchema`。这样可以避免部分严格 CSP 的浏览器 MCP 客户端为了编译嵌套 JSON Schema 而调用动态 JavaScript。列表工具使用对象字段承载数组：`docker_images` 返回 `{ "images": [...] }`，`docker_containers` 返回 `{ "containers": [...] }`；`docker_info` 返回 `{ "info": {...} }`。日志、inspect 和 stats 分别返回对象结构。
+所有工具仍返回 JSON 对象形式的结构化内容，但服务端不发布由复杂 DTO 自动生成的 `outputSchema`。这样可以避免部分严格 CSP 的浏览器 MCP 客户端为了编译嵌套 JSON Schema 而调用动态 JavaScript。MCP 适配层会优先传递 `structuredContent`，不会把同一份 JSON 再嵌套进 `content[].text` 字符串，因此下游不会看到大量 `\\` 转义符。列表工具使用对象字段承载数组：`docker_images` 返回 `{ "images": [...] }`，`docker_containers` 返回 `{ "containers": [...] }`；`docker_info` 返回 `{ "info": {...} }`。日志、inspect 和 stats 分别返回对象结构。
+
+工具的 `tools/list` 响应会为每个参数提供 `description`，包括连接参数、容器标识、过滤器和日志范围。模型通常会据此生成符合格式的参数；服务端仍会校验参数，错误信息应视为工具反馈而不是模型指令。
 
 `docker_images` 和 `docker_containers` 的 `filters` 参数是简化字符串，格式为 `key:value,key:value`，例如 `label:com.example.env=prod,status:running`。服务端会按每项的第一个冒号拆分键和值，因此 `reference:nginx:latest` 也是有效的过滤器。空项、缺少冒号或空键/值会返回输入错误。
 
 `docker_container_logs`、`docker_container_inspect` 和 `docker_container_stats` 支持 `container_id` 或 `container_name`，至少提供一个；如果同时提供则优先使用 `container_id`。
 
-`docker_container_logs` 的日志范围参数按以下顺序生效：`since` 和 `until` 先确定时间范围（均为空时取最新日志；只填写一个时按该边界过滤；两者都填写时取交集），然后按 `tail` 取结果末尾行数；`tail` 为空时默认为 300。最后使用 `keyword` 对结果逐行筛选，匹配不区分大小写；`keyword` 为空时不筛选。日志读取仍不跟随（`follow=false`），总响应超过 256 KiB 时会截断并设置 `truncated=true`。
+`docker_container_logs` 的日志范围参数按以下顺序生效：`since` 和 `until` 先确定时间范围（均为空时取最新日志；只填写一个时按该边界过滤；两者都填写时取交集），然后按 `tail` 取结果末尾行数；`tail` 为空时默认为 1000。接着使用 `keyword` 对这批日志进行不区分大小写的匹配：每个命中行会连同前后最多 3 行一起保留，多个命中的上下文范围会合并，不会重复显示重叠行。最后对筛选结果取最近 200 行作为响应行数上限；`keyword` 为空时直接对 tail 结果取最近 200 行。日志读取仍不跟随（`follow=false`），总响应超过 256 KiB 时会截断并设置 `truncated=true`。
 
 所有调用都由 Docker 官方 Go 客户端发起；Server 不接受任意 SQL、Shell 或 Docker 命令，也不提供容器启动、停止、删除、执行等写操作。
 

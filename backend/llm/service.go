@@ -290,6 +290,11 @@ func (s *Service) readAIProvider(ctx context.Context, id string, requireActive b
 	if err := json.Unmarshal(encoded, &config); err != nil {
 		return AIProvider{}, invalid("AIProvider config is invalid")
 	}
+	for index := range config.Models {
+		if config.Models[index].MaxOutputTokens <= 0 {
+			config.Models[index].MaxOutputTokens = 128000
+		}
+	}
 	if err := validateAIProviderConfig(config); err != nil {
 		return AIProvider{}, err
 	}
@@ -318,6 +323,9 @@ func validateAIProviderConfig(config AIProviderConfig) error {
 	for _, item := range config.Models {
 		if strings.TrimSpace(item.Name) == "" || item.ContextWindowTokens <= 0 || item.Temperature < 0 || item.Temperature > 2 {
 			return invalid("every provider model requires a name and positive context_window_tokens")
+		}
+		if item.MaxOutputTokens <= 0 {
+			item.MaxOutputTokens = 128000
 		}
 		if slices.Contains(names, item.Name) {
 			return invalid("provider model names must be unique")

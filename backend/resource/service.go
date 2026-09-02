@@ -40,6 +40,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
 		return Resource{}, err
 	}
+	input.Subtype = normalizeResourceSubtype(input.Kind, input.Subtype)
+	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
+		return Resource{}, err
+	}
 	if !allowsExactScope(ctx, input.ScopeID) {
 		return Resource{}, authorization.ErrForbidden
 	}
@@ -88,6 +92,10 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
 	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
 	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
+		return Resource{}, err
+	}
+	input.Subtype = normalizeResourceSubtype(input.Kind, input.Subtype)
+	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
 		return Resource{}, err
 	}
 	if input.ExternalUID == "" || input.SourceResourceID == "" {
@@ -166,6 +174,17 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 			return Resource{}, err
 		}
 		input.Status = &value
+	}
+	if input.Subtype != nil {
+		value := strings.TrimSpace(*input.Subtype)
+		current, err := s.store.Get(ctx, id)
+		if err != nil {
+			return Resource{}, err
+		}
+		if err := validateResourceSubtype(current.Kind, value); err != nil {
+			return Resource{}, err
+		}
+		input.Subtype = &value
 	}
 	if input.Labels != nil {
 		if err := validateLabels(*input.Labels); err != nil {
@@ -467,6 +486,33 @@ func validateResourceInput(scopeID, kind, name string) error {
 	}
 	if name == "" || len([]rune(name)) > 200 {
 		return invalid("name must contain 1 to 200 characters")
+	}
+	return nil
+}
+
+var directAgentKinds = map[string]struct{}{
+	"Host": {}, "Docker": {}, "Kubernetes": {}, "Redis": {}, "TongRDS": {},
+	"Kafka": {}, "RabbitMQ": {}, "Elasticsearch": {}, "OceanBase": {},
+	"Oracle": {}, "MySQL": {}, "PostgreSQL": {},
+}
+
+func normalizeResourceSubtype(kind, subtype string) string {
+	subtype = strings.TrimSpace(subtype)
+	if _, ok := directAgentKinds[kind]; !ok {
+		return subtype
+	}
+	if subtype == "" {
+		return "Direct"
+	}
+	return subtype
+}
+
+func validateResourceSubtype(kind, subtype string) error {
+	if _, ok := directAgentKinds[kind]; !ok {
+		return nil
+	}
+	if subtype != "Direct" && subtype != "Agent" {
+		return invalid(fmt.Sprintf("%s subtype must be Direct or Agent", kind))
 	}
 	return nil
 }

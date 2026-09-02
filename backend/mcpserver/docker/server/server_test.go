@@ -99,6 +99,40 @@ func TestStreamableHTTPToolsOmitComplexOutputSchemas(t *testing.T) {
 	}
 }
 
+func TestDockerToolSchemasDescribeEveryParameter(t *testing.T) {
+	handler, err := New(Config{Address: "127.0.0.1:8811"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := newIPv4HTTPServer(t, handler)
+	client := mcp.NewClient(&mcp.Implementation{Name: "schema-description-test", Version: "test"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: httpServer.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatalf("MCP client connect failed: %v", err)
+	}
+	defer session.Close()
+	result, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range result.Tools {
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		encoded, _ := json.Marshal(tool.InputSchema)
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			t.Fatalf("tool %q schema: %v", tool.Name, err)
+		}
+		for name, property := range schema.Properties {
+			if strings.TrimSpace(property.Description) == "" {
+				t.Errorf("tool %q parameter %q has no description", tool.Name, name)
+			}
+		}
+	}
+}
+
 func TestSSEToolsAreAvailableAtSSEEndpoint(t *testing.T) {
 	handler, err := New(Config{Address: "127.0.0.1:8811"})
 	if err != nil {

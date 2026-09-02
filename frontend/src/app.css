@@ -7860,6 +7860,9 @@ button.workspace-team:hover {
   font-size: 12px;
   line-height: 1.65;
 }
+.diagnosis-message-f.assistant .diagnosis-bubble-f {
+  background: color-mix(in srgb, var(--diagnosis-surface-2) 58%, transparent);
+}
 .diagnosis-message-f.user .diagnosis-bubble-f {
   background: var(--diagnosis-accent-soft);
   border-color: color-mix(
@@ -7929,6 +7932,13 @@ button.workspace-team:hover {
   min-height: 18px;
   color: var(--diagnosis-muted);
 }
+.diagnosis-thinking-inline {
+  display: flex;
+  width: fit-content;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--diagnosis-line) 70%, transparent);
+}
 .diagnosis-thinking i {
   width: 5px;
   height: 5px;
@@ -7990,6 +8000,160 @@ button.workspace-team:hover {
 }
 .diagnosis-live-trace {
   animation: diagnosis-stream-in 160ms ease-out;
+}
+.diagnosis-live-timeline {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.diagnosis-live-analysis {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.diagnosis-live-action {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  padding: 7px 9px;
+  color: var(--diagnosis-muted);
+  background: color-mix(in srgb, var(--diagnosis-surface) 46%, transparent);
+  border: 1px solid var(--diagnosis-line);
+  border-radius: 5px;
+  font-size: 10px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.diagnosis-live-action-group {
+  min-width: 0;
+}
+.diagnosis-live-action-group > .diagnosis-live-action {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto auto;
+}
+.diagnosis-live-action-wrap {
+  min-width: 0;
+}
+.diagnosis-live-action:hover {
+  border-color: var(--diagnosis-teal);
+}
+.diagnosis-live-action-chevron {
+  width: 10px;
+  color: var(--diagnosis-subtle);
+  font-size: 14px;
+  line-height: 1;
+}
+.diagnosis-live-action-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 10px 0 27px;
+}
+.diagnosis-live-action-children {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0 17px;
+  padding-left: 10px;
+  border-left: 1px solid var(--diagnosis-line);
+}
+.diagnosis-live-action-child-wrap {
+  min-width: 0;
+}
+.diagnosis-live-action.child {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--diagnosis-surface) 28%, transparent);
+  border-color: color-mix(in srgb, var(--diagnosis-line) 78%, transparent);
+}
+.diagnosis-live-action.child .diagnosis-live-action-status {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diagnosis-live-action-count {
+  flex: 0 0 auto;
+  color: var(--diagnosis-subtle);
+  white-space: nowrap;
+}
+.diagnosis-live-action-detail.child-detail {
+  padding-left: 22px;
+}
+.diagnosis-live-action-detail > div {
+  min-width: 0;
+}
+.diagnosis-live-action-detail small {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--diagnosis-subtle);
+}
+.diagnosis-live-action-detail pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  color: var(--diagnosis-ink);
+  background: var(--diagnosis-surface);
+  border: 1px solid var(--diagnosis-line);
+  border-radius: 4px;
+  font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diagnosis-live-action-icon {
+  display: inline-flex;
+  color: var(--diagnosis-teal);
+}
+.diagnosis-live-action code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--diagnosis-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.diagnosis-live-action-status {
+  color: var(--diagnosis-teal);
+  white-space: nowrap;
+}
+.diagnosis-live-action-status.error {
+  color: var(--theme-danger, #b3472c);
+}
+.diagnosis-live-action small {
+  color: var(--diagnosis-subtle);
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .diagnosis-live-action {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+  .diagnosis-live-action small {
+    display: none;
+  }
+  .diagnosis-live-action small:last-child {
+    display: inline;
+    grid-column: 3 / -1;
+  }
+  .diagnosis-live-action-group > .diagnosis-live-action {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+  .diagnosis-live-action-group > .diagnosis-live-action .diagnosis-live-action-count {
+    grid-column: 3 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .diagnosis-live-action.child {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+  .diagnosis-live-action.child small {
+    display: inline;
+  }
+  .diagnosis-live-action-detail {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 22px;
+  }
 }
 @keyframes diagnosis-thinking {
   0%, 60%, 100% { opacity: .28; transform: translateY(0); }

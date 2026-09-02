@@ -7,6 +7,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/system"
+	dockerclient "opskeeper/backend/mcpserver/docker/client"
 )
 
 // DockerInfoDTO is the stable public subset of Docker Engine information.
@@ -50,7 +51,8 @@ type ImageDTO struct {
 }
 
 type ImagesOutput struct {
-	Images []ImageDTO `json:"images"`
+	Images             []ImageDTO                              `json:"images"`
+	ConnectionFallback *dockerclient.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
 }
 
 type PortDTO struct {
@@ -79,7 +81,8 @@ type ContainerDTO struct {
 }
 
 type ContainersOutput struct {
-	Containers []ContainerDTO `json:"containers"`
+	Containers         []ContainerDTO                          `json:"containers"`
+	ConnectionFallback *dockerclient.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
 }
 
 type MountDTO struct {
@@ -134,17 +137,18 @@ type NetworkDTO struct {
 }
 
 type ContainerInspectDTO struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	Created      string                `json:"created,omitempty"`
-	Image        string                `json:"image"`
-	Platform     string                `json:"platform,omitempty"`
-	Driver       string                `json:"storage_driver,omitempty"`
-	RestartCount int                   `json:"restart_count"`
-	State        *ContainerStateDTO    `json:"state,omitempty"`
-	Config       *ContainerConfigDTO   `json:"config,omitempty"`
-	Mounts       []MountDTO            `json:"mounts,omitempty"`
-	Networks     map[string]NetworkDTO `json:"networks,omitempty"`
+	ID                 string                                  `json:"id"`
+	Name               string                                  `json:"name"`
+	Created            string                                  `json:"created,omitempty"`
+	Image              string                                  `json:"image"`
+	Platform           string                                  `json:"platform,omitempty"`
+	Driver             string                                  `json:"storage_driver,omitempty"`
+	RestartCount       int                                     `json:"restart_count"`
+	State              *ContainerStateDTO                      `json:"state,omitempty"`
+	Config             *ContainerConfigDTO                     `json:"config,omitempty"`
+	Mounts             []MountDTO                              `json:"mounts,omitempty"`
+	Networks           map[string]NetworkDTO                   `json:"networks,omitempty"`
+	ConnectionFallback *dockerclient.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
 }
 
 type DTOStatsCPU struct {
@@ -176,14 +180,15 @@ type StatsNetwork struct {
 }
 
 type ContainerStatsDTO struct {
-	ID             string                  `json:"id"`
-	Name           string                  `json:"name"`
-	ReadAt         string                  `json:"read_at"`
-	PreviousReadAt string                  `json:"previous_read_at"`
-	PIDs           uint64                  `json:"pids"`
-	CPU            DTOStatsCPU             `json:"cpu"`
-	Memory         StatsMemory             `json:"memory"`
-	Networks       map[string]StatsNetwork `json:"networks,omitempty"`
+	ID                 string                                  `json:"id"`
+	Name               string                                  `json:"name"`
+	ReadAt             string                                  `json:"read_at"`
+	PreviousReadAt     string                                  `json:"previous_read_at"`
+	PIDs               uint64                                  `json:"pids"`
+	CPU                DTOStatsCPU                             `json:"cpu"`
+	Memory             StatsMemory                             `json:"memory"`
+	Networks           map[string]StatsNetwork                 `json:"networks,omitempty"`
+	ConnectionFallback *dockerclient.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
 }
 
 func toDockerInfo(info system.Info) DockerInfoDTO {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"opskeeper/backend/mcpserver/docker/client"
@@ -65,10 +66,10 @@ func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
 	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
 		t.Fatalf("docker logs: output=%+v err=%v", output, err)
 	}
-	if logsQuery["tail"] != "300" || logsQuery["since"] != "" || logsQuery["until"] != "" {
+	if logsQuery["tail"] != "1000" || logsQuery["since"] != "" || logsQuery["until"] != "" {
 		t.Fatalf("unexpected default log query: %#v", logsQuery)
 	}
-	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id", Since: "2h", Until: "1h", Tail: "20", Keyword: "ERROR"}); err != nil || output.Logs != "ERROR failed request\n" {
+	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id", Since: "2h", Until: "1h", Tail: "20", Keyword: "ERROR"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
 		t.Fatalf("filtered docker logs: output=%+v err=%v", output, err)
 	}
 	if logsQuery["tail"] != "20" || logsQuery["since"] == "" || logsQuery["until"] == "" {
@@ -128,15 +129,35 @@ func TestResolveContainerIdentifier(t *testing.T) {
 }
 
 func TestFilterLogLines(t *testing.T) {
-	logs := "INFO ready\nerror: failed\nwarning pending"
-	if got := filterLogLines(logs, "ERROR"); got != "error: failed\n" {
+	logs := "INFO ready\nerror: failed\nwarning pending\n"
+	if got := filterLogLines(logs, "ERROR"); got != logs {
 		t.Fatalf("case-insensitive keyword filter = %q", got)
 	}
 	if got := filterLogLines(logs, " "); got != logs {
 		t.Fatalf("empty keyword changed logs: %q", got)
 	}
-	if got := filterLogLines("one\ntwo\n", "two"); got != "two\n" {
-		t.Fatalf("keyword filter did not preserve newline: %q", got)
+	if got := filterLogLines("one\ntwo\nthree\nfour\nfive\nsix\nseven\n", "four"); got != "one\ntwo\nthree\nfour\nfive\nsix\nseven\n" {
+		t.Fatalf("keyword context filter did not include surrounding lines: %q", got)
+	}
+	if got := filterLogLines("0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n", "match"); got != "0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n" {
+		t.Fatalf("overlapping keyword contexts were not merged: %q", got)
+	}
+}
+
+func TestLimitLogLinesKeepsMostRecentLines(t *testing.T) {
+	if got := limitLogLines("1\n2\n3\n4\n5\n", 3); got != "3\n4\n5\n" {
+		t.Fatalf("limited logs = %q, want most recent lines", got)
+	}
+}
+
+func TestKeywordFilteringHappensBeforeFinalLineLimit(t *testing.T) {
+	logs := strings.Repeat("MATCH\n", 205)
+	got := limitLogLines(filterLogLines(logs, "match"), maxOutputLogLines)
+	if lines := strings.Count(got, "\n"); lines != maxOutputLogLines {
+		t.Fatalf("final filtered log lines = %d, want %d", lines, maxOutputLogLines)
+	}
+	if !strings.HasPrefix(got, "MATCH\n") || got != logs[len(logs)-len(got):] {
+		t.Fatal("final line limit did not retain the most recent filtered lines")
 	}
 }
 

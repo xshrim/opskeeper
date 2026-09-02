@@ -181,12 +181,12 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		if err != nil {
 			return aiengine.ModelBuildResult{}, err
 		}
-		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities}, nil
+		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities, ContextWindowTokens: resolved.Model.ContextWindowTokens, MaxOutputTokens: resolved.Model.MaxOutputTokens}, nil
 	}
 	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
 		WithAgentProfileResolver(agentProfileResolver).
 		WithPlanResolver(skillService)
-	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), aiEngine, 2*time.Minute)
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), aiEngine, 30*time.Minute)
 	workflowService := aiengine.NewWorkflowService(workflowRunStore, aiEngine, contextTooling.Gateway, workflowRetriever, aiStore)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service

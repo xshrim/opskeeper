@@ -128,7 +128,7 @@ func lookupBool(name string) (bool, bool) {
 
 func normalizeHost(raw string, input ConnectionInput) (host, scheme string, tlsEnabled bool, err error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || parsed.Scheme == "" || (parsed.Host == "" && !strings.EqualFold(parsed.Scheme, "unix")) {
 		return "", "", false, fmt.Errorf("invalid Docker host URL")
 	}
 	switch strings.ToLower(parsed.Scheme) {

@@ -55,15 +55,18 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		BasePath:             envOrDefault("OPSK_BASE_PATH", defaultBasePath),
-		Environment:          envOrDefault("OPSK_ENVIRONMENT", "development"),
-		LogFormat:            envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
-		HTTPAddress:          envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
-		DatabaseURL:          envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:             envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
-		ReadHeaderTimeout:    5 * time.Second,
-		ReadTimeout:          15 * time.Second,
-		WriteTimeout:         30 * time.Second,
+		BasePath:          envOrDefault("OPSK_BASE_PATH", defaultBasePath),
+		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
+		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
+		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
+		RedisURL:          envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		// Diagnosis uses a long-lived SSE response. Keep the server-level write
+		// deadline above the AIEngine's 30-minute execution budget so an idle
+		// tool/model turn cannot terminate the stream prematurely.
+		WriteTimeout:         35 * time.Minute,
 		IdleTimeout:          60 * time.Second,
 		OTLPExporterEndpoint: strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
 	}

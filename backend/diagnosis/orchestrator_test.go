@@ -186,6 +186,33 @@ func TestOrchestratorPreservesCancellationTerminalState(t *testing.T) {
 	}
 }
 
+func TestOrchestratorPreservesPartialAssistantOnTimeout(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "已完成初步检查，"}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if store.session.Status != StatusCancelled || store.session.ErrorCode != "timeout" {
+		t.Fatalf("session = %#v, want timeout cancellation", store.session)
+	}
+	assistantCount := 0
+	for _, message := range store.messages {
+		if message.Role == "assistant" {
+			assistantCount++
+			if message.Content != "已完成初步检查，" {
+				t.Fatalf("partial assistant content = %q", message.Content)
+			}
+		}
+	}
+	if assistantCount != 1 {
+		t.Fatalf("assistant messages = %d, want one preserved partial answer", assistantCount)
+	}
+}
+
 func TestSafeTextRedactsBearerAndPreservesUTF8Boundaries(t *testing.T) {
 	redacted := safeText("Authorization: Bearer super-secret", 100)
 	if strings.Contains(redacted, "super-secret") || !strings.Contains(redacted, "[REDACTED]") {

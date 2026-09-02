@@ -196,6 +196,7 @@ func (s *Service) callConfigured(ctx context.Context, server resource.Resource, 
 	if err != nil {
 		return nil, err
 	}
+	raw = normalizeToolResult(raw)
 	if int64(len(raw)) > config.MaxResponseBytes {
 		return nil, errors.New("MCP response exceeds configured size limit")
 	}

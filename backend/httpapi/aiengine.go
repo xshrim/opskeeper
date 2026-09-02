@@ -35,6 +35,7 @@ type executeAIEngineRequest struct {
 	MaxIterations        int                     `json:"max_iterations,omitempty"`
 	MaxToolCalls         int                     `json:"max_tool_calls,omitempty"`
 	MaxTokens            int64                   `json:"max_tokens,omitempty"`
+	MaxOutputTokens      int                     `json:"max_output_tokens,omitempty"`
 	MaxOutputBytes       int                     `json:"max_output_bytes,omitempty"`
 	TimeoutSeconds       int                     `json:"timeout_seconds,omitempty"`
 	Stream               bool                    `json:"stream,omitempty"`
@@ -171,7 +172,7 @@ func (h aiEngineHandler) execute(w http.ResponseWriter, r *http.Request) {
 		SkillResourceID: body.SkillResourceID, SkillVersionID: body.SkillVersionID,
 		AgentProfileID: body.AgentProfileID, WorkflowID: body.WorkflowID,
 		Requirements: body.Requirements, Stream: body.Stream,
-		Budget: aiengine.Budget{MaxIterations: body.MaxIterations, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second},
+		Budget: aiengine.Budget{MaxIterations: body.MaxIterations, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, MaxOutputTokens: body.MaxOutputTokens, MaxOutputBytes: body.MaxOutputBytes, Timeout: time.Duration(body.TimeoutSeconds) * time.Second},
 	}
 	result, err := h.engine.Execute(r.Context(), request)
 	if err != nil {

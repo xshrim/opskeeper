@@ -21,7 +21,7 @@ type Orchestrator struct {
 
 func NewOrchestrator(service *Service, engine aiengine.Engine, timeout time.Duration) *Orchestrator {
 	if timeout <= 0 {
-		timeout = 2 * time.Minute
+		timeout = 30 * time.Minute
 	}
 	return &Orchestrator{Service: service, engine: engine, timeout: timeout}
 }
@@ -114,9 +114,35 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
+	var assistantText strings.Builder
 	var pendingAssistantCompleted *aiengine.Event
 	var pendingTerminalEvents []aiengine.Event
-	result, err := o.engine.Execute(ctx, aiengine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName, Purpose: aiengine.PurposeDiagnosis, Profile: aiengine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: aiengine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: aiengine.Budget{MaxToolCalls: 12, MaxTokens: 20000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event aiengine.Event) error {
+	persistPartialAssistant := func() {
+		assistantMu.Lock()
+		defer assistantMu.Unlock()
+		if assistantPersisted || assistantPersistErr != nil {
+			return
+		}
+		text := strings.TrimSpace(assistantText.String())
+		if text == "" {
+			return
+		}
+		_, persistErr := o.store.AppendMessage(context.Background(), session.ID, AppendMessageInput{Role: "assistant", Content: safeText(text, 8000)})
+		if persistErr != nil {
+			assistantPersistErr = persistErr
+			return
+		}
+		assistantPersisted = true
+		pendingAssistantCompleted = nil
+	}
+	result, err := o.engine.Execute(ctx, aiengine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName, Purpose: aiengine.PurposeDiagnosis, Profile: aiengine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: aiengine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: aiengine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 200000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event aiengine.Event) error {
+		if event.Type == "assistant.delta" {
+			if text, ok := event.Payload["text"].(string); ok && text != "" {
+				assistantMu.Lock()
+				assistantText.WriteString(text)
+				assistantMu.Unlock()
+			}
+		}
 		if event.Type == "assistant.completed" {
 			assistantMu.Lock()
 			defer assistantMu.Unlock()
@@ -155,6 +181,10 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
 	}, ObservationSink: func(observed aiengine.ToolObservation) { o.captureObservation(session.ID, observed) }})
 	if err != nil {
+		// Preserve a useful partial answer before writing the terminal event. A
+		// timeout can interrupt the model between streamed deltas and its final
+		// completion marker.
+		persistPartialAssistant()
 		// A terminal AIEngine event can arrive before Execute returns. Flush it
 		// before closing the diagnosis session so cancellation and failure are
 		// visible to reconnecting clients even when no assistant answer exists.
@@ -173,6 +203,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		return
 	}
 	if result.Status == aiengine.StatusFailed || result.Status == aiengine.StatusCancelled {
+		persistPartialAssistant()
 		assistantMu.Lock()
 		pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
 		assistantMu.Unlock()
@@ -339,9 +370,14 @@ func (o *Orchestrator) fail(sessionID, code string, cause error) {
 
 func (o *Orchestrator) cancel(sessionID, code string, cause error) {
 	message := "AIEngine execution was cancelled"
+	if code == "timeout" || errors.Is(cause, context.DeadlineExceeded) {
+		message = "诊断执行超时，已保留已生成内容。"
+	}
 	if cause != nil {
 		if value := safeText(cause.Error(), 1000); strings.TrimSpace(value) != "" {
-			message = value
+			if code != "timeout" && !errors.Is(cause, context.DeadlineExceeded) {
+				message = value
+			}
 		}
 	}
 	_, _ = o.store.Finish(context.Background(), sessionID, StatusCancelled, code, message)
@@ -395,7 +431,7 @@ func runnerErrorCode(err error) string {
 	return "ai_engine"
 }
 
-var sensitiveText = regexp.MustCompile(`(?i)(\b(?:bearer|token|password|secret|credential|api[_-]?key|authorization|private[_-]?key|client[_-]?secret|access[_-]?key)\b\s*(?:[:=]\s*|\s+))(?:bearer\s+)?[^\s,;]+`)
+var sensitiveText = regexp.MustCompile(`(?i)(\b(?:bearer|token|password|secret|credential|api[_-]?key|authorization|private[_-]?key|client[_-]?secret|access[_-]?key)\b\s*(?:[:=]\s*))(?:bearer\s+)?[^\s,;]+`)
 
 func safeText(value string, maximum int) string {
 	value = sensitiveText.ReplaceAllString(value, "$1[REDACTED]")

@@ -73,6 +73,7 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	}()
 
 	var sequence atomic.Int64
+	executionStartedAt := time.Now()
 	var sinkMu sync.Mutex
 	var sinkErrMu sync.Mutex
 	var sinkErr error
@@ -111,6 +112,12 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 				}
 			}
 		}
+		if event.Payload == nil {
+			event.Payload = make(map[string]any)
+		}
+		// Runtime owns the execution clock. Always replace a nested runner's
+		// relative value so persisted/SSE events share the execution.started base.
+		event.Payload["elapsed_ms"] = time.Since(executionStartedAt).Milliseconds()
 		var persistenceErr error
 		if r.store != nil {
 			if err := r.store.AppendEvent(context.Background(), event); err != nil {

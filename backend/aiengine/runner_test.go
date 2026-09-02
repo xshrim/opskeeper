@@ -46,6 +46,9 @@ func (m *duplicateToolModel) GenerateContent(_ context.Context, request *model.L
 					}
 					for _, declaration := range group.FunctionDeclarations {
 						if declaration != nil {
+							if declaration.Name == "read_observation" {
+								continue
+							}
 							names = append(names, declaration.Name)
 							if strings.Contains(declaration.Name, "resource_2") {
 								selected = declaration.Name
@@ -177,6 +180,12 @@ func TestAgentRunnerStreamsReActTurnsAndObservations(t *testing.T) {
 		if event.Type == "tool.completed" {
 			if event.Payload["iteration"] != 1 || event.Payload["call_id"] != "call-1" {
 				t.Fatalf("tool event lost loop metadata: %+v", event)
+			}
+			if fmt.Sprint(event.Payload["action_index"]) != "1" || fmt.Sprint(event.Payload["action_count"]) != "1" {
+				t.Fatalf("tool event lost server action accounting: %+v", event)
+			}
+			if elapsed, ok := event.Payload["elapsed_ms"].(int64); !ok || elapsed < 0 {
+				t.Fatalf("tool event has invalid server elapsed time: %+v", event)
 			}
 		}
 		if event.Type == "assistant.progress" && event.Payload["final"] != false {
@@ -622,7 +631,7 @@ func TestObservationSummaryRedactsAndBoundsOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(encoded) > 5000 || strings.Contains(string(encoded), "do-not-show") || strings.Contains(string(encoded), "also-secret") {
+	if len(encoded) > maxObservationBytes || strings.Contains(string(encoded), "do-not-show") || strings.Contains(string(encoded), "also-secret") {
 		t.Fatalf("unsafe observation summary: len=%d value=%s", len(encoded), encoded)
 	}
 }

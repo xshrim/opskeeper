@@ -44,7 +44,7 @@ func TestRequestNormalizeDefaultsBudgetAndProfile(t *testing.T) {
 	if err := request.Normalize(); err != nil {
 		t.Fatalf("Normalize() error = %v", err)
 	}
-	if request.Profile != ProfileInteractive || request.Budget.MaxToolCalls != 12 || request.Budget.Timeout != 2*time.Minute {
+	if request.Profile != ProfileInteractive || request.Budget.MaxToolCalls != 100 || request.Budget.MaxTokens != 200000 || request.Budget.MaxOutputTokens != 128000 || request.Budget.Timeout != 30*time.Minute {
 		t.Fatalf("unexpected defaults: %+v", request)
 	}
 }
@@ -70,6 +70,12 @@ func TestRuntimeExecuteEmitsLifecycleAndUsesExecutionID(t *testing.T) {
 	}
 	if events[0].Sequence != 1 || events[2].Sequence != 3 {
 		t.Fatalf("unexpected event sequence: %+v", events)
+	}
+	for _, event := range events {
+		elapsed, ok := event.Payload["elapsed_ms"].(int64)
+		if !ok || elapsed < 0 {
+			t.Fatalf("event is missing server elapsed time: %+v", event)
+		}
 	}
 }
 

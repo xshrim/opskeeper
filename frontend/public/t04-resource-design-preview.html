@@ -214,29 +214,37 @@
     <script>
       const categories = {
         '全部': [],
-        '应用': ['虚拟机', 'Docker', 'Kubernetes'],
-        '中间件': ['Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'ElasticSearch'],
-        '数据库': ['OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'],
-        '制品库': ['Generic', 'Docker', 'Helm'],
-        '代码库': ['Git', 'Bundle'],
-        'Docker': ['API', 'MCP'],
-        'Kubernetes': ['API', 'MCP'],
+        Application: ['虚拟机', '容器化', '云原生'],
+        Artifact: ['Generic', 'Docker', 'Helm'],
+        Repository: ['Git', 'Bundle'],
+        Host: ['Direct', 'Agent'],
+        Docker: ['Direct', 'Agent'],
+        Kubernetes: ['Direct', 'Agent'],
+        Redis: ['Direct', 'Agent'],
+        TongRDS: ['Direct', 'Agent'],
+        Kafka: ['Direct', 'Agent'],
+        RabbitMQ: ['Direct', 'Agent'],
+        Elasticsearch: ['Direct', 'Agent'],
+        OceanBase: ['Direct', 'Agent'],
+        Oracle: ['Direct', 'Agent'],
+        MySQL: ['Direct', 'Agent'],
+        PostgreSQL: ['Direct', 'Agent'],
         'Skill': ['诊断', '监控', '优化', '维护'],
         '大模型': ['OpenAI', 'Anthropic', 'DeepSeek', 'Qwen', 'Ollama'],
         '监控平台': ['指标', '日志', '链路', '告警']
       };
       const kinds = Object.keys(categories).filter((name) => name !== '全部').map((name) => [name, name.slice(0, 2)]);
       const resources = [
-        { name: 'checkout-api', kind: '应用', subtype: 'Kubernetes', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'Kubernetes / payments-prod', endpoint: 'checkout-api.payments.svc', test: '通过 · 142ms', capabilities: '拓扑、诊断、巡检', manager: true },
-        { name: 'payments-postgres', kind: '数据库', subtype: 'PostgreSQL', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'PostgreSQL 凭据 / vault', endpoint: 'postgresql://pg-payments:5432/app', test: '通过 · 27ms', capabilities: '连接、只读诊断', manager: true },
-        { name: 'redis-session', kind: '中间件', subtype: 'Redis', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Redis ACL 凭据', endpoint: 'redis://redis-payments:6379/0', test: '失败 · 认证拒绝', capabilities: '连接、只读快照', manager: true },
-        { name: 'prod-kubernetes', kind: 'Kubernetes', subtype: 'API', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Kubeconfig / 平台凭据', endpoint: 'https://cluster.prod.example:6443', test: '通过 · 84ms', capabilities: '发现、导入、只读查询', manager: true },
-        { name: 'ops-docker-mcp', kind: 'Docker', subtype: 'MCP', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Docker MCP / Bearer Token', endpoint: 'http://docker-mcp:8811/mcp', test: '通过 · 36ms', capabilities: '只读容器、镜像、日志', manager: true },
+        { name: 'checkout-api', kind: 'Application', subtype: '云原生', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'Kubernetes / payments-prod', endpoint: 'checkout-api.payments.svc', test: '通过 · 142ms', capabilities: '拓扑、诊断、巡检', manager: true },
+        { name: 'payments-postgres', kind: 'PostgreSQL', subtype: 'Direct', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'PostgreSQL 凭据 / vault', endpoint: 'postgresql://pg-payments:5432/app', test: '通过 · 27ms', capabilities: '连接、只读诊断', manager: true },
+        { name: 'redis-session', kind: 'Redis', subtype: 'Direct', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Redis ACL 凭据', endpoint: 'redis://redis-payments:6379/0', test: '失败 · 认证拒绝', capabilities: '连接、只读快照', manager: true },
+        { name: 'prod-kubernetes', kind: 'Kubernetes', subtype: 'Direct', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Kubeconfig / 平台凭据', endpoint: 'https://cluster.prod.example:6443', test: '通过 · 84ms', capabilities: '发现、导入、只读查询', manager: true },
+        { name: 'ops-docker-mcp', kind: 'Docker', subtype: 'Direct', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Docker MCP / Bearer Token', endpoint: 'http://docker-mcp:8811/mcp', test: '通过 · 36ms', capabilities: '只读容器、镜像、日志', manager: true },
         { name: 'opskeeper-diagnosis', kind: 'Skill', subtype: 'Kubernetes', platform: '平台', scope: 'platform', scopeName: '平台', source: '已发布版本 v3', endpoint: 'Kubernetes, PostgreSQL, Redis', test: '可用 · 3 个工具', capabilities: '读取、执行', manager: true },
         { name: 'primary-llm', kind: '大模型', subtype: 'OpenAI', platform: '平台', scope: 'platform', scopeName: '平台', source: 'OpenAI Compatible 凭据', endpoint: 'https://llm.example.com/v1', test: '通过 · 680ms', capabilities: '对话、工具调用', manager: true },
-        { name: 'gitlab-main', kind: '代码库', subtype: 'Git', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Access Token 凭据', endpoint: 'https://gitlab.example.com/payments', test: '通过 · 95ms', capabilities: '提交、Issue、流水线', manager: true },
-        { name: 'harbor-prod', kind: '制品库', subtype: 'Docker', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: '机器人账户凭据', endpoint: 'https://harbor.example.com/payments', test: '通过 · 117ms', capabilities: '镜像、制品索引', manager: true },
-        { name: 'edge-docker', kind: 'Docker', subtype: 'API', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'TLS 远程连接', endpoint: 'tcp://edge-01.example:2376', test: '通过 · 51ms', capabilities: '只读容器、日志', manager: true },
+        { name: 'gitlab-main', kind: 'Repository', subtype: 'Git', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: 'Access Token 凭据', endpoint: 'https://gitlab.example.com/payments', test: '通过 · 95ms', capabilities: '提交、Issue、流水线', manager: true },
+        { name: 'harbor-prod', kind: 'Artifact', subtype: 'Docker', platform: '支付平台', scope: 'team', scopeName: '支付平台', source: '机器人账户凭据', endpoint: 'https://harbor.example.com/payments', test: '通过 · 117ms', capabilities: '镜像、制品索引', manager: true },
+        { name: 'edge-docker', kind: 'Docker', subtype: 'Direct', platform: '支付 / 结算服务', scope: 'project', scopeName: '支付 / 结算服务', source: 'TLS 远程连接', endpoint: 'tcp://edge-01.example:2376', test: '通过 · 51ms', capabilities: '只读容器、日志', manager: true },
         { name: 'prometheus-platform', kind: '监控平台', subtype: '指标', platform: '平台', scope: 'platform', scopeName: '平台', source: 'Prometheus 凭据', endpoint: 'https://prometheus.example.com', test: '通过 · 64ms', capabilities: '指标查询、告警', manager: true }
       ];
       const notes = {
@@ -248,13 +256,13 @@
         f: ['F · 添加优先工作区', '左侧是当前资源列表，右侧始终展示所选类型的专属添加表单。类型变化时，字段与受控来源同步替换，避免通用 JSON 配置。', ['适合：持续导入与集中配置阶段', '取舍：纯浏览时内容区域较窄', '窄屏：列表与表单上下重排']]
       };
       const fieldMap = {
-        '应用': [['应用名称', 'checkout-api'], ['部署来源', 'Kubernetes / Docker / Docker MCP'], ['Kubernetes 集群', 'prod-kubernetes'], ['命名空间', 'payments-prod']],
-        '中间件': [['资源名称', 'redis-session'], ['产品类型', 'Redis / Kafka / RabbitMQ'], ['连接地址', 'redis://host:6379/0'], ['访问凭据', '选择已加密凭据']],
-        '数据库': [['资源名称', 'payments-postgres'], ['数据库类型', 'PostgreSQL'], ['连接地址', 'postgresql://host:5432/db'], ['访问凭据', '选择只读凭据']],
-        '制品库': [['资源名称', 'harbor-prod'], ['仓库地址', 'https://harbor.example.com'], ['项目或命名空间', 'payments'], ['机器人账户', '选择已加密凭据']],
-        '代码库': [['资源名称', 'gitlab-main'], ['仓库地址', 'https://gitlab.example.com/group'], ['默认分支', 'main'], ['访问令牌', '选择已加密凭据']],
+        Application: [['应用名称', 'checkout-api'], ['部署来源', 'Kubernetes / Docker / Docker MCP'], ['Kubernetes 集群', 'prod-kubernetes'], ['命名空间', 'payments-prod']],
+        Redis: [['资源名称', 'redis-session'], ['连接方式', 'Direct'], ['连接地址', 'redis://host:6379/0'], ['访问凭据', '选择已加密凭据']],
+        PostgreSQL: [['资源名称', 'payments-postgres'], ['连接方式', 'Direct'], ['连接地址', 'postgresql://host:5432/db'], ['访问凭据', '选择只读凭据']],
+        Artifact: [['资源名称', 'harbor-prod'], ['仓库地址', 'https://harbor.example.com'], ['项目或命名空间', 'payments'], ['机器人账户', '选择已加密凭据']],
+        Repository: [['资源名称', 'gitlab-main'], ['仓库地址', 'https://gitlab.example.com/group'], ['默认分支', 'main'], ['访问令牌', '选择已加密凭据']],
         'Docker': [['资源名称', 'edge-docker'], ['连接方式', '远程 Docker / Docker MCP'], ['Docker 地址', 'tcp://edge-01:2376'], ['TLS 或 Token', '选择已加密凭据']],
-        'Kubernetes': [['资源名称', 'prod-kubernetes'], ['连接方式', 'Kubeconfig / 服务器地址'], ['API Server', 'https://cluster:6443'], ['凭据', '选择已加密凭据']],
+        'Kubernetes': [['资源名称', 'prod-kubernetes'], ['连接方式', 'Direct'], ['API Server', 'https://cluster:6443'], ['凭据', '选择已加密凭据']],
         'Skill': [['资源名称', 'opskeeper-diagnosis'], ['适用资源类型', 'Kubernetes, PostgreSQL'], ['发布版本', 'v3'], ['允许工具', '从受控目录选择']],
         '大模型': [['资源名称', 'primary-llm'], ['Provider 地址', 'https://llm.example.com/v1'], ['模型标识', 'provider/model'], ['API Token', '选择已加密凭据']],
         '监控平台': [['资源名称', 'prometheus-platform'], ['平台类型', '指标 / 日志 / 链路 / 告警'], ['服务地址', 'https://monitoring.example.com'], ['访问凭据', '选择已加密凭据']]
@@ -316,12 +324,12 @@
       function formPanel() {
         const fields = fieldMap[selectedKind];
         const fieldHTML = fields.map(([label, value], index) => {
-          const full = index === 1 && selectedKind === '应用' ? ' full' : '';
+          const full = index === 1 && selectedKind === 'Application' ? ' full' : '';
           const select = label.includes('方式') || label.includes('类型') || label.includes('来源') || label.includes('凭据') || label.includes('Token') || label.includes('工具');
           const control = select ? `<select><option>${value}</option></select>` : `<input value="${value}" />`;
           return `<label class="form-field${full}"><span>${label}</span>${control}</label>`;
         }).join('');
-        const intro = selectedKind === '应用' ? '应用只能通过主机凭据、远程 Docker / Docker MCP 或 Kubernetes / Kubernetes MCP 三类受控来源接入。' : '字段按资源类型显示；凭据只可选择，页面不读取或显示明文。';
+        const intro = selectedKind === 'Application' ? 'Application 只能通过主机凭据、远程 Docker / Docker MCP 或 Kubernetes / Kubernetes MCP 三类受控来源接入。' : '字段按资源类型显示；凭据只可选择，页面不读取或显示明文。';
         return `<section class="form-panel"><h2>添加${selectedKind}</h2><p>${intro}</p><div class="form-grid">${fieldHTML}</div><div class="form-actions"><button class="secondary" type="button">取消</button><button class="secondary" type="button">连接测试</button><button class="primary" type="button">保存资源</button></div></section>`;
       }
       function bindInteractions() {
@@ -341,7 +349,7 @@
           const title = selectedKind === '全部' ? '全部' : selectedSubtype === '全部' ? selectedKind : `${selectedKind} · ${selectedSubtype}`;
           content = `<div class="split-workspace"><nav class="category-rail" aria-label="资源分类">${categoryRail()}</nav><section class="catalog-main"><div class="catalog-header"><div class="catalog-title-row"><div><h2>${title}</h2><p>按当前权限范围列出 ${selectedResources.length} 个资源</p></div></div>${catalogToolbar(selectedResources)}</div>${list(selectedResources)}<div class="permission-note"><b>Scope 标记</b><span>平台级、团队级与项目级资源以不同颜色徽标标识；继承资源固定为仅查看。</span></div></section></div>`;
         }
-        if (variant === 'd') content = `<div class="gallery">${kinds.map(([name, icon]) => `<button class="kind-card ${selectedKind === name ? 'active' : ''}" type="button" data-kind="${name}"><b>${icon}</b><strong>${name}</strong><small>${resources.filter((item) => item.kind === name && visible(item)).length} 个可见资源</small></button>`).join('')}</div><div class="gallery-detail"><div>${standardToolbar()}${list(selectedResources)}</div><aside class="add-guide"><h3>添加${selectedKind}</h3><p>${selectedKind === '应用' ? '先指定受控接入来源，再选择对应的主机、Docker 或 Kubernetes 凭据。' : `使用 ${selectedKind} 专属连接字段与已加密凭据。`}</p><button class="primary" type="button">＋ 添加${selectedKind}</button></aside></div>`;
+        if (variant === 'd') content = `<div class="gallery">${kinds.map(([name, icon]) => `<button class="kind-card ${selectedKind === name ? 'active' : ''}" type="button" data-kind="${name}"><b>${icon}</b><strong>${name}</strong><small>${resources.filter((item) => item.kind === name && visible(item)).length} 个可见资源</small></button>`).join('')}</div><div class="gallery-detail"><div>${standardToolbar()}${list(selectedResources)}</div><aside class="add-guide"><h3>添加${selectedKind}</h3><p>${selectedKind === 'Application' ? '先指定受控接入来源，再选择对应的主机、Docker 或 Kubernetes 凭据。' : `使用 ${selectedKind} 专属连接字段与已加密凭据。`}</p><button class="primary" type="button">＋ 添加${selectedKind}</button></aside></div>`;
         if (variant === 'e') content = `${standardToolbar()}${list(visibleResources, true)}<div class="permission-note"><b>连接测试</b><span>状态标签保留最近一次结果；最终实现中点击测试将展示进行中、成功、失败和重试反馈，且不会暴露凭据。</span></div>`;
         if (variant === 'f') content = `<div class="form-workspace"><section><div class="toolbar"><div class="toolbar-left"><input class="search" placeholder="搜索当前 Scope 的资源" /></div><div class="scope-summary"><span class="pill ${scopeClass[access === 'platform' ? 'platform' : access === 'team' ? 'team' : 'project']}">${accessLabels[access]}</span><span>仅此 Scope 可管理</span></div></div>${list(visibleResources)}</section><div><div class="kind-nav">${kinds.map(([name, icon]) => `<button class="kind-button ${selectedKind === name ? 'active' : ''}" type="button" data-kind="${name}"><b>${icon}</b>${name}</button>`).join('')}</div>${formPanel()}</div></div>`;
         workspace.innerHTML = content;

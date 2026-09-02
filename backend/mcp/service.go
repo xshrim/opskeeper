@@ -148,6 +148,7 @@ func CallBoundedWithSecurity(ctx context.Context, endpoint, name string, allowed
 	if err != nil {
 		return nil, err
 	}
+	raw = normalizeToolResult(raw)
 	if limit <= 0 || limit > maxResponseBytesLimit {
 		limit = defaultMaxResponseBytes
 	}
@@ -155,6 +156,34 @@ func CallBoundedWithSecurity(ctx context.Context, endpoint, name string, allowed
 		return nil, errors.New("MCP response exceeds configured size limit")
 	}
 	return raw, nil
+}
+
+// normalizeToolResult removes the protocol envelope when a tool provides
+// structuredContent. The SDK also carries the same payload as JSON text in
+// content[].text; returning the envelope directly makes that text appear as a
+// doubly encoded string to downstream callers (for example, lots of \" and
+// \\ sequences in docker_containers output).
+func normalizeToolResult(raw json.RawMessage) json.RawMessage {
+	var envelope struct {
+		StructuredContent json.RawMessage `json:"structuredContent"`
+		Content           []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return raw
+	}
+	if len(envelope.StructuredContent) > 0 && string(envelope.StructuredContent) != "null" && json.Valid(envelope.StructuredContent) {
+		return json.RawMessage(append([]byte(nil), envelope.StructuredContent...))
+	}
+	if len(envelope.Content) == 1 && envelope.Content[0].Type == "text" {
+		text := strings.TrimSpace(envelope.Content[0].Text)
+		if json.Valid([]byte(text)) {
+			return json.RawMessage([]byte(text))
+		}
+	}
+	return raw
 }
 
 func endpointURL(value string, enhancedSecurity bool) (*url.URL, error) {
