@@ -111,6 +111,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	if len(targetIDs) > 0 {
 		instruction = "你是 OpsKeeper AI 助手。用户选择了受控资源；仅在问题需要时调用可用的只读工具，并清楚区分工具事实、推断和待验证内容。"
 	}
+	instruction = buildResponseInstruction(instruction)
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
