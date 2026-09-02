@@ -7816,7 +7816,7 @@ button.workspace-team:hover {
   max-width: none;
 }
 .diagnosis-message-f.user {
-  margin-left: 0;
+  margin-left: auto;
   grid-template-columns: minmax(0, 1fr);
 }
 .diagnosis-message-f.user .diagnosis-message-avatar {
@@ -7832,15 +7832,19 @@ button.workspace-team:hover {
   min-width: 0;
   gap: 7px;
 }
+.diagnosis-message-f.user .diagnosis-message-content {
+  justify-items: end;
+  width: min(82%, 760px);
+}
 .diagnosis-message-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--diagnosis-subtle);
-  font-size: 10px;
+  font-size: 11px;
 }
 .diagnosis-message-f.user .diagnosis-message-meta {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 .diagnosis-bubble-f {
   position: relative;
@@ -7850,15 +7854,16 @@ button.workspace-team:hover {
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.65;
 }
 .diagnosis-message-f.assistant .diagnosis-bubble-f {
   background: transparent;
 }
 .diagnosis-message-f.user .diagnosis-bubble-f {
-  padding-left: 12px;
-  border-left: 2px solid color-mix(in srgb, var(--diagnosis-accent) 55%, var(--diagnosis-line));
+  width: 100%;
+  padding: 0;
+  text-align: left;
 }
 .diagnosis-bubble-f p {
   margin: 0;
@@ -7872,7 +7877,9 @@ button.workspace-team:hover {
 .diagnosis-markdown h1,
 .diagnosis-markdown h2,
 .diagnosis-markdown h3,
-.diagnosis-markdown ul {
+.diagnosis-markdown ul,
+.diagnosis-markdown ol,
+.diagnosis-markdown pre {
   margin: 0 0 8px;
 }
 .diagnosis-markdown > :last-child {
@@ -7889,6 +7896,19 @@ button.workspace-team:hover {
 .diagnosis-markdown h3 { font-size: 13px; }
 .diagnosis-markdown ul {
   padding-left: 18px;
+}
+.diagnosis-markdown ol {
+  padding-left: 22px;
+}
+.diagnosis-code-block {
+  padding: 10px 12px;
+  overflow: auto;
+  color: var(--diagnosis-ink);
+  background: color-mix(in srgb, var(--diagnosis-surface) 78%, transparent);
+  border: 1px solid var(--diagnosis-line);
+  border-radius: 4px;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
 }
 .diagnosis-markdown code {
   padding: 1px 4px;
@@ -7915,8 +7935,7 @@ button.workspace-team:hover {
 }
 .diagnosis-process {
   margin: 4px 0 2px;
-  border-top: 1px solid var(--diagnosis-line);
-  border-bottom: 1px solid var(--diagnosis-line);
+  border: 0;
 }
 .diagnosis-process-summary {
   display: flex;
@@ -7968,8 +7987,7 @@ button.workspace-team:hover {
   display: flex;
   width: fit-content;
   margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--diagnosis-line) 70%, transparent);
+  padding-top: 0;
 }
 .diagnosis-thinking i {
   width: 5px;
@@ -8050,7 +8068,6 @@ button.workspace-team:hover {
   color: var(--diagnosis-muted);
   background: transparent;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--diagnosis-line) 70%, transparent);
   border-radius: 0;
   font-size: 10px;
   width: 100%;
@@ -8096,7 +8113,7 @@ button.workspace-team:hover {
   grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   padding: 5px 2px;
   background: transparent;
-  border-color: color-mix(in srgb, var(--diagnosis-line) 70%, transparent);
+  border-color: transparent;
 }
 .diagnosis-live-action.child .diagnosis-live-action-status {
   max-width: 150px;

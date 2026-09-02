@@ -2177,10 +2177,23 @@ import { onMount } from 'svelte';
 
   function diagnosisProcessActionCount(snapshot: DiagnosisSnapshot | null) {
     if (!snapshot) return 0;
-    return diagnosisActionData(snapshot).reduce(
-      (total, group) => total + (Array.isArray(group.children) ? group.children.length : 0),
-      0
+    return (snapshot.events ?? []).filter(
+      (event) => event.type === 'tool.completed' || event.type === 'tool.failed'
+    ).length;
+  }
+
+  function diagnosisProcessDuration(snapshot: DiagnosisSnapshot | null) {
+    if (!snapshot) return '—';
+    const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
+    const started = events.find((event) => event.type === 'execution.started');
+    if (!started) return '—';
+    const finished = [...events].reverse().find((event) =>
+      event.type === 'execution.completed' ||
+      event.type === 'execution.failed' ||
+      event.type === 'execution.cancelled' ||
+      event.type === 'report.ready'
     );
+    return diagnosisDuration(started.created_at, finished?.created_at);
   }
 
   type DiagnosisTraceItem = {
@@ -2411,6 +2424,10 @@ import { onMount } from 'svelte';
     const lines = escaped.split(/\r?\n/);
     let html = '';
     let inList = false;
+    let listType: 'ul' | 'ol' | null = null;
+    let inCode = false;
+    let codeLanguage = '';
+    let codeBuffer: string[] = [];
     const inline = (line: string) =>
       line
         .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -2421,19 +2438,41 @@ import { onMount } from 'svelte';
         .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
     const closeList = () => {
       if (inList) {
-        html += '</ul>';
+        html += `</${listType ?? 'ul'}>`;
         inList = false;
+        listType = null;
       }
     };
     for (const rawLine of lines) {
       const line = rawLine.trimEnd();
-      const listItem = line.match(/^\s*[-*]\s+(.+)$/);
+      const fence = line.match(/^\s*```(\w*)\s*$/);
+      if (fence) {
+        closeList();
+        if (inCode) {
+          html += `<pre class="diagnosis-code-block"><code${codeLanguage ? ` class="language-${codeLanguage}"` : ''}>${codeBuffer.join('\n')}</code></pre>`;
+          inCode = false;
+          codeLanguage = '';
+          codeBuffer = [];
+        } else {
+          inCode = true;
+          codeLanguage = fence[1] ?? '';
+        }
+        continue;
+      }
+      if (inCode) {
+        codeBuffer.push(line);
+        continue;
+      }
+      const listItem = line.match(/^\s*([-*]|\d+[.)])\s+(.+)$/);
       if (listItem) {
-        if (!inList) {
-          html += '<ul>';
+        const nextType = /^\d/.test(listItem[1]) ? 'ol' : 'ul';
+        if (!inList || listType !== nextType) {
+          closeList();
+          listType = nextType;
+          html += `<${listType}>`;
           inList = true;
         }
-        html += `<li>${inline(listItem[1])}</li>`;
+        html += `<li>${inline(listItem[2])}</li>`;
         continue;
       }
       closeList();
@@ -2447,6 +2486,9 @@ import { onMount } from 'svelte';
       }
     }
     closeList();
+    if (inCode) {
+      html += `<pre class="diagnosis-code-block"><code${codeLanguage ? ` class="language-${codeLanguage}"` : ''}>${codeBuffer.join('\n')}</code></pre>`;
+    }
     return html;
   }
 
@@ -8346,22 +8388,34 @@ import { onMount } from 'svelte';
                         {#if message.role === 'assistant' && !diagnosisGenerating && index === diagnosisSnapshot.messages
                               .map((item) => item.role)
                               .lastIndexOf('assistant')}
-                          {#if diagnosisTraceData(diagnosisSnapshot).length || diagnosisActionData(diagnosisSnapshot).length}
+                          {#if diagnosisLiveTimeline(diagnosisSnapshot).length}
                             <details class="diagnosis-process">
                               <summary class="diagnosis-process-summary">
                                 <span class="diagnosis-process-title">执行过程</span>
                                 <span class="diagnosis-process-meta">
-                                  {#if diagnosisProcessActionCount(diagnosisSnapshot)}{diagnosisProcessActionCount(diagnosisSnapshot)} 个动作 · {/if}{diagnosisStatusLabel(diagnosisSnapshot.session.status)}
+                                  总耗时 {diagnosisProcessDuration(diagnosisSnapshot)} · {#if diagnosisProcessActionCount(diagnosisSnapshot)}{diagnosisProcessActionCount(diagnosisSnapshot)} 个动作 · {/if}{diagnosisStatusLabel(diagnosisSnapshot.session.status)}
                                 </span>
                               </summary>
                               <div class="diagnosis-process-body">
-                                {#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace"><div class="diagnosis-trace-title">思考、行动与观察</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}
-                                {#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
-                                  <div class="diagnosis-action-group">
-                                    <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
-                                    {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}</div>{/each}</div>{/if}
-                                  </div>
-                                {/each}
+                                <div class="diagnosis-live-timeline" aria-label="诊断执行过程">
+                                  {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
+                                    {#if item.kind === 'analysis'}
+                                      <p class="diagnosis-live-analysis">{item.text}</p>
+                                    {:else}
+                                      {@const actions = item.actions ?? [item]}
+                                      <div class="diagnosis-live-action-wrap">
+                                        <button class="diagnosis-live-action" aria-expanded={Boolean(diagnosisActionExpanded[`process-action-${item.id}`])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [`process-action-${item.id}`]: !diagnosisActionExpanded[`process-action-${item.id}`] })}>
+                                          <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[`process-action-${item.id}`] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span><code>{item.tool}</code><span class="diagnosis-live-action-status" class:error={item.status !== '已完成'}>{item.status}</span><small>{item.duration}</small><small>总耗时 {item.elapsed}</small>
+                                        </button>
+                                        {#if diagnosisActionExpanded[`process-action-${item.id}`]}
+                                          {#each actions as detail (detail.id)}
+                                            <div class="diagnosis-live-action-detail"><div><small>入参 JSON</small><pre>{detail.input ?? '暂无入参'}</pre></div><div><small>出参 JSON</small><pre>{detail.output ?? '暂无出参'}</pre></div></div>
+                                          {/each}
+                                        {/if}
+                                      </div>
+                                    {/if}
+                                  {/each}
+                                </div>
                               </div>
                             </details>
                           {/if}
