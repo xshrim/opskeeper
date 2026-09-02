@@ -20,7 +20,9 @@ import (
 )
 
 const (
-	maxLogBytes         = 256 * 1024
+	// Read enough raw data for 200 verbose log lines (including stack traces)
+	// before keyword filtering and the final line-based limit are applied.
+	maxLogBytes         = 2 * 1024 * 1024
 	maxStatsBytes       = 2 * 1024 * 1024
 	maxListLimit        = 500
 	defaultLogTail      = 1000

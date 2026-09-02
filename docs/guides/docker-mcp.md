@@ -118,7 +118,7 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 | `docker_info` | Docker Engine 信息 | 只读 |
 | `docker_images` | 镜像列表 | 支持 `all` 和过滤器 |
 | `docker_containers` | 容器列表 | 支持 `all`、过滤器，最多 500 条 |
-| `docker_container_logs` | 容器日志 | 永不 follow，默认请求最近 1000 行，支持时间范围和 keyword 上下文筛选，最终最多返回 200 行、256 KiB |
+| `docker_container_logs` | 容器日志 | 永不 follow，默认请求最近 1000 行，支持时间范围和 keyword 上下文筛选，最终最多返回 200 行、2 MiB |
 | `docker_container_inspect` | 容器详情 | 只读，敏感环境变量和凭据字段脱敏 |
 | `docker_container_stats` | 容器资源快照 | 使用一次性 stats，不建立持续流 |
 
@@ -130,7 +130,7 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 
 `docker_container_logs`、`docker_container_inspect` 和 `docker_container_stats` 支持 `container_id` 或 `container_name`，至少提供一个；如果同时提供则优先使用 `container_id`。
 
-`docker_container_logs` 的日志范围参数按以下顺序生效：`since` 和 `until` 先确定时间范围（均为空时取最新日志；只填写一个时按该边界过滤；两者都填写时取交集），然后按 `tail` 取结果末尾行数；`tail` 为空时默认为 1000。接着使用 `keyword` 对这批日志进行不区分大小写的匹配：每个命中行会连同前后最多 3 行一起保留，多个命中的上下文范围会合并，不会重复显示重叠行。最后对筛选结果取最近 200 行作为响应行数上限；`keyword` 为空时直接对 tail 结果取最近 200 行。日志读取仍不跟随（`follow=false`），总响应超过 256 KiB 时会截断并设置 `truncated=true`。
+`docker_container_logs` 的日志范围参数按以下顺序生效：`since` 和 `until` 先确定时间范围（均为空时取最新日志；只填写一个时按该边界过滤；两者都填写时取交集），然后按 `tail` 取结果末尾行数；`tail` 为空时默认为 1000。接着使用 `keyword` 对这批日志进行不区分大小写的匹配：每个命中行会连同前后最多 3 行一起保留，多个命中的上下文范围会合并，不会重复显示重叠行。最后对筛选结果取最近 200 行作为响应行数上限；`keyword` 为空时直接对 tail 结果取最近 200 行。日志读取仍不跟随（`follow=false`），总响应超过 2 MiB 时会截断并设置 `truncated=true`。AIEngine 传给模型的单次工具观察结果另有 256 KiB 上限；超过该上限时仍可通过返回的 `observation_id` 使用 `read_observation` 分页读取完整结果。
 
 所有调用都由 Docker 官方 Go 客户端发起；Server 不接受任意 SQL、Shell 或 Docker 命令，也不提供容器启动、停止、删除、执行等写操作。
 

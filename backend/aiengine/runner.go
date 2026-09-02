@@ -129,6 +129,9 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	if parent == nil {
 		parent = context.Background()
 	}
+	// Keep the caller's value separate from the runtime default. A default
+	// budget must never override the selected provider model's hard output cap.
+	requestedMaxOutputTokens := request.Budget.MaxOutputTokens
 	if request.Budget.Timeout <= 0 {
 		request.Budget.Timeout = DefaultBudget().Timeout
 	}
@@ -388,8 +391,13 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 			parts = append(parts, &genai.Part{Text: stateText})
 			req.Config.SystemInstruction.Parts = parts
 		}
-		maxOut := request.Budget.MaxOutputTokens
-		if maxOut <= 0 {
+		maxOut := modelResult.MaxOutputTokens
+		if requestedMaxOutputTokens > 0 {
+			maxOut = requestedMaxOutputTokens
+		}
+		// The provider/model limit is authoritative. A request-level budget may
+		// further reduce it, but can never increase it.
+		if modelResult.MaxOutputTokens > 0 && (maxOut <= 0 || modelResult.MaxOutputTokens < maxOut) {
 			maxOut = modelResult.MaxOutputTokens
 		}
 		if maxOut <= 0 {
@@ -651,10 +659,11 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 			modelTurnOpen = false
 		}
 		if totalTokens > request.Budget.MaxTokens {
+			budgetDetail := fmt.Sprintf("模型累计 Token 预算已用尽（已使用 %d / %d；输入上下文 %d，模型输出 %d）", totalTokens, request.Budget.MaxTokens, promptTokens, completionTokens)
 			if sink != nil {
-				_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": "模型 Token 预算已用尽", "reason": "token_budget", "iteration": iterations}})
+				_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": budgetDetail, "reason": "token_budget", "iteration": iterations, "used_tokens": totalTokens, "max_tokens": request.Budget.MaxTokens, "prompt_tokens": promptTokens, "completion_tokens": completionTokens}})
 			}
-			return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "token_budget", ErrorMessage: "token budget exceeded", ToolCallCount: int(toolCalls.Load())}, errors.New("token budget exceeded")
+			return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "token_budget", ErrorMessage: budgetDetail, ToolCallCount: int(toolCalls.Load())}, errors.New(budgetDetail)
 		}
 	}
 	if sinkErr := getSinkErr(); sinkErr != nil {
@@ -1139,8 +1148,13 @@ func summarizeObservation(value any) any {
 	return map[string]any{"summary": truncateBytesUTF8(string(encoded), maxObservationBytes), "truncated": true}
 }
 
-const maxObservationBytes = 32 << 10
-const maxObservationTextRunes = 4000
+// Tool observations are bounded independently from the provider output budget.
+// The larger bound allows docker logs and similar diagnostics to retain a
+// useful 200-line window while still preventing an unbounded tool response from
+// consuming the model context. Exact values remain available through the
+// read_observation paging tool.
+const maxObservationBytes = 256 << 10
+const maxObservationTextRunes = 64000
 
 var sensitiveProgressPattern = regexp.MustCompile(`(?i)(\b(?:bearer|token|password|secret|credential|api[\s_-]*key|authorization|private[\s_-]*key|access[\s_-]*key|client[\s_-]*secret)\b\s*(?:[:=]\s*))(?:bearer\s+)?[^\s,;]+`)
 var sensitiveJSONPattern = regexp.MustCompile(`(?i)(["']?(?:bearer|token|password|secret|credential|api[\s_-]*key|authorization|private[\s_-]*key|access[\s_-]*key|client[\s_-]*secret)["']?\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)

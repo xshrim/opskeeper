@@ -37,9 +37,11 @@ import { onMount } from 'svelte';
     Upload,
     UserRound,
     UsersRound,
+    Wrench,
     icons as lucideIcons
   } from 'lucide-svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
+  import { renderDiagnosisMarkdown as renderDiagnosisMarkdownShared } from './lib/diagnosisMarkdown';
   import BrandIcon from './lib/BrandIcon.svelte';
   import MessageBanner from './lib/MessageBanner.svelte';
   import {
@@ -460,12 +462,13 @@ import { onMount } from 'svelte';
   let diagnosisEditDraft = '';
   let diagnosisInterruptedReason = '';
   let diagnosisGenerating = false;
+  let diagnosisFinalizing = false;
+  let diagnosisLiveProcessExpanded = false;
   let diagnosisStreamingText = '';
-  let diagnosisStreamingPending = '';
-  let diagnosisStreamingFrame = 0;
   let diagnosisStreamingStartedAt = 0;
   let diagnosisStreamingAssistantBaseline = 0;
   let diagnosisActionExpanded: Record<string, boolean> = {};
+  let diagnosisProcessExpanded: Record<string, boolean> = {};
   let diagnosisActionChildren: Record<string, boolean> = {};
   let diagnosisHiddenMessageIds: string[] = [];
   let diagnosisEvents: EventSource | null = null;
@@ -861,6 +864,7 @@ import { onMount } from 'svelte';
     const refreshTheme = () => applyTheme();
     media.addEventListener('change', refreshTheme);
     document.addEventListener('pointerdown', handleDocumentPointerDown);
+    document.addEventListener('click', handleDiagnosisMarkdownClick);
     return () => {
       if (noticeTimer !== null) window.clearTimeout(noticeTimer);
       if (errorTimer !== null) window.clearTimeout(errorTimer);
@@ -869,6 +873,7 @@ import { onMount } from 'svelte';
       closeDiagnosisEvents();
       media.removeEventListener('change', refreshTheme);
       document.removeEventListener('pointerdown', handleDocumentPointerDown);
+      document.removeEventListener('click', handleDiagnosisMarkdownClick);
     };
   });
 
@@ -1525,10 +1530,8 @@ import { onMount } from 'svelte';
     diagnosisEditingMessageId = '';
     diagnosisEditDraft = '';
     diagnosisInterruptedReason = '';
+    diagnosisFinalizing = false;
     diagnosisStreamingText = '';
-    diagnosisStreamingPending = '';
-    if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-    diagnosisStreamingFrame = 0;
     diagnosisStreamingStartedAt = 0;
     try {
       diagnosisSnapshot = await api.diagnosisSession(id);
@@ -1615,10 +1618,9 @@ import { onMount } from 'svelte';
     const eventType = event.type || 'message';
     if (!appendDiagnosisEvent(eventType, payload, diagnosisEventCursor)) return;
     if (eventType === 'model.started') {
+      diagnosisFinalizing = false;
+      diagnosisLiveProcessExpanded = false;
       diagnosisStreamingText = '';
-      diagnosisStreamingPending = '';
-      if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-      diagnosisStreamingFrame = 0;
       diagnosisStreamingStartedAt ||= Date.now();
       diagnosisGenerating = true;
       return;
@@ -1626,14 +1628,10 @@ import { onMount } from 'svelte';
     if (eventType === 'assistant.delta') {
       const text = String(payload.text ?? '');
       if (text) {
-        diagnosisStreamingPending += text;
-        if (!diagnosisStreamingFrame) {
-          diagnosisStreamingFrame = requestAnimationFrame(() => {
-            diagnosisStreamingText += diagnosisStreamingPending;
-            diagnosisStreamingPending = '';
-            diagnosisStreamingFrame = 0;
-          });
-        }
+        // Apply each provider delta immediately so Markdown and code blocks
+        // re-render during generation instead of waiting for the next frame
+        // or the final assistant message.
+        diagnosisStreamingText += text;
         diagnosisStreamingStartedAt ||= Date.now();
       }
       diagnosisGenerating = true;
@@ -1644,9 +1642,6 @@ import { onMount } from 'svelte';
       // Keep the canonical progress event and remove that duplicate draft.
       if (String(payload.kind ?? '') === 'tool_decision') {
         diagnosisStreamingText = '';
-        diagnosisStreamingPending = '';
-        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-        diagnosisStreamingFrame = 0;
       }
       diagnosisGenerating = true;
       diagnosisStreamingStartedAt ||= Date.now();
@@ -1654,15 +1649,23 @@ import { onMount } from 'svelte';
     }
     if (eventType === 'model.resumed') {
       diagnosisStreamingText = '';
-      diagnosisStreamingPending = '';
-      if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-      diagnosisStreamingFrame = 0;
       diagnosisGenerating = true;
       return;
     }
     if (eventType === 'assistant.completed') {
-      if (!diagnosisStreamingText && payload.text) {
-        diagnosisStreamingText = String(payload.text);
+      const finalText = String(payload.text ?? '');
+      if (finalText) {
+        // Deltas are the canonical on-screen stream. The completion payload
+        // exists for durable persistence and reconnect recovery, not to
+        // replace a live DOM node with a second rendering pass.
+        if (!diagnosisStreamingText) diagnosisStreamingText = finalText;
+      }
+      // The final answer is durable, but stays on this same streamed Markdown
+      // node. Only an explicitly final completion collapses the process;
+      // intermediate model completions are tool-decision turns.
+      if (payload.final === true) {
+        diagnosisFinalizing = true;
+        diagnosisLiveProcessExpanded = false;
       }
       diagnosisGenerating = true;
       void refreshDiagnosis(id);
@@ -1677,10 +1680,15 @@ import { onMount } from 'svelte';
     if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed' || eventType === 'diagnosis.cancelled') {
       const reason = String(payload.error ?? payload.message ?? payload.error_message ?? '').trim();
       const timedOut = /(?:context\s+)?deadline exceeded/i.test(reason) || String(payload.error_code ?? payload.code ?? '').toLowerCase() === 'timeout';
+      const tokenBudget = String(payload.error_code ?? payload.code ?? '').toLowerCase() === 'token_budget' || /token budget exceeded/i.test(reason);
       diagnosisInterruptedReason = timedOut
         ? '诊断执行超时，已保留已生成内容。'
+        : tokenBudget
+          ? reason || '模型累计上下文预算已用尽，已保留已生成内容。'
         : reason || (eventType === 'execution.cancelled' || eventType === 'diagnosis.cancelled' ? '回答被取消。' : '回答生成失败。');
       diagnosisGenerating = false;
+      diagnosisFinalizing = false;
+      diagnosisLiveProcessExpanded = false;
       void refreshDiagnosis(id);
       return;
     }
@@ -1692,15 +1700,10 @@ import { onMount } from 'svelte';
       return;
     }
     if (eventType === 'report.ready') {
+      diagnosisFinalizing = true;
+      diagnosisLiveProcessExpanded = false;
       void refreshDiagnosis(id).finally(() => {
-        if (diagnosisStreamingPending) {
-          diagnosisStreamingText += diagnosisStreamingPending;
-          diagnosisStreamingPending = '';
-        }
-        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-        diagnosisStreamingFrame = 0;
         diagnosisGenerating = false;
-        diagnosisStreamingText = '';
         diagnosisStreamingStartedAt = 0;
       });
       return;
@@ -1729,8 +1732,6 @@ import { onMount } from 'svelte';
   function closeDiagnosisEvents() {
     diagnosisEvents?.close();
     diagnosisEvents = null;
-    if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-    diagnosisStreamingFrame = 0;
   }
 
   async function refreshDiagnosis(id = selectedDiagnosisId) {
@@ -1763,13 +1764,10 @@ import { onMount } from 'svelte';
         (message) => message.role === 'assistant'
       ).length;
       if (assistantMessageCount > diagnosisStreamingAssistantBaseline) {
-        diagnosisStreamingAssistantBaseline = assistantMessageCount;
-        diagnosisStreamingText = '';
-        diagnosisStreamingPending = '';
-        if (diagnosisStreamingFrame) cancelAnimationFrame(diagnosisStreamingFrame);
-        diagnosisStreamingFrame = 0;
-        diagnosisStreamingStartedAt = 0;
-        diagnosisGenerating = false;
+        // Keep the live answer mounted for this turn. It is already the same
+        // content that was persisted; clearing it here causes a second render
+        // and a visible flash. A new turn explicitly resets the stream.
+        diagnosisGenerating = diagnosisFinalizing;
       } else {
         // A snapshot can race the SSE stream and still contain the previous
         // session status. Preserve local activity until a terminal snapshot or
@@ -1810,6 +1808,9 @@ import { onMount } from 'svelte';
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
         : 0;
+      diagnosisFinalizing = false;
+      diagnosisLiveProcessExpanded = false;
+      diagnosisStreamingText = '';
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
         question: diagnosisQuestion,
@@ -1852,11 +1853,63 @@ import { onMount } from 'svelte';
     return index === messages.map((item) => item.role).lastIndexOf('user');
   }
 
-  function copyDiagnosisAnswer(content: string) {
-    void navigator.clipboard?.writeText(content).then(
-      () => (notice = '回答已复制。'),
+  function writeDiagnosisClipboard(content: string, successMessage: string) {
+    const clipboard = navigator.clipboard;
+    if (!clipboard?.writeText) {
+      notice = '当前浏览器不允许直接复制，请手动选择文本。';
+      return;
+    }
+    void clipboard.writeText(content).then(
+      () => (notice = successMessage),
       () => (notice = '当前浏览器不允许直接复制，请手动选择文本。')
     );
+  }
+
+  function diagnosisProcessText(snapshot: DiagnosisSnapshot | null) {
+    if (!snapshot) return '';
+    const lines: string[] = [];
+    for (const item of diagnosisLiveTimeline(snapshot)) {
+      if (item.kind === 'analysis') {
+        if (item.text) lines.push(item.text);
+        continue;
+      }
+      const actions = item.actions ?? [item];
+      if (actions.length > 1) {
+        lines.push(`调用工具 · ${actions.length} 个动作 · ${item.status ?? '执行中'}`);
+      }
+      for (const action of actions) {
+        lines.push(`${diagnosisActionLabel(action)} · ${action.status ?? '执行中'} · ${action.duration ?? '—'}`);
+        if (action.input) lines.push(`入参:\n${action.input}`);
+        if (action.output) lines.push(`出参:\n${action.output}`);
+      }
+    }
+    return lines.join('\n\n');
+  }
+
+  function copyDiagnosisMessage(message: DiagnosisMessage, processExpanded: boolean) {
+    const answer = message.content ?? '';
+    const process = processExpanded ? diagnosisProcessText(diagnosisSnapshot) : '';
+    const content = process ? `${answer}\n\n执行过程\n\n${process}` : answer;
+    writeDiagnosisClipboard(content, '回答已复制。');
+  }
+
+  function copyDiagnosisCode(encoded: string) {
+    let content = '';
+    try {
+      content = decodeURIComponent(encoded);
+    } catch {
+      content = encoded;
+    }
+    writeDiagnosisClipboard(content, '代码已复制。');
+  }
+
+  function handleDiagnosisMarkdownClick(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    const button = target?.closest<HTMLButtonElement>('[data-code-copy]');
+    if (button) {
+      event.preventDefault();
+      copyDiagnosisCode(button.dataset.codeCopy ?? '');
+    }
   }
 
   function toggleDiagnosisContext(resourceID: string) {
@@ -1913,6 +1966,9 @@ import { onMount } from 'svelte';
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
         : 0;
+      diagnosisFinalizing = false;
+      diagnosisLiveProcessExpanded = false;
+      diagnosisStreamingText = '';
       await api.askDiagnosis(selectedDiagnosisId, diagnosisFollowup);
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
@@ -1939,6 +1995,8 @@ import { onMount } from 'svelte';
     diagnosisEditDraft = '';
     diagnosisInterruptedReason = '';
     diagnosisGenerating = false;
+    diagnosisFinalizing = false;
+    diagnosisLiveProcessExpanded = false;
     diagnosisStreamingText = '';
     diagnosisStreamingStartedAt = 0;
     diagnosisStreamingAssistantBaseline = 0;
@@ -2125,7 +2183,7 @@ import { onMount } from 'svelte';
       if (!currentGroup) {
         currentGroup = {
           id: `tool-group-${event.id}`,
-          title: '工具调用',
+          title: '调用工具',
           status: '进行中',
           duration: '—',
           children: []
@@ -2198,7 +2256,7 @@ import { onMount } from 'svelte';
 
   type DiagnosisEvidenceTimelineItem = {
     id: string;
-    kind: 'analysis' | 'phase' | 'tool' | 'observation' | 'status';
+    kind: 'turn' | 'analysis' | 'phase' | 'tool-group' | 'tool' | 'observation' | 'status';
     title: string;
     detail?: string;
     status?: string;
@@ -2206,6 +2264,9 @@ import { onMount } from 'svelte';
     input?: string;
     output?: string;
     duration?: string;
+    children?: DiagnosisEvidenceTimelineItem[];
+    resourceID?: string;
+    evidenceIds?: string[];
   };
 
   function diagnosisEvidenceTimeline(snapshot: DiagnosisSnapshot | null): DiagnosisEvidenceTimelineItem[] {
@@ -2213,6 +2274,11 @@ import { onMount } from 'svelte';
     const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
     const items: DiagnosisEvidenceTimelineItem[] = [];
     const tools = new Map<string, DiagnosisEvidenceTimelineItem>();
+    let currentToolGroup: DiagnosisEvidenceTimelineItem | null = null;
+    let currentTurn: DiagnosisEvidenceTimelineItem | null = null;
+    let activeExecutionStarted = false;
+    let userMessageCursor = 0;
+    const userMessages = [...(snapshot.messages ?? [])].filter((message) => message.role === 'user');
     const jsonText = (value: unknown, fallback = '暂无数据') => {
       if (value === undefined || value === null) return fallback;
       if (typeof value === 'string') {
@@ -2221,38 +2287,109 @@ import { onMount } from 'svelte';
       try { return JSON.stringify(value, null, 2) ?? fallback; } catch { return fallback; }
     };
     const toolName = (value: unknown) => String(value ?? '').trim() || '受控工具';
+    const collectedEvidence = (snapshot.evidence ?? []).map((evidence) => ({
+      id: evidence.id,
+      sourceResourceID: evidence.source_resource_id ?? evidence.target_resource_id ?? '',
+      capability: evidence.capability
+    }));
+    const compactQuestion = (value: string) => value.replace(/\s+/g, ' ').trim() || '本次诊断';
+    const beginTurn = (event: DiagnosisEvent) => {
+      if (currentTurn) return currentTurn;
+      const message = userMessages[userMessageCursor++];
+      currentTurn = {
+        id: `chain-${event.id}`,
+        kind: 'turn',
+        title: compactQuestion(message?.content ?? '本次诊断'),
+        detail: '从规划到结论的完整回答过程',
+        children: []
+      };
+      items.push(currentTurn);
+      currentToolGroup = null;
+      tools.clear();
+      return currentTurn;
+    };
+    const addChild = (item: DiagnosisEvidenceTimelineItem) => {
+      beginTurn(events[0] ?? ({ id: 0 } as DiagnosisEvent));
+      currentTurn?.children?.push(item);
+    };
     for (const event of events) {
       const payload = event.payload ?? {};
+      // Planning is the beginning of a response chain. This keeps the plan,
+      // actions, observations and terminal state together in their original
+      // event order, including events emitted before execution.started.
+      if (event.type === 'phase.changed' && String(payload.phase ?? '').trim() === 'planning') {
+        if (currentTurn && activeExecutionStarted) {
+          currentTurn = null;
+          activeExecutionStarted = false;
+        }
+        if (!currentTurn) beginTurn(event);
+      } else if (event.type === 'plan.created') {
+        if (!currentTurn) beginTurn(event);
+      }
+      if (event.type === 'execution.started') {
+        // Every execution is a separate answer chain, including follow-up
+        // questions in the same diagnosis session.
+        const turnBeforeExecution = currentTurn as DiagnosisEvidenceTimelineItem | null;
+        if (turnBeforeExecution && (turnBeforeExecution.children ?? []).some((child) => child.kind === 'status')) currentTurn = null;
+        if (!currentTurn) beginTurn(event);
+        activeExecutionStarted = true;
+        currentToolGroup = null;
+        tools.clear();
+        continue;
+      }
       if (event.type === 'model.started') {
-        items.push({ id: `event-${event.id}`, kind: 'analysis', title: '开始分析', detail: String(payload.detail ?? '正在评估问题并决定下一步行动') });
+        currentToolGroup = null;
+        tools.clear();
+        addChild({ id: `event-${event.id}`, kind: 'analysis', title: '开始分析', detail: String(payload.detail ?? '正在评估问题并决定下一步行动') });
         continue;
       }
       if (event.type === 'assistant.progress') {
+        currentToolGroup = null;
+        tools.clear();
         const text = String(payload.text ?? '').trim();
-        if (text) items.push({ id: `event-${event.id}`, kind: 'analysis', title: '阶段说明', detail: text });
+        if (text) addChild({ id: `event-${event.id}`, kind: 'analysis', title: '阶段说明', detail: text });
         continue;
       }
       if (event.type === 'phase.changed') {
+        currentToolGroup = null;
+        tools.clear();
         const phase = String(payload.phase ?? '').trim();
-        if (phase) items.push({ id: `event-${event.id}`, kind: 'phase', title: diagnosisStatusLabel(phase), detail: String(payload.detail ?? '') || undefined });
+        if (phase) addChild({ id: `event-${event.id}`, kind: 'phase', title: diagnosisStatusLabel(phase), detail: String(payload.detail ?? '') || undefined });
         continue;
       }
       if (event.type === 'model.resumed') {
+        currentToolGroup = null;
+        tools.clear();
         const observation = payload.observation ?? payload.observations;
-        if (observation !== undefined) items.push({ id: `event-${event.id}`, kind: 'observation', title: '收到工具结果，重新评估', detail: jsonText(observation) });
+        if (observation !== undefined) addChild({ id: `event-${event.id}`, kind: 'observation', title: '收到工具结果，重新评估', detail: jsonText(observation) });
         continue;
       }
       if (event.type === 'execution.completed' || event.type === 'execution.failed' || event.type === 'execution.cancelled') {
-        items.push({ id: `event-${event.id}`, kind: 'status', title: event.type === 'execution.completed' ? '本轮执行完成' : event.type === 'execution.cancelled' ? '本轮执行已取消' : '本轮执行失败', detail: String(payload.error ?? payload.message ?? '') || undefined });
+        activeExecutionStarted = false;
+        currentToolGroup = null;
+        tools.clear();
+        addChild({ id: `event-${event.id}`, kind: 'status', title: event.type === 'execution.completed' ? '本轮执行完成' : event.type === 'execution.cancelled' ? '本轮执行已取消' : '本轮执行失败', detail: String(payload.error ?? payload.message ?? '') || undefined });
         continue;
       }
+      if (event.type === 'evidence.collected') continue;
       if (!event.type.startsWith('tool.') || !Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
       const key = String(payload.call_id ?? payload.call_sequence ?? event.id);
+      if (!currentToolGroup) {
+        currentToolGroup = {
+          id: `tool-group-${event.id}`,
+          kind: 'tool-group',
+          title: '连续调用工具',
+          status: '执行中',
+          children: []
+        };
+        addChild(currentToolGroup);
+      }
+      const children = currentToolGroup.children ?? (currentToolGroup.children = []);
       let item = tools.get(key);
       if (!item) {
-        item = { id: `tool-${key}`, kind: 'tool', title: toolName(payload.tool), tool: toolName(payload.tool), status: '等待执行', input: jsonText(payload.arguments), output: '等待工具执行结果…' };
+        item = { id: `tool-${key}`, kind: 'tool', title: toolName(payload.tool), tool: toolName(payload.tool), status: '等待执行', input: jsonText(payload.arguments), output: '等待工具执行结果…', resourceID: String(payload.resource_id ?? '') };
         tools.set(key, item);
-        items.push(item);
+        children.push(item);
       }
       if (Object.prototype.hasOwnProperty.call(payload, 'arguments')) item.input = jsonText(payload.arguments);
       if (event.type === 'tool.requested') item.status = '等待执行';
@@ -2263,8 +2400,72 @@ import { onMount } from 'svelte';
         const duration = Number(payload.duration_ms ?? 0);
         if (duration > 0) item.duration = diagnosisDurationMilliseconds(duration);
       }
+      currentToolGroup.status = children.some((child) => child.status === '失败')
+        ? '存在失败'
+        : children.every((child) => child.status === '已完成') ? '已完成' : '执行中';
+      const names = [...new Set(children.map((child) => child.tool ?? child.title).filter(Boolean))];
+      currentToolGroup.detail = `${children.length} 个动作${names.length ? ` · ${names.join('、')}` : ''}`;
     }
-    return items;
+    // Evidence is persisted after the tool result. Link it back to the most
+    // likely tool by source resource and capability, while keeping the
+    // evidence drawer useful even when a connector does not expose a call id.
+    const toolItems = items.flatMap((item) => item.children?.flatMap((child) => child.kind === 'tool-group' ? child.children ?? [] : []) ?? []);
+    for (const evidence of collectedEvidence) {
+      const candidate = [...toolItems].reverse().find((tool) =>
+        (!evidence.sourceResourceID || tool.resourceID === evidence.sourceResourceID) &&
+        (!evidence.capability || tool.tool === evidence.capability || tool.tool?.includes(evidence.capability) || evidence.capability.includes(tool.tool ?? ''))
+      ) ?? [...toolItems].reverse().find((tool) => !evidence.sourceResourceID || tool.resourceID === evidence.sourceResourceID);
+      if (candidate) candidate.evidenceIds = [...(candidate.evidenceIds ?? []), evidence.id];
+    }
+    const latestExecution = [...events].map((event, index) => ({ event, index }))
+      .reverse().find(({ event }) => event.type === 'execution.started');
+    const latestRunEvents = latestExecution ? events.slice(latestExecution.index + 1) : events;
+    const terminal = Boolean(snapshot.session.status === 'succeeded' ||
+      snapshot.session.status === 'failed' ||
+      snapshot.session.status === 'cancelled' ||
+      latestRunEvents.some((event) => event.type === 'assistant.completed' || event.type === 'report.ready' || event.type === 'diagnosis.failed' || event.type === 'diagnosis.cancelled'));
+    if (!terminal) return items;
+    return items.map((turn) => ({
+      ...turn,
+      children: (turn.children ?? []).map((child) => {
+        if (child.kind !== 'tool-group') return child;
+        const children = (child.children ?? []).map((tool) => {
+          if (tool.status === '等待执行') return { ...tool, status: '未执行' };
+          if (tool.status === '执行中') return { ...tool, status: '已中断' };
+          return tool;
+        });
+        return {
+          ...child,
+          children,
+          status: children.some((tool) => tool.status === '失败') ? '存在失败' : '已完成'
+        };
+      })
+    }));
+  }
+
+  function diagnosisResourceName(resourceID?: string) {
+    if (!resourceID) return '未标记资源';
+    return resources.find((resource) => resource.id === resourceID)?.name
+      ?? diagnosisTargets.find((resource) => resource.id === resourceID)?.name
+      ?? resourceID;
+  }
+
+  function diagnosisEvidenceSummary(evidence: DiagnosisEvidence) {
+    const summary = evidence.summary ?? {};
+    const entries = Object.entries(summary).slice(0, 3).map(([key, value]) => {
+      const text = typeof value === 'string' ? value : JSON.stringify(value);
+      return `${key}: ${text ?? ''}`;
+    });
+    return entries.join(' · ') || '已保存工具返回结果，可展开查看完整内容。';
+  }
+
+  function diagnosisEvidenceSourceTools(snapshot: DiagnosisSnapshot, evidence: DiagnosisEvidence) {
+    const timeline = diagnosisEvidenceTimeline(snapshot);
+    const labels = timeline.flatMap((turn) => turn.children ?? [])
+      .flatMap((item) => item.kind === 'tool-group' ? item.children ?? [] : [item])
+      .filter((item) => item.evidenceIds?.includes(evidence.id))
+      .map((item) => item.tool ?? item.title);
+    return [...new Set(labels)];
   }
 
   type DiagnosisTraceItem = {
@@ -2368,14 +2569,16 @@ import { onMount } from 'svelte';
     kind: 'analysis' | 'action';
     text?: string;
     tool?: string;
+    label?: string;
     status?: string;
     duration?: string;
     elapsed?: string;
-    remaining?: string;
     iteration?: number;
     input?: string;
     output?: string;
     actions?: DiagnosisLiveTimelineItem[];
+    createdAt?: string;
+    updatedAt?: string;
   };
 
   function diagnosisMilliseconds(value: unknown, fallback = 0) {
@@ -2398,20 +2601,46 @@ import { onMount } from 'svelte';
     const items: DiagnosisLiveTimelineItem[] = [];
     const startedAt = activeEvents.find((event) => event.type === 'execution.started')?.created_at;
     const toolStarted = new Map<string, string>();
+    const toolRequested = new Map<string, string>();
+    let currentGroup: DiagnosisLiveTimelineItem | null = null;
     let lastAnalysis = '';
-    let lastAction: DiagnosisLiveTimelineItem | null = null;
     const toolName = (event: DiagnosisEvent) => String(event.payload?.tool ?? '').trim();
     const toolKey = (event: DiagnosisEvent) => String(event.payload?.call_id ?? event.payload?.call_sequence ?? event.id);
-    const progressCount = (payload: Record<string, unknown>) => {
-      const remaining = payload.remaining_actions;
-      if (typeof remaining === 'number' && Number.isFinite(remaining)) return `还有 ${Math.max(0, Math.round(remaining))} 个动作`;
-      return '后续动作待评估';
+    const actionLabel = (tool: string) => {
+      const normalized = tool.toLowerCase();
+      return /(?:^|[._-])(exec|command|shell|terminal|run)(?:$|[._-])/.test(normalized)
+        ? `执行命令 ${tool}`
+        : `调用工具 ${tool}`;
+    };
+    const jsonText = (value: unknown, fallback = '{}') => {
+      if (value === undefined || value === null) return fallback;
+      if (typeof value === 'string') {
+        try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+      }
+      try { return JSON.stringify(value, null, 2) ?? fallback; } catch { return fallback; }
+    };
+    const ensureGroup = (event: DiagnosisEvent) => {
+      if (currentGroup) return currentGroup;
+      currentGroup = {
+        id: event.id,
+        kind: 'action',
+        tool: '',
+        status: '执行中',
+        duration: '—',
+        elapsed: '—',
+        iteration: Number(event.payload?.iteration ?? 0) || undefined,
+        actions: [],
+        createdAt: event.created_at,
+        updatedAt: event.created_at
+      };
+      items.push(currentGroup);
+      return currentGroup;
     };
     for (const event of activeEvents) {
       const payload = event.payload ?? {};
       const iteration = Number(payload.iteration ?? 0) || undefined;
       if (event.type === 'assistant.progress') {
-        lastAction = null;
+        currentGroup = null;
         const text = String(payload.text ?? '').trim();
         if (text && text !== lastAnalysis) {
           items.push({ id: event.id, kind: 'analysis', text, iteration });
@@ -2420,56 +2649,108 @@ import { onMount } from 'svelte';
         continue;
       }
       if (event.type === 'model.started' || event.type === 'model.resumed') {
-        lastAction = null;
+        currentGroup = null;
         continue;
       }
       if (!event.type.startsWith('tool.')) continue;
       const tool = toolName(event);
       if (!tool || !Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
       const key = toolKey(event);
-      if (event.type === 'tool.started') {
+      const group = ensureGroup(event);
+      const actions = group.actions ?? (group.actions = []);
+      let action = actions.find((item) => item.id === Number(key) || item.tool === tool && item.createdAt === toolRequested.get(key));
+      if (!action) {
+        action = {
+          id: event.id,
+          kind: 'action',
+          tool,
+          label: actionLabel(tool),
+          status: '等待执行',
+          duration: '—',
+          elapsed: '—',
+          iteration,
+          input: payload.arguments === undefined ? undefined : jsonText(payload.arguments),
+          output: '等待工具执行结果…',
+          createdAt: event.created_at,
+          updatedAt: event.created_at
+        };
+        actions.push(action);
+      }
+      action.updatedAt = event.created_at;
+      if (payload.arguments !== undefined) action.input = jsonText(payload.arguments);
+      if (event.type === 'tool.requested') {
+        toolRequested.set(key, event.created_at);
+        action.status = '等待执行';
+      } else if (event.type === 'tool.started') {
         toolStarted.set(key, event.created_at);
-        continue;
+        action.status = '执行中';
+      } else if (event.type === 'tool.completed' || event.type === 'tool.failed') {
+        const started = toolStarted.get(key) ?? toolRequested.get(key) ?? event.created_at;
+        const inferredDuration = Math.max(0, new Date(event.created_at).getTime() - new Date(started).getTime());
+        const duration = diagnosisMilliseconds(payload.duration_ms, inferredDuration);
+        const elapsedFallback = startedAt
+          ? Math.max(0, new Date(event.created_at).getTime() - new Date(startedAt).getTime())
+          : 0;
+        action.status = event.type === 'tool.completed' ? '已完成' : '失败，正在重新评估';
+        action.duration = diagnosisDurationMilliseconds(duration);
+        action.elapsed = diagnosisDurationMilliseconds(diagnosisMilliseconds(payload.elapsed_ms, elapsedFallback));
+        action.output = payload.output === undefined
+          ? jsonText(payload.error ? { error: payload.error } : {})
+          : jsonText(payload.output);
       }
-      if (event.type !== 'tool.completed' && event.type !== 'tool.failed') continue;
-      const started = toolStarted.get(key) ?? event.created_at;
-      const inferredDuration = Math.max(0, new Date(event.created_at).getTime() - new Date(started).getTime());
-      const duration = diagnosisMilliseconds(payload.duration_ms, inferredDuration);
-      const elapsedFallback = startedAt
+      group.tool = actions.length === 1 ? tool : undefined;
+      group.status = actions.some((item) => item.status === '失败，正在重新评估')
+        ? '失败'
+        : actions.every((item) => item.status === '已完成' || item.status === '失败，正在重新评估')
+          ? '已完成'
+          : '执行中';
+      group.duration = diagnosisDurationMilliseconds(
+        Math.max(0, new Date(event.created_at).getTime() - new Date(group.createdAt ?? event.created_at).getTime())
+      );
+      group.elapsed = diagnosisDurationMilliseconds(startedAt
         ? Math.max(0, new Date(event.created_at).getTime() - new Date(startedAt).getTime())
-        : 0;
-      const elapsed = diagnosisMilliseconds(payload.elapsed_ms, elapsedFallback);
-      const action: DiagnosisLiveTimelineItem = {
-        id: event.id,
-        kind: 'action',
-        tool,
-        status: event.type === 'tool.completed' ? '已完成' : '返回错误，正在重新评估',
-        duration: diagnosisDurationMilliseconds(duration),
-        elapsed: diagnosisDurationMilliseconds(elapsed),
-        remaining: progressCount(payload),
-        iteration,
-        input: payload.arguments === undefined ? undefined : JSON.stringify(payload.arguments, null, 2),
-        output: payload.output === undefined
-          ? JSON.stringify(payload.error ? { error: payload.error } : {}, null, 2)
-          : JSON.stringify(payload.output, null, 2)
-      };
-      if (lastAction && items[items.length - 1] === lastAction) {
-        lastAction.actions = [...(lastAction.actions ?? [lastAction]), action];
-        lastAction.tool = action.tool;
-        lastAction.status = action.status;
-        lastAction.duration = action.duration;
-        lastAction.elapsed = action.elapsed;
-        lastAction.remaining = action.remaining;
-        lastAction.iteration = action.iteration;
-      } else {
-        items.push(action);
-        lastAction = action;
-      }
+        : 0);
+      group.updatedAt = event.created_at;
     }
-    return items;
+    // A terminal session can be observed before the final tool lifecycle event
+    // reaches the client. Do not leave stale requested actions labelled as
+    // "等待执行" next to an already persisted answer.
+    const latestExecution = [...events].map((event, index) => ({ event, index }))
+      .reverse().find(({ event }) => event.type === 'execution.started');
+    const latestRunEvents = latestExecution ? events.slice(latestExecution.index + 1) : events;
+    const terminal = Boolean(snapshot.session.status === 'succeeded' ||
+      snapshot.session.status === 'failed' ||
+      snapshot.session.status === 'cancelled' ||
+      latestRunEvents.some((event) => event.type === 'assistant.completed' || event.type === 'report.ready' || event.type === 'diagnosis.failed' || event.type === 'diagnosis.cancelled'));
+    if (!terminal) return items;
+    return items.flatMap((item) => {
+      if (item.kind === 'analysis') return [item];
+      const actions = (item.actions ?? []).filter((action) => action.status !== '等待执行' && action.status !== '执行中');
+      if (!actions.length) return [];
+      return [{
+        ...item,
+        actions,
+        tool: actions.length === 1 ? actions[0].tool : undefined,
+        status: actions.some((action) => action.status === '失败，正在重新评估') ? '失败' : '已完成'
+      }];
+    });
+  }
+
+  function diagnosisActionGroupComplete(item: DiagnosisLiveTimelineItem) {
+    const actions = item.actions ?? [item];
+    return actions.length > 1 && actions.every(
+      (action) => action.status === '已完成' || action.status === '失败，正在重新评估'
+    );
+  }
+
+  function diagnosisActionLabel(item: DiagnosisLiveTimelineItem) {
+    return item.label || (item.tool ? `调用工具 ${item.tool}` : '执行动作');
   }
 
   function diagnosisHasRunningActions(snapshot: DiagnosisSnapshot | null) {
+    if (snapshot && (snapshot.session.status === 'succeeded' || snapshot.session.status === 'failed' || snapshot.session.status === 'cancelled')) {
+      return false;
+    }
     return Boolean(
       snapshot && diagnosisActionData(snapshot).some((group) => group.status === '进行中')
     );
@@ -2483,84 +2764,11 @@ import { onMount } from 'svelte';
     );
   }
 
-  function renderDiagnosisMarkdown(value: string) {
-    const escape = (text: string) =>
-      text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    const escaped = escape(value ?? '');
-    const lines = escaped.split(/\r?\n/);
-    let html = '';
-    let inList = false;
-    let listType: 'ul' | 'ol' | null = null;
-    let inCode = false;
-    let codeLanguage = '';
-    let codeBuffer: string[] = [];
-    const inline = (line: string) =>
-      line
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(/_([^_]+)_/g, '<em>$1</em>')
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-    const closeList = () => {
-      if (inList) {
-        html += `</${listType ?? 'ul'}>`;
-        inList = false;
-        listType = null;
-      }
-    };
-    for (const rawLine of lines) {
-      const line = rawLine.trimEnd();
-      const fence = line.match(/^\s*```(\w*)\s*$/);
-      if (fence) {
-        closeList();
-        if (inCode) {
-          html += `<pre class="diagnosis-code-block"><code${codeLanguage ? ` class="language-${codeLanguage}"` : ''}>${codeBuffer.join('\n')}</code></pre>`;
-          inCode = false;
-          codeLanguage = '';
-          codeBuffer = [];
-        } else {
-          inCode = true;
-          codeLanguage = fence[1] ?? '';
-        }
-        continue;
-      }
-      if (inCode) {
-        codeBuffer.push(line);
-        continue;
-      }
-      const listItem = line.match(/^\s*([-*]|\d+[.)])\s+(.+)$/);
-      if (listItem) {
-        const nextType = /^\d/.test(listItem[1]) ? 'ol' : 'ul';
-        if (!inList || listType !== nextType) {
-          closeList();
-          listType = nextType;
-          html += `<${listType}>`;
-          inList = true;
-        }
-        html += `<li>${inline(listItem[2])}</li>`;
-        continue;
-      }
-      closeList();
-      if (!line.trim()) continue;
-      const heading = line.match(/^\s*(#{1,3})\s+(.+)$/);
-      if (heading) {
-        const level = heading[1].length;
-        html += `<h${level}>${inline(heading[2])}</h${level}>`;
-      } else {
-        html += `<p>${inline(line)}</p>`;
-      }
-    }
-    closeList();
-    if (inCode) {
-      html += `<pre class="diagnosis-code-block"><code${codeLanguage ? ` class="language-${codeLanguage}"` : ''}>${codeBuffer.join('\n')}</code></pre>`;
-    }
-    return html;
+  function deferFinalDiagnosisMessage(message: DiagnosisMessage, index: number) {
+    if ((!diagnosisFinalizing && !diagnosisStreamingText) || message.role !== 'assistant') return false;
+    const messages = diagnosisSnapshot?.messages ?? [];
+    return index === messages.map((item) => item.role).lastIndexOf('assistant') &&
+      diagnosisHasPersistedNewAnswer(diagnosisSnapshot);
   }
 
   async function loadAI() {
@@ -8428,6 +8636,7 @@ import { onMount } from 'svelte';
                   </p>
                 </div>{/if}
               {#if diagnosisSnapshot}{#each diagnosisSnapshot.messages as message, index}
+                {#if !deferFinalDiagnosisMessage(message, index)}
                   <article class="diagnosis-message-f {message.role}">
                     <span class="diagnosis-message-avatar"
                       >{message.role === 'assistant' ? 'AI' : '你'}</span
@@ -8460,7 +8669,16 @@ import { onMount } from 'svelte';
                               .map((item) => item.role)
                               .lastIndexOf('assistant')}
                           {#if diagnosisLiveTimeline(diagnosisSnapshot).length}
-                            <details class="diagnosis-process">
+                            <details
+                              class="diagnosis-process"
+                              on:toggle={(event) => {
+                                const details = event.currentTarget as HTMLDetailsElement;
+                                diagnosisProcessExpanded = {
+                                  ...diagnosisProcessExpanded,
+                                  [message.id]: details.open
+                                };
+                              }}
+                            >
                               <summary class="diagnosis-process-summary">
                                 <span class="diagnosis-process-title">执行过程</span>
                                 <span class="diagnosis-process-meta">
@@ -8471,19 +8689,50 @@ import { onMount } from 'svelte';
                                 <div class="diagnosis-live-timeline" aria-label="诊断执行过程">
                                   {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
                                     {#if item.kind === 'analysis'}
-                                      <p class="diagnosis-live-analysis">{item.text}</p>
+                                      <div class="diagnosis-live-analysis diagnosis-markdown">
+                                        {@html renderDiagnosisMarkdownShared((item.text ?? '').trim(), true)}
+                                      </div>
                                     {:else}
                                       {@const actions = item.actions ?? [item]}
-                                      <div class="diagnosis-live-action-wrap">
-                                        <button class="diagnosis-live-action" aria-expanded={Boolean(diagnosisActionExpanded[`process-action-${item.id}`])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [`process-action-${item.id}`]: !diagnosisActionExpanded[`process-action-${item.id}`] })}>
-                                          <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[`process-action-${item.id}`] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span><code>{item.tool}</code><span class="diagnosis-live-action-status" class:error={item.status !== '已完成'}>{item.status}</span><small>{item.duration}</small><small>总耗时 {item.elapsed}</small>
-                                        </button>
-                                        {#if diagnosisActionExpanded[`process-action-${item.id}`]}
-                                          {#each actions as detail (detail.id)}
-                                            <div class="diagnosis-live-action-detail"><div><small>入参 JSON</small><pre>{detail.input ?? '暂无入参'}</pre></div><div><small>出参 JSON</small><pre>{detail.output ?? '暂无出参'}</pre></div></div>
-                                          {/each}
-                                        {/if}
-                                      </div>
+                                      {#if actions.length > 1}
+                                        <div class="diagnosis-live-action-wrap">
+                                          <button class="diagnosis-live-action summary" aria-expanded={Boolean(diagnosisActionExpanded[`process-action-${item.id}`])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [`process-action-${item.id}`]: !diagnosisActionExpanded[`process-action-${item.id}`] })}>
+                                            <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[`process-action-${item.id}`] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={13} /></span><span class="diagnosis-live-action-label">调用工具 · {actions.length} 个动作</span><span class="diagnosis-live-action-status" class:error={item.status !== '已完成'}>{item.status}</span><small>{item.duration}</small><small>总耗时 {item.elapsed}</small>
+                                          </button>
+                                          {#if diagnosisActionExpanded[`process-action-${item.id}`]}
+                                            <div class="diagnosis-live-action-children">
+                                              {#each actions as action (action.id)}
+                                                {@const actionKey = `process-action-child-${action.id}`}
+                                                <div class="diagnosis-live-action-child-wrap">
+                                                  <button class="diagnosis-live-action child" aria-expanded={Boolean(diagnosisActionExpanded[actionKey])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}>
+                                                    <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span>
+                                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={12} /></span>
+                                                    <span class="diagnosis-live-action-label">{diagnosisActionLabel(action)}</span>
+                                                    <span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span>
+                                                    <small>{action.duration}</small>
+                                                  </button>
+                                                  {#if diagnosisActionExpanded[actionKey]}
+                                                    <div class="diagnosis-live-action-detail child-detail">
+                                                      <div><small>入参</small><pre>{action.input ?? '暂无入参'}</pre></div>
+                                                      <div><small>出参</small><pre>{action.output ?? '暂无出参'}</pre></div>
+                                                    </div>
+                                                  {/if}
+                                                </div>
+                                              {/each}
+                                            </div>
+                                          {/if}
+                                        </div>
+                                      {:else}
+                                        {#each actions as action (action.id)}
+                                          {@const actionKey = `process-action-${action.id}`}
+                                          <div class="diagnosis-live-action-wrap">
+                                            <button class="diagnosis-live-action" aria-expanded={Boolean(diagnosisActionExpanded[actionKey])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}>
+                                              <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={13} /></span><span class="diagnosis-live-action-label">{diagnosisActionLabel(action)}</span><span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span><small>{action.duration}</small><small>总耗时 {action.elapsed}</small>
+                                            </button>
+                                            {#if diagnosisActionExpanded[actionKey]}<div class="diagnosis-live-action-detail"><div><small>入参</small><pre>{action.input ?? '暂无入参'}</pre></div><div><small>出参</small><pre>{action.output ?? '暂无出参'}</pre></div></div>{/if}
+                                          </div>
+                                        {/each}
+                                      {/if}
                                     {/if}
                                   {/each}
                                 </div>
@@ -8492,20 +8741,13 @@ import { onMount } from 'svelte';
                           {/if}
                         {/if}
                         <div class="diagnosis-bubble-f">
-                          <div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(message.content)}</div>
+                          <div class="diagnosis-markdown">{@html renderDiagnosisMarkdownShared(message.content)}</div>
                           {#if diagnosisInterruptedReason && message.role === 'assistant' && index === diagnosisSnapshot.messages
                                 .map((item) => item.role)
                                 .lastIndexOf('assistant')}<span
                               class="diagnosis-interruption"
                               ><i
                               ></i>回答已中断：{diagnosisInterruptedReason}</span
-                            >{/if}{#if message.role === 'assistant'}<button
-                              class="bubble-icon copy"
-                              aria-label="复制回答"
-                              title="复制回答"
-                              on:click={() =>
-                                copyDiagnosisAnswer(message.content)}
-                              ><Copy size={14} /></button
                             >{/if}{#if message.role === 'user' && isLastDiagnosisUser(index)}<button
                               class="bubble-icon edit"
                               aria-label="编辑并重新发送"
@@ -8514,36 +8756,71 @@ import { onMount } from 'svelte';
                               ><Pencil size={14} /></button
                             >{/if}
                         </div>
+                        {#if message.role === 'assistant'}
+                          <div class="diagnosis-answer-actions">
+                            <button
+                              class="diagnosis-answer-copy"
+                              aria-label="复制回答"
+                              title="复制回答"
+                              on:click={() =>
+                                copyDiagnosisMessage(
+                                  message,
+                                  diagnosisProcessExpanded[message.id] ?? false
+                                )}
+                            ><Copy size={14} />复制回答</button>
+                          </div>
+                        {/if}
                       {/if}
                     </div>
                   </article>
+                {/if}
                 {/each}{/if}
-              {#if (diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot)) && !diagnosisHasPersistedNewAnswer(diagnosisSnapshot)}
+              {#if diagnosisFinalizing || (diagnosisGenerating || diagnosisStreamingText || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot)) && !diagnosisHasPersistedNewAnswer(diagnosisSnapshot)}
                 <article class="diagnosis-message-f assistant diagnosis-streaming-message">
                   <span class="diagnosis-message-avatar">AI</span>
                   <div class="diagnosis-message-content">
                     <div class="diagnosis-message-meta"><strong>AI 助手</strong><small>实时响应</small></div>
                     <div class="diagnosis-bubble-f diagnosis-streaming-bubble">
                       {#if diagnosisLiveTimeline(diagnosisSnapshot).length}
+                        <svelte:element
+                          this={diagnosisFinalizing ? 'details' : 'div'}
+                          class="diagnosis-live-process"
+                          class:final={diagnosisFinalizing}
+                          open={diagnosisFinalizing ? diagnosisLiveProcessExpanded : undefined}
+                          on:toggle={(event: Event) => {
+                            if (diagnosisFinalizing) {
+                              diagnosisLiveProcessExpanded =
+                                (event.currentTarget as HTMLDetailsElement).open;
+                            }
+                          }}
+                        >
+                          {#if diagnosisFinalizing}
+                            <summary class="diagnosis-process-summary">
+                              <span class="diagnosis-process-title">执行过程</span>
+                              <span class="diagnosis-process-meta">
+                                总耗时 {diagnosisProcessDuration(diagnosisSnapshot)} · {#if diagnosisProcessActionCount(diagnosisSnapshot)}{diagnosisProcessActionCount(diagnosisSnapshot)} 个动作 · {/if}{diagnosisStatusLabel(diagnosisSnapshot?.session.status ?? '')}
+                              </span>
+                            </summary>
+                          {/if}
                         <div class="diagnosis-live-timeline" aria-live="polite">
                           {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
                             {#if item.kind === 'analysis'}
-                              <p class="diagnosis-live-analysis">{item.text}</p>
+                              <div class="diagnosis-live-analysis diagnosis-markdown">
+                                {@html renderDiagnosisMarkdownShared((item.text ?? '').trim(), true)}
+                              </div>
                             {:else}
                               {@const actions = item.actions ?? [item]}
-                              {@const grouped = actions.length > 1}
-                              {@const groupKey = `live-group-${item.id}`}
-                              <div class:diagnosis-live-action-group={grouped} class="diagnosis-live-action-wrap">
-                                {#if grouped}
+                              {#if actions.length > 1}
+                                {@const groupKey = `live-group-${item.id}`}
+                                <div class="diagnosis-live-action-wrap diagnosis-live-action-group">
                                   <button
-                                    class="diagnosis-live-action"
+                                    class="diagnosis-live-action summary"
                                     aria-expanded={Boolean(diagnosisActionExpanded[groupKey])}
                                     on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [groupKey]: !diagnosisActionExpanded[groupKey] })}
                                   >
                                     <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[groupKey] ? '⌄' : '›'}</span>
-                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span>
-                                    <code>{item.tool}</code>
-                                    <span class="diagnosis-live-action-count">连续 {actions.length} 个动作</span>
+                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={13} /></span>
+                                    <span class="diagnosis-live-action-label">调用工具 · {actions.length} 个动作</span>
                                     <span class="diagnosis-live-action-status" class:error={item.status !== '已完成'}>{item.status}</span>
                                     <small>{item.duration}</small>
                                     <small>总耗时 {item.elapsed}</small>
@@ -8553,56 +8830,33 @@ import { onMount } from 'svelte';
                                       {#each actions as action (action.id)}
                                         {@const actionKey = `live-action-${action.id}`}
                                         <div class="diagnosis-live-action-child-wrap">
-                                          <button
-                                            class="diagnosis-live-action child"
-                                            aria-expanded={Boolean(diagnosisActionExpanded[actionKey])}
-                                            on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}
-                                          >
-                                            <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span>
-                                            <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={12} /></span>
-                                            <code>{action.tool}</code>
-                                            <span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span>
-                                            <small>{action.duration}</small>
-                                          </button>
+                                          <button class="diagnosis-live-action child" aria-expanded={Boolean(diagnosisActionExpanded[actionKey])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}><span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={12} /></span><span class="diagnosis-live-action-label">{diagnosisActionLabel(action)}</span><span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span><small>{action.duration}</small></button>
                                           {#if diagnosisActionExpanded[actionKey]}
                                             <div class="diagnosis-live-action-detail child-detail">
-                                              <div><small>入参 JSON</small><pre>{action.input ?? '暂无入参'}</pre></div>
-                                              <div><small>出参 JSON</small><pre>{action.output ?? '暂无出参'}</pre></div>
+                                              <div><small>入参</small><pre>{action.input ?? '暂无入参'}</pre></div>
+                                              <div><small>出参</small><pre>{action.output ?? '暂无出参'}</pre></div>
                                             </div>
                                           {/if}
                                         </div>
                                       {/each}
                                     </div>
                                   {/if}
-                                {:else}
-                                  {@const action = actions[0]}
+                                </div>
+                              {:else}
+                                {#each actions as action (action.id)}
                                   {@const actionKey = `live-action-${action.id}`}
-                                  <button
-                                    class="diagnosis-live-action"
-                                    aria-expanded={Boolean(diagnosisActionExpanded[actionKey])}
-                                    on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}
-                                  >
-                                    <span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span>
-                                    <span class="diagnosis-live-action-icon" aria-hidden="true"><PlugZap size={13} /></span>
-                                    <code>{action.tool}</code>
-                                    <span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span>
-                                    <small>{action.duration}</small>
-                                    <small>{action.remaining}</small>
-                                    <small>总耗时 {action.elapsed}</small>
-                                  </button>
-                                  {#if diagnosisActionExpanded[actionKey]}
-                                    <div class="diagnosis-live-action-detail">
-                                      <div><small>入参 JSON</small><pre>{action.input ?? '暂无入参'}</pre></div>
-                                      <div><small>出参 JSON</small><pre>{action.output ?? '暂无出参'}</pre></div>
-                                    </div>
-                                  {/if}
-                                {/if}
-                              </div>
+                                  <div class="diagnosis-live-action-wrap">
+                                    <button class="diagnosis-live-action" aria-expanded={Boolean(diagnosisActionExpanded[actionKey])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionKey]: !diagnosisActionExpanded[actionKey] })}><span class="diagnosis-live-action-chevron" aria-hidden="true">{diagnosisActionExpanded[actionKey] ? '⌄' : '›'}</span><span class="diagnosis-live-action-icon" aria-hidden="true"><Wrench size={13} /></span><span class="diagnosis-live-action-label">{diagnosisActionLabel(action)}</span><span class="diagnosis-live-action-status" class:error={action.status !== '已完成'}>{action.status}</span><small>{action.duration}</small><small>总耗时 {action.elapsed}</small></button>
+                                    {#if diagnosisActionExpanded[actionKey]}<div class="diagnosis-live-action-detail"><div><small>入参</small><pre>{action.input ?? '暂无入参'}</pre></div><div><small>出参</small><pre>{action.output ?? '暂无出参'}</pre></div></div>{/if}
+                                  </div>
+                                {/each}
+                              {/if}
                             {/if}
                           {/each}
                         </div>
+                        </svelte:element>
                       {/if}
-                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(diagnosisStreamingText)}</div>{/if}
+                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdownShared(diagnosisStreamingText, true)}</div>{/if}
                       {#if diagnosisGenerating || diagnosisHasRunningActions(diagnosisSnapshot)}
                         <span class="diagnosis-thinking diagnosis-thinking-inline" aria-live="polite"><i></i><i></i><i></i><span>正在思考</span></span>
                       {:else if !diagnosisStreamingText && !diagnosisLiveTimeline(diagnosisSnapshot).length && !diagnosisInterruptedReason}
@@ -8610,6 +8864,22 @@ import { onMount } from 'svelte';
                       {/if}
                       {#if diagnosisInterruptedReason}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}
                     </div>
+                    {#if diagnosisFinalizing}
+                      <div class="diagnosis-answer-actions diagnosis-answer-actions-visible">
+                        <button
+                          class="diagnosis-answer-copy"
+                          aria-label="复制回答"
+                          title="复制回答"
+                          on:click={() =>
+                            writeDiagnosisClipboard(
+                              diagnosisLiveProcessExpanded
+                                ? `${diagnosisStreamingText}\n\n执行过程\n\n${diagnosisProcessText(diagnosisSnapshot)}`
+                                : diagnosisStreamingText,
+                              '回答已复制。'
+                            )}
+                          ><Copy size={14} />复制回答</button>
+                      </div>
+                    {/if}
                   </div>
                 </article>
               {/if}
@@ -8761,42 +9031,106 @@ import { onMount } from 'svelte';
                     </p>{/each}
                 </div>
               {:else}
-                <div class="diagnosis-evidence-timeline">
-                  {#each diagnosisEvidenceTimeline(diagnosisSnapshot) as item (item.id)}
-                    {#if item.kind === 'tool'}
+                <div class="diagnosis-evidence-pane">
+                  <div class="diagnosis-evidence-timeline">
+                    {#each diagnosisEvidenceTimeline(diagnosisSnapshot) as item (item.id)}
+                    {#if item.kind === 'turn'}
+                      <details class="diagnosis-evidence-chain" open={item.id === diagnosisEvidenceTimeline(diagnosisSnapshot).at(-1)?.id && diagnosisGenerating}>
+                        <summary>
+                          <span class="diagnosis-evidence-chain-marker" aria-hidden="true"></span>
+                          <span class="diagnosis-evidence-chain-title" title={item.title}>{item.title}</span>
+                          <small>{item.detail}</small>
+                          <span class="diagnosis-evidence-chevron">›</span>
+                        </summary>
+                        <div class="diagnosis-evidence-chain-body">
+                        {#each item.children ?? [] as child (child.id)}
+                        {#if child.kind === 'tool-group'}
+                          {@const group = child}
+                      <details class="diagnosis-evidence-event tool-event tool-group">
+                        <summary>
+                          <span class="diagnosis-evidence-marker tool"></span>
+                          <span class="diagnosis-evidence-event-main"><strong>{group.title}</strong><small>{group.status}{#if group.detail} · {group.detail}{/if}</small></span>
+                          <span class="diagnosis-evidence-chevron">›</span>
+                        </summary>
+                        <div class="diagnosis-evidence-tool-group">
+                          {#each group.children ?? [] as tool (tool.id)}
+                            <details class="diagnosis-evidence-event tool-event">
+                              <summary>
+                                <span class="diagnosis-evidence-marker tool"></span>
+                                <span class="diagnosis-evidence-event-main"><strong>{tool.tool ?? tool.title}</strong><small>{tool.status}{#if tool.duration} · {tool.duration}{/if}{#if tool.evidenceIds?.length} · 已生成证据 {tool.evidenceIds.length} 条{/if}</small></span>
+                                <span class="diagnosis-evidence-chevron">›</span>
+                              </summary>
+                              <div class="diagnosis-evidence-tool-detail">
+                                {#if tool.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{tool.evidenceIds.join('、')}</small>{/if}
+                                <div><small>入参 JSON</small><pre>{tool.input ?? '暂无入参'}</pre></div>
+                                <div><small>出参 JSON</small><pre>{tool.output ?? '暂无出参'}</pre></div>
+                              </div>
+                            </details>
+                          {/each}
+                        </div>
+                      </details>
+                    {:else if child.kind === 'tool'}
                       <details class="diagnosis-evidence-event tool-event">
                         <summary>
                           <span class="diagnosis-evidence-marker tool"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{item.tool}</strong><small>{item.status}{#if item.duration} · {item.duration}{/if}</small></span>
+                          <span class="diagnosis-evidence-event-main"><strong>{child.tool}</strong><small>{child.status}{#if child.duration} · {child.duration}{/if}{#if child.evidenceIds?.length} · 已生成证据 {child.evidenceIds.length} 条{/if}</small></span>
                           <span class="diagnosis-evidence-chevron">›</span>
                         </summary>
                         <div class="diagnosis-evidence-tool-detail">
-                          <div><small>入参 JSON</small><pre>{item.input ?? '暂无入参'}</pre></div>
-                          <div><small>出参 JSON</small><pre>{item.output ?? '暂无出参'}</pre></div>
+                          {#if child.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{child.evidenceIds.join('、')}</small>{/if}
+                          <div><small>入参 JSON</small><pre>{child.input ?? '暂无入参'}</pre></div>
+                          <div><small>出参 JSON</small><pre>{child.output ?? '暂无出参'}</pre></div>
                         </div>
+                      </details>
+                    {:else if child.kind === 'observation' && child.detail}
+                      <details class="diagnosis-evidence-event tool-event observation-event">
+                        <summary>
+                          <span class="diagnosis-evidence-marker observation"></span>
+                          <span class="diagnosis-evidence-event-main"><strong>{child.title}</strong><small>环境反馈</small></span>
+                          <span class="diagnosis-evidence-chevron">›</span>
+                        </summary>
+                        <div class="diagnosis-evidence-tool-detail observation-detail"><pre>{child.detail}</pre></div>
                       </details>
                     {:else}
                       <div class="diagnosis-evidence-event">
-                        <span class="diagnosis-evidence-marker {item.kind}"></span>
-                        <div class="diagnosis-evidence-event-main"><strong>{item.title}</strong>{#if item.detail}<p>{item.detail}</p>{/if}</div>
+                        <span class="diagnosis-evidence-marker {child.kind}"></span>
+                        <div class="diagnosis-evidence-event-main"><strong>{child.title}</strong>{#if child.detail}<p>{child.detail}</p>{/if}</div>
                       </div>
                     {/if}
-                  {:else}
-                    <p class="diagnosis-empty">开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。</p>
-                  {/each}
-                </div>
-                {#if diagnosisSnapshot?.evidence?.length}
-                  <div class="diagnosis-evidence-snapshots">
-                    <div class="diagnosis-evidence-section-title">已采集证据</div>
-                    {#each diagnosisSnapshot.evidence as evidence}
-                      <button class:active={selectedEvidence?.id === evidence.id} on:click={() => (selectedEvidence = evidence)}>
-                        <strong>{evidence.capability || 'Connector 只读结果'}</strong>
-                        <small>{formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'}</small>
-                      </button>
                     {/each}
-                    {#if selectedEvidence}<pre class="diagnosis-evidence-detail">{JSON.stringify(selectedEvidence.content, null, 2)}</pre>{/if}
+                        </div>
+                      </details>
+                    {:else}
+                      <p class="diagnosis-empty">开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。</p>
+                    {/if}
+                    {/each}
                   </div>
-                {/if}
+                  {#if diagnosisSnapshot?.evidence?.length}
+                    <div class="diagnosis-evidence-snapshots">
+                    <div class="diagnosis-evidence-section-title"><span>证据快照（原始结果）</span><small>工具执行过程已在上方证据链展示</small><b>{diagnosisSnapshot.evidence.length} 条</b></div>
+                    {#each diagnosisSnapshot.evidence as evidence (evidence.id)}
+                      {@const sourceTools = diagnosisEvidenceSourceTools(diagnosisSnapshot, evidence)}
+                      <details class="diagnosis-evidence-snapshot" id={`evidence-${evidence.id}`}>
+                        <summary>
+                          <span class="diagnosis-evidence-snapshot-marker" aria-hidden="true"></span>
+                          <span class="diagnosis-evidence-snapshot-main">
+                            <strong>Evidence {evidence.id.slice(0, 8)}</strong>
+                            <small>{evidence.capability || 'Connector 只读结果'} · {diagnosisResourceName(evidence.source_resource_id ?? evidence.target_resource_id)} · {formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'}{#if evidence.untrusted} · 外部结果，需核验{/if}</small>
+                          </span>
+                          <span class="diagnosis-evidence-chevron">›</span>
+                        </summary>
+                        <div class="diagnosis-evidence-snapshot-detail">
+                          <p>{diagnosisEvidenceSummary(evidence)}</p>
+                          {#if evidence.window_start || evidence.window_end}<small class="diagnosis-evidence-window">时间窗口：{evidence.window_start ? formatDate(evidence.window_start) : '—'} 至 {evidence.window_end ? formatDate(evidence.window_end) : '—'}</small>{/if}
+                          <small class="diagnosis-evidence-source">来源工具：{sourceTools.length ? sourceTools.join('、') : '未关联具体调用'}</small>
+                          <small class="diagnosis-evidence-id">Evidence ID：{evidence.id}</small>
+                          <pre>{JSON.stringify(evidence.content, null, 2)}</pre>
+                        </div>
+                      </details>
+                    {/each}
+                    </div>
+                  {/if}
+                </div>
               {/if}
             </aside>
           {/if}

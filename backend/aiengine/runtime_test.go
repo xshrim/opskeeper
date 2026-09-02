@@ -44,7 +44,7 @@ func TestRequestNormalizeDefaultsBudgetAndProfile(t *testing.T) {
 	if err := request.Normalize(); err != nil {
 		t.Fatalf("Normalize() error = %v", err)
 	}
-	if request.Profile != ProfileInteractive || request.Budget.MaxToolCalls != 100 || request.Budget.MaxTokens != 200000 || request.Budget.MaxOutputTokens != 128000 || request.Budget.Timeout != 30*time.Minute {
+	if request.Profile != ProfileInteractive || request.Budget.MaxToolCalls != 100 || request.Budget.MaxTokens != 1000000 || request.Budget.MaxOutputTokens != 128000 || request.Budget.Timeout != 30*time.Minute {
 		t.Fatalf("unexpected defaults: %+v", request)
 	}
 }

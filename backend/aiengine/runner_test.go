@@ -27,6 +27,46 @@ type duplicateToolModel struct {
 	requests []*model.LLMRequest
 }
 
+type outputCapModel struct {
+	mu       sync.Mutex
+	requests []*model.LLMRequest
+}
+
+func (m *outputCapModel) Name() string { return "output-cap-model" }
+
+func (m *outputCapModel) GenerateContent(_ context.Context, request *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		m.mu.Lock()
+		m.requests = append(m.requests, request)
+		m.mu.Unlock()
+		yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Text: "完成"}}}}, nil)
+	}
+}
+
+func TestAgentRunnerNeverExceedsProviderOutputCap(t *testing.T) {
+	modelClient := &outputCapModel{}
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{
+			Client: modelClient, Capabilities: []string{"text"},
+			ContextWindowTokens: 20000, MaxOutputTokens: 8192,
+		}, nil
+	})
+	if _, err := runner.Run(context.Background(), Request{
+		ExecutionID: "exec-output-cap", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer",
+		Budget: Budget{MaxIterations: 1, MaxTokens: 1000, MaxOutputBytes: 4096},
+	}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	modelClient.mu.Lock()
+	defer modelClient.mu.Unlock()
+	if len(modelClient.requests) != 1 || modelClient.requests[0].Config == nil {
+		t.Fatalf("model request config missing: %+v", modelClient.requests)
+	}
+	if got := modelClient.requests[0].Config.MaxOutputTokens; got != 8192 {
+		t.Fatalf("MaxOutputTokens = %d, want provider cap 8192", got)
+	}
+}
+
 func (m *duplicateToolModel) Name() string { return "duplicate-tool-model" }
 
 func (m *duplicateToolModel) GenerateContent(_ context.Context, request *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {
@@ -622,10 +662,11 @@ func TestAgentRunnerRejectsEmptyFinalAnswer(t *testing.T) {
 }
 
 func TestObservationSummaryRedactsAndBoundsOutput(t *testing.T) {
+	const logSize = 6000
 	summary := summarizeObservation(map[string]any{
 		"password": "do-not-show",
 		"nested":   map[string]any{"api_key": "also-secret"},
-		"logs":     strings.Repeat("x", 6000),
+		"logs":     strings.Repeat("x", logSize),
 	})
 	encoded, err := json.Marshal(summary)
 	if err != nil {
@@ -633,6 +674,13 @@ func TestObservationSummaryRedactsAndBoundsOutput(t *testing.T) {
 	}
 	if len(encoded) > maxObservationBytes || strings.Contains(string(encoded), "do-not-show") || strings.Contains(string(encoded), "also-secret") {
 		t.Fatalf("unsafe observation summary: len=%d value=%s", len(encoded), encoded)
+	}
+	if object, ok := summary.(map[string]any); ok {
+		if logs, ok := object["logs"].(string); !ok || len(logs) != logSize {
+			t.Fatalf("long log field was unexpectedly truncated: type=%T len=%d", object["logs"], len(logs))
+		}
+	} else {
+		t.Fatalf("observation summary type=%T, want object", summary)
 	}
 }
 

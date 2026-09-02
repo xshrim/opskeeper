@@ -141,7 +141,7 @@ func DefaultBudget() Budget {
 	// Long-running diagnosis may require many model/tool turns. Keep a finite
 	// upper bound, but leave enough time for the execution loop to react to
 	// real environment feedback instead of failing after a couple of minutes.
-	return Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 200000, MaxOutputTokens: 128000, MaxOutputBytes: 64 << 10, Timeout: 30 * time.Minute}
+	return Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputTokens: 128000, MaxOutputBytes: 64 << 10, Timeout: 30 * time.Minute}
 }
 
 type Request struct {
