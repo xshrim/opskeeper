@@ -2175,6 +2175,14 @@ import { onMount } from 'svelte';
     return groups;
   }
 
+  function diagnosisProcessActionCount(snapshot: DiagnosisSnapshot | null) {
+    if (!snapshot) return 0;
+    return diagnosisActionData(snapshot).reduce(
+      (total, group) => total + (Array.isArray(group.children) ? group.children.length : 0),
+      0
+    );
+  }
+
   type DiagnosisTraceItem = {
     id: number;
     kind: 'analysis' | 'action' | 'observation' | 'phase';
@@ -8337,12 +8345,27 @@ import { onMount } from 'svelte';
                       {:else}
                         {#if message.role === 'assistant' && !diagnosisGenerating && index === diagnosisSnapshot.messages
                               .map((item) => item.role)
-                              .lastIndexOf('assistant')}{#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace"><div class="diagnosis-trace-title">执行过程</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}{#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
-                            <div class="diagnosis-action-group">
-                              <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
-                              {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}</div>{/each}</div>{/if}
-                            </div>
-                          {/each}{/if}
+                              .lastIndexOf('assistant')}
+                          {#if diagnosisTraceData(diagnosisSnapshot).length || diagnosisActionData(diagnosisSnapshot).length}
+                            <details class="diagnosis-process">
+                              <summary class="diagnosis-process-summary">
+                                <span class="diagnosis-process-title">执行过程</span>
+                                <span class="diagnosis-process-meta">
+                                  {#if diagnosisProcessActionCount(diagnosisSnapshot)}{diagnosisProcessActionCount(diagnosisSnapshot)} 个动作 · {/if}{diagnosisStatusLabel(diagnosisSnapshot.session.status)}
+                                </span>
+                              </summary>
+                              <div class="diagnosis-process-body">
+                                {#if diagnosisTraceData(diagnosisSnapshot).length}<div class="diagnosis-trace"><div class="diagnosis-trace-title">思考、行动与观察</div>{#each diagnosisTraceData(diagnosisSnapshot) as trace (trace.id)}<div class="diagnosis-trace-item {trace.kind}"><span class="diagnosis-trace-dot"></span><span class="diagnosis-trace-text">{trace.text}</span>{#if trace.iteration}<small>第 {trace.iteration} 轮</small>{/if}</div>{/each}</div>{/if}
+                                {#each diagnosisActionData(diagnosisSnapshot) as actionGroup}
+                                  <div class="diagnosis-action-group">
+                                    <button class="diagnosis-action-row" aria-expanded={Boolean(diagnosisActionExpanded[actionGroup.id])} on:click={() => (diagnosisActionExpanded = { ...diagnosisActionExpanded, [actionGroup.id]: !diagnosisActionExpanded[actionGroup.id] })}><span class="diagnosis-action-chevron">{diagnosisActionExpanded[actionGroup.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><ClipboardCheck size={13} /></span><strong>{actionGroup.title}</strong><em class:running={actionGroup.status === '进行中'}>{actionGroup.status}</em><small>{actionGroup.duration} · {actionGroup.children.length} 项</small></button>
+                                    {#if diagnosisActionExpanded[actionGroup.id]}<div class="diagnosis-action-children">{#each actionGroup.children as child}<div><button class="diagnosis-action-row child" aria-expanded={Boolean(diagnosisActionChildren[child.id])} on:click={() => (diagnosisActionChildren = { ...diagnosisActionChildren, [child.id]: !diagnosisActionChildren[child.id] })}><span class="diagnosis-action-chevron">{diagnosisActionChildren[child.id] ? '⌄' : '›'}</span><span class="diagnosis-action-icon" aria-hidden="true"><PlugZap size={13} /></span><strong>{child.title}</strong><em>{child.status}</em><small>{child.duration}</small></button>{#if diagnosisActionChildren[child.id]}<div class="diagnosis-action-detail"><div><small>入参 JSON</small><pre>{child.input}</pre></div><div><small>出参 JSON</small><pre>{child.output}</pre></div></div>{/if}</div>{/each}</div>{/if}
+                                  </div>
+                                {/each}
+                              </div>
+                            </details>
+                          {/if}
+                        {/if}
                         <div class="diagnosis-bubble-f">
                           <div class="diagnosis-markdown">{@html renderDiagnosisMarkdown(message.content)}</div>
                           {#if diagnosisInterruptedReason && message.role === 'assistant' && index === diagnosisSnapshot.messages
