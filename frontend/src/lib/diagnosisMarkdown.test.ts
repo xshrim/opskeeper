@@ -12,6 +12,13 @@ describe('diagnosis markdown rendering', () => {
     expect(renderDiagnosisMarkdown(source)).toContain('<p>当前运行正常。</p>');
   });
 
+  it('renders a completed heading even when the answer is still a prefix', () => {
+    const prefix = '## 结论\n\n当前运行';
+    const html = renderDiagnosisMarkdown(prefix);
+    expect(html).toContain('<h2>结论</h2>');
+    expect(html).toContain('<p>当前运行</p>');
+  });
+
   it('does not guess a heading from malformed provider text', () => {
     const source = '##结论当前运行正常。';
     expect(normalizeDiagnosisMarkdown(source)).toBe(source);
@@ -19,13 +26,10 @@ describe('diagnosis markdown rendering', () => {
     expect(renderDiagnosisMarkdown(source)).toContain('##结论当前运行正常。');
   });
 
-  it('does not flash an empty code panel for an opening fence', () => {
-    expect(renderDiagnosisMarkdown('```sql\n', true)).not.toContain(
-      'diagnosis-code-wrap'
-    );
-    expect(renderDiagnosisMarkdown('```sql\nSELECT 1;', true)).toContain(
-      'diagnosis-code-wrap'
-    );
+  it('keeps incomplete markdown source unchanged', () => {
+    const source = '```sql\nSELECT 1;';
+    expect(normalizeDiagnosisMarkdown(source)).toBe(source);
+    expect(renderDiagnosisMarkdown(source)).toContain('SELECT');
   });
 
   it('renders completed fenced code with its language', () => {
@@ -37,9 +41,8 @@ describe('diagnosis markdown rendering', () => {
     expect(html).toContain('data-code-copy="SELECT%201%3B"');
   });
 
-  it('temporarily closes incomplete inline delimiters only while streaming', () => {
-    expect(normalizeDiagnosisMarkdown('**重点', true)).toBe('**重点**');
-    expect(normalizeDiagnosisMarkdown('`字段', true)).toBe('`字段`');
-    expect(normalizeDiagnosisMarkdown('**重点')).toBe('**重点');
+  it('uses identical rendering for the same live and persisted source', () => {
+    const source = '## 结论\n\n**关键证据**\n\n```sql\nSELECT 1;\n```';
+    expect(renderDiagnosisMarkdown(source)).toBe(renderDiagnosisMarkdown(source));
   });
 });

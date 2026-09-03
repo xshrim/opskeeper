@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from 'svelte';
+import { onMount, tick } from 'svelte';
   import {
     Boxes,
     Bot,
@@ -465,8 +465,12 @@ import { onMount } from 'svelte';
   let diagnosisFinalizing = false;
   let diagnosisLiveProcessExpanded = false;
   let diagnosisStreamingText = '';
+  // Text emitted before a model turn reveals that it will call a tool is only
+  // a candidate. It must not leak into the final assistant answer.
+  let diagnosisStreamingTurnBase = '';
   let diagnosisStreamingStartedAt = 0;
   let diagnosisStreamingAssistantBaseline = 0;
+  let diagnosisMessageListElement: HTMLDivElement | null = null;
   let diagnosisActionExpanded: Record<string, boolean> = {};
   let diagnosisProcessExpanded: Record<string, boolean> = {};
   let diagnosisActionChildren: Record<string, boolean> = {};
@@ -1532,6 +1536,7 @@ import { onMount } from 'svelte';
     diagnosisInterruptedReason = '';
     diagnosisFinalizing = false;
     diagnosisStreamingText = '';
+    diagnosisStreamingTurnBase = '';
     diagnosisStreamingStartedAt = 0;
     try {
       diagnosisSnapshot = await api.diagnosisSession(id);
@@ -1585,6 +1590,7 @@ import { onMount } from 'svelte';
       'model.resumed',
       'assistant.progress',
       'assistant.delta',
+      'assistant.answer_started',
       'assistant.completed',
       'tool.requested',
       'tool.started',
@@ -1620,7 +1626,11 @@ import { onMount } from 'svelte';
     if (eventType === 'model.started') {
       diagnosisFinalizing = false;
       diagnosisLiveProcessExpanded = false;
-      diagnosisStreamingText = '';
+      diagnosisStreamingTurnBase = diagnosisStreamingText;
+      // Keep the current live node mounted across model-turn boundaries. A
+      // tool-decision turn is removed from the answer only when the tool call
+      // is actually observed; clearing here would hide already received text
+      // while the next model request is still pending.
       diagnosisStreamingStartedAt ||= Date.now();
       diagnosisGenerating = true;
       return;
@@ -1628,9 +1638,9 @@ import { onMount } from 'svelte';
     if (eventType === 'assistant.delta') {
       const text = String(payload.text ?? '');
       if (text) {
-        // Apply each provider delta immediately so Markdown and code blocks
-        // re-render during generation instead of waiting for the next frame
-        // or the final assistant message.
+        // assistant.delta is an append-only UTF-8 text fragment. Keep it byte
+        // identical to the durable assistant message; the renderer alone
+        // decides whether the currently complete syntax is Markdown.
         diagnosisStreamingText += text;
         diagnosisStreamingStartedAt ||= Date.now();
       }
@@ -1638,26 +1648,42 @@ import { onMount } from 'svelte';
       return;
     }
     if (eventType === 'assistant.progress') {
-      // A tool-decision sentence may have arrived earlier as a provider delta.
-      // Keep the canonical progress event and remove that duplicate draft.
+      // Tool decisions are timeline metadata, not assistant answer text.
       if (String(payload.kind ?? '') === 'tool_decision') {
-        diagnosisStreamingText = '';
+        // Partial model text may have been emitted before the function call
+        // became visible. Roll it back now that the turn is known to be a
+        // tool-decision turn; the text remains available in the timeline.
+        diagnosisStreamingText = diagnosisStreamingTurnBase;
+        diagnosisFinalizing = false;
+        diagnosisLiveProcessExpanded = false;
       }
       diagnosisGenerating = true;
       diagnosisStreamingStartedAt ||= Date.now();
       return;
     }
     if (eventType === 'model.resumed') {
+      // The preceding model turn produced tool observations. Its candidate
+      // text belongs to the execution timeline, not to the final answer.
       diagnosisStreamingText = '';
+      diagnosisStreamingTurnBase = '';
+      diagnosisGenerating = true;
+      return;
+    }
+    if (eventType === 'assistant.answer_started') {
+      // AIEngine emits this only after the current model turn is confirmed to
+      // be a final answer turn. Unlike a first-token heuristic, it cannot be
+      // invalidated later by a tool call.
+      diagnosisFinalizing = true;
+      diagnosisLiveProcessExpanded = false;
       diagnosisGenerating = true;
       return;
     }
     if (eventType === 'assistant.completed') {
       const finalText = String(payload.text ?? '');
       if (finalText) {
-        // Deltas are the canonical on-screen stream. The completion payload
-        // exists for durable persistence and reconnect recovery, not to
-        // replace a live DOM node with a second rendering pass.
+        // A completion event closes the stream; it is not a second rendering
+        // pass. Only adapters that produced no deltas need their final text to
+        // seed the live node; streamed text remains byte-for-byte unchanged.
         if (!diagnosisStreamingText) diagnosisStreamingText = finalText;
       }
       // The final answer is durable, but stays on this same streamed Markdown
@@ -1672,9 +1698,17 @@ import { onMount } from 'svelte';
       return;
     }
     if (eventType === 'execution.started' || eventType === 'tool.requested' || eventType === 'tool.started' || eventType === 'tool.completed' || eventType === 'tool.failed' || eventType === 'phase.changed') {
+      if (eventType === 'tool.requested') {
+        // Move any candidate sentence already received for this model turn to
+        // the process timeline as soon as the action becomes real. This keeps
+        // the answer text free of tool-planning prose without waiting for the
+        // tool result or a model.resumed event.
+        diagnosisStreamingText = diagnosisStreamingTurnBase;
+        diagnosisFinalizing = false;
+        diagnosisLiveProcessExpanded = false;
+      }
       diagnosisGenerating = true;
       diagnosisStreamingStartedAt ||= Date.now();
-      if (eventType !== 'tool.requested' && eventType !== 'tool.started') void refreshDiagnosis(id);
       return;
     }
     if (eventType === 'execution.failed' || eventType === 'execution.cancelled' || eventType === 'diagnosis.failed' || eventType === 'diagnosis.cancelled') {
@@ -1708,7 +1742,10 @@ import { onMount } from 'svelte';
       });
       return;
     }
-    void refreshDiagnosis(id);
+    // Evidence and phase events are already merged into the live snapshot by
+    // appendDiagnosisEvent. Avoid replacing the streaming DOM with a slower
+    // snapshot read for every event; refresh only at explicit terminal
+    // boundaries above.
   }
 
   function appendDiagnosisEvent(type: string, payload: Record<string, unknown>, id: number) {
@@ -1804,6 +1841,7 @@ import { onMount } from 'svelte';
       errorMessage = '请先选择一个可用级别。';
       return;
     }
+    const question = diagnosisQuestion.trim();
     await action(async () => {
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
@@ -1811,9 +1849,10 @@ import { onMount } from 'svelte';
       diagnosisFinalizing = false;
       diagnosisLiveProcessExpanded = false;
       diagnosisStreamingText = '';
+      diagnosisStreamingTurnBase = '';
       const session = await api.startDiagnosis({
         scope_id: selectedScopeId,
-        question: diagnosisQuestion,
+        question,
         target_resource_ids: diagnosisTargetIds,
         ai_provider_resource_id: selectedProviderId || undefined,
         model_name: llmModelName || undefined
@@ -1824,6 +1863,7 @@ import { onMount } from 'svelte';
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
       await openDiagnosis(session.id);
+      await scrollDiagnosisQuestionIntoView('', question);
     });
   }
 
@@ -1963,19 +2003,40 @@ import { onMount } from 'svelte';
   async function sendDiagnosisFollowup() {
     if (!selectedDiagnosisId || !diagnosisFollowup.trim()) return;
     await action(async () => {
+      const question = diagnosisFollowup.trim();
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
         : 0;
       diagnosisFinalizing = false;
       diagnosisLiveProcessExpanded = false;
       diagnosisStreamingText = '';
-      await api.askDiagnosis(selectedDiagnosisId, diagnosisFollowup);
+      const created = await api.askDiagnosis(selectedDiagnosisId, question);
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
       diagnosisGenerating = true;
       await refreshDiagnosis();
       openDiagnosisEvents(selectedDiagnosisId);
+      await scrollDiagnosisQuestionIntoView(created.id, question);
     });
+  }
+
+  async function scrollDiagnosisQuestionIntoView(messageID = '', content = '') {
+    await tick();
+    const list = diagnosisMessageListElement;
+    if (!list) return;
+    const candidates = Array.from(
+      list.querySelectorAll<HTMLElement>('[data-diagnosis-message-id]')
+    );
+    const target = [...candidates].reverse().find((item) => {
+      if (messageID && item.dataset.diagnosisMessageId === messageID) return true;
+      return Boolean(content && item.dataset.diagnosisMessageContent === content);
+    });
+    if (!target) return;
+    const listRect = list.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const topPadding = 16;
+    const nextTop = list.scrollTop + targetRect.top - listRect.top - topPadding;
+    list.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
   }
 
   function isDiagnosisRunning(status: DiagnosisStatus | string) {
@@ -1997,7 +2058,8 @@ import { onMount } from 'svelte';
     diagnosisGenerating = false;
     diagnosisFinalizing = false;
     diagnosisLiveProcessExpanded = false;
-    diagnosisStreamingText = '';
+      diagnosisStreamingText = '';
+      diagnosisStreamingTurnBase = '';
     diagnosisStreamingStartedAt = 0;
     diagnosisStreamingAssistantBaseline = 0;
   }
@@ -2069,6 +2131,7 @@ import { onMount } from 'svelte';
       diagnosisInterruptedReason = '';
       diagnosisGenerating = true;
       openDiagnosisEvents(selectedDiagnosisId);
+      await scrollDiagnosisQuestionIntoView(created.id, content);
     });
   }
 
@@ -2599,6 +2662,18 @@ import { onMount } from 'svelte';
     const runStart = [...events].reverse().findIndex((event) => event.type === 'execution.started');
     const activeEvents = runStart < 0 ? events : events.slice(events.length - runStart - 1);
     const items: DiagnosisLiveTimelineItem[] = [];
+    // A model delta is initially ambiguous: it can become the final answer or
+    // the short user-visible explanation that precedes a tool call. Resolve
+    // that ambiguity from the complete event batch without changing the text.
+    // Deltas belonging to an iteration that contains tool lifecycle events are
+    // rendered in the execution timeline in their original event position.
+    const toolIterations = new Set(
+      activeEvents
+        .filter((event) => event.type.startsWith('tool.'))
+        .map((event) => Number(event.payload?.iteration ?? 0) || 0)
+        .filter((iteration) => iteration > 0)
+    );
+    const analysisByIteration = new Map<number, DiagnosisLiveTimelineItem>();
     const startedAt = activeEvents.find((event) => event.type === 'execution.started')?.created_at;
     const toolStarted = new Map<string, string>();
     const toolRequested = new Map<string, string>();
@@ -2639,9 +2714,27 @@ import { onMount } from 'svelte';
     for (const event of activeEvents) {
       const payload = event.payload ?? {};
       const iteration = Number(payload.iteration ?? 0) || undefined;
+      if (event.type === 'assistant.delta') {
+        if (iteration && toolIterations.has(iteration)) {
+          let analysis = analysisByIteration.get(iteration);
+          if (!analysis) {
+            analysis = { id: event.id, kind: 'analysis', text: '', iteration };
+            analysisByIteration.set(iteration, analysis);
+            items.push(analysis);
+          }
+          analysis.text = `${analysis.text ?? ''}${String(payload.text ?? '')}`;
+        }
+        continue;
+      }
       if (event.type === 'assistant.progress') {
         currentGroup = null;
         const text = String(payload.text ?? '').trim();
+        if (String(payload.kind ?? '') === 'tool_decision' && iteration && toolIterations.has(iteration)) {
+          // The same sentence may have been emitted as deltas before the
+          // function call was finalized. Keep the delta version only once.
+          const analysis = analysisByIteration.get(iteration);
+          if (analysis && analysis.text) continue;
+        }
         if (text && text !== lastAnalysis) {
           items.push({ id: event.id, kind: 'analysis', text, iteration });
           lastAnalysis = text;
@@ -8624,7 +8717,7 @@ import { onMount } from 'svelte';
                 >
               </div>
             </header>
-            <div class="diagnosis-message-list-f">
+            <div class="diagnosis-message-list-f" bind:this={diagnosisMessageListElement}>
               {#if !diagnosisSnapshot}<div class="diagnosis-welcome">
                   <span class="diagnosis-welcome-icon"
                     ><Stethoscope size={23} /></span
@@ -8637,7 +8730,11 @@ import { onMount } from 'svelte';
                 </div>{/if}
               {#if diagnosisSnapshot}{#each diagnosisSnapshot.messages as message, index}
                 {#if !deferFinalDiagnosisMessage(message, index)}
-                  <article class="diagnosis-message-f {message.role}">
+                  <article
+                    class="diagnosis-message-f {message.role}"
+                    data-diagnosis-message-id={message.id}
+                    data-diagnosis-message-content={message.role === 'user' ? message.content : undefined}
+                  >
                     <span class="diagnosis-message-avatar"
                       >{message.role === 'assistant' ? 'AI' : '你'}</span
                     >
@@ -8689,9 +8786,12 @@ import { onMount } from 'svelte';
                                 <div class="diagnosis-live-timeline" aria-label="诊断执行过程">
                                   {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
                                     {#if item.kind === 'analysis'}
-                                      <div class="diagnosis-live-analysis diagnosis-markdown">
-                                        {@html renderDiagnosisMarkdownShared((item.text ?? '').trim(), true)}
-                                      </div>
+                                      {@const analysisText = item.text ?? ''}
+                                      {#key analysisText}
+                                        <div class="diagnosis-live-analysis diagnosis-markdown">
+                                          {@html renderDiagnosisMarkdownShared(analysisText)}
+                                        </div>
+                                      {/key}
                                     {:else}
                                       {@const actions = item.actions ?? [item]}
                                       {#if actions.length > 1}
@@ -8805,9 +8905,12 @@ import { onMount } from 'svelte';
                         <div class="diagnosis-live-timeline" aria-live="polite">
                           {#each diagnosisLiveTimeline(diagnosisSnapshot) as item (item.id)}
                             {#if item.kind === 'analysis'}
-                              <div class="diagnosis-live-analysis diagnosis-markdown">
-                                {@html renderDiagnosisMarkdownShared((item.text ?? '').trim(), true)}
-                              </div>
+                              {@const analysisText = item.text ?? ''}
+                              {#key analysisText}
+                                <div class="diagnosis-live-analysis diagnosis-markdown">
+                                  {@html renderDiagnosisMarkdownShared(analysisText)}
+                                </div>
+                              {/key}
                             {:else}
                               {@const actions = item.actions ?? [item]}
                               {#if actions.length > 1}
@@ -8856,7 +8959,11 @@ import { onMount } from 'svelte';
                         </div>
                         </svelte:element>
                       {/if}
-                      {#if diagnosisStreamingText}<div class="diagnosis-markdown">{@html renderDiagnosisMarkdownShared(diagnosisStreamingText, true)}</div>{/if}
+                      {#if diagnosisStreamingText}
+                        {#key diagnosisStreamingText}
+                          <div class="diagnosis-markdown">{@html renderDiagnosisMarkdownShared(diagnosisStreamingText)}</div>
+                        {/key}
+                      {/if}
                       {#if diagnosisGenerating || diagnosisHasRunningActions(diagnosisSnapshot)}
                         <span class="diagnosis-thinking diagnosis-thinking-inline" aria-live="polite"><i></i><i></i><i></i><span>正在思考</span></span>
                       {:else if !diagnosisStreamingText && !diagnosisLiveTimeline(diagnosisSnapshot).length && !diagnosisInterruptedReason}

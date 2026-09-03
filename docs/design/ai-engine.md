@@ -420,6 +420,7 @@ prompt.composed
 model.started
 assistant.delta
 assistant.progress
+assistant.answer_started
 tool.requested
 tool.started
 tool.completed
@@ -467,6 +468,7 @@ Reasoning summary（阶段性分析摘要）
 | 阶段变更 | `phase.changed` | `phase`、可选 `detail`、`elapsed_ms` |
 | 模型回合开始 | `model.started` | iteration、目标摘要、`elapsed_ms` |
 | 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、`kind`、是否最终文本、动作计数 |
+| 最终回答开始 | `assistant.answer_started` | 已确认当前模型回合不包含工具调用；iteration、`final=true`、原因 |
 | 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration、动作计数 |
 | 工具执行 | `tool.started` | 工具名、资源、调用序号、`started_at`、动作计数 |
 | 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、`duration_ms`、`elapsed_ms`、动作计数 |
@@ -475,6 +477,8 @@ Reasoning summary（阶段性分析摘要）
 | 执行终止 | `execution.completed` / `execution.failed` / `execution.cancelled` | 终态、错误/预算原因 |
 
 事件必须按实际发生顺序写入持久化 Store 并通过 SSE 推送。前端应按 `sequence` 将阶段文本、工具决策、工具结果和下一轮分析合并为一条时间线；不得把工具记录统一移动到最终回答之后，也不得用轮询快照覆盖已经收到的更新事件。耗时工具开始前应先推送进度，完成或失败后应立即推送观察摘要，然后才允许进入下一轮模型请求。
+
+`assistant.answer_started` 是最终回答语义边界，不等同于“第一个 token 到达”：普通 Provider 的流式 token 在工具调用被确认前可能仍属于工具决策说明，因此 AIEngine 只有在当前模型回合完整结束且确认没有函数调用时才发送该事件。它位于最终 `assistant.completed` 之前，保证消费者不会因首个增量文本误折叠执行过程；需要逐字显示的客户端仍应继续消费 `assistant.delta`。
 
 阶段事件中涉及动作进度时，统一使用以下字段（字段缺省时按事件类型推导）：
 

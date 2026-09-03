@@ -378,6 +378,11 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		if req.Config == nil {
 			req.Config = &genai.GenerateContentConfig{}
 		}
+		// Model configuration is authoritative for generation parameters. Keep
+		// zero as a valid configured temperature (deterministic generation), so
+		// do not use a non-zero check here.
+		temperature := float32(modelResult.Temperature)
+		req.Config.Temperature = &temperature
 		stateText := state.prompt()
 		if req.Config.SystemInstruction == nil {
 			req.Config.SystemInstruction = genai.NewContentFromText(stateText, genai.RoleModel)
@@ -436,12 +441,16 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	turnUsageFinal := false
 	var turnText strings.Builder
 	var turnPartialText strings.Builder
+	// Keep the exact visible source sent in assistant.delta events. This is
+	// also the canonical source for the final result when streaming is active.
+	var turnStreamText strings.Builder
 	turnHasFunctionCall := false
 	var turnToolNames []string
 	startModelTurn := func() bool {
 		iterations++
 		turnText.Reset()
 		turnPartialText.Reset()
+		turnStreamText.Reset()
 		turnHasFunctionCall = false
 		turnToolNames = turnToolNames[:0]
 		turnUsage = nil
@@ -522,9 +531,12 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 				if event.Partial && !part.Thought && part.Text != "" {
 					turnPartialText.WriteString(part.Text)
 					if sink != nil {
-						if text := safeStreamingDelta(part.Text, 2000); text != "" {
+						if text := safeStreamingDelta(part.Text, 0); text != "" {
+							turnStreamText.WriteString(text)
 							_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.delta", Status: StatusRunning, Payload: map[string]any{"text": text, "iteration": iterations, "final": false}})
 						}
+					} else {
+						turnStreamText.WriteString(part.Text)
 					}
 				}
 			}
@@ -635,11 +647,25 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": decisionText, "iteration": iterations, "kind": "tool_decision", "tool_count": len(turnToolNames), "parallel": len(turnToolNames) > 1, "final": false}})
 					}
 				} else {
-					answerText := turnText.String()
+					// In SSE mode the partial chunks are the exact bytes already
+					// delivered to clients. ADK also exposes a non-partial aggregate
+					// for the same turn; using that aggregate as the durable answer
+					// can produce a different Markdown source (most visibly around
+					// line breaks). Keep one canonical source across live and history.
+					answerText := turnPartialText.String()
+					if sink != nil && turnStreamText.Len() > 0 {
+						answerText = turnStreamText.String()
+					}
 					if answerText == "" {
-						answerText = turnPartialText.String()
+						answerText = turnText.String()
 					}
 					if answerText != "" {
+						// The complete model turn is known not to contain a function
+						// call. Emit an explicit semantic boundary before completion;
+						// clients must not infer final-answer state from the first delta.
+						if sink != nil {
+							_ = sink(Event{ExecutionID: request.ExecutionID, Type: EventAssistantAnswerStarted, Status: StatusRunning, Payload: map[string]any{"iteration": iterations, "final": true, "reason": "model_turn_without_tool_call"}})
+						}
 						output.WriteString(answerText)
 					} else if sink != nil {
 						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": "正在分析当前目标并评估下一步", "iteration": iterations, "kind": "analysis", "final": false}})
@@ -670,8 +696,20 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "event_sink", ErrorMessage: publicError(sinkErr), ToolCallCount: int(toolCalls.Load())}, sinkErr
 	}
 	if modelTurnOpen {
-		if !turnHasFunctionCall && turnPartialText.Len() > 0 {
-			output.WriteString(turnPartialText.String())
+		if !turnHasFunctionCall {
+			answerText := turnPartialText.String()
+			if sink != nil && turnStreamText.Len() > 0 {
+				answerText = turnStreamText.String()
+			}
+			if answerText == "" {
+				answerText = turnText.String()
+			}
+			if answerText != "" {
+				if sink != nil {
+					_ = sink(Event{ExecutionID: request.ExecutionID, Type: EventAssistantAnswerStarted, Status: StatusRunning, Payload: map[string]any{"iteration": iterations, "final": true, "reason": "model_turn_without_tool_call"}})
+				}
+				output.WriteString(answerText)
+			}
 		}
 		commitTurnUsage()
 	}
@@ -1169,10 +1207,16 @@ func safeProgressText(value string, maxRunes int) string {
 }
 
 func safeStreamingDelta(value string, maxRunes int) string {
-	if strings.TrimSpace(value) == "" {
+	// Whitespace is meaningful in Markdown (for example the space after `##`
+	// and the blank line separating a heading from its paragraph). Only an
+	// actually empty provider chunk may be discarded.
+	if value == "" {
 		return ""
 	}
 	value = sensitiveProgressPattern.ReplaceAllString(value, `$1[REDACTED]`)
+	if maxRunes <= 0 {
+		return value
+	}
 	return truncateUTF8(value, maxRunes)
 }
 

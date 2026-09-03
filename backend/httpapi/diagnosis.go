@@ -25,6 +25,10 @@ type diagnosisService interface {
 	EventsAfter(context.Context, string, int64, int) ([]diagnosis.Event, error)
 }
 
+type diagnosisEventNotifier interface {
+	SubscribeEvents(context.Context, string) (<-chan struct{}, func())
+}
+
 type diagnosisCanceller interface {
 	Cancel(context.Context, string) error
 }
@@ -186,6 +190,12 @@ func (h diagnosisHandler) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	controller := http.NewResponseController(w)
+	var wake <-chan struct{}
+	unsubscribe := func() {}
+	if notifier, ok := h.service.(diagnosisEventNotifier); ok {
+		wake, unsubscribe = notifier.SubscribeEvents(r.Context(), chi.URLParam(r, "sessionID"))
+	}
+	defer unsubscribe()
 	for {
 		events, err := h.service.EventsAfter(r.Context(), chi.URLParam(r, "sessionID"), after, 200)
 		if err != nil {
@@ -207,6 +217,8 @@ func (h diagnosisHandler) events(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-wake:
+			// An event was appended. Fetch it immediately using the cursor above.
 		case <-time.After(300 * time.Millisecond):
 		}
 	}

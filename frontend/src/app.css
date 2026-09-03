@@ -8250,7 +8250,7 @@ button.workspace-team:hover {
 }
 .diagnosis-live-action-wrap {
   min-width: 0;
-  margin: 0;
+  margin: 0 0 10px;
 }
 .diagnosis-live-action:hover {
   border-color: var(--diagnosis-teal);
@@ -8268,11 +8268,13 @@ button.workspace-team:hover {
   min-height: 0;
   gap: 8px;
   padding: 8px 10px 0 27px;
+  margin-bottom: 8px;
 }
 .diagnosis-live-action-children {
   display: grid;
   gap: 4px;
   margin: 4px 0 0 17px;
+  margin-bottom: 8px;
   padding-left: 10px;
   border-left: 1px solid var(--diagnosis-line);
 }

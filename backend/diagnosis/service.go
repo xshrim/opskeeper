@@ -16,13 +16,15 @@ type ResourceReader interface {
 }
 
 type Service struct {
-	store     Store
-	resources ResourceReader
-	eventMu   sync.Mutex
+	store       Store
+	resources   ResourceReader
+	eventMu     sync.Mutex
+	subMu       sync.Mutex
+	subscribers map[string]map[chan struct{}]struct{}
 }
 
 func NewService(store Store, resources ResourceReader) *Service {
-	return &Service{store: store, resources: resources}
+	return &Service{store: store, resources: resources, subscribers: make(map[string]map[chan struct{}]struct{})}
 }
 
 func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) {
@@ -180,7 +182,63 @@ func (s *Service) appendEvent(ctx context.Context, sessionID string, input Creat
 	s.eventMu.Lock()
 	defer s.eventMu.Unlock()
 	_, err := s.store.AppendEvent(ctx, sessionID, input)
+	if err == nil {
+		s.notifyEventSubscribers(sessionID)
+	}
 	return err
+}
+
+// SubscribeEvents wakes an SSE consumer immediately after an event has been
+// durably appended. The channel is only a wake-up hint; consumers must still
+// use their event cursor to fetch the authoritative ordered rows.
+func (s *Service) SubscribeEvents(ctx context.Context, sessionID string) (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	subID := strings.TrimSpace(sessionID)
+	s.subMu.Lock()
+	if s.subscribers == nil {
+		s.subscribers = make(map[string]map[chan struct{}]struct{})
+	}
+	if s.subscribers[subID] == nil {
+		s.subscribers[subID] = make(map[chan struct{}]struct{})
+	}
+	s.subscribers[subID][ch] = struct{}{}
+	s.subMu.Unlock()
+	var removeOnce sync.Once
+	done := make(chan struct{})
+	remove := func() {
+		removeOnce.Do(func() {
+			close(done)
+			s.subMu.Lock()
+			if group := s.subscribers[subID]; group != nil {
+				delete(group, ch)
+				if len(group) == 0 {
+					delete(s.subscribers, subID)
+				}
+			}
+			s.subMu.Unlock()
+		})
+	}
+	if ctx != nil {
+		go func() {
+			select {
+			case <-ctx.Done():
+				remove()
+			case <-done:
+			}
+		}()
+	}
+	return ch, remove
+}
+
+func (s *Service) notifyEventSubscribers(sessionID string) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for ch := range s.subscribers[strings.TrimSpace(sessionID)] {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (s *Service) EventsAfter(ctx context.Context, sessionID string, after int64, limit int) ([]Event, error) {

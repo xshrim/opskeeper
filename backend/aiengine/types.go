@@ -256,6 +256,11 @@ type Event struct {
 	Payload     map[string]any `json:"payload,omitempty"`
 }
 
+// EventAssistantAnswerStarted marks the point at which AIEngine has confirmed
+// that the current model turn is an answer turn rather than a tool decision.
+// Existing lifecycle and streaming events remain unchanged.
+const EventAssistantAnswerStarted = "assistant.answer_started"
+
 type EventSink func(Event) error
 
 type Result struct {
@@ -296,6 +301,10 @@ type ModelBuildResult struct {
 	Capabilities        []string
 	ContextWindowTokens int
 	MaxOutputTokens     int
+	// Temperature is the selected provider model's generation parameter. It is
+	// applied to every model request by the runner instead of being left only
+	// in the resource configuration.
+	Temperature float64
 }
 
 // ModelBuilder resolves an AIProvider and model for one execution. Keeping

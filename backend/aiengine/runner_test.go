@@ -32,6 +32,66 @@ type outputCapModel struct {
 	requests []*model.LLMRequest
 }
 
+type streamedCanonicalModel struct{}
+
+func (streamedCanonicalModel) Name() string { return "streamed-canonical-model" }
+
+func (streamedCanonicalModel) GenerateContent(_ context.Context, _ *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		if stream {
+			for _, text := range []string{"##", " ", "结论", "\n", "\n", "实时内容"} {
+				if !yield(&model.LLMResponse{Content: genai.NewContentFromText(text, genai.RoleModel), Partial: true}, nil) {
+					return
+				}
+			}
+		}
+		// Deliberately differ from the partial source. Providers/ADK may expose
+		// a separately assembled final response; the runner must keep the source
+		// already delivered to the live client as canonical.
+		if !yield(&model.LLMResponse{Content: genai.NewContentFromText("##结论当前内容", genai.RoleModel)}, nil) {
+			return
+		}
+	}
+}
+
+func TestAgentRunnerUsesStreamedTextAsCanonicalFinalOutput(t *testing.T) {
+	var events []Event
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{Client: streamedCanonicalModel{}, Capabilities: []string{"text", "stream"}}, nil
+	})
+	result, err := runner.RunStream(context.Background(), Request{
+		ExecutionID: "exec-stream-canonical", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer",
+		Stream: true,
+		Budget: Budget{MaxIterations: 1, MaxTokens: 1000, MaxOutputBytes: 4096},
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+	want := "## 结论\n\n实时内容"
+	if result.Output != want {
+		t.Fatalf("result.Output = %q, want %q", result.Output, want)
+	}
+	var deltas []string
+	var completed string
+	for _, event := range events {
+		switch event.Type {
+		case "assistant.delta":
+			deltas = append(deltas, fmt.Sprint(event.Payload["text"]))
+		case "assistant.completed":
+			completed = fmt.Sprint(event.Payload["text"])
+		}
+	}
+	if got := strings.Join(deltas, ""); got != want {
+		t.Fatalf("streamed deltas = %q, want %q", got, want)
+	}
+	if completed != want {
+		t.Fatalf("assistant.completed text = %q, want %q", completed, want)
+	}
+}
+
 func (m *outputCapModel) Name() string { return "output-cap-model" }
 
 func (m *outputCapModel) GenerateContent(_ context.Context, request *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {
@@ -48,7 +108,7 @@ func TestAgentRunnerNeverExceedsProviderOutputCap(t *testing.T) {
 	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
 		return ModelBuildResult{
 			Client: modelClient, Capabilities: []string{"text"},
-			ContextWindowTokens: 20000, MaxOutputTokens: 8192,
+			ContextWindowTokens: 20000, MaxOutputTokens: 8192, Temperature: 0.65,
 		}, nil
 	})
 	if _, err := runner.Run(context.Background(), Request{
@@ -64,6 +124,9 @@ func TestAgentRunnerNeverExceedsProviderOutputCap(t *testing.T) {
 	}
 	if got := modelClient.requests[0].Config.MaxOutputTokens; got != 8192 {
 		t.Fatalf("MaxOutputTokens = %d, want provider cap 8192", got)
+	}
+	if modelClient.requests[0].Config.Temperature == nil || *modelClient.requests[0].Config.Temperature != 0.65 {
+		t.Fatalf("Temperature = %v, want provider model temperature 0.65", modelClient.requests[0].Config.Temperature)
 	}
 }
 
@@ -152,7 +215,9 @@ func (m *loopTestModel) GenerateContent(_ context.Context, request *model.LLMReq
 		m.mu.Unlock()
 		if turn == 1 {
 			if stream {
-				yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Text: "先检查目标资源。"}}}, Partial: true}, nil)
+				for _, text := range []string{"先", "检查", "目标资源。"} {
+					yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Text: text}}}, Partial: true}, nil)
+				}
 			}
 			yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{
 				{Text: "先检查目标资源。"},
@@ -197,11 +262,28 @@ func TestAgentRunnerStreamsReActTurnsAndObservations(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	var types []string
+	var deltas []string
+	answerStarted := 0
 	for _, event := range events {
 		types = append(types, event.Type)
+		if event.Type == "assistant.delta" {
+			deltas = append(deltas, fmt.Sprint(event.Payload["text"]))
+		}
+		if event.Type == EventAssistantAnswerStarted {
+			answerStarted++
+			if event.Payload["iteration"] != 2 || event.Payload["final"] != true {
+				t.Fatalf("answer_started metadata = %+v, want final iteration 2", event.Payload)
+			}
+		}
+	}
+	if strings.Join(deltas, "") != "先检查目标资源。" || len(deltas) != 3 {
+		t.Fatalf("streamed deltas = %#v, want three provider chunks", deltas)
+	}
+	if answerStarted != 1 {
+		t.Fatalf("answer_started count = %d, want one final-answer boundary", answerStarted)
 	}
 	joined := strings.Join(types, ",")
-	wantOrder := []string{"model.started", "assistant.delta", "assistant.progress", "tool.requested", "tool.started", "tool.completed", "model.resumed", "model.started", "assistant.completed"}
+	wantOrder := []string{"model.started", "assistant.delta", "assistant.progress", "tool.requested", "tool.started", "tool.completed", "model.resumed", "model.started", EventAssistantAnswerStarted, "assistant.completed"}
 	last := -1
 	for _, wanted := range wantOrder {
 		found := -1

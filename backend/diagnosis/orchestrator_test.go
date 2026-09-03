@@ -213,6 +213,57 @@ func TestOrchestratorPreservesPartialAssistantOnTimeout(t *testing.T) {
 	}
 }
 
+func TestOrchestratorUsesStreamedTextForCompletionPersistence(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		_ = request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "## 结论\n\n实时内容", "iteration": 1}})
+		// Simulate an adapter whose final aggregate has different whitespace.
+		_ = request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "##结论当前内容", "iteration": 1, "final": true}})
+		return aiengine.Result{Output: "##结论当前内容"}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	var assistant []Message
+	for _, message := range store.messages {
+		if message.Role == "assistant" {
+			assistant = append(assistant, message)
+		}
+	}
+	if len(assistant) != 1 || assistant[0].Content != "## 结论\n\n实时内容" {
+		t.Fatalf("assistant messages = %#v, want streamed canonical source", assistant)
+	}
+	for _, event := range store.events {
+		if event.Type == "assistant.completed" {
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["text"] != "## 结论\n\n实时内容" {
+				t.Fatalf("assistant.completed payload text = %#v, want streamed canonical source", payload["text"])
+			}
+		}
+	}
+}
+
+func TestOrchestratorDoesNotPersistToolDecisionTextAsAnswerOnTimeout(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		if err := request.EventSink(aiengine.Event{Type: "assistant.progress", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1, "kind": "tool_decision"}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+	for _, message := range store.messages {
+		if message.Role == "assistant" {
+			t.Fatalf("tool decision text was persisted as answer: %#v", message)
+		}
+	}
+}
+
 func TestSafeTextRedactsBearerAndPreservesUTF8Boundaries(t *testing.T) {
 	redacted := safeText("Authorization: Bearer super-secret", 100)
 	if strings.Contains(redacted, "super-secret") || !strings.Contains(redacted, "[REDACTED]") {

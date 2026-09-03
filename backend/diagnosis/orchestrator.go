@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -115,16 +117,34 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
-	var assistantText strings.Builder
+	// Keep streamed text by model iteration. A turn that later resolves to a
+	// function call is process narration, not answer content; retaining the
+	// boundary lets timeout/error persistence preserve only actual answer text.
+	assistantTurnText := make(map[int]string)
+	toolDecisionTurns := make(map[int]bool)
 	var pendingAssistantCompleted *aiengine.Event
 	var pendingTerminalEvents []aiengine.Event
+	partialAnswerText := func() string {
+		iterations := make([]int, 0, len(assistantTurnText))
+		for iteration := range assistantTurnText {
+			if !toolDecisionTurns[iteration] {
+				iterations = append(iterations, iteration)
+			}
+		}
+		sort.Ints(iterations)
+		var text strings.Builder
+		for _, iteration := range iterations {
+			text.WriteString(assistantTurnText[iteration])
+		}
+		return text.String()
+	}
 	persistPartialAssistant := func() {
 		assistantMu.Lock()
 		defer assistantMu.Unlock()
 		if assistantPersisted || assistantPersistErr != nil {
 			return
 		}
-		text := strings.TrimSpace(assistantText.String())
+		text := strings.TrimSpace(partialAnswerText())
 		if text == "" {
 			return
 		}
@@ -140,9 +160,39 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		if event.Type == "assistant.delta" {
 			if text, ok := event.Payload["text"].(string); ok && text != "" {
 				assistantMu.Lock()
-				assistantText.WriteString(text)
+				iteration, _ := event.Payload["iteration"].(int)
+				if iteration == 0 {
+					if value, ok := event.Payload["iteration"].(float64); ok {
+						iteration = int(value)
+					}
+				}
+				assistantTurnText[iteration] += text
 				assistantMu.Unlock()
 			}
+		}
+		if event.Type == "assistant.progress" && strings.EqualFold(strings.TrimSpace(fmt.Sprint(event.Payload["kind"])), "tool_decision") {
+			assistantMu.Lock()
+			iteration, _ := event.Payload["iteration"].(int)
+			if iteration == 0 {
+				if value, ok := event.Payload["iteration"].(float64); ok {
+					iteration = int(value)
+				}
+			}
+			toolDecisionTurns[iteration] = true
+			assistantMu.Unlock()
+		}
+		if event.Type == "tool.requested" {
+			// Some adapters expose the tool lifecycle before the explanatory
+			// progress event. Treat that iteration as process narration too.
+			assistantMu.Lock()
+			iteration, _ := event.Payload["iteration"].(int)
+			if iteration == 0 {
+				if value, ok := event.Payload["iteration"].(float64); ok {
+					iteration = int(value)
+				}
+			}
+			toolDecisionTurns[iteration] = true
+			assistantMu.Unlock()
 		}
 		if event.Type == "assistant.completed" {
 			assistantMu.Lock()
@@ -151,6 +201,13 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 				return nil
 			}
 			text, _ := event.Payload["text"].(string)
+			// Persist exactly the source that was streamed to the client. The
+			// completion payload is a fallback for non-streaming adapters; when
+			// deltas exist, using a separately aggregated completion can change
+			// whitespace/newlines and make history render differently.
+			if canonical := strings.TrimSpace(partialAnswerText()); canonical != "" {
+				text = partialAnswerText()
+			}
 			if !assistantPersisted && assistantPersistErr == nil {
 				// An adapter may emit an empty completion marker and only expose
 				// the final text in Execute's Result. Hold the marker until the
@@ -169,7 +226,16 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			if assistantPersistErr != nil {
 				return assistantPersistErr
 			}
-			return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
+			payload := event.Payload
+			if text != "" {
+				copied := make(map[string]any, len(payload)+1)
+				for key, value := range payload {
+					copied[key] = value
+				}
+				copied["text"] = text
+				payload = copied
+			}
+			return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: payload})
 		}
 		if event.Type == "execution.completed" || event.Type == "execution.failed" || event.Type == "execution.cancelled" {
 			assistantMu.Lock()
