@@ -147,6 +147,36 @@ func TestFilterLogLines(t *testing.T) {
 	}
 }
 
+func TestParseKeywordExpression(t *testing.T) {
+	got := parseKeywordExpression(" error & timeout | fatal ")
+	want := [][]string{{"error", "timeout"}, {"fatal"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parsed keyword expression = %#v, want %#v", got, want)
+	}
+}
+
+func TestMatchesKeywordExpression(t *testing.T) {
+	tests := []struct {
+		line       string
+		expression string
+		want       bool
+	}{
+		{line: "ERROR timeout while connecting", expression: "error&timeout", want: true},
+		{line: "ERROR connection refused", expression: "error&timeout", want: false},
+		{line: "FATAL crashed", expression: "fatal|refused", want: true},
+		{line: "INFO request completed", expression: "fatal|refused", want: false},
+		{line: "ERROR timeout while connecting", expression: "error&timeout|fatal", want: true},
+		{line: "FATAL crashed", expression: "error&timeout|fatal", want: true},
+		{line: "ERROR only", expression: "error&timeout|fatal", want: false},
+	}
+	for _, test := range tests {
+		clauses := parseKeywordExpression(test.expression)
+		if got := matchesKeywordExpression(strings.ToLower(test.line), clauses); got != test.want {
+			t.Errorf("matchesKeywordExpression(%q, %q) = %v, want %v", test.line, test.expression, got, test.want)
+		}
+	}
+}
+
 func TestLimitLogLinesKeepsMostRecentLines(t *testing.T) {
 	if got := limitLogLines("1\n2\n3\n4\n5\n", 3); got != "3\n4\n5\n" {
 		t.Fatalf("limited logs = %q, want most recent lines", got)

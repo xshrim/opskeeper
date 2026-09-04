@@ -473,6 +473,7 @@ Reasoning summary（阶段性分析摘要）
 | 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration、动作计数 |
 | 工具执行 | `tool.started` | 工具名、资源、调用序号、`started_at`、动作计数 |
 | 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、`duration_ms`、`elapsed_ms`、动作计数 |
+| 上下文治理 | `context.compacted` | 被裁掉的消息和 Observation 数量、脱敏摘要与 `observation_id`、`duration_ms` |
 | 回合继续 | `model.resumed` | iteration、观察摘要、`elapsed_ms`；并行批次包含全部工具结果 |
 | 最终回答 | `assistant.completed` | 最终文本 |
 | 执行终止 | `execution.completed` / `execution.failed` / `execution.cancelled` | 终态、错误/预算原因 |
@@ -549,9 +550,9 @@ assistant.progress  {kind:"analysis", text:"初步评估已完成……接下来
 长程诊断不能把所有历史消息和原始工具输出无限累积到下一次请求。AIEngine 对每次模型请求执行以下治理策略：
 
 1. **上下文窗口感知。** Provider Model 的 `context_window_tokens` 和 `max_output_tokens` 会随模型解析结果传入运行时；`BeforeModelCallback` 在每轮调用前按序列化请求大小估算输入 Token，动态压缩上下文并计算本轮可用输出上限。
-2. **滑动窗口与历史压缩。** 保留系统约束、初始任务和最近的完整回合；较早普通文本和工具响应被替换为压缩标记。模型调用与函数响应按成对消息保留，避免裁剪出非法的 Tool Calling 历史。
+2. **滑动窗口与历史压缩。** 保留系统约束、初始任务和最近的完整回合；较早普通文本和工具响应被替换为压缩标记。模型调用与函数响应按成对消息保留，避免裁剪出非法的 Tool Calling 历史。每次实际裁掉历史时，AIEngine 发送 `context.compacted`，让诊断过程显示“压缩执行上下文”及裁掉的消息/Observation 数量。
 3. **Observation 压缩。** 工具结果先递归脱敏，再限制文本字段和整体字节数；错误、状态、统计等结构化字段优先保留，超大日志不会原样复制到每一轮 Prompt。
-4. **结构化诊断状态。** 执行级状态维护 `confirmed_facts`、`hypotheses`、`eliminated_causes`、`open_questions` 和 `next_actions`，以短状态快照注入下一轮系统指令，减少模型反复阅读旧历史。
+4. **结构化诊断状态。** 执行级状态维护 `confirmed_facts`、`hypotheses`、`eliminated_causes`、`open_questions` 和 `next_actions`，以短状态快照注入下一轮系统指令，减少模型反复阅读旧历史。被裁掉回合中已有的工具 Observation 会追加为受限的证据账本条目（工具名、状态、脱敏摘要和 `observation_id`）；这些条目不是模型生成的结论，精确内容仍需通过 `read_observation` 按需读取。
 5. **Observation 按需回读。** 完整脱敏结果保存在执行级 Observation Store；模型只收到 `observation_id` 与摘要。具备长上下文窗口的模型可通过受控 `read_observation(observation_id, offset, limit)` 分页读取精确内容，读取动作同样计入工具预算和审计事件。
 6. **分层预算。** `MaxOutputTokens` 是单轮输出上限，`context_window_tokens` 是 Provider 输入/输出总窗口，`MaxTokens` 是执行累计 Token 上限；`MaxIterations`、`MaxToolCalls`、`MaxOutputBytes` 和 `Timeout` 分别约束回合、工具、最终文本和总耗时。任一硬上限触发时发送带原因的终态事件。
 

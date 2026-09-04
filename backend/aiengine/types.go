@@ -256,6 +256,10 @@ type Event struct {
 	Payload     map[string]any `json:"payload,omitempty"`
 }
 
+// EventContextCompacted marks a context-window compaction boundary. It is a
+// lifecycle event, not a tool invocation, and does not affect tool budgets.
+const EventContextCompacted = "context.compacted"
+
 type EventSink func(Event) error
 
 type Result struct {

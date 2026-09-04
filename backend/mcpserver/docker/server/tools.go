@@ -52,7 +52,7 @@ type ContainerLogsInput struct {
 	Tail          string `json:"tail,omitempty" jsonschema:"Number of lines requested from the end. Defaults to 1000; keyword filtering is applied before the final output is limited to the most recent 200 lines."`
 	Since         string `json:"since,omitempty" jsonschema:"Show logs since this timestamp or duration."`
 	Until         string `json:"until,omitempty" jsonschema:"Show logs until this timestamp."`
-	Keyword       string `json:"keyword,omitempty" jsonschema:"Case-insensitive keyword filter. Returns each matching line plus up to 3 lines before and after it; overlapping context is shown only once."`
+	Keyword       string `json:"keyword,omitempty" jsonschema:"Case-insensitive keyword filter. Separate multiple terms with & for AND (all terms must occur on the same line) or | for OR (any term matches). AND binds tighter than OR. Each matching line is returned with up to 3 lines before and after it; overlapping context is shown only once."`
 	Timestamps    bool   `json:"timestamps,omitempty" jsonschema:"Include timestamps."`
 	Details       bool   `json:"details,omitempty" jsonschema:"Include extra log attributes."`
 }
@@ -101,7 +101,7 @@ func RegisterTools(s *mcp.Server) {
 		"tail":           map[string]any{"type": "string", "description": "Number of lines requested from the end; defaults to 1000. Keyword filtering is applied first, then output is limited to the most recent 200 lines."},
 		"since":          map[string]any{"type": "string", "description": "Only show logs since this timestamp or duration."},
 		"until":          map[string]any{"type": "string", "description": "Only show logs until this timestamp."},
-		"keyword":        map[string]any{"type": "string", "description": "Case-insensitive keyword filter; returns each matching line plus up to 3 lines before and after it, without duplicate lines when contexts overlap."},
+		"keyword":        map[string]any{"type": "string", "description": "Case-insensitive keyword filter. Separate terms with & to require all terms on the same line, or | to match any term; AND binds tighter than OR (for example, error&timeout|fatal). Returns each matching line plus up to 3 lines before and after it, without duplicate lines when contexts overlap."},
 		"timestamps":     map[string]any{"type": "boolean", "description": "Include timestamps in log lines."},
 		"details":        map[string]any{"type": "boolean", "description": "Include extra Docker log attributes."},
 	})}, containerLogsTool)
@@ -344,19 +344,25 @@ func limitLogLines(logs string, maxLines int) string {
 	return strings.Join(lines[end-maxLines:end], "")
 }
 
-// filterLogLines returns each case-insensitive keyword match and up to three
-// surrounding lines. A marked-line set merges overlapping context windows so
-// no line is displayed more than once.
+// filterLogLines returns each line matching the keyword expression and up to
+// three surrounding lines. Terms joined by & must all match the same line;
+// terms joined by | form alternatives. AND binds tighter than OR, so
+// "error&timeout|fatal" means (error AND timeout) OR fatal. A marked-line set
+// merges overlapping context windows so no line is displayed more than once.
 func filterLogLines(logs, keyword string) string {
 	keyword = strings.TrimSpace(keyword)
 	if keyword == "" || logs == "" {
 		return logs
 	}
-	foldedKeyword := strings.ToLower(keyword)
+	clauses := parseKeywordExpression(keyword)
+	if len(clauses) == 0 {
+		return logs
+	}
 	lines := strings.SplitAfter(logs, "\n")
 	selected := make([]bool, len(lines))
 	for index, line := range lines {
-		if !strings.Contains(strings.ToLower(strings.TrimRight(line, "\r\n")), foldedKeyword) {
+		foldedLine := strings.ToLower(strings.TrimRight(line, "\r\n"))
+		if !matchesKeywordExpression(foldedLine, clauses) {
 			continue
 		}
 		start := index - keywordContextLines
@@ -378,4 +384,40 @@ func filterLogLines(logs, keyword string) string {
 		}
 	}
 	return filtered.String()
+}
+
+// parseKeywordExpression implements the documented keyword grammar. Empty
+// terms are ignored so accidental repeated or trailing separators do not turn
+// a useful filter into a match-nothing expression.
+func parseKeywordExpression(keyword string) [][]string {
+	groups := make([][]string, 0)
+	for _, alternative := range strings.Split(keyword, "|") {
+		terms := make([]string, 0)
+		for _, term := range strings.Split(alternative, "&") {
+			term = strings.ToLower(strings.TrimSpace(term))
+			if term != "" {
+				terms = append(terms, term)
+			}
+		}
+		if len(terms) > 0 {
+			groups = append(groups, terms)
+		}
+	}
+	return groups
+}
+
+func matchesKeywordExpression(line string, clauses [][]string) bool {
+	for _, clause := range clauses {
+		matches := true
+		for _, term := range clause {
+			if !strings.Contains(line, term) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
