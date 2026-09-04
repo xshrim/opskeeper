@@ -54,6 +54,7 @@ import { onMount, tick } from 'svelte';
   import ResourceCatalogToolbar from './features/resources/ResourceCatalogToolbar.svelte';
   import ResourceCatalogList from './features/resources/ResourceCatalogList.svelte';
   import ResourceAddStepNavigation from './features/resources/ResourceAddStepNavigation.svelte';
+  import ResourceAddWorkflowHeader from './features/resources/ResourceAddWorkflowHeader.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6298,79 +6299,29 @@ import { onMount, tick } from 'svelte';
                   class="resource-add-content"
                   class:type-selection-content={resourceAddStep === 1}
                 >
-                  <div class="resource-add-step-heading">
-                    {#if activeMessage}
-                      <MessageBanner message={activeMessage} tone={activeMessageTone} />
-                    {/if}
-                    <h3>{resourceAddStepTitle(resourceAddStep, resourceKind)}</h3>
-                    {#if resourceAddStepValidationMessage()}
-                      <p class="resource-add-step-validation" role="alert">
-                        {resourceAddStepValidationMessage()}
-                      </p>
-                    {/if}
-                    <div class="resource-add-step-actions">
-                      {#if resourceAddStep === 1}
-                        <button
-                          class="primary"
-                          type="button"
-                          on:click={continueResourceAdd}>下一步</button
-                        >
-                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() => (resourceAddStep = 1)}>上一步</button
-                        >
-                        <button
-                          class="primary"
-                          type="button"
-                          on:click={continueProviderAdd}>下一步</button
-                        >
-                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 3}
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() => (resourceAddStep = 2)}>上一步</button
-                        >
-                        <button
-                          class="primary"
-                          type="button"
-                          on:click={continueProviderAdd}>下一步</button
-                        >
-                      {:else if resourceKind === 'AIProvider' && resourceAddStep === 4}
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() => (resourceAddStep = 3)}>上一步</button
-                        >
-                        <button
-                          class="primary"
-                          type="submit"
-                          form="provider-create-form"
-                          disabled={busy || !selectedScopeId}
-                          >{editingProviderResourceId ? '保存' : '创建'}</button
-                        >
-                      {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
-                        <button class="secondary" type="button" on:click={() => (resourceAddStep = 1)}>上一步</button>
-                        <button class="primary" type="button" on:click={() => { mcpConfigurationAttempted = true; if (mcpConfigurationValid()) { mcpConfigurationAttempted = false; resourceAddStep = 3; } }}>下一步</button>
-                      {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
-                        <button class="secondary" type="button" on:click={() => (resourceAddStep = 2)}>上一步</button>
-                        <button class="primary" type="button" on:click={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())} disabled={busy || !selectedScopeId}>{editingResourceId ? '保存' : '创建'}</button>
-                      {:else if resourceAddStep === 2}
-                        <button
-                          class="secondary"
-                          type="button"
-                          on:click={() => (resourceAddStep = 1)}>上一步</button
-                        >
-                        <button
-                          class="primary"
-                          type="submit"
-                          form="resource-create-form"
-                          disabled={busy || !selectedScopeId}>创建</button
-                        >
-                      {/if}
-                    </div>
-                  </div>
+                  <ResourceAddWorkflowHeader
+                    activeMessage={activeMessage}
+                    activeMessageTone={activeMessageTone}
+                    editingProviderResourceId={editingProviderResourceId}
+                    editingResourceId={editingResourceId}
+                    bind:resourceAddStep={resourceAddStep}
+                    resourceKind={resourceKind}
+                    busy={busy}
+                    selectedScopeId={selectedScopeId}
+                    resourceAddStepTitle={resourceAddStepTitle}
+                    resourceAddStepValidationMessage={resourceAddStepValidationMessage}
+                    onContinueResourceAdd={continueResourceAdd}
+                    onContinueProviderAdd={continueProviderAdd}
+                    onPrevious={(step) => (resourceAddStep = step)}
+                    onContinueMCP={() => {
+                      mcpConfigurationAttempted = true;
+                      if (mcpConfigurationValid()) {
+                        mcpConfigurationAttempted = false;
+                        resourceAddStep = 3;
+                      }
+                    }}
+                    onSubmitMCP={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
+                  />
                   {#if resourceAddStep === 1}
                     <p class="resource-add-description">
                       配置资源的基础身份、归属和标签；资源类型、子类型与名称为必填项。
