@@ -196,6 +196,15 @@
 - 拆分或合并必须保持现有 DOM 语义、可访问属性、键盘路径、状态反馈、主题令牌和 CSS 类名；迁移后删除原实现和无用组件，禁止并行保留重复模板。
 - 页面重构采用渐进迁移：先建立页面主文件并迁移完整模板，再将页面状态和业务函数收敛到该文件，最后仅保留必要的弹窗、选项卡和跨页面组件。每步完成必须通过 `npm run check`、相关测试和生产构建。
 
+### 6.2 当前拆分进度
+
+- 已建立页面级主文件的菜单页面包括：`overview`、`organization`、`discovery`、`resources`、`skill`、`agent`、`operations`、`diagnosis`、`inspection` 和 `profile`。
+- `resources` 页面已完成模板收敛：目录栏、工具栏、列表、添加流程、Provider/MCP 配置和连接状态均归并到 `features/resources/ResourcesPage.svelte`；页面目录只保留主页面和 `resources.css`。
+- `diagnosis` 页面已完成组合收敛：会话历史、标题栏、输入区和模型选择器归并到 `features/diagnosis/DiagnosisPage.svelte`；上下文/证据面板与消息时间线因包含独立选项卡、展开状态和交互生命周期而保留为独立区域组件。
+- `access` 页面仍待迁移。目前团队、用户、角色三个选项卡及其弹窗、授权编辑和禁用确认模板仍位于 `App.svelte`，目标主文件为 `features/access/AccessPage.svelte`。
+- 页面迁移期间，跨页面使用的资源、团队、项目、角色和当前 Scope 数据可以暂由 `App.svelte` 装配；页面专属草稿、筛选、弹窗状态和业务函数应随对应页面逐步收敛，不得继续向 `App.svelte` 新增页面级逻辑。
+- 每完成一个页面的收敛，必须删除无引用的旧组件，并通过 `npm run check`、相关测试、`npm run build` 和 `git diff --check`。
+
 ## 7. 持续设计与方案评审约束
 
 - 前端页面必须逐页重新设计和评审；不得以一次性全局改版替代对单个页面信息架构、操作路径和状态反馈的具体设计。
