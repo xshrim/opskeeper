@@ -45,6 +45,8 @@ import { onMount, tick } from 'svelte';
   import DiagnosisSessionList from './features/diagnosis/DiagnosisSessionList.svelte';
   import DiagnosisConversationHeader from './features/diagnosis/DiagnosisConversationHeader.svelte';
   import DiagnosisConversationMessages from './features/diagnosis/DiagnosisConversationMessages.svelte';
+  import AgentProfilesPage from './features/agent/AgentProfilesPage.svelte';
+  import SkillRegistryPage from './features/skill/SkillRegistryPage.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -8738,267 +8740,46 @@ import { onMount, tick } from 'svelte';
           {/if}
         </section>
       {:else if view === 'agent'}
-        <section class="content-grid two-column ai-runtime">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">AGENT PROFILES</p>
-                <h2>Agent 专家配置</h2>
-              </div>
-              <span class="count">{agentProfileResources.length}</span>
-            </div>
-            <div class="stack-form compact-form">
-              <label
-                >AgentProfile<select
-                  bind:value={selectedAgentProfileId}
-                  on:change={loadAgentProfileVersions}
-                  ><option value="" disabled>选择 AgentProfile</option
-                  >{#each agentProfileResources as item}<option value={item.id}
-                      >{item.name} · {scopeName(item.scope_id)}</option
-                    >{/each}</select
-                ></label
-              >
-              <label
-                >已发布版本<select bind:value={selectedAgentProfileVersionId}
-                  ><option value="">选择版本</option
-                  >{#each agentProfileVersions as version}<option
-                      value={version.id}
-                      >v{version.version} · {version.status}</option
-                    >{/each}</select
-                ></label
-              >
-              <button
-                class="primary"
-                type="button"
-                disabled={busy ||
-                  !selectedAgentProfileId ||
-                  !selectedAgentProfileVersionId}
-                on:click={publishAgentProfileVersion}>发布版本</button
-              >
-              {#if agentProfileVersions.length === 0}<p class="muted-copy">
-                  版本发布后，AIEngine
-                  执行时会固定使用已发布的专家指令和工具契约。
-                </p>{/if}
-            </div>
-          </section>
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">NEW PROFILE</p>
-                <h2>创建 AgentProfile</h2>
-              </div>
-              <span class="scope-type">版本化契约</span>
-            </div>
-            <form
-              class="stack-form"
-              on:submit|preventDefault={createAgentProfile}
-            >
-              <div class="form-row">
-                <label
-                  >名称<input
-                    bind:value={agentProfileName}
-                    required
-                    placeholder="例如：PostgreSQL 故障专家"
-                  /></label
-                ><label
-                  >适用资源类型<input
-                    bind:value={agentProfileTargetKinds}
-                    required
-                    placeholder="Application, PostgreSQL"
-                  /></label
-                >
-              </div>
-              <label
-                >专家指令<textarea
-                  bind:value={agentProfileInstruction}
-                  rows="5"
-                  required
-                  placeholder="描述诊断范围、判断原则和输出要求"
-                ></textarea></label
-              >
-              <div class="form-row">
-                <label
-                  >模型能力<input
-                    bind:value={agentProfileCapabilities}
-                    placeholder="text, tool_calling, stream"
-                  /></label
-                ><label
-                  >允许工具<input
-                    bind:value={agentProfileAllowedTools}
-                    placeholder="connector_postgresql_inspect"
-                  /></label
-                >
-              </div>
-              <div class="form-row">
-                <label
-                  >输入 Schema<textarea
-                    bind:value={agentProfileInputSchema}
-                    rows="4"
-                    spellcheck="false"
-                  ></textarea></label
-                ><label
-                  >输出 Schema<textarea
-                    bind:value={agentProfileOutputSchema}
-                    rows="4"
-                    spellcheck="false"
-                  ></textarea></label
-                >
-              </div>
-              <button class="primary" disabled={busy || !selectedScopeId}
-                >创建并发布 v1</button
-              >
-            </form>
-          </section>
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">RELEASE HISTORY</p>
-                <h2>版本历史</h2>
-              </div>
-              <span class="count">{agentProfileVersions.length}</span>
-            </div>
-            <div class="table-list">
-              {#each agentProfileVersions as version}<div
-                  class="list-row static"
-                >
-                  <span
-                    ><strong>v{version.version}</strong><small
-                      >{formatDate(version.created_at)} · {version.status}</small
-                    ></span
-                  ><span class="status-label {version.status}"
-                    >{version.status === 'published'
-                      ? '已发布'
-                      : version.status === 'disabled'
-                        ? '已停用'
-                        : '草稿'}</span
-                  >
-                </div>{:else}<div class="empty-state">
-                  选择 AgentProfile 后显示版本历史。
-                </div>{/each}
-            </div>
-          </section>
-        </section>
+        <AgentProfilesPage
+          profiles={agentProfileResources}
+          bind:selectedProfileId={selectedAgentProfileId}
+          bind:selectedVersionId={selectedAgentProfileVersionId}
+          bind:versions={agentProfileVersions}
+          bind:profileName={agentProfileName}
+          bind:profileInstruction={agentProfileInstruction}
+          bind:profileCapabilities={agentProfileCapabilities}
+          bind:profileAllowedTools={agentProfileAllowedTools}
+          bind:profileTargetKinds={agentProfileTargetKinds}
+          bind:profileInputSchema={agentProfileInputSchema}
+          bind:profileOutputSchema={agentProfileOutputSchema}
+          busy={busy}
+          selectedScopeId={selectedScopeId}
+          scopeName={scopeName}
+          formatDate={formatDate}
+          onLoadVersions={loadAgentProfileVersions}
+          onPublish={publishAgentProfileVersion}
+          onCreate={createAgentProfile}
+        />
       {:else if view === 'skill'}
-        <section class="content-grid two-column ai-runtime">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">SKILL REGISTRY</p>
-                <h2>Skill 版本</h2>
-              </div>
-              <span class="count">{skillVersions.length}</span>
-            </div>
-            <div class="stack-form compact-form">
-              <label
-                >Skill<select
-                  bind:value={selectedSkillId}
-                  required
-                  on:change={loadSkillVersions}
-                  ><option value="" disabled>选择 Skill 资源</option
-                  >{#each skillResources as item}<option value={item.id}
-                      >{item.name} · {scopeName(item.scope_id)}</option
-                    >{/each}</select
-                ></label
-              >
-              <label
-                >版本<select bind:value={selectedSkillVersionId}
-                  ><option value="" disabled>选择版本</option
-                  >{#each skillVersions as version}<option value={version.id}
-                      >v{version.version} · {version.status} · {version.risk_level}</option
-                    >{/each}</select
-                ></label
-              >
-              <div class="form-actions">
-                <button
-                  class="secondary"
-                  type="button"
-                  on:click={setSkillDefault}
-                  disabled={busy || !selectedSkillVersionId}
-                  >设为当前 Scope 默认</button
-                >
-                <button
-                  class="primary"
-                  type="button"
-                  on:click={publishSkillVersion}
-                  disabled={busy || !selectedSkillVersionId}>发布版本</button
-                >
-              </div>
-            </div>
-          </section>
-
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">NEW VERSION</p>
-                <h2>创建 Skill 草稿</h2>
-              </div>
-              <span class="scope-type">不可变版本</span>
-            </div>
-            <form
-              class="stack-form"
-              on:submit|preventDefault={createSkillVersion}
-            >
-              <label
-                >Agent Instruction<textarea
-                  bind:value={skillInstruction}
-                  rows="5"
-                  required
-                  placeholder="明确目标、边界与输出 JSON 结构"
-                ></textarea></label
-              >
-              <label
-                >适用资源类型<input
-                  bind:value={skillTargetKinds}
-                  required
-                  placeholder="Application, Kubernetes"
-                /></label
-              >
-              <fieldset class="skill-tool-picker">
-                <legend>允许调用的 Connector 工具</legend>
-                <p>仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。</p>
-                <div class="skill-tool-grid">
-                  {#each skillToolOptions as tool}
-                    <label
-                      class:selected={selectedSkillToolNames.includes(
-                        tool.name
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSkillToolNames.includes(tool.name)}
-                        on:change={() => toggleSkillTool(tool.name)}
-                      />
-                      <span
-                        ><strong>{tool.title}</strong><small
-                          >{tool.description}</small
-                        ></span
-                      >
-                    </label>
-                  {/each}
-                </div>
-              </fieldset>
-              <div class="form-row">
-                <label
-                  >输入 Schema<textarea
-                    bind:value={skillInputSchema}
-                    rows="5"
-                    spellcheck="false"
-                  ></textarea></label
-                >
-                <label
-                  >输出 Schema<textarea
-                    bind:value={skillOutputSchema}
-                    rows="5"
-                    spellcheck="false"
-                  ></textarea></label
-                >
-              </div>
-              <button class="primary" disabled={busy || !selectedSkillId}
-                >创建版本</button
-              >
-            </form>
-          </section>
-        </section>
+        <SkillRegistryPage
+          resources={skillResources}
+          bind:selectedSkillId={selectedSkillId}
+          bind:selectedVersionId={selectedSkillVersionId}
+          bind:versions={skillVersions}
+          bind:instruction={skillInstruction}
+          bind:targetKinds={skillTargetKinds}
+          bind:selectedToolNames={selectedSkillToolNames}
+          bind:inputSchema={skillInputSchema}
+          bind:outputSchema={skillOutputSchema}
+          toolOptions={skillToolOptions}
+          busy={busy}
+          scopeName={scopeName}
+          onLoadVersions={loadSkillVersions}
+          onSetDefault={setSkillDefault}
+          onPublish={publishSkillVersion}
+          onCreate={createSkillVersion}
+          onToggleTool={toggleSkillTool}
+        />
       {:else if view === 'access'}
         <section class="access-page">
           <section class="panel access-workbench">
