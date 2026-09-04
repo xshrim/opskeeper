@@ -47,6 +47,7 @@ import { onMount, tick } from 'svelte';
   import OperationsPage from './features/operations/OperationsPage.svelte';
   import AuthGate from './features/auth/AuthGate.svelte';
   import DiscoveryPage from './features/discovery/DiscoveryPage.svelte';
+  import InspectionPage from './features/inspection/InspectionPage.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -7625,248 +7626,36 @@ import { onMount, tick } from 'svelte';
           </section>
         </section>
       {:else if view === 'inspection'}
-        <section class="content-grid">
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">NEW POLICY</p>
-                <h2>创建巡检策略</h2>
-              </div>
-            </div>
-            <form
-              class="stack-form"
-              on:submit|preventDefault={createInspectionPolicy}
-            >
-              <div class="form-grid">
-                <label
-                  >名称<input
-                    bind:value={inspectionPolicyName}
-                    required
-                    maxlength="200"
-                  /></label
-                >
-                <label>Cron<input bind:value={inspectionCron} required /></label
-                >
-                <label
-                  >时区<input bind:value={inspectionTimezone} required /></label
-                >
-                <label
-                  >超时（秒）<input
-                    type="number"
-                    min="1"
-                    max="3600"
-                    bind:value={inspectionTimeoutSeconds}
-                  /></label
-                >
-                <label
-                  >重试次数<input
-                    type="number"
-                    min="0"
-                    max="10"
-                    bind:value={inspectionRetries}
-                  /></label
-                >
-                <label
-                  >目标并发<input
-                    type="number"
-                    min="1"
-                    max="64"
-                    bind:value={inspectionMaxConcurrent}
-                  /></label
-                >
-                <label
-                  >Tool 预算<input
-                    type="number"
-                    min="1"
-                    max="100"
-                    bind:value={inspectionMaxToolCalls}
-                  /></label
-                >
-                <label
-                  >Token 预算<input
-                    type="number"
-                    min="1"
-                    max="200000"
-                    bind:value={inspectionMaxTokens}
-                  /></label
-                >
-              </div>
-              <label
-                >标签选择器（JSON 对象）<textarea
-                  rows="3"
-                  bind:value={inspectionTargetLabels}
-                ></textarea></label
-              >
-              <fieldset>
-                <legend>目标资源</legend>
-                <div class="check-grid">
-                  {#each executableTargets as target}
-                    <label class="check-row"
-                      ><input
-                        type="checkbox"
-                        checked={inspectionTargetIds.includes(target.id)}
-                        on:change={() =>
-                          (inspectionTargetIds = toggleInspectionSelection(
-                            inspectionTargetIds,
-                            target.id
-                          ))}
-                      />{target.name} · {target.kind}</label
-                    >
-                  {/each}
-                </div>
-              </fieldset>
-              <label
-                >解释 AgentProfile（可选）<select
-                  bind:value={inspectionAgentProfileId}
-                >
-                  <option value="">使用内置巡检解释 Agent</option>
-                  {#each agentProfileResources.filter((item) => resourceInActiveWorkspace(item) && item.status === 'active') as profile}
-                    <option value={profile.id}
-                      >{profile.name} · {scopeName(profile.scope_id)}</option
-                    >
-                  {/each}
-                </select></label
-              >
-              <button
-                class="primary"
-                disabled={busy ||
-                  !inspectionPolicyName ||
-                  (inspectionTargetIds.length === 0 &&
-                    inspectionTargetLabels.trim() === '{}')}>创建策略</button
-              >
-            </form>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">POLICIES</p>
-                <h2>巡检策略</h2>
-              </div>
-              <span class="count">{inspectionPolicies.length}</span>
-            </div>
-            <div class="table-list">
-              {#each inspectionPolicies as policy}<article class="list-row">
-                  <div>
-                    <strong>{policy.name}</strong>
-                    <p>
-                      {policy.cron} · {policy.timezone} · {policy
-                        .target_resource_ids.length} 个目标 · {policy.status}
-                    </p>
-                  </div>
-                  <div class="inline-actions">
-                    <button
-                      class="quiet-button"
-                      disabled={busy || policy.status !== 'active'}
-                      on:click={() => rerunInspection(policy.id)}
-                      >立即运行</button
-                    ><button
-                      class="quiet-button"
-                      disabled={busy}
-                      on:click={() =>
-                        setInspectionPolicyStatus(
-                          policy.id,
-                          policy.status === 'active' ? 'disabled' : 'active'
-                        )}
-                      >{policy.status === 'active' ? '停止' : '恢复'}</button
-                    >
-                  </div>
-                </article>{:else}<p class="empty-state">
-                  当前作用域还没有巡检策略。
-                </p>{/each}
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">HEALTH</p>
-                <h2>最近运行</h2>
-              </div>
-              <span class="count">{inspectionRuns.length}</span>
-            </div>
-            <div class="table-list">
-              {#each inspectionRuns as run}<article class="list-row">
-                  <div>
-                    <strong>{run.score ?? '—'} 分 · {run.status}</strong>
-                    <p>
-                      {new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}
-                    </p>
-                  </div>
-                </article>{:else}<p class="empty-state">
-                  尚无运行记录。
-                </p>{/each}
-            </div>
-          </section>
-          <section class="panel wide-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">FINDINGS</p>
-                <h2>异常与恢复</h2>
-              </div>
-              <span class="count">{inspectionFindings.length}</span>
-            </div>
-            <div class="table-list">
-              {#each inspectionFindings as finding}<article class="list-row">
-                  <div>
-                    <strong>{finding.severity} · {finding.rule}</strong>
-                    <p>{finding.message || '无补充说明'} · {finding.status}</p>
-                  </div>
-                </article>{:else}<p class="empty-state">
-                  没有已记录的异常。
-                </p>{/each}
-            </div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">WEBHOOKS</p>
-                <h2>通知渠道</h2>
-              </div>
-              <span class="count">{notificationChannels.length}</span>
-            </div>
-            <div class="table-list">
-              {#each notificationChannels as channel}<article class="list-row">
-                  <div>
-                    <strong>{channel.name}</strong>
-                    <p>
-                      {channel.kind} · {channel.status} · 每分钟 {channel.rate_limit_per_minute}
-                      次
-                    </p>
-                  </div>
-                </article>{:else}<p class="empty-state">
-                  当前作用域没有启用的通知渠道。
-                </p>{/each}
-            </div>
-            <form
-              class="stack-form compact-form"
-              on:submit|preventDefault={createNotificationChannel}
-            >
-              <label
-                >名称<input
-                  bind:value={channelName}
-                  required
-                  maxlength="120"
-                /></label
-              >
-              <label
-                >HTTPS Webhook<input
-                  type="url"
-                  pattern="https://.*"
-                  bind:value={channelWebhookURL}
-                  required
-                /></label
-              >
-              <label
-                >每分钟上限<input
-                  type="number"
-                  min="1"
-                  max="10000"
-                  bind:value={channelRateLimit}
-                /></label
-              >
-              <button class="primary" disabled={busy}>添加渠道</button>
-            </form>
-          </section>
-        </section>
+        <InspectionPage
+          bind:policies={inspectionPolicies}
+          bind:runs={inspectionRuns}
+          bind:findings={inspectionFindings}
+          bind:channels={notificationChannels}
+          executableTargets={executableTargets}
+          agentProfiles={agentProfileResources}
+          bind:policyName={inspectionPolicyName}
+          bind:cron={inspectionCron}
+          bind:timezone={inspectionTimezone}
+          bind:targetIds={inspectionTargetIds}
+          bind:agentProfileId={inspectionAgentProfileId}
+          bind:targetLabels={inspectionTargetLabels}
+          bind:timeoutSeconds={inspectionTimeoutSeconds}
+          bind:retries={inspectionRetries}
+          bind:maxConcurrent={inspectionMaxConcurrent}
+          bind:maxToolCalls={inspectionMaxToolCalls}
+          bind:maxTokens={inspectionMaxTokens}
+          bind:channelName={channelName}
+          bind:channelWebhookURL={channelWebhookURL}
+          bind:channelRateLimit={channelRateLimit}
+          busy={busy}
+          scopeName={scopeName}
+          resourceInActiveWorkspace={resourceInActiveWorkspace}
+          toggleSelection={toggleInspectionSelection}
+          onCreatePolicy={createInspectionPolicy}
+          onRerun={rerunInspection}
+          onSetPolicyStatus={setInspectionPolicyStatus}
+          onCreateChannel={createNotificationChannel}
+        />
       {:else if view === 'operations'}
         <OperationsPage
           resources={resources}
