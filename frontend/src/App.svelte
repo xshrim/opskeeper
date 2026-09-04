@@ -55,6 +55,7 @@ import { onMount, tick } from 'svelte';
   import ResourceCatalogList from './features/resources/ResourceCatalogList.svelte';
   import ResourceAddStepNavigation from './features/resources/ResourceAddStepNavigation.svelte';
   import ResourceAddWorkflowHeader from './features/resources/ResourceAddWorkflowHeader.svelte';
+  import ResourceBasicConfiguration from './features/resources/ResourceBasicConfiguration.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6323,60 +6324,26 @@ import { onMount, tick } from 'svelte';
                     onSubmitMCP={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
                   />
                   {#if resourceAddStep === 1}
-                    <p class="resource-add-description">
-                      配置资源的基础身份、归属和标签；资源类型、子类型与名称为必填项。
-                    </p>
-                      <div class="resource-type-selection">
-                      <div class="resource-basic-type-row">
-                      <label
-                        class:invalid={resourceTypeSelectionAttempted &&
-                          !resourceAddCategory}
-                        ><span><i>*</i>资源类型</span><select
-                          bind:value={resourceAddCategory}
-                          disabled={Boolean(editingProviderResourceId || editingResourceId)}
-                          on:change={(event) =>
-                            selectResourceAddCategory(
-                              (event.currentTarget as HTMLSelectElement).value
-                            )}
-                          ><option value="">请选择资源类型</option
-                          >{#each Object.keys(resourceCategoryOptions).filter((category) => category !== '全部') as category}<option
-                              value={category}>{category}</option
-                            >{/each}</select
-                        ></label
-                      >
-                      <label
-                        class:invalid={resourceTypeSelectionAttempted &&
-                          !resourceAddSubtype}
-                        ><span><i>*</i>资源子类型</span><select
-                          bind:value={resourceAddSubtype}
-                          disabled={!resourceAddCategory || Boolean(editingProviderResourceId || editingResourceId)}
-                          on:change={(event) => {
-                            resourceAddSubtype = (event.currentTarget as HTMLSelectElement).value;
-                            const schema = resourceSchemaForSelection(resourceAddCategory, resourceAddSubtype);
-                            resourceKind = resourceAddCategory === 'LLM' && resourceAddSubtype === 'Provider' ? 'AIProvider' : (schema?.kind ?? '');
-                          }}
-                          ><option value="">请选择资源子类型</option
-                          >{#each resourceAddSubtypeOptions as subtype}<option
-                              value={subtype}>{subtype}</option
-                            >{/each}</select
-                        ></label
-                      >
-                      </div>
-                      <div class="resource-basic-identity-row">
-                      <label class="resource-basic-name" class:invalid={resourceBasicConfigurationAttempted && !resourceName.trim()}>
-                        <span><i>*</i>资源名称</span><input bind:value={resourceName} required placeholder="例如 production-resource" autocomplete="off" />
-                      </label>
-                      <label class="resource-basic-level">
-                        <span>资源级别</span><input value={activeScopeSummary()} readonly aria-readonly="true" />
-                      </label>
-                      <label class="resource-basic-enabled">
-                        <span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" checked={resourceStatus === 'active'} on:change={(event) => (resourceStatus = (event.currentTarget as HTMLInputElement).checked ? 'active' : 'disabled')} aria-label="是否启用资源" /><i aria-hidden="true"></i></span>
-                      </label>
-                      </div>
-                      <label class="resource-basic-labels">
-                        <span>资源标签</span><input bind:value={resourceLabels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" />
-                      </label>
-                    </div>
+                    <ResourceBasicConfiguration
+                      resourceCategoryOptions={resourceCategoryOptions}
+                      resourceAddSubtypeOptions={resourceAddSubtypeOptions}
+                      resourceTypeSelectionAttempted={resourceTypeSelectionAttempted}
+                      resourceBasicConfigurationAttempted={resourceBasicConfigurationAttempted}
+                      bind:resourceAddCategory={resourceAddCategory}
+                      bind:resourceAddSubtype={resourceAddSubtype}
+                      bind:resourceName={resourceName}
+                      bind:resourceStatus={resourceStatus}
+                      bind:resourceLabels={resourceLabels}
+                      editingProviderResourceId={editingProviderResourceId}
+                      editingResourceId={editingResourceId}
+                      activeScopeSummary={activeScopeSummary}
+                      onSelectCategory={selectResourceAddCategory}
+                      onSelectSubtype={(subtype) => {
+                        resourceAddSubtype = subtype;
+                        const schema = resourceSchemaForSelection(resourceAddCategory, subtype);
+                        resourceKind = resourceAddCategory === 'LLM' && subtype === 'Provider' ? 'AIProvider' : (schema?.kind ?? '');
+                      }}
+                    />
                   {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
                     <p class="resource-add-description">
                       配置 MCP Server 的连接参数。增强安全模式下服务地址必须使用 HTTPS。
