@@ -1,0 +1,109 @@
+/* Diagnosis feature controls. Colors and spacing continue to use global theme tokens. */
+.diagnosis-model-picker {
+  position: relative;
+  min-width: 0;
+}
+.diagnosis-model-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 150px;
+  min-height: 29px;
+  padding: 0 7px;
+  color: var(--diagnosis-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+.diagnosis-model-trigger > span {
+  display: block;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diagnosis-model-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--diagnosis-muted);
+}
+.diagnosis-model-trigger:hover:not(:disabled) {
+  color: var(--diagnosis-accent);
+  background: transparent;
+}
+.diagnosis-model-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.diagnosis-model-menu {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  width: min(215px, calc(100vw - 28px));
+  max-height: 300px;
+  overflow: auto;
+  padding: 5px;
+  color: var(--diagnosis-ink);
+  background: var(--diagnosis-surface);
+  border: 1px solid var(--diagnosis-line-strong);
+  border-radius: 5px;
+  box-shadow: var(--theme-shadow);
+}
+.diagnosis-model-provider-list,
+.diagnosis-model-option-list {
+  min-width: 0;
+  padding: 2px;
+}
+.diagnosis-model-option-list {
+  border-left: 1px solid var(--diagnosis-line);
+}
+.diagnosis-model-menu-heading {
+  display: block;
+  padding: 3px 6px 5px;
+  color: var(--diagnosis-subtle);
+  font-size: 9px;
+}
+.diagnosis-model-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 6px;
+  color: var(--diagnosis-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-size: 10px;
+  text-align: left;
+}
+.diagnosis-model-menu button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diagnosis-model-menu button:hover,
+.diagnosis-model-menu button.active {
+  color: var(--diagnosis-teal);
+  background: var(--diagnosis-teal-soft);
+}
+.diagnosis-model-empty {
+  display: block;
+  padding: 6px;
+  color: var(--diagnosis-subtle);
+  font-size: 10px;
+}
+
+@media (max-width: 520px) {
+  .diagnosis-model-trigger {
+    width: 100%;
+  }
+}

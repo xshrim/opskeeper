@@ -14,24 +14,20 @@ import { onMount, tick } from 'svelte';
     EyeOff,
     FolderKanban,
     LayoutDashboard,
-    Link2,
     LogOut,
     MessageSquarePlus,
     Monitor,
     Moon,
     PanelLeftClose,
     PanelLeftOpen,
-    Paperclip,
     Pencil,
     PlugZap,
     Plus,
     RefreshCw,
     ScanSearch,
     Search,
-    Send,
     ShieldCheck,
     Sparkles,
-    Square,
     Stethoscope,
     Sun,
     Trash2,
@@ -44,7 +40,11 @@ import { onMount, tick } from 'svelte';
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import { renderDiagnosisMarkdown as renderDiagnosisMarkdownShared } from './lib/diagnosisMarkdown';
   import BrandIcon from './lib/BrandIcon.svelte';
-  import MessageBanner from './lib/MessageBanner.svelte';
+  import MessageBanner from './components/MessageBanner.svelte';
+  import DiagnosisModelPicker from './features/diagnosis/DiagnosisModelPicker.svelte';
+  import DiagnosisComposer from './features/diagnosis/DiagnosisComposer.svelte';
+  import Topbar from './layouts/Topbar.svelte';
+  import AppShell from './layouts/AppShell.svelte';
   import {
     api,
     ApiError,
@@ -6038,10 +6038,9 @@ import { onMount, tick } from 'svelte';
     </section>
   </main>
 {:else}
-  <div
-    class="app-shell"
-    class:sidebar-compact={sidebarCompact}
-    class:sidebar-hover-mode={preferences.sidebar_mode === 'hover'}
+  <AppShell
+    sidebarCompact={sidebarCompact}
+    sidebarHoverMode={preferences.sidebar_mode === 'hover'}
   >
     <aside
       class="sidebar"
@@ -6262,56 +6261,20 @@ import { onMount, tick } from 'svelte';
       class="main-content"
       class:diagnosis-main-content={view === 'diagnosis'}
     >
-      <header class="topbar">
-        <div>
-          <p class="breadcrumb">
-            {view === 'access'
-              ? viewBreadcrumb(view)
-              : `${activeScope?.name ?? '平台'} / ${viewBreadcrumb(view)}`}
-          </p>
-          <h1>{viewTitle(view)}</h1>
-        </div>
-        <div class="topbar-actions">
-          <div class="workspace-switcher topbar-workspace-switcher">
-              <label class="workspace-team workspace-team-select"
-                ><select
-                  aria-label="切换团队"
-                  value={selectedTeamId}
-                  on:change={(event) =>
-                    chooseTeam(
-                      (event.currentTarget as HTMLSelectElement).value
-                    )}
-                >
-                  {#if hasPlatformRole}<option value="">全部团队</option>{/if}
-                  {#each teams as team}<option value={team.id}
-                      >{team.name}</option
-                    >{/each}
-                </select></label
-              >
-              <label class="workspace-project"
-                ><select
-                  aria-label="切换项目"
-                  value={selectedProjectId}
-                  disabled={!workspaceProjects.length}
-                  on:change={(event) =>
-                    chooseProject(
-                      (event.currentTarget as HTMLSelectElement).value
-                    )}
-                >
-                  <option value="">全部项目</option>
-                  {#each workspaceProjects as project}<option
-                      value={project.id}>{project.name}</option
-                    >{/each}
-                </select></label
-              >
-            </div>
-        </div>
-        {#if activeMessage && !messageInChildSurface}
-          <div class="topbar-message-slot">
-            <MessageBanner message={activeMessage} tone={activeMessageTone} />
-          </div>
-        {/if}
-      </header>
+      <Topbar
+        breadcrumb={view === 'access' ? viewBreadcrumb(view) : `${activeScope?.name ?? '平台'} / ${viewBreadcrumb(view)}`}
+        title={viewTitle(view)}
+        activeMessage={activeMessage}
+        activeMessageTone={activeMessageTone}
+        messageInChildSurface={messageInChildSurface}
+        hasPlatformRole={hasPlatformRole}
+        selectedTeamId={selectedTeamId}
+        selectedProjectId={selectedProjectId}
+        teams={teams}
+        workspaceProjects={workspaceProjects}
+        chooseTeam={chooseTeam}
+        chooseProject={chooseProject}
+      />
 
       {#if view === 'overview'}
         <section class="content-grid">
@@ -9040,125 +9003,24 @@ import { onMount, tick } from 'svelte';
                 </article>
               {/if}
             </div>
-            <form
-              class="diagnosis-composer-f"
-              on:submit|preventDefault={() => void submitDiagnosisMessage()}
-            >
-              <div class="diagnosis-composer-shell">
-                <textarea
-                  bind:value={diagnosisComposerText}
-                  on:keydown={handleDiagnosisComposerKeydown}
-                  placeholder="描述问题，或输入 / 调用 Skill…"
-                  aria-label="输入诊断问题"
-                  rows="3"
-                  maxlength="16000"
-                ></textarea>
-                <div class="diagnosis-composer-tools">
-                  <div>
-                    <button
-                      type="button"
-                      class="diagnosis-tool"
-                      title="添加附件"
-                      on:click={() => (notice = '附件入口已打开。')}
-                      ><Paperclip size={15} />附件</button
-                    ><button
-                      type="button"
-                      class="diagnosis-tool"
-                      title="添加链接"
-                      on:click={() => (notice = '链接入口已打开。')}
-                      ><Link2 size={15} />链接</button
-                    ><button
-                      type="button"
-                      class="diagnosis-tool"
-                      title="选择 Skills"
-                      on:click={() =>
-                        (notice =
-                          'Skills：指标查询、日志查询、Kubernetes 只读查询。')}
-                      ><Sparkles size={15} />Skills</button
-                    ><button
-                      type="button"
-                      class="diagnosis-tool"
-                      title="选择 Agent"
-                      on:click={() => (notice = 'Agent：故障定位 Agent。')}
-                      ><Bot size={15} />Agent</button
-                    >
-                  </div>
-                  <div>
-                    <div class="diagnosis-model-picker">
-                      <button
-                        class="diagnosis-model-trigger"
-                        type="button"
-                        aria-label="选择模型服务商和模型"
-                        aria-haspopup="menu"
-                        aria-expanded={diagnosisModelMenuOpen}
-                        disabled={diagnosisAvailableProviders.length === 0}
-                        on:click={toggleDiagnosisModelMenu}
-                      >
-                        <span>{#if diagnosisSelectedProvider}{diagnosisSelectedProvider.name}{:else}暂无可用模型服务商{/if}{#if llmModelName} · {llmModelName}{/if}</span>
-                        <ChevronDown size={13} aria-hidden="true" />
-                      </button>
-                      {#if diagnosisModelMenuOpen}
-                        <div class="diagnosis-model-menu" role="menu" aria-label="模型服务商和模型">
-                          <div class="diagnosis-model-provider-list">
-                            <small class="diagnosis-model-menu-heading">模型服务商</small>
-                            {#each diagnosisAvailableProviders as provider}
-                              <button
-                                type="button"
-                                role="menuitem"
-                                class:active={provider.provider_resource_id === diagnosisModelMenuProvider?.provider_resource_id}
-                                aria-haspopup="menu"
-                                aria-expanded={provider.provider_resource_id === diagnosisModelMenuProvider?.provider_resource_id}
-                                on:click={() => chooseDiagnosisModelProvider(provider.provider_resource_id)}
-                              >
-                                <span>{provider.name}</span>
-                                <ChevronRight size={12} aria-hidden="true" />
-                              </button>
-                            {/each}
-                          </div>
-                          <div class="diagnosis-model-option-list" role="menu" aria-label="模型">
-                            <small class="diagnosis-model-menu-heading">模型</small>
-                            {#if diagnosisModelMenuProvider}
-                              {#each diagnosisModelMenuProvider.models as model}
-                                <button
-                                  type="button"
-                                  role="menuitemradio"
-                                  aria-checked={selectedProviderId === diagnosisModelMenuProvider.provider_resource_id && llmModelName === String(model.name ?? '')}
-                                  class:active={selectedProviderId === diagnosisModelMenuProvider.provider_resource_id && llmModelName === String(model.name ?? '')}
-                                  on:click={() => chooseDiagnosisModel(String(model.name ?? ''))}
-                                >
-                                  <span>{String(model.name ?? '')}</span>
-                                </button>
-                              {/each}
-                            {:else}
-                              <span class="diagnosis-model-empty">暂无可用模型</span>
-                            {/if}
-                          </div>
-                        </div>
-                      {/if}
-                    </div>
-                    <button
-                      class="primary diagnosis-send-button"
-                      type="button"
-                      disabled={busy ||
-                        (!diagnosisComposerText.trim() && !diagnosisGenerating)}
-                      on:click={() =>
-                        diagnosisGenerating
-                          ? stopDiagnosisGeneration()
-                          : void submitDiagnosisMessage()}
-                      >{#if diagnosisGenerating}<Square
-                          size={14}
-                          fill="currentColor"
-                        />停止{:else}<Send size={14} />发送{/if}</button
-                    >
-                  </div>
-                </div>
-              </div>
-              <small class="diagnosis-composer-note"
-                ><span>Enter 发送 · Shift + Enter 换行</span><span
-                  >当前模型支持：文本、工具调用、流式输出</span
-                ></small
-              >
-            </form>
+            <DiagnosisComposer
+              text={diagnosisComposerText}
+              busy={busy}
+              generating={diagnosisGenerating}
+              providers={diagnosisAvailableProviders}
+              selectedProviderId={selectedProviderId}
+              modelName={llmModelName}
+              modelMenuOpen={diagnosisModelMenuOpen}
+              modelMenuProviderId={diagnosisModelMenuProviderId}
+              onTextChange={(value) => (diagnosisComposerText = value)}
+              onKeydown={handleDiagnosisComposerKeydown}
+              onSubmit={() => void submitDiagnosisMessage()}
+              onStop={stopDiagnosisGeneration}
+              onNotice={(message) => (notice = message)}
+              onModelToggle={toggleDiagnosisModelMenu}
+              onProvider={chooseDiagnosisModelProvider}
+              onModel={chooseDiagnosisModel}
+            />
           </section>
           <div
             class="diagnosis-splitter right"
@@ -10756,5 +10618,5 @@ import { onMount, tick } from 'svelte';
         {/if}
       {/if}
     </main>
-  </div>
+  </AppShell>
 {/if}
