@@ -468,6 +468,9 @@ import { onMount, tick } from 'svelte';
   let diagnosisInterruptedReason = '';
   let diagnosisGenerating = false;
   let diagnosisAnswerCompleted = false;
+  let diagnosisStopping = false;
+  let diagnosisStopRequested = false;
+  let diagnosisSubmissionPending = false;
   let diagnosisLiveProcessExpanded = false;
   let diagnosisStreamingText = '';
   // Text emitted before a model turn reveals that it will call a tool is only
@@ -1631,6 +1634,7 @@ import { onMount, tick } from 'svelte';
       'assistant.progress',
       'assistant.delta',
       'assistant.completed',
+      'context.compacted',
       'tool.requested',
       'tool.started',
       'tool.completed',
@@ -1718,6 +1722,10 @@ import { onMount, tick } from 'svelte';
       diagnosisLiveProcessExpanded = false;
       diagnosisGenerating = true;
       void refreshDiagnosis(id);
+      return;
+    }
+    if (eventType === 'context.compacted') {
+      diagnosisGenerating = true;
       return;
     }
     if (eventType === 'execution.started' || eventType === 'tool.requested' || eventType === 'tool.started' || eventType === 'tool.completed' || eventType === 'tool.failed' || eventType === 'phase.changed') {
@@ -1867,13 +1875,26 @@ import { onMount, tick } from 'svelte';
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
         : 0;
       resetDiagnosisStreamState();
-      const session = await api.startDiagnosis({
-        scope_id: selectedScopeId,
-        question,
-        target_resource_ids: diagnosisTargetIds,
-        ai_provider_resource_id: selectedProviderId || undefined,
-        model_name: llmModelName || undefined
-      });
+      diagnosisStopping = false;
+      diagnosisStopRequested = false;
+      diagnosisSubmissionPending = true;
+      diagnosisGenerating = true;
+      let session: DiagnosisSession;
+      try {
+        session = await api.startDiagnosis({
+          scope_id: selectedScopeId,
+          question,
+          target_resource_ids: diagnosisTargetIds,
+          ai_provider_resource_id: selectedProviderId || undefined,
+          model_name: llmModelName || undefined
+        });
+      } catch (error) {
+        diagnosisSubmissionPending = false;
+        diagnosisGenerating = false;
+        throw error;
+      }
+      diagnosisSubmissionPending = false;
+      const stopRequested = diagnosisStopRequested;
       diagnosisSessions = [session, ...diagnosisSessions];
       diagnosisQuestion = '';
       diagnosisTargetIds = [];
@@ -1881,11 +1902,16 @@ import { onMount, tick } from 'svelte';
       diagnosisInterruptedReason = '';
       await openDiagnosis(session.id);
       await scrollDiagnosisQuestionIntoView('', question);
+      if (stopRequested) {
+        diagnosisStopRequested = false;
+        await stopDiagnosisGeneration();
+      }
     });
   }
 
   async function submitDiagnosisMessage() {
     const content = diagnosisComposerText.trim();
+    if (diagnosisGenerating) return;
     if (!content) return;
     if (!selectedDiagnosisId) {
       diagnosisQuestion = content;
@@ -2025,13 +2051,30 @@ import { onMount, tick } from 'svelte';
         ? diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length
         : 0;
       resetDiagnosisStreamState();
-      const created = await api.askDiagnosis(selectedDiagnosisId, question);
+      diagnosisStopping = false;
+      diagnosisStopRequested = false;
+      diagnosisSubmissionPending = true;
+      diagnosisGenerating = true;
+      let created: DiagnosisMessage;
+      try {
+        created = await api.askDiagnosis(selectedDiagnosisId, question);
+      } catch (error) {
+        diagnosisSubmissionPending = false;
+        diagnosisGenerating = false;
+        throw error;
+      }
+      diagnosisSubmissionPending = false;
+      const stopRequested = diagnosisStopRequested;
       diagnosisFollowup = '';
       diagnosisInterruptedReason = '';
       diagnosisGenerating = true;
       await refreshDiagnosis();
       openDiagnosisEvents(selectedDiagnosisId);
       await scrollDiagnosisQuestionIntoView(created.id, question);
+      if (stopRequested) {
+        diagnosisStopRequested = false;
+        await stopDiagnosisGeneration();
+      }
     });
   }
 
@@ -2072,6 +2115,9 @@ import { onMount, tick } from 'svelte';
     diagnosisEditDraft = '';
     diagnosisInterruptedReason = '';
     diagnosisGenerating = false;
+    diagnosisStopping = false;
+    diagnosisStopRequested = false;
+    diagnosisSubmissionPending = false;
     resetDiagnosisStreamState();
     diagnosisStreamingAssistantBaseline = 0;
   }
@@ -2126,7 +2172,20 @@ import { onMount, tick } from 'svelte';
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot!.messages.filter(
         (message) => message.role === 'assistant'
       ).length;
-      const created = await api.askDiagnosis(selectedDiagnosisId, content);
+      diagnosisStopping = false;
+      diagnosisStopRequested = false;
+      diagnosisSubmissionPending = true;
+      diagnosisGenerating = true;
+      let created: DiagnosisMessage;
+      try {
+        created = await api.askDiagnosis(selectedDiagnosisId, content);
+      } catch (error) {
+        diagnosisSubmissionPending = false;
+        diagnosisGenerating = false;
+        throw error;
+      }
+      diagnosisSubmissionPending = false;
+      const stopRequested = diagnosisStopRequested;
       diagnosisHiddenMessageIds = [...diagnosisHiddenMessageIds, originalID];
       diagnosisSnapshot = {
         ...diagnosisSnapshot!,
@@ -2144,17 +2203,38 @@ import { onMount, tick } from 'svelte';
       diagnosisGenerating = true;
       openDiagnosisEvents(selectedDiagnosisId);
       await scrollDiagnosisQuestionIntoView(created.id, content);
+      if (stopRequested) {
+        diagnosisStopRequested = false;
+        await stopDiagnosisGeneration();
+      }
     });
   }
 
-  function stopDiagnosisGeneration() {
-    if (!selectedDiagnosisId || !diagnosisGenerating) return;
+  async function stopDiagnosisGeneration() {
+    if (!diagnosisGenerating || diagnosisStopping) return;
+    if (diagnosisSubmissionPending) {
+      diagnosisStopRequested = true;
+      diagnosisGenerating = false;
+      diagnosisInterruptedReason = '用户手动停止了当前回答。';
+      return;
+    }
+    if (!selectedDiagnosisId) {
+      diagnosisStopRequested = true;
+      diagnosisGenerating = false;
+      diagnosisInterruptedReason = '用户手动停止了当前回答。';
+      return;
+    }
+    diagnosisStopping = true;
     closeDiagnosisEvents();
     diagnosisGenerating = false;
     diagnosisInterruptedReason = '用户手动停止了当前回答。';
-    void api.cancelDiagnosis(selectedDiagnosisId).catch((error) => {
+    try {
+      await api.cancelDiagnosis(selectedDiagnosisId);
+    } catch (error) {
       diagnosisInterruptedReason = `停止请求失败：${describeError(error, '无法停止后台执行')}`;
-    });
+    } finally {
+      diagnosisStopping = false;
+    }
   }
 
   function diagnosisStatusLabel(status: string) {
@@ -2437,6 +2517,25 @@ import { onMount, tick } from 'svelte';
         tools.clear();
         const observation = payload.observation ?? payload.observations;
         if (observation !== undefined) addChild({ id: `event-${event.id}`, kind: 'observation', title: '收到工具结果，重新评估', detail: jsonText(observation) });
+        continue;
+      }
+      if (event.type === 'context.compacted') {
+        currentToolGroup = null;
+        tools.clear();
+        const compacted = Array.isArray(payload.compacted_observations)
+          ? payload.compacted_observations
+          : [];
+        const count = Number(payload.evicted_observation_count ?? compacted.length);
+        addChild({
+          id: `event-${event.id}`,
+          kind: 'status',
+          title: '已压缩执行上下文',
+          detail: jsonText({
+            evicted_message_count: Number(payload.evicted_message_count ?? 0),
+            evicted_observation_count: count,
+            compacted_observations: compacted
+          })
+        });
         continue;
       }
       if (event.type === 'execution.completed' || event.type === 'execution.failed' || event.type === 'execution.cancelled') {
@@ -2795,6 +2894,27 @@ import { onMount, tick } from 'svelte';
         currentGroup = null;
         continue;
       }
+      if (event.type === 'context.compacted') {
+        currentGroup = null;
+        const compacted = Array.isArray(payload.compacted_observations)
+          ? payload.compacted_observations
+          : [];
+        items.push({
+          id: event.id,
+          kind: 'action',
+          tool: 'context.compacted',
+          label: '压缩执行上下文',
+          status: '已完成',
+          duration: diagnosisDurationMilliseconds(Number(payload.duration_ms ?? 0)),
+          elapsed: diagnosisDurationMilliseconds(Number(payload.elapsed_ms ?? 0)),
+          iteration,
+          input: jsonText({ evicted_message_count: Number(payload.evicted_message_count ?? 0) }),
+          output: jsonText({ compacted_observations: compacted }),
+          createdAt: event.created_at,
+          updatedAt: event.created_at
+        });
+        continue;
+      }
       if (!event.type.startsWith('tool.')) continue;
       const tool = toolName(event);
       if (!tool || !Object.prototype.hasOwnProperty.call(payload, 'resource_id')) continue;
@@ -2867,7 +2987,7 @@ import { onMount, tick } from 'svelte';
       latestRunEvents.some((event) => event.type === 'assistant.completed' || event.type === 'report.ready' || event.type === 'diagnosis.failed' || event.type === 'diagnosis.cancelled'));
     if (!terminal) return items;
     return items.flatMap((item) => {
-      if (item.kind === 'analysis') return [item];
+      if (item.kind === 'analysis' || item.tool === 'context.compacted') return [item];
       const actions = (item.actions ?? []).filter((action) => action.status !== '等待执行' && action.status !== '执行中');
       if (!actions.length) return [];
       return [{

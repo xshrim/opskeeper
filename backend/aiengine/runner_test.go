@@ -130,6 +130,46 @@ func TestAgentRunnerNeverExceedsProviderOutputCap(t *testing.T) {
 	}
 }
 
+func TestTrimContextReturnsEvictedObservationReferences(t *testing.T) {
+	state := newExecutionState()
+	observationID := state.save(map[string]any{"rows": []any{"row-1", "row-2"}})
+	state.observe("query", observationID, map[string]any{"status": "ok", "rows": 2})
+	request := &model.LLMRequest{Contents: []*genai.Content{
+		genai.NewContentFromText("initial task", genai.RoleUser),
+		{Role: genai.RoleModel, Parts: []*genai.Part{{FunctionCall: &genai.FunctionCall{ID: "call-1", Name: "query"}}}},
+		{Role: genai.RoleUser, Parts: []*genai.Part{{FunctionResponse: &genai.FunctionResponse{Name: "query", ID: "call-1", Response: map[string]any{"output": map[string]any{"observation_id": observationID}}}}}},
+		genai.NewContentFromText("latest turn", genai.RoleModel),
+	}}
+	ids, evicted := trimContext(request, 520)
+	if evicted == 0 {
+		t.Fatal("expected context compaction")
+	}
+	if len(ids) != 1 || ids[0] != observationID {
+		t.Fatalf("evicted observation IDs = %#v, want [%q]", ids, observationID)
+	}
+	state.markCompacted(ids)
+	prompt := state.prompt()
+	if !strings.Contains(prompt, observationID) || !strings.Contains(prompt, "compacted_observations") {
+		t.Fatalf("compaction prompt omitted evidence reference: %s", prompt)
+	}
+	value, ok := state.read(observationID, 0, 1000)
+	if !ok || !strings.Contains(fmt.Sprint(value), "row-1") {
+		t.Fatalf("evicted observation is not readable: %#v", value)
+	}
+}
+
+func TestTrimContextDoesNotReportReferencesWhenNothingIsEvicted(t *testing.T) {
+	request := &model.LLMRequest{Contents: []*genai.Content{
+		genai.NewContentFromText("initial task", genai.RoleUser),
+		genai.NewContentFromText("model response", genai.RoleModel),
+		genai.NewContentFromText("latest question", genai.RoleUser),
+		genai.NewContentFromText("latest answer", genai.RoleModel),
+	}}
+	if ids, evicted := trimContext(request, 100000); len(ids) != 0 || evicted != 0 {
+		t.Fatalf("unexpected compaction references = %#v", ids)
+	}
+}
+
 func (m *duplicateToolModel) Name() string { return "duplicate-tool-model" }
 
 func (m *duplicateToolModel) GenerateContent(_ context.Context, request *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {

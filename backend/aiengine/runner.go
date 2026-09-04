@@ -27,6 +27,9 @@ import (
 type executionState struct {
 	mu               sync.RWMutex
 	observations     map[string]any
+	observationIndex map[string]compactedObservation
+	compactedIDs     map[string]struct{}
+	compacted        []compactedObservation
 	confirmedFacts   []string
 	hypotheses       []string
 	eliminatedCauses []string
@@ -34,7 +37,24 @@ type executionState struct {
 	nextActions      []string
 }
 
-func newExecutionState() *executionState { return &executionState{observations: make(map[string]any)} }
+// compactedObservation is a bounded, evidence-backed entry retained after an
+// older tool-call turn leaves the provider context window. It intentionally
+// contains no model-authored conclusion: exact output remains available only
+// through read_observation during this execution.
+type compactedObservation struct {
+	ObservationID string `json:"observation_id"`
+	Tool          string `json:"tool"`
+	Outcome       string `json:"outcome"`
+	Summary       string `json:"summary"`
+}
+
+func newExecutionState() *executionState {
+	return &executionState{
+		observations:     make(map[string]any),
+		observationIndex: make(map[string]compactedObservation),
+		compactedIDs:     make(map[string]struct{}),
+	}
+}
 
 func (s *executionState) save(value any) string {
 	id := fmt.Sprintf("obs-%d", time.Now().UnixNano())
@@ -68,26 +88,59 @@ func (s *executionState) read(id string, offset, limit int) (any, bool) {
 	return map[string]any{"observation_id": id, "offset": offset, "next_offset": end, "done": end >= len(encoded), "content": string(encoded[offset:end])}, true
 }
 
-func (s *executionState) observe(toolName string, value any) {
+func (s *executionState) observe(toolName, observationID string, value any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := safeProgressText(fmt.Sprint(value), 240)
+	text := compactObservationText(value)
 	if text == "" {
 		return
 	}
+	outcome := "success"
 	if strings.Contains(strings.ToLower(text), "error") || strings.Contains(strings.ToLower(text), "failed") {
+		outcome = "error"
 		s.openQuestions = appendBounded(s.openQuestions, toolName+": 返回了错误，需要重新评估")
 		s.eliminatedCauses = appendBounded(s.eliminatedCauses, toolName+": 当前调用路径不可用")
-		return
+	} else {
+		s.confirmedFacts = appendBounded(s.confirmedFacts, toolName+": 已获得环境观察")
 	}
-	s.confirmedFacts = appendBounded(s.confirmedFacts, toolName+": 已获得环境观察")
+	if observationID != "" {
+		s.observationIndex[observationID] = compactedObservation{
+			ObservationID: observationID,
+			Tool:          toolName,
+			Outcome:       outcome,
+			Summary:       text,
+		}
+	}
+}
+
+func (s *executionState) markCompacted(observationIDs []string) []compactedObservation {
+	if len(observationIDs) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	added := make([]compactedObservation, 0, len(observationIDs))
+	for _, observationID := range observationIDs {
+		if _, alreadyCompacted := s.compactedIDs[observationID]; alreadyCompacted {
+			continue
+		}
+		item, known := s.observationIndex[observationID]
+		if !known {
+			continue
+		}
+		s.compactedIDs[observationID] = struct{}{}
+		s.compacted = appendBoundedCompacted(s.compacted, item)
+		added = append(added, item)
+	}
+	return added
 }
 
 func (s *executionState) prompt() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	encode := func(items []string) string { b, _ := json.Marshal(items); return string(b) }
-	return "Execution state (machine-maintained, do not expose as chain of thought): confirmed_facts=" + encode(s.confirmedFacts) + ", hypotheses=" + encode(s.hypotheses) + ", eliminated_causes=" + encode(s.eliminatedCauses) + ", open_questions=" + encode(s.openQuestions) + ", next_actions=" + encode(s.nextActions)
+	compacted, _ := json.Marshal(s.compacted)
+	return "Execution state (machine-maintained, do not expose as chain of thought): confirmed_facts=" + encode(s.confirmedFacts) + ", hypotheses=" + encode(s.hypotheses) + ", eliminated_causes=" + encode(s.eliminatedCauses) + ", open_questions=" + encode(s.openQuestions) + ", next_actions=" + encode(s.nextActions) + ", compacted_observations=" + string(compacted) + ". Compacted observations are evidence references, not conclusions; use read_observation(observation_id, offset, limit) when exact details are required."
 }
 
 func appendBounded(items []string, value string) []string {
@@ -95,6 +148,23 @@ func appendBounded(items []string, value string) []string {
 		items = items[len(items)-12:]
 	}
 	return append(items, value)
+}
+
+func appendBoundedCompacted(items []compactedObservation, value compactedObservation) []compactedObservation {
+	const maxCompactedObservations = 16
+	if len(items) >= maxCompactedObservations {
+		items = items[len(items)-maxCompactedObservations+1:]
+	}
+	return append(items, value)
+}
+
+func compactObservationText(value any) string {
+	summary := summarizeObservation(value)
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		return "工具返回了无法展示的结果"
+	}
+	return safeProgressText(string(encoded), 480)
 }
 
 // AgentRunner is the Skill-independent Agent execution runtime. It owns the
@@ -374,7 +444,18 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		if req == nil {
 			return nil, nil
 		}
-		trimContext(req, modelResult.ContextWindowTokens)
+		compactionStarted := time.Now()
+		compactedObservationIDs, evictedMessageCount := trimContext(req, modelResult.ContextWindowTokens)
+		compactedObservations := state.markCompacted(compactedObservationIDs)
+		if evictedMessageCount > 0 && sink != nil {
+			_ = sink(Event{ExecutionID: request.ExecutionID, Type: EventContextCompacted, Status: StatusRunning, Payload: map[string]any{
+				"evicted_message_count":     evictedMessageCount,
+				"iteration":                 modelIteration.Load(),
+				"evicted_observation_count": len(compactedObservations),
+				"compacted_observations":    compactedObservations,
+				"duration_ms":               time.Since(compactionStarted).Milliseconds(),
+			}})
+		}
 		if req.Config == nil {
 			req.Config = &genai.GenerateContentConfig{}
 		}
@@ -872,7 +953,7 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 			// the complete recursively redacted value so paging never reintroduces
 			// credentials that were removed from the model-facing summary.
 			observationID := state.save(scrubObservationText(redactValue(toolResult.Output)))
-			state.observe(definition.Name, toolResult.Output)
+			state.observe(definition.Name, observationID, toolResult.Output)
 			// Preserve the original result for Evidence/audit sinks, but pass only
 			// the bounded, recursively redacted observation to the model.
 			return map[string]any{"output": map[string]any{"observation_id": observationID, "summary": observation, "read_tool": "read_observation"}, "untrusted": toolResult.Untrusted, "truncated": toolResult.Truncated, "aiengine_observation": true}, nil
@@ -1299,14 +1380,16 @@ func estimateRequestTokens(req *model.LLMRequest) int {
 
 // trimContext keeps the system prompt, the initial user task, and the latest
 // complete turns. Function-call/response pairs are retained as atomic groups
-// so providers never receive an invalid tool conversation.
-func trimContext(req *model.LLMRequest, window int) {
+// so providers never receive an invalid tool conversation. It returns the
+// observation IDs found in evicted responses, allowing executionState to keep
+// a compact, evidence-backed index available to later turns.
+func trimContext(req *model.LLMRequest, window int) ([]string, int) {
 	if req == nil || window <= 0 || len(req.Contents) < 4 {
-		return
+		return nil, 0
 	}
 	maxBytes := (window - 512) * 4
 	if maxBytes <= 0 {
-		return
+		return nil, 0
 	}
 	contents := req.Contents
 	keep := make([]*genai.Content, 0, len(contents))
@@ -1334,10 +1417,52 @@ func trimContext(req *model.LLMRequest, window int) {
 		used = append(used, encoded...)
 		start = groupStart - 1
 	}
-	if len(keep) < len(contents) {
+	evictedMessageCount := len(contents) - len(keep)
+	if evictedMessageCount > 0 {
 		keep = append([]*genai.Content{genai.NewContentFromText("Earlier conversation and tool observations were compacted. Use read_observation with an observation_id when exact details are required.", genai.RoleUser)}, keep...)
 	}
 	req.Contents = keep
+	if evictedMessageCount == 0 {
+		return nil, 0
+	}
+	return observationIDsFromContents(contents[:start+1]), evictedMessageCount
+}
+
+func observationIDsFromContents(contents []*genai.Content) []string {
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, content := range contents {
+		if content == nil {
+			continue
+		}
+		for _, part := range content.Parts {
+			if part == nil || part.FunctionResponse == nil {
+				continue
+			}
+			id := observationIDFromResponse(part.FunctionResponse.Response)
+			if id == "" {
+				continue
+			}
+			if _, duplicate := seen[id]; duplicate {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func observationIDFromResponse(response map[string]any) string {
+	if response == nil {
+		return ""
+	}
+	output, ok := response["output"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	id, _ := output["observation_id"].(string)
+	return strings.TrimSpace(id)
 }
 
 func streamingMode(stream bool) agent.StreamingMode {
