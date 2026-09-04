@@ -15,7 +15,6 @@ import { onMount, tick } from 'svelte';
     FolderKanban,
     LayoutDashboard,
     LogOut,
-    MessageSquarePlus,
     Monitor,
     Moon,
     PanelLeftClose,
@@ -43,6 +42,9 @@ import { onMount, tick } from 'svelte';
   import MessageBanner from './components/MessageBanner.svelte';
   import DiagnosisModelPicker from './features/diagnosis/DiagnosisModelPicker.svelte';
   import DiagnosisComposer from './features/diagnosis/DiagnosisComposer.svelte';
+  import DiagnosisContextPanel from './features/diagnosis/DiagnosisContextPanel.svelte';
+  import DiagnosisSessionList from './features/diagnosis/DiagnosisSessionList.svelte';
+  import DiagnosisConversationHeader from './features/diagnosis/DiagnosisConversationHeader.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -8603,74 +8605,18 @@ import { onMount, tick } from 'svelte';
           style={`--diagnosis-history-width:${diagnosisHistoryWidth}px;--diagnosis-context-width:${diagnosisContextWidth}px`}
         >
           {#if !diagnosisHistoryCollapsed}
-            <aside class="diagnosis-history-panel">
-              <div class="diagnosis-panel-top">
-                <div>
-                  <h2>会话历史</h2>
-                  <small>{diagnosisSessions.length} 个会话</small>
-                </div>
-                <div class="diagnosis-heading-actions">
-                  <button
-                    class="icon-button"
-                    aria-label="清空会话历史"
-                    title="清空会话历史"
-                    on:click={clearDiagnosisHistory}
-                    ><Trash2 size={15} /></button
-                  >
-                  <button
-                    class="icon-button"
-                    aria-label="新建诊断会话"
-                    title="新建诊断会话"
-                    on:click={newDiagnosisSession}><Plus size={16} /></button
-                  >
-                </div>
-              </div>
-              <input
-                class="diagnosis-session-search"
-                bind:value={diagnosisSessionSearch}
-                placeholder="搜索会话"
-                aria-label="搜索会话"
-              />
-              <div class="diagnosis-session-list-f">
-                {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '')
-                      .toLowerCase()
-                      .includes(diagnosisSessionSearch.toLowerCase())) as session}
-                  <div class="diagnosis-session-item">
-                    <button
-                      class:active={selectedDiagnosisId === session.id}
-                      class="diagnosis-session-row-f"
-                      on:click={() => void openDiagnosis(session.id)}
-                    >
-                      <strong class="diagnosis-session-title-f"
-                        >{session.title || '未命名诊断'}</strong
-                      >
-                      <span class="diagnosis-session-meta-f"
-                        ><small>{formatDate(session.created_at)}</small><em
-                          class={`diagnosis-session-status-f ${session.status}`}
-                          >{diagnosisStatusLabel(session.status)}</em
-                        ></span
-                      >
-                    </button>
-                    <div class="diagnosis-session-actions">
-                      <button
-                        aria-label="重命名会话"
-                        title="重命名会话"
-                        on:click|stopPropagation={() =>
-                          renameDiagnosisSession(session)}
-                        ><Pencil size={13} /></button
-                      >
-                      <button
-                        aria-label="删除会话"
-                        title="删除会话"
-                        on:click|stopPropagation={() =>
-                          deleteDiagnosisSession(session)}
-                        ><Trash2 size={13} /></button
-                      >
-                    </div>
-                  </div>
-                {:else}<p class="diagnosis-empty">还没有诊断会话。</p>{/each}
-              </div>
-            </aside>
+            <DiagnosisSessionList
+              sessions={diagnosisSessions}
+              selectedSessionId={selectedDiagnosisId}
+              bind:search={diagnosisSessionSearch}
+              statusLabel={diagnosisStatusLabel}
+              formatDate={formatDate}
+              onClear={clearDiagnosisHistory}
+              onCreate={newDiagnosisSession}
+              onOpen={(sessionID) => void openDiagnosis(sessionID)}
+              onRename={renameDiagnosisSession}
+              onDelete={deleteDiagnosisSession}
+            />
           {/if}
           <div
             class="diagnosis-splitter left"
@@ -8690,47 +8636,16 @@ import { onMount, tick } from 'svelte';
             >
           </div>
           <section class="diagnosis-conversation-f">
-            <header class="diagnosis-conversation-head">
-              <div class="diagnosis-conversation-title">
-                <h1>{diagnosisSnapshot?.session.title || '新建诊断会话'}</h1>
-                <small>{activeScope?.name ?? '当前级别'} · 只读证据链</small>
-              </div>
-              <div class="diagnosis-loaded-context">
-                <span class="diagnosis-loaded-context-label">已加载上下文</span>
-                <div class="diagnosis-context-resources">
-                  {#each diagnosisTargets
-                    .filter( (resource) => diagnosisTargetIds.includes(resource.id) )
-                    .slice(0, 3) as resource}<span class="diagnosis-context-chip"
-                      >{resource.name}</span
-                    >{/each}
-                  {#if diagnosisTargetIds.length > 3}<span
-                      class="diagnosis-context-chip accent"
-                      >+{diagnosisTargetIds.length - 3}</span
-                    >{/if}
-                  {#if diagnosisTargetIds.length === 0}<span
-                      class="diagnosis-context-chip muted">未选择</span
-                    >{/if}
-                </div>
-              </div>
-              <div class="diagnosis-head-actions">
-                <span class="diagnosis-head-status"
-                  ><i class:running={diagnosisGenerating}
-                  ></i>{diagnosisGenerating
-                    ? '正在生成回答'
-                    : diagnosisSnapshot
-                      ? diagnosisStatusLabel(diagnosisSnapshot.session.status)
-                      : '等待提问'}</span
-                >
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="新建诊断会话"
-                  title="新建诊断会话"
-                  on:click={newDiagnosisSession}
-                  ><MessageSquarePlus size={16} /></button
-                >
-              </div>
-            </header>
+            <DiagnosisConversationHeader
+              title={diagnosisSnapshot?.session.title || '新建诊断会话'}
+              scopeLabel={activeScope?.name ?? '当前级别'}
+              diagnosisTargets={diagnosisTargets}
+              diagnosisTargetIds={diagnosisTargetIds}
+              generating={diagnosisGenerating}
+              snapshot={diagnosisSnapshot}
+              statusLabel={diagnosisStatusLabel}
+              onCreate={newDiagnosisSession}
+            />
             <div class="diagnosis-message-list-f" bind:this={diagnosisMessageListElement}>
               {#if !diagnosisSnapshot}<div class="diagnosis-welcome">
                   <span class="diagnosis-welcome-icon"
@@ -9040,191 +8955,25 @@ import { onMount, tick } from 'svelte';
             >
           </div>
           {#if !diagnosisContextCollapsed}
-            <aside class="diagnosis-context-panel-f">
-              <div class="diagnosis-panel-top">
-                <div>
-                  <h2>诊断上下文</h2>
-                  <small
-                    >{diagnosisTargetIds.length} / {diagnosisTargets.length} 已加载</small
-                  >
-                </div>
-              </div>
-              <div class="diagnosis-context-tabs">
-                <button
-                  class:active={diagnosisContextTab === 'context'}
-                  on:click={() => (diagnosisContextTab = 'context')}
-                  >上下文</button
-                ><button
-                  class:active={diagnosisContextTab === 'evidence'}
-                  on:click={() => (diagnosisContextTab = 'evidence')}
-                  >证据链</button
-                >
-              </div>
-              {#if diagnosisContextTab === 'context'}
-                <p class="diagnosis-context-note">
-                  <strong>上下文开关</strong><br />只把打开的资源提供给当前
-                  Agent；关闭不会删除资源，也不会影响权限。
-                </p>
-                <div class="diagnosis-resource-list-f">
-                  {#each diagnosisTargets as resource}<label
-                      class:selected={diagnosisTargetIds.includes(resource.id)}
-                      ><span class="diagnosis-resource-icon"
-                        >{resourceIcon(resource.kind)}</span
-                      ><span
-                        ><strong>{resource.name}</strong><small
-                          >{resourceSchemaName(resource.kind)} · {scopeName(
-                            resource.scope_id
-                          )}</small
-                        ></span
-                      ><input
-                        type="checkbox"
-                        checked={diagnosisTargetIds.includes(resource.id)}
-                        on:change={() => toggleDiagnosisContext(resource.id)}
-                      /></label
-                    >{:else}<p class="diagnosis-empty">
-                      当前作用域没有可用于诊断的活动资源。
-                    </p>{/each}
-                </div>
-              {:else}
-                <div class="diagnosis-evidence-pane">
-                  <section class="diagnosis-causal-chain-panel" aria-label="精选因果证据链">
-                    <div class="diagnosis-evidence-section-title">
-                      <span>精选因果证据链</span>
-                      {#if diagnosisActiveCausalChain(diagnosisSnapshot)}<small>当前结论 · 第 {diagnosisActiveCausalChain(diagnosisSnapshot)?.version} 轮</small>{/if}
-                    </div>
-                    {#if diagnosisActiveCausalChain(diagnosisSnapshot)}
-                      <p class="diagnosis-causal-summary">{diagnosisActiveCausalChain(diagnosisSnapshot)?.summary}</p>
-                      <div class="diagnosis-causal-path">
-                        {#each diagnosisCausalNodes(diagnosisActiveCausalChain(diagnosisSnapshot)!) as node, index (node.id)}
-                          {#if index > 0}<span class="diagnosis-causal-arrow" aria-hidden="true">↓</span>{/if}
-                          {@const evidenceIDs = diagnosisCausalEvidenceIDs(diagnosisActiveCausalChain(diagnosisSnapshot)!, node.id)}
-                          <article class="diagnosis-causal-node {node.kind}" class:unverified={node.status === 'unverified'}>
-                            <div><small>{node.kind === 'cause' ? '原因' : node.kind === 'mechanism' ? '作用机制' : node.kind === 'effect' ? '结果' : node.kind === 'exclusion' ? '已排除' : '待核验'}</small><strong>{node.statement}</strong></div>
-                            <span class="diagnosis-causal-status {node.status}">{node.status === 'confirmed' ? '已确认' : node.status === 'likely' ? '较可能' : node.status === 'refuted' ? '已推翻' : '待核验'}</span>
-                            {#if evidenceIDs.length}
-                              <div class="diagnosis-causal-references">
-                                {#each evidenceIDs as id (id)}<button type="button" on:click={() => scrollToDiagnosisEvidence(id)}>E{ id.slice(0, 8) }</button>{/each}
-                              </div>
-                            {/if}
-                          </article>
-                        {/each}
-                      </div>
-                    {:else}
-                      <p class="diagnosis-empty">完成一轮带工具证据的诊断后，这里会显示与当前结论直接相关的因果证据链。</p>
-                    {/if}
-                  </section>
-                  {#if diagnosisSnapshot?.causal_chains && diagnosisSnapshot.causal_chains.length > 1}
-                    <details class="diagnosis-causal-history">
-                      <summary>诊断演进 <small>{diagnosisSnapshot.causal_chains.length} 个版本</small></summary>
-                      {#each diagnosisSnapshot.causal_chains as chain (chain.id)}
-                        <div class:active={chain.id === diagnosisActiveCausalChain(diagnosisSnapshot)?.id}><strong>第 {chain.version} 轮</strong><small>{chain.status === 'active' ? '当前结论' : chain.status === 'partial' ? '结论不完整' : '已被后续证据更新'}</small><p>{chain.summary}</p></div>
-                      {/each}
-                    </details>
-                  {/if}
-                  <details class="diagnosis-evidence-record">
-                    <summary>完整取证记录 <small>分析观察、工具调用与环境反馈</small></summary>
-                    <div class="diagnosis-evidence-timeline">
-                    {#each diagnosisEvidenceTimeline(diagnosisSnapshot) as item (item.id)}
-                    {#if item.kind === 'turn'}
-                      <details class="diagnosis-evidence-chain">
-                        <summary>
-                          <span class="diagnosis-evidence-chain-marker" aria-hidden="true"></span>
-                          <span class="diagnosis-evidence-chain-title" title={item.title}>{item.title}</span>
-                          <small>{item.detail}</small>
-                          <span class="diagnosis-evidence-chevron">›</span>
-                        </summary>
-                        <div class="diagnosis-evidence-chain-body">
-                        {#each item.children ?? [] as child (child.id)}
-                        {#if child.kind === 'tool-group'}
-                          {@const group = child}
-                      <details class="diagnosis-evidence-event tool-event tool-group">
-                        <summary>
-                          <span class="diagnosis-evidence-marker tool"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{group.title}</strong><small>{group.status}{#if group.detail} · {group.detail}{/if}</small></span>
-                          <span class="diagnosis-evidence-chevron">›</span>
-                        </summary>
-                        <div class="diagnosis-evidence-tool-group">
-                          {#each group.children ?? [] as tool (tool.id)}
-                            <details class="diagnosis-evidence-event tool-event">
-                              <summary>
-                                <span class="diagnosis-evidence-marker tool"></span>
-                                <span class="diagnosis-evidence-event-main"><strong>{tool.tool ?? tool.title}</strong><small>{tool.status}{#if tool.duration} · {tool.duration}{/if}{#if tool.evidenceIds?.length} · 已生成证据 {tool.evidenceIds.length} 条{/if}</small></span>
-                                <span class="diagnosis-evidence-chevron">›</span>
-                              </summary>
-                              <div class="diagnosis-evidence-tool-detail">
-                                {#if tool.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{tool.evidenceIds.join('、')}</small>{/if}
-                                <div><small>入参 JSON</small><pre>{tool.input ?? '暂无入参'}</pre></div>
-                                <div><small>出参 JSON</small><pre>{tool.output ?? '暂无出参'}</pre></div>
-                              </div>
-                            </details>
-                          {/each}
-                        </div>
-                      </details>
-                    {:else if child.kind === 'tool'}
-                      <details class="diagnosis-evidence-event tool-event">
-                        <summary>
-                          <span class="diagnosis-evidence-marker tool"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{child.tool}</strong><small>{child.status}{#if child.duration} · {child.duration}{/if}{#if child.evidenceIds?.length} · 已生成证据 {child.evidenceIds.length} 条{/if}</small></span>
-                          <span class="diagnosis-evidence-chevron">›</span>
-                        </summary>
-                        <div class="diagnosis-evidence-tool-detail">
-                          {#if child.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{child.evidenceIds.join('、')}</small>{/if}
-                          <div><small>入参 JSON</small><pre>{child.input ?? '暂无入参'}</pre></div>
-                          <div><small>出参 JSON</small><pre>{child.output ?? '暂无出参'}</pre></div>
-                        </div>
-                      </details>
-                    {:else if child.kind === 'observation' && child.detail}
-                      <details class="diagnosis-evidence-event tool-event observation-event">
-                        <summary>
-                          <span class="diagnosis-evidence-marker observation"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{child.title}</strong><small>环境反馈</small></span>
-                          <span class="diagnosis-evidence-chevron">›</span>
-                        </summary>
-                        <div class="diagnosis-evidence-tool-detail observation-detail"><pre>{child.detail}</pre></div>
-                      </details>
-                    {:else}
-                      <div class="diagnosis-evidence-event">
-                        <span class="diagnosis-evidence-marker {child.kind}"></span>
-                        <div class="diagnosis-evidence-event-main"><strong>{child.title}</strong>{#if child.detail}<p>{child.detail}</p>{/if}</div>
-                      </div>
-                    {/if}
-                    {/each}
-                        </div>
-                      </details>
-                    {:else}
-                      <p class="diagnosis-empty">开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。</p>
-                    {/if}
-                    {/each}
-                    </div>
-                  </details>
-                  {#if diagnosisSnapshot?.evidence?.length}
-                    <div class="diagnosis-evidence-snapshots">
-                    <div class="diagnosis-evidence-section-title"><span>证据快照（原始结果）</span><small>可由上方因果链直接引用</small><b>{diagnosisSnapshot.evidence.length} 条</b></div>
-                    {#each diagnosisSnapshot.evidence as evidence (evidence.id)}
-                      {@const sourceTools = diagnosisEvidenceSourceTools(diagnosisSnapshot, evidence)}
-                      <details class="diagnosis-evidence-snapshot" id={`evidence-${evidence.id}`}>
-                        <summary>
-                          <span class="diagnosis-evidence-snapshot-marker" aria-hidden="true"></span>
-                          <span class="diagnosis-evidence-snapshot-main">
-                            <strong>Evidence {evidence.id.slice(0, 8)}</strong>
-                            <small>{evidence.capability || 'Connector 只读结果'} · {diagnosisResourceName(evidence.source_resource_id ?? evidence.target_resource_id)} · {formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'}{#if evidence.untrusted} · 外部结果，需核验{/if}</small>
-                          </span>
-                          <span class="diagnosis-evidence-chevron">›</span>
-                        </summary>
-                        <div class="diagnosis-evidence-snapshot-detail">
-                          <p>{diagnosisEvidenceSummary(evidence)}</p>
-                          {#if evidence.window_start || evidence.window_end}<small class="diagnosis-evidence-window">时间窗口：{evidence.window_start ? formatDate(evidence.window_start) : '—'} 至 {evidence.window_end ? formatDate(evidence.window_end) : '—'}</small>{/if}
-                          <small class="diagnosis-evidence-source">来源工具：{sourceTools.length ? sourceTools.join('、') : '未关联具体调用'}</small>
-                          <small class="diagnosis-evidence-id">Evidence ID：{evidence.id}</small>
-                          <pre>{JSON.stringify(evidence.content, null, 2)}</pre>
-                        </div>
-                      </details>
-                    {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-            </aside>
+            <DiagnosisContextPanel
+              diagnosisSnapshot={diagnosisSnapshot}
+              diagnosisTargets={diagnosisTargets}
+              diagnosisTargetIds={diagnosisTargetIds}
+              bind:diagnosisContextTab={diagnosisContextTab}
+              toggleDiagnosisContext={toggleDiagnosisContext}
+              resourceIcon={resourceIcon}
+              resourceSchemaName={resourceSchemaName}
+              scopeName={scopeName}
+              diagnosisActiveCausalChain={diagnosisActiveCausalChain}
+              diagnosisCausalNodes={diagnosisCausalNodes}
+              diagnosisCausalEvidenceIDs={diagnosisCausalEvidenceIDs}
+              scrollToDiagnosisEvidence={scrollToDiagnosisEvidence}
+              diagnosisEvidenceTimeline={diagnosisEvidenceTimeline}
+              diagnosisEvidenceSourceTools={diagnosisEvidenceSourceTools}
+              diagnosisEvidenceSummary={diagnosisEvidenceSummary}
+              diagnosisResourceName={diagnosisResourceName}
+              formatDate={formatDate}
+            />
           {/if}
         </section>
       {:else if view === 'agent'}
