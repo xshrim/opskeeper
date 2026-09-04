@@ -50,6 +50,7 @@ import { onMount, tick } from 'svelte';
   import InspectionPage from './features/inspection/InspectionPage.svelte';
   import OverviewPage from './features/overview/OverviewPage.svelte';
   import OrganizationPage from './features/organization/OrganizationPage.svelte';
+  import ResourceCatalogRail from './features/resources/ResourceCatalogRail.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6202,64 +6203,17 @@ import { onMount, tick } from 'svelte';
       {:else if view === 'resources'}
         <section class="resources-layout">
           <section class="panel resource-list-panel">
-            <div class="resource-catalog-rail">
-              <button
-                class:active={resourceCategory === '全部'}
-                class="catalog-root"
-                type="button"
-                on:click={() => selectResourceCategory('全部')}
-                ><span class="catalog-icon">{resourceCategoryIcon('全部')}</span
-                ><span class="catalog-label">全部资源</span><span
-                  >{visibleResources.length}</span
-                ></button
-              >
-              {#each Object.entries(resourceCategoryOptions).filter(([name]) => name !== '全部') as [category, subtypes]}
-                <div class="catalog-category">
-                  <button
-                    class:active={resourceCategory === category &&
-                      resourceSubtype === '全部'}
-                    class="catalog-category-button"
-                    type="button"
-                    on:click={() => selectResourceCategory(category)}
-                  >
-                    <span class="catalog-name"
-                      ><span class="catalog-icon"
-                        >{resourceCategoryIcon(category)}</span
-                      >{category}</span
-                    ><span
-                      >{visibleResources.filter(
-                        (item) => resourceCategoryFor(item) === category
-                      ).length}</span
-                    >
-                  </button>
-                  {#if expandedResourceCategory === category}
-                    <div class="catalog-subtypes">
-                      {#each subtypes as subtype}
-                        <button
-                          class:active={resourceCategory === category &&
-                            resourceSubtype === subtype}
-                          type="button"
-                          on:click={() =>
-                            selectResourceCategory(category, subtype)}
-                        >
-                          <span class="catalog-name"
-                            ><span class="catalog-icon subtype-icon"
-                              >{resourceCategoryIcon(subtype)}</span
-                            >{subtype}</span
-                          ><span
-                            >{visibleResources.filter(
-                              (item) =>
-                                resourceCategoryFor(item) === category &&
-                                resourceSubtypeFor(item) === subtype
-                            ).length}</span
-                          >
-                        </button>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
+            <ResourceCatalogRail
+              resourceCategoryOptions={resourceCategoryOptions}
+              visibleResources={visibleResources}
+              bind:resourceCategory={resourceCategory}
+              bind:resourceSubtype={resourceSubtype}
+              bind:expandedResourceCategory={expandedResourceCategory}
+              resourceCategoryIcon={resourceCategoryIcon}
+              resourceCategoryFor={resourceCategoryFor}
+              resourceSubtypeFor={resourceSubtypeFor}
+              onSelectCategory={selectResourceCategory}
+            />
           </section>
           <section class="resource-workspace">
             <section class="panel resource-catalog-panel">
