@@ -4,8 +4,6 @@ import { onMount, tick } from 'svelte';
     Boxes,
     Bot,
     Building2,
-    ChevronLeft,
-    ChevronRight,
     ChevronDown,
     ClipboardCheck,
     CloudDownload,
@@ -35,12 +33,7 @@ import { onMount, tick } from 'svelte';
   import { renderDiagnosisMarkdown as renderDiagnosisMarkdownShared } from './lib/diagnosisMarkdown';
   import BrandIcon from './lib/BrandIcon.svelte';
   import MessageBanner from './components/MessageBanner.svelte';
-  import DiagnosisModelPicker from './features/diagnosis/DiagnosisModelPicker.svelte';
-  import DiagnosisComposer from './features/diagnosis/DiagnosisComposer.svelte';
-  import DiagnosisContextPanel from './features/diagnosis/DiagnosisContextPanel.svelte';
-  import DiagnosisSessionList from './features/diagnosis/DiagnosisSessionList.svelte';
-  import DiagnosisConversationHeader from './features/diagnosis/DiagnosisConversationHeader.svelte';
-  import DiagnosisConversationMessages from './features/diagnosis/DiagnosisConversationMessages.svelte';
+  import DiagnosisPage from './features/diagnosis/DiagnosisPage.svelte';
   import AgentProfilesPage from './features/agent/AgentProfilesPage.svelte';
   import SkillRegistryPage from './features/skill/SkillRegistryPage.svelte';
   import ProfilePage from './features/profile/ProfilePage.svelte';
@@ -6395,145 +6388,78 @@ import { onMount, tick } from 'svelte';
           onStart={startOperation}
         />
       {:else if view === 'diagnosis'}
-        <section
-          class="diagnosis-workbench-f"
-          class:history-collapsed={diagnosisHistoryCollapsed}
-          class:context-collapsed={diagnosisContextCollapsed}
-          style={`--diagnosis-history-width:${diagnosisHistoryWidth}px;--diagnosis-context-width:${diagnosisContextWidth}px`}
-        >
-          {#if !diagnosisHistoryCollapsed}
-            <DiagnosisSessionList
-              sessions={diagnosisSessions}
-              selectedSessionId={selectedDiagnosisId}
-              bind:search={diagnosisSessionSearch}
-              statusLabel={diagnosisStatusLabel}
-              formatDate={formatDate}
-              onClear={clearDiagnosisHistory}
-              onCreate={newDiagnosisSession}
-              onOpen={(sessionID) => void openDiagnosis(sessionID)}
-              onRename={renameDiagnosisSession}
-              onDelete={deleteDiagnosisSession}
-            />
-          {/if}
-          <div
-            class="diagnosis-splitter left"
-            role="separator"
-            aria-orientation="vertical"
-            on:pointerdown={(event) => startDiagnosisResize('history', event)}
-          >
-            <button
-              aria-label={diagnosisHistoryCollapsed
-                ? '展开会话历史'
-                : '折叠会话历史'}
-              on:click={() =>
-                (diagnosisHistoryCollapsed = !diagnosisHistoryCollapsed)}
-              >{#if diagnosisHistoryCollapsed}<ChevronRight
-                  size={16}
-                />{:else}<ChevronLeft size={16} />{/if}</button
-            >
-          </div>
-          <section class="diagnosis-conversation-f">
-            <DiagnosisConversationHeader
-              title={diagnosisSnapshot?.session.title || '新建诊断会话'}
-              scopeLabel={activeScope?.name ?? '当前级别'}
-              diagnosisTargets={diagnosisTargets}
-              diagnosisTargetIds={diagnosisTargetIds}
-              generating={diagnosisGenerating}
-              snapshot={diagnosisSnapshot}
-              statusLabel={diagnosisStatusLabel}
-              onCreate={newDiagnosisSession}
-            />
-            <DiagnosisConversationMessages
-              bind:diagnosisMessageListElement={diagnosisMessageListElement}
-              diagnosisSnapshot={diagnosisSnapshot}
-              busy={busy}
-              diagnosisGenerating={diagnosisGenerating}
-              diagnosisAnswerCompleted={diagnosisAnswerCompleted}
-              diagnosisStreamingText={diagnosisStreamingText}
-              diagnosisInterruptedReason={diagnosisInterruptedReason}
-              bind:diagnosisEditingMessageId={diagnosisEditingMessageId}
-              bind:diagnosisEditDraft={diagnosisEditDraft}
-              bind:diagnosisProcessExpanded={diagnosisProcessExpanded}
-              bind:diagnosisActionExpanded={diagnosisActionExpanded}
-              bind:diagnosisLiveProcessExpanded={diagnosisLiveProcessExpanded}
-              diagnosisStreamingStartedAt={diagnosisStreamingStartedAt}
-              formatDate={formatDate}
-              renderMarkdown={renderDiagnosisMarkdownShared}
-              diagnosisLiveTimeline={diagnosisLiveTimeline}
-              diagnosisProcessDuration={diagnosisProcessDuration}
-              diagnosisProcessActionCount={diagnosisProcessActionCount}
-              diagnosisStatusLabel={diagnosisStatusLabel}
-              diagnosisHasRunningActions={diagnosisHasRunningActions}
-              diagnosisHasPersistedNewAnswer={diagnosisHasPersistedNewAnswer}
-              diagnosisActionLabel={diagnosisActionLabel}
-              deferFinalDiagnosisMessage={deferFinalDiagnosisMessage}
-              isLastDiagnosisUser={isLastDiagnosisUser}
-              beginDiagnosisEdit={beginDiagnosisEdit}
-              saveDiagnosisEdit={saveDiagnosisEdit}
-              copyDiagnosisMessage={copyDiagnosisMessage}
-              copyStreamingAnswer={() => writeDiagnosisClipboard(
-                `${diagnosisStreamingText}\n\n执行过程\n\n${diagnosisProcessText(diagnosisSnapshot)}`,
-                '回答已复制。'
-              )}
-            />
-            <DiagnosisComposer
-              text={diagnosisComposerText}
-              busy={busy}
-              generating={diagnosisGenerating}
-              providers={diagnosisAvailableProviders}
-              selectedProviderId={selectedProviderId}
-              modelName={llmModelName}
-              modelMenuOpen={diagnosisModelMenuOpen}
-              modelMenuProviderId={diagnosisModelMenuProviderId}
-              onTextChange={(value) => (diagnosisComposerText = value)}
-              onKeydown={handleDiagnosisComposerKeydown}
-              onSubmit={() => void submitDiagnosisMessage()}
-              onStop={stopDiagnosisGeneration}
-              onNotice={(message) => (notice = message)}
-              onModelToggle={toggleDiagnosisModelMenu}
-              onProvider={chooseDiagnosisModelProvider}
-              onModel={chooseDiagnosisModel}
-            />
-          </section>
-          <div
-            class="diagnosis-splitter right"
-            role="separator"
-            aria-orientation="vertical"
-            on:pointerdown={(event) => startDiagnosisResize('context', event)}
-          >
-            <button
-              aria-label={diagnosisContextCollapsed
-                ? '展开诊断上下文'
-                : '折叠诊断上下文'}
-              on:click={() =>
-                (diagnosisContextCollapsed = !diagnosisContextCollapsed)}
-              >{#if diagnosisContextCollapsed}<ChevronLeft
-                  size={16}
-                />{:else}<ChevronRight size={16} />{/if}</button
-            >
-          </div>
-          {#if !diagnosisContextCollapsed}
-            <DiagnosisContextPanel
-              diagnosisSnapshot={diagnosisSnapshot}
-              diagnosisTargets={diagnosisTargets}
-              diagnosisTargetIds={diagnosisTargetIds}
-              bind:diagnosisContextTab={diagnosisContextTab}
-              toggleDiagnosisContext={toggleDiagnosisContext}
-              resourceIcon={resourceIcon}
-              resourceSchemaName={resourceSchemaName}
-              scopeName={scopeName}
-              diagnosisActiveCausalChain={diagnosisActiveCausalChain}
-              diagnosisCausalNodes={diagnosisCausalNodes}
-              diagnosisCausalEvidenceIDs={diagnosisCausalEvidenceIDs}
-              scrollToDiagnosisEvidence={scrollToDiagnosisEvidence}
-              diagnosisEvidenceTimeline={diagnosisEvidenceTimeline}
-              diagnosisEvidenceSourceTools={diagnosisEvidenceSourceTools}
-              diagnosisEvidenceSummary={diagnosisEvidenceSummary}
-              diagnosisResourceName={diagnosisResourceName}
-              formatDate={formatDate}
-            />
-          {/if}
-        </section>
+        <DiagnosisPage
+          bind:diagnosisHistoryCollapsed
+          bind:diagnosisContextCollapsed
+          diagnosisHistoryWidth={diagnosisHistoryWidth}
+          diagnosisContextWidth={diagnosisContextWidth}
+          diagnosisSessions={diagnosisSessions}
+          selectedDiagnosisId={selectedDiagnosisId}
+          bind:diagnosisSessionSearch
+          diagnosisStatusLabel={diagnosisStatusLabel}
+          formatDate={formatDate}
+          clearDiagnosisHistory={clearDiagnosisHistory}
+          newDiagnosisSession={newDiagnosisSession}
+          openDiagnosis={openDiagnosis}
+          renameDiagnosisSession={renameDiagnosisSession}
+          deleteDiagnosisSession={deleteDiagnosisSession}
+          startDiagnosisResize={startDiagnosisResize}
+          diagnosisSnapshot={diagnosisSnapshot}
+          scopeLabel={activeScope?.name ?? '当前级别'}
+          diagnosisTargets={diagnosisTargets}
+          diagnosisTargetIds={diagnosisTargetIds}
+          diagnosisGenerating={diagnosisGenerating}
+          busy={busy}
+          bind:diagnosisMessageListElement
+          bind:diagnosisAnswerCompleted
+          diagnosisStreamingText={diagnosisStreamingText}
+          diagnosisInterruptedReason={diagnosisInterruptedReason}
+          bind:diagnosisEditingMessageId
+          bind:diagnosisEditDraft
+          bind:diagnosisProcessExpanded
+          bind:diagnosisActionExpanded
+          bind:diagnosisLiveProcessExpanded
+          diagnosisStreamingStartedAt={diagnosisStreamingStartedAt}
+          renderMarkdown={renderDiagnosisMarkdownShared}
+          diagnosisLiveTimeline={diagnosisLiveTimeline}
+          diagnosisProcessDuration={diagnosisProcessDuration}
+          diagnosisProcessActionCount={diagnosisProcessActionCount}
+          diagnosisHasRunningActions={diagnosisHasRunningActions}
+          diagnosisHasPersistedNewAnswer={diagnosisHasPersistedNewAnswer}
+          diagnosisActionLabel={diagnosisActionLabel}
+          deferFinalDiagnosisMessage={deferFinalDiagnosisMessage}
+          isLastDiagnosisUser={isLastDiagnosisUser}
+          beginDiagnosisEdit={beginDiagnosisEdit}
+          saveDiagnosisEdit={saveDiagnosisEdit}
+          copyDiagnosisMessage={copyDiagnosisMessage}
+          copyStreamingAnswer={() => writeDiagnosisClipboard(`${diagnosisStreamingText}\n\n执行过程\n\n${diagnosisProcessText(diagnosisSnapshot)}`, '回答已复制。')}
+          bind:diagnosisComposerText
+          diagnosisAvailableProviders={diagnosisAvailableProviders}
+          selectedProviderId={selectedProviderId}
+          llmModelName={llmModelName}
+          bind:diagnosisModelMenuOpen
+          bind:diagnosisModelMenuProviderId
+          handleDiagnosisComposerKeydown={handleDiagnosisComposerKeydown}
+          submitDiagnosisMessage={submitDiagnosisMessage}
+          stopDiagnosisGeneration={stopDiagnosisGeneration}
+          onNotice={(message) => (notice = message)}
+          toggleDiagnosisModelMenu={toggleDiagnosisModelMenu}
+          chooseDiagnosisModelProvider={chooseDiagnosisModelProvider}
+          chooseDiagnosisModel={chooseDiagnosisModel}
+          bind:diagnosisContextTab
+          toggleDiagnosisContext={toggleDiagnosisContext}
+          resourceIcon={resourceIcon}
+          resourceSchemaName={resourceSchemaName}
+          scopeName={scopeName}
+          diagnosisActiveCausalChain={diagnosisActiveCausalChain}
+          diagnosisCausalNodes={diagnosisCausalNodes}
+          diagnosisCausalEvidenceIDs={diagnosisCausalEvidenceIDs}
+          scrollToDiagnosisEvidence={scrollToDiagnosisEvidence}
+          diagnosisEvidenceTimeline={diagnosisEvidenceTimeline}
+          diagnosisEvidenceSourceTools={diagnosisEvidenceSourceTools}
+          diagnosisEvidenceSummary={diagnosisEvidenceSummary}
+          diagnosisResourceName={diagnosisResourceName}
+        />
       {:else if view === 'agent'}
         <AgentProfilesPage
           profiles={agentProfileResources}
