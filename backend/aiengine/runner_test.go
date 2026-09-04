@@ -263,27 +263,30 @@ func TestAgentRunnerStreamsReActTurnsAndObservations(t *testing.T) {
 	}
 	var types []string
 	var deltas []string
-	answerStarted := 0
+	completed := 0
 	for _, event := range events {
 		types = append(types, event.Type)
 		if event.Type == "assistant.delta" {
 			deltas = append(deltas, fmt.Sprint(event.Payload["text"]))
 		}
-		if event.Type == EventAssistantAnswerStarted {
-			answerStarted++
-			if event.Payload["iteration"] != 2 || event.Payload["final"] != true {
-				t.Fatalf("answer_started metadata = %+v, want final iteration 2", event.Payload)
+		if event.Type == "assistant.completed" {
+			completed++
+			if event.Payload["text"] != "已根据工具观察完成诊断。" {
+				t.Fatalf("completed payload = %+v, want canonical final text", event.Payload)
+			}
+			if _, ok := event.Payload["final"]; ok {
+				t.Fatalf("completed payload contains redundant final marker: %+v", event.Payload)
 			}
 		}
 	}
 	if strings.Join(deltas, "") != "先检查目标资源。" || len(deltas) != 3 {
 		t.Fatalf("streamed deltas = %#v, want three provider chunks", deltas)
 	}
-	if answerStarted != 1 {
-		t.Fatalf("answer_started count = %d, want one final-answer boundary", answerStarted)
+	if completed != 1 {
+		t.Fatalf("assistant.completed count = %d, want exactly one", completed)
 	}
 	joined := strings.Join(types, ",")
-	wantOrder := []string{"model.started", "assistant.delta", "assistant.progress", "tool.requested", "tool.started", "tool.completed", "model.resumed", "model.started", EventAssistantAnswerStarted, "assistant.completed"}
+	wantOrder := []string{"model.started", "assistant.delta", "assistant.progress", "tool.requested", "tool.started", "tool.completed", "model.resumed", "model.started", "assistant.completed"}
 	last := -1
 	for _, wanted := range wantOrder {
 		found := -1
@@ -309,9 +312,6 @@ func TestAgentRunnerStreamsReActTurnsAndObservations(t *testing.T) {
 			if elapsed, ok := event.Payload["elapsed_ms"].(int64); !ok || elapsed < 0 {
 				t.Fatalf("tool event has invalid server elapsed time: %+v", event)
 			}
-		}
-		if event.Type == "assistant.progress" && event.Payload["final"] != false {
-			t.Fatalf("progress event should be marked intermediate: %+v", event)
 		}
 	}
 	modelClient.mu.Lock()

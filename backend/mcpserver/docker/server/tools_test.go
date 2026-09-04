@@ -84,7 +84,7 @@ func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
 }
 
 func TestToFiltersParsesKeyValueString(t *testing.T) {
-	args, err := toFilters(" label:com.example.env=prod, reference:nginx:latest ")
+	args, err := toFilters(" label=com.example.env=prod, reference:nginx:latest, status=running ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +93,9 @@ func TestToFiltersParsesKeyValueString(t *testing.T) {
 	}
 	if got, want := args.Get("reference"), []string{"nginx:latest"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("reference filter = %#v, want %#v", got, want)
+	}
+	if got, want := args.Get("status"), []string{"running"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("equals filter = %#v, want %#v", got, want)
 	}
 }
 

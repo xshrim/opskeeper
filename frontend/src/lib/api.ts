@@ -380,6 +380,7 @@ export interface DiagnosisPlan {
 export interface DiagnosisEvidence {
   id: string;
   session_id: string;
+  run_id?: string;
   target_resource_id?: string;
   source_resource_id?: string;
   capability: string;
@@ -391,6 +392,49 @@ export interface DiagnosisEvidence {
   content: unknown;
   partial: boolean;
   untrusted: boolean;
+  created_at: string;
+}
+
+export interface DiagnosisRun {
+  id: string;
+  session_id: string;
+  sequence: number;
+  question_message_id?: string;
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled';
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface DiagnosisCausalNode {
+  id: string;
+  kind: 'cause' | 'mechanism' | 'effect' | 'exclusion' | 'unknown';
+  statement: string;
+  status: 'confirmed' | 'likely' | 'unverified' | 'refuted';
+  confidence: number;
+  evidence_ids: string[];
+  observation_ids: string[];
+}
+
+export interface DiagnosisCausalLink {
+  from: string;
+  to: string;
+  relation: 'causes' | 'contributes_to' | 'explains' | 'contradicts' | 'rules_out';
+  statement?: string;
+  status: 'confirmed' | 'likely' | 'unverified' | 'refuted';
+  confidence: number;
+  evidence_ids: string[];
+  observation_ids: string[];
+}
+
+export interface DiagnosisCausalChain {
+  id: string;
+  session_id: string;
+  run_id: string;
+  version: number;
+  status: 'active' | 'superseded' | 'partial';
+  summary: string;
+  nodes: DiagnosisCausalNode[];
+  links: DiagnosisCausalLink[];
   created_at: string;
 }
 
@@ -421,6 +465,8 @@ export interface DiagnosisSnapshot {
   messages: DiagnosisMessage[];
   plan?: DiagnosisPlan;
   evidence: DiagnosisEvidence[];
+  runs: DiagnosisRun[];
+  causal_chains: DiagnosisCausalChain[];
   hypotheses: DiagnosisHypothesis[];
   report?: DiagnosisReport;
   events?: DiagnosisEvent[];

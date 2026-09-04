@@ -218,7 +218,7 @@ func TestOrchestratorUsesStreamedTextForCompletionPersistence(t *testing.T) {
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
 		_ = request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "## 结论\n\n实时内容", "iteration": 1}})
 		// Simulate an adapter whose final aggregate has different whitespace.
-		_ = request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "##结论当前内容", "iteration": 1, "final": true}})
+		_ = request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "##结论当前内容", "iteration": 1}})
 		return aiengine.Result{Output: "##结论当前内容"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
@@ -281,6 +281,12 @@ type fakeEngine struct {
 
 func (f fakeEngine) Name() string { return "fake" }
 func (f fakeEngine) Execute(ctx context.Context, input aiengine.Request) (aiengine.Result, error) {
+	// Unit tests exercise the diagnosis run with a deliberately tiny fake. The
+	// follow-up causal compiler has its own tests and is allowed to fall back
+	// when this fake does not implement structured output.
+	if input.Task == "编排本轮诊断的精选因果证据链" {
+		return aiengine.Result{}, errors.New("structured output unavailable")
+	}
 	return f.execute(ctx, input)
 }
 func (f fakeEngine) Stream(context.Context, aiengine.Request) (<-chan aiengine.Event, error) {
@@ -295,6 +301,8 @@ type recordingStore struct {
 	messages   []Message
 	plan       Plan
 	evidence   []Evidence
+	runs       []Run
+	chains     []CausalChain
 	hypotheses []Hypothesis
 	report     Report
 	events     []Event
@@ -375,6 +383,30 @@ func (s *recordingStore) SaveEvidence(_ context.Context, sessionID string, input
 }
 func (s *recordingStore) Evidence(context.Context, string) ([]Evidence, error) {
 	return s.evidence, nil
+}
+func (s *recordingStore) CreateRun(_ context.Context, sessionID, messageID string) (Run, error) {
+	item := Run{ID: fmt.Sprintf("run-%d", len(s.runs)+1), SessionID: sessionID, Sequence: len(s.runs) + 1, QuestionMessageID: pointer(messageID), Status: "running", StartedAt: time.Now()}
+	s.runs = append(s.runs, item)
+	return item, nil
+}
+func (s *recordingStore) FinishRun(_ context.Context, runID, status string) (Run, error) {
+	for index := range s.runs {
+		if s.runs[index].ID == runID {
+			s.runs[index].Status = status
+			return s.runs[index], nil
+		}
+	}
+	return Run{}, ErrNotFound
+}
+func (s *recordingStore) Runs(context.Context, string) ([]Run, error) { return s.runs, nil }
+func (s *recordingStore) SaveCausalChain(_ context.Context, input CausalChain) (CausalChain, error) {
+	input.ID = fmt.Sprintf("chain-%d", len(s.chains)+1)
+	input.Version = len(s.chains) + 1
+	s.chains = append(s.chains, input)
+	return input, nil
+}
+func (s *recordingStore) CausalChains(context.Context, string) ([]CausalChain, error) {
+	return s.chains, nil
 }
 func (s *recordingStore) SaveHypothesis(_ context.Context, input Hypothesis) (Hypothesis, error) {
 	input.ID = fmt.Sprintf("hypothesis-%d", len(s.hypotheses)+1)

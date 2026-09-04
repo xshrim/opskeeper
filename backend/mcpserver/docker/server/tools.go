@@ -35,14 +35,14 @@ type DockerInfoInput struct{ client.ConnectionInput }
 type ListImagesInput struct {
 	client.ConnectionInput
 	All     bool   `json:"all,omitempty" jsonschema:"Include intermediate and dangling images."`
-	Filters string `json:"filters,omitempty" jsonschema:"Optional Docker image filters in key:value,key:value format."`
+	Filters string `json:"filters,omitempty" jsonschema:"Optional Docker image filters in key:value or key=value format."`
 }
 
 type ListContainersInput struct {
 	client.ConnectionInput
 	All     bool   `json:"all,omitempty" jsonschema:"Include stopped containers."`
 	Limit   int    `json:"limit,omitempty" jsonschema:"Maximum number of containers to return. Maximum 500."`
-	Filters string `json:"filters,omitempty" jsonschema:"Optional Docker container filters in key:value,key:value format."`
+	Filters string `json:"filters,omitempty" jsonschema:"Optional Docker container filters in key:value or key=value format."`
 }
 
 type ContainerLogsInput struct {
@@ -88,12 +88,12 @@ func RegisterTools(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_info", Description: "Read Docker Engine information.", InputSchema: toolInputSchema(nil)}, dockerInfoTool)
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_images", Description: "List Docker images.", InputSchema: toolInputSchema(map[string]any{
 		"all":     map[string]any{"type": "boolean", "description": "Include intermediate and dangling images."},
-		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value format, for example label:com.example.env=prod,reference:nginx:latest. Each item is split at its first colon."},
+		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value or key=value format, for example label=app:web,label:com.example.env=prod,reference=nginx:latest. Each item is split at its first separator."},
 	})}, listImagesTool)
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_containers", Description: "List Docker containers.", InputSchema: toolInputSchema(map[string]any{
 		"all":     map[string]any{"type": "boolean", "description": "Include stopped containers."},
 		"limit":   map[string]any{"type": "integer", "description": "Maximum number of containers to return; 0 uses the Docker default and the maximum is 500."},
-		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value format, for example status:running,label:app=web. Each item is split at its first colon."},
+		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value or key=value format, for example status=running,label:app=web. Each item is split at its first separator."},
 	})}, listContainersTool)
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_logs", Description: "Read bounded, non-following logs from a Docker container.", InputSchema: toolInputSchema(map[string]any{
 		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
@@ -302,11 +302,17 @@ func toFilters(raw string) (filters.Args, error) {
 		return args, nil
 	}
 	for _, item := range strings.Split(raw, ",") {
-		key, value, ok := strings.Cut(item, ":")
+		item = strings.TrimSpace(item)
+		separator := strings.IndexAny(item, ":=")
+		ok := separator >= 0
+		key, value := "", ""
+		if ok {
+			key, value = item[:separator], item[separator+1:]
+		}
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		if !ok || key == "" || value == "" {
-			return filters.Args{}, fmt.Errorf("invalid filter %q: expected key:value", strings.TrimSpace(item))
+			return filters.Args{}, fmt.Errorf("invalid filter %q: expected key:value or key=value", item)
 		}
 		args.Add(key, value)
 	}

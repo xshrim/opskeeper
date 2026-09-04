@@ -99,6 +99,17 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		o.fail(session.ID, "message", errors.New("diagnosis question is unavailable"))
 		return
 	}
+	run, err := o.store.CreateRun(ctx, session.ID, messages[len(messages)-1].ID)
+	if err != nil {
+		o.fail(session.ID, "run", err)
+		return
+	}
+	runStatus := "failed"
+	defer func() {
+		// All early returns become a terminal failed run. Cancellation and
+		// success set this status before their return path.
+		_, _ = o.store.FinishRun(context.Background(), run.ID, runStatus)
+	}()
 	targetIDs := make([]string, 0, len(targets))
 	for _, target := range targets {
 		targetIDs = append(targetIDs, target.ResourceID)
@@ -246,7 +257,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			}
 		}
 		return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
-	}, ObservationSink: func(observed aiengine.ToolObservation) { o.captureObservation(session.ID, observed) }})
+	}, ObservationSink: func(observed aiengine.ToolObservation) { o.captureObservation(session.ID, run.ID, observed) }})
 	if err != nil {
 		// Preserve a useful partial answer before writing the terminal event. A
 		// timeout can interrupt the model between streamed deltas and its final
@@ -263,9 +274,12 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		}
 		code := runnerErrorCode(err)
 		if result.Status == aiengine.StatusCancelled || code == "cancelled" || code == "timeout" {
+			runStatus = "cancelled"
 			o.cancel(session.ID, code, err)
+			_, _ = o.store.FinishRun(context.Background(), run.ID, "cancelled")
 		} else {
 			o.fail(session.ID, code, err)
+			_, _ = o.store.FinishRun(context.Background(), run.ID, "failed")
 		}
 		return
 	}
@@ -278,9 +292,12 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
 		}
 		if result.Status == aiengine.StatusCancelled {
+			runStatus = "cancelled"
 			o.cancel(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
+			_, _ = o.store.FinishRun(context.Background(), run.ID, "cancelled")
 		} else {
 			o.fail(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
+			_, _ = o.store.FinishRun(context.Background(), run.ID, "failed")
 		}
 		return
 	}
@@ -393,6 +410,12 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		o.fail(session.ID, "report", err)
 		return
 	}
+	chain, chainErr := o.compileCausalChain(ctx, session, run, output, evidence)
+	if chainErr == nil {
+		if saved, saveErr := o.store.SaveCausalChain(ctx, chain); saveErr == nil {
+			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "causal_chain.ready", Payload: map[string]any{"run_id": run.ID, "version": saved.Version, "status": saved.Status}})
+		}
+	}
 	for _, step := range plan.Steps {
 		if step.Phase == "summarize" {
 			detail := "已生成回答。"
@@ -402,7 +425,9 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			_, _ = o.store.UpdateStep(ctx, step.ID, "succeeded", detail)
 		}
 	}
+	runStatus = "succeeded"
 	_, _ = o.store.Finish(ctx, session.ID, StatusSucceeded, "", "")
+	_, _ = o.store.FinishRun(context.Background(), run.ID, "succeeded")
 	o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "report.ready", Payload: map[string]any{"report_id": report.ID, "evidence_ids": evidenceIDs, "status": report.Status}})
 }
 
@@ -414,9 +439,9 @@ func (o *Orchestrator) captureEvidence(sessionID string, observed connector.Evid
 	}
 }
 
-func (o *Orchestrator) captureObservation(sessionID string, observed aiengine.ToolObservation) {
+func (o *Orchestrator) captureObservation(sessionID, runID string, observed aiengine.ToolObservation) {
 	content := mustJSON(observed.Result.Output)
-	item, err := o.store.SaveEvidence(context.Background(), sessionID, CreateEvidenceInput{TargetResourceID: observed.ResourceID, SourceResourceID: observed.ResourceID, Capability: observed.ToolName, CollectedAt: time.Now().UTC(), Summary: mustJSON(map[string]any{"tool": observed.ToolName, "iteration": observed.Iteration, "call_id": observed.CallID}), Content: content, Untrusted: observed.Result.Untrusted})
+	item, err := o.store.SaveEvidence(context.Background(), sessionID, CreateEvidenceInput{RunID: runID, TargetResourceID: observed.ResourceID, SourceResourceID: observed.ResourceID, Capability: observed.ToolName, CollectedAt: time.Now().UTC(), Summary: mustJSON(map[string]any{"tool": observed.ToolName, "iteration": observed.Iteration, "call_id": observed.CallID}), Content: content, Untrusted: observed.Result.Untrusted})
 	if err == nil {
 		o.appendEvent(context.Background(), sessionID, CreateEventInput{Type: "evidence.collected", Payload: map[string]any{"evidence_id": item.ID, "source_resource_id": item.SourceResourceID, "capability": item.Capability, "untrusted": item.Untrusted}})
 	}

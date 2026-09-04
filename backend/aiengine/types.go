@@ -256,11 +256,6 @@ type Event struct {
 	Payload     map[string]any `json:"payload,omitempty"`
 }
 
-// EventAssistantAnswerStarted marks the point at which AIEngine has confirmed
-// that the current model turn is an answer turn rather than a tool decision.
-// Existing lifecycle and streaming events remain unchanged.
-const EventAssistantAnswerStarted = "assistant.answer_started"
-
 type EventSink func(Event) error
 
 type Result struct {

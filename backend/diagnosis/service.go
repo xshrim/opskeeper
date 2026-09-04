@@ -94,7 +94,15 @@ func (s *Service) Get(ctx context.Context, sessionID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	result := Snapshot{Session: session, Targets: targets, Messages: messages, Evidence: evidence, Hypotheses: hypotheses, Events: events}
+	runs, err := s.store.Runs(ctx, session.ID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	chains, err := s.store.CausalChains(ctx, session.ID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	result := Snapshot{Session: session, Targets: targets, Messages: messages, Evidence: evidence, Runs: runs, CausalChains: chains, Hypotheses: hypotheses, Events: events}
 	if plan, err := s.store.Plan(ctx, session.ID); err == nil {
 		result.Plan = &plan
 	} else if !errors.Is(err, ErrNotFound) {

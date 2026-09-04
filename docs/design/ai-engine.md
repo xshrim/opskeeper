@@ -414,13 +414,12 @@ AIEngine 在调用模型前生成一份不可变的选择快照：
 
 ```text
 execution.started
-provider.resolved
-context.loaded
-prompt.composed
+execution.plan.resolved (可选)
+agent_profile.resolved (可选)
+context.loaded (有上下文时)
 model.started
 assistant.delta
 assistant.progress
-assistant.answer_started
 tool.requested
 tool.started
 tool.completed
@@ -465,10 +464,12 @@ Reasoning summary（阶段性分析摘要）
 | 阶段 | 事件 | Payload 最低要求 |
 |---|---|---|
 | 执行启动 | `execution.started` | profile、执行时间 |
+| 执行计划 | `execution.plan.resolved`（可选） | 计划资源、版本、工具数量 |
+| Agent 配置 | `agent_profile.resolved`（可选） | 配置资源、版本、能力和工具数量 |
+| 上下文加载 | `context.loaded`（有上下文时） | 资源、工具和事实数量 |
 | 阶段变更 | `phase.changed` | `phase`、可选 `detail`、`elapsed_ms` |
 | 模型回合开始 | `model.started` | iteration、目标摘要、`elapsed_ms` |
-| 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、`kind`、是否最终文本、动作计数 |
-| 最终回答开始 | `assistant.answer_started` | 已确认当前模型回合不包含工具调用；iteration、`final=true`、原因 |
+| 阶段性文本 | `assistant.delta` / `assistant.progress` | 脱敏文本、iteration、`kind`、动作计数 |
 | 工具决策 | `tool.requested` | 工具名、资源、脱敏参数、iteration、动作计数 |
 | 工具执行 | `tool.started` | 工具名、资源、调用序号、`started_at`、动作计数 |
 | 环境观察 | `tool.completed` / `tool.failed` | 状态、脱敏结果或错误、`duration_ms`、`elapsed_ms`、动作计数 |
@@ -478,7 +479,7 @@ Reasoning summary（阶段性分析摘要）
 
 事件必须按实际发生顺序写入持久化 Store 并通过 SSE 推送。前端应按 `sequence` 将阶段文本、工具决策、工具结果和下一轮分析合并为一条时间线；不得把工具记录统一移动到最终回答之后，也不得用轮询快照覆盖已经收到的更新事件。耗时工具开始前应先推送进度，完成或失败后应立即推送观察摘要，然后才允许进入下一轮模型请求。
 
-`assistant.answer_started` 是最终回答语义边界，不等同于“第一个 token 到达”：普通 Provider 的流式 token 在工具调用被确认前可能仍属于工具决策说明，因此 AIEngine 只有在当前模型回合完整结束且确认没有函数调用时才发送该事件。它位于最终 `assistant.completed` 之前，保证消费者不会因首个增量文本误折叠执行过程；需要逐字显示的客户端仍应继续消费 `assistant.delta`。
+最终回答的唯一完成信号是 `assistant.completed`。该事件只在最终输出完成校验后发出，并且每次执行最多发出一次。普通 Provider 的流式 token 在工具调用被确认前可能仍属于工具决策说明，因此客户端不得根据首个增量文本、模型回合切换或其他阶段事件推断最终回答。需要折叠执行过程的客户端应等待该完成事件；需要逐字显示的客户端仍应继续消费 `assistant.delta`。
 
 阶段事件中涉及动作进度时，统一使用以下字段（字段缺省时按事件类型推导）：
 
@@ -490,7 +491,7 @@ Reasoning summary（阶段性分析摘要）
 | `duration_ms` | integer | 当前模型回合或工具调用的耗时；仅在完成/失败后稳定 |
 | `elapsed_ms` | integer | 从 `execution.started` 到当前事件的单调耗时 |
 | `iteration` | integer | 当前模型回合序号，从 1 开始 |
-| `kind` | string | `analysis`、`tool_decision`、`observation`、`final` 或 `budget` |
+| `kind` | string | `analysis`、`tool_decision`、`observation` 或 `budget`；最终回答使用 `assistant.completed` 事件表示 |
 
 `action_count` 和 `remaining_actions` 必须以服务端事件为准，前端不得通过本地轮询猜测。并行工具调用时，所有 `tool.requested`/`tool.started`/`tool.completed` 事件共享同一个 `iteration`，但每个调用拥有独立的 `action_index`、调用序号和耗时；只有该批次全部结束后，才能发送带汇总 Observation 的 `model.resumed`。
 

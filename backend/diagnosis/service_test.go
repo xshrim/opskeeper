@@ -86,6 +86,15 @@ func (*memoryStore) SaveEvidence(context.Context, string, CreateEvidenceInput) (
 	return Evidence{}, nil
 }
 func (*memoryStore) Evidence(context.Context, string) ([]Evidence, error) { return nil, nil }
+func (*memoryStore) CreateRun(context.Context, string, string) (Run, error) {
+	return Run{ID: "run-1", Status: "running"}, nil
+}
+func (*memoryStore) FinishRun(context.Context, string, string) (Run, error) { return Run{}, nil }
+func (*memoryStore) Runs(context.Context, string) ([]Run, error)            { return nil, nil }
+func (*memoryStore) SaveCausalChain(context.Context, CausalChain) (CausalChain, error) {
+	return CausalChain{}, nil
+}
+func (*memoryStore) CausalChains(context.Context, string) ([]CausalChain, error) { return nil, nil }
 func (*memoryStore) SaveHypothesis(context.Context, Hypothesis) (Hypothesis, error) {
 	return Hypothesis{}, nil
 }

@@ -533,7 +533,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 					if sink != nil {
 						if text := safeStreamingDelta(part.Text, 0); text != "" {
 							turnStreamText.WriteString(text)
-							_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.delta", Status: StatusRunning, Payload: map[string]any{"text": text, "iteration": iterations, "final": false}})
+							_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.delta", Status: StatusRunning, Payload: map[string]any{"text": text, "iteration": iterations}})
 						}
 					} else {
 						turnStreamText.WriteString(part.Text)
@@ -644,7 +644,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 						}
 					}
 					if sink != nil {
-						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": decisionText, "iteration": iterations, "kind": "tool_decision", "tool_count": len(turnToolNames), "parallel": len(turnToolNames) > 1, "final": false}})
+						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": decisionText, "iteration": iterations, "kind": "tool_decision", "tool_count": len(turnToolNames), "parallel": len(turnToolNames) > 1}})
 					}
 				} else {
 					// In SSE mode the partial chunks are the exact bytes already
@@ -660,15 +660,9 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 						answerText = turnText.String()
 					}
 					if answerText != "" {
-						// The complete model turn is known not to contain a function
-						// call. Emit an explicit semantic boundary before completion;
-						// clients must not infer final-answer state from the first delta.
-						if sink != nil {
-							_ = sink(Event{ExecutionID: request.ExecutionID, Type: EventAssistantAnswerStarted, Status: StatusRunning, Payload: map[string]any{"iteration": iterations, "final": true, "reason": "model_turn_without_tool_call"}})
-						}
 						output.WriteString(answerText)
 					} else if sink != nil {
-						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": "正在分析当前目标并评估下一步", "iteration": iterations, "kind": "analysis", "final": false}})
+						_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.progress", Status: StatusRunning, Payload: map[string]any{"text": "正在分析当前目标并评估下一步", "iteration": iterations, "kind": "analysis"}})
 					}
 				}
 				commitTurnUsage()
@@ -705,9 +699,6 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 				answerText = turnText.String()
 			}
 			if answerText != "" {
-				if sink != nil {
-					_ = sink(Event{ExecutionID: request.ExecutionID, Type: EventAssistantAnswerStarted, Status: StatusRunning, Payload: map[string]any{"iteration": iterations, "final": true, "reason": "model_turn_without_tool_call"}})
-				}
 				output.WriteString(answerText)
 			}
 		}
@@ -749,7 +740,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		}
 	}
 	if sink != nil {
-		_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.completed", Status: StatusRunning, Payload: map[string]any{"text": scrubVisibleText(text), "iteration": iterations, "final": true}})
+		_ = sink(Event{ExecutionID: request.ExecutionID, Type: "assistant.completed", Status: StatusRunning, Payload: map[string]any{"text": scrubVisibleText(text), "iteration": iterations}})
 		if sinkErr := getSinkErr(); sinkErr != nil {
 			return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "event_sink", ErrorMessage: publicError(sinkErr), ToolCallCount: int(toolCalls.Load())}, sinkErr
 		}

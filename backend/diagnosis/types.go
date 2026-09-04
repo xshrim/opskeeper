@@ -79,6 +79,7 @@ type Event struct {
 type Evidence struct {
 	ID               string          `json:"id"`
 	SessionID        string          `json:"session_id"`
+	RunID            string          `json:"run_id,omitempty"`
 	Capability       string          `json:"capability"`
 	ContentHash      string          `json:"content_hash"`
 	TargetResourceID *string         `json:"target_resource_id,omitempty"`
@@ -91,6 +92,54 @@ type Evidence struct {
 	Partial          bool            `json:"partial"`
 	Untrusted        bool            `json:"untrusted"`
 	CreatedAt        time.Time       `json:"created_at"`
+}
+
+// Run is one completed answer attempt. A follow-up creates a new run so its
+// evidence and causal conclusion never overwrite an earlier diagnosis.
+type Run struct {
+	ID                string     `json:"id"`
+	SessionID         string     `json:"session_id"`
+	Sequence          int        `json:"sequence"`
+	QuestionMessageID *string    `json:"question_message_id,omitempty"`
+	Status            string     `json:"status"`
+	StartedAt         time.Time  `json:"started_at"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+}
+
+type CausalNode struct {
+	ID             string   `json:"id"`
+	Kind           string   `json:"kind"`
+	Statement      string   `json:"statement"`
+	Status         string   `json:"status"`
+	Confidence     float64  `json:"confidence"`
+	EvidenceIDs    []string `json:"evidence_ids,omitempty"`
+	ObservationIDs []string `json:"observation_ids,omitempty"`
+}
+
+type CausalLink struct {
+	From           string   `json:"from"`
+	To             string   `json:"to"`
+	Relation       string   `json:"relation"`
+	Statement      string   `json:"statement,omitempty"`
+	Status         string   `json:"status"`
+	Confidence     float64  `json:"confidence"`
+	EvidenceIDs    []string `json:"evidence_ids,omitempty"`
+	ObservationIDs []string `json:"observation_ids,omitempty"`
+}
+
+// CausalChain is the user-facing projection of the richer diagnostic
+// argument graph. Nodes and links only contain concise, auditable summaries;
+// raw tool output remains in Evidence and the execution event timeline.
+type CausalChain struct {
+	ID        string       `json:"id"`
+	SessionID string       `json:"session_id"`
+	RunID     string       `json:"run_id"`
+	Version   int          `json:"version"`
+	Status    string       `json:"status"`
+	Summary   string       `json:"summary"`
+	Nodes     []CausalNode `json:"nodes"`
+	Links     []CausalLink `json:"links"`
+	CreatedAt time.Time    `json:"created_at"`
 }
 
 type Hypothesis struct {
@@ -115,14 +164,16 @@ type Report struct {
 }
 
 type Snapshot struct {
-	Session    Session      `json:"session"`
-	Targets    []Target     `json:"targets"`
-	Messages   []Message    `json:"messages"`
-	Plan       *Plan        `json:"plan,omitempty"`
-	Evidence   []Evidence   `json:"evidence"`
-	Hypotheses []Hypothesis `json:"hypotheses"`
-	Report     *Report      `json:"report,omitempty"`
-	Events     []Event      `json:"events,omitempty"`
+	Session      Session       `json:"session"`
+	Targets      []Target      `json:"targets"`
+	Messages     []Message     `json:"messages"`
+	Plan         *Plan         `json:"plan,omitempty"`
+	Evidence     []Evidence    `json:"evidence"`
+	Runs         []Run         `json:"runs"`
+	CausalChains []CausalChain `json:"causal_chains"`
+	Hypotheses   []Hypothesis  `json:"hypotheses"`
+	Report       *Report       `json:"report,omitempty"`
+	Events       []Event       `json:"events,omitempty"`
 }
 
 type StartInput struct {
@@ -141,6 +192,7 @@ type CreateEventInput struct {
 }
 
 type CreateEvidenceInput struct {
+	RunID                                          string
 	TargetResourceID, SourceResourceID, Capability string
 	CollectedAt                                    time.Time
 	WindowStart, WindowEnd                         *time.Time

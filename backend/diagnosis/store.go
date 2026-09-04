@@ -29,6 +29,11 @@ type Store interface {
 	EventsAfter(context.Context, string, int64, int) ([]Event, error)
 	SaveEvidence(context.Context, string, CreateEvidenceInput) (Evidence, error)
 	Evidence(context.Context, string) ([]Evidence, error)
+	CreateRun(context.Context, string, string) (Run, error)
+	FinishRun(context.Context, string, string) (Run, error)
+	Runs(context.Context, string) ([]Run, error)
+	SaveCausalChain(context.Context, CausalChain) (CausalChain, error)
+	CausalChains(context.Context, string) ([]CausalChain, error)
 	SaveHypothesis(context.Context, Hypothesis) (Hypothesis, error)
 	Hypotheses(context.Context, string) ([]Hypothesis, error)
 	SaveReport(context.Context, Report) (Report, error)
@@ -238,7 +243,7 @@ func (s *store) SaveEvidence(ctx context.Context, sessionID string, input Create
 	}
 	digest := sha256.Sum256(content)
 	var item Evidence
-	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_evidence (session_id, target_resource_id, source_resource_id, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted) VALUES ($1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::text, session_id::text, target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at`, sessionID, input.TargetResourceID, input.SourceResourceID, input.Capability, input.CollectedAt, input.WindowStart, input.WindowEnd, hex.EncodeToString(digest[:]), summary, content, input.Partial, input.Untrusted).Scan(&item.ID, &item.SessionID, &item.TargetResourceID, &item.SourceResourceID, &item.Capability, &item.CollectedAt, &item.WindowStart, &item.WindowEnd, &item.ContentHash, &item.Summary, &item.Content, &item.Partial, &item.Untrusted, &item.CreatedAt)
+	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_evidence (session_id, run_id, target_resource_id, source_resource_id, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted) VALUES ($1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, NULLIF($4, '')::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id::text, session_id::text, COALESCE(run_id::text, ''), target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at`, sessionID, input.RunID, input.TargetResourceID, input.SourceResourceID, input.Capability, input.CollectedAt, input.WindowStart, input.WindowEnd, hex.EncodeToString(digest[:]), summary, content, input.Partial, input.Untrusted).Scan(&item.ID, &item.SessionID, &item.RunID, &item.TargetResourceID, &item.SourceResourceID, &item.Capability, &item.CollectedAt, &item.WindowStart, &item.WindowEnd, &item.ContentHash, &item.Summary, &item.Content, &item.Partial, &item.Untrusted, &item.CreatedAt)
 	if err != nil {
 		return Evidence{}, mapStoreError(err)
 	}
@@ -246,7 +251,7 @@ func (s *store) SaveEvidence(ctx context.Context, sessionID string, input Create
 }
 
 func (s *store) Evidence(ctx context.Context, sessionID string) ([]Evidence, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at FROM diagnosis_evidence WHERE session_id = $1::uuid ORDER BY created_at, id`, sessionID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, COALESCE(run_id::text, ''), target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at FROM diagnosis_evidence WHERE session_id = $1::uuid ORDER BY created_at, id`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnosis evidence: %w", err)
 	}
@@ -254,12 +259,104 @@ func (s *store) Evidence(ctx context.Context, sessionID string) ([]Evidence, err
 	items := make([]Evidence, 0)
 	for rows.Next() {
 		var item Evidence
-		if err := rows.Scan(&item.ID, &item.SessionID, &item.TargetResourceID, &item.SourceResourceID, &item.Capability, &item.CollectedAt, &item.WindowStart, &item.WindowEnd, &item.ContentHash, &item.Summary, &item.Content, &item.Partial, &item.Untrusted, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.RunID, &item.TargetResourceID, &item.SourceResourceID, &item.Capability, &item.CollectedAt, &item.WindowStart, &item.WindowEnd, &item.ContentHash, &item.Summary, &item.Content, &item.Partial, &item.Untrusted, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan diagnosis evidence: %w", err)
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *store) CreateRun(ctx context.Context, sessionID, questionMessageID string) (Run, error) {
+	var item Run
+	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_runs (session_id, sequence, question_message_id) SELECT $1::uuid, COALESCE(MAX(sequence), 0) + 1, NULLIF($2, '')::uuid FROM diagnosis_runs WHERE session_id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at`, sessionID, questionMessageID).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt)
+	if err != nil {
+		return Run{}, mapStoreError(err)
+	}
+	return item, nil
+}
+
+func (s *store) FinishRun(ctx context.Context, runID, status string) (Run, error) {
+	var item Run
+	err := s.pool.QueryRow(ctx, `UPDATE diagnosis_runs SET status = $2, completed_at = now() WHERE id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at`, runID, status).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt)
+	if err != nil {
+		return Run{}, mapStoreError(err)
+	}
+	return item, nil
+}
+
+func (s *store) Runs(ctx context.Context, sessionID string) ([]Run, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at FROM diagnosis_runs WHERE session_id = $1::uuid ORDER BY sequence`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnosis runs: %w", err)
+	}
+	defer rows.Close()
+	items := []Run{}
+	for rows.Next() {
+		var item Run
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt); err != nil {
+			return nil, fmt.Errorf("scan diagnosis run: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) SaveCausalChain(ctx context.Context, input CausalChain) (CausalChain, error) {
+	if err := s.validateCausalChain(ctx, input); err != nil {
+		return CausalChain{}, err
+	}
+	nodes, _ := json.Marshal(input.Nodes)
+	links, _ := json.Marshal(input.Links)
+	var item CausalChain
+	err := s.pool.QueryRow(ctx, `WITH retired AS (UPDATE diagnosis_causal_chains SET status = 'superseded' WHERE session_id = $1::uuid AND status = 'active') INSERT INTO diagnosis_causal_chains (session_id, run_id, version, status, summary, nodes, links) SELECT $1::uuid, $2::uuid, COALESCE(MAX(version), 0) + 1, $3, $4, $5, $6 FROM diagnosis_causal_chains WHERE session_id = $1::uuid RETURNING id::text, session_id::text, run_id::text, version, status, summary, nodes, links, created_at`, input.SessionID, input.RunID, input.Status, input.Summary, nodes, links).Scan(&item.ID, &item.SessionID, &item.RunID, &item.Version, &item.Status, &item.Summary, &item.Nodes, &item.Links, &item.CreatedAt)
+	if err != nil {
+		return CausalChain{}, mapStoreError(err)
+	}
+	return item, nil
+}
+
+func (s *store) CausalChains(ctx context.Context, sessionID string) ([]CausalChain, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, run_id::text, version, status, summary, nodes, links, created_at FROM diagnosis_causal_chains WHERE session_id = $1::uuid ORDER BY version DESC`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnosis causal chains: %w", err)
+	}
+	defer rows.Close()
+	items := []CausalChain{}
+	for rows.Next() {
+		var item CausalChain
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.RunID, &item.Version, &item.Status, &item.Summary, &item.Nodes, &item.Links, &item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan diagnosis causal chain: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) validateCausalChain(ctx context.Context, chain CausalChain) error {
+	if chain.SessionID == "" || chain.RunID == "" || (chain.Status != "active" && chain.Status != "partial") {
+		return invalid("causal chain is invalid")
+	}
+	var count int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM diagnosis_runs WHERE id = $1::uuid AND session_id = $2::uuid`, chain.RunID, chain.SessionID).Scan(&count); err != nil || count != 1 {
+		return invalid("causal chain run must belong to the diagnosis session")
+	}
+	evidence := map[string]struct{}{}
+	for _, node := range chain.Nodes {
+		for _, id := range node.EvidenceIDs {
+			evidence[id] = struct{}{}
+		}
+	}
+	for _, link := range chain.Links {
+		for _, id := range link.EvidenceIDs {
+			evidence[id] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(evidence))
+	for id := range evidence {
+		ids = append(ids, id)
+	}
+	return s.validateEvidenceReferences(ctx, chain.SessionID, ids)
 }
 
 func (s *store) SaveHypothesis(ctx context.Context, input Hypothesis) (Hypothesis, error) {
