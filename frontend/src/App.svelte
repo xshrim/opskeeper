@@ -61,6 +61,8 @@ import { onMount, tick } from 'svelte';
   import ProviderResourceConfiguration from './features/resources/ProviderResourceConfiguration.svelte';
   import ProviderModelConfiguration from './features/resources/ProviderModelConfiguration.svelte';
   import ProviderResourceSummary from './features/resources/ProviderResourceSummary.svelte';
+  import MCPEditor from './features/resources/MCPEditor.svelte';
+  import ResourceSchemaConfiguration from './features/resources/ResourceSchemaConfiguration.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6430,68 +6432,27 @@ import { onMount, tick } from 'svelte';
                       onSubmit={submitProviderCreate}
                     />
                   {:else if selectedResource?.kind === 'MCPServer'}
-                    <div class="mcp-resource-form editor-mcp-form">
-                      <div class="form-row"><label><span>资源名称</span><input bind:value={editResourceName} required /></label><label><span>状态</span><select bind:value={editResourceStatus}><option value="active">正常</option><option value="disabled">停用</option><option value="unknown">未知</option></select></label></div>
-                      <label><span>标签</span><input bind:value={editResourceLabels} placeholder="env=prod, owner=platform" /></label>
-                      <label><span>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
-                      <div class="mcp-number-grid"><label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label><label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label></div>
-                      <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="留空保持原凭据" /></label>
-                      <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
-                      <label><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="5" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具"></textarea></label>
-                    </div>
+                    <MCPEditor
+                      bind:editResourceName={editResourceName}
+                      bind:editResourceStatus={editResourceStatus}
+                      bind:editResourceLabels={editResourceLabels}
+                      bind:mcpURL={mcpURL}
+                      bind:mcpTimeoutSeconds={mcpTimeoutSeconds}
+                      bind:mcpMaxResponseBytes={mcpMaxResponseBytes}
+                      bind:mcpToken={mcpToken}
+                      bind:mcpRequestHeaders={mcpRequestHeaders}
+                      bind:mcpToolAllowlist={mcpToolAllowlist}
+                    />
                   {:else}
-                    <p class="resource-add-description">
-                      配置将按 {resourceAddCategory} · {resourceAddSubtype} 的资源契约保存；敏感字段会单独加密存储。
-                    </p>
-                    <form
-                      id="resource-create-form"
-                      class="stack-form resource-create-form"
-                      on:submit|preventDefault={createResource}
-                    >
-                      {#if createSchema?.schema.properties}
-                        <div class="schema-inputs">
-                          <p class="eyebrow">SCHEMA FIELDS</p>
-                          {#each Object.entries(createSchema.schema.properties) as [key, field]}<label
-                              >{field.title || key}{#if field.sensitive}<input
-                                  type="password"
-                                  bind:value={resourceSensitiveValues[key]}
-                                  placeholder="敏感信息将加密保存"
-                                  autocomplete="new-password"
-                                />{:else if field.enum}<select
-                                  bind:value={resourceConfigValues[key]}
-                                  ><option value="">未设置</option
-                                  >{#each field.enum as option}<option
-                                      value={option}>{option}</option
-                                    >{/each}</select
-                                >{:else if field.type === 'array'}<textarea
-                                  bind:value={resourceConfigValues[key]}
-                                  rows="4"
-                                  placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'}
-                                  spellcheck="false"
-                                ></textarea>{:else}<input
-                                  bind:value={resourceConfigValues[key]}
-                                  type={field.type === 'number' ||
-                                  field.type === 'integer'
-                                    ? 'number'
-                                    : field.type === 'url' ||
-                                        field.format === 'uri'
-                                      ? 'url'
-                                      : 'text'}
-                                  placeholder={field.description || key}
-                                  autocomplete="off"
-                                />{/if}</label
-                            >{/each}
-                        </div>
-                      {:else}
-                        <label
-                          >配置 JSON<textarea
-                            bind:value={resourceConfig}
-                            rows="4"
-                            spellcheck="false"
-                          ></textarea></label
-                        >
-                      {/if}
-                    </form>
+                    <ResourceSchemaConfiguration
+                      resourceAddCategory={resourceAddCategory}
+                      resourceAddSubtype={resourceAddSubtype}
+                      createSchema={createSchema}
+                      bind:resourceConfigValues={resourceConfigValues}
+                      bind:resourceSensitiveValues={resourceSensitiveValues}
+                      bind:resourceConfig={resourceConfig}
+                      onSubmit={createResource}
+                    />
                   {/if}
                 </div>
               </section>
