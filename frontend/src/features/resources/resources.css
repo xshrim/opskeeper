@@ -1,0 +1,8 @@
+/* Resource page layout. Theme tokens and shared controls remain in app.css. */
+.resources-layout {
+  min-width: 0;
+}
+
+.resource-workspace {
+  min-width: 0;
+}
