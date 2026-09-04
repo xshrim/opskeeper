@@ -63,6 +63,7 @@ import { onMount, tick } from 'svelte';
   import ProviderResourceSummary from './features/resources/ProviderResourceSummary.svelte';
   import MCPEditor from './features/resources/MCPEditor.svelte';
   import ResourceSchemaConfiguration from './features/resources/ResourceSchemaConfiguration.svelte';
+  import ResourceConnectionStatus from './features/resources/ResourceConnectionStatus.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6493,45 +6494,14 @@ import { onMount, tick } from 'svelte';
                   >
                 </div>
                 {#if selectedResourceHasConnector && selectedResource.kind !== 'AIProvider'}
-                  <div class="connection-status">
-                    <div class="connection-summary">
-                      <span
-                        class:success={connectionCheck?.status === 'succeeded'}
-                        class:failed={connectionCheck?.status === 'failed'}
-                        class="connection-indicator"
-                        aria-hidden="true"
-                      ></span>
-                      <span>
-                        <strong
-                          >{connectionCheck?.status === 'succeeded'
-                            ? '连接正常'
-                            : connectionCheck?.status === 'failed'
-                              ? '连接失败'
-                              : '尚未测试'}</strong
-                        >
-                        <small
-                          >{connectionCheck
-                            ? `${connectionCheck.message} · ${connectionCheck.latency_ms} ms · ${formatDate(connectionCheck.checked_at)}`
-                            : '当前资源还没有连接测试记录'}</small
-                        >
-                      </span>
-                    </div>
-                    {#if connectionCheck?.capabilities.length}
-                      <div class="capability-list" aria-label="连接器能力">
-                        {#each connectionCheck.capabilities as capability}
-                          <span>{capabilityName(capability)}</span>
-                        {/each}
-                      </div>
-                    {/if}
-                    <button
-                      class="secondary connection-test-button"
-                      on:click={testSelectedResourceConnection}
-                      disabled={busy || connectionBusy}
-                    >
-                      <span aria-hidden="true">↻</span>
-                      {connectionBusy ? '测试中' : '测试连接'}
-                    </button>
-                  </div>
+                  <ResourceConnectionStatus
+                    connectionCheck={connectionCheck}
+                    busy={busy}
+                    connectionBusy={connectionBusy}
+                    formatDate={formatDate}
+                    capabilityName={capabilityName}
+                    onTestConnection={testSelectedResourceConnection}
+                  />
                 {/if}
                 <form
                   class="stack-form editor-form"
