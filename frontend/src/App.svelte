@@ -56,6 +56,8 @@ import { onMount, tick } from 'svelte';
   import ResourceAddStepNavigation from './features/resources/ResourceAddStepNavigation.svelte';
   import ResourceAddWorkflowHeader from './features/resources/ResourceAddWorkflowHeader.svelte';
   import ResourceBasicConfiguration from './features/resources/ResourceBasicConfiguration.svelte';
+  import MCPResourceConfiguration from './features/resources/MCPResourceConfiguration.svelte';
+  import MCPResourceSummary from './features/resources/MCPResourceSummary.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
   import {
@@ -6345,32 +6347,28 @@ import { onMount, tick } from 'svelte';
                       }}
                     />
                   {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
-                    <p class="resource-add-description">
-                      配置 MCP Server 的连接参数。增强安全模式下服务地址必须使用 HTTPS。
-                    </p>
-                    <form id="resource-create-form" class="stack-form resource-create-form" on:submit|preventDefault={createResource}>
-                      <div class="mcp-resource-form">
-                      <label class="mcp-url-field"><span><i>*</i>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
-                      <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="保存于加密凭据" autocomplete="new-password" /></label>
-                      <div class="mcp-number-grid"><label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label><label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label></div>
-                      <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
-                      <label class="mcp-tools-field"><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="4" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具" spellcheck="false"></textarea></label>
-                      </div>
-                    </form>
+                    <MCPResourceConfiguration
+                      bind:mcpURL={mcpURL}
+                      bind:mcpToken={mcpToken}
+                      bind:mcpTimeoutSeconds={mcpTimeoutSeconds}
+                      bind:mcpMaxResponseBytes={mcpMaxResponseBytes}
+                      bind:mcpRequestHeaders={mcpRequestHeaders}
+                      bind:mcpToolAllowlist={mcpToolAllowlist}
+                      onSubmit={createResource}
+                    />
                   {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
-                    <div class="provider-summary mcp-summary">
-                      <div><span>传输方式</span><strong>{mcpTransport === 'sse' ? 'SSE' : 'Streamable HTTP'}</strong></div>
-                      <div><span>Server 地址</span><strong>{mcpURL || '未设置'}</strong></div>
-                      <div><span>Token / Header</span><strong>{mcpToken.trim() ? 'Token 已配置' : 'Token 未配置'}</strong><small>{mcpHeaderCount()} 个请求 Header</small></div>
-                      <div><span>工具白名单</span><strong>{mcpToolAllowlist.trim() || '不限制'}</strong><small>支持通配符，空白表示允许全部工具</small></div>
-                      <div><span>超时时间</span><strong>{mcpTimeoutSeconds} 秒</strong></div>
-                      <div><span>响应体大小限制</span><strong>{Math.round(Number(mcpMaxResponseBytes) / 1024 / 1024)} MiB</strong></div>
-                      <div class="provider-test-summary">
-                        <span>连接核验</span>
-                        {#if mcpDraftTest?.result?.status === 'succeeded'}<strong class="success">连接正常 · 发现 {mcpDraftTest.result.tools.length} 个工具{mcpDraftTest.result.latency_ms ? ` · ${mcpDraftTest.result.latency_ms} ms` : ''}</strong><small>Server 初始化和工具发现已完成</small>{:else if mcpDraftTest?.error}<strong class="failed">{mcpDraftTest.error}</strong><small>请修正配置后重新测试</small>{:else}<strong>尚未核验</strong><small>创建前必须完成连接测试</small>{/if}
-                        <button class="secondary provider-test-button" type="button" on:click={() => void testMCPDraftConnection()} disabled={mcpDraftTestBusy}>{mcpDraftTestBusy ? '连接中…' : '连接测试'}</button>
-                      </div>
-                    </div>
+                    <MCPResourceSummary
+                      mcpTransport={mcpTransport}
+                      mcpURL={mcpURL}
+                      mcpToken={mcpToken}
+                      mcpToolAllowlist={mcpToolAllowlist}
+                      mcpTimeoutSeconds={mcpTimeoutSeconds}
+                      mcpMaxResponseBytes={mcpMaxResponseBytes}
+                      mcpDraftTest={mcpDraftTest}
+                      mcpDraftTestBusy={mcpDraftTestBusy}
+                      mcpHeaderCount={mcpHeaderCount}
+                      onTestConnection={() => void testMCPDraftConnection()}
+                    />
                   {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
                     <p class="resource-add-description">
                       配置 Provider 连接、运行边界和角色。凭据会作为独立加密对象保存，不会写入资源配置。
