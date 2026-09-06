@@ -18,6 +18,14 @@ export default defineConfig(({ command }) => {
   const baseHref = basePath === '/' ? '/' : `${basePath}/`;
   const route = (suffix: string) =>
     basePath === '/' ? suffix : `${basePath}${suffix}`;
+  // The development proxy terminates the browser origin at Vite and forwards
+  // to the API port. Mark the forwarded request as local same-origin so the
+  // API's CSRF/CORS checks do not reject the default development setup.
+  const apiProxy = {
+    target: 'http://localhost:8080',
+    changeOrigin: true,
+    headers: { Origin: 'http://localhost:8080' }
+  };
   return {
     base: command === 'serve' ? baseHref : './',
     plugins: [
@@ -39,8 +47,8 @@ export default defineConfig(({ command }) => {
       port: 5173,
       strictPort: true,
       proxy: {
-        [route('/api')]: 'http://localhost:8080',
-        [route('/health')]: 'http://localhost:8080'
+        [route('/api')]: apiProxy,
+        [route('/health')]: apiProxy
       }
     },
     build: {

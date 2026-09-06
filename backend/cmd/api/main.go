@@ -66,9 +66,21 @@ func main() {
 	}
 	logger = logger.With("service", serviceName)
 	if err := run(logger, cfg); err != nil {
-		logger.Error("api stopped", "kind", "error", "error_type", "api-stopped", "error", err)
+		logger.Error("api stopped", "kind", "error", "error_type", "api-stopped", "error_summary", apiErrorSummary(err))
 		os.Exit(1)
 	}
+}
+
+func apiErrorSummary(err error) string {
+	if err == nil {
+		return ""
+	}
+	const maxLength = 500
+	summary := strings.Join(strings.Fields(err.Error()), " ")
+	if len(summary) > maxLength {
+		return summary[:maxLength] + "..."
+	}
+	return summary
 }
 
 func run(logger *slog.Logger, cfg config.Config) error {

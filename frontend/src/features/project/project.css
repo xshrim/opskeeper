@@ -1,0 +1,24 @@
+/* Feature styles migrated from app.css. */
+.project-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--theme-bg-surface);
+  border-radius: 50%;
+}
+.project-icon {
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-warning-soft);
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .project-icon {
+  color: var(--theme-warning);
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border-strong);
+}
+
+/* Additional selector-level migration from app.css. */
+.project-dot {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}

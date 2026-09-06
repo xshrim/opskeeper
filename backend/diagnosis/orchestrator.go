@@ -65,6 +65,33 @@ func (o *Orchestrator) launch(parent context.Context, sessionID string) {
 	}()
 }
 
+// launchPending resumes a follow-up that was appended while the previous run
+// was still finishing report/causal-chain work. Ask intentionally leaves an
+// active session untouched so two executions cannot claim the same session;
+// once the current run reaches a terminal state, the newest unanswered user
+// message is reopened and processed by a fresh run.
+func (o *Orchestrator) launchPending(sessionID, completedQuestionMessageID string) {
+	if o.engine == nil {
+		return
+	}
+	session, err := o.store.Get(context.Background(), sessionID)
+	if err != nil || session.Status == StatusPlanning || session.Status == StatusCollecting || session.Status == StatusAnalyzing || session.Status == StatusQueued {
+		return
+	}
+	messages, err := o.store.Messages(context.Background(), sessionID, 1)
+	if err != nil || len(messages) == 0 {
+		return
+	}
+	latest := messages[len(messages)-1]
+	if latest.Role != "user" || latest.ID == completedQuestionMessageID {
+		return
+	}
+	if _, err := o.store.Reopen(context.Background(), sessionID); err != nil {
+		return
+	}
+	o.launch(context.Background(), sessionID)
+}
+
 func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	session, claimed, err := o.store.ClaimRun(ctx, sessionID)
 	if err != nil {
@@ -105,10 +132,23 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		return
 	}
 	runStatus := "failed"
+	runFinished := false
+	finishRun := func(status string) {
+		if _, finishErr := o.store.FinishRun(context.Background(), run.ID, status); finishErr == nil {
+			runFinished = true
+		}
+	}
 	defer func() {
 		// All early returns become a terminal failed run. Cancellation and
 		// success set this status before their return path.
-		_, _ = o.store.FinishRun(context.Background(), run.ID, runStatus)
+		if !runFinished {
+			finishRun(runStatus)
+		}
+		completedQuestionMessageID := ""
+		if run.QuestionMessageID != nil {
+			completedQuestionMessageID = *run.QuestionMessageID
+		}
+		o.launchPending(session.ID, completedQuestionMessageID)
 	}()
 	targetIDs := make([]string, 0, len(targets))
 	for _, target := range targets {
@@ -166,6 +206,15 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		}
 		assistantPersisted = true
 		pendingAssistantCompleted = nil
+	}
+	flushPendingTerminalEvents := func() {
+		assistantMu.Lock()
+		pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
+		pendingTerminalEvents = nil
+		assistantMu.Unlock()
+		for _, event := range pendingTerminal {
+			_ = o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
+		}
 	}
 	result, err := o.engine.Execute(ctx, aiengine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName, Purpose: aiengine.PurposeDiagnosis, Profile: aiengine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: aiengine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: aiengine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event aiengine.Event) error {
 		if event.Type == "assistant.delta" {
@@ -266,38 +315,28 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		// A terminal AIEngine event can arrive before Execute returns. Flush it
 		// before closing the diagnosis session so cancellation and failure are
 		// visible to reconnecting clients even when no assistant answer exists.
-		assistantMu.Lock()
-		pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
-		assistantMu.Unlock()
-		for _, event := range pendingTerminal {
-			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
-		}
+		flushPendingTerminalEvents()
 		code := runnerErrorCode(err)
 		if result.Status == aiengine.StatusCancelled || code == "cancelled" || code == "timeout" {
 			runStatus = "cancelled"
 			o.cancel(session.ID, code, err)
-			_, _ = o.store.FinishRun(context.Background(), run.ID, "cancelled")
+			finishRun("cancelled")
 		} else {
 			o.fail(session.ID, code, err)
-			_, _ = o.store.FinishRun(context.Background(), run.ID, "failed")
+			finishRun("failed")
 		}
 		return
 	}
 	if result.Status == aiengine.StatusFailed || result.Status == aiengine.StatusCancelled {
 		persistPartialAssistant()
-		assistantMu.Lock()
-		pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
-		assistantMu.Unlock()
-		for _, event := range pendingTerminal {
-			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
-		}
+		flushPendingTerminalEvents()
 		if result.Status == aiengine.StatusCancelled {
 			runStatus = "cancelled"
 			o.cancel(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
-			_, _ = o.store.FinishRun(context.Background(), run.ID, "cancelled")
+			finishRun("cancelled")
 		} else {
 			o.fail(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
-			_, _ = o.store.FinishRun(context.Background(), run.ID, "failed")
+			finishRun("failed")
 		}
 		return
 	}
@@ -331,7 +370,6 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	// observe a completion event without a corresponding answer.
 	assistantMu.Lock()
 	pendingAssistant := pendingAssistantCompleted
-	pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
 	assistantMu.Unlock()
 	if pendingAssistant != nil {
 		payload := pendingAssistant.Payload
@@ -350,6 +388,10 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			return
 		}
 	}
+	assistantMu.Lock()
+	pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
+	pendingTerminalEvents = nil
+	assistantMu.Unlock()
 	for _, event := range pendingTerminal {
 		if err := o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload}); err != nil {
 			o.fail(session.ID, "execution_event", err)
@@ -427,7 +469,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	runStatus = "succeeded"
 	_, _ = o.store.Finish(ctx, session.ID, StatusSucceeded, "", "")
-	_, _ = o.store.FinishRun(context.Background(), run.ID, "succeeded")
+	finishRun("succeeded")
 	o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "report.ready", Payload: map[string]any{"report_id": report.ID, "evidence_ids": evidenceIDs, "status": report.Status}})
 }
 

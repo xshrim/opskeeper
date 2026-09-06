@@ -1,0 +1,192 @@
+/* Feature styles migrated from app.css. */
+.profile-layout {
+  max-width: 940px;
+  padding: 28px 0 48px;
+}
+.profile-form {
+  display: grid;
+  gap: 16px;
+}
+.profile-panel {
+  overflow: hidden;
+}
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 20px 20px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  color: var(--theme-teal);
+  background: var(--theme-bg-accent-soft);
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 50%;
+  font-size: 24px;
+  font-weight: 750;
+  object-fit: cover;
+}
+.profile-avatar-row strong,
+.profile-avatar-row p {
+  display: block;
+}
+.profile-avatar-row p {
+  margin: 4px 0 10px;
+  color: var(--theme-fg-subtle);
+  font-size: 12px;
+}
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 20px;
+}
+.profile-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+.profile-fields input {
+  width: 100%;
+}
+.profile-password-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 20px;
+}
+.profile-password-row label {
+  display: block;
+  min-width: 0;
+}
+.profile-password-row input {
+  width: 100%;
+}
+.profile-password-row button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+.profile-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 20px;
+  padding: 12px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+}
+.profile-team span {
+  display: grid;
+  gap: 3px;
+}
+.profile-team strong {
+  font-size: 12px;
+}
+.profile-team small {
+  color: var(--theme-fg-subtle);
+  font-size: 11px;
+}
+.preference-group {
+  margin: 0;
+  padding: 18px 20px;
+  border: 0;
+  border-top: 1px solid var(--theme-divider);
+}
+.preference-group legend {
+  padding: 0;
+  color: var(--theme-fg-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.preference-help {
+  margin: 10px 0 0;
+  color: var(--theme-fg-subtle);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid var(--theme-divider);
+}
+@media (max-width: 720px) {
+  .profile-layout {
+    padding-top: 18px;
+  }
+  .profile-fields {
+    grid-template-columns: 1fr;
+  }
+  .profile-password-row {
+    grid-template-columns: 1fr;
+  }
+  .profile-password-row button {
+    width: 100%;
+  }
+}
+:root[data-theme='dark'] .dialog .preference-group,
+:root[data-theme='dark'] .dialog .preference-group legend {
+  color: var(--theme-fg-strong);
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .dialog .preference-group .segmented-control {
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .dialog .preference-group .segmented-control button {
+  color: var(--theme-fg-muted);
+}
+:root[data-theme='dark']
+  .dialog
+  .preference-group
+  .segmented-control
+  button:hover,
+:root[data-theme='dark']
+  .dialog
+  .preference-group
+  .segmented-control
+  button.active {
+  color: var(--theme-teal);
+  background: var(--theme-bg-selected);
+}
+
+/* Additional selector-level migration from app.css. */
+:root[data-theme='dark'] .profile-actions {
+  border-top-color: var(--theme-divider);
+  border-bottom-color: var(--theme-divider);
+}
+:root[data-theme='dark'] .profile-avatar-row,
+:root[data-theme='dark'] .preference-group,
+:root[data-theme='dark'] .profile-actions {
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .profile-fields label {
+  color: var(--theme-fg-muted);
+}
+:root[data-theme='dark'] .profile-team {
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .profile-panel .secondary,
+:root[data-theme='dark'] .profile-actions .secondary {
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border);
+}
+:root[data-theme='dark'] .profile-panel .secondary:hover,
+:root[data-theme='dark'] .profile-actions .secondary:hover {
+  color: var(--theme-teal);
+  background: var(--theme-bg-hover);
+  border-color: var(--color-primary);
+}
