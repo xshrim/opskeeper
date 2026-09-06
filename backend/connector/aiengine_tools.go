@@ -20,8 +20,10 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
+	return []string{"Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
 }
+
+func (connectorContextProvider) AccessModes() []string { return []string{"direct"} }
 
 func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine.ContextResource) ([]aiengine.Tool, []aiengine.ContextFact, error) {
 	if p.service == nil || p.service.resources == nil {
@@ -39,6 +41,10 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 		tools = append(tools, aiengine.ToolFunc{Def: aiengine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
 	switch resource.Kind {
+	case "Docker":
+		if err := p.service.resolveDockerTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "Prometheus":
 		add("connector.query_metrics", "Query bounded Prometheus metrics.", metricsSchema, func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
 			query, err := parseMetricsQuery(args)

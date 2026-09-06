@@ -252,3 +252,45 @@ func TestResourceContextResolverRejectsInactiveResource(t *testing.T) {
 		t.Fatal("inactive resource was accepted")
 	}
 }
+
+type accessModeContextProvider struct {
+	kinds []string
+	modes []string
+}
+
+func (p accessModeContextProvider) Kinds() []string { return p.kinds }
+func (p accessModeContextProvider) AccessModes() []string { return p.modes }
+func (p accessModeContextProvider) Resolve(_ context.Context, resource ContextResource) ([]Tool, []ContextFact, error) {
+	return []Tool{ToolFunc{Def: ToolDefinition{Name: "read", Source: "test", ResourceID: resource.ID}}}, nil, nil
+}
+
+func TestResourceContextResolverSelectsProviderByAccessMode(t *testing.T) {
+	serverID := "mcp-server-1"
+	resources := fakeContextResourceReader{resources: map[string]ContextResource{
+		"direct-1": {ID: "direct-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "direct", Status: "active"},
+		"agent-1":  {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "agent", MCPServerResourceID: &serverID, Status: "active"},
+	}}
+	direct := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"direct"}}
+	agent := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"agent"}}
+	resolver := ResourceContextResolver{Resources: resources, Providers: []ContextProvider{direct, agent}}
+	resolved, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"direct-1", "agent-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Tools) != 2 {
+		t.Fatalf("tools=%+v, want one tool per resource", resolved.Tools)
+	}
+}
+
+func TestResourceContextResolverDoesNotFallbackAgentToUnconstrainedProvider(t *testing.T) {
+	serverID := "mcp-server-1"
+	resolver := ResourceContextResolver{
+		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
+			"agent-1": {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "agent", MCPServerResourceID: &serverID, Status: "active"},
+		}},
+		Providers: []ContextProvider{fakeContextProvider{}},
+	}
+	if _, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"agent-1"}}); err == nil {
+		t.Fatal("agent without an MCP provider was silently accepted")
+	}
+}

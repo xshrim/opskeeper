@@ -44,6 +44,8 @@ platform scope
 
 ## 3. 统一资源模型
 
+资源的 Direct/Agent 接入语义、MCPServer 关联、公共工具和 AIEngine 解析规则以[统一资源接入设计](resource-access.md)为准。本节只描述资源目录、Scope、配置和凭据的通用模型；现有 `subtype=Direct|Agent` 是历史存储表达，迁移目标和运行时约束见该设计。
+
 ```text
 resources {
   id, tenant_id,

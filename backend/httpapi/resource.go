@@ -45,29 +45,33 @@ type resourceHandler struct {
 }
 
 type createResourceRequest struct {
-	ScopeID          string            `json:"scope_id"`
-	Kind             string            `json:"kind"`
-	Subtype          string            `json:"subtype,omitempty"`
-	SchemaVersion    int               `json:"schema_version,omitempty"`
-	Name             string            `json:"name"`
-	ExternalUID      string            `json:"external_uid,omitempty"`
-	SourceResourceID string            `json:"source_resource_id,omitempty"`
-	Labels           map[string]string `json:"labels"`
-	Config           map[string]any    `json:"config"`
-	Status           string            `json:"status,omitempty"`
-	CredentialID     *string           `json:"credential_id,omitempty"`
+	ScopeID             string            `json:"scope_id"`
+	Kind                string            `json:"kind"`
+	Subtype             string            `json:"subtype,omitempty"`
+	AccessMode          string            `json:"access_mode,omitempty"`
+	MCPServerResourceID *string           `json:"mcp_server_resource_id,omitempty"`
+	SchemaVersion       int               `json:"schema_version,omitempty"`
+	Name                string            `json:"name"`
+	ExternalUID         string            `json:"external_uid,omitempty"`
+	SourceResourceID    string            `json:"source_resource_id,omitempty"`
+	Labels              map[string]string `json:"labels"`
+	Config              map[string]any    `json:"config"`
+	Status              string            `json:"status,omitempty"`
+	CredentialID        *string           `json:"credential_id,omitempty"`
 }
 
 type updateResourceRequest struct {
-	ScopeID          *string            `json:"scope_id"`
-	Subtype          *string            `json:"subtype"`
-	Name             *string            `json:"name"`
-	ExternalUID      *string            `json:"external_uid"`
-	SourceResourceID *string            `json:"source_resource_id"`
-	Labels           *map[string]string `json:"labels"`
-	Config           *map[string]any    `json:"config"`
-	Status           *string            `json:"status"`
-	CredentialID     **string           `json:"credential_id"`
+	ScopeID             *string            `json:"scope_id"`
+	Subtype             *string            `json:"subtype"`
+	AccessMode          *string            `json:"access_mode"`
+	MCPServerResourceID **string           `json:"mcp_server_resource_id"`
+	Name                *string            `json:"name"`
+	ExternalUID         *string            `json:"external_uid"`
+	SourceResourceID    *string            `json:"source_resource_id"`
+	Labels              *map[string]string `json:"labels"`
+	Config              *map[string]any    `json:"config"`
+	Status              *string            `json:"status"`
+	CredentialID        **string           `json:"credential_id"`
 }
 
 type createRelationRequest struct {
@@ -160,7 +164,7 @@ func (h resourceHandler) createResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
@@ -184,7 +188,7 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return

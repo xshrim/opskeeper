@@ -22,7 +22,7 @@ func NewStore(pool *pgxpool.Pool) Store { return &store{pool: pool} }
 
 const resourceSelect = `
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name,
-       resource.subtype, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels,
+       resource.subtype, COALESCE(resource.access_mode, ''), resource.mcp_server_resource_id::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels,
        resource.config, resource.status, resource.credential_id::text,
        resource.created_at, resource.updated_at
   FROM resources resource
@@ -39,9 +39,9 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Resource, error)
 	}
 	var id string
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO resources (scope_id, kind, subtype, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid)
-		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, input.SchemaVersion, input.Name, input.ExternalUID, input.SourceResourceID, labels, config, input.Status, nullableString(input.CredentialID)).Scan(&id)
+		INSERT INTO resources (scope_id, kind, subtype, access_mode, mcp_server_resource_id, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
+		VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13::uuid)
+		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, nullableString(&input.AccessMode), nullableString(input.MCPServerResourceID), input.SchemaVersion, input.Name, input.ExternalUID, input.SourceResourceID, labels, config, input.Status, nullableString(input.CredentialID)).Scan(&id)
 	if err != nil {
 		return Resource{}, mapStoreError(err)
 	}
@@ -59,15 +59,15 @@ func (s *store) UpsertImported(ctx context.Context, input ImportedInput) (Resour
 	}
 	var id string
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO resources (scope_id, kind, subtype, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid)
+		INSERT INTO resources (scope_id, kind, subtype, access_mode, mcp_server_resource_id, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
+		VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, $7, $8, $9, $10, $11, $12, $13::uuid)
 		ON CONFLICT (scope_id, kind, external_uid, source_resource_id)
 		WHERE deleted_at IS NULL AND external_uid <> '' AND source_resource_id <> ''
-		DO UPDATE SET subtype = EXCLUDED.subtype, schema_version = EXCLUDED.schema_version, name = EXCLUDED.name,
+		DO UPDATE SET subtype = EXCLUDED.subtype, access_mode = EXCLUDED.access_mode, mcp_server_resource_id = EXCLUDED.mcp_server_resource_id, schema_version = EXCLUDED.schema_version, name = EXCLUDED.name,
 		              labels = EXCLUDED.labels, config = EXCLUDED.config,
 		              status = EXCLUDED.status, credential_id = EXCLUDED.credential_id,
 		              updated_at = now(), deleted_at = NULL
-		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, input.SchemaVersion, input.Name,
+		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, nullableString(&input.AccessMode), nullableString(input.MCPServerResourceID), input.SchemaVersion, input.Name,
 		input.ExternalUID, input.SourceResourceID, labels, config, input.Status,
 		nullableString(input.CredentialID)).Scan(&id)
 	if err != nil {
@@ -100,7 +100,7 @@ func (s *store) List(ctx context.Context, pagination Pagination, kind string, la
 	limitPosition := len(queryArgs) + 1
 	offsetPosition := len(queryArgs) + 2
 	queryArgs = append(queryArgs, pagination.PageSize, pagination.Offset())
-	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_id::text, resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
+	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, COALESCE(resource.access_mode, ''), resource.mcp_server_resource_id::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_id::text, resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
 	if err != nil {
 		return Page[Resource]{}, fmt.Errorf("list resources: %w", err)
 	}
@@ -136,6 +136,12 @@ func (s *store) Update(ctx context.Context, id string, input UpdateInput) (Resou
 	}
 	if input.Subtype != nil {
 		appendValue("subtype", strings.TrimSpace(*input.Subtype), "")
+	}
+	if input.AccessMode != nil {
+		appendValue("access_mode", strings.TrimSpace(*input.AccessMode), "")
+	}
+	if input.MCPServerResourceID != nil {
+		appendValue("mcp_server_resource_id", nullableString(*input.MCPServerResourceID), "::uuid")
 	}
 	if input.Name != nil {
 		appendValue("name", *input.Name, "")
@@ -309,7 +315,7 @@ WITH RECURSIVE walk(id, depth) AS (
 ), selected AS (
     SELECT id, min(depth) AS depth FROM walk GROUP BY id
 )
-SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.schema_version, resource.external_uid,
+SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, COALESCE(resource.access_mode, ''), resource.mcp_server_resource_id::text, resource.schema_version, resource.external_uid,
        resource.source_resource_id, resource.labels, resource.config, resource.status,
        resource.credential_id::text, resource.created_at, resource.updated_at, selected.depth
   FROM selected JOIN resources resource ON resource.id = selected.id
@@ -357,7 +363,7 @@ WITH RECURSIVE chain(id, depth) AS (
       FROM scopes scope JOIN chain ON chain.id = scope.id
      WHERE scope.parent_scope_id IS NOT NULL
 )
-SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.schema_version,
+SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, COALESCE(resource.access_mode, ''), resource.mcp_server_resource_id::text, resource.schema_version,
        resource.external_uid, resource.source_resource_id, resource.labels, resource.config,
        resource.status, resource.credential_id::text, resource.created_at, resource.updated_at
   FROM chain
@@ -373,7 +379,7 @@ func scanTopologyNode(row rowScanner) (Resource, int, error) {
 	var item Resource
 	var labelsRaw, configRaw []byte
 	var depth int
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt, &depth); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AccessMode, &item.MCPServerResourceID, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt, &depth); err != nil {
 		return Resource{}, 0, mapStoreError(err)
 	}
 	if err := json.Unmarshal(labelsRaw, &item.Labels); err != nil {
@@ -390,7 +396,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanResource(row rowScanner) (Resource, error) {
 	var item Resource
 	var labelsRaw, configRaw []byte
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AccessMode, &item.MCPServerResourceID, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return Resource{}, mapStoreError(err)
 	}
 	if err := json.Unmarshal(labelsRaw, &item.Labels); err != nil {
@@ -491,10 +497,10 @@ func accessFilter(ctx context.Context) ([]string, []string, bool) {
 }
 
 func nullableString(value *string) any {
-	if value == nil {
+	if value == nil || strings.TrimSpace(*value) == "" {
 		return nil
 	}
-	return *value
+	return strings.TrimSpace(*value)
 }
 
 func mapStoreError(err error) error {

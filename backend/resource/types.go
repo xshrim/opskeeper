@@ -3,26 +3,30 @@ package resource
 import "time"
 
 const (
-	StatusActive   = "active"
-	StatusDisabled = "disabled"
-	StatusUnknown  = "unknown"
+	StatusActive     = "active"
+	StatusDisabled   = "disabled"
+	StatusUnknown    = "unknown"
+	AccessModeDirect = "direct"
+	AccessModeAgent  = "agent"
 )
 
 type Resource struct {
-	ID               string            `json:"id"`
-	ScopeID          string            `json:"scope_id"`
-	Kind             string            `json:"kind"`
-	Subtype          string            `json:"subtype,omitempty"`
-	SchemaVersion    int               `json:"schema_version"`
-	Name             string            `json:"name"`
-	ExternalUID      string            `json:"external_uid,omitempty"`
-	SourceResourceID string            `json:"source_resource_id,omitempty"`
-	Labels           map[string]string `json:"labels"`
-	Config           map[string]any    `json:"config"`
-	Status           string            `json:"status"`
-	CredentialID     *string           `json:"credential_id,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	ID                  string            `json:"id"`
+	ScopeID             string            `json:"scope_id"`
+	Kind                string            `json:"kind"`
+	Subtype             string            `json:"subtype,omitempty"`
+	AccessMode          string            `json:"access_mode,omitempty"`
+	MCPServerResourceID *string           `json:"mcp_server_resource_id,omitempty"`
+	SchemaVersion       int               `json:"schema_version"`
+	Name                string            `json:"name"`
+	ExternalUID         string            `json:"external_uid,omitempty"`
+	SourceResourceID    string            `json:"source_resource_id,omitempty"`
+	Labels              map[string]string `json:"labels"`
+	Config              map[string]any    `json:"config"`
+	Status              string            `json:"status"`
+	CredentialID        *string           `json:"credential_id,omitempty"`
+	CreatedAt           time.Time         `json:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at"`
 }
 
 type Schema struct {
@@ -70,31 +74,35 @@ type Pagination struct {
 func (p Pagination) Offset() int { return (p.Page - 1) * p.PageSize }
 
 type CreateInput struct {
-	ScopeID          string
-	Kind             string
-	Subtype          string
-	SchemaVersion    int
-	Name             string
-	ExternalUID      string
-	SourceResourceID string
-	Labels           map[string]string
-	Config           map[string]any
-	Status           string
-	CredentialID     *string
+	ScopeID             string
+	Kind                string
+	Subtype             string
+	AccessMode          string
+	MCPServerResourceID *string
+	SchemaVersion       int
+	Name                string
+	ExternalUID         string
+	SourceResourceID    string
+	Labels              map[string]string
+	Config              map[string]any
+	Status              string
+	CredentialID        *string
 }
 
 type ImportedInput = CreateInput
 
 type UpdateInput struct {
-	ScopeID          *string
-	Subtype          *string
-	Name             *string
-	ExternalUID      *string
-	SourceResourceID *string
-	Labels           *map[string]string
-	Config           *map[string]any
-	Status           *string
-	CredentialID     **string
+	ScopeID             *string
+	Subtype             *string
+	AccessMode          *string
+	MCPServerResourceID **string
+	Name                *string
+	ExternalUID         *string
+	SourceResourceID    *string
+	Labels              *map[string]string
+	Config              *map[string]any
+	Status              *string
+	CredentialID        **string
 }
 
 type CreateRelationInput struct {

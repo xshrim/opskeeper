@@ -19,6 +19,12 @@ const (
 	CapabilityPostgreSQLInspect Capability = "postgresql_inspect"
 	CapabilityRedisInspect      Capability = "redis_inspect"
 	CapabilityKafkaInspect      Capability = "kafka_inspect"
+	CapabilityDockerInfo        Capability = "docker_info"
+	CapabilityDockerImages      Capability = "docker_images"
+	CapabilityDockerContainers  Capability = "docker_containers"
+	CapabilityDockerLogs        Capability = "docker_container_logs"
+	CapabilityDockerInspect     Capability = "docker_container_inspect"
+	CapabilityDockerStats       Capability = "docker_container_stats"
 )
 
 type Target struct {

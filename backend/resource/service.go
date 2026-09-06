@@ -40,7 +40,18 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
 		return Resource{}, err
 	}
-	input.Subtype = normalizeResourceSubtype(input.Kind, input.Subtype)
+	rawSubtype := strings.TrimSpace(input.Subtype)
+	accessMode, mcpServerID, err := s.normalizeAccess(ctx, "", input.Kind, input.AccessMode, rawSubtype, input.MCPServerResourceID)
+	if err != nil {
+		return Resource{}, err
+	}
+	input.AccessMode = accessMode
+	input.MCPServerResourceID = mcpServerID
+	if accessMode != "" {
+		input.Subtype = strings.Title(accessMode)
+	} else {
+		input.Subtype = normalizeResourceSubtype(input.Kind, rawSubtype)
+	}
 	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
 		return Resource{}, err
 	}
@@ -94,7 +105,18 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
 		return Resource{}, err
 	}
-	input.Subtype = normalizeResourceSubtype(input.Kind, input.Subtype)
+	rawSubtype := strings.TrimSpace(input.Subtype)
+	accessMode, mcpServerID, err := s.normalizeAccess(ctx, "", input.Kind, input.AccessMode, rawSubtype, input.MCPServerResourceID)
+	if err != nil {
+		return Resource{}, err
+	}
+	input.AccessMode = accessMode
+	input.MCPServerResourceID = mcpServerID
+	if accessMode != "" {
+		input.Subtype = strings.Title(accessMode)
+	} else {
+		input.Subtype = normalizeResourceSubtype(input.Kind, rawSubtype)
+	}
 	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
 		return Resource{}, err
 	}
@@ -154,6 +176,10 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 	if strings.TrimSpace(id) == "" {
 		return Resource{}, invalid("resource_id is required")
 	}
+	current, err := s.store.Get(ctx, id)
+	if err != nil {
+		return Resource{}, err
+	}
 	if input.ScopeID != nil {
 		value := strings.TrimSpace(*input.ScopeID)
 		if value == "" || !allowsExactScope(ctx, value) {
@@ -177,10 +203,6 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 	}
 	if input.Subtype != nil {
 		value := strings.TrimSpace(*input.Subtype)
-		current, err := s.store.Get(ctx, id)
-		if err != nil {
-			return Resource{}, err
-		}
 		if err := validateResourceSubtype(current.Kind, value); err != nil {
 			return Resource{}, err
 		}
@@ -200,10 +222,6 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 			value := map[string]any{}
 			input.Config = &value
 		}
-		current, err := s.store.Get(ctx, id)
-		if err != nil {
-			return Resource{}, err
-		}
 		schema, err := s.store.GetSchema(ctx, current.Kind, current.SchemaVersion)
 		if err != nil {
 			return Resource{}, err
@@ -222,10 +240,80 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 			}
 		}
 	}
-	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.CredentialID == nil {
+	modeInput := ""
+	if input.AccessMode != nil {
+		modeInput = *input.AccessMode
+	}
+	subtypeInput := current.Subtype
+	if input.Subtype != nil {
+		subtypeInput = *input.Subtype
+	} else if input.AccessMode != nil {
+		// access_mode is the explicit field; do not reject a mode switch merely
+		// because the legacy subtype still mirrors the previous value.
+		subtypeInput = ""
+	}
+	mcpID := current.MCPServerResourceID
+	if input.MCPServerResourceID != nil {
+		mcpID = *input.MCPServerResourceID
+	} else if (input.AccessMode != nil && strings.EqualFold(strings.TrimSpace(*input.AccessMode), AccessModeDirect)) ||
+		(input.AccessMode == nil && input.Subtype != nil && strings.EqualFold(strings.TrimSpace(*input.Subtype), "Direct")) {
+		// Switching an Agent resource to Direct removes the transport target;
+		// callers do not need a second request just to clear the old link.
+		mcpID = nil
+	}
+	accessMode, normalizedMCPID, err := s.normalizeAccess(ctx, current.ID, current.Kind, modeInput, subtypeInput, mcpID)
+	if err != nil {
+		return Resource{}, err
+	}
+	if input.AccessMode != nil || input.Subtype != nil || input.MCPServerResourceID != nil {
+		input.AccessMode = &accessMode
+		if accessMode != "" {
+			value := strings.Title(accessMode)
+			input.Subtype = &value
+		}
+		input.MCPServerResourceID = &normalizedMCPID
+	}
+	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.CredentialID == nil && input.AccessMode == nil && input.MCPServerResourceID == nil {
 		return Resource{}, invalid("at least one field must be provided")
 	}
 	return s.store.Update(ctx, id, input)
+}
+
+func (s *Service) normalizeAccess(ctx context.Context, resourceID, kind, accessMode, subtype string, mcpServerID *string) (string, *string, error) {
+	mode, err := normalizeAccessMode(kind, accessMode, subtype)
+	if err != nil {
+		return "", nil, err
+	}
+	if !supportsAccessMode(kind) {
+		return "", nil, nil
+	}
+	if mode == AccessModeDirect {
+		if mcpServerID != nil && strings.TrimSpace(*mcpServerID) != "" {
+			return "", nil, invalid("direct resources must not reference an MCPServer")
+		}
+		return mode, nil, nil
+	}
+	if mcpServerID == nil || strings.TrimSpace(*mcpServerID) == "" {
+		return "", nil, invalid("agent resources require mcp_server_resource_id")
+	}
+	linkedID := strings.TrimSpace(*mcpServerID)
+	if linkedID == resourceID {
+		return "", nil, invalid("resource cannot reference itself as an MCPServer")
+	}
+	linked, err := s.store.Get(ctx, linkedID)
+	if err != nil {
+		return "", nil, err
+	}
+	if linked.Kind != "MCPServer" {
+		return "", nil, invalid("mcp_server_resource_id must reference an MCPServer resource")
+	}
+	if linked.Status != StatusActive {
+		return "", nil, invalid("linked MCPServer must be active")
+	}
+	if !allowsResource(ctx, linked.ScopeID, linked.ID) {
+		return "", nil, authorization.ErrForbidden
+	}
+	return mode, &linkedID, nil
 }
 
 func validateAIProviderConfig(config map[string]any) error {
@@ -493,7 +581,39 @@ func validateResourceInput(scopeID, kind, name string) error {
 var directAgentKinds = map[string]struct{}{
 	"Host": {}, "Docker": {}, "Kubernetes": {}, "Redis": {}, "TongRDS": {},
 	"Kafka": {}, "RabbitMQ": {}, "Elasticsearch": {}, "OceanBase": {},
-	"Oracle": {}, "MySQL": {}, "PostgreSQL": {},
+	"Oracle": {}, "MySQL": {}, "PostgreSQL": {}, "Prometheus": {}, "Loki": {},
+}
+
+func supportsAccessMode(kind string) bool {
+	_, ok := directAgentKinds[kind]
+	return ok
+}
+
+func normalizeAccessMode(kind, accessMode, subtype string) (string, error) {
+	accessMode = strings.ToLower(strings.TrimSpace(accessMode))
+	subtype = strings.ToLower(strings.TrimSpace(subtype))
+	if !supportsAccessMode(kind) {
+		if accessMode != "" {
+			return "", invalid(fmt.Sprintf("%s does not support an access mode", kind))
+		}
+		return "", nil
+	}
+	if accessMode == "" {
+		accessMode = subtype
+	}
+	if accessMode == "" {
+		accessMode = AccessModeDirect
+	}
+	if accessMode != AccessModeDirect && accessMode != AccessModeAgent {
+		return "", invalid(fmt.Sprintf("%s access_mode must be direct or agent", kind))
+	}
+	if subtype != "" && subtype != AccessModeDirect && subtype != AccessModeAgent {
+		return "", invalid(fmt.Sprintf("%s subtype must be Direct or Agent", kind))
+	}
+	if subtype != "" && subtype != accessMode {
+		return "", invalid(fmt.Sprintf("%s access_mode and subtype must match", kind))
+	}
+	return accessMode, nil
 }
 
 func normalizeResourceSubtype(kind, subtype string) string {

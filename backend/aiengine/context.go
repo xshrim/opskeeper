@@ -7,11 +7,15 @@ import (
 )
 
 type ContextResource struct {
-	ID      string
-	ScopeID string
-	Kind    string
-	Name    string
-	Status  string
+	ID                  string            `json:"id"`
+	ScopeID             string            `json:"scope_id"`
+	Kind                string            `json:"kind"`
+	Name                string            `json:"name"`
+	Status              string            `json:"status"`
+	AccessMode          string            `json:"access_mode,omitempty"`
+	MCPServerResourceID *string           `json:"mcp_server_resource_id,omitempty"`
+	CredentialID        *string           `json:"-"`
+	Config              map[string]any    `json:"-"`
 }
 
 type ContextFact struct {
@@ -85,8 +89,11 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 			return ResolvedContext{}, fmt.Errorf("context resource %s is not active", id)
 		}
 		resolved.Resources = append(resolved.Resources, resource)
-		provider, ok := providerFor(r.Providers, resource.Kind)
+		provider, ok := providerFor(r.Providers, resource)
 		if !ok {
+			if strings.EqualFold(strings.TrimSpace(resource.AccessMode), "agent") {
+				return ResolvedContext{}, fmt.Errorf("no MCP context provider is available for agent resource %s", id)
+			}
 			continue
 		}
 		tools, facts, err := provider.Resolve(ctx, resource)
@@ -110,13 +117,37 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 	return resolved, nil
 }
 
-func providerFor(providers []ContextProvider, kind string) (ContextProvider, bool) {
+// ContextProviderAccessModes is optional for backwards compatibility with
+// small providers. Providers that implement it are selected only for the
+// declared resource access mode, preventing an Agent resource from falling
+// through to a direct connector.
+type ContextProviderAccessModes interface {
+	AccessModes() []string
+}
+
+func providerFor(providers []ContextProvider, resource ContextResource) (ContextProvider, bool) {
 	for _, provider := range providers {
 		for _, supported := range provider.Kinds() {
-			if strings.EqualFold(strings.TrimSpace(supported), strings.TrimSpace(kind)) {
-				return provider, true
+			if !strings.EqualFold(strings.TrimSpace(supported), strings.TrimSpace(resource.Kind)) {
+				continue
 			}
+			if mode := strings.ToLower(strings.TrimSpace(resource.AccessMode)); mode != "" {
+				modeProvider, constrained := provider.(ContextProviderAccessModes)
+				if !constrained || !containsFold(modeProvider.AccessModes(), mode) {
+					continue
+				}
+			}
+			return provider, true
 		}
 	}
 	return nil, false
+}
+
+func containsFold(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), wanted) {
+			return true
+		}
+	}
+	return false
 }
