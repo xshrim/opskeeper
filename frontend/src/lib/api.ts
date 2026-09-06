@@ -600,6 +600,9 @@ export class ApiError extends Error {
   }
 }
 
+const API_UNAVAILABLE_MESSAGE =
+  '无法连接到 OpsKeeper API，请确认后端服务已启动且代理或网络配置正确。';
+
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshSession(): Promise<boolean> {
@@ -627,11 +630,17 @@ export async function request<T>(
     headers.set('Content-Type', 'application/json');
   }
   headers.set('Accept', 'application/json');
-  const response = await fetch(appURL(path), {
-    ...init,
-    headers,
-    credentials: 'include'
-  });
+  let response: Response;
+  try {
+    response = await fetch(appURL(path), {
+      ...init,
+      headers,
+      credentials: 'include'
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    throw new ApiError(0, { code: 'network_error', message: API_UNAVAILABLE_MESSAGE });
+  }
 
   if (response.status === 401 && retry && !path.includes('/auth/')) {
     if (await refreshSession()) {

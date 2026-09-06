@@ -63,6 +63,19 @@ describe('request', () => {
     document.querySelector('base')?.remove();
   });
 
+  it('maps network failures to an actionable API error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const error = await request('api/v1/resources').catch((value) => value);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 0,
+      code: 'network_error',
+      message: '无法连接到 OpsKeeper API，请确认后端服务已启动且代理或网络配置正确。'
+    });
+    document.querySelector('base')?.remove();
+  });
+
   it('uses the resource connection test endpoints', async () => {
     const check = {
       id: 'check-1',

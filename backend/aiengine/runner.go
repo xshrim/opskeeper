@@ -527,6 +527,16 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	var turnStreamText strings.Builder
 	turnHasFunctionCall := false
 	var turnToolNames []string
+	turnOutputText := func(includeStream bool) string {
+		answerText := turnPartialText.String()
+		if includeStream && turnStreamText.Len() > 0 {
+			answerText = turnStreamText.String()
+		}
+		if answerText == "" {
+			answerText = turnText.String()
+		}
+		return answerText
+	}
 	startModelTurn := func() bool {
 		iterations++
 		turnText.Reset()
@@ -733,13 +743,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 					// for the same turn; using that aggregate as the durable answer
 					// can produce a different Markdown source (most visibly around
 					// line breaks). Keep one canonical source across live and history.
-					answerText := turnPartialText.String()
-					if sink != nil && turnStreamText.Len() > 0 {
-						answerText = turnStreamText.String()
-					}
-					if answerText == "" {
-						answerText = turnText.String()
-					}
+					answerText := turnOutputText(sink != nil)
 					if answerText != "" {
 						output.WriteString(answerText)
 					} else if sink != nil {
@@ -753,8 +757,11 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 			// A provider may send a usage-only/turn-complete response after the
 			// streamed text. Close the turn so the next model request receives a
 			// fresh iteration and flush any text accumulated in partial chunks.
-			if !turnHasFunctionCall && turnPartialText.Len() > 0 {
-				output.WriteString(turnPartialText.String())
+			if !turnHasFunctionCall {
+				answerText := turnOutputText(true)
+				if answerText != "" {
+					output.WriteString(answerText)
+				}
 			}
 			commitTurnUsage()
 			modelTurnOpen = false
@@ -772,13 +779,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	}
 	if modelTurnOpen {
 		if !turnHasFunctionCall {
-			answerText := turnPartialText.String()
-			if sink != nil && turnStreamText.Len() > 0 {
-				answerText = turnStreamText.String()
-			}
-			if answerText == "" {
-				answerText = turnText.String()
-			}
+			answerText := turnOutputText(sink != nil)
 			if answerText != "" {
 				output.WriteString(answerText)
 			}

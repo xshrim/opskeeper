@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount, tick } from 'svelte';
   import {
     Bot,
     ChevronDown,
@@ -19,13 +20,55 @@
   } from 'lucide-svelte';
   import type {
     AIProviderAvailability,
+    DiagnosisEvidence,
     DiagnosisMessage,
     DiagnosisSession,
     DiagnosisSnapshot,
     Resource
   } from '../../lib/api';
+  import {
+    api,
+    type DiagnosisStatus
+  } from '../../lib/api';
+  import { providerModelSelection } from '../../lib/workspace';
+  import { renderDiagnosisMarkdown } from './diagnosisMarkdown';
+  import { createDiagnosisSessionController } from './diagnosisSessionController';
+  import {
+    createDiagnosisCommands,
+    type DiagnosisCommandState
+  } from './diagnosisCommands';
   import DiagnosisContextPanel from './DiagnosisContextPanel.svelte';
   import DiagnosisConversationMessages from './DiagnosisConversationMessages.svelte';
+  import {
+    diagnosisActionLabel,
+    diagnosisCausalEvidenceIDs,
+    diagnosisCausalNodes,
+    diagnosisHasRunningActions,
+    diagnosisStatusLabel
+  } from './diagnosisUtils';
+  import {
+    diagnosisEvidenceTimeline,
+    diagnosisLiveTimeline,
+    diagnosisAssistantTimeline
+  } from './diagnosisTimelines';
+  import {
+    diagnosisEvidenceSourceTools as getDiagnosisEvidenceSourceTools,
+    diagnosisEvidenceSummary as getDiagnosisEvidenceSummary,
+    diagnosisHasPersistedNewAnswer as getDiagnosisHasPersistedNewAnswer,
+    diagnosisProcessText as getDiagnosisProcessText,
+    diagnosisResourceName as getDiagnosisResourceName,
+    activeDiagnosisCausalChain,
+    decodeDiagnosisCode,
+    diagnosisMessageClipboardText,
+    diagnosisStreamingClipboardText,
+    isLastDiagnosisUser as getIsLastDiagnosisUser,
+    shouldShowEmptyDiagnosisAnswer
+  } from './diagnosisPresentation';
+  import {
+    installDiagnosisDocumentListeners,
+    startDiagnosisPanelResize,
+    copyDiagnosisText
+  } from './diagnosisInteraction';
 
   type LiveTimelineItem = {
     id: number;
@@ -43,105 +86,456 @@
   };
   type Provider = AIProviderAvailability;
 
-  export let diagnosisHistoryCollapsed = false;
-  export let diagnosisContextCollapsed = false;
-  export let diagnosisHistoryWidth = 280;
-  export let diagnosisContextWidth = 320;
-  export let diagnosisSessions: DiagnosisSession[] = [];
-  export let selectedDiagnosisId = '';
-  export let diagnosisSessionSearch = '';
-  export let diagnosisStatusLabel: (status: string) => string;
+  let diagnosisHistoryCollapsed = false;
+  let diagnosisContextCollapsed = false;
+  let diagnosisHistoryWidth = 232;
+  let diagnosisContextWidth = 275;
+  let diagnosisSessions: DiagnosisSession[] = [];
+  let selectedDiagnosisId = '';
+  let diagnosisSessionSearch = '';
   export let formatDate: (value: string) => string;
-  export let clearDiagnosisHistory: () => void;
-  export let newDiagnosisSession: () => void;
-  export let openDiagnosis: (sessionID: string) => Promise<unknown>;
-  export let renameDiagnosisSession: (session: DiagnosisSession) => void;
-  export let deleteDiagnosisSession: (session: DiagnosisSession) => void;
-  export let startDiagnosisResize: (
-    panel: 'history' | 'context',
-    event: PointerEvent
-  ) => void;
-  export let diagnosisSnapshot: DiagnosisSnapshot | null = null;
+  export let scopeId = '';
+  export let runAction: (operation: () => Promise<void>) => Promise<void>;
+  export let describeError: (error: unknown, fallback: string) => string;
+  export let onError: (message: string) => void;
+  let diagnosisSnapshot: DiagnosisSnapshot | null = null;
   export let scopeLabel = '当前级别';
-  export let diagnosisTargets: Resource[] = [];
-  export let diagnosisTargetIds: string[] = [];
-  export let diagnosisGenerating = false;
+  export let resources: Resource[] = [];
+  export let contextResources: Resource[] = [];
+  export let resourceInActiveWorkspace: (resource: Resource) => boolean;
+  let diagnosisTargetIds: string[] = [];
+  let diagnosisGenerating = false;
   export let busy = false;
-  export let diagnosisMessageListElement: HTMLDivElement | null = null;
-  export let diagnosisAnswerCompleted = false;
-  export let diagnosisStreamingText = '';
-  export let diagnosisInterruptedReason = '';
-  export let diagnosisEditingMessageId = '';
-  export let diagnosisEditDraft = '';
-  export let diagnosisProcessExpanded: Record<string, boolean> = {};
-  export let diagnosisActionExpanded: Record<string, boolean> = {};
-  export let diagnosisLiveProcessExpanded = false;
-  export let diagnosisStreamingStartedAt = 0;
-  export let renderMarkdown: (text: string) => string;
-  export let diagnosisLiveTimeline: (
-    snapshot: DiagnosisSnapshot | null
-  ) => LiveTimelineItem[];
-  export let diagnosisProcessDuration: (
-    snapshot: DiagnosisSnapshot | null
-  ) => string;
-  export let diagnosisProcessActionCount: (
-    snapshot: DiagnosisSnapshot | null
-  ) => number;
-  export let diagnosisHasRunningActions: (
-    snapshot: DiagnosisSnapshot | null
-  ) => boolean;
-  export let diagnosisHasPersistedNewAnswer: (
-    snapshot: DiagnosisSnapshot | null
-  ) => boolean;
-  export let diagnosisActionLabel: (item: LiveTimelineItem) => string;
-  export let deferFinalDiagnosisMessage: (
-    message: DiagnosisMessage,
-    index: number
-  ) => boolean;
-  export let isLastDiagnosisUser: (index: number) => boolean;
-  export let beginDiagnosisEdit: (message: DiagnosisMessage) => void;
-  export let saveDiagnosisEdit: () => void | Promise<void>;
-  export let copyDiagnosisMessage: (
-    message: DiagnosisMessage,
-    processExpanded: boolean
-  ) => void;
-  export let copyStreamingAnswer: () => void;
-  export let diagnosisComposerText = '';
-  export let diagnosisAvailableProviders: Provider[] = [];
-  export let selectedProviderId = '';
-  export let llmModelName = '';
-  export let diagnosisModelMenuOpen = false;
-  export let diagnosisModelMenuProviderId = '';
-  export let handleDiagnosisComposerKeydown: (event: KeyboardEvent) => void;
-  export let submitDiagnosisMessage: () => Promise<unknown>;
-  export let stopDiagnosisGeneration: () => void;
+  let diagnosisMessageListElement: HTMLDivElement | null = null;
+  let diagnosisAnswerCompleted = false;
+  let diagnosisStreamingText = '';
+  let diagnosisInterruptedReason = '';
+  let diagnosisEditingMessageId = '';
+  let diagnosisEditDraft = '';
+  let diagnosisProcessExpanded: Record<string, boolean> = {};
+  let diagnosisActionExpanded: Record<string, boolean> = {};
+  let diagnosisLiveProcessExpanded = false;
+  let diagnosisStreamingStartedAt = 0;
+  let diagnosisStreamingAssistantBaseline = 0;
+  let diagnosisComposerText = '';
+  let diagnosisAvailableProviders: Provider[] = [];
+  let selectedProviderId = '';
+  let llmModelName = '';
   export let onNotice: (message: string) => void;
-  export let toggleDiagnosisModelMenu: () => void;
-  export let chooseDiagnosisModelProvider: (providerID: string) => void;
-  export let chooseDiagnosisModel: (modelName: string) => void;
-  export let diagnosisContextTab: 'context' | 'evidence' = 'context';
-  export let toggleDiagnosisContext: (resourceID: string) => void;
+
+  let diagnosisContextTab: 'context' | 'evidence' = 'context';
   export let resourceIcon: (kind: string) => string;
   export let resourceSchemaName: (kind: string) => string;
   export let scopeName: (id: string) => string;
-  export let diagnosisActiveCausalChain: (
-    snapshot: DiagnosisSnapshot | null
-  ) => any;
-  export let diagnosisCausalNodes: (chain: any) => any[];
-  export let diagnosisCausalEvidenceIDs: (
-    chain: any,
-    nodeID: string
-  ) => string[];
-  export let scrollToDiagnosisEvidence: (id: string) => void;
-  export let diagnosisEvidenceTimeline: (
-    snapshot: DiagnosisSnapshot | null
-  ) => any[];
-  export let diagnosisEvidenceSourceTools: (
-    snapshot: DiagnosisSnapshot,
-    evidence: any
-  ) => string[];
-  export let diagnosisEvidenceSummary: (evidence: any) => string;
-  export let diagnosisResourceName: (resourceID?: string) => string;
+
+  let diagnosisLoadedScopeId = '';
+  let diagnosisTargets: Resource[] = [];
+  let diagnosisStopRequested = false;
+  let diagnosisSubmissionPending = false;
+  let diagnosisStreamingTurnBase = '';
+  let diagnosisAutoScrollKey = '';
+  let diagnosisAutoScrollEnabled = true;
+  let diagnosisScrollListenerElement: HTMLDivElement | null = null;
+  let diagnosisScrollListenerCleanup: (() => void) | null = null;
+  let diagnosisProgrammaticScrollUntil = 0;
+  let diagnosisQuestionAnchorPending = false;
+  let diagnosisQuestionAnchorActive = false;
+  let diagnosisHiddenMessageIds: string[] = [];
+
+  function isDiagnosisRunning(status: DiagnosisStatus | string) {
+    return ['queued', 'planning', 'collecting', 'analyzing'].includes(status);
+  }
+
+  function resetDiagnosisStreamState() {
+    diagnosisAnswerCompleted = false;
+    diagnosisLiveProcessExpanded = false;
+    diagnosisStreamingText = '';
+    diagnosisStreamingTurnBase = '';
+    diagnosisStreamingStartedAt = 0;
+    diagnosisQuestionAnchorActive = false;
+    diagnosisAutoScrollEnabled = true;
+  }
+
+  const diagnosisSessionController = createDiagnosisSessionController({
+    api,
+    getSelectedDiagnosisId: () => selectedDiagnosisId,
+    getSnapshot: () => diagnosisSnapshot,
+    setSnapshot: (snapshot) => (diagnosisSnapshot = snapshot),
+    getHiddenMessageIds: () => diagnosisHiddenMessageIds,
+    getAssistantMessageBaseline: () => diagnosisStreamingAssistantBaseline,
+    setAssistantMessageBaseline: (count) => (diagnosisStreamingAssistantBaseline = count),
+    resetStreamState: resetDiagnosisStreamState,
+    setSubmissionPending: (pending) => (diagnosisSubmissionPending = pending),
+    getStreamState: () => ({
+      text: diagnosisStreamingText,
+      turnBase: diagnosisStreamingTurnBase,
+      startedAt: diagnosisStreamingStartedAt,
+      generating: diagnosisGenerating,
+      answerCompleted: diagnosisAnswerCompleted,
+      liveProcessExpanded: diagnosisLiveProcessExpanded,
+      interruptedReason: diagnosisInterruptedReason
+    }),
+    setStreamState: (state) => {
+      diagnosisStreamingText = state.text;
+      diagnosisStreamingTurnBase = state.turnBase;
+      diagnosisStreamingStartedAt = state.startedAt;
+      diagnosisGenerating = state.generating;
+      diagnosisAnswerCompleted = state.answerCompleted;
+      diagnosisLiveProcessExpanded = state.liveProcessExpanded;
+      diagnosisInterruptedReason = state.interruptedReason;
+    },
+    updateSession: (session) => {
+      diagnosisSessions = diagnosisSessions.map((item) =>
+        item.id === session.id ? session : item
+      );
+    },
+    onError: (error, fallback) => onError(describeError(error, fallback)),
+    formatError: describeError,
+    isSubmissionPending: () => diagnosisSubmissionPending,
+    getStopRequested: () => diagnosisStopRequested,
+    setStopRequested: (requested) => (diagnosisStopRequested = requested),
+    isDiagnosisRunning
+  });
+
+  function getDiagnosisCommandState(): DiagnosisCommandState {
+    return {
+      scopeID: scopeId,
+      sessions: diagnosisSessions,
+      selectedSessionID: selectedDiagnosisId,
+      snapshot: diagnosisSnapshot,
+      composerText: diagnosisComposerText,
+      targetIDs: diagnosisTargetIds,
+      providerID: selectedProviderId,
+      modelName: llmModelName,
+      generating: diagnosisGenerating,
+      stopRequested: diagnosisStopRequested,
+      submissionPending: diagnosisSubmissionPending,
+      interruptedReason: diagnosisInterruptedReason,
+      hiddenMessageIDs: diagnosisHiddenMessageIds,
+      editingMessageID: diagnosisEditingMessageId,
+      editDraft: diagnosisEditDraft
+    };
+  }
+
+  function updateDiagnosisCommandState(patch: Partial<DiagnosisCommandState>) {
+    if (patch.sessions !== undefined) diagnosisSessions = patch.sessions;
+    if (patch.selectedSessionID !== undefined) selectedDiagnosisId = patch.selectedSessionID;
+    if ('snapshot' in patch) diagnosisSnapshot = patch.snapshot ?? null;
+    if (patch.composerText !== undefined) diagnosisComposerText = patch.composerText;
+    if (patch.targetIDs !== undefined) diagnosisTargetIds = patch.targetIDs;
+    if (patch.providerID !== undefined) selectedProviderId = patch.providerID;
+    if (patch.modelName !== undefined) llmModelName = patch.modelName;
+    if (patch.generating !== undefined) diagnosisGenerating = patch.generating;
+    if (patch.stopRequested !== undefined) diagnosisStopRequested = patch.stopRequested;
+    if (patch.submissionPending !== undefined) diagnosisSubmissionPending = patch.submissionPending;
+    if (patch.interruptedReason !== undefined) diagnosisInterruptedReason = patch.interruptedReason;
+    if (patch.hiddenMessageIDs !== undefined) diagnosisHiddenMessageIds = patch.hiddenMessageIDs;
+    if (patch.editingMessageID !== undefined) diagnosisEditingMessageId = patch.editingMessageID;
+    if (patch.editDraft !== undefined) diagnosisEditDraft = patch.editDraft;
+  }
+
+  const diagnosisCommands = createDiagnosisCommands({
+    session: diagnosisSessionController,
+    getState: getDiagnosisCommandState,
+    updateState: updateDiagnosisCommandState,
+    runAction,
+    openDiagnosis,
+    refreshDiagnosis,
+    scrollToQuestion: scrollDiagnosisQuestionIntoView,
+    resetStreamState: resetDiagnosisStreamState,
+    confirm: (message) => window.confirm(message),
+    prompt: (message, initialValue) => window.prompt(message, initialValue),
+    onError
+  });
+
+  async function loadDiagnosis() {
+    if (!scopeId) return;
+    try {
+      diagnosisAvailableProviders = await api.availableAIProviders(scopeId, 'diagnosis');
+      if (
+        diagnosisAvailableProviders.length > 0 &&
+        (!selectedProviderId ||
+          !diagnosisAvailableProviders.some((item) => item.provider_resource_id === selectedProviderId))
+      ) {
+        selectedProviderId = diagnosisAvailableProviders[0].provider_resource_id;
+        llmModelName = diagnosisAvailableProviders[0].models[0]?.name ?? '';
+      }
+    } catch (error) {
+      diagnosisAvailableProviders = [];
+      onError(describeError(error, '可用模型服务商加载失败'));
+    }
+    await loadDiagnosisSessions();
+  }
+
+  async function loadDiagnosisSessions() {
+    if (!scopeId) return;
+    try {
+      diagnosisSessions = await diagnosisSessionController.loadSessions(scopeId);
+      if (!selectedDiagnosisId && diagnosisSessions[0]) await openDiagnosis(diagnosisSessions[0].id);
+    } catch (error) {
+      onError(describeError(error, '诊断会话历史加载失败'));
+    }
+  }
+
+  async function openDiagnosis(id: string) {
+    diagnosisSessionController.close();
+    selectedDiagnosisId = id;
+    diagnosisEditingMessageId = '';
+    diagnosisEditDraft = '';
+    diagnosisInterruptedReason = '';
+    resetDiagnosisStreamState();
+    try {
+      diagnosisSnapshot = await diagnosisSessionController.loadSnapshot(id);
+      diagnosisSnapshot = {
+        ...diagnosisSnapshot,
+        messages: diagnosisSnapshot.messages.filter((message) => !diagnosisHiddenMessageIds.includes(message.id))
+      };
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length;
+      diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
+      if (diagnosisSnapshot.session.ai_provider_resource_id) selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
+      if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
+      diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
+      diagnosisSessionController.syncCursor(diagnosisSnapshot);
+      diagnosisSessionController.open(id);
+    } catch (error) {
+      onError(describeError(error, '诊断详情加载失败'));
+    }
+  }
+
+  async function refreshDiagnosis(id = selectedDiagnosisId) {
+    await diagnosisSessionController.refresh(id);
+  }
+
+  async function submitDiagnosisMessage() {
+    diagnosisAutoScrollEnabled = true;
+    diagnosisQuestionAnchorPending = true;
+    try {
+      await diagnosisCommands.submitDiagnosisMessage(diagnosisComposerText, (value) => (diagnosisComposerText = value));
+    } finally {
+      diagnosisQuestionAnchorPending = false;
+    }
+  }
+
+  function handleDiagnosisComposerKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void submitDiagnosisMessage();
+    }
+  }
+
+  async function scrollDiagnosisQuestionIntoView(messageID = '', content = '') {
+    diagnosisAutoScrollEnabled = true;
+    diagnosisQuestionAnchorPending = true;
+    try {
+      await tick();
+      if (typeof requestAnimationFrame === 'function') await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const list = diagnosisMessageListElement ?? document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
+      if (!list) return;
+      const candidates = Array.from(list.querySelectorAll<HTMLElement>('[data-diagnosis-message-id]'));
+      const target = [...candidates].reverse().find((item) =>
+        (messageID && item.dataset.diagnosisMessageId === messageID) ||
+        Boolean(content && item.dataset.diagnosisMessageContent === content)
+      );
+      if (!target) return;
+      list.style.removeProperty('padding-bottom');
+      const listRect = list.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetOffset = list.clientHeight / 6;
+      const nextTop = list.scrollTop + targetRect.top - listRect.top - targetOffset;
+      const maxScroll = Math.max(0, list.scrollHeight - list.clientHeight);
+      if (nextTop > maxScroll) list.style.paddingBottom = `${Math.ceil(nextTop - maxScroll)}px`;
+      const reachableMax = Math.max(0, list.scrollHeight - list.clientHeight);
+      diagnosisProgrammaticScrollUntil = performance.now() + 50;
+      list.scrollTo({ top: Math.min(Math.max(0, nextTop), reachableMax), behavior: 'auto' });
+      diagnosisQuestionAnchorActive = true;
+    } finally {
+      diagnosisQuestionAnchorPending = false;
+    }
+  }
+
+  async function scrollDiagnosisAnswerToBottom() {
+    await tick();
+    if (typeof requestAnimationFrame === 'function') await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const list = diagnosisMessageListElement ?? document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
+    if (!list || !diagnosisGenerating || !diagnosisAutoScrollEnabled) return;
+    const streamingMessage = list.querySelector<HTMLElement>('.diagnosis-streaming-message');
+    if (streamingMessage) {
+      const listRect = list.getBoundingClientRect();
+      const answerRect = streamingMessage.getBoundingClientRect();
+      if (diagnosisQuestionAnchorActive && answerRect.bottom <= listRect.bottom + 1) return;
+      diagnosisQuestionAnchorActive = false;
+      if (list.style.paddingBottom) list.style.removeProperty('padding-bottom');
+    }
+    diagnosisProgrammaticScrollUntil = performance.now() + 50;
+    list.scrollTo({ top: Math.max(0, list.scrollHeight - list.clientHeight), behavior: 'auto' });
+  }
+
+  function stopDiagnosisGeneration() {
+    return diagnosisSessionController.stop();
+  }
+
+  function selectDiagnosisModelProvider(providerID: string) {
+    const selection = providerModelSelection(diagnosisAvailableProviders, providerID, llmModelName);
+    selectedProviderId = selection.providerId;
+    llmModelName = selection.modelName;
+  }
+
+  function selectDiagnosisModel(modelName: string) {
+    const provider = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId) ?? diagnosisAvailableProviders[0];
+    if (!provider) return;
+    selectedProviderId = provider.provider_resource_id;
+    llmModelName = modelName;
+  }
+
+  function beginDiagnosisEdit(message: DiagnosisMessage) {
+    diagnosisEditingMessageId = message.id;
+    diagnosisEditDraft = message.content;
+  }
+
+  function saveDiagnosisEdit() {
+    return diagnosisCommands.saveDiagnosisEdit();
+  }
+
+  function toggleDiagnosisContext(resourceID: string) {
+    diagnosisCommands.toggleDiagnosisContext(resourceID);
+  }
+
+  function clearDiagnosisHistory() {
+    return diagnosisCommands.clearDiagnosisHistory();
+  }
+
+  function newDiagnosisSession() {
+    diagnosisCommands.newDiagnosisSession();
+  }
+
+  function renameDiagnosisSession(session: DiagnosisSession) {
+    diagnosisCommands.renameDiagnosisSession(session);
+  }
+
+  function deleteDiagnosisSession(session: DiagnosisSession) {
+    return diagnosisCommands.deleteDiagnosisSession(session);
+  }
+
+  $: if (scopeId && scopeId !== diagnosisLoadedScopeId) {
+    diagnosisLoadedScopeId = scopeId;
+    diagnosisSessionController.close();
+    selectedDiagnosisId = '';
+    diagnosisSnapshot = null;
+    diagnosisSessions = [];
+    diagnosisTargetIds = [];
+    resetDiagnosisStreamState();
+    void loadDiagnosis();
+  }
+  $: diagnosisTargets = contextResources.filter(
+    (resource) => resource.status === 'active' && resourceInActiveWorkspace(resource)
+  );
+  $: if (!llmModelName && selectedProviderId) {
+    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    llmModelName = String(available?.models[0]?.name ?? '');
+  }
+  $: {
+    const list = diagnosisMessageListElement;
+    if (list !== diagnosisScrollListenerElement) {
+      diagnosisScrollListenerCleanup?.();
+      diagnosisScrollListenerElement = list;
+      if (list) {
+        const onScroll = () => {
+          if (performance.now() < diagnosisProgrammaticScrollUntil) return;
+          const distanceFromBottom = list.scrollHeight - list.clientHeight - list.scrollTop;
+          diagnosisAutoScrollEnabled = distanceFromBottom <= 8;
+        };
+        list.addEventListener('scroll', onScroll, { passive: true });
+        diagnosisScrollListenerCleanup = () => list.removeEventListener('scroll', onScroll);
+      }
+    }
+  }
+
+  onDestroy(() => {
+    diagnosisSessionController.close();
+    diagnosisScrollListenerCleanup?.();
+  });
+  $: {
+    const nextKey = `${diagnosisGenerating}:${diagnosisStreamingText.length}`;
+    if (nextKey !== diagnosisAutoScrollKey) {
+      diagnosisAutoScrollKey = nextKey;
+      if (diagnosisGenerating && diagnosisAutoScrollEnabled && !diagnosisQuestionAnchorPending && diagnosisStreamingText) void scrollDiagnosisAnswerToBottom();
+    }
+  }
+
+  let diagnosisModelMenuOpen = false;
+  let diagnosisModelMenuProviderId = '';
+
+  onMount(() => {
+    return installDiagnosisDocumentListeners({
+      isModelMenuOpen: () => diagnosisModelMenuOpen,
+      closeModelMenu: () => (diagnosisModelMenuOpen = false),
+      copyCode: copyDiagnosisCode
+    });
+  });
+
+  function toggleDiagnosisModelMenu() {
+    diagnosisModelMenuOpen = !diagnosisModelMenuOpen;
+    if (diagnosisModelMenuOpen) {
+      diagnosisModelMenuProviderId = selectedProviderId || diagnosisAvailableProviders[0]?.provider_resource_id || '';
+    }
+  }
+
+  function chooseDiagnosisModelProvider(providerID: string) {
+    diagnosisModelMenuProviderId = providerID;
+    selectDiagnosisModelProvider(providerID);
+  }
+
+  function chooseDiagnosisModel(modelName: string) {
+    selectDiagnosisModel(modelName);
+    diagnosisModelMenuOpen = false;
+  }
+
+  const diagnosisResourceName = (resourceID?: string) => getDiagnosisResourceName(resources, diagnosisTargets, resourceID);
+  const isLastDiagnosisUser = (index: number) => getIsLastDiagnosisUser(diagnosisSnapshot, index);
+  const diagnosisHasPersistedNewAnswer = (snapshot: DiagnosisSnapshot | null) => getDiagnosisHasPersistedNewAnswer(snapshot, diagnosisStreamingAssistantBaseline);
+  const diagnosisLiveTimelineForDisplay = (snapshot: DiagnosisSnapshot | null) => diagnosisLiveTimeline(snapshot);
+  const diagnosisHistoryTimelineForDisplay = (snapshot: DiagnosisSnapshot | null, assistantIndex: number) =>
+    diagnosisAssistantTimeline(snapshot, assistantIndex);
+  const diagnosisEvidenceSummary = (evidence: DiagnosisEvidence) => getDiagnosisEvidenceSummary(evidence);
+  const diagnosisEvidenceSourceTools = (snapshot: DiagnosisSnapshot, evidence: DiagnosisEvidence) => getDiagnosisEvidenceSourceTools(snapshot, evidence);
+  const diagnosisShouldShowEmptyAnswer = () => shouldShowEmptyDiagnosisAnswer(diagnosisSnapshot, diagnosisAnswerCompleted, diagnosisStreamingText, diagnosisGenerating);
+
+  const diagnosisProcessText = (snapshot: DiagnosisSnapshot | null) => getDiagnosisProcessText(snapshot);
+
+  function copyDiagnosisMessage(message: DiagnosisMessage, processExpanded: boolean) {
+    copyDiagnosisText(
+      diagnosisMessageClipboardText(message, processExpanded, diagnosisSnapshot),
+      message.role === 'user' ? '问题已复制。' : '回答已复制。',
+      onNotice
+    );
+  }
+
+  function copyStreamingAnswer() {
+    copyDiagnosisText(diagnosisStreamingClipboardText(diagnosisStreamingText, diagnosisSnapshot), '回答已复制。', onNotice);
+  }
+
+  function copyDiagnosisCode(encoded: string) {
+    copyDiagnosisText(decodeDiagnosisCode(encoded), '代码已复制。', onNotice);
+  }
+
+
+  const diagnosisActiveCausalChain = activeDiagnosisCausalChain;
+
+  function scrollToDiagnosisEvidence(id: string) {
+    document.getElementById(`evidence-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function startDiagnosisResize(side: 'history' | 'context', event: PointerEvent) {
+    startDiagnosisPanelResize(
+      side,
+      event,
+      () => ({ history: diagnosisHistoryWidth, context: diagnosisContextWidth }),
+      (resizingSide, width) => {
+        if (resizingSide === 'history') diagnosisHistoryWidth = width;
+        else diagnosisContextWidth = width;
+      }
+    );
+  }
 
   $: diagnosisMenuProvider =
     diagnosisAvailableProviders.find(
@@ -290,15 +684,14 @@
       {diagnosisInterruptedReason}
       {diagnosisStreamingStartedAt}
       {formatDate}
-      {renderMarkdown}
-      {diagnosisLiveTimeline}
-      {diagnosisProcessDuration}
-      {diagnosisProcessActionCount}
+      renderMarkdown={renderDiagnosisMarkdown}
+      diagnosisLiveTimeline={diagnosisLiveTimelineForDisplay}
+      diagnosisHistoryTimeline={diagnosisHistoryTimelineForDisplay}
       {diagnosisStatusLabel}
       {diagnosisHasRunningActions}
       {diagnosisHasPersistedNewAnswer}
+      diagnosisShouldShowEmptyAnswer={diagnosisShouldShowEmptyAnswer}
       {diagnosisActionLabel}
-      {deferFinalDiagnosisMessage}
       {isLastDiagnosisUser}
       {beginDiagnosisEdit}
       {saveDiagnosisEdit}

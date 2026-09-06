@@ -5,6 +5,7 @@
     DiagnosisSnapshot,
     Resource
   } from '../../lib/api';
+  import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
 
   type DiagnosisEvidenceTimelineItem = {
     id: string;
@@ -66,7 +67,7 @@
       {#each diagnosisTargets as resource}
         <label
           class:selected={diagnosisTargetIds.includes(resource.id)}
-          ><span class="diagnosis-resource-icon">{resourceIcon(resource.kind)}</span
+          ><span class="diagnosis-resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span
           ><span
             ><strong>{resource.name}</strong><small
               >{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small

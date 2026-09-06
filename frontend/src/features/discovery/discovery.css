@@ -1,0 +1,208 @@
+/* Feature styles migrated from app.css. */
+.discovery-layout {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0 44px;
+}
+.discovery-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  padding: 0 22px 20px;
+}
+.discovery-toolbar label {
+  flex: 1;
+}
+.discovery-status {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 22px;
+  color: var(--theme-fg-muted);
+  border-top: 1px solid var(--theme-divider);
+  font-size: 12px;
+}
+.mapping-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(150px, 0.7fr) minmax(
+      260px,
+      1.5fr
+    );
+  align-items: end;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+.mapping-source {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.mapping-source span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.mapping-source strong,
+.mapping-source small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapping-source small,
+.mapping-note {
+  color: var(--theme-fg-muted);
+  font-size: 11px;
+}
+.mapping-create-fields {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(120px, 1fr) minmax(
+      120px,
+      1fr
+    );
+  gap: 9px;
+}
+.mapping-row label,
+.discovery-toolbar label,
+.mapping-create-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.mapping-note {
+  align-self: center;
+  margin: 0;
+}
+.import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+}
+.import-actions p {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .mapping-row {
+    grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.8fr);
+  }
+  .mapping-row > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 720px) {
+  .discovery-toolbar,
+  .discovery-status,
+  .import-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .discovery-status {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .mapping-row,
+  .mapping-create-fields {
+    grid-template-columns: 1fr;
+  }
+  .mapping-row > :last-child {
+    grid-column: auto;
+  }
+}
+
+/* Additional selector-level migration from app.css. */
+.discovery-control,
+.mapping-panel {
+  overflow: hidden;
+}
+.mapping-list {
+  border-top: 1px solid var(--theme-divider);
+}
+
+/* Feature styles migrated from app.css. */
+.application-preview-panel {
+  overflow: hidden;
+}
+.run-history {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-top: 1px solid var(--theme-divider);
+}
+.run-history button {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding: 10px 14px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+  border: 0;
+  border-right: 1px solid var(--theme-border);
+  text-align: left;
+}
+.run-history button.active {
+  background: var(--theme-bg-surface);
+  box-shadow: var(--theme-shadow-soft);
+}
+.run-history button span,
+.run-history button small {
+  font-size: 10px;
+  color: var(--theme-fg-muted);
+}
+.run-history button small {
+  grid-column: 1 / -1;
+}
+.application-preview-list {
+  border-top: 1px solid var(--theme-divider);
+}
+.application-preview-row {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 18px 34px minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--theme-divider);
+  cursor: pointer;
+}
+.application-identity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.application-identity small {
+  overflow: hidden;
+  color: var(--theme-fg-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.application-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.application-facts span {
+  padding: 4px 7px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font-size: 10px;
+}
+@media (max-width: 720px) {
+  .application-preview-row {
+    grid-template-columns: 18px 32px minmax(0, 1fr);
+  }
+  .application-facts {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+  }
+}

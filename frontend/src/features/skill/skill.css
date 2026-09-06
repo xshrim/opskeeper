@@ -1,0 +1,68 @@
+/* Feature styles migrated from app.css. */
+.skill-tool-picker {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin: 0;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-bg-surface);
+}
+.skill-tool-picker legend {
+  padding: 0 4px;
+  color: var(--theme-fg);
+  font-size: 13px;
+  font-weight: 700;
+}
+.skill-tool-picker p {
+  margin: 0;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.skill-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.skill-tool-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-bg-raised);
+  cursor: pointer;
+}
+.skill-tool-grid label.selected {
+  border-color: var(--theme-accent);
+  background: var(--theme-bg-selected);
+}
+.skill-tool-grid input {
+  width: auto;
+  min-height: auto;
+  margin-top: 2px;
+}
+.skill-tool-grid span {
+  display: grid;
+  gap: 3px;
+}
+.skill-tool-grid small {
+  color: var(--theme-fg-muted);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Additional selector-level migration from app.css. */
+.skill-tool-picker {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--theme-border);
+  border-radius: 7px;
+}
+:root[data-theme='dark'] .skill-tool-picker {
+  color: var(--theme-fg);
+  background: var(--theme-bg-surface);
+  border-color: var(--theme-border);
+}

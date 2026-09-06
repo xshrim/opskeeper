@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Resource } from '../../lib/api';
   import type { StatusRow } from '../../lib/health';
+  import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
 
   export let teamCount = 0;
   export let projectCount = 0;
@@ -27,6 +28,6 @@
   </section>
   <section class="panel recent-panel">
     <div class="panel-heading"><div><p class="eyebrow">CATALOG</p><h2>最近资源</h2></div><button class="text-button" on:click={onOpenResources}>查看全部 →</button></div>
-    {#if visibleResources.length === 0}<div class="empty-state">当前作用域还没有资源。</div>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon">{resourceIcon(resource.kind)}</span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span><span class="status-label {resource.status}">{resource.status}</span></button>{/each}</div>{/if}
+    {#if visibleResources.length === 0}<div class="empty-state">当前作用域还没有资源。</div>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span><span class="status-label {resource.status}">{resource.status}</span></button>{/each}</div>{/if}
   </section>
 </section>
