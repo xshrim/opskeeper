@@ -265,6 +265,12 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 	if err != nil {
 		return Resource{}, err
 	}
+	if current.Kind == "Docker" && accessMode == AccessModeAgent {
+		// Agent resources use the linked MCPServer transport and must never
+		// retain Direct TLS credentials.
+		var clearedCredential *string
+		input.CredentialID = &clearedCredential
+	}
 	if input.AccessMode != nil || input.Subtype != nil || input.MCPServerResourceID != nil {
 		input.AccessMode = &accessMode
 		if accessMode != "" {

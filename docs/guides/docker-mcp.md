@@ -85,7 +85,7 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 
 ## Docker daemon 连接
 
-六个工具都接受相同的连接字段：`docker_host`、`docker_ca`、`docker_cert`、`docker_key`、`docker_server_name` 和 `docker_skip_tls_verify`。其中 `docker_skip_tls_verify` 是布尔值，默认 `false`；只有明确设置为 `true` 才会跳过 TLS 证书校验。连接优先级固定为：
+六个工具都接受相同的连接字段：`docker_host`、`docker_ca`、`docker_cert`、`docker_key`、`docker_server_name` 和 `docker_skip_tls_verify`。其中 `docker_skip_tls_verify` 是布尔值，默认 `false`；只有明确设置为 `true` 才会跳过 TLS 证书校验。`docker_ca`、`docker_cert` 和 `docker_key` 均支持直接填写 PEM 内容的 Base64 编码，也支持填写文件路径。服务端会先尝试 Base64 解码；解码失败时才把原值当作路径读取文件内容。连接优先级固定为：
 
 ```text
 工具参数 > DOCKER_MCP_DOCKER_* 环境变量 > Docker 默认 Unix socket
@@ -103,9 +103,9 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 | 环境变量 | 说明 |
 | --- | --- |
 | `DOCKER_MCP_DOCKER_HOST` | 组件默认 Docker URL；也兼容 `DOCKER_HOST` |
-| `DOCKER_MCP_DOCKER_CA` | CA PEM 文件路径 |
-| `DOCKER_MCP_DOCKER_CERT` | 客户端证书 PEM 文件路径 |
-| `DOCKER_MCP_DOCKER_KEY` | 客户端私钥 PEM 文件路径 |
+| `DOCKER_MCP_DOCKER_CA` | CA PEM 内容的 Base64 编码或 CA PEM 文件路径 |
+| `DOCKER_MCP_DOCKER_CERT` | 客户端证书 PEM 内容的 Base64 编码或 PEM 文件路径 |
+| `DOCKER_MCP_DOCKER_KEY` | 客户端私钥 PEM 内容的 Base64 编码或 PEM 文件路径 |
 | `DOCKER_MCP_DOCKER_SERVER_NAME` | TLS ServerName 覆盖值 |
 | `DOCKER_MCP_DOCKER_TLS_SKIP_VERIFY` | `true` 时跳过 TLS 证书校验；只应在明确受信任的开发环境使用 |
 

@@ -8,9 +8,14 @@ type ResourceShape = {
 };
 
 export function resourceHasConnector(resource: Resource) {
-  return ['AIProvider', 'MCPServer', 'Kubernetes', 'Prometheus', 'Loki'].includes(
-    resource.kind
-  );
+  if (resource.kind === 'MCPServer') return true;
+  if (resource.kind === 'Docker') {
+    // The connector endpoint only performs Direct checks. Agent resources
+    // are exercised through their linked MCPServer and must not fall back to
+    // the local Docker socket.
+    return String(resource.access_mode ?? resource.subtype ?? '').toLowerCase() !== 'agent';
+  }
+  return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki'].includes(resource.kind);
 }
 
 export function resourceSchemaName(kind: string, schemas: ResourceSchema[]) {

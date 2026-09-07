@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -61,17 +63,39 @@ type createResourceRequest struct {
 }
 
 type updateResourceRequest struct {
-	ScopeID             *string            `json:"scope_id"`
-	Subtype             *string            `json:"subtype"`
-	AccessMode          *string            `json:"access_mode"`
-	MCPServerResourceID **string           `json:"mcp_server_resource_id"`
-	Name                *string            `json:"name"`
-	ExternalUID         *string            `json:"external_uid"`
-	SourceResourceID    *string            `json:"source_resource_id"`
-	Labels              *map[string]string `json:"labels"`
-	Config              *map[string]any    `json:"config"`
-	Status              *string            `json:"status"`
-	CredentialID        **string           `json:"credential_id"`
+	ScopeID             *string             `json:"scope_id"`
+	Subtype             *string             `json:"subtype"`
+	AccessMode          *string             `json:"access_mode"`
+	MCPServerResourceID **string            `json:"mcp_server_resource_id"`
+	Name                *string             `json:"name"`
+	ExternalUID         *string             `json:"external_uid"`
+	SourceResourceID    *string             `json:"source_resource_id"`
+	Labels              *map[string]string  `json:"labels"`
+	Config              *map[string]any     `json:"config"`
+	Status              *string             `json:"status"`
+	CredentialID        nullableStringPatch `json:"credential_id"`
+}
+
+// nullableStringPatch preserves the distinction between an omitted field and
+// an explicit JSON null, which is required when clearing a resource
+// credential during an access-mode switch.
+type nullableStringPatch struct {
+	Set   bool
+	Value *string
+}
+
+func (patch *nullableStringPatch) UnmarshalJSON(data []byte) error {
+	patch.Set = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		patch.Value = nil
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	patch.Value = &value
+	return nil
 }
 
 type createRelationRequest struct {
@@ -188,7 +212,11 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	var credentialID **string
+	if body.CredentialID.Set {
+		credentialID = &body.CredentialID.Value
+	}
+	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: credentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return

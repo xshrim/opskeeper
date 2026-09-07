@@ -86,6 +86,8 @@ export interface Resource {
   scope_id: string;
   kind: string;
   subtype?: string;
+  access_mode?: 'direct' | 'agent' | string;
+  mcp_server_resource_id?: string;
   schema_version: number;
   name: string;
   external_uid?: string;
@@ -762,6 +764,14 @@ export const api = {
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests`, {
       method: 'POST'
     }),
+  testDraftDocker: (body: {
+    docker_host: string;
+    docker_ca?: string;
+    docker_cert?: string;
+    docker_key?: string;
+    docker_server_name?: string;
+    docker_skip_tls_verify?: boolean;
+  }) => request<{ status: string; message: string; latency_ms: number }>('api/v1/docker/connection-tests', json(body)),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
   testAIProvider: (

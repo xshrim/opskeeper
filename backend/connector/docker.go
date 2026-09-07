@@ -3,9 +3,49 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"time"
 
 	"opskeeper/backend/mcpserver/docker/client"
 )
+
+type DockerDraftInput struct {
+	DockerHost       string `json:"docker_host"`
+	DockerCA         string `json:"docker_ca"`
+	DockerCert       string `json:"docker_cert"`
+	DockerKey        string `json:"docker_key"`
+	DockerServerName string `json:"docker_server_name"`
+	DockerSkipVerify bool   `json:"docker_skip_tls_verify"`
+}
+
+type DockerDraftCheck struct {
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	LatencyMS int64  `json:"latency_ms"`
+}
+
+func (s *Service) TestDockerDraft(ctx context.Context, input DockerDraftInput) (DockerDraftCheck, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	started := time.Now()
+	check := DockerDraftCheck{Status: "failed"}
+	err := client.PingDraft(ctx, client.ConnectionInput{
+		DockerHost: input.DockerHost, DockerCA: input.DockerCA, DockerCert: input.DockerCert,
+		DockerKey: input.DockerKey, DockerServerName: input.DockerServerName, DockerSkipVerify: input.DockerSkipVerify,
+	})
+	check.LatencyMS = time.Since(started).Milliseconds()
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			check.Message = "Docker 连接测试超时（10 秒）"
+		} else {
+			check.Message = err.Error()
+		}
+		return check, nil
+	}
+	check.Status = "succeeded"
+	check.Message = "Docker 连接测试通过"
+	return check, nil
+}
 
 type dockerAdapter struct {
 	connection client.ConnectionInput

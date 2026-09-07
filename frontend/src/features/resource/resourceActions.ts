@@ -112,6 +112,41 @@ export async function saveMCPCredential(
   return existing.credential_id;
 }
 
+export async function createDockerCredential(
+  scopeId: string,
+  name: string,
+  values: Record<string, string>
+) {
+  const secret = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim() !== ''));
+  if (!scopeId || Object.keys(secret).length === 0) return '';
+  const credential = await api.createCredential({
+    scope_id: scopeId,
+    name: `${name || 'Docker'} TLS 凭据`,
+    purpose: 'Docker TLS Base64 凭据',
+    secret: JSON.stringify(secret)
+  });
+  return credential.id;
+}
+
+export async function saveDockerCredential(
+  existing: Resource,
+  scopeId: string,
+  name: string,
+  values: Record<string, string>
+) {
+  const secret = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim() !== ''));
+  // An empty Direct form means "keep the existing encrypted credential".
+  // Agent updates clear it explicitly at the resource workflow boundary.
+  if (!Object.keys(secret).length) return existing.credential_id ?? '';
+  if (!existing.credential_id) return createDockerCredential(scopeId, name, values);
+  await api.updateCredential(existing.credential_id, {
+    name: `${name.trim() || 'Docker'} TLS 凭据`,
+    purpose: 'Docker TLS Base64 凭据',
+    secret: JSON.stringify(secret)
+  });
+  return existing.credential_id;
+}
+
 export async function testResourceConnector(
   resource: Resource,
   scopeId: string

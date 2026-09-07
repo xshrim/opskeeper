@@ -35,7 +35,7 @@ type accessModeStore struct {
 }
 
 func (s *accessModeStore) Create(_ context.Context, input CreateInput) (Resource, error) {
-	item := Resource{ID: "resource-1", ScopeID: input.ScopeID, Kind: input.Kind, Name: input.Name, Subtype: input.Subtype, AccessMode: input.AccessMode, MCPServerResourceID: input.MCPServerResourceID, Status: input.Status, Config: input.Config, Labels: input.Labels}
+	item := Resource{ID: "resource-1", ScopeID: input.ScopeID, Kind: input.Kind, Name: input.Name, Subtype: input.Subtype, AccessMode: input.AccessMode, MCPServerResourceID: input.MCPServerResourceID, CredentialID: input.CredentialID, Status: input.Status, Config: input.Config, Labels: input.Labels}
 	if item.Status == "" {
 		item.Status = StatusActive
 	}
@@ -72,6 +72,9 @@ func (s *accessModeStore) Update(_ context.Context, id string, input UpdateInput
 	}
 	if input.MCPServerResourceID != nil {
 		item.MCPServerResourceID = *input.MCPServerResourceID
+	}
+	if input.CredentialID != nil {
+		item.CredentialID = *input.CredentialID
 	}
 	s.resources[id] = item
 	return item, nil
@@ -122,5 +125,24 @@ func TestServiceUpdateAgentToDirectClearsMCPAssociation(t *testing.T) {
 	}
 	if item.AccessMode != AccessModeDirect || item.Subtype != "Direct" || item.MCPServerResourceID != nil {
 		t.Fatalf("updated resource=%+v, want direct without MCP association", item)
+	}
+}
+
+func TestServiceUpdateDockerAgentClearsDirectCredential(t *testing.T) {
+	serverID := "mcp-server"
+	credentialID := "tls-credential"
+	store := &accessModeStore{resources: map[string]Resource{
+		"logical": {ID: "logical", ScopeID: "scope-1", Kind: "Docker", Name: "direct", Subtype: "Direct", AccessMode: AccessModeDirect, CredentialID: &credentialID, Status: StatusActive},
+		serverID:  {ID: serverID, ScopeID: "scope-1", Kind: "MCPServer", Status: StatusActive},
+	}}
+	service := NewService(store)
+	mode := AccessModeAgent
+	mcpServerID := &serverID
+	item, err := service.Update(context.Background(), "logical", UpdateInput{AccessMode: &mode, MCPServerResourceID: &mcpServerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.CredentialID != nil {
+		t.Fatalf("updated resource retained Direct credential: %+v", item.CredentialID)
 	}
 }

@@ -27,6 +27,7 @@ export const resourceCategoryOptions: Record<string, string[]> = {
 type ResourceShape = {
   kind: string;
   subtype?: string;
+  access_mode?: string;
   config?: Record<string, unknown>;
 };
 
@@ -90,6 +91,11 @@ export function resourceSchemaForSelection(schemas: ResourceSchema[], category: 
 
 export function resourceEndpointFor(resource: Resource) {
   if (resource.kind === 'AIProvider') return String(resource.config?.base_url ?? '未设置服务地址');
+  if (resource.kind === 'Docker') {
+    const mode = String(resource.access_mode ?? resource.subtype ?? '').toLowerCase();
+    if (mode === 'agent') return 'MCPServer 代理';
+    return String(resource.config?.docker_host ?? '本机默认 Unix Socket');
+  }
   return String(resource.config?.url ?? resource.config?.endpoint ?? resource.config?.host ?? '未设置端点');
 }
 

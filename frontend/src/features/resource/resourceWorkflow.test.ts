@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildResourceSchemaConfig,
+  dockerConfigForSave,
+  dockerConnectionConfigurationValid,
+  dockerCredentialForSave,
+  dockerHostValid,
+  dockerAccessModeLabel,
+  dockerTLSValueValid,
   emptyProviderModelDraft,
   mcpConfigForSave,
   mcpConfigurationValid,
@@ -76,5 +82,38 @@ describe('resource workflow helpers', () => {
       capabilities: ['text', 'tool_calling', 'structured_output', 'stream'],
       enabled: true
     });
+  });
+
+  it('validates Docker connection modes and keeps TLS Base64 in credentials', () => {
+    expect(dockerAccessModeLabel('direct')).toBe('Direct · 直接连接');
+    expect(dockerHostValid('unix:///var/run/docker.sock')).toBe(true);
+    expect(dockerHostValid('https://docker.example.com:2376')).toBe(true);
+    expect(dockerHostValid('https://user:secret@docker.example.com')).toBe(false);
+    const direct = {
+      accessMode: 'direct' as const,
+      host: 'tcp://docker.example.com:2376',
+      caBase64: 'Y2E=',
+      certBase64: 'Y2VydA==',
+      keyBase64: 'a2V5',
+      serverName: 'docker.example.com',
+      skipTLSVerify: false,
+      mcpServerResourceId: ''
+    };
+    expect(dockerConnectionConfigurationValid(direct)).toBe(true);
+    expect(dockerConfigForSave(direct)).toEqual({
+      docker_host: 'tcp://docker.example.com:2376',
+      docker_server_name: 'docker.example.com'
+    });
+    expect(dockerCredentialForSave(direct)).toEqual({
+      docker_ca: 'Y2E=',
+      docker_cert: 'Y2VydA==',
+      docker_key: 'a2V5'
+    });
+    expect(dockerTLSValueValid('Y2E=')).toBe(true);
+    expect(dockerTLSValueValid('/etc/docker/ca.pem')).toBe(false);
+    expect(dockerConnectionConfigurationValid({ ...direct, accessMode: 'agent', mcpServerResourceId: '' })).toBe(false);
+    expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '', keyBase64: '' })).toBe(true);
+    expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '/etc/docker/cert.pem', keyBase64: '' })).toBe(false);
+    expect(dockerConnectionConfigurationValid({ ...direct, host: 'http://docker.example.com:2375' })).toBe(false);
   });
 });

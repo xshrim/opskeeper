@@ -67,8 +67,138 @@ export function emptyProviderModelDraft(): ProviderModel {
 export function resourceAddStepTitle(step: number, kind: string) {
   if (step === 1) return '基础配置';
   if (kind === 'MCPServer') return ['MCP 配置', '总结核验'][step - 2] ?? 'MCP 配置';
+  if (kind === 'Docker') return ['Docker 配置', '总结核验'][step - 2] ?? 'Docker 配置';
   if (kind !== 'AIProvider') return '配置资源';
   return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
+}
+
+export type DockerAccessMode = 'direct' | 'agent';
+
+export type DockerConnectionDraft = {
+  accessMode: DockerAccessMode;
+  host: string;
+  caBase64: string;
+  certBase64: string;
+  keyBase64: string;
+  serverName: string;
+  skipTLSVerify: boolean;
+  mcpServerResourceId: string;
+};
+
+export function dockerAccessModeLabel(mode: string) {
+  return mode === 'agent' ? 'Agent · MCP 代理' : 'Direct · 直接连接';
+}
+
+export function dockerHostValid(value: string) {
+  const raw = value.trim();
+  if (!raw) return true;
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:', 'tcp:', 'unix:'].includes(parsed.protocol)) return false;
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) return false;
+    if (parsed.protocol === 'unix:') return !parsed.host && parsed.pathname.startsWith('/');
+    return Boolean(parsed.host) && (!parsed.pathname || parsed.pathname === '/');
+  } catch {
+    return false;
+  }
+}
+
+export function dockerHostSupportsTLS(value: string) {
+  try {
+    const protocol = new URL(value.trim()).protocol.toLowerCase();
+    return protocol === 'tcp:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeDockerTLSValue(value: string) {
+  return value.trim().replace(/\s+/g, '');
+}
+
+export function dockerTLSValueValid(value: string) {
+  const normalized = normalizeDockerTLSValue(value);
+  if (!normalized) return false;
+  if (/-----BEGIN [A-Z0-9 ]+-----[\s\S]+-----END [A-Z0-9 ]+-----/.test(value.trim())) return true;
+  if (normalized.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) return false;
+  try {
+    return atob(normalized).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function dockerTLSValueForDisplay(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    const decoded = atob(normalizeDockerTLSValue(trimmed));
+    if (/-----BEGIN [A-Z0-9 ]+-----[\s\S]+-----END [A-Z0-9 ]+-----/.test(decoded.trim())) return decoded.trim();
+  } catch {
+    // Legacy credentials may already contain PEM text.
+  }
+  return trimmed;
+}
+
+function utf8ToBase64(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Persist TLS material as Base64 even when the operator pastes PEM text.
+export function dockerTLSValueForSave(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const normalized = normalizeDockerTLSValue(trimmed);
+  if (normalized.length % 4 !== 1 && /^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+    try {
+      if (atob(normalized).length > 0) return normalized;
+    } catch {
+      // Fall through so PEM input can be encoded below.
+    }
+  }
+  return utf8ToBase64(trimmed);
+}
+
+export function dockerConnectionConfigurationValid(draft: DockerConnectionDraft) {
+  if (draft.accessMode === 'agent') return Boolean(draft.mcpServerResourceId.trim());
+  if (!draft.host.trim() || !dockerHostValid(draft.host)) return false;
+  const tlsSupported = dockerHostSupportsTLS(draft.host);
+  const tlsConfigured = Boolean(
+    draft.caBase64.trim() || draft.certBase64.trim() || draft.keyBase64.trim() ||
+    draft.serverName.trim() || draft.skipTLSVerify
+  );
+  if (!tlsSupported && tlsConfigured) return false;
+  if (Boolean(draft.certBase64.trim()) !== Boolean(draft.keyBase64.trim())) return false;
+  if ([draft.caBase64, draft.certBase64, draft.keyBase64].some((value) => value.trim() && !dockerTLSValueValid(value))) return false;
+  return true;
+}
+
+export function dockerConfigForSave(draft: DockerConnectionDraft): Record<string, unknown> {
+  if (draft.accessMode === 'agent') return {};
+  const config: Record<string, unknown> = {};
+  if (draft.host.trim()) config.docker_host = draft.host.trim();
+  if (dockerHostSupportsTLS(draft.host)) {
+    if (draft.serverName.trim()) config.docker_server_name = draft.serverName.trim();
+    if (draft.skipTLSVerify) config.docker_skip_tls_verify = true;
+  }
+  return config;
+}
+
+export function dockerCredentialForSave(draft: DockerConnectionDraft): Record<string, string> {
+  if (!dockerHostSupportsTLS(draft.host)) return {};
+  return Object.fromEntries(
+    [
+      ['docker_ca', draft.caBase64],
+      ['docker_cert', draft.certBase64],
+      ['docker_key', draft.keyBase64]
+    ].filter(([, value]) => value.trim()).map(([key, value]) => [key, dockerTLSValueForSave(value)])
+  );
 }
 
 export function parseResourceLabels(value: string): Record<string, string> {

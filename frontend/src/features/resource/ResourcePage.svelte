@@ -11,6 +11,8 @@
   import ProviderModelStep from './ProviderModelStep.svelte';
   import ProviderReviewStep from './ProviderReviewStep.svelte';
   import McpReviewStep from './McpReviewStep.svelte';
+  import DockerConnectionStep from './DockerConnectionStep.svelte';
+  import DockerReviewStep from './DockerReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
   import { resourceHasConnector } from '../../lib/resources';
@@ -21,9 +23,11 @@
     setResourceEnabled,
     testResourceConnector,
     createMCPCredential as createMCPCredentialAction,
+    createDockerCredential as createDockerCredentialAction,
     createProviderCredential as createProviderCredentialAction,
     createSchemaCredential,
     saveMCPCredential as saveMCPCredentialAction,
+    saveDockerCredential as saveDockerCredentialAction,
     saveProviderCredential as saveProviderCredentialAction,
     testDraftAIProviderConnection,
     testDraftMCPConnection,
@@ -67,6 +71,14 @@
     providerCapabilityOptions,
     providerPurposeOptions,
     emptyProviderModelDraft,
+    dockerConfigForSave,
+    dockerConnectionConfigurationValid,
+    dockerCredentialForSave,
+    dockerHostValid,
+    dockerHostSupportsTLS,
+    dockerTLSValueValid,
+    dockerTLSValueForDisplay,
+    type DockerAccessMode,
     resourceAddStepTitle,
     type ProviderModel
   } from './resourceWorkflow';
@@ -132,6 +144,7 @@
   let editResourceSensitiveValues: Record<string, string> = {};
   let editingProviderResourceId = '';
   let editingResourceId = '';
+  let editingDockerResourceId = '';
   let providerType = 'openai_compatible';
   let providerProtocol = 'chat_completions';
   let providerBaseURL = '';
@@ -165,6 +178,25 @@
   let providerSummaryAttempted = false;
   let resourceTypeSelectionAttempted = false;
   let resourceBasicConfigurationAttempted = false;
+  let dockerAccessMode: DockerAccessMode = 'direct';
+  let dockerHost = '';
+  let dockerCABase64 = '';
+  let dockerCertBase64 = '';
+  let dockerKeyBase64 = '';
+  let dockerServerName = '';
+  let dockerSkipTLSVerify = false;
+  let dockerMCPServerResourceId = '';
+  let dockerConfigurationAttempted = false;
+  let dockerCredentialLoading = false;
+  let dockerDraftTestBusy = false;
+  let dockerDraftTestPassedState = false;
+  let dockerDraftTest: {
+    status?: string;
+    message?: string;
+    error?: string;
+    latency?: number;
+    toolCount?: number;
+  } | null = null;
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
   let selectedSchema: ResourceSchema | null = null;
@@ -189,6 +221,9 @@
   $: resourceAddSubtypeOptions = resourceAddCategory
     ? (resourceCategoryOptions[resourceAddCategory] ?? [])
     : [];
+  $: dockerMCPServers = resources
+    .filter((resource) => resource.kind === 'MCPServer' && (resource.status === 'active' || resource.id === dockerMCPServerResourceId))
+    .sort((left, right) => left.name.localeCompare(right.name));
   $: childSurfaceActive = resourceAddMenuOpen || resourceEditorOpen;
 
   onMount(() => {
@@ -230,6 +265,12 @@
       project: '项目'
     };
     return labels[scopeType(resource.scope_id)] ?? '资源';
+  }
+
+  function mcpServerNameFor(resource: Resource) {
+    const id = resource.mcp_server_resource_id;
+    if (!id) return '';
+    return resources.find((item) => item.id === id)?.name ?? '关联 MCPServer';
   }
 
   function resourceSchemaForSelection(category: string, subtype: string) {
@@ -304,6 +345,45 @@
     providerDefaultModel = String(config.default_model ?? providerModels[0]?.name ?? '');
     providerModelDraft = emptyProviderModelDraft();
     editingProviderModelName = '';
+  }
+
+  function syncDockerEditor(resource: Resource) {
+    const config = resource.config ?? {};
+    resourceName = resource.name;
+    resourceStatus = resource.status;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([key, value]) => `${key}=${value}`)
+      .join(', ');
+    editResourceLabels = resourceLabels;
+    dockerAccessMode = String(resource.access_mode ?? resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
+    dockerHost = String(config.docker_host ?? '');
+    dockerServerName = String(config.docker_server_name ?? '');
+    dockerSkipTLSVerify = config.docker_skip_tls_verify === true || String(config.docker_skip_tls_verify ?? '').toLowerCase() === 'true';
+    dockerMCPServerResourceId = String(resource.mcp_server_resource_id ?? '');
+    dockerCABase64 = '';
+    dockerCertBase64 = '';
+    dockerKeyBase64 = '';
+    dockerCredentialLoading = false;
+    if (dockerAccessMode === 'direct' && resource.credential_id) {
+      dockerCredentialLoading = true;
+      void loadResourceCredentialSecret(resource.credential_id).then((credential) => {
+        if (selectedResourceId !== resource.id) return;
+        try {
+          const secret = JSON.parse(credential.secret) as Record<string, unknown>;
+          dockerCABase64 = dockerTLSValueForDisplay(String(secret.docker_ca ?? ''));
+          dockerCertBase64 = dockerTLSValueForDisplay(String(secret.docker_cert ?? ''));
+          dockerKeyBase64 = dockerTLSValueForDisplay(String(secret.docker_key ?? ''));
+        } catch {
+          dockerCABase64 = '';
+          dockerCertBase64 = '';
+          dockerKeyBase64 = '';
+        } finally {
+          dockerCredentialLoading = false;
+        }
+      }).catch(() => {
+        if (selectedResourceId === resource.id) dockerCredentialLoading = false;
+      });
+    }
   }
 
   function syncResourceEditor(resource: Resource) {
@@ -406,6 +486,25 @@
     resourceAddMenuOpen = true;
   }
 
+  function openDockerWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Docker';
+    resourceAddCategory = 'Docker';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingProviderResourceId = '';
+    editingResourceId = '';
+    editingDockerResourceId = resource.id;
+    syncDockerEditor(resource);
+    resourceAddStep = 1;
+    resourceTypeSelectionAttempted = false;
+    resourceBasicConfigurationAttempted = false;
+    dockerConfigurationAttempted = false;
+    resourceEditorOpen = false;
+    resourceAddMenuOpen = true;
+  }
+
   function openResourceEditor(resource: Resource) {
     if (resource.kind === 'AIProvider') {
       openProviderWorkflowForEdit(resource);
@@ -413,6 +512,10 @@
     }
     if (resource.kind === 'MCPServer') {
       openMCPWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Docker') {
+      openDockerWorkflowForEdit(resource);
       return;
     }
     selectedResourceId = resource.id;
@@ -432,10 +535,14 @@
     resourceEditorOpen = false;
     editingProviderResourceId = '';
     editingResourceId = '';
+    editingDockerResourceId = '';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
     if (resourceAddMenuOpen) {
+      resetResourceConfig();
+      resetProviderDraft();
+      resetDockerDraft();
       resourceStatus = 'active';
       resourceAddCategory = resourceCategory === '全部' ? '' : resourceCategory;
       resourceAddSubtype = resourceSubtype === '全部' ? '' : resourceSubtype;
@@ -453,6 +560,10 @@
     if (resetDraft) {
       resetResourceConfig();
       resetProviderDraft();
+      resetDockerDraft();
+    }
+    if (resourceKind === 'Docker') {
+      dockerAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     }
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
@@ -505,6 +616,23 @@
     mcpMaxResponseBytes = 4 * 1024 * 1024;
     mcpDraftTest = null;
     mcpConfigurationAttempted = false;
+  }
+
+  function resetDockerDraft() {
+    dockerAccessMode = 'direct';
+    dockerHost = '';
+    dockerCABase64 = '';
+    dockerCertBase64 = '';
+    dockerKeyBase64 = '';
+    dockerServerName = '';
+    dockerSkipTLSVerify = false;
+    dockerMCPServerResourceId = '';
+    dockerConfigurationAttempted = false;
+    dockerCredentialLoading = false;
+    dockerDraftTestBusy = false;
+    dockerDraftTest = null;
+    dockerDraftTestPassedState = false;
+    editingDockerResourceId = '';
   }
 
   function resetProviderDraft() {
@@ -698,6 +826,10 @@
       !providerDraftTestPassedState
     )
       return '请先完成默认 Model 的连接测试并确认测试通过。';
+    if (resourceKind === 'Docker' && resourceAddStep === 2 && dockerConfigurationAttempted && !dockerConfigurationComplete()) {
+      const issues = dockerConfigurationIssues();
+      return `请检查：${issues.length ? issues.join('、') : 'Docker 配置'}。`;
+    }
     return '';
   }
 
@@ -753,6 +885,14 @@
   async function saveMCPCredential(existing: Resource) {
     const headers = parseMCPHeaders(mcpRequestHeaders);
     return saveMCPCredentialAction(existing, selectedScopeId, editResourceName.trim() || resourceName.trim(), mcpToken, headers);
+  }
+
+  async function createDockerCredential() {
+    return createDockerCredentialAction(selectedScopeId, resourceName, dockerCredentialForSave(dockerDraft()));
+  }
+
+  async function saveDockerCredential(existing: Resource) {
+    return saveDockerCredentialAction(existing, selectedScopeId, resourceName, dockerCredentialForSave(dockerDraft()));
   }
 
   function mcpDraftSignature() {
@@ -879,14 +1019,145 @@
     return Boolean(resourceAddCategory && resourceAddSubtype && resourceName.trim() && selectedScopeId);
   }
 
+  function dockerDraft() {
+    const tlsSupported = dockerHostSupportsTLS(dockerHost);
+    return {
+      accessMode: dockerAccessMode,
+      host: dockerHost,
+      caBase64: tlsSupported ? dockerCABase64 : '',
+      certBase64: tlsSupported ? dockerCertBase64 : '',
+      keyBase64: tlsSupported ? dockerKeyBase64 : '',
+      serverName: tlsSupported ? dockerServerName : '',
+      skipTLSVerify: tlsSupported && dockerSkipTLSVerify,
+      mcpServerResourceId: dockerMCPServerResourceId
+    } as const;
+  }
+
+  function dockerConfigurationComplete() {
+    if (dockerCredentialLoading) return false;
+    if (!dockerConnectionConfigurationValid(dockerDraft())) return false;
+    if (dockerAccessMode === 'agent') {
+      const server = resources.find((resource) => resource.id === dockerMCPServerResourceId);
+      return Boolean(server && server.kind === 'MCPServer' && server.status === 'active');
+    }
+    return true;
+  }
+
+  function dockerConfigurationIssues() {
+    const issues: string[] = [];
+    if (dockerCredentialLoading) issues.push('正在读取 TLS 凭据');
+    if (dockerAccessMode === 'agent') {
+      if (!dockerMCPServerResourceId) issues.push('关联 MCPServer');
+      else if (!dockerMCPServers.some((server) => server.id === dockerMCPServerResourceId && server.status === 'active')) issues.push('活动的 MCPServer');
+      return issues;
+    }
+    if (!dockerHost.trim() || !dockerHostValidForDraft()) issues.push('Docker Host URL');
+    if (Boolean(dockerCertBase64.trim()) !== Boolean(dockerKeyBase64.trim())) issues.push('客户端证书和私钥');
+    if (dockerCABase64.trim() && !dockerTLSValueValid(dockerCABase64)) issues.push('CA Base64 内容');
+    if (dockerCertBase64.trim() && !dockerTLSValueValid(dockerCertBase64)) issues.push('客户端证书 Base64 内容');
+    if (dockerKeyBase64.trim() && !dockerTLSValueValid(dockerKeyBase64)) issues.push('客户端私钥 Base64 内容');
+    if ((dockerCABase64.trim() || dockerCertBase64.trim() || dockerKeyBase64.trim() || dockerServerName.trim() || dockerSkipTLSVerify) && !dockerHost.trim()) issues.push('启用 TLS 时填写 Docker Host URL');
+    return issues;
+  }
+
+  function dockerHostValidForDraft() {
+    return dockerHostValid(dockerHost);
+  }
+
+  function selectDockerAccessMode(mode: DockerAccessMode) {
+    dockerAccessMode = mode;
+    resourceAddSubtype = mode === 'agent' ? 'Agent' : 'Direct';
+    if (mode === 'agent') {
+      dockerHost = '';
+      dockerCABase64 = '';
+      dockerCertBase64 = '';
+      dockerKeyBase64 = '';
+      dockerServerName = '';
+      dockerSkipTLSVerify = false;
+    } else {
+      dockerMCPServerResourceId = '';
+    }
+    dockerConfigurationAttempted = false;
+    dockerDraftTest = null;
+    dockerDraftTestPassedState = false;
+  }
+
+  function dockerMCPServerName() {
+    return resources.find((resource) => resource.id === dockerMCPServerResourceId)?.name ?? '';
+  }
+
+  function dockerDraftTestPassed() {
+    return dockerDraftTestPassedState;
+  }
+
+  function resetDockerDraftTest() {
+    if (!dockerDraftTestBusy) {
+      dockerDraftTest = null;
+      dockerDraftTestPassedState = false;
+    }
+  }
+
+  async function testDockerDraftConnection() {
+    dockerDraftTestBusy = true;
+    dockerDraftTestPassedState = false;
+    dockerDraftTest = { error: '正在测试 Docker 连接，请稍候…' };
+    try {
+      if (!dockerConfigurationComplete()) {
+        throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
+      }
+      if (dockerAccessMode === 'agent') {
+        const server = resources.find((resource) => resource.id === dockerMCPServerResourceId);
+        if (!server) throw new Error('未找到关联的 MCPServer。');
+        const snapshot = await api.discoverMCP(server.id);
+        dockerDraftTest = {
+          status: snapshot.status,
+          message: snapshot.error_message || (snapshot.status === 'succeeded' ? `MCPServer 连接正常，发现 ${snapshot.tools?.length ?? 0} 个工具` : 'MCPServer 连接失败'),
+          latency: snapshot.latency_ms,
+          toolCount: snapshot.tools?.length ?? 0,
+          error: snapshot.status === 'succeeded' ? '' : snapshot.error_message || 'MCPServer 连接失败'
+        };
+        dockerDraftTestPassedState = snapshot.status === 'succeeded';
+        return;
+      }
+      const credential = dockerCredentialForSave(dockerDraft());
+      const result = await api.testDraftDocker({
+        docker_host: dockerHost.trim(),
+        docker_ca: credential.docker_ca,
+        docker_cert: credential.docker_cert,
+        docker_key: credential.docker_key,
+        docker_server_name: dockerServerName.trim(),
+        docker_skip_tls_verify: dockerSkipTLSVerify
+      });
+      dockerDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+      dockerDraftTestPassedState = result.status === 'succeeded';
+    } catch (error) {
+      dockerDraftTest = { error: describeError(error, 'Docker 连接测试失败') };
+    } finally {
+      dockerDraftTestBusy = false;
+    }
+  }
+
   function continueResourceAdd() {
     resourceTypeSelectionAttempted = true;
     resourceBasicConfigurationAttempted = true;
     if (!resourceBasicConfigurationComplete()) return;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
-    chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype, !editingProviderResourceId && !editingResourceId);
+    chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype, !editingProviderResourceId && !editingResourceId && !editingDockerResourceId);
     resourceAddStep = 2;
+  }
+
+  function continueDockerAdd() {
+    dockerConfigurationAttempted = true;
+    if (dockerConfigurationComplete()) {
+      dockerConfigurationAttempted = false;
+      resourceAddStep = 3;
+    }
   }
 
   async function updateSelectedResource() {
@@ -927,6 +1198,10 @@
       await createSpecialResource();
       return;
     }
+    if (resourceKind === 'Docker') {
+      await createDockerFromWorkflow();
+      return;
+    }
     try {
       if (!resourceAddCategory || !resourceAddSubtype || !resourceName.trim()) {
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
@@ -958,6 +1233,40 @@
     } catch (error) {
       onError(describeError(error, '创建资源失败'));
     }
+  }
+
+  async function createDockerFromWorkflow() {
+    await runResourceAction(async () => {
+      if (!resourceBasicConfigurationComplete()) throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
+      if (!dockerConfigurationComplete()) {
+        dockerConfigurationAttempted = true;
+        throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
+      }
+      if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
+      const draft = dockerDraft();
+      const credentialId = draft.accessMode === 'direct' ? await createDockerCredential() : '';
+      const created = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Docker',
+        subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
+        access_mode: draft.accessMode,
+        mcp_server_resource_id: draft.accessMode === 'agent' ? draft.mcpServerResourceId : undefined,
+        name: resourceName.trim(),
+        status: resourceStatus,
+        labels: parseLabels(resourceLabels),
+        config: dockerConfigForSave(draft),
+        ...(credentialId ? { credential_id: credentialId } : {})
+      });
+      resources = [created, ...resources];
+      selectedResourceId = created.id;
+      resetDockerDraft();
+      resourceName = '';
+      resourceLabels = '';
+      resourceAddMenuOpen = false;
+      resourceAddStep = 1;
+      onNotice(`资源“${created.name}”已创建`);
+      await loadResourceDetails(created.id);
+    });
   }
 
   async function runResourceAction(operation: () => Promise<void>) {
@@ -1096,6 +1405,37 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`MCPServer“${updated.name}”已更新`);
+      await loadResourceDetails(updated.id);
+    });
+  }
+
+  async function updateDockerFromWorkflow() {
+    const docker = resources.find((resource) => resource.id === editingDockerResourceId);
+    if (!docker) return;
+    await runResourceAction(async () => {
+      if (!dockerConfigurationComplete()) {
+        dockerConfigurationAttempted = true;
+        throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
+      }
+      if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
+      const draft = dockerDraft();
+      const credentialId = draft.accessMode === 'direct' ? await saveDockerCredential(docker) : null;
+      const updated = await updateResourceRecord(docker.id, {
+        name: resourceName.trim(),
+        subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
+        access_mode: draft.accessMode,
+        mcp_server_resource_id: draft.accessMode === 'agent' ? draft.mcpServerResourceId : null,
+        status: resourceStatus,
+        labels: parseLabels(resourceLabels),
+        config: dockerConfigForSave(draft),
+        credential_id: credentialId || null
+      });
+      resources = resources.map((resource) => resource.id === updated.id ? updated : resource);
+      selectedResourceId = updated.id;
+      editingDockerResourceId = '';
+      resourceAddMenuOpen = false;
+      resourceAddStep = 1;
+      onNotice(`Docker 资源“${updated.name}”已更新`);
       await loadResourceDetails(updated.id);
     });
   }
@@ -1326,6 +1666,7 @@
         {providerTypeLabel}
         {providerBindingsFor}
         {providerPurposeLabel}
+        {mcpServerNameFor}
         onSelect={(resource) => void loadResourceDetails(resource.id)}
         onLoadSnapshot={(resourceId) => void loadMCPSnapshots(resourceId)}
         onToggleEnabled={(resource, enabled) => void toggleResourceEnabled(resource, enabled)}
@@ -1345,6 +1686,7 @@
             {providerModelsForResource}
             {providerModelCapabilities}
             {providerTypeLabel}
+            {mcpServerNameFor}
           />
         </svelte:fragment>
       </ResourceCatalogList>
@@ -1357,8 +1699,11 @@
         subtype={resourceAddSubtype}
         editingProvider={Boolean(editingProviderResourceId)}
         editingResource={Boolean(editingResourceId)}
+        editingDocker={Boolean(editingDockerResourceId)}
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
+        dockerConfigurationComplete={dockerConfigurationComplete()}
+        dockerTestPassed={dockerDraftTestPassed()}
         providerModelCount={providerModels.length}
         {busy}
         scopeSelected={Boolean(selectedScopeId)}
@@ -1371,6 +1716,7 @@
           resourceAddStep = 1;
           editingProviderResourceId = '';
           editingResourceId = '';
+          editingDockerResourceId = '';
         }}
         onSelectStep={(step) => (resourceAddStep = step)}
         onContinueBasic={continueResourceAdd}
@@ -1382,6 +1728,7 @@
             resourceAddStep = 3;
           }
         }}
+        onContinueDocker={continueDockerAdd}
         onSubmitMcp={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
       >
 
@@ -1396,7 +1743,7 @@
               subtypeOptions={resourceAddSubtypeOptions}
               typeSelectionAttempted={resourceTypeSelectionAttempted}
               basicConfigurationAttempted={resourceBasicConfigurationAttempted}
-              editing={Boolean(editingProviderResourceId || editingResourceId)}
+              editing={Boolean(editingProviderResourceId || editingResourceId || editingDockerResourceId)}
               scopeSummary={activeScopeSummary()}
               onSelectCategory={selectResourceAddCategory}
               onSelectSubtype={(subtype) => {
@@ -1490,6 +1837,42 @@
               capabilityLabel={(capability) => providerCapabilityOptions.find((item) => item.value === capability)?.label ?? capability}
               onTest={() => void testProviderDraftConnection()}
               onSubmit={submitProviderCreate}
+            />
+          {:else if resourceKind === 'Docker' && resourceAddStep === 2}
+            <DockerConnectionStep
+              bind:accessMode={dockerAccessMode}
+              bind:host={dockerHost}
+              bind:caBase64={dockerCABase64}
+              bind:certBase64={dockerCertBase64}
+              bind:keyBase64={dockerKeyBase64}
+              bind:serverName={dockerServerName}
+              bind:skipTLSVerify={dockerSkipTLSVerify}
+              bind:mcpServerResourceId={dockerMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={dockerConfigurationAttempted}
+              credentialLoading={dockerCredentialLoading}
+              onConfigurationChange={resetDockerDraftTest}
+            />
+          {:else if resourceKind === 'Docker' && resourceAddStep === 3}
+            <DockerReviewStep
+              {resourceName}
+              {resourceStatus}
+              accessMode={dockerAccessMode}
+              host={dockerHost}
+              serverName={dockerServerName}
+              skipTLSVerify={dockerSkipTLSVerify}
+              mcpServerName={dockerMCPServerName()}
+              credentialConfigured={Boolean(dockerCABase64.trim() || dockerCertBase64.trim() || dockerKeyBase64.trim())}
+              scopeSummary={activeScopeSummary()}
+              labelsConfigured={Boolean(resourceLabels.trim())}
+              testBusy={dockerDraftTestBusy}
+              testStatus={dockerDraftTest?.status ?? ''}
+              testMessage={dockerDraftTest?.message ?? ''}
+              testError={dockerDraftTest?.error ?? ''}
+              testLatency={dockerDraftTest?.latency}
+              testToolCount={dockerDraftTest?.toolCount ?? 0}
+              onTest={() => void testDockerDraftConnection()}
+              onSubmit={() => void (editingDockerResourceId ? updateDockerFromWorkflow() : createDockerFromWorkflow())}
             />
           {:else if selectedResource?.kind === 'MCPServer'}
             <div class="mcp-resource-form editor-mcp-form">

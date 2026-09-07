@@ -7,8 +7,11 @@
   export let subtype = '';
   export let editingProvider = false;
   export let editingResource = false;
+  export let editingDocker = false;
   export let basicConfigurationComplete = false;
   export let mcpConfigurationComplete = false;
+  export let dockerConfigurationComplete = false;
+  export let dockerTestPassed = false;
   export let providerModelCount = 0;
   export let busy = false;
   export let scopeSelected = false;
@@ -21,15 +24,16 @@
   export let onContinueBasic: () => void = () => {};
   export let onContinueProvider: () => void = () => {};
   export let onContinueMcp: () => void = () => {};
+  export let onContinueDocker: () => void = () => {};
   export let onSubmitMcp: () => void = () => {};
 </script>
 
 <section class="panel resource-add-workflow" aria-labelledby="resource-add-title">
   <header class="resource-add-main-heading">
     <div>
-      <p class="eyebrow">{editingProvider || editingResource ? 'EDIT RESOURCE' : 'ADD RESOURCE'}</p>
+      <p class="eyebrow">{editingProvider || editingResource || editingDocker ? 'EDIT RESOURCE' : 'ADD RESOURCE'}</p>
       <h2 id="resource-add-title">
-        <span>{editingProvider || editingResource ? '编辑资源' : '添加资源'}</span>
+        <span>{editingProvider || editingResource || editingDocker ? '编辑资源' : '添加资源'}</span>
         {#if category && subtype}<small>{category} · {subtype}</small>{/if}
       </h2>
     </div>
@@ -45,6 +49,9 @@
     {:else if kind === 'MCPServer'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>MCP 配置</span></button>
       <button class:active={step === 3} disabled={!mcpConfigurationComplete} type="button" on:click={() => mcpConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+    {:else if kind === 'Docker'}
+      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Docker 配置</span></button>
+      <button class:active={step === 3} disabled={!dockerConfigurationComplete} type="button" on:click={() => dockerConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
     {:else}
       <button class:active={step === 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>配置资源</span></button>
     {/if}
@@ -52,9 +59,10 @@
 
   <div class="resource-add-content" class:type-selection-content={step === 1}>
     {#if message}<MessageBanner {message} tone={messageTone} />{/if}
-    <h3>{stepTitle}</h3>
-    {#if validationMessage}<p class="resource-add-step-validation" role="alert">{validationMessage}</p>{/if}
-    <div class="resource-add-step-actions">
+    <div class="resource-add-step-heading">
+      <h3>{stepTitle}</h3>
+      {#if validationMessage}<p class="resource-add-step-validation" role="alert">{validationMessage}</p>{/if}
+      <div class="resource-add-step-actions">
       {#if step === 1}
         <button class="primary" type="button" on:click={onContinueBasic}>下一步</button>
       {:else if kind === 'AIProvider' && step === 2}
@@ -67,9 +75,14 @@
         <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueMcp}>下一步</button>
       {:else if kind === 'MCPServer' && step === 3}
         <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitMcp} disabled={busy || !scopeSelected}>{editingResource ? '保存' : '创建'}</button>
+      {:else if kind === 'Docker' && step === 2}
+        <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueDocker}>下一步</button>
+      {:else if kind === 'Docker' && step === 3}
+        <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="submit" form="docker-review-form" disabled={busy || !scopeSelected || !dockerTestPassed}>{editingDocker ? '保存' : '创建'}</button>
       {:else if step === 2}
         <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="submit" form="resource-create-form" disabled={busy || !scopeSelected}>创建</button>
       {/if}
+      </div>
     </div>
     <slot />
   </div>

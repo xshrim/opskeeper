@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, MCPSnapshot, Resource } from '../../lib/api';
   import GenericResourceDetails from './GenericResourceDetails.svelte';
+  import DockerResourceDetails from './DockerResourceDetails.svelte';
   import McpResourceDetails from './McpResourceDetails.svelte';
   import ProviderResourceDetails from './ProviderResourceDetails.svelte';
 
@@ -14,6 +15,7 @@
   export let providerModelsForResource: (resource: Resource) => Array<Record<string, unknown>>;
   export let providerModelCapabilities: (model: Record<string, unknown> | undefined) => string[];
   export let providerTypeLabel: (type: unknown) => string;
+  export let mcpServerNameFor: (resource: Resource) => string = () => '';
 </script>
 
 {#if resource.kind === 'AIProvider'}
@@ -27,6 +29,8 @@
   />
 {:else if resource.kind === 'MCPServer'}
   <McpResourceDetails {resource} snapshots={operationSnapshots[resource.id] ?? []} {formatDate} />
+{:else if resource.kind === 'Docker'}
+  <DockerResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} {resourceCanManage} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} {formatDate} {resourceCanManage} />
 {/if}

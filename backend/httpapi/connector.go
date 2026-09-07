@@ -17,6 +17,9 @@ type connectorService interface {
 	Test(context.Context, string, string) (connector.Check, error)
 	Latest(context.Context, string) (connector.Check, error)
 }
+type dockerDraftConnectorService interface {
+	TestDockerDraft(context.Context, connector.DockerDraftInput) (connector.DockerDraftCheck, error)
+}
 
 type connectorHandler struct {
 	service connectorService
@@ -35,6 +38,20 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 		return requirePermission(permission)
 	}
 	router.With(guard(authorization.ResourceUse)).Post("/resources/{resourceID}/connection-tests", handler.test)
+	if draft, ok := service.(dockerDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/docker/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.DockerDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestDockerDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
 	router.With(guard(authorization.ResourceRead)).Get("/resources/{resourceID}/connection-tests/latest", handler.latest)
 }
 

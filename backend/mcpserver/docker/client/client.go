@@ -114,3 +114,15 @@ func Ping(ctx context.Context, input ConnectionInput) error {
 	_, err = cli.Ping(ctx)
 	return err
 }
+
+// PingDraft verifies the supplied connection without inheriting Docker
+// environment variables from the API process.
+func PingDraft(ctx context.Context, input ConnectionInput) error {
+	cli, _, err := newClient(input, false)
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+	_, err = cli.Ping(ctx)
+	return err
+}

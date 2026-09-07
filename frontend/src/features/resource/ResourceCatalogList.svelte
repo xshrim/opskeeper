@@ -4,6 +4,7 @@
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
+  import { dockerAccessModeLabel } from './resourceWorkflow';
 
   export let resources: Resource[] = [];
   export let selectedResourceId = '';
@@ -21,12 +22,20 @@
   export let providerTypeLabel: (type: unknown) => string;
   export let providerBindingsFor: (resource: Resource) => Array<{ tag: string }>;
   export let providerPurposeLabel: (tag: string) => string;
+  export let mcpServerNameFor: (resource: Resource) => string = () => '';
   export let onSelect: (resource: Resource) => void = () => {};
   export let onLoadSnapshot: (resourceId: string) => void = () => {};
   export let onToggleEnabled: (resource: Resource, enabled: boolean) => void = () => {};
   export let onTestConnection: (resource: Resource) => void = () => {};
   export let onEdit: (resource: Resource) => void = () => {};
   export let onDelete: (resource: Resource) => void = () => {};
+
+  function endpointLabel(resource: Resource) {
+    if (resource.kind === 'Docker' && String(resource.access_mode ?? resource.subtype ?? '').toLowerCase() === 'agent') {
+      return mcpServerNameFor(resource) || '关联 MCPServer';
+    }
+    return resourceEndpointFor(resource);
+  }
 </script>
 
 <div class="table-list resource-list">
@@ -36,6 +45,7 @@
       class:selected={selectedResourceId === resource.id}
       class:provider-resource-row={resource.kind === 'AIProvider'}
       class:mcp-resource-row={resource.kind === 'MCPServer'}
+      class:docker-resource-row={resource.kind === 'Docker'}
       class="resource-catalog-row"
       on:toggle={() => {
         onSelect(resource);
@@ -43,7 +53,7 @@
       }}
     >
       <summary>
-        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceEndpointFor(resource)}</small></span></span>
+        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{endpointLabel(resource)}</small></span></span>
         <span class="resource-cell resource-category-cell">
           {#if resource.kind === 'AIProvider'}
             {@const models = providerModelsForResource(resource)}
@@ -51,6 +61,8 @@
             <strong>{providerTypeLabel(resource.config?.provider_type)} · {String(currentModel?.name ?? '未设置')}</strong><small>模型 · 共 {models.length} 个</small>
           {:else if resource.kind === 'MCPServer'}
             <strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>
+          {:else if resource.kind === 'Docker'}
+            <strong>{dockerAccessModeLabel(String(resource.access_mode ?? resource.subtype ?? 'direct').toLowerCase())}</strong><small>只读工具集 · 6 项</small>
           {:else}
             <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
           {/if}

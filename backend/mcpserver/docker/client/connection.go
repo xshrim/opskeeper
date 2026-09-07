@@ -3,6 +3,7 @@ package client
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,13 +16,13 @@ import (
 )
 
 // ConnectionInput is the connection portion shared by every Docker tool.
-// Certificate paths are read by the server process and are never returned in
-// tool output.
+// TLS fields accept either Base64-encoded PEM material or a path to a PEM
+// file. The server resolves the material and never returns it in tool output.
 type ConnectionInput struct {
 	DockerHost       string `json:"docker_host,omitempty" jsonschema:"Optional Docker daemon URL. Tool input takes precedence over the environment."`
-	DockerCA         string `json:"docker_ca,omitempty" jsonschema:"CA PEM file for an HTTPS Docker daemon."`
-	DockerCert       string `json:"docker_cert,omitempty" jsonschema:"Client certificate PEM file for mutual TLS."`
-	DockerKey        string `json:"docker_key,omitempty" jsonschema:"Client private key PEM file for mutual TLS."`
+	DockerCA         string `json:"docker_ca,omitempty" jsonschema:"CA PEM material as Base64 text or a file path for an HTTPS Docker daemon."`
+	DockerCert       string `json:"docker_cert,omitempty" jsonschema:"Client certificate PEM material as Base64 text or a file path for mutual TLS."`
+	DockerKey        string `json:"docker_key,omitempty" jsonschema:"Client private key PEM material as Base64 text or a file path for mutual TLS."`
 	DockerServerName string `json:"docker_server_name,omitempty" jsonschema:"Optional TLS server name override."`
 	DockerSkipVerify bool   `json:"docker_skip_tls_verify,omitempty" jsonschema:"Skip TLS certificate verification. Defaults to false; use only for explicitly trusted development endpoints."`
 }
@@ -42,6 +43,12 @@ const defaultHost = client.DefaultDockerHost
 // ResolveConnection applies the required precedence: tool input, component
 // environment, then the Docker client's default local socket.
 func ResolveConnection(input ConnectionInput) (ConnectionConfig, error) {
+	return resolveConnection(input, true)
+}
+
+// resolveConnection can suppress environment fallbacks for draft validation,
+// where the result must reflect exactly the connection supplied by the user.
+func resolveConnection(input ConnectionInput, inheritEnvironment bool) (ConnectionConfig, error) {
 	env := ConnectionInput{
 		DockerHost:       firstEnv("DOCKER_MCP_DOCKER_HOST", "DOCKER_HOST"),
 		DockerCA:         firstEnv("DOCKER_MCP_DOCKER_CA"),
@@ -49,39 +56,30 @@ func ResolveConnection(input ConnectionInput) (ConnectionConfig, error) {
 		DockerKey:        firstEnv("DOCKER_MCP_DOCKER_KEY"),
 		DockerServerName: firstEnv("DOCKER_MCP_DOCKER_SERVER_NAME"),
 	}
-	if certDir := os.Getenv("DOCKER_CERT_PATH"); env.DockerCA == "" && certDir != "" {
-		env.DockerCA = filepath.Join(certDir, "ca.pem")
-		env.DockerCert = filepath.Join(certDir, "cert.pem")
-		env.DockerKey = filepath.Join(certDir, "key.pem")
-	}
-	if skip, ok := lookupBool("DOCKER_MCP_DOCKER_TLS_SKIP_VERIFY"); ok {
-		env.DockerSkipVerify = skip
-	} else if verify, ok := lookupBool("DOCKER_TLS_VERIFY"); ok {
-		env.DockerSkipVerify = !verify
+	if inheritEnvironment {
+		resolveEnvironmentTLS(&env)
 	}
 
 	resolved := input
-	if strings.TrimSpace(resolved.DockerHost) == "" {
-		resolved.DockerHost = env.DockerHost
-	}
-	if resolved.DockerCA == "" {
-		resolved.DockerCA = env.DockerCA
-	}
-	if resolved.DockerCert == "" {
-		resolved.DockerCert = env.DockerCert
-	}
-	if resolved.DockerKey == "" {
-		resolved.DockerKey = env.DockerKey
-	}
-	if resolved.DockerServerName == "" {
-		resolved.DockerServerName = env.DockerServerName
-	}
-	// A bool input has a zero-value default of false. Preserve the existing
-	// environment fallback for deployments that configure TLS globally; a
-	// true tool value always wins, while false cannot express explicit
-	// override because omitted and false are identical in JSON.
-	if !resolved.DockerSkipVerify {
-		resolved.DockerSkipVerify = env.DockerSkipVerify
+	if inheritEnvironment {
+		if strings.TrimSpace(resolved.DockerHost) == "" {
+			resolved.DockerHost = env.DockerHost
+		}
+		if resolved.DockerCA == "" {
+			resolved.DockerCA = env.DockerCA
+		}
+		if resolved.DockerCert == "" {
+			resolved.DockerCert = env.DockerCert
+		}
+		if resolved.DockerKey == "" {
+			resolved.DockerKey = env.DockerKey
+		}
+		if resolved.DockerServerName == "" {
+			resolved.DockerServerName = env.DockerServerName
+		}
+		if !resolved.DockerSkipVerify {
+			resolved.DockerSkipVerify = env.DockerSkipVerify
+		}
 	}
 	if strings.TrimSpace(resolved.DockerHost) == "" {
 		return ConnectionConfig{Host: defaultHost, Scheme: "unix"}, nil
@@ -91,8 +89,8 @@ func ResolveConnection(input ConnectionInput) (ConnectionConfig, error) {
 	if err != nil {
 		return ConnectionConfig{}, err
 	}
-	if !tlsEnabled && (resolved.DockerCA != "" || resolved.DockerCert != "" || resolved.DockerKey != "" || resolved.DockerServerName != "") {
-		return ConnectionConfig{}, fmt.Errorf("TLS files or server name require an https Docker host")
+	if !tlsEnabled && (resolved.DockerCA != "" || resolved.DockerCert != "" || resolved.DockerKey != "" || resolved.DockerServerName != "" || resolved.DockerSkipVerify) {
+		return ConnectionConfig{}, fmt.Errorf("TLS configuration requires a tcp or https Docker host")
 	}
 	if (resolved.DockerCert == "") != (resolved.DockerKey == "") {
 		return ConnectionConfig{}, fmt.Errorf("docker client certificate and key must be provided together")
@@ -106,6 +104,22 @@ func ResolveConnection(input ConnectionInput) (ConnectionConfig, error) {
 		ServerName: resolved.DockerServerName,
 		SkipVerify: resolved.DockerSkipVerify,
 	}, nil
+}
+
+func resolveEnvironmentTLS(env *ConnectionInput) {
+	if env == nil {
+		return
+	}
+	if certDir := os.Getenv("DOCKER_CERT_PATH"); env.DockerCA == "" && certDir != "" {
+		env.DockerCA = filepath.Join(certDir, "ca.pem")
+		env.DockerCert = filepath.Join(certDir, "cert.pem")
+		env.DockerKey = filepath.Join(certDir, "key.pem")
+	}
+	if skip, ok := lookupBool("DOCKER_MCP_DOCKER_TLS_SKIP_VERIFY"); ok {
+		env.DockerSkipVerify = skip
+	} else if verify, ok := lookupBool("DOCKER_TLS_VERIFY"); ok {
+		env.DockerSkipVerify = !verify
+	}
 }
 
 func firstEnv(names ...string) string {
@@ -141,9 +155,9 @@ func normalizeHost(raw string, input ConnectionInput) (host, scheme string, tlsE
 		if parsed.Path != "" && parsed.Path != "/" {
 			return "", "", false, fmt.Errorf("Docker TCP host paths are not supported")
 		}
-		// A tcp URL becomes TLS when certificate material or the explicit
-		// skip-verification switch is supplied, matching Docker CLI practice.
-		tlsEnabled := input.DockerCA != "" || input.DockerCert != "" || input.DockerKey != "" || input.DockerSkipVerify
+		// tcp supports either transport: configure TLS material, Server Name,
+		// or skip verification to select HTTPS; otherwise it remains HTTP.
+		tlsEnabled := input.DockerCA != "" || input.DockerCert != "" || input.DockerKey != "" || input.DockerServerName != "" || input.DockerSkipVerify
 		if tlsEnabled {
 			return "tcp://" + parsed.Host, "https", true, nil
 		}
@@ -173,18 +187,26 @@ func TLSConfig(config ConnectionConfig) (*tls.Config, error) {
 		InsecureSkipVerify: config.SkipVerify, //nolint:gosec -- explicitly configured by the operator.
 	}
 	if config.CAFile != "" {
-		pem, err := os.ReadFile(config.CAFile)
+		pem, err := resolveTLSMaterial(config.CAFile)
 		if err != nil {
-			return nil, fmt.Errorf("read Docker CA file: %w", err)
+			return nil, fmt.Errorf("read Docker CA material: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("Docker CA file does not contain a valid certificate")
+			return nil, fmt.Errorf("Docker CA material does not contain a valid certificate")
 		}
 		tlsConfig.RootCAs = pool
 	}
 	if config.CertFile != "" {
-		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+		certPEM, err := resolveTLSMaterial(config.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("read Docker client certificate material: %w", err)
+		}
+		keyPEM, err := resolveTLSMaterial(config.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read Docker client key material: %w", err)
+		}
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
 			return nil, fmt.Errorf("load Docker client certificate: %w", err)
 		}
@@ -193,9 +215,40 @@ func TLSConfig(config ConnectionConfig) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+// resolveTLSMaterial treats a TLS value as Base64 text first. This keeps the
+// tool contract portable across MCP clients, while the file-path fallback
+// preserves compatibility with Docker CLI-style deployments.
+func resolveTLSMaterial(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("TLS material is empty")
+	}
+	encoded := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, value)
+	if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(encoded); err == nil {
+		return decoded, nil
+	}
+	material, err := os.ReadFile(value)
+	if err != nil {
+		return nil, fmt.Errorf("value is neither valid Base64 nor a readable file path: %w", err)
+	}
+	return material, nil
+}
+
 // NewClient creates a Docker API client using a resolved connection.
 func NewClient(input ConnectionInput) (*client.Client, ConnectionConfig, error) {
-	config, err := ResolveConnection(input)
+	return newClient(input, true)
+}
+
+func newClient(input ConnectionInput, inheritEnvironment bool) (*client.Client, ConnectionConfig, error) {
+	config, err := resolveConnection(input, inheritEnvironment)
 	if err != nil {
 		return nil, ConnectionConfig{}, err
 	}
