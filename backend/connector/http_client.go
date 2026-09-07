@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type httpExecutor struct {
@@ -19,7 +20,7 @@ type httpExecutor struct {
 	maxResponseBytes int64
 }
 
-func newHTTPExecutor(target Target, client *http.Client, maxResponseBytes int64) (*httpExecutor, error) {
+func newHTTPExecutor(target Target, client *http.Client, maxResponseBytes int64, fallbackTimeout ...time.Duration) (*httpExecutor, error) {
 	baseURL := configString(target.Resource.Config, "url", "endpoint")
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
@@ -28,8 +29,25 @@ func newHTTPExecutor(target Target, client *http.Client, maxResponseBytes int64)
 	if client == nil {
 		client = &http.Client{CheckRedirect: sameHostRedirect}
 	}
+	fallback := 8 * time.Second
+	if len(fallbackTimeout) > 0 && fallbackTimeout[0] > 0 {
+		fallback = fallbackTimeout[0]
+	}
+	timeout := resourceTimeout(target.Resource, fallback)
+	configuredClient := *client
+	configuredClient.Timeout = timeout
+	transport, ok := client.Transport.(*http.Transport)
+	if client.Transport == nil {
+		transport, ok = http.DefaultTransport.(*http.Transport)
+	}
+	if ok {
+		cloned := transport.Clone()
+		cloned.TLSHandshakeTimeout = timeout
+		cloned.ResponseHeaderTimeout = timeout
+		configuredClient.Transport = cloned
+	}
 	return &httpExecutor{
-		client: client, baseURL: strings.TrimRight(parsed.String(), "/"),
+		client: &configuredClient, baseURL: strings.TrimRight(parsed.String(), "/"),
 		secret: secretFields(target.Secret), maxResponseBytes: maxResponseBytes,
 	}, nil
 }

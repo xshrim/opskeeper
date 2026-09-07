@@ -12,7 +12,7 @@ import (
 
 type redisAdapter struct{ client *redis.Client }
 
-func newRedisAdapter(target Target, _ Limits) (Adapter, error) {
+func newRedisAdapter(target Target, limits Limits) (Adapter, error) {
 	host := configString(target.Resource.Config, "host")
 	if host == "" {
 		return nil, connectorError(CategoryConfiguration, "configure Redis", false, errors.New("host is required"))
@@ -22,7 +22,8 @@ func newRedisAdapter(target Target, _ Limits) (Adapter, error) {
 	if value, ok := target.Resource.Config["database"].(float64); ok && value >= 0 {
 		database = int(value)
 	}
-	client := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(host, strconv.Itoa(configPort(target.Resource.Config, 6379))), DB: database, Username: secret["username"], Password: secret["password"]})
+	timeout := resourceTimeout(target.Resource, limits.Timeout)
+	client := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(host, strconv.Itoa(configPort(target.Resource.Config, 6379))), DB: database, Username: secret["username"], Password: secret["password"], DialTimeout: timeout, ReadTimeout: timeout, WriteTimeout: timeout})
 	return &redisAdapter{client: client}, nil
 }
 

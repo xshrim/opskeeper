@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
@@ -20,7 +19,7 @@ type kafkaAdapter struct {
 	transport *kafka.Transport
 }
 
-func newKafkaAdapter(target Target, _ Limits) (Adapter, error) {
+func newKafkaAdapter(target Target, limits Limits) (Adapter, error) {
 	secret := secretFields(target.Secret)
 	username, password := strings.TrimSpace(secret["username"]), secret["password"]
 	if (username == "") != (password == "") {
@@ -34,7 +33,8 @@ func newKafkaAdapter(target Target, _ Limits) (Adapter, error) {
 	if strings.TrimSpace(broker) == "" {
 		return nil, connectorError(CategoryConfiguration, "configure Kafka", false, errors.New("broker address is required"))
 	}
-	dialer := &kafka.Dialer{Timeout: 8 * time.Second, DualStack: true}
+	timeout := resourceTimeout(target.Resource, limits.Timeout)
+	dialer := &kafka.Dialer{Timeout: timeout, DualStack: true}
 	transport := &kafka.Transport{}
 	if configBool(target.Resource.Config, "tls") {
 		serverName := configString(target.Resource.Config, "tls_server_name")
@@ -133,7 +133,7 @@ func kafkaPartitionFacts(partitions []kafka.Partition) (topicCount, underReplica
 // optional request is independently degradable because it is commonly denied
 // by Group ACLs or unsupported by older brokers.
 func (a *kafkaAdapter) inspectGroups(ctx context.Context, partitions []kafka.Partition, snapshot *DiagnosticSnapshot) {
-	client := &kafka.Client{Addr: kafka.TCP(a.broker), Timeout: 8 * time.Second, Transport: a.transport}
+	client := &kafka.Client{Addr: kafka.TCP(a.broker), Timeout: a.dialer.Timeout, Transport: a.transport}
 	groups, err := client.ListGroups(ctx, &kafka.ListGroupsRequest{})
 	if err != nil || groups.Error != nil {
 		snapshot.Unavailable = append(snapshot.Unavailable, "consumer_groups", "lag")

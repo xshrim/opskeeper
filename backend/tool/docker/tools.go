@@ -84,12 +84,13 @@ type DockerInfoOutput struct {
 // the same public parameter contract.
 func InputSchema(extra map[string]any) map[string]any {
 	properties := map[string]any{
-		"docker_host":            map[string]any{"type": "string", "description": "Optional Docker daemon URL (unix:///var/run/docker.sock, http[s]://host:port). Connection failures fall back to the default connection."},
-		"docker_ca":              map[string]any{"type": "string", "description": "Optional CA PEM content encoded as Base64, or a path to a CA PEM file, for an HTTPS Docker daemon."},
-		"docker_cert":            map[string]any{"type": "string", "description": "Optional client certificate PEM content encoded as Base64, or a path to a PEM file; use together with docker_key."},
-		"docker_key":             map[string]any{"type": "string", "description": "Optional client private key PEM content encoded as Base64, or a path to a PEM file; use together with docker_cert."},
-		"docker_server_name":     map[string]any{"type": "string", "description": "Optional TLS server name override."},
-		"docker_skip_tls_verify": map[string]any{"type": "boolean", "default": false, "description": "Skip TLS certificate verification for explicitly trusted development endpoints."},
+		"host":            map[string]any{"type": "string", "description": "Optional Docker daemon URL."},
+		"timeout":         map[string]any{"description": "Docker request timeout in seconds or duration such as 30s. Defaults to 30s."},
+		"tls_ca":          map[string]any{"type": "string", "description": "Optional CA PEM content encoded as Base64, or a path to a CA PEM file."},
+		"tls_cert":        map[string]any{"type": "string", "description": "Optional client certificate PEM content encoded as Base64, or a path to a PEM file."},
+		"tls_key":         map[string]any{"type": "string", "description": "Optional client private key PEM content encoded as Base64, or a path to a private key PEM file."},
+		"tls_server_name": map[string]any{"type": "string", "description": "Optional TLS server name override."},
+		"skip_tls_verify": map[string]any{"type": "boolean", "default": false, "description": "Skip TLS certificate verification."},
 	}
 	for name, schema := range extra {
 		properties[name] = schema

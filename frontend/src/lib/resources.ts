@@ -7,15 +7,21 @@ type ResourceShape = {
   config?: Record<string, unknown>;
 };
 
+export const endpointResourceKinds = ['Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'] as const;
+
+export function resourceSupportsEndpointTimeout(kind: string) {
+  return (endpointResourceKinds as readonly string[]).includes(kind);
+}
+
 export function resourceHasConnector(resource: Resource) {
   if (resource.kind === 'MCPServer') return true;
   if (resource.kind === 'Docker') {
     // The connector endpoint only performs Direct checks. Agent resources
     // are exercised through their linked MCPServer and must not fall back to
     // the local Docker socket.
-    return String(resource.access_mode ?? resource.subtype ?? '').toLowerCase() !== 'agent';
+    return String(resource.subtype ?? '').toLowerCase() !== 'agent';
   }
-  return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki'].includes(resource.kind);
+  return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'].includes(resource.kind);
 }
 
 export function resourceSchemaName(kind: string, schemas: ResourceSchema[]) {

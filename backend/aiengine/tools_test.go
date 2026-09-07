@@ -258,7 +258,7 @@ type accessModeContextProvider struct {
 	modes []string
 }
 
-func (p accessModeContextProvider) Kinds() []string { return p.kinds }
+func (p accessModeContextProvider) Kinds() []string       { return p.kinds }
 func (p accessModeContextProvider) AccessModes() []string { return p.modes }
 func (p accessModeContextProvider) Resolve(_ context.Context, resource ContextResource) ([]Tool, []ContextFact, error) {
 	return []Tool{ToolFunc{Def: ToolDefinition{Name: "read", Source: "test", ResourceID: resource.ID}}}, nil, nil
@@ -267,8 +267,8 @@ func (p accessModeContextProvider) Resolve(_ context.Context, resource ContextRe
 func TestResourceContextResolverSelectsProviderByAccessMode(t *testing.T) {
 	serverID := "mcp-server-1"
 	resources := fakeContextResourceReader{resources: map[string]ContextResource{
-		"direct-1": {ID: "direct-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "direct", Status: "active"},
-		"agent-1":  {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "agent", MCPServerResourceID: &serverID, Status: "active"},
+		"direct-1": {ID: "direct-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "direct", Status: "active"},
+		"agent-1":  {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID, Status: "active"},
 	}}
 	direct := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"direct"}}
 	agent := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"agent"}}
@@ -286,7 +286,7 @@ func TestResourceContextResolverDoesNotFallbackAgentToUnconstrainedProvider(t *t
 	serverID := "mcp-server-1"
 	resolver := ResourceContextResolver{
 		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
-			"agent-1": {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", AccessMode: "agent", MCPServerResourceID: &serverID, Status: "active"},
+			"agent-1": {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID, Status: "active"},
 		}},
 		Providers: []ContextProvider{fakeContextProvider{}},
 	}

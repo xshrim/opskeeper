@@ -7,8 +7,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load() error = %v", err)
 	}
-	if len(items) != 34 {
-		t.Fatalf("load() returned %d migrations, want thirty-four migrations", len(items))
+	if len(items) != 35 {
+		t.Fatalf("load() returned %d migrations, want thirty-five migrations", len(items))
 	}
 	if items[0].version != 1 || items[0].name != "initial" {
 		t.Fatalf("loaded migration = %#v, want version 1 initial", items[0])
@@ -112,6 +112,7 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if items[33].version != 34 || items[33].name != "resource_access_mode" {
 		t.Fatalf("loaded migration = %#v, want version 34 resource_access_mode", items[33])
 	}
+	if items[34].version != 35 || items[34].name != "unified_resource_access" { t.Fatalf("loaded migration = %#v, want version 35 unified_resource_access", items[34]) }
 	for _, item := range items {
 		if item.sql == "" || item.downSQL == "" || item.checksum == "" {
 			t.Fatalf("migration is missing up or down SQL: %#v", item)

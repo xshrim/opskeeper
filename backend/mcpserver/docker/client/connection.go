@@ -19,12 +19,13 @@ import (
 // TLS fields accept either Base64-encoded PEM material or a path to a PEM
 // file. The server resolves the material and never returns it in tool output.
 type ConnectionInput struct {
-	DockerHost       string `json:"docker_host,omitempty" jsonschema:"Optional Docker daemon URL. Tool input takes precedence over the environment."`
-	DockerCA         string `json:"docker_ca,omitempty" jsonschema:"CA PEM material as Base64 text or a file path for an HTTPS Docker daemon."`
-	DockerCert       string `json:"docker_cert,omitempty" jsonschema:"Client certificate PEM material as Base64 text or a file path for mutual TLS."`
-	DockerKey        string `json:"docker_key,omitempty" jsonschema:"Client private key PEM material as Base64 text or a file path for mutual TLS."`
-	DockerServerName string `json:"docker_server_name,omitempty" jsonschema:"Optional TLS server name override."`
-	DockerSkipVerify bool   `json:"docker_skip_tls_verify,omitempty" jsonschema:"Skip TLS certificate verification. Defaults to false; use only for explicitly trusted development endpoints."`
+	DockerHost       string `json:"host,omitempty" jsonschema:"Optional Docker daemon URL."`
+	TimeoutSeconds   any    `json:"timeout,omitempty" jsonschema:"Docker request timeout in seconds or duration such as 30s. Defaults to 30s."`
+	DockerCA         string `json:"tls_ca,omitempty" jsonschema:"CA PEM material as Base64 text or a file path."`
+	DockerCert       string `json:"tls_cert,omitempty" jsonschema:"Client certificate PEM material as Base64 text or a file path."`
+	DockerKey        string `json:"tls_key,omitempty" jsonschema:"Client private key PEM material as Base64 text or a file path."`
+	DockerServerName string `json:"tls_server_name,omitempty" jsonschema:"Optional TLS server name override."`
+	DockerSkipVerify bool   `json:"skip_tls_verify,omitempty" jsonschema:"Skip TLS certificate verification."`
 }
 
 // ConnectionConfig is the resolved, non-secret connection configuration.

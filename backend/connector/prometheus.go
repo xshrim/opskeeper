@@ -14,7 +14,7 @@ type prometheusAdapter struct {
 }
 
 func newPrometheusAdapter(target Target, client *http.Client, limits Limits) (Adapter, error) {
-	executor, err := newHTTPExecutor(target, client, limits.MaxResponseBytes)
+	executor, err := newHTTPExecutor(target, client, limits.MaxResponseBytes, limits.Timeout)
 	if err != nil {
 		return nil, err
 	}

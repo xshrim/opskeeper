@@ -42,16 +42,16 @@
   <label class="provider-config-url" class:invalid={configurationAttempted && !baseURLValid}>
     <span><i>*</i>服务地址</span><input bind:value={baseURL} required type="url" placeholder="https://api.example.com/v1" autocomplete="off" />
   </label>
-  {#if showAPIKey}<label class="provider-config-api-key" class:invalid={configurationAttempted && !apiKey.trim()}>
+  {#if showAPIKey}<label class="provider-config-api-key">
       <span>API Key</span>
       <span class="provider-api-key-control">
-        <input bind:value={apiKey} required type={apiKeyVisible ? 'text' : 'password'} placeholder={apiKeyLoading ? '正在读取 API Key…' : '请输入 API Key'} autocomplete="new-password" />
+        <input bind:value={apiKey} type={apiKeyVisible ? 'text' : 'password'} placeholder={apiKeyLoading ? '正在读取 API Key…' : '请输入 API Key（可选）'} autocomplete="new-password" />
         <button class="provider-api-key-toggle" type="button" aria-label={apiKeyVisible ? '隐藏 API Key' : '显示 API Key'} aria-pressed={apiKeyVisible} data-tooltip={apiKeyVisible ? '隐藏 API Key' : '显示 API Key'} on:click={() => (apiKeyVisible = !apiKeyVisible)}>
           {#if apiKeyVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}
         </button>
       </span>
     </label>{/if}
-  <label class="provider-config-timeout"><span>请求超时（秒）</span><input bind:value={timeoutSeconds} min="1" max="300" type="number" /></label>
+  <label class="provider-config-timeout"><span>超时时间（秒）</span><input bind:value={timeoutSeconds} min="1" max="300" type="number" /></label>
   <label class="provider-config-concurrency"><span>最大并发</span><input bind:value={maxConcurrency} min="1" type="number" /></label>
   <label class="provider-config-rate-limit"><span>限流（请求/分钟）</span><input bind:value={rateLimitPerMinute} min="0" type="number" /></label>
 </div>

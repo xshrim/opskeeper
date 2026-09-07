@@ -8,7 +8,6 @@ import (
 
 	"opskeeper/backend/aiengine"
 	"opskeeper/backend/mcpserver/docker/client"
-	"opskeeper/backend/resource"
 	dockertool "opskeeper/backend/tool/docker"
 )
 
@@ -16,7 +15,7 @@ import (
 // logical Direct resource. Connection fields are adapter-owned and overwrite
 // any same-named values supplied by the model.
 func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
-	if strings.EqualFold(strings.TrimSpace(item.AccessMode), resource.AccessModeAgent) {
+	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Docker agent resources must use the MCP provider")
 	}
 	connection, err := s.dockerConnection(ctx, item)
@@ -105,7 +104,7 @@ func dockerSchema(extra map[string]any) json.RawMessage {
 func directDockerSchema(extra map[string]any) json.RawMessage {
 	schema := dockertool.InputSchema(extra)
 	if properties, ok := schema["properties"].(map[string]any); ok {
-		for _, name := range []string{"docker_host", "docker_ca", "docker_cert", "docker_key", "docker_server_name", "docker_skip_tls_verify"} {
+		for _, name := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "tls_server_name", "skip_tls_verify"} {
 			delete(properties, name)
 		}
 	}
@@ -158,12 +157,13 @@ func setDockerConnectionFromMap(connection *client.ConnectionInput, values map[s
 	if connection == nil {
 		return
 	}
-	connection.DockerHost = stringValue(values, "docker_host")
-	connection.DockerCA = stringValue(values, "docker_ca")
-	connection.DockerCert = stringValue(values, "docker_cert")
-	connection.DockerKey = stringValue(values, "docker_key")
-	connection.DockerServerName = stringValue(values, "docker_server_name")
-	connection.DockerSkipVerify = boolValue(values, "docker_skip_tls_verify")
+	connection.DockerHost = stringValue(values, "host")
+	connection.TimeoutSeconds = values["timeout"]
+	connection.DockerCA = stringValue(values, "tls_ca")
+	connection.DockerCert = stringValue(values, "tls_cert")
+	connection.DockerKey = stringValue(values, "tls_key")
+	connection.DockerServerName = stringValue(values, "tls_server_name")
+	connection.DockerSkipVerify = boolValue(values, "skip_tls_verify")
 }
 
 func setDockerConnectionFromMapIfEmpty(connection *client.ConnectionInput, values map[string]any) {
@@ -171,22 +171,25 @@ func setDockerConnectionFromMapIfEmpty(connection *client.ConnectionInput, value
 		return
 	}
 	if connection.DockerHost == "" {
-		connection.DockerHost = stringValue(values, "docker_host")
+		connection.DockerHost = stringValue(values, "host")
+	}
+	if client.TimeoutSeconds(connection.TimeoutSeconds) <= 0 {
+		connection.TimeoutSeconds = values["timeout"]
 	}
 	if connection.DockerCA == "" {
-		connection.DockerCA = stringValue(values, "docker_ca")
+		connection.DockerCA = stringValue(values, "tls_ca")
 	}
 	if connection.DockerCert == "" {
-		connection.DockerCert = stringValue(values, "docker_cert")
+		connection.DockerCert = stringValue(values, "tls_cert")
 	}
 	if connection.DockerKey == "" {
-		connection.DockerKey = stringValue(values, "docker_key")
+		connection.DockerKey = stringValue(values, "tls_key")
 	}
 	if connection.DockerServerName == "" {
-		connection.DockerServerName = stringValue(values, "docker_server_name")
+		connection.DockerServerName = stringValue(values, "tls_server_name")
 	}
 	if !connection.DockerSkipVerify {
-		connection.DockerSkipVerify = boolValue(values, "docker_skip_tls_verify")
+		connection.DockerSkipVerify = boolValue(values, "skip_tls_verify")
 	}
 }
 

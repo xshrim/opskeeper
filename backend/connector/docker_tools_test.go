@@ -17,9 +17,9 @@ func (r dockerResourceReader) Get(context.Context, string) (resource.Resource, e
 }
 
 func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
-	item := resource.Resource{ID: "docker-1", Kind: "Docker", Status: resource.StatusActive, SchemaVersion: 1, Config: map[string]any{"docker_host": "tcp://configured:2375"}}
+	item := resource.Resource{ID: "docker-1", Kind: "Docker", Status: resource.StatusActive, SchemaVersion: 1, Config: map[string]any{"host": "tcp://configured:2375"}}
 	service := NewService(nil, dockerResourceReader{item: item}, nil, nil, DefaultLimits())
-	tools, facts, err := service.AIEngineProvider().Resolve(context.Background(), aiengine.ContextResource{ID: item.ID, Kind: item.Kind, AccessMode: resource.AccessModeDirect, Status: item.Status, Config: item.Config})
+	tools, facts, err := service.AIEngineProvider().Resolve(context.Background(), aiengine.ContextResource{ID: item.ID, Kind: item.Kind, Subtype: "Direct", Status: item.Status, Config: item.Config})
 	if err != nil {
 		t.Fatalf("resolve Docker tools: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 			t.Fatalf("tool %q schema: %v", tool.Definition().Name, err)
 		}
 		properties := schema["properties"].(map[string]any)
-		for _, hidden := range []string{"docker_host", "docker_ca", "docker_cert", "docker_key", "docker_server_name", "docker_skip_tls_verify"} {
+		for _, hidden := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "tls_server_name", "skip_tls_verify"} {
 			if _, ok := properties[hidden]; ok {
 				t.Fatalf("tool %q exposes adapter-owned field %q", tool.Definition().Name, hidden)
 			}
@@ -52,8 +52,8 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 func TestDockerConnectionConfigWinsOverCredential(t *testing.T) {
 	service := &Service{}
 	credentialID := "credential-1"
-	item := aiengine.ContextResource{CredentialID: &credentialID, Config: map[string]any{"docker_host": "tcp://configured:2375", "docker_skip_tls_verify": true}}
-	service.credentials = fakeDockerCredentialReader{secret: []byte(`{"docker_host":"tcp://credential:2375","docker_ca":"credential-ca"}`)}
+	item := aiengine.ContextResource{CredentialID: &credentialID, Config: map[string]any{"host": "tcp://configured:2375", "skip_tls_verify": true}}
+	service.credentials = fakeDockerCredentialReader{secret: []byte(`{"host":"tcp://credential:2375","tls_ca":"credential-ca"}`)}
 	connection, err := service.dockerConnection(context.Background(), item)
 	if err != nil {
 		t.Fatalf("dockerConnection: %v", err)

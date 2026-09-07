@@ -7,10 +7,12 @@
   export let rawConfig = '{}';
   export let editMode = false;
   export let credentialConfigured = false;
+  export let showTimeout = false;
+  export let timeoutSeconds = 60;
   export let isRequired: (key: string) => boolean = () => false;
 </script>
 
-{#if schema?.schema.properties}
+{#if schema?.schema.properties && Object.keys(schema.schema.properties).length > 0}
   <div class="schema-inputs">
     <p class="eyebrow">SCHEMA FIELDS</p>
     {#each Object.entries(schema.schema.properties) as [key, field]}
@@ -27,7 +29,19 @@
         {/if}
       </label>
     {/each}
+    {#if showTimeout && !schema.schema.properties.timeout_seconds}
+      <label>
+        <span>超时时间（秒）</span>
+        <input bind:value={timeoutSeconds} type="number" min="1" max="600" />
+      </label>
+    {/if}
   </div>
 {:else}
+  {#if showTimeout}
+    <div class="schema-inputs">
+      <p class="eyebrow">SCHEMA FIELDS</p>
+      <label><span>超时时间（秒）</span><input bind:value={timeoutSeconds} type="number" min="1" max="600" /></label>
+    </div>
+  {/if}
   <label>配置 JSON<textarea bind:value={rawConfig} rows="4" spellcheck="false"></textarea></label>
 {/if}

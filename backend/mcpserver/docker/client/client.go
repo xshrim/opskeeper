@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/client"
 )
@@ -69,6 +71,11 @@ func IsConnectionError(err error) bool {
 // default local Unix socket when explicit connection options caused a failure. The
 // callback must consume/close any response bodies before returning.
 func WithFallback(ctx context.Context, input ConnectionInput, operation func(*client.Client) error) (*ConnectionFallbackWarning, error) {
+	if timeout := TimeoutSeconds(input.TimeoutSeconds); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	cli, err := Open(input)
 	if err != nil {
 		if !HasExplicitOptions(input) {
@@ -106,6 +113,11 @@ func retryDefault(_ context.Context, customErr error, operation func(*client.Cli
 
 // Ping verifies that a connection can reach the Docker daemon.
 func Ping(ctx context.Context, input ConnectionInput) error {
+	if timeout := TimeoutSeconds(input.TimeoutSeconds); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 	cli, err := Open(input)
 	if err != nil {
 		return err
@@ -113,6 +125,28 @@ func Ping(ctx context.Context, input ConnectionInput) error {
 	defer cli.Close()
 	_, err = cli.Ping(ctx)
 	return err
+}
+
+// TimeoutSeconds accepts a numeric number of seconds or a Go duration string.
+func TimeoutSeconds(value any) time.Duration {
+	switch v := value.(type) {
+	case int:
+		if v > 0 {
+			return time.Duration(v) * time.Second
+		}
+	case float64:
+		if v > 0 {
+			return time.Duration(v * float64(time.Second))
+		}
+	case string:
+		if d, err := time.ParseDuration(strings.TrimSpace(v)); err == nil && d > 0 {
+			return d
+		}
+		if n, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && n > 0 {
+			return time.Duration(n * float64(time.Second))
+		}
+	}
+	return 30 * time.Second
 }
 
 // PingDraft verifies the supplied connection without inheriting Docker

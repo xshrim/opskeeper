@@ -195,11 +195,11 @@ AIEngine 不为这些 Server 增加特殊分支，也不区分 `managed` 和 `ex
 
 ## 7. 资源模型
 
-资源需要显式表达接入方式和 Agent 传输入口。目标字段为：
+所有资源使用统一结构；接入方式是 `subtype` 的值，Agent 传输入口使用统一的 `agent_ref`。不得为 Direct 和 Agent 建立两套结构体。目标字段为：
 
 ```text
-access_mode: direct | agent
-mcp_server_resource_id: UUID，可为空
+subtype: Direct | Agent（或资源定义的其他子类型）
+agent_ref: UUID，可为空
 config: JSONB
 credential_id: UUID，可为空
 ```
@@ -208,19 +208,19 @@ credential_id: UUID，可为空
 
 ```text
 direct:
-  access_mode = direct
+  subtype = Direct
   config/credential 满足对应资源工具集要求
-  mcp_server_resource_id 为空
+  agent_ref 为空
 
 agent:
-  access_mode = agent
-  mcp_server_resource_id 必须存在
+  subtype = Agent
+  agent_ref 必须存在
   关联资源的 kind 必须为 MCPServer
 ```
 
 关联不能绕过 Scope 可见性和资源使用授权。一个 MCPServer 可以服务多个逻辑资源，但每次执行仍以逻辑资源 ID 作为权限、证据和审计主体。
 
-如果现有资源模型继续使用 `subtype=Direct|Agent` 过渡，运行时只能把它解析为上述语义；最终设计以显式 `access_mode` 为准，不能让不同字段同时成为权威来源。
+`subtype` 和 `agent_ref` 是唯一权威来源，不再保留 `access_mode` 或 `mcp_server_resource_id`。
 
 ## 8. AIEngine 上下文解析
 
@@ -229,7 +229,7 @@ agent:
 ```text
 selected resource
   ├─ direct -> resource kind -> built-in ToolSet -> direct connection
-  └─ agent  -> mcp_server_resource_id -> MCP discovery -> remote proxy tools
+  └─ agent  -> agent_ref -> MCP discovery -> remote proxy tools
 ```
 
 工具注册键必须至少包含 `(logical_resource_id, tool_name)`。多个同类型资源可以拥有同名工具；模型声明中的函数名冲突只在执行绑定时生成稳定别名，不改变公共工具名、审计名或调用结果。
@@ -310,4 +310,3 @@ Direct 失败不得自动切换到 Agent，Agent 失败也不得自动切换到 
 - 没有调用方的旧工具名称和旧资源接入路径。
 
 允许保留的仅是 HTTP、MCP、AIEngine 和资源服务适配代码。旧设计不需要兼容；若迁移发现旧数据无法直接转换，应通过一次性迁移或明确失败报告处理，而不是长期保留双轨运行时。
-

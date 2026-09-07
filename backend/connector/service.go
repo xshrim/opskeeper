@@ -62,7 +62,7 @@ func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, 
 	adapter, err := s.prepare(ctx, item)
 	if err == nil {
 		check.Capabilities = adapter.Capabilities()
-		err = s.execute(ctx, func(runCtx context.Context) error { return adapter.Test(runCtx) })
+		err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return adapter.Test(runCtx) })
 	}
 	check.LatencyMS = max(s.now().Sub(started).Milliseconds(), 0)
 	if err == nil {
@@ -117,7 +117,7 @@ func (s *Service) QueryMetrics(ctx context.Context, resourceID string, query Met
 	if !ok {
 		return Evidence{}, connectorError(CategoryUnsupported, "query metrics", false, ErrUnsupported)
 	}
-	return s.collect(ctx, item.ID, CapabilityQueryMetrics, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, CapabilityQueryMetrics, func(runCtx context.Context) (Evidence, error) {
 		return querier.QueryMetrics(runCtx, query)
 	})
 }
@@ -140,7 +140,7 @@ func (s *Service) QueryLogs(ctx context.Context, resourceID string, query LogsQu
 	if !ok {
 		return Evidence{}, connectorError(CategoryUnsupported, "query logs", false, ErrUnsupported)
 	}
-	return s.collect(ctx, item.ID, CapabilityQueryLogs, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, CapabilityQueryLogs, func(runCtx context.Context) (Evidence, error) {
 		return querier.QueryLogs(runCtx, query)
 	})
 }
@@ -160,7 +160,7 @@ func (s *Service) QueryTraces(ctx context.Context, resourceID string, query Trac
 	if !ok {
 		return Evidence{}, connectorError(CategoryUnsupported, "query traces", false, ErrUnsupported)
 	}
-	return s.collect(ctx, item.ID, CapabilityQueryTraces, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, CapabilityQueryTraces, func(runCtx context.Context) (Evidence, error) {
 		return querier.QueryTraces(runCtx, query)
 	})
 }
@@ -174,7 +174,7 @@ func (s *Service) GetAlerts(ctx context.Context, resourceID string, query Alerts
 	if !ok {
 		return Evidence{}, connectorError(CategoryUnsupported, "get alerts", false, ErrUnsupported)
 	}
-	return s.collect(ctx, item.ID, CapabilityGetAlerts, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, CapabilityGetAlerts, func(runCtx context.Context) (Evidence, error) {
 		return querier.GetAlerts(runCtx, query)
 	})
 }
@@ -194,7 +194,7 @@ func (s *Service) ReadKubernetes(ctx context.Context, resourceID string, query K
 	if !ok {
 		return Evidence{}, connectorError(CategoryUnsupported, "read Kubernetes", false, ErrUnsupported)
 	}
-	return s.collect(ctx, item.ID, CapabilityKubernetesRead, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, CapabilityKubernetesRead, func(runCtx context.Context) (Evidence, error) {
 		return reader.ReadKubernetes(runCtx, query)
 	})
 }
@@ -234,7 +234,7 @@ func (s *Service) inspect(ctx context.Context, resourceID string, capability Cap
 	if err != nil {
 		return Evidence{}, err
 	}
-	return s.collect(ctx, item.ID, capability, func(runCtx context.Context) (Evidence, error) {
+	return s.collectResource(ctx, item, capability, func(runCtx context.Context) (Evidence, error) {
 		snapshot, err := run(adapter, runCtx)
 		if err != nil {
 			return Evidence{}, err
@@ -286,6 +286,10 @@ func (s *Service) prepare(ctx context.Context, item resource.Resource) (Adapter,
 }
 
 func (s *Service) collect(ctx context.Context, resourceID string, capability Capability, run func(context.Context) (Evidence, error)) (result Evidence, err error) {
+	return s.collectResource(ctx, resource.Resource{ID: resourceID}, capability, run)
+}
+
+func (s *Service) collectResource(ctx context.Context, item resource.Resource, capability Capability, run func(context.Context) (Evidence, error)) (result Evidence, err error) {
 	started := time.Now()
 	defer func() {
 		metricResult := "success"
@@ -296,14 +300,14 @@ func (s *Service) collect(ctx context.Context, resourceID string, capability Cap
 		}
 		observability.RecordConnector(ctx, string(capability), metricResult, time.Since(started))
 	}()
-	result, err = executeValue(s, ctx, run)
+	result, err = executeValueWithTimeout(s, ctx, resourceTimeout(item, s.limits.Timeout), run)
 	if err != nil {
 		return Evidence{}, err
 	}
 	if int64(len(result.Data)) > s.limits.MaxResponseBytes {
 		return Evidence{}, connectorError(CategoryResponseTooLarge, "collect connector evidence", false, ErrResponseTooLarge)
 	}
-	result.SourceResourceID = resourceID
+	result.SourceResourceID = item.ID
 	result.Capability = capability
 	if result.CollectedAt.IsZero() {
 		result.CollectedAt = s.now()
@@ -321,7 +325,18 @@ func (s *Service) execute(ctx context.Context, run func(context.Context) error) 
 	return err
 }
 
+func (s *Service) executeForResource(ctx context.Context, item resource.Resource, run func(context.Context) error) error {
+	_, err := executeValueWithTimeout(s, ctx, resourceTimeout(item, s.limits.Timeout), func(runCtx context.Context) (struct{}, error) {
+		return struct{}{}, run(runCtx)
+	})
+	return err
+}
+
 func executeValue[T any](s *Service, ctx context.Context, run func(context.Context) (T, error)) (T, error) {
+	return executeValueWithTimeout(s, ctx, s.limits.Timeout, run)
+}
+
+func executeValueWithTimeout[T any](s *Service, ctx context.Context, timeout time.Duration, run func(context.Context) (T, error)) (T, error) {
 	var zero T
 	select {
 	case s.slots <- struct{}{}:
@@ -329,7 +344,7 @@ func executeValue[T any](s *Service, ctx context.Context, run func(context.Conte
 	default:
 		return zero, connectorError(CategoryRateLimited, "acquire connector slot", true, ErrRateLimited)
 	}
-	runCtx, cancel := context.WithTimeout(ctx, s.limits.Timeout)
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var lastErr error
 	for attempt := 0; attempt <= s.limits.Retries; attempt++ {
@@ -347,6 +362,28 @@ func executeValue[T any](s *Service, ctx context.Context, run func(context.Conte
 		return zero, connectorError(CategoryTimeout, "execute connector", true, context.DeadlineExceeded)
 	}
 	return zero, lastErr
+}
+
+func resourceTimeout(item resource.Resource, fallback time.Duration) time.Duration {
+	seconds := 0
+	switch value := item.Config["timeout_seconds"].(type) {
+	case float64:
+		seconds = int(value)
+	case float32:
+		seconds = int(value)
+	case int:
+		seconds = value
+	case int64:
+		seconds = int(value)
+	case json.Number:
+		if parsed, err := value.Int64(); err == nil {
+			seconds = int(parsed)
+		}
+	}
+	if seconds < 1 || seconds > 600 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func validateWindow(start, end time.Time, maximum time.Duration) error {

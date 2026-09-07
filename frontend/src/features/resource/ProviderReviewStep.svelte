@@ -22,7 +22,7 @@
   export let onSubmit: () => void = () => {};
 </script>
 
-<p class="resource-add-description">使用默认 Model 完成连接核验后，才可创建 Provider 并发布以下 Model 列表。</p>
+<p class="resource-add-description">使用默认模型完成连接核验后，才可创建 Provider 并发布以下模型列表。</p>
 <form id="provider-create-form" class="provider-summary" on:submit|preventDefault={onSubmit}>
   <div><span>Provider</span><strong>{resourceName}</strong><small>{providerTypeLabel} · {providerStatus === 'active' ? '已启用' : '未启用'}</small></div>
   <div><span>服务地址</span><strong>{baseURL}</strong><small>{protocol} · 超时 {timeoutSeconds} 秒 · 并发 {maxConcurrency}</small></div>
@@ -37,5 +37,5 @@
   </div>
   <div><span>资源属性</span><strong>{scopeSummary}</strong><small>{labelsConfigured ? '已配置的资源标签' : '未配置资源标签'}</small></div>
   <div><span>Provider角色</span><strong>{purposeLabels.length > 0 ? purposeLabels.join('、') : '未设置'}</strong><small>同级别同一角色会自动路由至此 Provider。</small></div>
-  <div class="provider-summary-models"><span>Model 列表</span>{#each models as model}<div><strong>{model.name}</strong><small>{model.contextWindowTokens.toLocaleString()} Token · {model.capabilities.map(capabilityLabel).join('、')}</small></div>{/each}</div>
+  <div class="provider-summary-models"><span>模型列表</span>{#each models as model}<div><strong>{model.name}</strong><small>{model.contextWindowTokens.toLocaleString()} Token · {model.capabilities.map(capabilityLabel).join('、')}</small></div>{/each}</div>
 </form>

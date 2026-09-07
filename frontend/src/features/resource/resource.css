@@ -1,4 +1,44 @@
 /* Resource page layout. Theme tokens and shared controls remain in app.css. */
+:root {
+  --provider-role-general-bg: #e8f1fb;
+  --provider-role-general-fg: #23558b;
+  --provider-role-general-border: #b4cbe7;
+  --provider-role-diagnosis-bg: #f8e9f0;
+  --provider-role-diagnosis-fg: #893653;
+  --provider-role-diagnosis-border: #e6b9ca;
+  --provider-role-inspection-bg: #e7f4eb;
+  --provider-role-inspection-fg: #276845;
+  --provider-role-inspection-border: #b3d8bf;
+  --provider-role-workflow-bg: #f7efdf;
+  --provider-role-workflow-fg: #78551d;
+  --provider-role-workflow-border: #dfca9d;
+  --provider-default-bg: #f0eafb;
+  --provider-default-fg: #64418c;
+  --provider-default-border: #d1bee9;
+  --provider-count-bg: #edf1f5;
+  --provider-count-fg: #526173;
+  --provider-count-border: #c6d0dc;
+}
+:root[data-theme='dark'] {
+  --provider-role-general-bg: #1e3e61;
+  --provider-role-general-fg: #c7e0ff;
+  --provider-role-general-border: #39638f;
+  --provider-role-diagnosis-bg: #5a2941;
+  --provider-role-diagnosis-fg: #ffd1df;
+  --provider-role-diagnosis-border: #914561;
+  --provider-role-inspection-bg: #1f4a39;
+  --provider-role-inspection-fg: #c8f3d8;
+  --provider-role-inspection-border: #39795b;
+  --provider-role-workflow-bg: #58421f;
+  --provider-role-workflow-fg: #ffe4a8;
+  --provider-role-workflow-border: #8f6e34;
+  --provider-default-bg: #49336a;
+  --provider-default-fg: #ead7ff;
+  --provider-default-border: #7655a0;
+  --provider-count-bg: #293642;
+  --provider-count-fg: #c2d6e5;
+  --provider-count-border: #4a6070;
+}
 .resources-layout {
   min-width: 0;
 }
@@ -31,21 +71,45 @@
   display: block;
   min-width: 0;
   overflow: hidden;
+  color: var(--theme-fg-subtle);
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.resource-catalog-row.provider-resource-row .entity-summary > span:last-child strong {
+.resource-catalog-row .entity-summary > span:last-child strong {
   color: var(--theme-fg-strong);
   font-size: 16px;
   font-weight: 650;
 }
-.resource-catalog-row.provider-resource-row .entity-summary > span:last-child small {
-  color: var(--theme-fg-subtle);
+.provider-name-role-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  color: var(--provider-role-general-fg);
+  background: var(--provider-role-general-bg);
+  border: 1px solid var(--provider-role-general-border);
+  border-radius: 3px;
   font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: 2px;
 }
-.resource-catalog-row.mcp-resource-row .entity-summary > span:last-child small {
-  color: var(--theme-fg-subtle);
-  font-size: 10px;
+.provider-name-role-tag.provider-role-diagnosis {
+  color: var(--provider-role-diagnosis-fg);
+  background: var(--provider-role-diagnosis-bg);
+  border-color: var(--provider-role-diagnosis-border);
+}
+.provider-name-role-tag.provider-role-inspection {
+  color: var(--provider-role-inspection-fg);
+  background: var(--provider-role-inspection-bg);
+  border-color: var(--provider-role-inspection-border);
+}
+.provider-name-role-tag.provider-role-workflow {
+  color: var(--provider-role-workflow-fg);
+  background: var(--provider-role-workflow-bg);
+  border-color: var(--provider-role-workflow-border);
 }
 .resource-icon {
   color: var(--theme-fg-muted);
@@ -259,9 +323,7 @@
 }
 .resource-catalog-row summary {
   display: grid;
-  grid-template-columns:
-    minmax(170px, 1.35fr) minmax(86px, 0.72fr) minmax(82px, 0.65fr)
-    minmax(120px, 1fr) minmax(100px, 0.8fr) auto;
+  grid-template-columns: 300px 150px 58px minmax(0, 1fr) 8ch 140px;
   align-items: center;
   gap: 16px;
   min-height: 66px;
@@ -270,17 +332,13 @@
   list-style: none;
 }
 .resource-catalog-row.provider-resource-row summary {
-  grid-template-columns:
-    minmax(230px, 1.55fr) minmax(120px, 0.85fr) minmax(58px, 0.38fr)
-    minmax(135px, 1.05fr) minmax(125px, 0.85fr) minmax(86px, 0.6fr) auto;
+  grid-template-columns: 300px 150px 58px minmax(0, 1fr) 8ch 140px;
 }
 .resource-catalog-row.provider-resource-row summary::after {
   display: none;
 }
 .resource-catalog-row.mcp-resource-row summary {
-  grid-template-columns:
-    minmax(170px, 1.35fr) minmax(86px, 0.72fr) minmax(82px, 0.65fr)
-    minmax(120px, 1fr) minmax(100px, 0.8fr) auto;
+  grid-template-columns: 300px 150px 58px minmax(0, 1fr) 8ch 140px;
 }
 .resource-catalog-row.mcp-resource-row summary::after {
   display: none;
@@ -339,12 +397,18 @@
 }
 .resource-scope-cell strong.scope-pill {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 23px;
   padding: 0 8px;
   color: var(--theme-teal);
   background: var(--theme-bg-selected);
   border-radius: 4px;
   font-size: 12px;
+  line-height: 23px;
+}
+.resource-scope-cell {
+  text-align: center;
 }
 .resource-scope-cell strong.scope-pill.team {
   color: var(--theme-fg-muted);
@@ -354,37 +418,27 @@
   color: var(--theme-fg-muted);
   background: var(--theme-bg-subtle);
 }
-.provider-resource-row .resource-scope-cell,
-.provider-resource-row .provider-purpose-cell {
-  text-align: center;
-}
-.provider-resource-row .resource-scope-cell strong.scope-pill {
-  justify-content: center;
-}
 .provider-purpose-cell {
   min-width: 0;
 }
-.provider-purpose-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  min-height: 23px;
-  max-height: 42px;
-  overflow: hidden;
-}
-.provider-purpose-tag {
-  color: var(--theme-accent);
-  background: var(--theme-bg-selected);
+.resource-tags-group {
+  display: grid;
+  min-width: 0;
 }
 .resource-tags {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-content: center;
   gap: 4px;
   min-width: 0;
   max-height: 38px;
   overflow: hidden;
+}
+.resource-tags.resource-tags-empty-state {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 .resource-tag {
   display: inline-flex;
@@ -410,11 +464,22 @@
   font-size: 10px;
 }
 .resource-connection-cell .status-label {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
   min-height: 23px;
   padding: 0 7px;
   background: var(--theme-bg-success-soft);
   border-radius: 4px;
   font-size: 11px;
+  line-height: 23px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resource-connection-cell {
+  width: 8ch;
+  min-width: 8ch;
+  max-width: 8ch;
 }
 .resource-connection-cell .status-label.disabled,
 .resource-connection-cell .status-label.unknown {
@@ -518,11 +583,35 @@
 .provider-resource-model-name strong {
   color: var(--theme-fg-strong);
 }
-.provider-resource-model-name small {
-  display: block;
-  margin-top: 3px;
-  color: var(--theme-fg-subtle);
+.provider-default-model-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  color: var(--provider-default-fg);
+  background: var(--provider-default-bg);
+  border: 1px solid var(--provider-default-border);
+  border-radius: 3px;
   font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.provider-model-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  margin-left: 4px;
+  padding: 0 4px;
+  color: var(--provider-count-fg);
+  background: var(--provider-count-bg);
+  border: 1px solid var(--provider-count-border);
+  border-radius: 3px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1;
 }
 .resource-row-actions {
   display: flex;
@@ -874,7 +963,7 @@
   transform: translateY(11px);
 }
 .resource-add-description {
-  margin: 3px 0 16px;
+  margin: 0 0 12px;
   color: var(--theme-fg-muted);
   font-size: 12px;
 }
@@ -1620,7 +1709,7 @@
 }
 .docker-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 .docker-form-grid label,
@@ -1641,9 +1730,14 @@
 .docker-agent-form label.invalid select {
   border-color: var(--theme-danger);
 }
-.docker-host-field,
+.docker-host-field {
+  grid-column: span 3;
+}
 .docker-form-grid > .docker-field-help {
   grid-column: 1 / -1;
+}
+.docker-timeout-field {
+  grid-column: span 1;
 }
 .docker-field-help {
   margin: 0;
@@ -1796,6 +1890,18 @@
 .docker-agent-form {
   max-width: 620px;
 }
+.docker-agent-connection-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
+  gap: 14px;
+  align-items: end;
+}
+.docker-agent-override-toggle {
+  align-content: start;
+}
+.docker-agent-override-toggle .docker-switch {
+  justify-self: start;
+}
 .docker-agent-empty {
   display: grid;
   gap: 4px;
@@ -1816,15 +1922,13 @@
 .docker-tool-summary {
   grid-column: 1 / -1;
 }
-.docker-tool-summary > div,
-.docker-tool-list > div {
+.docker-tool-summary > div {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 5px;
 }
-.docker-tool-summary code,
-.docker-tool-list code {
+.docker-tool-summary code {
   padding: 3px 5px;
   color: var(--theme-teal);
   background: var(--theme-bg-subtle);
@@ -1833,41 +1937,10 @@
   font-size: 10px;
 }
 .docker-resource-details {
-  display: grid;
-  gap: 16px;
-  padding: 16px 20px;
+  display: block;
+  margin: 0 14px;
+  padding: 11px 0 13px;
   border-top: 1px solid var(--theme-divider);
-}
-.docker-resource-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-.docker-resource-meta > div,
-.docker-tool-list {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 10px;
-  background: var(--theme-bg-surface);
-  border: 1px solid var(--theme-border);
-  border-radius: 4px;
-}
-.docker-resource-meta span,
-.docker-tool-list > span {
-  color: var(--theme-fg-subtle);
-  font-size: 11px;
-}
-.docker-resource-meta strong {
-  overflow-wrap: anywhere;
-  color: var(--theme-fg-strong);
-  font-size: 12px;
-}
-.docker-resource-meta strong.agent {
-  color: var(--theme-teal);
-}
-.docker-resource-meta strong.warning {
-  color: var(--theme-warning);
 }
 .docker-resource-row .resource-category-cell strong {
   color: var(--theme-teal);
@@ -1920,7 +1993,7 @@
   }
   .docker-access-mode,
   .docker-form-grid,
-  .docker-resource-meta {
+  .docker-agent-connection-row {
     grid-template-columns: 1fr;
   }
   .docker-tls-first-row,
@@ -1928,6 +2001,7 @@
     grid-template-columns: 1fr;
   }
   .docker-host-field,
+  .docker-timeout-field,
   .docker-form-grid > .docker-field-help,
   .docker-tool-summary {
     grid-column: auto;
@@ -2027,18 +2101,17 @@
     flex: 1 1 120px;
   }
   .resource-catalog-row summary {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 8ch 140px;
   }
   .resource-catalog-row.provider-resource-row summary {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 8ch 140px;
   }
   .resource-catalog-row.mcp-resource-row summary {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 8ch 140px;
   }
   .resource-catalog-row summary .resource-category-cell,
   .resource-catalog-row summary .resource-scope-cell,
-  .resource-catalog-row summary .provider-purpose-cell,
-  .resource-catalog-row summary .resource-tags {
+  .resource-catalog-row summary .resource-tags-group {
     display: none;
   }
   .resource-row-actions {

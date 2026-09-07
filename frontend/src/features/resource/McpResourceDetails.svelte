@@ -19,10 +19,10 @@
     <div><span>响应体大小限制</span><strong>{Math.round(Number(config.max_response_bytes ?? 4 * 1024 * 1024) / 1024 / 1024)} MiB</strong></div>
     <div><span>自定义 Header</span><strong>{resource.credential_id ? '已配置' : '未配置'}</strong></div>
     <div><span>工具白名单</span><strong>{Array.isArray(config.tool_allowlist) && config.tool_allowlist.length ? `${config.tool_allowlist.length} 条规则` : '不限制'}</strong></div>
-    <div><span>访问凭据</span><strong>{resource.credential_id ? '已配置 Token / Header' : '未配置'}</strong></div>
+    <div><span>服务凭据</span><strong>{resource.credential_id ? '已配置 Token / Header' : '未配置'}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><strong>{resourceLabelsText(resource) || '未设置标签'}</strong></div>
-    <div><span>MCPServer状态</span><strong>{resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知'}</strong></div>
-    <div><span>连接测试</span><strong>{snapshot ? snapshot.status === 'succeeded' ? `正常 · ${snapshot.latency_ms ?? 0} ms` : '失败' : '尚未测试'}</strong></div>
+    <div><span>连接状态</span><strong>{snapshot ? snapshot.status === 'succeeded' ? `正常 · ${snapshot.latency_ms ?? 0} ms` : '失败' : '尚未测试'}</strong></div>
+    <div><span>启用状态</span><strong>{resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知'}</strong></div>
   </div>
   <div class="provider-resource-models mcp-resource-tools">
     <div class="provider-resource-models-heading"><strong>工具列表</strong><span>{snapshot?.tools?.length ?? 0} 个</span></div>

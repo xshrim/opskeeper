@@ -15,6 +15,8 @@
   export let providerModelsForResource: (resource: Resource) => Array<Record<string, unknown>>;
   export let providerModelCapabilities: (model: Record<string, unknown> | undefined) => string[];
   export let providerTypeLabel: (type: unknown) => string;
+  export let providerBindingsFor: (resource: Resource) => Array<{ tag: string }>;
+  export let providerPurposeLabel: (tag: string) => string;
   export let mcpServerNameFor: (resource: Resource) => string = () => '';
 </script>
 
@@ -26,11 +28,13 @@
     modelsForResource={providerModelsForResource}
     modelCapabilities={providerModelCapabilities}
     {providerTypeLabel}
+    {providerBindingsFor}
+    {providerPurposeLabel}
   />
 {:else if resource.kind === 'MCPServer'}
   <McpResourceDetails {resource} snapshots={operationSnapshots[resource.id] ?? []} {formatDate} />
 {:else if resource.kind === 'Docker'}
-  <DockerResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} {resourceCanManage} />
+  <DockerResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} {formatDate} {resourceCanManage} />
 {/if}

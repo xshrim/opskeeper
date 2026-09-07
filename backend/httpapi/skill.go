@@ -52,15 +52,16 @@ type testAIProviderRequest struct {
 	Stream    bool   `json:"stream"`
 }
 type testDraftAIProviderRequest struct {
-	ScopeID       string   `json:"scope_id"`
-	ProviderType  string   `json:"provider_type"`
-	BaseURL       string   `json:"base_url"`
-	ModelName     string   `json:"model_name"`
-	APIKey        string   `json:"api_key"`
-	ContextWindow int      `json:"context_window"`
-	Temperature   float64  `json:"temperature"`
-	Capabilities  []string `json:"capabilities"`
-	Stream        bool     `json:"stream"`
+	ScopeID        string   `json:"scope_id"`
+	ProviderType   string   `json:"provider_type"`
+	BaseURL        string   `json:"base_url"`
+	ModelName      string   `json:"model_name"`
+	APIKey         string   `json:"api_key"`
+	TimeoutSeconds int      `json:"timeout_seconds"`
+	ContextWindow  int      `json:"context_window"`
+	Temperature    float64  `json:"temperature"`
+	Capabilities   []string `json:"capabilities"`
+	Stream         bool     `json:"stream"`
 }
 type createSkillVersionRequest struct {
 	Manifest     skill.Manifest   `json:"manifest"`
@@ -176,7 +177,7 @@ func (h aiHandler) testDraftAIProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := h.llms.TestDraftConnection(r.Context(), llm.DraftConnection{
 		ScopeID: body.ScopeID, ProviderType: body.ProviderType, BaseURL: body.BaseURL,
-		ModelName: body.ModelName, APIKey: body.APIKey, ContextWindow: body.ContextWindow,
+		ModelName: body.ModelName, APIKey: body.APIKey, TimeoutSeconds: body.TimeoutSeconds, ContextWindow: body.ContextWindow,
 		Temperature:  body.Temperature,
 		Capabilities: body.Capabilities,
 	}, body.Stream)

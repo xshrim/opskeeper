@@ -47,33 +47,31 @@ type resourceHandler struct {
 }
 
 type createResourceRequest struct {
-	ScopeID             string            `json:"scope_id"`
-	Kind                string            `json:"kind"`
-	Subtype             string            `json:"subtype,omitempty"`
-	AccessMode          string            `json:"access_mode,omitempty"`
-	MCPServerResourceID *string           `json:"mcp_server_resource_id,omitempty"`
-	SchemaVersion       int               `json:"schema_version,omitempty"`
-	Name                string            `json:"name"`
-	ExternalUID         string            `json:"external_uid,omitempty"`
-	SourceResourceID    string            `json:"source_resource_id,omitempty"`
-	Labels              map[string]string `json:"labels"`
-	Config              map[string]any    `json:"config"`
-	Status              string            `json:"status,omitempty"`
-	CredentialID        *string           `json:"credential_id,omitempty"`
+	ScopeID          string            `json:"scope_id"`
+	Kind             string            `json:"kind"`
+	Subtype          string            `json:"subtype,omitempty"`
+	AgentRef         *string           `json:"agent_ref,omitempty"`
+	SchemaVersion    int               `json:"schema_version,omitempty"`
+	Name             string            `json:"name"`
+	ExternalUID      string            `json:"external_uid,omitempty"`
+	SourceResourceID string            `json:"source_resource_id,omitempty"`
+	Labels           map[string]string `json:"labels"`
+	Config           map[string]any    `json:"config"`
+	Status           string            `json:"status,omitempty"`
+	CredentialID     *string           `json:"credential_id,omitempty"`
 }
 
 type updateResourceRequest struct {
-	ScopeID             *string             `json:"scope_id"`
-	Subtype             *string             `json:"subtype"`
-	AccessMode          *string             `json:"access_mode"`
-	MCPServerResourceID **string            `json:"mcp_server_resource_id"`
-	Name                *string             `json:"name"`
-	ExternalUID         *string             `json:"external_uid"`
-	SourceResourceID    *string             `json:"source_resource_id"`
-	Labels              *map[string]string  `json:"labels"`
-	Config              *map[string]any     `json:"config"`
-	Status              *string             `json:"status"`
-	CredentialID        nullableStringPatch `json:"credential_id"`
+	ScopeID          *string             `json:"scope_id"`
+	Subtype          *string             `json:"subtype"`
+	AgentRef         **string            `json:"agent_ref"`
+	Name             *string             `json:"name"`
+	ExternalUID      *string             `json:"external_uid"`
+	SourceResourceID *string             `json:"source_resource_id"`
+	Labels           *map[string]string  `json:"labels"`
+	Config           *map[string]any     `json:"config"`
+	Status           *string             `json:"status"`
+	CredentialID     nullableStringPatch `json:"credential_id"`
 }
 
 // nullableStringPatch preserves the distinction between an omitted field and
@@ -188,7 +186,7 @@ func (h resourceHandler) createResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AgentRef: body.AgentRef, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
@@ -216,7 +214,7 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if body.CredentialID.Set {
 		credentialID = &body.CredentialID.Value
 	}
-	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AccessMode: body.AccessMode, MCPServerResourceID: body.MCPServerResourceID, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: credentialID})
+	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AgentRef: body.AgentRef, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: credentialID})
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return

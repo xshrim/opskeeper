@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -28,11 +29,11 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 		return nil, nil, fmt.Errorf("MCP service is unavailable")
 	}
 	transportResourceID := resource.ID
-	if strings.EqualFold(strings.TrimSpace(resource.AccessMode), "agent") {
-		if resource.MCPServerResourceID == nil || strings.TrimSpace(*resource.MCPServerResourceID) == "" {
+	if strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+		if resource.AgentRef == nil || strings.TrimSpace(*resource.AgentRef) == "" {
 			return nil, nil, fmt.Errorf("agent resource requires an MCPServer association")
 		}
-		transportResourceID = strings.TrimSpace(*resource.MCPServerResourceID)
+		transportResourceID = strings.TrimSpace(*resource.AgentRef)
 	}
 	snapshot, err := p.service.Discover(ctx, transportResourceID)
 	if err != nil {
@@ -49,7 +50,11 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 				ReadOnly: false,
 			},
 			Fn: func(runCtx context.Context, arguments map[string]any) (aiengine.ToolResult, error) {
-				result, callErr := p.service.Call(runCtx, transportResourceID, item.Name, arguments)
+				callArguments, err := p.dockerAgentArguments(runCtx, resource, arguments)
+				if err != nil {
+					return aiengine.ToolResult{}, err
+				}
+				result, callErr := p.service.Call(runCtx, transportResourceID, item.Name, callArguments)
 				if callErr != nil {
 					return aiengine.ToolResult{}, callErr
 				}
@@ -59,4 +64,73 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 	}
 	fact := aiengine.ContextFact{ResourceID: resource.ID, Kind: resource.Kind, Summary: map[string]any{"server_name": snapshot.ServerName, "server_version": snapshot.ServerVersion, "tool_count": len(snapshot.Tools)}, Untrusted: true}
 	return tools, []aiengine.ContextFact{fact}, nil
+}
+
+// dockerAgentArguments injects a Docker Agent's resource-owned connection
+// settings into the forwarded MCP call. The model cannot override configured
+// values, and TLS material never enters the model-facing tool schema.
+func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
+	if !strings.EqualFold(strings.TrimSpace(contextResource.Kind), "Docker") || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+		return arguments, nil
+	}
+	if len(contextResource.Config) == 0 {
+		return arguments, nil
+	}
+	merged := make(map[string]any, len(arguments)+7)
+	for key, value := range arguments {
+		merged[key] = value
+	}
+	for key, value := range contextResource.Config {
+		if value != nil {
+			merged[key] = value
+		}
+	}
+	setString := func(key string) {
+		if value, ok := contextResource.Config[key].(string); ok && strings.TrimSpace(value) != "" {
+			merged[key] = strings.TrimSpace(value)
+		}
+	}
+	setString("host")
+	setString("tls_server_name")
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key"} {
+		// These values are normally credential-owned; config support also keeps
+		// compatibility with resources that store non-secret paths there.
+		setString(key)
+	}
+	if value, ok := contextResource.Config["timeout"]; ok {
+		merged["timeout"] = value
+	}
+	if value, ok := contextResource.Config["skip_tls_verify"].(bool); ok {
+		merged["skip_tls_verify"] = value
+	}
+	if contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "" || p.service.credentials == nil {
+		return merged, nil
+	}
+	secret, err := p.service.credentials.RevealLinked(ctx, *contextResource.CredentialID)
+	if err != nil {
+		return nil, fmt.Errorf("read Docker Agent credential: %w", err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal(secret, &values); err != nil {
+		return merged, nil
+	}
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_server_name", "host"} {
+		if value, ok := values[key].(string); ok && strings.TrimSpace(value) != "" {
+			// Explicit resource config wins over credential values.
+			if _, configured := contextResource.Config[key]; !configured {
+				merged[key] = strings.TrimSpace(value)
+			}
+		}
+	}
+	if _, configured := contextResource.Config["timeout"]; !configured {
+		if value, ok := values["timeout"]; ok {
+			merged["timeout"] = value
+		}
+	}
+	if _, configured := contextResource.Config["skip_tls_verify"]; !configured {
+		if value, ok := values["skip_tls_verify"].(bool); ok {
+			merged["skip_tls_verify"] = value
+		}
+	}
+	return merged, nil
 }

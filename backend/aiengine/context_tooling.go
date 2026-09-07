@@ -3,7 +3,6 @@ package aiengine
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"opskeeper/backend/resource"
 )
@@ -47,12 +46,5 @@ func (r ResourceServiceReader) Get(ctx context.Context, id string) (ContextResou
 	if err != nil {
 		return ContextResource{}, err
 	}
-	accessMode := strings.ToLower(strings.TrimSpace(item.AccessMode))
-	if accessMode == "" {
-		switch strings.ToLower(strings.TrimSpace(item.Subtype)) {
-		case resource.AccessModeDirect, resource.AccessModeAgent:
-			accessMode = strings.ToLower(strings.TrimSpace(item.Subtype))
-		}
-	}
-	return ContextResource{ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name, Status: item.Status, AccessMode: accessMode, MCPServerResourceID: item.MCPServerResourceID, CredentialID: item.CredentialID, Config: item.Config}, nil
+	return ContextResource{ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name, Status: item.Status, Subtype: item.Subtype, AgentRef: item.AgentRef, CredentialID: item.CredentialID, Config: item.Config}, nil
 }

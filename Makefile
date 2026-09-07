@@ -36,7 +36,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -75,7 +75,12 @@ infra-clean: ## Delete middleware containers, network, and data volumes.
 infra-logs: ## Follow PostgreSQL and Redis logs.
 	$(call compose,logs -f)
 
-api-run: ## Run the API server.
+api-stop:
+	set -a; source $(APP_ENV_FILE); set +a; \
+	port=$${OPSK_HTTP_ADDRESS##*:}; \
+	lsof -tiTCP:$$port -sTCP:LISTEN | xargs -r kill -9
+
+api-run: api-stop ## Run the API server.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/api
 
 worker-run: ## Run the worker process.
@@ -87,11 +92,10 @@ scheduler-run: ## Run the scheduler process.
 frontend-run: ## Run the Svelte development server.
 	set -a; source $(APP_ENV_FILE); set +a; cd frontend && npm run dev
 
-front-api-run: webui-assets ## Build and embed the frontend, then run the API.
+front-api-run: api-stop webui-assets ## Build and embed the frontend, then run the API.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
 
-run: migrate webui-assets ## Build and embed the frontend, then run the API.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
+run: migrate front-api-run ## Build and embed the frontend, then run the API.
 
 docker-mcp-test: ## Run docker-mcp unit and Docker Engine simulator tests.
 	cd backend && go test ./mcpserver/docker/... ./cmd/docker-mcp

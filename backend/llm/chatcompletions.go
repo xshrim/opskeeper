@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/genai"
@@ -35,6 +36,31 @@ type ChatCompletionsConfig struct {
 type ChatCompletionsModel struct {
 	apiKey, endpoint, name string
 	client                 *http.Client
+}
+
+const defaultProviderTimeout = 60 * time.Second
+
+func providerTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return defaultProviderTimeout
+	}
+	if seconds > 300 {
+		return 300 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func providerHTTPClient(seconds int) *http.Client {
+	timeout := providerTimeout(seconds)
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if ok {
+		transport = transport.Clone()
+		transport.TLSHandshakeTimeout = timeout
+		transport.ResponseHeaderTimeout = timeout
+	} else {
+		transport = nil
+	}
+	return &http.Client{Transport: transport, Timeout: timeout}
 }
 
 func NewChatCompletionsModel(config ChatCompletionsConfig) (*ChatCompletionsModel, error) {

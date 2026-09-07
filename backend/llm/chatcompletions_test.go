@@ -8,10 +8,31 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/genai"
 )
+
+func TestProviderTimeoutClient(t *testing.T) {
+	if got := providerTimeout(0); got != 60*time.Second {
+		t.Fatalf("providerTimeout(0) = %s, want 60s", got)
+	}
+	if got := providerTimeout(15); got != 15*time.Second {
+		t.Fatalf("providerTimeout(15) = %s, want 15s", got)
+	}
+	if got := providerTimeout(301); got != 300*time.Second {
+		t.Fatalf("providerTimeout(301) = %s, want 300s", got)
+	}
+	client := providerHTTPClient(15)
+	if client.Timeout != 15*time.Second {
+		t.Fatalf("HTTP client timeout = %s, want 15s", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.TLSHandshakeTimeout != 15*time.Second || transport.ResponseHeaderTimeout != 15*time.Second {
+		t.Fatalf("HTTP transport timeouts = %#v, want 15s", transport)
+	}
+}
 
 func TestChatCompletionsModelTextUsageAndToolCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

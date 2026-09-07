@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"opskeeper/backend/mcpserver/docker/client"
 )
 
 type DockerDraftInput struct {
-	DockerHost       string `json:"docker_host"`
-	DockerCA         string `json:"docker_ca"`
-	DockerCert       string `json:"docker_cert"`
-	DockerKey        string `json:"docker_key"`
-	DockerServerName string `json:"docker_server_name"`
-	DockerSkipVerify bool   `json:"docker_skip_tls_verify"`
+	DockerHost       string `json:"host"`
+	TimeoutSeconds   any    `json:"timeout"`
+	DockerCA         string `json:"tls_ca"`
+	DockerCert       string `json:"tls_cert"`
+	DockerKey        string `json:"tls_key"`
+	DockerServerName string `json:"tls_server_name"`
+	DockerSkipVerify bool   `json:"skip_tls_verify"`
 }
 
 type DockerDraftCheck struct {
@@ -25,7 +27,8 @@ type DockerDraftCheck struct {
 }
 
 func (s *Service) TestDockerDraft(ctx context.Context, input DockerDraftInput) (DockerDraftCheck, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	timeout := int(client.TimeoutSeconds(input.TimeoutSeconds) / time.Second)
+	ctx, cancel := context.WithTimeout(ctx, client.TimeoutSeconds(input.TimeoutSeconds))
 	defer cancel()
 	started := time.Now()
 	check := DockerDraftCheck{Status: "failed"}
@@ -36,7 +39,7 @@ func (s *Service) TestDockerDraft(ctx context.Context, input DockerDraftInput) (
 	check.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			check.Message = "Docker 连接测试超时（10 秒）"
+			check.Message = fmt.Sprintf("Docker 连接测试超时（%d 秒）", timeout)
 		} else {
 			check.Message = err.Error()
 		}

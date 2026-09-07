@@ -13,7 +13,9 @@
   $: brand = brandNameFor(resource);
 </script>
 
-{#if brand === 'OpenAI'}
+{#if resource.kind === 'AIProvider'}
+  <span class="resource-brand-monogram" aria-label="LLM">AI</span>
+{:else if brand === 'OpenAI'}
   <span class="resource-brand-monogram" aria-label="OpenAI">AI</span>
 {:else if brand}
   <BrandIcon name={brand} {size} />

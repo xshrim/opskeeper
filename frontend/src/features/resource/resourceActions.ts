@@ -45,7 +45,7 @@ export async function createSchemaCredential(
 }
 
 export async function createProviderCredential(scopeId: string, name: string, apiKey: string) {
-  if (!apiKey.trim() || !scopeId) throw new Error('API Key 为必填项，请填写后再继续。');
+  if (!apiKey.trim() || !scopeId) return '';
   const credential = await api.createCredential({
     scope_id: scopeId,
     name: `${name || 'AI Provider'} API Key`,
@@ -61,6 +61,7 @@ export async function saveProviderCredential(
   name: string,
   apiKey: string
 ) {
+  if (!apiKey.trim()) return provider.credential_id ?? '';
   if (!provider.credential_id) return createProviderCredential(scopeId, name, apiKey);
   await api.updateCredential(provider.credential_id, {
     name: `${name.trim() || 'AI Provider'} API Key`,
@@ -217,6 +218,7 @@ export function testDraftAIProviderConnection(body: {
   base_url: string;
   model_name: string;
   api_key: string;
+  timeout_seconds: number;
   context_window: number;
   temperature: number;
   capabilities: string[];

@@ -7,15 +7,15 @@ import (
 )
 
 type ContextResource struct {
-	ID                  string            `json:"id"`
-	ScopeID             string            `json:"scope_id"`
-	Kind                string            `json:"kind"`
-	Name                string            `json:"name"`
-	Status              string            `json:"status"`
-	AccessMode          string            `json:"access_mode,omitempty"`
-	MCPServerResourceID *string           `json:"mcp_server_resource_id,omitempty"`
-	CredentialID        *string           `json:"-"`
-	Config              map[string]any    `json:"-"`
+	ID           string         `json:"id"`
+	ScopeID      string         `json:"scope_id"`
+	Kind         string         `json:"kind"`
+	Name         string         `json:"name"`
+	Status       string         `json:"status"`
+	Subtype      string         `json:"subtype,omitempty"`
+	AgentRef     *string        `json:"agent_ref,omitempty"`
+	CredentialID *string        `json:"-"`
+	Config       map[string]any `json:"-"`
 }
 
 type ContextFact struct {
@@ -91,7 +91,7 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 		resolved.Resources = append(resolved.Resources, resource)
 		provider, ok := providerFor(r.Providers, resource)
 		if !ok {
-			if strings.EqualFold(strings.TrimSpace(resource.AccessMode), "agent") {
+			if strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 				return ResolvedContext{}, fmt.Errorf("no MCP context provider is available for agent resource %s", id)
 			}
 			continue
@@ -131,7 +131,7 @@ func providerFor(providers []ContextProvider, resource ContextResource) (Context
 			if !strings.EqualFold(strings.TrimSpace(supported), strings.TrimSpace(resource.Kind)) {
 				continue
 			}
-			if mode := strings.ToLower(strings.TrimSpace(resource.AccessMode)); mode != "" {
+			if mode := strings.ToLower(strings.TrimSpace(resource.Subtype)); mode != "" {
 				modeProvider, constrained := provider.(ContextProviderAccessModes)
 				if !constrained || !containsFold(modeProvider.AccessModes(), mode) {
 					continue

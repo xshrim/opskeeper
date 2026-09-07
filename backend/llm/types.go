@@ -74,12 +74,13 @@ type ConnectionResult struct {
 }
 
 type DraftConnection struct {
-	ScopeID       string
-	ProviderType  string
-	BaseURL       string
-	ModelName     string
-	APIKey        string
-	ContextWindow int
-	Temperature   float64
-	Capabilities  []string
+	ScopeID        string
+	ProviderType   string
+	BaseURL        string
+	ModelName      string
+	APIKey         string
+	TimeoutSeconds int
+	ContextWindow  int
+	Temperature    float64
+	Capabilities   []string
 }

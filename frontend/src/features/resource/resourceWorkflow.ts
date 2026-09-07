@@ -77,12 +77,14 @@ export type DockerAccessMode = 'direct' | 'agent';
 export type DockerConnectionDraft = {
   accessMode: DockerAccessMode;
   host: string;
+  timeoutSeconds: number;
   caBase64: string;
   certBase64: string;
   keyBase64: string;
   serverName: string;
   skipTLSVerify: boolean;
   mcpServerResourceId: string;
+  connectionOverride: boolean;
 };
 
 export function dockerAccessModeLabel(mode: string) {
@@ -166,7 +168,9 @@ export function dockerTLSValueForSave(value: string) {
 }
 
 export function dockerConnectionConfigurationValid(draft: DockerConnectionDraft) {
-  if (draft.accessMode === 'agent') return Boolean(draft.mcpServerResourceId.trim());
+  if (!Number.isFinite(draft.timeoutSeconds) || draft.timeoutSeconds < 1 || draft.timeoutSeconds > 300) return false;
+  if (draft.accessMode === 'agent' && !draft.mcpServerResourceId.trim()) return false;
+  if (draft.accessMode === 'agent' && !draft.connectionOverride) return true;
   if (!draft.host.trim() || !dockerHostValid(draft.host)) return false;
   const tlsSupported = dockerHostSupportsTLS(draft.host);
   const tlsConfigured = Boolean(
@@ -180,12 +184,13 @@ export function dockerConnectionConfigurationValid(draft: DockerConnectionDraft)
 }
 
 export function dockerConfigForSave(draft: DockerConnectionDraft): Record<string, unknown> {
-  if (draft.accessMode === 'agent') return {};
+  if (draft.accessMode === 'agent' && !draft.connectionOverride) return {};
   const config: Record<string, unknown> = {};
-  if (draft.host.trim()) config.docker_host = draft.host.trim();
+  if (draft.host.trim()) config.host = draft.host.trim();
+  config.timeout = draft.timeoutSeconds;
   if (dockerHostSupportsTLS(draft.host)) {
-    if (draft.serverName.trim()) config.docker_server_name = draft.serverName.trim();
-    if (draft.skipTLSVerify) config.docker_skip_tls_verify = true;
+    if (draft.serverName.trim()) config.tls_server_name = draft.serverName.trim();
+    if (draft.skipTLSVerify) config.skip_tls_verify = true;
   }
   return config;
 }
@@ -194,9 +199,9 @@ export function dockerCredentialForSave(draft: DockerConnectionDraft): Record<st
   if (!dockerHostSupportsTLS(draft.host)) return {};
   return Object.fromEntries(
     [
-      ['docker_ca', draft.caBase64],
-      ['docker_cert', draft.certBase64],
-      ['docker_key', draft.keyBase64]
+      ['tls_ca', draft.caBase64],
+      ['tls_cert', draft.certBase64],
+      ['tls_key', draft.keyBase64]
     ].filter(([, value]) => value.trim()).map(([key, value]) => [key, dockerTLSValueForSave(value)])
   );
 }

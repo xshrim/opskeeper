@@ -45,11 +45,12 @@ make start
 | `make migrate`                  | 应用待执行迁移                                                           |
 | `make migrate-down`             | 回滚最近一条迁移，仅用于开发和测试                                       |
 | `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
-| `make api-run`                  | 临时运行 API                                                             |
+| `make api-stop`                 | 按 `.env` 中的 `OPSK_HTTP_ADDRESS` 端口强制停止已监听的 API 进程       |
+| `make api-run`                  | 停止旧 API 后临时运行 API                                                |
 | `make worker-run`               | 临时运行 Worker                                                          |
 | `make scheduler-run`            | 临时运行 Scheduler                                                       |
 | `make frontend-run`             | 临时运行 Vite 前端                                                       |
-| `make front-api-run`            | 构建并嵌入前端，然后通过一个 API 进程提供完整应用                        |
+| `make front-api-run`            | 停止旧 API、构建并嵌入前端，然后通过一个 API 进程提供完整应用            |
 | `make run`                      | 应用迁移、构建并嵌入前端，然后启动完整 API                                |
 | `make test`                     | 运行前后端单元测试                                                       |
 | `make backend-integration-test` | 运行数据库集成测试                                                       |

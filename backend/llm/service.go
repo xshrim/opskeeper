@@ -173,10 +173,10 @@ func (s *Service) BuildModel(ctx context.Context, scopeID, providerID, modelName
 		return ResolvedProvider{}, nil, err
 	}
 	if resolved.Provider.Config.ProviderType == "openai" {
-		client, err := openaimodel.NewModel(ctx, resolved.Model.Name, &openaimodel.ClientConfig{APIKey: resolved.APIKey, BaseURL: resolved.Provider.Config.BaseURL})
+		client, err := openaimodel.NewModel(ctx, resolved.Model.Name, &openaimodel.ClientConfig{APIKey: resolved.APIKey, BaseURL: resolved.Provider.Config.BaseURL, HTTPClient: providerHTTPClient(resolved.Provider.Config.TimeoutSeconds)})
 		return resolved, client, err
 	}
-	client, err := NewChatCompletionsModel(ChatCompletionsConfig{APIKey: resolved.APIKey, BaseURL: resolved.Provider.Config.BaseURL, ModelName: resolved.Model.Name})
+	client, err := NewChatCompletionsModel(ChatCompletionsConfig{APIKey: resolved.APIKey, BaseURL: resolved.Provider.Config.BaseURL, ModelName: resolved.Model.Name, HTTPClient: providerHTTPClient(resolved.Provider.Config.TimeoutSeconds)})
 	return resolved, client, err
 }
 
@@ -198,22 +198,23 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 
 func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
 	started := time.Now()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	timeout := providerTimeout(draft.TimeoutSeconds)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	draft.ScopeID, draft.ProviderType, draft.BaseURL, draft.ModelName = strings.TrimSpace(draft.ScopeID), strings.TrimSpace(draft.ProviderType), strings.TrimSpace(draft.BaseURL), strings.TrimSpace(draft.ModelName)
 	if draft.ScopeID == "" || !allowsScope(ctx, draft.ScopeID) {
 		return ConnectionResult{}, authorization.ErrForbidden
 	}
-	config := AIProviderConfig{ProviderType: draft.ProviderType, BaseURL: draft.BaseURL, Enabled: true, Models: []ProviderModel{{Name: draft.ModelName, ContextWindowTokens: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities, Enabled: true}}, DefaultModel: draft.ModelName, TimeoutSeconds: 60}
+	config := AIProviderConfig{ProviderType: draft.ProviderType, BaseURL: draft.BaseURL, Enabled: true, Models: []ProviderModel{{Name: draft.ModelName, ContextWindowTokens: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities, Enabled: true}}, DefaultModel: draft.ModelName, TimeoutSeconds: int(timeout / time.Second)}
 	if err := validateAIProviderConfig(config); err != nil {
 		return ConnectionResult{}, err
 	}
 	var client model.LLM
 	var err error
 	if config.ProviderType == "openai" {
-		client, err = openaimodel.NewModel(ctx, draft.ModelName, &openaimodel.ClientConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL})
+		client, err = openaimodel.NewModel(ctx, draft.ModelName, &openaimodel.ClientConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL, HTTPClient: providerHTTPClient(int(timeout / time.Second))})
 	} else {
-		client, err = NewChatCompletionsModel(ChatCompletionsConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL, ModelName: draft.ModelName})
+		client, err = NewChatCompletionsModel(ChatCompletionsConfig{APIKey: draft.APIKey, BaseURL: draft.BaseURL, ModelName: draft.ModelName, HTTPClient: providerHTTPClient(int(timeout / time.Second))})
 	}
 	if err != nil {
 		return ConnectionResult{}, err

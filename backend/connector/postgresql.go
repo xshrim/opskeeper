@@ -15,7 +15,7 @@ type postgreSQLAdapter struct {
 	config *pgx.ConnConfig
 }
 
-func newPostgreSQLAdapter(target Target, _ Limits) (Adapter, error) {
+func newPostgreSQLAdapter(target Target, limits Limits) (Adapter, error) {
 	host := configString(target.Resource.Config, "host")
 	database := configString(target.Resource.Config, "database")
 	if host == "" || database == "" {
@@ -34,7 +34,8 @@ func newPostgreSQLAdapter(target Target, _ Limits) (Adapter, error) {
 		return nil, connectorError(CategoryConfiguration, "parse PostgreSQL connection", false, err)
 	}
 	config.RuntimeParams["default_transaction_read_only"] = "on"
-	config.RuntimeParams["statement_timeout"] = "8000"
+	timeout := resourceTimeout(target.Resource, limits.Timeout)
+	config.RuntimeParams["statement_timeout"] = strconv.FormatInt(timeout.Milliseconds(), 10)
 	config.RuntimeParams["application_name"] = "opskeeper-diagnostic"
 	return &postgreSQLAdapter{config: config}, nil
 }

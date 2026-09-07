@@ -4,6 +4,7 @@
   import McpConnectionFields from './McpConnectionFields.svelte';
   import ResourceBasicEditFields from './ResourceBasicEditFields.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
+  import { resourceSupportsEndpointTimeout } from '../../lib/resources';
   import ResourceConnectionStatus from './ResourceConnectionStatus.svelte';
   import ResourceConfigPreview from './ResourceConfigPreview.svelte';
   import ResourceRelationsSection from './ResourceRelationsSection.svelte';
@@ -52,6 +53,7 @@
   export let editResourceConfig = '{}';
   export let resourceConfigValues: Record<string, string> = {};
   export let editResourceSensitiveValues: Record<string, string> = {};
+  export let genericTimeoutSeconds = 60;
   export let capabilityName: (capability: ConnectorCapability) => string;
   export let formatDate: (value: string) => string;
   export let scopeName: (id: string) => string;
@@ -115,7 +117,7 @@
             <label class="mcp-tools-field"><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具"></textarea></label>
           </div>
         {:else}
-          <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} editMode credentialConfigured={Boolean(selectedResource.credential_id)} isRequired={resourceSchemaFieldRequired} />
+          <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} bind:timeoutSeconds={genericTimeoutSeconds} showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)} editMode credentialConfigured={Boolean(selectedResource.credential_id)} isRequired={resourceSchemaFieldRequired} />
         {/if}
       {/if}
       <button class="secondary" disabled={busy || !selectedResourceCanUpdate} title={selectedResourceCanUpdate ? '保存资源修改' : '继承资源仅可查看'}>保存</button>

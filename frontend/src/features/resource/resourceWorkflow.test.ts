@@ -92,22 +92,25 @@ describe('resource workflow helpers', () => {
     const direct = {
       accessMode: 'direct' as const,
       host: 'tcp://docker.example.com:2376',
+      timeoutSeconds: 10,
       caBase64: 'Y2E=',
       certBase64: 'Y2VydA==',
       keyBase64: 'a2V5',
       serverName: 'docker.example.com',
       skipTLSVerify: false,
-      mcpServerResourceId: ''
+      mcpServerResourceId: '',
+      connectionOverride: false
     };
     expect(dockerConnectionConfigurationValid(direct)).toBe(true);
     expect(dockerConfigForSave(direct)).toEqual({
-      docker_host: 'tcp://docker.example.com:2376',
-      docker_server_name: 'docker.example.com'
+      host: 'tcp://docker.example.com:2376',
+      timeout: 10,
+      tls_server_name: 'docker.example.com'
     });
     expect(dockerCredentialForSave(direct)).toEqual({
-      docker_ca: 'Y2E=',
-      docker_cert: 'Y2VydA==',
-      docker_key: 'a2V5'
+      tls_ca: 'Y2E=',
+      tls_cert: 'Y2VydA==',
+      tls_key: 'a2V5'
     });
     expect(dockerTLSValueValid('Y2E=')).toBe(true);
     expect(dockerTLSValueValid('/etc/docker/ca.pem')).toBe(false);

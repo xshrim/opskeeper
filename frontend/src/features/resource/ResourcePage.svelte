@@ -15,7 +15,7 @@
   import DockerReviewStep from './DockerReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
-  import { resourceHasConnector } from '../../lib/resources';
+  import { resourceHasConnector, resourceSupportsEndpointTimeout } from '../../lib/resources';
   import {
     createResourceRelation,
     removeResourceRelation,
@@ -142,6 +142,7 @@
   let editResourceLabels = '';
   let editResourceConfig = '{}';
   let editResourceSensitiveValues: Record<string, string> = {};
+  let genericTimeoutSeconds = 60;
   let editingProviderResourceId = '';
   let editingResourceId = '';
   let editingDockerResourceId = '';
@@ -180,16 +181,17 @@
   let resourceBasicConfigurationAttempted = false;
   let dockerAccessMode: DockerAccessMode = 'direct';
   let dockerHost = '';
+  let dockerTimeoutSeconds = 10;
   let dockerCABase64 = '';
   let dockerCertBase64 = '';
   let dockerKeyBase64 = '';
   let dockerServerName = '';
   let dockerSkipTLSVerify = false;
   let dockerMCPServerResourceId = '';
+  let dockerAgentConnectionOverride = false;
   let dockerConfigurationAttempted = false;
   let dockerCredentialLoading = false;
   let dockerDraftTestBusy = false;
-  let dockerDraftTestPassedState = false;
   let dockerDraftTest: {
     status?: string;
     message?: string;
@@ -268,7 +270,7 @@
   }
 
   function mcpServerNameFor(resource: Resource) {
-    const id = resource.mcp_server_resource_id;
+    const id = resource.agent_ref;
     if (!id) return '';
     return resources.find((item) => item.id === id)?.name ?? '关联 MCPServer';
   }
@@ -355,24 +357,26 @@
       .map(([key, value]) => `${key}=${value}`)
       .join(', ');
     editResourceLabels = resourceLabels;
-    dockerAccessMode = String(resource.access_mode ?? resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
-    dockerHost = String(config.docker_host ?? '');
-    dockerServerName = String(config.docker_server_name ?? '');
-    dockerSkipTLSVerify = config.docker_skip_tls_verify === true || String(config.docker_skip_tls_verify ?? '').toLowerCase() === 'true';
-    dockerMCPServerResourceId = String(resource.mcp_server_resource_id ?? '');
+    dockerAccessMode = String(resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
+    dockerHost = String(config.host ?? '');
+    dockerTimeoutSeconds = Number(config.timeout ?? 10);
+    dockerServerName = String(config.tls_server_name ?? '');
+    dockerSkipTLSVerify = config.skip_tls_verify === true || String(config.skip_tls_verify ?? '').toLowerCase() === 'true';
+    dockerMCPServerResourceId = String(resource.agent_ref ?? '');
+    dockerAgentConnectionOverride = Object.keys(config).length > 0;
     dockerCABase64 = '';
     dockerCertBase64 = '';
     dockerKeyBase64 = '';
     dockerCredentialLoading = false;
-    if (dockerAccessMode === 'direct' && resource.credential_id) {
+    if ((dockerAccessMode === 'direct' || dockerAgentConnectionOverride) && resource.credential_id) {
       dockerCredentialLoading = true;
       void loadResourceCredentialSecret(resource.credential_id).then((credential) => {
         if (selectedResourceId !== resource.id) return;
         try {
           const secret = JSON.parse(credential.secret) as Record<string, unknown>;
-          dockerCABase64 = dockerTLSValueForDisplay(String(secret.docker_ca ?? ''));
-          dockerCertBase64 = dockerTLSValueForDisplay(String(secret.docker_cert ?? ''));
-          dockerKeyBase64 = dockerTLSValueForDisplay(String(secret.docker_key ?? ''));
+          dockerCABase64 = dockerTLSValueForDisplay(String(secret.tls_ca ?? ''));
+          dockerCertBase64 = dockerTLSValueForDisplay(String(secret.tls_cert ?? ''));
+          dockerKeyBase64 = dockerTLSValueForDisplay(String(secret.tls_key ?? ''));
         } catch {
           dockerCABase64 = '';
           dockerCertBase64 = '';
@@ -397,6 +401,7 @@
       Object.entries(resource.config ?? {}).map(([key, value]) => [key, String(value)])
     );
     editResourceSensitiveValues = {};
+    genericTimeoutSeconds = Number(resource.config?.timeout_seconds ?? 60);
     if (resource.kind === 'MCPServer') {
       const config = resource.config ?? {};
       mcpTransport = mcpTransportForSubtype(resource.subtype || String(config.subtype ?? ''));
@@ -607,6 +612,7 @@
     resourceConfigValues = {};
     resourceSensitiveValues = {};
     resourceConfig = '{}';
+    genericTimeoutSeconds = 60;
     mcpTransport = 'streamable_http';
     mcpURL = '';
     mcpToken = '';
@@ -621,17 +627,18 @@
   function resetDockerDraft() {
     dockerAccessMode = 'direct';
     dockerHost = '';
+    dockerTimeoutSeconds = 10;
     dockerCABase64 = '';
     dockerCertBase64 = '';
     dockerKeyBase64 = '';
     dockerServerName = '';
     dockerSkipTLSVerify = false;
     dockerMCPServerResourceId = '';
+    dockerAgentConnectionOverride = false;
     dockerConfigurationAttempted = false;
     dockerCredentialLoading = false;
     dockerDraftTestBusy = false;
     dockerDraftTest = null;
-    dockerDraftTestPassedState = false;
     editingDockerResourceId = '';
   }
 
@@ -669,6 +676,7 @@
       providerType,
       baseURL: providerBaseURL.trim(),
       apiKey: providerAPIKey,
+      timeoutSeconds: providerTimeoutSeconds,
       model: defaultModel ? {
         name: defaultModel.name,
         contextWindowTokens: defaultModel.contextWindowTokens,
@@ -707,8 +715,7 @@
     return Boolean(
       !providerNameDuplicate() &&
         providerType &&
-        providerBaseURLValid() &&
-        providerAPIKey.trim()
+        providerBaseURLValid()
     );
   }
 
@@ -718,7 +725,6 @@
     if (!providerType) issues.push('Provider 类型');
     if (!providerBaseURL.trim()) issues.push('服务地址');
     else if (!providerBaseURLValid()) issues.push('服务地址格式');
-    if (!providerAPIKey.trim()) issues.push('API Key');
     return issues;
   }
 
@@ -865,9 +871,7 @@
   }
 
   async function createProviderCredential(name = resourceName) {
-    if (!providerAPIKey.trim() || !selectedScopeId) {
-      throw new Error('API Key 为必填项，请填写后再继续。');
-    }
+    if (!selectedScopeId) throw new Error('未选择资源归属级别，无法保存 Provider。');
     return createProviderCredentialAction(selectedScopeId, name, providerAPIKey);
   }
 
@@ -936,11 +940,6 @@
       providerDraftTestBusy = false;
       return;
     }
-    if (!providerAPIKey.trim()) {
-      providerDraftTest = { signature: initialSignature, error: 'API Key 为必填项，请先填写后再进行连接测试。' };
-      providerDraftTestBusy = false;
-      return;
-    }
     if (!defaultModel) {
       providerDraftTest = { signature: initialSignature, error: '尚未选择默认 Model，请先在 Model 配置步骤中选择。' };
       providerDraftTestBusy = false;
@@ -958,6 +957,7 @@
         base_url: providerBaseURL.trim(),
         model_name: defaultModel.name,
         api_key: providerAPIKey,
+        timeout_seconds: providerTimeoutSeconds,
         context_window: defaultModel.contextWindowTokens,
         temperature: defaultModel.temperature,
         capabilities: defaultModel.capabilities,
@@ -1024,19 +1024,21 @@
     return {
       accessMode: dockerAccessMode,
       host: dockerHost,
+      timeoutSeconds: dockerTimeoutSeconds,
       caBase64: tlsSupported ? dockerCABase64 : '',
       certBase64: tlsSupported ? dockerCertBase64 : '',
       keyBase64: tlsSupported ? dockerKeyBase64 : '',
       serverName: tlsSupported ? dockerServerName : '',
       skipTLSVerify: tlsSupported && dockerSkipTLSVerify,
-      mcpServerResourceId: dockerMCPServerResourceId
+      mcpServerResourceId: dockerMCPServerResourceId,
+      connectionOverride: dockerAgentConnectionOverride
     } as const;
   }
 
   function dockerConfigurationComplete() {
     if (dockerCredentialLoading) return false;
     if (!dockerConnectionConfigurationValid(dockerDraft())) return false;
-    if (dockerAccessMode === 'agent') {
+    if (dockerAccessMode === 'agent' && !dockerAgentConnectionOverride) {
       const server = resources.find((resource) => resource.id === dockerMCPServerResourceId);
       return Boolean(server && server.kind === 'MCPServer' && server.status === 'active');
     }
@@ -1046,7 +1048,7 @@
   function dockerConfigurationIssues() {
     const issues: string[] = [];
     if (dockerCredentialLoading) issues.push('正在读取 TLS 凭据');
-    if (dockerAccessMode === 'agent') {
+    if (dockerAccessMode === 'agent' && !dockerAgentConnectionOverride) {
       if (!dockerMCPServerResourceId) issues.push('关联 MCPServer');
       else if (!dockerMCPServers.some((server) => server.id === dockerMCPServerResourceId && server.status === 'active')) issues.push('活动的 MCPServer');
       return issues;
@@ -1068,6 +1070,7 @@
     dockerAccessMode = mode;
     resourceAddSubtype = mode === 'agent' ? 'Agent' : 'Direct';
     if (mode === 'agent') {
+      dockerAgentConnectionOverride = false;
       dockerHost = '';
       dockerCABase64 = '';
       dockerCertBase64 = '';
@@ -1079,7 +1082,6 @@
     }
     dockerConfigurationAttempted = false;
     dockerDraftTest = null;
-    dockerDraftTestPassedState = false;
   }
 
   function dockerMCPServerName() {
@@ -1087,25 +1089,23 @@
   }
 
   function dockerDraftTestPassed() {
-    return dockerDraftTestPassedState;
+    return dockerDraftTest?.status === 'succeeded';
   }
 
   function resetDockerDraftTest() {
     if (!dockerDraftTestBusy) {
       dockerDraftTest = null;
-      dockerDraftTestPassedState = false;
     }
   }
 
   async function testDockerDraftConnection() {
     dockerDraftTestBusy = true;
-    dockerDraftTestPassedState = false;
     dockerDraftTest = { error: '正在测试 Docker 连接，请稍候…' };
     try {
       if (!dockerConfigurationComplete()) {
         throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
       }
-      if (dockerAccessMode === 'agent') {
+      if (dockerAccessMode === 'agent' && !dockerAgentConnectionOverride) {
         const server = resources.find((resource) => resource.id === dockerMCPServerResourceId);
         if (!server) throw new Error('未找到关联的 MCPServer。');
         const snapshot = await api.discoverMCP(server.id);
@@ -1116,17 +1116,17 @@
           toolCount: snapshot.tools?.length ?? 0,
           error: snapshot.status === 'succeeded' ? '' : snapshot.error_message || 'MCPServer 连接失败'
         };
-        dockerDraftTestPassedState = snapshot.status === 'succeeded';
         return;
       }
       const credential = dockerCredentialForSave(dockerDraft());
       const result = await api.testDraftDocker({
-        docker_host: dockerHost.trim(),
-        docker_ca: credential.docker_ca,
-        docker_cert: credential.docker_cert,
-        docker_key: credential.docker_key,
-        docker_server_name: dockerServerName.trim(),
-        docker_skip_tls_verify: dockerSkipTLSVerify
+        host: dockerHost.trim(),
+        timeout: dockerTimeoutSeconds,
+        tls_ca: credential.tls_ca,
+        tls_cert: credential.tls_cert,
+        tls_key: credential.tls_key,
+        tls_server_name: dockerServerName.trim(),
+        skip_tls_verify: dockerSkipTLSVerify
       });
       dockerDraftTest = {
         status: result.status,
@@ -1134,7 +1134,6 @@
         latency: result.latency_ms,
         error: result.status === 'succeeded' ? '' : result.message
       };
-      dockerDraftTestPassedState = result.status === 'succeeded';
     } catch (error) {
       dockerDraftTest = { error: describeError(error, 'Docker 连接测试失败') };
     } finally {
@@ -1172,6 +1171,7 @@
     }
     try {
       const config = buildSchemaConfig(selectedSchema, resourceConfigValues, editResourceConfig);
+      if (resourceSupportsEndpointTimeout(selectedResource.kind)) config.timeout_seconds = genericTimeoutSeconds;
       const credentialId = await createResourceCredential(selectedSchema, editResourceSensitiveValues);
       const updated = await updateResourceRecord(selectedResource.id, {
         name: editResourceName,
@@ -1207,6 +1207,7 @@
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
       }
       const config = buildSchemaConfig(createSchema, resourceConfigValues, resourceConfig);
+      if (resourceSupportsEndpointTimeout(resourceKind)) config.timeout_seconds = genericTimeoutSeconds;
       const credentialId = await createResourceCredential(createSchema, resourceSensitiveValues);
       const created = await createResourceRecord({
         scope_id: selectedScopeId,
@@ -1244,13 +1245,12 @@
       }
       if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
       const draft = dockerDraft();
-      const credentialId = draft.accessMode === 'direct' ? await createDockerCredential() : '';
+      const credentialId = draft.accessMode === 'direct' || draft.connectionOverride ? await createDockerCredential() : '';
       const created = await createResourceRecord({
         scope_id: selectedScopeId,
         kind: 'Docker',
         subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
-        access_mode: draft.accessMode,
-        mcp_server_resource_id: draft.accessMode === 'agent' ? draft.mcpServerResourceId : undefined,
+        agent_ref: draft.accessMode === 'agent' ? draft.mcpServerResourceId : undefined,
         name: resourceName.trim(),
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
@@ -1305,6 +1305,7 @@
         : resourceKind === 'MCPServer'
           ? mcpConfigForSave()
           : buildSchemaConfig(createSchema, resourceConfigValues, resourceConfig);
+      if (!isProvider && resourceKind !== 'MCPServer' && resourceSupportsEndpointTimeout(resourceKind)) config.timeout_seconds = genericTimeoutSeconds;
       const credentialId = isProvider
         ? await createProviderCredential()
         : resourceKind === 'MCPServer'
@@ -1419,12 +1420,11 @@
       }
       if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
       const draft = dockerDraft();
-      const credentialId = draft.accessMode === 'direct' ? await saveDockerCredential(docker) : null;
+      const credentialId = draft.accessMode === 'direct' || draft.connectionOverride ? await saveDockerCredential(docker) : null;
       const updated = await updateResourceRecord(docker.id, {
         name: resourceName.trim(),
         subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
-        access_mode: draft.accessMode,
-        mcp_server_resource_id: draft.accessMode === 'agent' ? draft.mcpServerResourceId : null,
+        agent_ref: draft.accessMode === 'agent' ? draft.mcpServerResourceId : null,
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: dockerConfigForSave(draft),
@@ -1663,7 +1663,6 @@
         {providerModelsForResource}
         {providerDefaultModelForResource}
         {providerModelCapabilities}
-        {providerTypeLabel}
         {providerBindingsFor}
         {providerPurposeLabel}
         {mcpServerNameFor}
@@ -1686,6 +1685,8 @@
             {providerModelsForResource}
             {providerModelCapabilities}
             {providerTypeLabel}
+            {providerBindingsFor}
+            {providerPurposeLabel}
             {mcpServerNameFor}
           />
         </svelte:fragment>
@@ -1703,7 +1704,6 @@
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
         dockerConfigurationComplete={dockerConfigurationComplete()}
-        dockerTestPassed={dockerDraftTestPassed()}
         providerModelCount={providerModels.length}
         {busy}
         scopeSelected={Boolean(selectedScopeId)}
@@ -1730,6 +1730,7 @@
         }}
         onContinueDocker={continueDockerAdd}
         onSubmitMcp={() => void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
+        onSubmitDocker={() => void (editingDockerResourceId ? updateDockerFromWorkflow() : createDockerFromWorkflow())}
       >
 
           {#if resourceAddStep === 1}
@@ -1842,11 +1843,13 @@
             <DockerConnectionStep
               bind:accessMode={dockerAccessMode}
               bind:host={dockerHost}
+              bind:timeoutSeconds={dockerTimeoutSeconds}
               bind:caBase64={dockerCABase64}
               bind:certBase64={dockerCertBase64}
               bind:keyBase64={dockerKeyBase64}
               bind:serverName={dockerServerName}
               bind:skipTLSVerify={dockerSkipTLSVerify}
+              bind:connectionOverride={dockerAgentConnectionOverride}
               bind:mcpServerResourceId={dockerMCPServerResourceId}
               mcpServers={dockerMCPServers}
               configurationAttempted={dockerConfigurationAttempted}
@@ -1858,6 +1861,7 @@
               {resourceName}
               {resourceStatus}
               accessMode={dockerAccessMode}
+              connectionOverride={dockerAgentConnectionOverride}
               host={dockerHost}
               serverName={dockerServerName}
               skipTLSVerify={dockerSkipTLSVerify}
@@ -1916,6 +1920,8 @@
             >
               <ResourceSchemaFields
                 schema={createSchema}
+                showTimeout={resourceSupportsEndpointTimeout(resourceKind)}
+                bind:timeoutSeconds={genericTimeoutSeconds}
                 bind:values={resourceConfigValues}
                 bind:sensitiveValues={resourceSensitiveValues}
                 bind:rawConfig={resourceConfig}
@@ -1967,6 +1973,7 @@
       bind:editResourceConfig
       bind:resourceConfigValues
       bind:editResourceSensitiveValues
+      bind:genericTimeoutSeconds
       {capabilityName}
       {formatDate}
       {scopeName}

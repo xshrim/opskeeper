@@ -514,8 +514,8 @@ test.describe('T07 console', () => {
     const workflow = page.locator('.resource-add-workflow');
     await workflow.getByLabel('资源类型').selectOption('LLM');
     await workflow.getByLabel('资源子类型').selectOption('Provider');
+    await workflow.getByLabel('资源名称').fill('draft-provider');
     await workflow.getByRole('button', { name: '下一步' }).click();
-    await workflow.getByLabel('Provider 名称').fill('draft-provider');
     await workflow.getByLabel('服务地址').fill('https://llm.test/v1');
     await workflow.getByRole('button', { name: '下一步' }).click();
     await workflow.getByLabel('Model 名称').fill('test-model');

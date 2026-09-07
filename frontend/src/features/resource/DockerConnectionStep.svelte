@@ -4,12 +4,14 @@
 
   export let accessMode: DockerAccessMode = 'direct';
   export let host = '';
+  export let timeoutSeconds = 10;
   export let caBase64 = '';
   export let certBase64 = '';
   export let keyBase64 = '';
   export let serverName = '';
   export let skipTLSVerify = false;
-  export let mcpServerResourceId = '';
+export let mcpServerResourceId = '';
+  export let connectionOverride = false;
   export let mcpServers: Resource[] = [];
   export let configurationAttempted = false;
   export let credentialLoading = false;
@@ -57,7 +59,34 @@
   当前子类型为 {accessMode === 'direct' ? 'Direct：后端直接连接 Docker Engine。' : 'Agent：通过关联的 MCPServer 代理调用。'}
 </p>
 
-{#if accessMode === 'direct'}
+{#if accessMode === 'agent'}
+  <div class="docker-agent-form">
+    <div class="docker-agent-connection-row">
+      <label class:invalid={configurationAttempted && !mcpServerResourceId}>
+        <span><i>*</i>关联 MCPServer</span>
+        <select bind:value={mcpServerResourceId} on:change={onConfigurationChange} aria-describedby="docker-agent-help">
+          <option value="">请选择活动的 MCPServer</option>
+          {#each mcpServers as server}
+            <option value={server.id}>{server.name} · {endpoint(server)}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="docker-agent-override-toggle">
+        <span>使用自定义 Docker 连接</span>
+        <button class="docker-switch" class:active={connectionOverride} type="button" title="填写下方连接参数后，将其随工具调用传给通用 Docker MCPServer。" aria-pressed={connectionOverride} aria-label="使用自定义 Docker 连接" on:click={() => { connectionOverride = !connectionOverride; onConfigurationChange(); }}><span></span></button>
+      </label>
+    </div>
+    <p id="docker-agent-help" class="docker-field-help">逻辑 Docker 资源仍是权限和审计主体；MCPServer 只提供传输路径。</p>
+    {#if !mcpServers.length}
+      <div class="docker-agent-empty" role="status">
+        <strong>没有可用的 MCPServer</strong>
+        <span>请先创建并启用一个 MCPServer，再选择 Agent 接入。</span>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if accessMode === 'direct' || connectionOverride}
   <form id="docker-create-form" class="docker-connection-form" on:submit|preventDefault>
     <div class="docker-form-grid">
       <label class:invalid={configurationAttempted && (!host.trim() || !dockerHostValid(host))} class="docker-host-field">
@@ -71,6 +100,10 @@
           autocomplete="off"
           aria-describedby="docker-host-help"
         />
+      </label>
+      <label class="docker-timeout-field">
+        <span>超时时间（秒）</span>
+        <input bind:value={timeoutSeconds} on:input={onConfigurationChange} min="1" max="300" type="number" />
       </label>
       <p id="docker-host-help" class="docker-field-help">
         支持 <code>unix://</code>、<code>tcp://</code>、<code>http://</code> 和 <code>https://</code>；<code>unix://</code> 和 <code>http://</code> 不支持 TLS，<code>tcp://</code> 和 <code>https://</code> 支持 TLS；不能包含用户名或密码。
@@ -117,25 +150,4 @@
       {#if credentialLoading}<p class="docker-field-help">正在读取已有 TLS 凭据，请稍候…</p>{/if}
     </fieldset>
   </form>
-{:else}
-  <div class="docker-agent-form">
-    <label class:invalid={configurationAttempted && !mcpServerResourceId}>
-      <span><i>*</i>关联 MCPServer</span>
-      <select bind:value={mcpServerResourceId} on:change={onConfigurationChange} aria-describedby="docker-agent-help">
-        <option value="">请选择活动的 MCPServer</option>
-        {#each mcpServers as server}
-          <option value={server.id}>{server.name} · {endpoint(server)}</option>
-        {/each}
-      </select>
-    </label>
-    <p id="docker-agent-help" class="docker-field-help">
-      逻辑 Docker 资源仍是权限和审计主体；MCPServer 只提供传输路径。
-    </p>
-    {#if !mcpServers.length}
-      <div class="docker-agent-empty" role="status">
-        <strong>没有可用的 MCPServer</strong>
-        <span>请先创建并启用一个 MCPServer，再选择 Agent 接入。</span>
-      </div>
-    {/if}
-  </div>
 {/if}

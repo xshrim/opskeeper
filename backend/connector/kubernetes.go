@@ -50,7 +50,7 @@ func newKubernetesAdapter(target Target, limits Limits) (Adapter, error) {
 	if err != nil {
 		return nil, connectorError(CategoryConfiguration, "load kubeconfig", false, err)
 	}
-	config.Timeout = limits.Timeout
+	config.Timeout = resourceTimeout(target.Resource, limits.Timeout)
 	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		return nil, connectorError(CategoryConfiguration, "create Kubernetes client", false, err)
