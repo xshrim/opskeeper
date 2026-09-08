@@ -56,7 +56,7 @@
 | T02 | 资源接入模型与上下文解析 | T01 | Direct/Agent 字段、MCPServer 关联、统一解析和权限 | 已完成 |
 | T03 | Docker 工具集统一 | T01-T02 | Docker 公共工具、MCP 薄适配器、Direct 适配器 | 已完成 |
 | T04 | Host 工具集接入 | T01-T02 | Host Direct/Agent 工具和连接测试 | 待批准 |
-| T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct 适配器 | 待批准 |
+| T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct/Agent 适配器 | 已完成 |
 | T06 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器 | 待批准 |
 | T07 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
 | T08 | AIEngine 与证据链收敛 | T03-T07 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |

@@ -68,11 +68,34 @@ export function resourceAddStepTitle(step: number, kind: string) {
   if (step === 1) return '基础配置';
   if (kind === 'MCPServer') return ['MCP 配置', '总结核验'][step - 2] ?? 'MCP 配置';
   if (kind === 'Docker') return ['Docker 配置', '总结核验'][step - 2] ?? 'Docker 配置';
+  if (kind === 'Kubernetes') return ['Kubernetes 配置', '总结核验'][step - 2] ?? 'Kubernetes 配置';
   if (kind !== 'AIProvider') return '配置资源';
   return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
 }
 
 export type DockerAccessMode = 'direct' | 'agent';
+export type KubernetesAccessMode = 'direct' | 'agent';
+export type KubernetesConnectionDraft = { accessMode: KubernetesAccessMode; server: string; token: string; kubeconfig: string; context: string; skipTLSVerify: boolean; mcpServerResourceId: string; connectionOverride: boolean };
+export function kubernetesAccessModeLabel(mode: string) { return mode === 'agent' ? 'Agent · MCP 代理' : 'Direct · 直接连接'; }
+export function kubernetesConfigurationValid(draft: KubernetesConnectionDraft) {
+  if (draft.accessMode === 'agent' && !draft.mcpServerResourceId.trim()) return false;
+  if (draft.accessMode === 'agent' && !draft.connectionOverride) return true;
+  return Boolean(draft.kubeconfig.trim() || draft.server.trim());
+}
+export function kubernetesConfigForSave(draft: KubernetesConnectionDraft): Record<string, unknown> {
+  if (draft.accessMode === 'agent' && !draft.connectionOverride) return {};
+  const config: Record<string, unknown> = {};
+  if (draft.server.trim()) config.server = draft.server.trim();
+  if (draft.context.trim()) config.context = draft.context.trim();
+  if (draft.skipTLSVerify) config.skip_tls_verify = true;
+  return config;
+}
+export function kubernetesCredentialForSave(draft: KubernetesConnectionDraft): Record<string, string> {
+  const out: Record<string,string> = {};
+  if (draft.kubeconfig.trim()) out.kubeconfig = draft.kubeconfig.trim();
+  if (draft.token.trim()) out.token = draft.token.trim();
+  return out;
+}
 
 export type DockerConnectionDraft = {
   accessMode: DockerAccessMode;

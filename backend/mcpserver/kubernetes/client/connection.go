@@ -28,6 +28,7 @@ type ConnectionInput struct {
 	Profile          string `json:"profile,omitempty"`
 	Server           string `json:"server,omitempty"`
 	CAFile           string `json:"ca_file,omitempty"`
+	Token            string `json:"token,omitempty"`
 	TokenFile        string `json:"token_file,omitempty"`
 	ClientCertFile   string `json:"client_cert_file,omitempty"`
 	ClientKeyFile    string `json:"client_key_file,omitempty"`
@@ -101,6 +102,44 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 	}
 	resolved := input
 	profileName := strings.TrimSpace(resolved.Profile)
+	if resolved.ConnectionMode == "" {
+		resolved.ConnectionMode = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_MODE"))
+	}
+	if resolved.KubeconfigPath == "" {
+		resolved.KubeconfigPath = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_KUBECONFIG"))
+	}
+	if resolved.KubeconfigPath == "" {
+		resolved.KubeconfigPath = strings.TrimSpace(os.Getenv("KUBECONFIG"))
+	}
+	if resolved.KubeconfigPath == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			candidate := filepath.Join(home, ".kube", "config")
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				resolved.KubeconfigPath = candidate
+			}
+		}
+	}
+	if resolved.Context == "" {
+		resolved.Context = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CONTEXT"))
+	}
+	if resolved.Server == "" {
+		resolved.Server = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_SERVER"))
+	}
+	if resolved.CAFile == "" {
+		resolved.CAFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CA_FILE"))
+	}
+	if resolved.TokenFile == "" {
+		resolved.TokenFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_TOKEN_FILE"))
+	}
+	if resolved.ClientCertFile == "" {
+		resolved.ClientCertFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_CERT_FILE"))
+	}
+	if resolved.ClientKeyFile == "" {
+		resolved.ClientKeyFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_KEY_FILE"))
+	}
+	if !resolved.SkipTLSVerify {
+		resolved.SkipTLSVerify = envBool("KUBERNETES_MCP_SKIP_TLS_VERIFY", false)
+	}
 	if profileName == "" {
 		profileName = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_DEFAULT_PROFILE"))
 	}
@@ -138,34 +177,7 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 		}
 	}
 	if resolved.ConnectionMode == "" {
-		resolved.ConnectionMode = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_MODE"))
-	}
-	if resolved.ConnectionMode == "" {
 		resolved.ConnectionMode = "auto"
-	}
-	if resolved.KubeconfigPath == "" {
-		resolved.KubeconfigPath = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_KUBECONFIG"))
-	}
-	if resolved.Context == "" {
-		resolved.Context = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CONTEXT"))
-	}
-	if resolved.Server == "" {
-		resolved.Server = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_SERVER"))
-	}
-	if resolved.CAFile == "" {
-		resolved.CAFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CA_FILE"))
-	}
-	if resolved.TokenFile == "" {
-		resolved.TokenFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_TOKEN_FILE"))
-	}
-	if resolved.ClientCertFile == "" {
-		resolved.ClientCertFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_CERT_FILE"))
-	}
-	if resolved.ClientKeyFile == "" {
-		resolved.ClientKeyFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_KEY_FILE"))
-	}
-	if !resolved.SkipTLSVerify {
-		resolved.SkipTLSVerify = envBool("KUBERNETES_MCP_SKIP_TLS_VERIFY", false)
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(resolved.ConnectionMode))
@@ -218,6 +230,9 @@ func endpointConfig(input ConnectionInput, profileName string) (*rest.Config, st
 			return nil, profileName, fmt.Errorf("read Kubernetes token file: %w", err)
 		}
 		config.BearerToken = strings.TrimSpace(string(data))
+	}
+	if strings.TrimSpace(input.Token) != "" {
+		config.BearerToken = strings.TrimSpace(input.Token)
 	}
 	if config.BearerToken == "" {
 		config.BearerToken = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_BEARER_TOKEN"))

@@ -39,7 +39,7 @@
 | T02 | 资源接入模型与上下文解析 | P0 | T01 | `subtype`、`agent_ref`、Direct/Agent 选择和统一授权入口 | 已完成 |
 | T03 | Docker 工具集统一 | P0 | T01-T02 | 迁移现有 Docker MCP 工具，增加 Direct 工具集并删除重复实现 | 已完成 |
 | T04 | Host 工具集接入 | P0 | T01-T02 | Host Direct 工具集、Agent MCP 代理和连接测试 | 待批准 |
-| T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 待批准 |
+| T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 已完成 |
 | T06 | PostgreSQL 工具集统一 | P0 | T01-T02 | 固定诊断快照及后续只读工具共用 Direct/MCP 实现 | 待批准 |
 | T07 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 待批准 |
 | T08 | AIEngine 与证据链收敛 | P0 | T03-T07 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |

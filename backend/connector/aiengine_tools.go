@@ -65,10 +65,9 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 			return evidenceResult(p.service.QueryLogs(runCtx, resource.ID, query))
 		})
 	case "Kubernetes":
-		add("connector.read_kubernetes", "Read an allowlisted Kubernetes resource.", kubernetesSchema, func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
-			query := KubernetesQuery{Resource: stringArg(args, "resource"), Namespace: stringArg(args, "namespace"), Name: stringArg(args, "name"), LabelSelector: stringArg(args, "label_selector"), Limit: int64Arg(args, "limit")}
-			return evidenceResult(p.service.ReadKubernetes(runCtx, resource.ID, query))
-		})
+		if err := p.service.resolveKubernetesTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "PostgreSQL":
 		add("connector.inspect_postgresql", "Collect a read-only PostgreSQL diagnostic snapshot.", emptySchema, func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
 			return evidenceResult(p.service.InspectPostgreSQL(runCtx, resource.ID))

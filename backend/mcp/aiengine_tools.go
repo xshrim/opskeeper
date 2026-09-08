@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -50,7 +51,7 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 				ReadOnly: false,
 			},
 			Fn: func(runCtx context.Context, arguments map[string]any) (aiengine.ToolResult, error) {
-				callArguments, err := p.dockerAgentArguments(runCtx, resource, arguments)
+				callArguments, err := p.agentArguments(runCtx, resource, arguments)
 				if err != nil {
 					return aiengine.ToolResult{}, err
 				}
@@ -70,13 +71,18 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 // settings into the forwarded MCP call. The model cannot override configured
 // values, and TLS material never enters the model-facing tool schema.
 func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
-	if !strings.EqualFold(strings.TrimSpace(contextResource.Kind), "Docker") || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	return p.agentArguments(ctx, contextResource, arguments)
+}
+
+func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
+	kind := strings.TrimSpace(contextResource.Kind)
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
-	if len(contextResource.Config) == 0 {
+	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
 		return arguments, nil
 	}
-	merged := make(map[string]any, len(arguments)+7)
+	merged := make(map[string]any, len(arguments)+12)
 	for key, value := range arguments {
 		merged[key] = value
 	}
@@ -90,7 +96,21 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 			merged[key] = strings.TrimSpace(value)
 		}
 	}
-	setString("host")
+	if strings.EqualFold(kind, "Kubernetes") {
+		for _, key := range []string{"kubeconfig_base64", "kubeconfig_path", "connection_mode", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file"} {
+			setString := func() {
+				if value, ok := contextResource.Config[key].(string); ok && strings.TrimSpace(value) != "" {
+					merged[key] = strings.TrimSpace(value)
+				}
+			}
+			setString()
+		}
+		if value, ok := contextResource.Config["skip_tls_verify"].(bool); ok {
+			merged["skip_tls_verify"] = value
+		}
+	} else {
+		setString("host")
+	}
 	setString("tls_server_name")
 	for _, key := range []string{"tls_ca", "tls_cert", "tls_key"} {
 		// These values are normally credential-owned; config support also keeps
@@ -114,7 +134,18 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 	if err := json.Unmarshal(secret, &values); err != nil {
 		return merged, nil
 	}
-	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_server_name", "host"} {
+	if strings.EqualFold(kind, "Kubernetes") {
+		if _, configured := contextResource.Config["kubeconfig_base64"]; !configured {
+			if raw, ok := values["kubeconfig"].(string); ok && strings.TrimSpace(raw) != "" {
+				merged["kubeconfig_base64"] = base64.StdEncoding.EncodeToString([]byte(raw))
+			}
+		}
+	}
+	keys := []string{"tls_ca", "tls_cert", "tls_key", "tls_server_name", "host"}
+	if strings.EqualFold(kind, "Kubernetes") {
+		keys = []string{"kubeconfig_base64", "kubeconfig_path", "connection_mode", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file"}
+	}
+	for _, key := range keys {
 		if value, ok := values[key].(string); ok && strings.TrimSpace(value) != "" {
 			// Explicit resource config wins over credential values.
 			if _, configured := contextResource.Config[key]; !configured {

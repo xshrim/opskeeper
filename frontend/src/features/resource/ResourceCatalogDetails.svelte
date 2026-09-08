@@ -2,6 +2,7 @@
   import type { ConnectionCheck, MCPSnapshot, Resource } from '../../lib/api';
   import GenericResourceDetails from './GenericResourceDetails.svelte';
   import DockerResourceDetails from './DockerResourceDetails.svelte';
+  import KubernetesResourceDetails from './KubernetesResourceDetails.svelte';
   import McpResourceDetails from './McpResourceDetails.svelte';
   import ProviderResourceDetails from './ProviderResourceDetails.svelte';
 
@@ -35,6 +36,8 @@
   <McpResourceDetails {resource} snapshots={operationSnapshots[resource.id] ?? []} {formatDate} />
 {:else if resource.kind === 'Docker'}
   <DockerResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} />
+{:else if resource.kind === 'Kubernetes'}
+  <KubernetesResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} {formatDate} {resourceCanManage} />
 {/if}

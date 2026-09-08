@@ -129,6 +129,20 @@ export async function createDockerCredential(
   return credential.id;
 }
 
+export async function createKubernetesCredential(scopeId: string, name: string, values: Record<string, string>) {
+  const secret = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim()));
+  if (!scopeId || !Object.keys(secret).length) return '';
+  const credential = await api.createCredential({ scope_id: scopeId, name: `${name || 'Kubernetes'} 连接凭据`, purpose: 'Kubernetes kubeconfig 与 Token', secret: JSON.stringify(secret) });
+  return credential.id;
+}
+export async function saveKubernetesCredential(existing: Resource, scopeId: string, name: string, values: Record<string, string>) {
+  const secret = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim()));
+  if (!Object.keys(secret).length) return existing.credential_id ?? '';
+  if (!existing.credential_id) return createKubernetesCredential(scopeId, name, values);
+  await api.updateCredential(existing.credential_id, { name: `${name.trim() || 'Kubernetes'} 连接凭据`, purpose: 'Kubernetes kubeconfig 与 Token', secret: JSON.stringify(secret) });
+  return existing.credential_id;
+}
+
 export async function saveDockerCredential(
   existing: Resource,
   scopeId: string,

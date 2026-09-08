@@ -20,6 +20,9 @@ type connectorService interface {
 type dockerDraftConnectorService interface {
 	TestDockerDraft(context.Context, connector.DockerDraftInput) (connector.DockerDraftCheck, error)
 }
+type kubernetesDraftConnectorService interface {
+	TestKubernetesDraft(context.Context, connector.KubernetesDraftInput) (connector.KubernetesDraftCheck, error)
+}
 
 type connectorHandler struct {
 	service connectorService
@@ -45,6 +48,20 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				return
 			}
 			check, err := draft.TestDockerDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(kubernetesDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/kubernetes/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.KubernetesDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestKubernetesDraft(r.Context(), body)
 			if err != nil {
 				writeConnectorError(w, r, err)
 				return
