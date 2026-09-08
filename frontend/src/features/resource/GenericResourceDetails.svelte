@@ -11,6 +11,10 @@
 <div class="resource-row-details">
   <div><span>资源地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
   <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
-  <div><span>连接测试</span><strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? '连接正常' : '连接失败' : '展开后可测试'}</strong></div>
+  <div>
+    <span>连接状态</span>
+    <strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? `连接正常 · ${connectionCheck.latency_ms} ms` : '连接异常' : '尚未测试'}</strong>
+    {#if selectedResourceId === resource.id && connectionCheck?.status === 'failed'}<small>{connectionCheck.message}</small>{/if}
+  </div>
   <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
 </div>

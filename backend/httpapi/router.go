@@ -116,7 +116,11 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.Authorization, options.Auditor, requirePermission)
+				var connectionChecks connectionCheckRecorder
+				if recorder, ok := options.Connectors.(connectionCheckRecorder); ok {
+					connectionChecks = recorder
+				}
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.Authorization, options.Auditor, connectionChecks, requirePermission)
 				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
 				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
 				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)

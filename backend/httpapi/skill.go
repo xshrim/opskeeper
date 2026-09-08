@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/connector"
 	"opskeeper/backend/llm"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/skill"
@@ -20,6 +22,10 @@ import (
 type llmService interface {
 	TestConnection(context.Context, string, string, string, bool) (llm.ConnectionResult, error)
 	TestDraftConnection(context.Context, llm.DraftConnection, bool) (llm.ConnectionResult, error)
+}
+
+type connectionCheckRecorder interface {
+	RecordCheck(context.Context, connector.Check) (connector.Check, error)
 }
 
 type skillService interface {
@@ -44,6 +50,7 @@ type aiHandler struct {
 	authorization authorizationService
 	auditor       audit.Logger
 	agentProfiles agentProfileService
+	checks        connectionCheckRecorder
 }
 
 type testAIProviderRequest struct {
@@ -79,8 +86,8 @@ type createAgentProfileVersionRequest struct {
 	Config map[string]any `json:"config"`
 }
 
-func registerAIRoutes(router chi.Router, llms llmService, skills skillService, agentProfiles agentProfileService, authorizer authorizationService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
-	h := aiHandler{llms: llms, skills: skills, agentProfiles: agentProfiles, authorization: authorizer, auditor: auditor}
+func registerAIRoutes(router chi.Router, llms llmService, skills skillService, agentProfiles agentProfileService, authorizer authorizationService, auditor audit.Logger, checks connectionCheckRecorder, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+	h := aiHandler{llms: llms, skills: skills, agentProfiles: agentProfiles, authorization: authorizer, auditor: auditor, checks: checks}
 	if bindings, ok := llms.(aiProviderBindingService); ok {
 		registerAIProviderBindingRoutes(router, bindings, requirePermission)
 	}
@@ -161,13 +168,32 @@ func (h aiHandler) testAIProvider(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
+	started := time.Now()
 	item, err := h.llms.TestConnection(r.Context(), body.ScopeID, chi.URLParam(r, "providerID"), body.ModelName, body.Stream)
 	if err != nil {
+		h.recordConnectionCheck(r, chi.URLParam(r, "providerID"), "failed", safeAIConnectionError(err), time.Since(started).Milliseconds(), nil)
 		writeAIError(w, r, err)
 		return
 	}
+	h.recordConnectionCheck(r, item.ProviderResourceID, item.Status, item.Message, item.LatencyMS, nil)
 	h.record(r, "ai_provider.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (h aiHandler) recordConnectionCheck(r *http.Request, resourceID, status, message string, latencyMS int64, capabilities []connector.Capability) {
+	if h.checks == nil || strings.TrimSpace(resourceID) == "" {
+		return
+	}
+	actorID := currentUser(r).ID
+	_, _ = h.checks.RecordCheck(r.Context(), connector.Check{
+		ResourceID:   resourceID,
+		Status:       status,
+		Message:      message,
+		LatencyMS:    latencyMS,
+		Capabilities: capabilities,
+		CheckedBy:    &actorID,
+		CheckedAt:    time.Now(),
+	})
 }
 
 func (h aiHandler) testDraftAIProvider(w http.ResponseWriter, r *http.Request) {

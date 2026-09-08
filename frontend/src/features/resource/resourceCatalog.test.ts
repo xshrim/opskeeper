@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { brandNameFor, connectorCapabilityName } from './resourceCatalog';
+import { brandNameFor, connectorCapabilityName, relativeConnectionTime } from './resourceCatalog';
 
 describe('resource catalog helpers', () => {
   it('normalizes provider brands for display', () => {
@@ -23,5 +23,16 @@ describe('resource catalog helpers', () => {
   it('maps connector capabilities to user-facing labels', () => {
     expect(connectorCapabilityName('query_logs')).toBe('查询日志');
     expect(connectorCapabilityName('kubernetes_read')).toBe('读取 Kubernetes');
+  });
+
+  it('formats the latest connection check age', () => {
+    const now = Date.parse('2026-09-08T00:00:00Z');
+    expect(relativeConnectionTime('2026-09-07T23:59:30Z', now)).toBe('刚刚');
+    expect(relativeConnectionTime('2026-09-07T23:30:00Z', now)).toBe('30 分前');
+    expect(relativeConnectionTime('2026-09-07T20:00:00Z', now)).toBe('4 时前');
+    expect(relativeConnectionTime('2026-09-05T00:00:00Z', now)).toBe('3 天前');
+    expect(relativeConnectionTime('2026-08-15T00:00:00Z', now)).toBe('3 周前');
+    expect(relativeConnectionTime('2026-01-08T00:00:00Z', now)).toBe('8 月前');
+    expect(relativeConnectionTime('2024-09-08T00:00:00Z', now)).toBe('2 年前');
   });
 });

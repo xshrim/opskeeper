@@ -36,7 +36,7 @@
 | 任务 | 名称 | 优先级 | 依赖 | 主要产出 | 状态 |
 |---|---|---:|---|---|---|
 | T01 | 公共工具契约与执行基础 | P0 | 无 | 协议无关的工具定义、连接上下文、结果/错误模型和注册表 | 已完成 |
-| T02 | 资源接入模型与上下文解析 | P0 | T01 | `access_mode`、MCPServer 关联、Direct/Agent 选择和统一授权入口 | 已完成 |
+| T02 | 资源接入模型与上下文解析 | P0 | T01 | `subtype`、`agent_ref`、Direct/Agent 选择和统一授权入口 | 已完成 |
 | T03 | Docker 工具集统一 | P0 | T01-T02 | 迁移现有 Docker MCP 工具，增加 Direct 工具集并删除重复实现 | 已完成 |
 | T04 | Host 工具集接入 | P0 | T01-T02 | Host Direct 工具集、Agent MCP 代理和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 待批准 |
@@ -60,7 +60,7 @@
 
 - Host、Docker、Kubernetes、PostgreSQL 和 Redis 均支持 Direct 和 Agent 两种接入方式；
 - 同一资源工具在 Direct 和 MCP 路径使用一致的工具名、业务参数、结果字段和错误语义；
-- AIEngine 根据 `access_mode` 只选择一条执行路径，不发生 Direct/Agent 自动回退或双重调用；
+- AIEngine 根据 `subtype` 只选择一条执行路径，不发生 Direct/Agent 自动回退或双重调用；
 - MCPServer 不再按 managed/external 分支，项目提供的 MCP Server 与外部 MCP Server 使用同一 MCP 调用路径；
 - 资源权限、凭据隔离、超时、取消、响应限制、脱敏和审计在两条路径均通过测试；
 - 旧 `connector.*` 资源业务工具和 MCP Server 中的重复实现已删除或明确迁移；

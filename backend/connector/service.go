@@ -99,6 +99,15 @@ func (s *Service) Latest(ctx context.Context, resourceID string) (Check, error) 
 	return s.checks.Latest(ctx, resourceID)
 }
 
+// RecordCheck persists a connection result produced by a resource-specific
+// connector, such as the AIProvider test endpoint.
+func (s *Service) RecordCheck(ctx context.Context, check Check) (Check, error) {
+	if s == nil || s.checks == nil {
+		return Check{}, connectorError(CategoryInternal, "save connection check", false, errors.New("connection check store is unavailable"))
+	}
+	return s.checks.Save(ctx, check)
+}
+
 func (s *Service) QueryMetrics(ctx context.Context, resourceID string, query MetricsQuery) (Evidence, error) {
 	if err := validateWindow(query.Start, query.End, s.limits.MaxQueryRange); err != nil {
 		return Evidence{}, err

@@ -6,12 +6,10 @@
   export let toolAllowlist = '';
   export let timeoutSeconds = 120;
   export let maxResponseBytes = 4 * 1024 * 1024;
-  export let testBusy = false;
   export let testStatus = '';
   export let testError = '';
   export let toolCount = 0;
   export let latency: number | undefined;
-  export let onTest: () => void = () => {};
 </script>
 
 <div class="provider-summary mcp-summary">
@@ -25,7 +23,6 @@
     <span>连接核验</span>
     {#if testStatus === 'succeeded'}<strong class="success">连接正常 · 发现 {toolCount} 个工具{latency ? ` · ${latency} ms` : ''}</strong><small>Server 初始化和工具发现已完成</small>
     {:else if testError}<strong class="failed">{testError}</strong><small>请修正配置后重新测试</small>
-    {:else}<strong>尚未核验</strong><small>创建前必须完成连接测试</small>{/if}
-    <button class="secondary provider-test-button" type="button" on:click={onTest} disabled={testBusy}>{testBusy ? '连接中…' : '连接测试'}</button>
+    {:else}<strong>尚未核验</strong><small>进入此步骤后自动执行连接测试</small>{/if}
   </div>
 </div>

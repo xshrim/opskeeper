@@ -54,7 +54,7 @@
 |---|---|---|---|---|
 | T01 | 公共工具契约与执行基础 | 无 | 公共工具定义、连接上下文、结果/错误模型、注册表 | 已完成 |
 | T02 | 资源接入模型与上下文解析 | T01 | Direct/Agent 字段、MCPServer 关联、统一解析和权限 | 已完成 |
-| T03 | Docker 工具集统一 | T01-T02 | Docker 公共工具、MCP 薄适配器、Direct 适配器 | 待批准 |
+| T03 | Docker 工具集统一 | T01-T02 | Docker 公共工具、MCP 薄适配器、Direct 适配器 | 已完成 |
 | T04 | Host 工具集接入 | T01-T02 | Host Direct/Agent 工具和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct 适配器 | 待批准 |
 | T06 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器 | 待批准 |
@@ -100,7 +100,7 @@
 
 #### 实施范围
 
-- 增加或规范化 `access_mode` 和 `mcp_server_resource_id`；
+- 规范化 `subtype` 和 `agent_ref`；
 - 校验 Direct 资源配置/凭据和 Agent 关联 MCPServer；
 - Context Resolver 接入 Direct ToolSet Resolver 和 MCP Provider；
 - 工具注册以逻辑资源 ID 隔离同名工具；

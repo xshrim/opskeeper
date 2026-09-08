@@ -28,7 +28,7 @@
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
     <div><span>传输凭据</span><strong>{accessMode === 'agent' ? '由 MCPServer 管理' : resource.credential_id ? 'TLS 凭据已关联' : '未配置 TLS 凭据'}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
-    <div class="provider-resource-connection"><span>连接状态</span><strong>{resourceCheck ? resourceCheck.status === 'succeeded' ? `正常 · ${resourceCheck.latency_ms} ms` : '连接失败' : accessMode === 'agent' ? '由 MCPServer 负责' : '尚未测试'}</strong></div>
+    <div class="provider-resource-connection"><span>连接状态</span><strong>{resourceCheck ? resourceCheck.status === 'succeeded' ? `正常 · ${resourceCheck.latency_ms} ms` : '连接异常' : accessMode === 'agent' ? '由 MCPServer 负责' : '尚未测试'}</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
     <div><span>启用状态</span><strong>{resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知'}</strong></div>
   </div>
   <div class="provider-resource-models mcp-resource-tools">

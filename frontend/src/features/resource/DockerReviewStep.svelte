@@ -12,7 +12,6 @@
   export let credentialConfigured = false;
   export let scopeSummary = '';
   export let labelsConfigured = false;
-  export let onTest: () => void = () => {};
   export let testBusy = false;
   export let testStatus = '';
   export let testMessage = '';
@@ -67,10 +66,7 @@
       <small>{testError}</small>
     {:else}
       <strong>尚未核验</strong>
-      <small>创建或保存前必须完成连接测试。</small>
+      <small>进入此步骤后自动执行连接测试，结果仅供参考。</small>
     {/if}
-    <button class="secondary provider-test-button" type="button" on:click={onTest} disabled={testBusy}>
-      {testBusy ? '测试中' : '连接测试'}
-    </button>
   </div>
 </form>

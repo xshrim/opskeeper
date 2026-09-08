@@ -44,7 +44,7 @@ platform scope
 
 ## 3. 统一资源模型
 
-所有资源必须使用同一套结构，不得因为 Direct、Agent 或其他子类型创建不同资源结构体。子类型只通过 `subtype` 表达行为差异；Agent 关联通过统一的 `agent_ref` 字段表达，连接参数统一放入 `config`。`config` 为空对象或 null 表示未配置资源级连接覆盖；非空时其中的字段按该资源工具的公共参数传递。资源的 Direct/Agent 接入语义、MCPServer 关联、公共工具和 AIEngine 解析规则以[统一资源接入设计](resource-access.md)为准。
+所有资源必须使用同一套结构，不得因为 Direct、Agent 或其他子类型创建不同资源结构体。`subtype` 是接入方式的权威字段，Agent 关联通过统一的 `agent_ref` 字段表达；连接参数统一放入 `config`。`config` 为空对象或 null 表示未配置资源级连接覆盖；非空时其中的字段按该资源工具的公共参数传递。资源的 Direct/Agent 接入语义、MCPServer 关联、公共工具和 AIEngine 解析规则以[统一资源接入设计](resource-access.md)为准。
 
 ```text
 resources {

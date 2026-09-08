@@ -17,7 +17,7 @@
 | 任务 | 名称 | 结果 | 证据 |
 |---|---|---|---|
 | T01 | 公共工具契约与执行基础 | 已通过 | `cd backend && go test ./tool`；公共包不依赖 MCP、AIEngine 或 HTTP API |
-| T02 | 资源接入模型与上下文解析 | 已通过 | `cd backend && go test ./resource ./aiengine ./mcp ./connector ./httpapi ./migrations`；`go test -race ./resource ./aiengine ./mcp`；显式 `access_mode`/MCPServer 关联迁移和 Direct/Agent Provider 路由测试通过 |
+| T02 | 资源接入模型与上下文解析 | 已通过 | `cd backend && go test ./resource ./aiengine ./mcp ./connector ./httpapi ./migrations`；`go test -race ./resource ./aiengine ./mcp`；`subtype`/`agent_ref` 关联和 Direct/Agent Provider 路由测试通过 |
 | T03 | Docker 工具集统一 | 已通过 | `cd backend && go test ./connector ./tool/... ./mcpserver/docker/...`；公共 Docker 实现由 MCP 薄适配器和 Direct Provider 共用，Direct 注册 6 个工具并隐藏连接字段；MCP Schema 与日志过滤回归通过 |
 | T04 | Host 工具集接入 | 待实施 |  |
 | T05 | Kubernetes 工具集统一 | 待实施 |  |
@@ -53,11 +53,11 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 
 ### 实施内容
 
-- 资源模型增加 `access_mode` 和 `mcp_server_resource_id`，并继续将 `subtype` 作为旧客户端可读的镜像字段。
-- 新增 0034 迁移：回填 Host、Docker、Kubernetes、Redis、数据库、中间件及 Prometheus/Loki 的 Direct/Agent 模式；恢复已有 `served_by_mcp` 关系；增加关联外键和索引。
+- 资源模型以 `subtype` 表达 Direct/Agent，以 `agent_ref` 关联 MCPServer；两者是唯一权威字段。
+- 0034 迁移完成过渡数据回填，0035 迁移收敛到 `subtype`/`agent_ref`，并恢复已有 `served_by_mcp` 关系和关联索引。
 - Resource API 支持创建和更新接入方式及 MCPServer 关联；服务层校验接入方式、关联对象类型、活动状态、权限范围、自关联和字段冲突。
-- ContextResource 携带接入模式、MCPServer 关联、凭据引用和资源配置；凭据与配置不进入上下文 JSON 序列化。
-- Context Resolver 按接入模式选择唯一 Provider：Direct 仅选择声明 Direct 的 Connector，Agent 仅选择声明 Agent 的 MCP Provider；Agent 缺少 MCP Provider 时明确失败，不回退到 Direct。
+- ContextResource 携带 `subtype`、`agent_ref`、凭据引用和资源配置；凭据与配置不进入上下文 JSON 序列化。
+- Context Resolver 按 `subtype` 选择唯一 Provider：Direct 仅选择声明 Direct 的 Connector，Agent 仅选择声明 Agent 的 MCP Provider；Agent 缺少 MCP Provider 时明确失败，不回退到 Direct。
 - MCP Provider 对 Agent 使用关联 MCPServer 资源进行发现和调用，但工具定义、事实、审计和权限主体仍使用逻辑资源 ID。
 - API 与 Worker 均注册 MCP Context Provider，确保后台诊断和 HTTP 请求使用同一解析路径。
 

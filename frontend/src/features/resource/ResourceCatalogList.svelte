@@ -1,17 +1,20 @@
 <script lang="ts">
-  import { Pencil, PlugZap, Trash2 } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { Pencil, Trash2 } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
-  import { resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
+  import { relativeConnectionTime, resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
 
   export let resources: Resource[] = [];
   export let selectedResourceId = '';
   export let resourceConnectionChecks: Record<string, ConnectionCheck | null> = {};
   export let busy = false;
   export let resourceActionBusy = false;
-  export let connectionBusy = false;
+  export let connectionBusyResourceIds: string[] = [];
+  export let connectionDetailResourceId = '';
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
+  export let resourcePermissionLabel: (resource: Resource) => string = () => '可查看';
   export let scopeType: (id: string) => string;
   export let resourceScopeLabel: (resource: Resource) => string;
   export let resourceIcon: (kind: string) => string;
@@ -28,26 +31,37 @@
   export let onEdit: (resource: Resource) => void = () => {};
   export let onDelete: (resource: Resource) => void = () => {};
 
+  let now = Date.now();
+
+  onMount(() => {
+    const timer = window.setInterval(() => {
+      now = Date.now();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  });
+
   function endpointLabel(resource: Resource) {
     if (resource.kind === 'Docker' && String(resource.subtype ?? '').toLowerCase() === 'agent') {
       return mcpServerNameFor(resource) || '关联 MCPServer';
     }
     return resourceEndpointFor(resource);
   }
+
 </script>
 
 <div class="table-list resource-list">
   {#each resources as resource}
     {@const resourceCheck = resourceConnectionChecks[resource.id]}
     {@const connectionStatus = resourceCheck
-      ? resourceCheck.status === 'succeeded' && resource.kind === 'Docker'
-        ? '正常'
-        : `${resourceCheck.status === 'succeeded' ? '正常' : '失败'}·${resourceCheck.latency_ms}ms`
-      : resource.status === 'active'
-        ? '正常'
-        : resource.status === 'disabled'
-          ? '已停用'
-          : '未知'}
+      ? resourceCheck.status === 'succeeded' ? '正常' : '异常'
+      : resourceHasConnector(resource) ? '未测试' : '不支持'}
+    {@const connectionDetail = connectionDetailResourceId === resource.id && resourceCheck
+      ? resourceCheck.status === 'succeeded'
+        ? `时延 ${resourceCheck.latency_ms}ms`
+        : resourceCheck.message
+      : resourceCheck
+        ? relativeConnectionTime(resourceCheck.checked_at, now)
+        : resourceHasConnector(resource) ? '未测试' : '不支持'}
     <details
       class:selected={selectedResourceId === resource.id}
       class:provider-resource-row={resource.kind === 'AIProvider'}
@@ -72,7 +86,7 @@
             <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
           {/if}
         </span>
-        <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>级别</small></span>
+        <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>
         <span class="resource-tags-group">
           {#if resource.kind === 'AIProvider'}
             {@const labels = Object.entries(resource.labels ?? {})}
@@ -88,10 +102,19 @@
             </span>
           {/if}
         </span>
-        <span class="resource-cell resource-connection-cell" title={connectionStatus}><span class="status-label {resourceCheck ? resourceCheck.status === 'succeeded' ? 'active' : 'unknown' : resource.status}">{connectionStatus}</span><small>连接状态</small></span>
+        <span class="resource-cell resource-connection-cell">
+          <button
+            class="status-label {resourceCheck ? resourceCheck.status === 'succeeded' ? 'active' : 'unknown' : 'unknown'}"
+            type="button"
+            disabled={busy || connectionBusyResourceIds.includes(resource.id) || !resourceHasConnector(resource)}
+            title={resourceHasConnector(resource) ? connectionBusyResourceIds.includes(resource.id) ? '连接测试中' : '点击测试连接' : '此资源暂不支持连接测试'}
+            aria-label={resourceHasConnector(resource) ? '点击测试连接' : '此资源暂不支持连接测试'}
+            on:click|stopPropagation={() => onTestConnection(resource)}
+          >{connectionStatus}</button>
+          <small title={connectionDetail}>{connectionDetail}</small>
+        </span>
         <span class="resource-row-actions" aria-label="资源操作">
           <span class="resource-enabled-control" title="是否启用"><span class="provider-toggle-control"><input type="checkbox" checked={resource.status === 'active'} disabled={busy || resourceActionBusy || !resourceCanManage(resource, 'resource:update')} aria-label={`是否启用 ${resource.name}`} on:click|stopPropagation on:change={(event) => onToggleEnabled(resource, (event.currentTarget as HTMLInputElement).checked)} /><i aria-hidden="true"></i></span></span>
-          <button class="icon-button" type="button" on:click|stopPropagation={() => onTestConnection(resource)} disabled={busy || connectionBusy || !resourceHasConnector(resource)} title={resourceHasConnector(resource) ? '连接测试' : '此资源暂不支持连接测试'} aria-label="连接测试"><PlugZap size={15} aria-hidden="true" /></button>
           <button class="icon-button" type="button" on:click|stopPropagation={() => onEdit(resource)} disabled={busy || !resourceCanManage(resource, 'resource:update')} title={resourceCanManage(resource, 'resource:update') ? '编辑资源' : '无编辑权限'} aria-label="编辑资源"><Pencil size={15} aria-hidden="true" /></button>
           <button class="icon-button danger-action" type="button" on:click|stopPropagation={() => onDelete(resource)} disabled={busy || !resourceCanManage(resource, 'resource:delete')} title={resourceCanManage(resource, 'resource:delete') ? '删除资源' : '无删除权限'} aria-label="删除资源"><Trash2 size={15} aria-hidden="true" /></button>
         </span>

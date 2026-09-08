@@ -167,7 +167,7 @@ Agent 适配器执行顺序如下：
 
 ```text
 AIEngine Context Resolver
-  -> 读取逻辑资源及其 mcp_server_resource_id
+  -> 读取逻辑资源及其 agent_ref
   -> 校验逻辑资源和 MCPServer 的 Scope、状态及使用权限
   -> MCP tools/list
   -> 使用远端返回的工具名称、描述和 Schema
@@ -224,7 +224,7 @@ agent:
 
 ## 8. AIEngine 上下文解析
 
-用户勾选资源后，Context Resolver 按资源的 `access_mode` 选择唯一路径：
+用户勾选资源后，Context Resolver 按资源的 `subtype` 选择唯一路径：
 
 ```text
 selected resource
@@ -242,7 +242,7 @@ AIEngine 不因为资源类型没有内置工具就尝试把它转换成 MCPServ
 
 ```text
 logical_resource_id
-access_mode
+subtype
 transport_resource_id
 tool_name
 ```

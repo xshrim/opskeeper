@@ -71,6 +71,8 @@
     type Platform,
     type Project,
     type Resource,
+    type ResourceRoleBinding,
+    type ResourceRoleDefinition,
     type ResourceSchema,
     type RoleBinding,
     type RoleDefinition,
@@ -152,6 +154,8 @@
   let groupMembers: Record<string, string[]> = {};
   let roles: RoleDefinition[] = [];
   let bindings: RoleBinding[] = [];
+  let resourceRoles: ResourceRoleDefinition[] = [];
+  let resourceRoleBindings: ResourceRoleBinding[] = [];
   let agentProfileResources: Resource[] = [];
   let operationSnapshots: Record<string, MCPSnapshot[]> = {};
   let accessTab: AccessTab = 'teams';
@@ -311,11 +315,26 @@
       schemas = loadedSchemas;
       resources = resourcePage.items;
       const contextResourceResult = await Promise.allSettled([
-        api.contextResources()
+        api.contextResources(),
+        api.resourceRoles(),
+        api.resourceBindings()
       ]);
       const contextPage = contextResourceResult[0];
       contextResources =
         contextPage.status === 'fulfilled' ? contextPage.value.items : [];
+      resourceRoles = contextResourceResult[1].status === 'fulfilled' ? contextResourceResult[1].value : [];
+      resourceRoleBindings = contextResourceResult[2].status === 'fulfilled' ? contextResourceResult[2].value : [];
+      const permissionResult = await Promise.allSettled([api.groups(), api.roles(), api.bindings()]);
+      groups = permissionResult[0].status === 'fulfilled' ? permissionResult[0].value : [];
+      roles = permissionResult[1].status === 'fulfilled' ? permissionResult[1].value : [];
+      bindings = permissionResult[2].status === 'fulfilled' ? permissionResult[2].value : [];
+      const memberResults = await Promise.allSettled(groups.map((group) => api.groupMembers(group.id)));
+      groupMembers = Object.fromEntries(groups.map((group, index) => [
+        group.id,
+        memberResults[index]?.status === 'fulfilled'
+          ? memberResults[index].value.map((member) => member.user_id)
+          : []
+      ]));
       await loadResourceConnectionChecks(resources);
       const projectPages = await Promise.all(
         teams.map((team) => api.projects(team.id))
@@ -551,6 +570,21 @@
       isPlatformAdmin,
       actorPermissionsAtScope(resource.scope_id)
     );
+  }
+
+  function resourcePermissionLabel(resource: Resource) {
+    if (isPlatformAdmin) return '可管理';
+    const permissions = new Set(actorPermissionsAtScope(resource.scope_id));
+    const rolePermissions = new Map(resourceRoles.map((role) => [role.id, role.permissions]));
+    const groupIDs = new Set(groups.filter((group) => groupMembers[group.id]?.includes(currentUser?.id ?? '')).map((group) => group.id));
+    for (const binding of resourceRoleBindings) {
+      if (binding.resource_id !== resource.id || (binding.subject_type === 'user' && binding.subject_id !== currentUser?.id) || (binding.subject_type === 'group' && !groupIDs.has(binding.subject_id))) continue;
+      for (const permission of rolePermissions.get(binding.role_id) ?? []) permissions.add(String(permission));
+    }
+    if (['resource:create', 'resource:update', 'resource:delete'].some((permission) => permissions.has(permission))) return '可管理';
+    if (permissions.has('resource:use')) return '可使用';
+    if (permissions.has('resource:read')) return '可查看';
+    return '无权限';
   }
 
   function userRoleBindings(userID: string) {
@@ -901,7 +935,9 @@
             selectedTeamId = project?.team_id ?? team?.id ?? '';
             selectedProjectId = project?.id ?? '';
           }}
+          onWorkspaceReload={loadWorkspace}
           {resourceCanManage}
+          {resourcePermissionLabel}
           {scopeType}
           {formatDate}
           {resourceIcon}

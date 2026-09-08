@@ -1,6 +1,25 @@
 import type { ConnectorCapability, Resource, ResourceSchema } from '../../lib/api';
 export { brandNameFor } from '../../lib/resources';
 
+export function relativeConnectionTime(value: string, now = Date.now()) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return '未测试';
+  const elapsed = Math.max(now - timestamp, 0);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+  const year = 365 * day;
+  if (elapsed < minute) return '刚刚';
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分前`;
+  if (elapsed < day) return `${Math.floor(elapsed / hour)} 时前`;
+  if (elapsed < week) return `${Math.floor(elapsed / day)} 天前`;
+  if (elapsed < month) return `${Math.floor(elapsed / week)} 周前`;
+  if (elapsed < year) return `${Math.floor(elapsed / month)} 月前`;
+  return `${Math.floor(elapsed / year)} 年前`;
+}
+
 export const resourceCategoryOptions: Record<string, string[]> = {
   全部: [],
   Application: ['虚拟机', '容器化', '云原生'],

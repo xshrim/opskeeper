@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Plus } from 'lucide-svelte';
+  import { Plus, RefreshCw } from 'lucide-svelte';
   import ResourceCatalogRail from './ResourceCatalogRail.svelte';
   import ResourceCatalogList from './ResourceCatalogList.svelte';
   import ResourceCatalogDetails from './ResourceCatalogDetails.svelte';
@@ -109,7 +109,9 @@
     resource: Resource,
     permission: string
   ) => boolean;
+  export let resourcePermissionLabel: (resource: Resource) => string = () => '可查看';
   export let onSelectResourceScope: (scopeId: string) => void = () => {};
+  export let onWorkspaceReload: () => void | Promise<void> = () => {};
   export let scopeType: (id: string) => string;
   export let formatDate: (value: string) => string;
   export let resourceIcon: (kind: string) => string;
@@ -125,7 +127,11 @@
   export let resources: Resource[] = [];
   export let schemas: ResourceSchema[] = [];
   export let childSurfaceActive = false;
+  let connectionDetailResourceId = '';
+  let connectionBusyResourceIds: string[] = [];
+  let autoSummaryTestKey = '';
   let resourceAddMenuOpen = false;
+  let resourceRefreshBusy = false;
   let resourceEditorOpen = false;
   let resourceKind = '';
   let resourceAddStep = 1;
@@ -227,6 +233,26 @@
     .filter((resource) => resource.kind === 'MCPServer' && (resource.status === 'active' || resource.id === dockerMCPServerResourceId))
     .sort((left, right) => left.name.localeCompare(right.name));
   $: childSurfaceActive = resourceAddMenuOpen || resourceEditorOpen;
+  $: if (!resourceAddMenuOpen || !((resourceKind === 'MCPServer' && resourceAddStep === 3)
+    || (resourceKind === 'AIProvider' && resourceAddStep === 4)
+    || (resourceKind === 'Docker' && resourceAddStep === 3))) autoSummaryTestKey = '';
+  $: if (resourceAddMenuOpen && ((resourceKind === 'MCPServer' && resourceAddStep === 3)
+    || (resourceKind === 'AIProvider' && resourceAddStep === 4)
+    || (resourceKind === 'Docker' && resourceAddStep === 3))) {
+    const key = `${resourceKind}:${resourceAddStep}:${resourceKind === 'MCPServer'
+      ? mcpDraftSignature()
+      : resourceKind === 'AIProvider'
+        ? providerDraftSignature()
+        : JSON.stringify(dockerDraft())}`;
+    if (autoSummaryTestKey !== key) {
+      autoSummaryTestKey = key;
+      void (resourceKind === 'MCPServer'
+        ? testMCPDraftConnection()
+        : resourceKind === 'AIProvider'
+          ? testProviderDraftConnection()
+          : testDockerDraftConnection());
+    }
+  }
 
   onMount(() => {
     if (selectedResourceId) void loadResourceDetails(selectedResourceId);
@@ -253,8 +279,10 @@
     }
     try {
       const check = await loadResourceConnectionCheck(current);
-      resourceConnectionChecks = { ...resourceConnectionChecks, [id]: check };
-      if (selectedResourceId === id) connectionCheck = check;
+      if (check || !Object.prototype.hasOwnProperty.call(resourceConnectionChecks, id)) {
+        resourceConnectionChecks = { ...resourceConnectionChecks, [id]: check };
+      }
+      if (selectedResourceId === id) connectionCheck = check ?? resourceConnectionChecks[id] ?? null;
     } catch (error) {
       if (selectedResourceId === id) onError(describeError(error, '连接状态加载失败'));
     }
@@ -752,10 +780,6 @@
     if (providerAPIKeyLoading) return '正在读取 Provider API Key，请稍候后再保存。';
     if (!providerPurposeConfigurationValid())
       return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
-    if (providerDraftTest?.error)
-      return `连接测试失败：${providerDraftTest.error}`;
-    if (!providerDraftTestPassedState)
-      return '请先完成默认 Model 的连接测试并确认测试通过。';
     return '';
   }
 
@@ -772,6 +796,7 @@
       providerModelConfigurationAttempted = true;
       if (providerModels.length > 0) {
         providerModelConfigurationAttempted = false;
+        autoSummaryTestKey = '';
         resourceAddStep = 4;
       }
     }
@@ -819,19 +844,6 @@
       !providerPurposeConfigurationValid()
     )
       return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 4 &&
-      providerDraftTest?.error
-    )
-      return `连接测试失败：${providerDraftTest.error}`;
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 4 &&
-      providerSummaryAttempted &&
-      !providerDraftTestPassedState
-    )
-      return '请先完成默认 Model 的连接测试并确认测试通过。';
     if (resourceKind === 'Docker' && resourceAddStep === 2 && dockerConfigurationAttempted && !dockerConfigurationComplete()) {
       const issues = dockerConfigurationIssues();
       return `请检查：${issues.length ? issues.join('、') : 'Docker 配置'}。`;
@@ -861,13 +873,6 @@
       timeoutSeconds: mcpTimeoutSeconds,
       maxResponseBytes: mcpMaxResponseBytes
     });
-  }
-
-  function mcpDraftTestPassed() {
-    return Boolean(
-      mcpDraftTest?.signature === mcpDraftSignature() &&
-        mcpDraftTest.result?.status === 'succeeded'
-    );
   }
 
   async function createProviderCredential(name = resourceName) {
@@ -1088,10 +1093,6 @@
     return resources.find((resource) => resource.id === dockerMCPServerResourceId)?.name ?? '';
   }
 
-  function dockerDraftTestPassed() {
-    return dockerDraftTest?.status === 'succeeded';
-  }
-
   function resetDockerDraftTest() {
     if (!dockerDraftTestBusy) {
       dockerDraftTest = null;
@@ -1155,6 +1156,7 @@
     dockerConfigurationAttempted = true;
     if (dockerConfigurationComplete()) {
       dockerConfigurationAttempted = false;
+      autoSummaryTestKey = '';
       resourceAddStep = 3;
     }
   }
@@ -1230,6 +1232,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     } catch (error) {
       onError(describeError(error, '创建资源失败'));
@@ -1243,7 +1246,6 @@
         dockerConfigurationAttempted = true;
         throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
       }
-      if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
       const draft = dockerDraft();
       const credentialId = draft.accessMode === 'direct' || draft.connectionOverride ? await createDockerCredential() : '';
       const created = await createResourceRecord({
@@ -1265,6 +1267,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -1296,9 +1299,6 @@
       }
       if (resourceKind === 'MCPServer' && !mcpConfigurationValid()) {
         throw new Error('请填写有效的 MCP Server 地址和配置。');
-      }
-      if (resourceKind === 'MCPServer' && !mcpDraftTestPassed()) {
-        throw new Error('请先在总结核验步骤完成 MCP Server 连接测试。');
       }
       const config = isProvider
         ? providerConfigForCreate()
@@ -1339,6 +1339,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -1376,6 +1377,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Provider“${updated.name}”已更新`);
+      await testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -1386,9 +1388,6 @@
     await runResourceAction(async () => {
       if (!mcpConfigurationValid()) {
         throw new Error('请填写有效的 MCP Server 地址和配置。');
-      }
-      if (!mcpDraftTestPassed()) {
-        throw new Error('请先在总结核验步骤完成 MCP Server 连接测试。');
       }
       const config = mcpConfigForSave();
       const credentialId = await saveMCPCredential(server);
@@ -1406,6 +1405,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`MCPServer“${updated.name}”已更新`);
+      await testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -1418,7 +1418,6 @@
         dockerConfigurationAttempted = true;
         throw new Error(`请检查：${dockerConfigurationIssues().join('、') || 'Docker 配置'}。`);
       }
-      if (!dockerDraftTestPassed()) throw new Error('请先在总结核验步骤完成 Docker 连接测试。');
       const draft = dockerDraft();
       const credentialId = draft.accessMode === 'direct' || draft.connectionOverride ? await saveDockerCredential(docker) : null;
       const updated = await updateResourceRecord(docker.id, {
@@ -1436,17 +1435,13 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Docker 资源“${updated.name}”已更新`);
+      await testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
 
   function submitProviderCreate() {
     providerSummaryAttempted = true;
-    const validationMessage = providerSummaryValidationMessage();
-    if (validationMessage) {
-      onError(validationMessage);
-      return;
-    }
     void (editingProviderResourceId ? updateProviderFromWorkflow() : createSpecialResource());
   }
 
@@ -1470,28 +1465,30 @@
     }
   }
 
-  async function testResourceConnection(resource: Resource) {
+  async function testResourceConnection(resource: Resource, notify = true) {
     if (!resourceHasConnector(resource)) return;
+    if (connectionBusyResourceIds.includes(resource.id)) return;
+    connectionBusyResourceIds = [...connectionBusyResourceIds, resource.id];
     connectionBusy = true;
     onError('');
     try {
       const result = await testResourceConnector(resource, selectedScopeId);
       const check = result.check;
+      connectionDetailResourceId = resource.id;
       if (result.snapshot) operationSnapshots = prependMCPSnapshot(operationSnapshots, resource.id, result.snapshot);
       if (selectedResourceId === resource.id) connectionCheck = check;
       resourceConnectionChecks = { ...resourceConnectionChecks, [resource.id]: check };
-      if (resource.kind !== 'AIProvider') onNotice(check.status === 'succeeded' ? `资源“${resource.name}”连接测试通过` : `资源“${resource.name}”连接测试失败`);
+      if (notify && resource.kind !== 'AIProvider') onNotice(check.status === 'succeeded' ? `资源“${resource.name}”连接测试通过` : `资源“${resource.name}”连接测试失败`);
     } catch (error) {
       const message = describeError(error, '连接测试失败');
-      if (resource.kind === 'AIProvider') {
-        const failedCheck: ConnectionCheck = { id: `ai-provider-${resource.id}`, resource_id: resource.id, status: 'failed', message, latency_ms: 0, capabilities: [], checked_at: new Date().toISOString() };
-        if (selectedResourceId === resource.id) connectionCheck = failedCheck;
-        resourceConnectionChecks = { ...resourceConnectionChecks, [resource.id]: failedCheck };
-      } else {
-        onError(message);
-      }
+      const failedCheck: ConnectionCheck = { id: `connection-${resource.id}`, resource_id: resource.id, status: 'failed', message, latency_ms: 0, capabilities: [], checked_at: new Date().toISOString() };
+      connectionDetailResourceId = resource.id;
+      if (selectedResourceId === resource.id) connectionCheck = failedCheck;
+      resourceConnectionChecks = { ...resourceConnectionChecks, [resource.id]: failedCheck };
+      onError(message);
     } finally {
-      connectionBusy = false;
+      connectionBusyResourceIds = connectionBusyResourceIds.filter((id) => id !== resource.id);
+      connectionBusy = connectionBusyResourceIds.length > 0;
     }
   }
 
@@ -1593,6 +1590,16 @@
     resourceCategory = category;
     resourceSubtype = subtype;
   }
+
+  async function refreshResources() {
+    if (resourceRefreshBusy) return;
+    resourceRefreshBusy = true;
+    try {
+      await onWorkspaceReload();
+    } finally {
+      resourceRefreshBusy = false;
+    }
+  }
 </script>
 
 <section class="resources-layout">
@@ -1637,6 +1644,14 @@
             ></select
           >
           <button
+            class="icon-button"
+            type="button"
+            disabled={busy || resourceRefreshBusy}
+            title="刷新资源目录"
+            aria-label="刷新资源目录"
+            on:click={() => void refreshResources()}
+          ><RefreshCw size={15} aria-hidden="true" /></button>
+          <button
             class="primary resource-add-menu-trigger"
             type="button"
             on:click={toggleResourceAddMenu}
@@ -1653,10 +1668,12 @@
         resources={resourceCatalogItems}
         {selectedResourceId}
         {resourceConnectionChecks}
+        {connectionDetailResourceId}
         {busy}
         {resourceActionBusy}
-        {connectionBusy}
+        {connectionBusyResourceIds}
         {resourceCanManage}
+        {resourcePermissionLabel}
         {scopeType}
         {resourceScopeLabel}
         {resourceIcon}
@@ -1718,7 +1735,7 @@
           editingResourceId = '';
           editingDockerResourceId = '';
         }}
-        onSelectStep={(step) => (resourceAddStep = step)}
+        onSelectStep={(step) => { resourceAddStep = step; autoSummaryTestKey = ''; }}
         onContinueBasic={continueResourceAdd}
         onContinueProvider={continueProviderAdd}
         onContinueMcp={() => {
@@ -1775,12 +1792,10 @@
               toolAllowlist={mcpToolAllowlist}
               timeoutSeconds={mcpTimeoutSeconds}
               maxResponseBytes={mcpMaxResponseBytes}
-              testBusy={mcpDraftTestBusy}
               testStatus={mcpDraftTest?.result?.status ?? ''}
               testError={mcpDraftTest?.error ?? ''}
               toolCount={mcpDraftTest?.result?.tools.length ?? 0}
               latency={mcpDraftTest?.result?.latency_ms}
-              onTest={() => void testMCPDraftConnection()}
             />
           {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
             <ProviderConnectionStep
@@ -1836,7 +1851,6 @@
               testMessage={providerDraftTest?.result?.message ?? ''}
               testError={providerDraftTest?.error ?? ''}
               capabilityLabel={(capability) => providerCapabilityOptions.find((item) => item.value === capability)?.label ?? capability}
-              onTest={() => void testProviderDraftConnection()}
               onSubmit={submitProviderCreate}
             />
           {:else if resourceKind === 'Docker' && resourceAddStep === 2}
@@ -1875,7 +1889,6 @@
               testError={dockerDraftTest?.error ?? ''}
               testLatency={dockerDraftTest?.latency}
               testToolCount={dockerDraftTest?.toolCount ?? 0}
-              onTest={() => void testDockerDraftConnection()}
               onSubmit={() => void (editingDockerResourceId ? updateDockerFromWorkflow() : createDockerFromWorkflow())}
             />
           {:else if selectedResource?.kind === 'MCPServer'}
