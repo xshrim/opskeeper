@@ -72,29 +72,76 @@ export function resourceAddStepTitle(step: number, kind: string) {
   if (kind !== 'AIProvider') return '配置资源';
   return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
 }
+export function resourceAddStepDescription(step: number, kind: string) {
+  if (step === 1) return '配置资源类型、名称、归属和标签。';
+  if (kind === 'MCPServer') return step === 2 ? '配置 MCP Server 的连接参数和工具范围。' : '确认配置并核验 MCP Server 连接。';
+  if (kind === 'Docker') return step === 2 ? '配置 Docker Engine 的连接方式和 TLS 凭据。' : '确认配置并核验 Docker 连接。';
+  if (kind === 'Kubernetes') return step === 2 ? '配置 Kubernetes API 的连接方式和访问凭据。' : '确认配置并核验 Kubernetes 连接。';
+  if (kind === 'AIProvider') {
+    if (step === 2) return '配置 Provider 的服务地址、协议和访问凭据。';
+    if (step === 3) return '配置 Model 参数、能力和默认模型。';
+    return '确认 Provider、Model 和角色配置。';
+  }
+  return '配置资源连接参数并确认设置。';
+}
 
 export type DockerAccessMode = 'direct' | 'agent';
 export type KubernetesAccessMode = 'direct' | 'agent';
-export type KubernetesConnectionDraft = { accessMode: KubernetesAccessMode; server: string; token: string; kubeconfig: string; context: string; skipTLSVerify: boolean; mcpServerResourceId: string; connectionOverride: boolean };
+export type KubernetesConnectionMode = 'kubeconfig' | 'endpoint';
+export type KubernetesConnectionDraft = {
+  isAgent?: boolean;
+  connectionOverride?: boolean;
+  connectionMode: KubernetesConnectionMode;
+  server: string;
+  caBase64: string;
+  token: string;
+  certBase64: string;
+  keyBase64: string;
+  kubeconfig: string;
+  skipTLSVerify: boolean;
+};
 export function kubernetesAccessModeLabel(mode: string) { return mode === 'agent' ? 'Agent · MCP 代理' : 'Direct · 直接连接'; }
 export function kubernetesConfigurationValid(draft: KubernetesConnectionDraft) {
-  if (draft.accessMode === 'agent' && !draft.mcpServerResourceId.trim()) return false;
-  if (draft.accessMode === 'agent' && !draft.connectionOverride) return true;
-  return Boolean(draft.kubeconfig.trim() || draft.server.trim());
+  if (draft.isAgent && draft.connectionOverride === false) return true;
+  if (draft.connectionMode === 'kubeconfig') return Boolean(draft.kubeconfig.trim());
+  return Boolean(draft.server.trim());
 }
 export function kubernetesConfigForSave(draft: KubernetesConnectionDraft): Record<string, unknown> {
-  if (draft.accessMode === 'agent' && !draft.connectionOverride) return {};
-  const config: Record<string, unknown> = {};
+  if (draft.isAgent && draft.connectionOverride === false) return {};
+  const config: Record<string, unknown> = { connection_mode: draft.connectionMode };
+  if (draft.connectionMode === 'kubeconfig') {
+    return config;
+  }
   if (draft.server.trim()) config.server = draft.server.trim();
-  if (draft.context.trim()) config.context = draft.context.trim();
   if (draft.skipTLSVerify) config.skip_tls_verify = true;
   return config;
 }
 export function kubernetesCredentialForSave(draft: KubernetesConnectionDraft): Record<string, string> {
   const out: Record<string,string> = {};
-  if (draft.kubeconfig.trim()) out.kubeconfig = draft.kubeconfig.trim();
-  if (draft.token.trim()) out.token = draft.token.trim();
+  if (draft.isAgent && draft.connectionOverride === false) return out;
+  if (draft.connectionMode === 'kubeconfig' && draft.kubeconfig.trim()) {
+    out.kubeconfig_base64 = dockerTLSValueForSave(draft.kubeconfig);
+  }
+  if (draft.connectionMode === 'endpoint' && draft.token.trim()) out.token = draft.token.trim();
+  if (draft.connectionMode === 'endpoint') {
+    if (draft.caBase64.trim()) out.ca_file = dockerTLSValueForSave(draft.caBase64);
+    if (draft.certBase64.trim()) out.client_cert_file = dockerTLSValueForSave(draft.certBase64);
+    if (draft.keyBase64.trim()) out.client_key_file = dockerTLSValueForSave(draft.keyBase64);
+  }
   return out;
+}
+
+export function kubernetesKubeconfigText(value: string) {
+  if (!value.trim()) return '';
+  try {
+    const binary = atob(value.trim());
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
+    if (/^(?:apiVersion|kind|clusters|contexts|users):/m.test(decoded)) return decoded;
+  } catch {
+    // The value is ordinary kubeconfig text.
+  }
+  return value.trim();
 }
 
 export type DockerConnectionDraft = {
@@ -104,7 +151,6 @@ export type DockerConnectionDraft = {
   caBase64: string;
   certBase64: string;
   keyBase64: string;
-  serverName: string;
   skipTLSVerify: boolean;
   mcpServerResourceId: string;
   connectionOverride: boolean;
@@ -198,7 +244,7 @@ export function dockerConnectionConfigurationValid(draft: DockerConnectionDraft)
   const tlsSupported = dockerHostSupportsTLS(draft.host);
   const tlsConfigured = Boolean(
     draft.caBase64.trim() || draft.certBase64.trim() || draft.keyBase64.trim() ||
-    draft.serverName.trim() || draft.skipTLSVerify
+    draft.skipTLSVerify
   );
   if (!tlsSupported && tlsConfigured) return false;
   if (Boolean(draft.certBase64.trim()) !== Boolean(draft.keyBase64.trim())) return false;
@@ -212,7 +258,6 @@ export function dockerConfigForSave(draft: DockerConnectionDraft): Record<string
   if (draft.host.trim()) config.host = draft.host.trim();
   config.timeout = draft.timeoutSeconds;
   if (dockerHostSupportsTLS(draft.host)) {
-    if (draft.serverName.trim()) config.tls_server_name = draft.serverName.trim();
     if (draft.skipTLSVerify) config.skip_tls_verify = true;
   }
   return config;

@@ -19,6 +19,7 @@
   export let message = '';
   export let messageTone: 'success' | 'error' = 'success';
   export let stepTitle = '';
+  export let stepDescription = '';
   export let validationMessage = '';
   export let onCancel: () => void = () => {};
   export let onSelectStep: (step: number) => void = () => {};
@@ -65,7 +66,10 @@
   <div class="resource-add-content" class:type-selection-content={step === 1}>
     {#if message}<MessageBanner {message} tone={messageTone} />{/if}
     <div class="resource-add-step-heading">
-      <h3>{stepTitle}</h3>
+      <div class="resource-add-step-heading-copy">
+        <h3>{stepTitle}</h3>
+        {#if stepDescription}<small>{stepDescription}</small>{/if}
+      </div>
       {#if validationMessage}<p class="resource-add-step-validation" role="alert">{validationMessage}</p>{/if}
       <div class="resource-add-step-actions">
       {#if step === 1}

@@ -6,7 +6,6 @@
   export let accessMode: DockerAccessMode = 'direct';
   export let connectionOverride = false;
   export let host = '';
-  export let serverName = '';
   export let skipTLSVerify = false;
   export let mcpServerName = '';
   export let credentialConfigured = false;
@@ -23,7 +22,6 @@
   const tools = ['docker_info', 'docker_images', 'docker_containers', 'docker_container_logs', 'docker_container_inspect', 'docker_container_stats'];
 </script>
 
-<p class="resource-add-description">确认接入路径和连接边界后保存资源。Docker 工具集只提供只读信息、日志和统计能力。</p>
 <form id="docker-review-form" class="provider-summary docker-summary" on:submit|preventDefault={onSubmit}>
   <div>
     <span>Docker 资源</span>
@@ -34,7 +32,7 @@
     <span>接入方式</span>
     <strong>{dockerAccessModeLabel(accessMode)}</strong>
     {#if accessMode === 'direct'}
-      <small>{host || '本机默认 Unix Socket'}{serverName ? ` · Server Name ${serverName}` : ''}</small>
+      <small>{host || '本机默认 Unix Socket'}</small>
     {:else}
       <small>{mcpServerName || '未选择 MCPServer'}{connectionOverride ? ' · 自定义 Docker 连接' : ''}</small>
     {/if}

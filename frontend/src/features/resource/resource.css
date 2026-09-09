@@ -688,6 +688,9 @@
 }
 .resources-layout:has(.resource-add-workflow) {
   grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
 }
 .resources-layout:has(.resource-add-workflow) .resource-list-panel,
 .resources-layout:has(.resource-add-workflow) .resource-catalog-panel {
@@ -695,6 +698,19 @@
 }
 .resource-workspace > .panel.resource-add-workflow {
   display: grid;
+}
+.resource-workspace:has(.resource-add-workflow) {
+  min-width: 0;
+  overflow-x: hidden;
+}
+.main-content:has(.resource-add-workflow) {
+  height: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+body:has(.resource-add-workflow) {
+  overflow-x: hidden;
 }
 .resource-add-menu {
   position: absolute;
@@ -764,7 +780,12 @@
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow: hidden;
+  contain: inline-size;
 }
 .resource-add-main-heading {
   grid-column: 1 / -1;
@@ -776,6 +797,10 @@
   min-height: 56px;
   padding: 6px 20px;
   border-bottom: 1px solid var(--theme-divider);
+}
+.resource-add-main-heading > div {
+  min-width: 0;
+  overflow: hidden;
 }
 .resource-add-main-heading .eyebrow {
   margin: 0 0 1px;
@@ -939,10 +964,14 @@
 }
 .resource-add-content {
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
   padding: 22px 24px;
 }
 .resource-add-content.type-selection-content {
-  padding-top: 16px;
+  padding-top: 22px;
   padding-bottom: 18px;
 }
 .resource-add-step-heading {
@@ -951,14 +980,30 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-.resource-add-step-heading {
-  min-height: 20px;
+  min-height: 28px;
+  margin-bottom: 22px;
+  align-items: center;
 }
 .resource-add-step-heading h3 {
   margin: 0;
   color: var(--theme-fg-strong);
   font-size: 15px;
+  line-height: 20px;
+}
+.resource-add-step-heading-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.resource-add-step-heading-copy small {
+  color: var(--theme-fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+.resource-add-workflow i {
+  margin-right: 3px;
+  color: var(--theme-accent);
+  font-style: normal;
 }
 .resource-add-step-validation {
   position: absolute;
@@ -984,9 +1029,6 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  /* Step descriptions are rendered immediately after this heading. Align
-     actions with the visual title-and-description group, not only the title. */
-  transform: translateY(11px);
 }
 .resource-add-description {
   margin: 0 0 12px;
@@ -1035,14 +1077,14 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .resource-basic-identity-row {
-  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.3fr) 64px;
   align-items: end;
 }
 .resource-basic-name {
   min-width: 0;
 }
 .resource-basic-level {
-  min-width: max-content;
+  min-width: 0;
 }
 .resource-basic-enabled,
 .resource-basic-identity-row > .resource-basic-enabled,
@@ -1051,16 +1093,20 @@
   grid-template-rows: auto 36px;
   gap: 7px;
   align-self: end;
-  justify-self: end;
-  width: 36px;
-  min-width: 36px;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 64px;
   padding: 0;
   white-space: nowrap;
 }
 .resource-basic-enabled > span:first-child {
   position: static;
-  justify-self: center;
-  width: max-content;
+  justify-self: stretch;
+  width: 100%;
+  max-width: none;
+  overflow: visible;
+  text-align: center;
+  white-space: nowrap;
 }
 .resource-basic-enabled > .provider-toggle-control {
   position: static;
@@ -1106,6 +1152,16 @@
   font-size: 12px;
 }
 .resource-type-selection label.invalid select {
+  border-color: var(--theme-danger);
+  box-shadow: 0 0 0 1px var(--theme-danger);
+}
+.mcp-resource-form label.invalid input {
+  border-color: var(--theme-danger);
+  box-shadow: 0 0 0 1px var(--theme-danger);
+}
+.schema-inputs label.invalid input,
+.schema-inputs label.invalid select,
+.schema-inputs label.invalid textarea {
   border-color: var(--theme-danger);
   box-shadow: 0 0 0 1px var(--theme-danger);
 }
@@ -1699,6 +1755,42 @@
   gap: 8px;
   margin-bottom: 16px;
 }
+.kubernetes-connection-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.kubernetes-connection-mode button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 16px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 5px;
+  text-align: left;
+}
+.kubernetes-connection-mode button:hover,
+.kubernetes-connection-mode button.active {
+  color: var(--theme-fg-strong);
+  background: var(--theme-bg-success-soft);
+  border-color: var(--theme-accent);
+}
+.kubernetes-connection-mode button:focus-visible {
+  outline: 2px solid var(--theme-focus);
+  outline-offset: 2px;
+}
+.kubernetes-connection-mode strong {
+  font-size: 15px;
+  line-height: 1.25;
+}
+.kubernetes-connection-mode small {
+  color: var(--theme-fg-subtle);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .docker-access-mode button {
   display: grid;
   gap: 4px;
@@ -1717,7 +1809,7 @@
   border-color: var(--theme-accent);
 }
 .docker-access-mode button:focus-visible,
-.docker-file-picker input:focus-visible {
+.docker-file-import:focus-visible {
   outline: 2px solid var(--theme-focus);
   outline-offset: 2px;
 }
@@ -1758,6 +1850,12 @@
 }
 .docker-host-field {
   grid-column: span 3;
+}
+.kubernetes-endpoint-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.kubernetes-endpoint-fields .kubernetes-api-server-field {
+  grid-column: auto;
 }
 .docker-form-grid > .docker-field-help {
   grid-column: 1 / -1;
@@ -1800,40 +1898,85 @@
   grid-template-columns: max-content minmax(280px, 1fr);
   align-items: stretch;
 }
+.docker-tls-label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px !important;
+  white-space: nowrap;
+}
+.docker-tls-label small {
+  color: var(--theme-fg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+}
+.docker-switch.inline {
+  flex: 0 0 auto;
+  width: 28px;
+  min-width: 28px;
+  height: 16px;
+  min-height: 16px;
+}
+.docker-switch.inline span {
+  top: 1px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+}
+.docker-switch.inline.active span {
+  transform: translateX(10px);
+}
 .docker-tls-certificate-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.kubernetes-kubeconfig-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+.kubernetes-kubeconfig-row label {
+  grid-template-rows: 26px minmax(144px, auto) auto;
+}
 .docker-tls-grid label {
   display: grid;
-  grid-template-rows: 18px 38px minmax(16px, auto);
+  grid-template-rows: 26px minmax(144px, auto) auto;
   align-content: start;
   gap: 6px;
   min-width: 0;
 }
 .docker-tls-grid textarea {
-  min-height: 72px;
+  min-height: 144px;
+  box-sizing: border-box;
+  padding: 8px;
+  font-weight: 400;
   resize: vertical;
   overflow-wrap: anywhere;
   word-break: break-all;
 }
+.docker-credential-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.docker-credential-label > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .docker-file-picker {
   display: flex;
   align-items: center;
+  flex: 0 1 auto;
   gap: 8px;
-  min-height: 24px;
+  min-width: 0;
+  min-height: 26px;
   line-height: 1;
 }
-.docker-file-picker input[type='file'] {
-  max-width: 150px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
-  color: var(--theme-fg-subtle);
-  background: transparent;
-  border: 0;
-  font-size: 11px;
+.docker-file-input {
+  display: none;
 }
-.docker-file-picker input[type='file']::file-selector-button {
+.docker-file-import {
+  flex: 0 0 auto;
   min-height: 26px;
   padding: 0 8px;
   color: var(--theme-fg-muted);
@@ -1841,13 +1984,20 @@
   border: 1px solid var(--theme-border);
   border-radius: 4px;
   cursor: pointer;
+  font-size: 11px;
 }
 .docker-file-picker small {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(220px, 40vw);
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   min-height: 26px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.docker-file-picker input[type='file']::file-selector-button:hover {
+.docker-file-import:hover {
   border-color: var(--theme-border-strong);
   background: var(--theme-bg-hover);
 }
@@ -2003,7 +2153,8 @@
   .provider-config-form,
   .provider-model-grid,
   .provider-summary,
-  .provider-purpose-help {
+  .provider-purpose-help,
+  .provider-purpose-configuration {
     grid-template-columns: 1fr;
   }
   .provider-config-form > label,
@@ -2019,7 +2170,8 @@
   }
   .docker-access-mode,
   .docker-form-grid,
-  .docker-agent-connection-row {
+  .docker-agent-connection-row,
+  .kubernetes-connection-mode {
     grid-template-columns: 1fr;
   }
   .docker-tls-first-row,

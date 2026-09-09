@@ -89,7 +89,6 @@ func InputSchema(extra map[string]any) map[string]any {
 		"tls_ca":          map[string]any{"type": "string", "description": "Optional CA PEM content encoded as Base64, or a path to a CA PEM file."},
 		"tls_cert":        map[string]any{"type": "string", "description": "Optional client certificate PEM content encoded as Base64, or a path to a PEM file."},
 		"tls_key":         map[string]any{"type": "string", "description": "Optional client private key PEM content encoded as Base64, or a path to a private key PEM file."},
-		"tls_server_name": map[string]any{"type": "string", "description": "Optional TLS server name override."},
 		"skip_tls_verify": map[string]any{"type": "boolean", "default": false, "description": "Skip TLS certificate verification."},
 	}
 	for name, schema := range extra {

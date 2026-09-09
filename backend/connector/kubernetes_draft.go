@@ -11,11 +11,14 @@ import (
 )
 
 type KubernetesDraftInput struct {
-	Kubeconfig    string `json:"kubeconfig,omitempty"`
-	Server        string `json:"server,omitempty"`
-	Token         string `json:"token,omitempty"`
-	Context       string `json:"context,omitempty"`
-	SkipTLSVerify bool   `json:"skip_tls_verify,omitempty"`
+	Kubeconfig     string `json:"kubeconfig,omitempty"`
+	Server         string `json:"server,omitempty"`
+	CAFile         string `json:"ca_file,omitempty"`
+	Token          string `json:"token,omitempty"`
+	ClientCertFile string `json:"client_cert_file,omitempty"`
+	ClientKeyFile  string `json:"client_key_file,omitempty"`
+	Context        string `json:"context,omitempty"`
+	SkipTLSVerify  bool   `json:"skip_tls_verify,omitempty"`
 }
 type KubernetesDraftCheck struct {
 	Status    string `json:"status"`
@@ -26,7 +29,7 @@ type KubernetesDraftCheck struct {
 func (s *Service) TestKubernetesDraft(ctx context.Context, input KubernetesDraftInput) (KubernetesDraftCheck, error) {
 	started := time.Now()
 	check := KubernetesDraftCheck{Status: "failed"}
-	connection := kclient.ConnectionInput{Server: input.Server, Token: input.Token, Context: input.Context, SkipTLSVerify: input.SkipTLSVerify}
+	connection := kclient.ConnectionInput{Server: input.Server, CAFile: input.CAFile, Token: input.Token, ClientCertFile: input.ClientCertFile, ClientKeyFile: input.ClientKeyFile, Context: input.Context, SkipTLSVerify: input.SkipTLSVerify}
 	if input.Kubeconfig != "" {
 		connection.KubeconfigBase64 = base64.StdEncoding.EncodeToString([]byte(input.Kubeconfig))
 	}

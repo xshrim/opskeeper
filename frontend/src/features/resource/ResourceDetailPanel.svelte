@@ -100,7 +100,7 @@
     <form class="stack-form editor-form" on:submit|preventDefault={onUpdate}>
       {#if selectedResource.kind === 'AIProvider'}
         <div class="provider-edit-form">
-          <ProviderConnectionStep bind:type={providerType} bind:protocol={providerProtocol} bind:baseURL={providerBaseURL} bind:timeoutSeconds={providerTimeoutSeconds} bind:maxConcurrency={providerMaxConcurrency} bind:rateLimitPerMinute={providerRateLimitPerMinute} bind:purposeTags={providerPurposeTags} typeOptions={providerTypeOptions} purposeOptions={providerPurposeOptions} showDescription={false} showAPIKey={false} onTogglePurpose={onTogglePurpose} />
+          <ProviderConnectionStep bind:type={providerType} bind:protocol={providerProtocol} bind:baseURL={providerBaseURL} bind:timeoutSeconds={providerTimeoutSeconds} bind:maxConcurrency={providerMaxConcurrency} bind:rateLimitPerMinute={providerRateLimitPerMinute} bind:purposeTags={providerPurposeTags} typeOptions={providerTypeOptions} purposeOptions={providerPurposeOptions} showAPIKey={false} onTogglePurpose={onTogglePurpose} />
           <ProviderModelStep bind:draft={providerModelDraft} bind:models={providerModels} bind:defaultModel={providerDefaultModel} capabilityOptions={providerCapabilityOptions} editingModelName={editingProviderModelName} radioName="provider-default-model-edit" showEnabledControl={false} onToggleCapability={onToggleCapability} onAddModel={onAddModel} onSetDefault={onSetDefault} onEditModel={onEditModel} onRemoveModel={onRemoveModel} />
         </div>
       {:else}

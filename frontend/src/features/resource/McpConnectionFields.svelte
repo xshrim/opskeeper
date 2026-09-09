@@ -6,10 +6,11 @@
   export let timeoutSeconds = 120;
   export let maxResponseBytes = 4 * 1024 * 1024;
   export let tokenPlaceholder = '保存于加密凭据';
+  export let configurationAttempted = false;
 </script>
 
 <div class="mcp-resource-form">
-  <label class="mcp-url-field"><span><i>*</i>Server 地址</span><input bind:value={url} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
+  <label class="mcp-url-field" class:invalid={configurationAttempted && !url.trim()}><span><i>*</i>Server 地址</span><input bind:value={url} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
   <label><span>Token</span><input bind:value={token} type="password" placeholder={tokenPlaceholder} autocomplete="new-password" /></label>
   <div class="mcp-number-grid">
     <label><span>超时时间（秒）</span><input bind:value={timeoutSeconds} type="number" min="1" max="600" /></label>

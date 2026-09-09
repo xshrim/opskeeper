@@ -21,7 +21,6 @@
   export let onSubmit: () => void = () => {};
 </script>
 
-<p class="resource-add-description">进入此步骤后会自动使用默认模型执行连接核验，结果仅供参考。</p>
 <form id="provider-create-form" class="provider-summary" on:submit|preventDefault={onSubmit}>
   <div><span>Provider</span><strong>{resourceName}</strong><small>{providerTypeLabel} · {providerStatus === 'active' ? '已启用' : '未启用'}</small></div>
   <div><span>服务地址</span><strong>{baseURL}</strong><small>{protocol} · 超时 {timeoutSeconds} 秒 · 并发 {maxConcurrency}</small></div>

@@ -10,14 +10,15 @@
   export let showTimeout = false;
   export let timeoutSeconds = 60;
   export let isRequired: (key: string) => boolean = () => false;
+  export let configurationAttempted = false;
 </script>
 
 {#if schema?.schema.properties && Object.keys(schema.schema.properties).length > 0}
   <div class="schema-inputs">
     <p class="eyebrow">SCHEMA FIELDS</p>
     {#each Object.entries(schema.schema.properties) as [key, field]}
-      <label>
-        <span>{#if editMode && isRequired(key)}<i>*</i>{/if}{field.title || key}</span>
+      <label class:invalid={configurationAttempted && isRequired(key) && !(field.sensitive ? (sensitiveValues[key] ?? '') : (values[key] ?? '')).trim()}>
+        <span>{#if isRequired(key)}<i>*</i>{/if}{field.title || key}</span>
         {#if field.sensitive}
           <input type="password" bind:value={sensitiveValues[key]} placeholder={editMode && credentialConfigured ? '已有关联凭据，留空保持不变' : '敏感信息将加密保存'} autocomplete="new-password" />
         {:else if field.enum}

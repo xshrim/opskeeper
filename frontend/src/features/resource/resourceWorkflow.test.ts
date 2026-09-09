@@ -8,6 +8,10 @@ import {
   dockerAccessModeLabel,
   dockerTLSValueValid,
   emptyProviderModelDraft,
+  kubernetesConfigForSave,
+  kubernetesConfigurationValid,
+  kubernetesCredentialForSave,
+  kubernetesKubeconfigText,
   mcpConfigForSave,
   mcpConfigurationValid,
   parseMCPHeaders,
@@ -96,7 +100,6 @@ describe('resource workflow helpers', () => {
       caBase64: 'Y2E=',
       certBase64: 'Y2VydA==',
       keyBase64: 'a2V5',
-      serverName: 'docker.example.com',
       skipTLSVerify: false,
       mcpServerResourceId: '',
       connectionOverride: false
@@ -104,8 +107,7 @@ describe('resource workflow helpers', () => {
     expect(dockerConnectionConfigurationValid(direct)).toBe(true);
     expect(dockerConfigForSave(direct)).toEqual({
       host: 'tcp://docker.example.com:2376',
-      timeout: 10,
-      tls_server_name: 'docker.example.com'
+      timeout: 10
     });
     expect(dockerCredentialForSave(direct)).toEqual({
       tls_ca: 'Y2E=',
@@ -118,5 +120,27 @@ describe('resource workflow helpers', () => {
     expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '', keyBase64: '' })).toBe(true);
     expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '/etc/docker/cert.pem', keyBase64: '' })).toBe(false);
     expect(dockerConnectionConfigurationValid({ ...direct, host: 'http://docker.example.com:2375' })).toBe(false);
+  });
+
+  it('separates Kubernetes API connection modes and stores kubeconfig as Base64', () => {
+    const kubeconfig = {
+      connectionMode: 'kubeconfig' as const,
+      kubeconfig: 'apiVersion: v1\nkind: Config',
+      server: '',
+      caBase64: '',
+      token: '',
+      certBase64: '',
+      keyBase64: '',
+      skipTLSVerify: false
+    };
+    expect(kubernetesConfigurationValid(kubeconfig)).toBe(true);
+    expect(kubernetesConfigForSave(kubeconfig)).toEqual({ connection_mode: 'kubeconfig' });
+    expect(kubernetesCredentialForSave(kubeconfig)).toEqual({ kubeconfig_base64: 'YXBpVmVyc2lvbjogdjEKa2luZDogQ29uZmln' });
+    expect(kubernetesKubeconfigText('YXBpVmVyc2lvbjogdjEK')).toBe('apiVersion: v1');
+    expect(kubernetesConfigurationValid({ ...kubeconfig, connectionMode: 'endpoint', server: 'https://cluster.example:6443', kubeconfig: '' })).toBe(true);
+    const agent = { ...kubeconfig, isAgent: true, connectionOverride: false };
+    expect(kubernetesConfigurationValid(agent)).toBe(true);
+    expect(kubernetesConfigForSave(agent)).toEqual({});
+    expect(kubernetesCredentialForSave(agent)).toEqual({});
   });
 });

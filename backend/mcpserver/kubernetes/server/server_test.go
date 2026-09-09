@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -51,5 +52,25 @@ func TestToolsUsePrimitiveSchemasAndNoOutputSchemas(t *testing.T) {
 		if tool.OutputSchema != nil {
 			t.Errorf("tool %q unexpectedly has output schema", tool.Name)
 		}
+	}
+}
+
+func TestBearerAuthenticationIsOptionalAndEnforcedWhenConfigured(t *testing.T) {
+	handler, err := New(Config{Address: "127.0.0.1:8812", BearerToken: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, StreamableHTTPPath, nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status=%d want=%d", response.Code, http.StatusUnauthorized)
+	}
+	request = httptest.NewRequest(http.MethodGet, StreamableHTTPPath, nil)
+	request.Header.Set("Authorization", "Bearer test-token")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code == http.StatusUnauthorized {
+		t.Fatal("authenticated request was rejected")
 	}
 }

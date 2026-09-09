@@ -24,7 +24,6 @@ type ConnectionInput struct {
 	DockerCA         string `json:"tls_ca,omitempty" jsonschema:"CA PEM material as Base64 text or a file path."`
 	DockerCert       string `json:"tls_cert,omitempty" jsonschema:"Client certificate PEM material as Base64 text or a file path."`
 	DockerKey        string `json:"tls_key,omitempty" jsonschema:"Client private key PEM material as Base64 text or a file path."`
-	DockerServerName string `json:"tls_server_name,omitempty" jsonschema:"Optional TLS server name override."`
 	DockerSkipVerify bool   `json:"skip_tls_verify,omitempty" jsonschema:"Skip TLS certificate verification."`
 }
 
@@ -35,7 +34,6 @@ type ConnectionConfig struct {
 	CAFile     string
 	CertFile   string
 	KeyFile    string
-	ServerName string
 	SkipVerify bool
 }
 
@@ -55,7 +53,6 @@ func resolveConnection(input ConnectionInput, inheritEnvironment bool) (Connecti
 		DockerCA:         firstEnv("DOCKER_MCP_DOCKER_CA"),
 		DockerCert:       firstEnv("DOCKER_MCP_DOCKER_CERT"),
 		DockerKey:        firstEnv("DOCKER_MCP_DOCKER_KEY"),
-		DockerServerName: firstEnv("DOCKER_MCP_DOCKER_SERVER_NAME"),
 	}
 	if inheritEnvironment {
 		resolveEnvironmentTLS(&env)
@@ -75,9 +72,6 @@ func resolveConnection(input ConnectionInput, inheritEnvironment bool) (Connecti
 		if resolved.DockerKey == "" {
 			resolved.DockerKey = env.DockerKey
 		}
-		if resolved.DockerServerName == "" {
-			resolved.DockerServerName = env.DockerServerName
-		}
 		if !resolved.DockerSkipVerify {
 			resolved.DockerSkipVerify = env.DockerSkipVerify
 		}
@@ -90,7 +84,7 @@ func resolveConnection(input ConnectionInput, inheritEnvironment bool) (Connecti
 	if err != nil {
 		return ConnectionConfig{}, err
 	}
-	if !tlsEnabled && (resolved.DockerCA != "" || resolved.DockerCert != "" || resolved.DockerKey != "" || resolved.DockerServerName != "" || resolved.DockerSkipVerify) {
+	if !tlsEnabled && (resolved.DockerCA != "" || resolved.DockerCert != "" || resolved.DockerKey != "" || resolved.DockerSkipVerify) {
 		return ConnectionConfig{}, fmt.Errorf("TLS configuration requires a tcp or https Docker host")
 	}
 	if (resolved.DockerCert == "") != (resolved.DockerKey == "") {
@@ -102,7 +96,6 @@ func resolveConnection(input ConnectionInput, inheritEnvironment bool) (Connecti
 		CAFile:     resolved.DockerCA,
 		CertFile:   resolved.DockerCert,
 		KeyFile:    resolved.DockerKey,
-		ServerName: resolved.DockerServerName,
 		SkipVerify: resolved.DockerSkipVerify,
 	}, nil
 }
@@ -156,9 +149,8 @@ func normalizeHost(raw string, input ConnectionInput) (host, scheme string, tlsE
 		if parsed.Path != "" && parsed.Path != "/" {
 			return "", "", false, fmt.Errorf("Docker TCP host paths are not supported")
 		}
-		// tcp supports either transport: configure TLS material, Server Name,
-		// or skip verification to select HTTPS; otherwise it remains HTTP.
-		tlsEnabled := input.DockerCA != "" || input.DockerCert != "" || input.DockerKey != "" || input.DockerServerName != "" || input.DockerSkipVerify
+		// tcp selects HTTPS when TLS material or an explicit verification override is configured.
+		tlsEnabled := input.DockerCA != "" || input.DockerCert != "" || input.DockerKey != "" || input.DockerSkipVerify
 		if tlsEnabled {
 			return "tcp://" + parsed.Host, "https", true, nil
 		}
@@ -184,7 +176,6 @@ func TLSConfig(config ConnectionConfig) (*tls.Config, error) {
 	}
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		ServerName:         config.ServerName,
 		InsecureSkipVerify: config.SkipVerify, //nolint:gosec -- explicitly configured by the operator.
 	}
 	if config.CAFile != "" {

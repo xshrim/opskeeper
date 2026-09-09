@@ -60,7 +60,7 @@ func RegisterTools(s *mcp.Server) {
 	add("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, clusterInfoTool)
 	add("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, apiResourcesTool)
 	for _, item := range []struct{ name, description, resource string }{
-		{"kubernetes_namespaces", "List Kubernetes namespaces.", "namespaces"}, {"kubernetes_nodes", "List Kubernetes nodes.", "nodes"}, {"kubernetes_pods", "List Kubernetes pods.", "pods"}, {"kubernetes_services", "List Kubernetes services.", "services"}, {"kubernetes_configmaps", "List Kubernetes ConfigMaps.", "configmaps"}, {"kubernetes_ingresses", "List Kubernetes ingresses.", "ingresses"}, {"kubernetes_events", "List Kubernetes events.", "events"},
+		{"kubernetes_namespaces", "List Kubernetes namespaces.", "namespaces"}, {"kubernetes_nodes", "List Kubernetes nodes.", "nodes"}, {"kubernetes_pods", "List Kubernetes pods.", "pods"}, {"kubernetes_services", "List Kubernetes services.", "services"}, {"kubernetes_configmaps", "List Kubernetes ConfigMaps.", "configmaps"}, {"kubernetes_ingresses", "List Kubernetes ingresses.", "ingresses"}, {"kubernetes_endpoint_slices", "List Kubernetes EndpointSlices.", "endpointslices"}, {"kubernetes_events", "List Kubernetes events.", "events"},
 	} {
 		resource := item.resource
 		add(item.name, item.description, listExtras(), func(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {

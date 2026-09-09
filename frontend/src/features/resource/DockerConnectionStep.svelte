@@ -8,7 +8,6 @@
   export let caBase64 = '';
   export let certBase64 = '';
   export let keyBase64 = '';
-  export let serverName = '';
   export let skipTLSVerify = false;
 export let mcpServerResourceId = '';
   export let connectionOverride = false;
@@ -20,6 +19,13 @@ export let mcpServerResourceId = '';
   type TLSField = 'ca' | 'cert' | 'key';
   let selectedFileNames: Record<TLSField, string> = { ca: '', cert: '', key: '' };
   let fileErrors: Record<TLSField, string> = { ca: '', cert: '', key: '' };
+  let caFileInput: HTMLInputElement;
+  let certFileInput: HTMLInputElement;
+  let keyFileInput: HTMLInputElement;
+
+  function openFilePicker(input: HTMLInputElement) {
+    input?.click();
+  }
 
   async function importTLSFile(event: Event, field: TLSField) {
     const input = event.currentTarget as HTMLInputElement;
@@ -34,7 +40,7 @@ export let mcpServerResourceId = '';
       if (field === 'ca') caBase64 = pem;
       if (field === 'cert') certBase64 = pem;
       if (field === 'key') keyBase64 = pem;
-      selectedFileNames = { ...selectedFileNames, [field]: file.name };
+      selectedFileNames = { ...selectedFileNames, [field]: file.webkitRelativePath || file.name };
       onConfigurationChange();
     } catch (error) {
       fileErrors = { ...fileErrors, [field]: error instanceof Error ? error.message : '文件读取失败' };
@@ -54,10 +60,6 @@ export let mcpServerResourceId = '';
 
   $: tlsSupported = dockerHostSupportsTLS(host);
 </script>
-
-<p class="resource-add-description">
-  当前子类型为 {accessMode === 'direct' ? 'Direct：后端直接连接 Docker Engine。' : 'Agent：通过关联的 MCPServer 代理调用。'}
-</p>
 
 {#if accessMode === 'agent'}
   <div class="docker-agent-form">
@@ -112,37 +114,22 @@ export let mcpServerResourceId = '';
 
     <fieldset class="docker-tls-fieldset" disabled={!tlsSupported}>
       <legend>TLS 客户端配置（可选）</legend>
-      <p class="docker-field-help">{tlsSupported ? 'CA、客户端证书和私钥支持粘贴 PEM 文本或 Base64 编码，也支持导入 PEM 文件。数据库和工具参数统一使用 Base64；客户端证书和私钥必须成对。' : '当前 Docker Host URL 不支持 TLS 配置。请选择 tcp:// 或 https:// 后再配置。'}</p>
+      <p class="docker-field-help">{tlsSupported ? 'CA 证书、客户端证书和私钥支持粘贴 PEM 文本或 Base64 编码，也支持导入 PEM 文件。数据库和工具参数统一使用 Base64；客户端证书和私钥必须成对。' : '当前 Docker Host URL 不支持 TLS 配置。请选择 tcp:// 或 https:// 后再配置。'}</p>
       <div class="docker-form-grid docker-tls-grid">
-        <div class="docker-tls-first-row">
-          <label class="docker-skip-verify">
-            <span>跳过 TLS 证书校验</span>
-            <button class="docker-switch" class:active={skipTLSVerify} type="button" aria-pressed={skipTLSVerify} aria-label="跳过 TLS 证书校验" on:click={() => { skipTLSVerify = !skipTLSVerify; onConfigurationChange(); }}><span></span></button>
-            <small>仅用于明确受信任的开发端点。</small>
-          </label>
-          <label>
-            <span>TLS Server Name</span>
-            <input bind:value={serverName} on:input={onConfigurationChange} type="text" placeholder="可选，例如 docker.example.com，用于证书校验和 SNI" autocomplete="off" />
-            <small class="docker-field-help">当证书名称与 Host URL 不一致时填写。</small>
-          </label>
-        </div>
         <div class="docker-tls-certificate-row">
           <label class:invalid={tlsInvalid(caBase64)}>
-          <span>CA</span>
-          <textarea bind:value={caBase64} on:input={onConfigurationChange} rows="3" placeholder="粘贴 CA PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
-          <span class="docker-file-picker"><input type="file" accept=".pem,.crt,.cer,text/plain,application/x-pem-file" aria-label="导入 CA 文件" on:change={(event) => void importTLSFile(event, 'ca')} /><small>{selectedFileNames.ca ? `已导入：${selectedFileNames.ca}` : '导入文件'}</small></span>
+          <span class="docker-credential-label"><span class="docker-tls-label">CA 证书 <button class="docker-switch inline" class:active={skipTLSVerify} type="button" aria-pressed={skipTLSVerify} aria-label="跳过 TLS 证书校验" on:click={() => { skipTLSVerify = !skipTLSVerify; onConfigurationChange(); }}><span></span></button><small>跳过校验</small></span><span class="docker-file-picker">{#if selectedFileNames.ca}<small>{selectedFileNames.ca}</small>{/if}<input class="docker-file-input" bind:this={caFileInput} type="file" accept=".pem,.crt,.cer,text/plain,application/x-pem-file" aria-label="选择 CA 证书文件" on:change={(event) => void importTLSFile(event, 'ca')} /><button class="docker-file-import" type="button" aria-label="导入 CA 证书文件" on:click|stopPropagation|preventDefault={() => openFilePicker(caFileInput)}>导入</button></span></span>
+          <textarea bind:value={caBase64} on:input={onConfigurationChange} rows="6" placeholder="粘贴 CA 证书 PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
           {#if fileErrors.ca}<small class="field-error">{fileErrors.ca}</small>{/if}
           </label>
           <label class:invalid={tlsInvalid(certBase64)}>
-          <span>客户端证书</span>
-          <textarea bind:value={certBase64} on:input={onConfigurationChange} rows="3" placeholder="粘贴客户端证书 PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
-          <span class="docker-file-picker"><input type="file" accept=".pem,.crt,.cer,text/plain,application/x-pem-file" aria-label="导入客户端证书文件" on:change={(event) => void importTLSFile(event, 'cert')} /><small>{selectedFileNames.cert ? `已导入：${selectedFileNames.cert}` : '导入文件'}</small></span>
+          <span class="docker-credential-label"><span>客户端证书</span><span class="docker-file-picker">{#if selectedFileNames.cert}<small>{selectedFileNames.cert}</small>{/if}<input class="docker-file-input" bind:this={certFileInput} type="file" accept=".pem,.crt,.cer,text/plain,application/x-pem-file" aria-label="选择客户端证书文件" on:change={(event) => void importTLSFile(event, 'cert')} /><button class="docker-file-import" type="button" aria-label="导入客户端证书文件" on:click|stopPropagation|preventDefault={() => openFilePicker(certFileInput)}>导入</button></span></span>
+          <textarea bind:value={certBase64} on:input={onConfigurationChange} rows="6" placeholder="粘贴客户端证书 PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
           {#if fileErrors.cert}<small class="field-error">{fileErrors.cert}</small>{/if}
           </label>
           <label class:invalid={tlsInvalid(keyBase64)}>
-          <span>客户端私钥</span>
-          <textarea bind:value={keyBase64} on:input={onConfigurationChange} rows="3" placeholder="粘贴客户端私钥 PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
-          <span class="docker-file-picker"><input type="file" accept=".pem,.key,.crt,text/plain,application/x-pem-file" aria-label="导入客户端私钥文件" on:change={(event) => void importTLSFile(event, 'key')} /><small>{selectedFileNames.key ? `已导入：${selectedFileNames.key}` : '导入文件'}</small></span>
+          <span class="docker-credential-label"><span>客户端私钥</span><span class="docker-file-picker">{#if selectedFileNames.key}<small>{selectedFileNames.key}</small>{/if}<input class="docker-file-input" bind:this={keyFileInput} type="file" accept=".pem,.key,.crt,text/plain,application/x-pem-file" aria-label="选择客户端私钥文件" on:change={(event) => void importTLSFile(event, 'key')} /><button class="docker-file-import" type="button" aria-label="导入客户端私钥文件" on:click|stopPropagation|preventDefault={() => openFilePicker(keyFileInput)}>导入</button></span></span>
+          <textarea bind:value={keyBase64} on:input={onConfigurationChange} rows="6" placeholder="粘贴客户端私钥 PEM 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
           {#if fileErrors.key}<small class="field-error">{fileErrors.key}</small>{/if}
           </label>
         </div>

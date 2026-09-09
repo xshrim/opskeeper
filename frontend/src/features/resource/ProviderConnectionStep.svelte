@@ -18,13 +18,11 @@
   export let purposeOptions: PurposeOption[] = [];
   export let configurationAttempted = false;
   export let baseURLValid = true;
-  export let showDescription = true;
   export let showAPIKey = true;
   export let onSelectType: (type: string) => void = () => {};
   export let onTogglePurpose: (purpose: string) => void = () => {};
 </script>
 
-{#if showDescription}<p class="resource-add-description">配置 Provider 连接、运行边界和角色。凭据会作为独立加密对象保存，不会写入资源配置。</p>{/if}
 <div class="provider-config-form">
   <label class="provider-config-type" class:invalid={configurationAttempted && !type}>
     <span><i>*</i>Provider类型</span>

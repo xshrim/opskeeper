@@ -83,11 +83,13 @@
     dockerTLSValueValid,
     dockerTLSValueForDisplay,
     type DockerAccessMode,
-    type KubernetesAccessMode,
+    type KubernetesConnectionMode,
     kubernetesConfigForSave,
     kubernetesCredentialForSave,
     kubernetesConfigurationValid,
+    kubernetesKubeconfigText,
     resourceAddStepTitle,
+    resourceAddStepDescription,
     type ProviderModel
   } from './resourceWorkflow';
   import { api, ApiError } from '../../lib/api';
@@ -200,7 +202,6 @@
   let dockerCABase64 = '';
   let dockerCertBase64 = '';
   let dockerKeyBase64 = '';
-  let dockerServerName = '';
   let dockerSkipTLSVerify = false;
   let dockerMCPServerResourceId = '';
   let dockerAgentConnectionOverride = false;
@@ -214,14 +215,16 @@
     latency?: number;
     toolCount?: number;
   } | null = null;
-  let kubernetesAccessMode: KubernetesAccessMode = 'direct';
+  let kubernetesConnectionMode: KubernetesConnectionMode = 'kubeconfig';
   let kubernetesServer = '';
+  let kubernetesCABase64 = '';
   let kubernetesToken = '';
+  let kubernetesCertBase64 = '';
+  let kubernetesKeyBase64 = '';
   let kubernetesKubeconfig = '';
-  let kubernetesContext = '';
   let kubernetesSkipTLSVerify = false;
   let kubernetesMCPServerResourceId = '';
-  let kubernetesAgentConnectionOverride = false;
+  let kubernetesConnectionOverride = false;
   let kubernetesConfigurationAttempted = false;
   let kubernetesCredentialLoading = false;
   let kubernetesDraftTestBusy = false;
@@ -281,6 +284,12 @@
   onMount(() => {
     if (selectedResourceId) void loadResourceDetails(selectedResourceId);
   });
+
+  function resourceKindForSelection(category: string, subtype = '') {
+    if (category === 'LLM' && subtype === 'Provider') return 'AIProvider';
+    const schema = resourceSchemaForSelection(category, subtype);
+    return schema && resourceCategoryFor(schema) === category ? schema.kind : category;
+  }
 
   async function loadResourceDetails(id: string) {
     selectedResourceId = id;
@@ -412,7 +421,6 @@
     dockerAccessMode = String(resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
     dockerHost = String(config.host ?? '');
     dockerTimeoutSeconds = Number(config.timeout ?? 10);
-    dockerServerName = String(config.tls_server_name ?? '');
     dockerSkipTLSVerify = config.skip_tls_verify === true || String(config.skip_tls_verify ?? '').toLowerCase() === 'true';
     dockerMCPServerResourceId = String(resource.agent_ref ?? '');
     dockerAgentConnectionOverride = Object.keys(config).length > 0;
@@ -446,10 +454,11 @@
     const config = resource.config ?? {};
     resourceName = resource.name; resourceStatus = resource.status;
     resourceLabels = Object.entries(resource.labels ?? {}).map(([key, value]) => `${key}=${value}`).join(', '); editResourceLabels = resourceLabels;
-    kubernetesAccessMode = String(resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
-    kubernetesServer = String(config.server ?? ''); kubernetesContext = String(config.context ?? ''); kubernetesSkipTLSVerify = config.skip_tls_verify === true;
-    kubernetesMCPServerResourceId = String(resource.agent_ref ?? ''); kubernetesAgentConnectionOverride = Object.keys(config).length > 0; kubernetesKubeconfig = ''; kubernetesToken = '';
-    if ((kubernetesAccessMode === 'direct' || kubernetesAgentConnectionOverride) && resource.credential_id) { kubernetesCredentialLoading = true; void loadResourceCredentialSecret(resource.credential_id).then((credential) => { if (selectedResourceId !== resource.id) return; try { const secret = JSON.parse(credential.secret) as Record<string, unknown>; kubernetesKubeconfig = String(secret.kubeconfig ?? ''); kubernetesToken = String(secret.token ?? ''); } catch { kubernetesKubeconfig = ''; kubernetesToken = credential.secret; } finally { kubernetesCredentialLoading = false; } }).catch(() => { kubernetesCredentialLoading = false; }); }
+    kubernetesConnectionMode = String(config.connection_mode ?? (config.server ? 'endpoint' : 'kubeconfig')) === 'endpoint' ? 'endpoint' : 'kubeconfig';
+    kubernetesServer = String(config.server ?? ''); kubernetesCABase64 = ''; kubernetesCertBase64 = ''; kubernetesKeyBase64 = ''; kubernetesSkipTLSVerify = config.skip_tls_verify === true;
+    kubernetesMCPServerResourceId = String(resource.agent_ref ?? ''); kubernetesKubeconfig = ''; kubernetesToken = '';
+    kubernetesConnectionOverride = Boolean(resource.credential_id) || Object.keys(config).some((key) => key !== 'connection_mode');
+    if (resource.credential_id) { kubernetesCredentialLoading = true; void loadResourceCredentialSecret(resource.credential_id).then((credential) => { if (selectedResourceId !== resource.id) return; try { const secret = JSON.parse(credential.secret) as Record<string, unknown>; const encoded = String(secret.kubeconfig_base64 ?? ''); kubernetesKubeconfig = encoded ? kubernetesKubeconfigText(encoded) : String(secret.kubeconfig ?? ''); kubernetesToken = String(secret.token ?? ''); kubernetesCABase64 = dockerTLSValueForDisplay(String(secret.ca_file ?? '')); kubernetesCertBase64 = dockerTLSValueForDisplay(String(secret.client_cert_file ?? '')); kubernetesKeyBase64 = dockerTLSValueForDisplay(String(secret.client_key_file ?? '')); } catch { kubernetesKubeconfig = ''; kubernetesToken = credential.secret; kubernetesCABase64 = ''; kubernetesCertBase64 = ''; kubernetesKeyBase64 = ''; } finally { kubernetesCredentialLoading = false; } }).catch(() => { kubernetesCredentialLoading = false; }); }
   }
 
   function syncResourceEditor(resource: Resource) {
@@ -597,7 +606,11 @@
   function selectResourceAddCategory(category: string) {
     resourceAddCategory = category;
     resourceAddSubtype = '';
-    resourceKind = '';
+    const firstSubtype = resourceCategoryOptions[category]?.[0] ?? '';
+    resourceKind = resourceKindForSelection(category, firstSubtype);
+    if (resourceKind === 'MCPServer') mcpTransport = mcpTransportForSubtype(firstSubtype);
+    resourceAddStep = 1;
+    autoSummaryTestKey = '';
   }
 
   function toggleResourceAddMenu() {
@@ -615,9 +628,16 @@
       resetProviderDraft();
       resetDockerDraft();
       resetKubernetesDraft();
+      resourceName = '';
+      resourceLabels = '';
       resourceStatus = 'active';
       resourceAddCategory = resourceCategory === '全部' ? '' : resourceCategory;
       resourceAddSubtype = resourceSubtype === '全部' ? '' : resourceSubtype;
+      resourceKind = '';
+    if (resourceAddCategory) {
+        const firstSubtype = resourceCategoryOptions[resourceAddCategory]?.[0] ?? '';
+        resourceKind = resourceKindForSelection(resourceAddCategory, resourceAddSubtype || firstSubtype);
+      }
     }
   }
 
@@ -633,11 +653,11 @@
       resetResourceConfig();
       resetProviderDraft();
       resetDockerDraft();
+      resetKubernetesDraft();
     }
     if (resourceKind === 'Docker') {
       dockerAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     }
-    if (resourceKind === 'Kubernetes') kubernetesAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
@@ -699,7 +719,6 @@
     dockerCABase64 = '';
     dockerCertBase64 = '';
     dockerKeyBase64 = '';
-    dockerServerName = '';
     dockerSkipTLSVerify = false;
     dockerMCPServerResourceId = '';
     dockerAgentConnectionOverride = false;
@@ -710,7 +729,7 @@
     editingDockerResourceId = '';
   }
 
-  function resetKubernetesDraft() { kubernetesAccessMode='direct'; kubernetesServer=''; kubernetesToken=''; kubernetesKubeconfig=''; kubernetesContext=''; kubernetesSkipTLSVerify=false; kubernetesMCPServerResourceId=''; kubernetesAgentConnectionOverride=false; kubernetesConfigurationAttempted=false; kubernetesCredentialLoading=false; kubernetesDraftTestBusy=false; kubernetesDraftTest=null; editingKubernetesResourceId=''; }
+  function resetKubernetesDraft() { kubernetesConnectionMode='kubeconfig'; kubernetesServer=''; kubernetesCABase64=''; kubernetesToken=''; kubernetesCertBase64=''; kubernetesKeyBase64=''; kubernetesKubeconfig=''; kubernetesSkipTLSVerify=false; kubernetesMCPServerResourceId=''; kubernetesConnectionOverride=false; kubernetesConfigurationAttempted=false; kubernetesCredentialLoading=false; kubernetesDraftTestBusy=false; kubernetesDraftTest=null; editingKubernetesResourceId=''; }
 
   function resetProviderDraft() {
     providerType = 'openai_compatible';
@@ -1067,6 +1086,15 @@
     return Boolean(resourceAddCategory && resourceAddSubtype && resourceName.trim() && selectedScopeId);
   }
 
+  function resourceSchemaConfigurationComplete() {
+    if (!createSchema?.schema.required?.length) return true;
+    return createSchema.schema.required.every((key) => {
+      const field = createSchema?.schema.properties?.[key];
+      const value = field?.sensitive ? resourceSensitiveValues[key] : resourceConfigValues[key];
+      return Boolean(String(value ?? '').trim());
+    });
+  }
+
   function dockerDraft() {
     const tlsSupported = dockerHostSupportsTLS(dockerHost);
     return {
@@ -1076,18 +1104,18 @@
       caBase64: tlsSupported ? dockerCABase64 : '',
       certBase64: tlsSupported ? dockerCertBase64 : '',
       keyBase64: tlsSupported ? dockerKeyBase64 : '',
-      serverName: tlsSupported ? dockerServerName : '',
       skipTLSVerify: tlsSupported && dockerSkipTLSVerify,
       mcpServerResourceId: dockerMCPServerResourceId,
       connectionOverride: dockerAgentConnectionOverride
     } as const;
   }
 
-  function kubernetesDraft() { return { accessMode:kubernetesAccessMode, server:kubernetesServer, token:kubernetesToken, kubeconfig:kubernetesKubeconfig, context:kubernetesContext, skipTLSVerify:kubernetesSkipTLSVerify, mcpServerResourceId:kubernetesMCPServerResourceId, connectionOverride:kubernetesAgentConnectionOverride } as const; }
-  function kubernetesConfigurationComplete() { if (kubernetesCredentialLoading) return false; if (!kubernetesConfigurationValid(kubernetesDraft())) return false; if (kubernetesAccessMode === 'agent' && !kubernetesAgentConnectionOverride) return Boolean(kubernetesMCPServers.some((server) => server.id === kubernetesMCPServerResourceId && server.status === 'active')); return true; }
+  function kubernetesIsAgent() { return resourceAddSubtype.trim().toLowerCase() === 'agent'; }
+  function kubernetesDraft() { return { isAgent:kubernetesIsAgent(), connectionOverride:kubernetesConnectionOverride, connectionMode:kubernetesConnectionMode, server:kubernetesServer, caBase64:kubernetesCABase64, token:kubernetesToken, certBase64:kubernetesCertBase64, keyBase64:kubernetesKeyBase64, kubeconfig:kubernetesKubeconfig, skipTLSVerify:kubernetesSkipTLSVerify } as const; }
+  function kubernetesConfigurationComplete() { if (kubernetesCredentialLoading) return false; if (kubernetesIsAgent() && !kubernetesMCPServerResourceId.trim()) return false; if (kubernetesIsAgent() && !kubernetesMCPServers.some((server) => server.id === kubernetesMCPServerResourceId && server.status === 'active')) return false; return kubernetesConfigurationValid(kubernetesDraft()); }
   async function createKubernetesCredential() { return createKubernetesCredentialAction(selectedScopeId, resourceName, kubernetesCredentialForSave(kubernetesDraft())); }
   async function saveKubernetesCredential(existing: Resource) { return saveKubernetesCredentialAction(existing, selectedScopeId, resourceName, kubernetesCredentialForSave(kubernetesDraft())); }
-  async function testKubernetesDraftConnection() { kubernetesDraftTestBusy=true; const draft=kubernetesDraft(); kubernetesDraftTest={error:'正在测试 Kubernetes 连接，请稍候…'}; try { if (!kubernetesConfigurationComplete()) throw new Error('请检查 Kubernetes 配置。'); if (draft.accessMode==='agent'&&!draft.connectionOverride) { const server=resources.find((r)=>r.id===draft.mcpServerResourceId); if (!server) throw new Error('未找到关联的 MCPServer。'); const snapshot=await api.discoverMCP(server.id); kubernetesDraftTest={status:snapshot.status,message:snapshot.error_message||(snapshot.status==='succeeded'?'MCPServer 连接正常':'MCPServer 连接失败'),latency:snapshot.latency_ms,error:snapshot.status==='succeeded'?'':snapshot.error_message||'MCPServer 连接失败'}; } else { const result=await api.testDraftKubernetes({kubeconfig:draft.kubeconfig,server:draft.server,token:draft.token,context:draft.context,skip_tls_verify:draft.skipTLSVerify}); kubernetesDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } } catch(error) { kubernetesDraftTest={error:describeError(error,'Kubernetes 连接测试失败')}; } finally { kubernetesDraftTestBusy=false; } }
+  async function testKubernetesDraftConnection() { kubernetesDraftTestBusy=true; const draft=kubernetesDraft(); kubernetesDraftTest={error:'正在测试 Kubernetes 连接，请稍候…'}; try { if (!kubernetesConfigurationComplete()) throw new Error('请检查 Kubernetes 配置。'); if (draft.isAgent && !draft.connectionOverride) { const server = resources.find((resource) => resource.id === kubernetesMCPServerResourceId); if (!server) throw new Error('未找到关联的 MCPServer。'); const snapshot = await api.discoverMCP(server.id); kubernetesDraftTest={status:snapshot.status,message:snapshot.error_message || (snapshot.status === 'succeeded' ? `MCPServer 连接正常，发现 ${snapshot.tools?.length ?? 0} 个工具` : 'MCPServer 连接失败'),latency:snapshot.latency_ms,error:snapshot.status === 'succeeded' ? '' : snapshot.error_message || 'MCPServer 连接失败'}; return; } const result=await api.testDraftKubernetes({kubeconfig:kubernetesKubeconfigText(draft.kubeconfig),server:draft.server,ca_file:draft.caBase64,token:draft.token,client_cert_file:draft.certBase64,client_key_file:draft.keyBase64,skip_tls_verify:draft.skipTLSVerify}); kubernetesDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } catch(error) { kubernetesDraftTest={error:describeError(error,'Kubernetes 连接测试失败')}; } finally { kubernetesDraftTestBusy=false; } }
 
   function dockerConfigurationComplete() {
     if (dockerCredentialLoading) return false;
@@ -1109,10 +1137,10 @@
     }
     if (!dockerHost.trim() || !dockerHostValidForDraft()) issues.push('Docker Host URL');
     if (Boolean(dockerCertBase64.trim()) !== Boolean(dockerKeyBase64.trim())) issues.push('客户端证书和私钥');
-    if (dockerCABase64.trim() && !dockerTLSValueValid(dockerCABase64)) issues.push('CA Base64 内容');
+    if (dockerCABase64.trim() && !dockerTLSValueValid(dockerCABase64)) issues.push('CA 证书 Base64 内容');
     if (dockerCertBase64.trim() && !dockerTLSValueValid(dockerCertBase64)) issues.push('客户端证书 Base64 内容');
     if (dockerKeyBase64.trim() && !dockerTLSValueValid(dockerKeyBase64)) issues.push('客户端私钥 Base64 内容');
-    if ((dockerCABase64.trim() || dockerCertBase64.trim() || dockerKeyBase64.trim() || dockerServerName.trim() || dockerSkipTLSVerify) && !dockerHost.trim()) issues.push('启用 TLS 时填写 Docker Host URL');
+    if ((dockerCABase64.trim() || dockerCertBase64.trim() || dockerKeyBase64.trim() || dockerSkipTLSVerify) && !dockerHost.trim()) issues.push('启用 TLS 时填写 Docker Host URL');
     return issues;
   }
 
@@ -1129,7 +1157,6 @@
       dockerCABase64 = '';
       dockerCertBase64 = '';
       dockerKeyBase64 = '';
-      dockerServerName = '';
       dockerSkipTLSVerify = false;
     } else {
       dockerMCPServerResourceId = '';
@@ -1175,7 +1202,6 @@
         tls_ca: credential.tls_ca,
         tls_cert: credential.tls_cert,
         tls_key: credential.tls_key,
-        tls_server_name: dockerServerName.trim(),
         skip_tls_verify: dockerSkipTLSVerify
       });
       dockerDraftTest = {
@@ -1256,6 +1282,10 @@
     }
     if (resourceKind === 'Kubernetes') { await createKubernetesFromWorkflow(); return; }
     try {
+      if (!resourceSchemaConfigurationComplete()) {
+        resourceBasicConfigurationAttempted = true;
+        throw new Error('请填写所有必填配置项。');
+      }
       if (!resourceAddCategory || !resourceAddSubtype || !resourceName.trim()) {
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
       }
@@ -1290,7 +1320,7 @@
     }
   }
 
-  async function createKubernetesFromWorkflow() { await runResourceAction(async () => { if (!resourceBasicConfigurationComplete()) throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。'); if (!kubernetesConfigurationComplete()) { kubernetesConfigurationAttempted=true; throw new Error('请检查 Kubernetes 配置。'); } const draft=kubernetesDraft(); const credentialId=draft.accessMode==='direct'||draft.connectionOverride?await createKubernetesCredential():''; const created=await createResourceRecord({scope_id:selectedScopeId,kind:'Kubernetes',subtype:draft.accessMode==='agent'?'Agent':'Direct',agent_ref:draft.accessMode==='agent'?draft.mcpServerResourceId:undefined,name:resourceName.trim(),status:resourceStatus,labels:parseLabels(resourceLabels),config:kubernetesConfigForSave(draft),...(credentialId?{credential_id:credentialId}:{})}); resources=[created,...resources]; selectedResourceId=created.id; resetKubernetesDraft(); resourceName=''; resourceLabels=''; resourceAddMenuOpen=false; resourceAddStep=1; onNotice(`资源“${created.name}”已创建`); await testResourceConnection(created,false); await loadResourceDetails(created.id); }); }
+  async function createKubernetesFromWorkflow() { await runResourceAction(async () => { if (!resourceBasicConfigurationComplete()) throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。'); if (!kubernetesConfigurationComplete()) { kubernetesConfigurationAttempted=true; throw new Error('请检查 Kubernetes 配置。'); } const draft=kubernetesDraft(); const credentialValues=kubernetesCredentialForSave(draft); const credentialId=Object.keys(credentialValues).length ? await createKubernetesCredential() : ''; const created=await createResourceRecord({scope_id:selectedScopeId,kind:'Kubernetes',subtype:kubernetesIsAgent()?'Agent':'Direct',agent_ref:kubernetesIsAgent()?kubernetesMCPServerResourceId:undefined,name:resourceName.trim(),status:resourceStatus,labels:parseLabels(resourceLabels),config:kubernetesConfigForSave(draft),...(credentialId?{credential_id:credentialId}:{})}); resources=[created,...resources]; selectedResourceId=created.id; resetKubernetesDraft(); resourceName=''; resourceLabels=''; resourceAddMenuOpen=false; resourceAddStep=1; onNotice(`资源“${created.name}”已创建`); await testResourceConnection(created,false); await loadResourceDetails(created.id); }); }
 
   async function createDockerFromWorkflow() {
     await runResourceAction(async () => {
@@ -1492,7 +1522,7 @@
       await loadResourceDetails(updated.id);
     });
   }
-  async function updateKubernetesFromWorkflow() { const item=resources.find((resource)=>resource.id===editingKubernetesResourceId); if (!item) return; await runResourceAction(async()=>{ if (!kubernetesConfigurationComplete()) throw new Error('请检查 Kubernetes 配置。'); const draft=kubernetesDraft(); const credentialId=draft.accessMode==='direct'||draft.connectionOverride?await saveKubernetesCredential(item):null; const updated=await updateResourceRecord(item.id,{name:resourceName.trim(),subtype:draft.accessMode==='agent'?'Agent':'Direct',agent_ref:draft.accessMode==='agent'?draft.mcpServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),config:kubernetesConfigForSave(draft),credential_id:credentialId||null}); resources=resources.map((resource)=>resource.id===updated.id?updated:resource); selectedResourceId=updated.id; editingKubernetesResourceId=''; resourceAddMenuOpen=false; resourceAddStep=1; onNotice(`Kubernetes 资源“${updated.name}”已更新`); await testResourceConnection(updated,false); await loadResourceDetails(updated.id); }); }
+  async function updateKubernetesFromWorkflow() { const item=resources.find((resource)=>resource.id===editingKubernetesResourceId); if (!item) return; await runResourceAction(async()=>{ if (!kubernetesConfigurationComplete()) throw new Error('请检查 Kubernetes 配置。'); const draft=kubernetesDraft(); const credentialValues=kubernetesCredentialForSave(draft); const credentialId=Object.keys(credentialValues).length ? await saveKubernetesCredential(item) : null; const updated=await updateResourceRecord(item.id,{name:resourceName.trim(),subtype:kubernetesIsAgent()?'Agent':'Direct',agent_ref:kubernetesIsAgent()?kubernetesMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),config:kubernetesConfigForSave(draft),credential_id:credentialId}); resources=resources.map((resource)=>resource.id===updated.id?updated:resource); selectedResourceId=updated.id; editingKubernetesResourceId=''; resourceAddMenuOpen=false; resourceAddStep=1; onNotice(`Kubernetes 资源“${updated.name}”已更新`); await testResourceConnection(updated,false); await loadResourceDetails(updated.id); }); }
 
   function submitProviderCreate() {
     providerSummaryAttempted = true;
@@ -1783,6 +1813,7 @@
         message={activeMessage}
         messageTone={activeMessageTone}
         stepTitle={resourceAddStepTitle(resourceAddStep, resourceKind)}
+        stepDescription={resourceAddStepDescription(resourceAddStep, resourceKind)}
         validationMessage={resourceAddStepValidationMessage()}
         onCancel={() => {
           resourceAddMenuOpen = false;
@@ -1790,6 +1821,7 @@
           editingProviderResourceId = '';
           editingResourceId = '';
           editingDockerResourceId = '';
+          editingKubernetesResourceId = '';
         }}
         onSelectStep={(step) => { resourceAddStep = step; autoSummaryTestKey = ''; }}
         onContinueBasic={continueResourceAdd}
@@ -1817,18 +1849,15 @@
               subtypeOptions={resourceAddSubtypeOptions}
               typeSelectionAttempted={resourceTypeSelectionAttempted}
               basicConfigurationAttempted={resourceBasicConfigurationAttempted}
-              editing={Boolean(editingProviderResourceId || editingResourceId || editingDockerResourceId)}
+              editing={Boolean(editingProviderResourceId || editingResourceId || editingDockerResourceId || editingKubernetesResourceId)}
               scopeSummary={activeScopeSummary()}
               onSelectCategory={selectResourceAddCategory}
               onSelectSubtype={(subtype) => {
-                const schema = resourceSchemaForSelection(resourceAddCategory, subtype);
-                resourceKind = resourceAddCategory === 'LLM' && subtype === 'Provider' ? 'AIProvider' : (schema?.kind ?? '');
+                resourceKind = resourceKindForSelection(resourceAddCategory, subtype);
+                if (resourceKind === 'Kubernetes') kubernetesConnectionOverride = false;
               }}
             />
           {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
-            <p class="resource-add-description">
-              配置 MCP Server 的连接参数。增强安全模式下服务地址必须使用 HTTPS。
-            </p>
             <form id="resource-create-form" class="stack-form resource-create-form" on:submit|preventDefault={createResource}>
               <McpConnectionFields
                 bind:url={mcpURL}
@@ -1837,6 +1866,7 @@
                 bind:toolAllowlist={mcpToolAllowlist}
                 bind:timeoutSeconds={mcpTimeoutSeconds}
                 bind:maxResponseBytes={mcpMaxResponseBytes}
+                configurationAttempted={mcpConfigurationAttempted}
               />
             </form>
           {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
@@ -1917,7 +1947,6 @@
               bind:caBase64={dockerCABase64}
               bind:certBase64={dockerCertBase64}
               bind:keyBase64={dockerKeyBase64}
-              bind:serverName={dockerServerName}
               bind:skipTLSVerify={dockerSkipTLSVerify}
               bind:connectionOverride={dockerAgentConnectionOverride}
               bind:mcpServerResourceId={dockerMCPServerResourceId}
@@ -1933,7 +1962,6 @@
               accessMode={dockerAccessMode}
               connectionOverride={dockerAgentConnectionOverride}
               host={dockerHost}
-              serverName={dockerServerName}
               skipTLSVerify={dockerSkipTLSVerify}
               mcpServerName={dockerMCPServerName()}
               credentialConfigured={Boolean(dockerCABase64.trim() || dockerCertBase64.trim() || dockerKeyBase64.trim())}
@@ -1948,9 +1976,9 @@
               onSubmit={() => void (editingDockerResourceId ? updateDockerFromWorkflow() : createDockerFromWorkflow())}
             />
           {:else if resourceKind === 'Kubernetes' && resourceAddStep === 2}
-            <KubernetesConnectionStep bind:accessMode={kubernetesAccessMode} bind:server={kubernetesServer} bind:token={kubernetesToken} bind:kubeconfig={kubernetesKubeconfig} bind:context={kubernetesContext} bind:skipTLSVerify={kubernetesSkipTLSVerify} bind:connectionOverride={kubernetesAgentConnectionOverride} bind:mcpServerResourceId={kubernetesMCPServerResourceId} mcpServers={kubernetesMCPServers} credentialLoading={kubernetesCredentialLoading} onConfigurationChange={() => kubernetesDraftTest=null} />
+            <KubernetesConnectionStep isAgent={kubernetesIsAgent()} bind:connectionOverride={kubernetesConnectionOverride} bind:connectionMode={kubernetesConnectionMode} bind:server={kubernetesServer} bind:caBase64={kubernetesCABase64} bind:token={kubernetesToken} bind:certBase64={kubernetesCertBase64} bind:keyBase64={kubernetesKeyBase64} bind:kubeconfig={kubernetesKubeconfig} bind:skipTLSVerify={kubernetesSkipTLSVerify} bind:mcpServerResourceId={kubernetesMCPServerResourceId} mcpServers={kubernetesMCPServers} configurationAttempted={kubernetesConfigurationAttempted} credentialLoading={kubernetesCredentialLoading} onConfigurationChange={() => kubernetesDraftTest=null} />
           {:else if resourceKind === 'Kubernetes' && resourceAddStep === 3}
-            <KubernetesReviewStep resourceName={resourceName} resourceStatus={resourceStatus} accessMode={kubernetesAccessMode} connectionOverride={kubernetesAgentConnectionOverride} server={kubernetesServer} mcpServerName={resources.find((r) => r.id === kubernetesMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(kubernetesKubeconfig.trim() || kubernetesToken.trim())} scopeSummary={activeScopeSummary()} labelsConfigured={Boolean(resourceLabels.trim())} testBusy={kubernetesDraftTestBusy} testStatus={kubernetesDraftTest?.status ?? ''} testMessage={kubernetesDraftTest?.message ?? ''} testError={kubernetesDraftTest?.error ?? ''} testLatency={kubernetesDraftTest?.latency} onSubmit={() => void (editingKubernetesResourceId ? updateKubernetesFromWorkflow() : createKubernetesFromWorkflow())} />
+            <KubernetesReviewStep resourceName={resourceName} resourceStatus={resourceStatus} isAgent={kubernetesIsAgent()} connectionOverride={kubernetesConnectionOverride} connectionMode={kubernetesConnectionMode} server={kubernetesServer} mcpServerName={resources.find((r) => r.id === kubernetesMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(kubernetesKubeconfig.trim() || kubernetesToken.trim() || kubernetesCABase64.trim() || kubernetesCertBase64.trim() || kubernetesKeyBase64.trim())} scopeSummary={activeScopeSummary()} labelsConfigured={Boolean(resourceLabels.trim())} testBusy={kubernetesDraftTestBusy} testStatus={kubernetesDraftTest?.status ?? ''} testMessage={kubernetesDraftTest?.message ?? ''} testError={kubernetesDraftTest?.error ?? ''} testLatency={kubernetesDraftTest?.latency} onSubmit={() => void (editingKubernetesResourceId ? updateKubernetesFromWorkflow() : createKubernetesFromWorkflow())} />
           {:else if selectedResource?.kind === 'MCPServer'}
             <div class="mcp-resource-form editor-mcp-form">
               <div class="form-row">
@@ -1983,9 +2011,6 @@
               />
             </div>
           {:else}
-            <p class="resource-add-description">
-              配置将按 {resourceAddCategory} · {resourceAddSubtype} 的资源契约保存；敏感字段会单独加密存储。
-            </p>
             <form
               id="resource-create-form"
               class="stack-form resource-create-form"
@@ -1998,6 +2023,8 @@
                 bind:values={resourceConfigValues}
                 bind:sensitiveValues={resourceSensitiveValues}
                 bind:rawConfig={resourceConfig}
+                isRequired={resourceSchemaFieldRequired}
+                configurationAttempted={resourceBasicConfigurationAttempted}
               />
             </form>
           {/if}

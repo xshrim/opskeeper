@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -111,7 +110,6 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	} else {
 		setString("host")
 	}
-	setString("tls_server_name")
 	for _, key := range []string{"tls_ca", "tls_cert", "tls_key"} {
 		// These values are normally credential-owned; config support also keeps
 		// compatibility with resources that store non-secret paths there.
@@ -134,18 +132,24 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	if err := json.Unmarshal(secret, &values); err != nil {
 		return merged, nil
 	}
+	connectionMode, _ := contextResource.Config["connection_mode"].(string)
 	if strings.EqualFold(kind, "Kubernetes") {
-		if _, configured := contextResource.Config["kubeconfig_base64"]; !configured {
-			if raw, ok := values["kubeconfig"].(string); ok && strings.TrimSpace(raw) != "" {
-				merged["kubeconfig_base64"] = base64.StdEncoding.EncodeToString([]byte(raw))
+		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") {
+			delete(merged, "kubeconfig_base64")
+		} else if _, configured := contextResource.Config["kubeconfig_base64"]; !configured {
+			if raw, ok := values["kubeconfig_base64"].(string); ok && strings.TrimSpace(raw) != "" {
+				merged["kubeconfig_base64"] = strings.TrimSpace(raw)
 			}
 		}
 	}
-	keys := []string{"tls_ca", "tls_cert", "tls_key", "tls_server_name", "host"}
+	keys := []string{"tls_ca", "tls_cert", "tls_key", "host"}
 	if strings.EqualFold(kind, "Kubernetes") {
 		keys = []string{"kubeconfig_base64", "kubeconfig_path", "connection_mode", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file"}
 	}
 	for _, key := range keys {
+		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig_base64" {
+			continue
+		}
 		if value, ok := values[key].(string); ok && strings.TrimSpace(value) != "" {
 			// Explicit resource config wins over credential values.
 			if _, configured := contextResource.Config[key]; !configured {

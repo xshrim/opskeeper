@@ -16,7 +16,6 @@ func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 		Config: map[string]any{
 			"host":            "tcp://configured:2376",
 			"timeout":         float64(18),
-			"tls_server_name": "configured.example.com",
 			"tls_ca":          "Y2E=",
 			"skip_tls_verify": true,
 		},
@@ -26,7 +25,7 @@ func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dockerAgentArguments: %v", err)
 	}
-	want := map[string]any{"host": "tcp://configured:2376", "timeout": float64(18), "tls_server_name": "configured.example.com", "tls_ca": "Y2E=", "skip_tls_verify": true, "container_id": "abc"}
+	want := map[string]any{"host": "tcp://configured:2376", "timeout": float64(18), "tls_ca": "Y2E=", "skip_tls_verify": true, "container_id": "abc"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("arguments = %#v, want %#v", got, want)
 	}

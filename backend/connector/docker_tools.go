@@ -104,7 +104,7 @@ func dockerSchema(extra map[string]any) json.RawMessage {
 func directDockerSchema(extra map[string]any) json.RawMessage {
 	schema := dockertool.InputSchema(extra)
 	if properties, ok := schema["properties"].(map[string]any); ok {
-		for _, name := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "tls_server_name", "skip_tls_verify"} {
+		for _, name := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "skip_tls_verify"} {
 			delete(properties, name)
 		}
 	}
@@ -162,7 +162,6 @@ func setDockerConnectionFromMap(connection *client.ConnectionInput, values map[s
 	connection.DockerCA = stringValue(values, "tls_ca")
 	connection.DockerCert = stringValue(values, "tls_cert")
 	connection.DockerKey = stringValue(values, "tls_key")
-	connection.DockerServerName = stringValue(values, "tls_server_name")
 	connection.DockerSkipVerify = boolValue(values, "skip_tls_verify")
 }
 
@@ -184,9 +183,6 @@ func setDockerConnectionFromMapIfEmpty(connection *client.ConnectionInput, value
 	}
 	if connection.DockerKey == "" {
 		connection.DockerKey = stringValue(values, "tls_key")
-	}
-	if connection.DockerServerName == "" {
-		connection.DockerServerName = stringValue(values, "tls_server_name")
 	}
 	if !connection.DockerSkipVerify {
 		connection.DockerSkipVerify = boolValue(values, "skip_tls_verify")

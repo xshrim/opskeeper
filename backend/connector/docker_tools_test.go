@@ -38,7 +38,7 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 			t.Fatalf("tool %q schema: %v", tool.Definition().Name, err)
 		}
 		properties := schema["properties"].(map[string]any)
-		for _, hidden := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "tls_server_name", "skip_tls_verify"} {
+		for _, hidden := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "skip_tls_verify"} {
 			if _, ok := properties[hidden]; ok {
 				t.Fatalf("tool %q exposes adapter-owned field %q", tool.Definition().Name, hidden)
 			}

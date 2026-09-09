@@ -18,7 +18,6 @@
   export let onRemoveModel: (name: string) => void = () => {};
 </script>
 
-<p class="resource-add-description">添加此 Provider 可用的模型；第一个添加的模型会自动设为默认模型，也可在下方调整。</p>
 <div class="provider-model-editor">
   <div class="provider-model-grid">
     <label class:invalid={configurationAttempted && (!draft.name.trim() || models.some((model) => model.name === draft.name.trim() && model.name !== editingModelName))}><span><i>*</i>Model 名称</span><input bind:value={draft.name} required placeholder="例如 gpt-4.1" autocomplete="off" /></label>

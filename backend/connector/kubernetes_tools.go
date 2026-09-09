@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -32,7 +31,7 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 	register("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.ClusterInfo(c, connection) })
 	register("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.APIResources(c, connection) })
 	for _, r := range []struct{ name, desc, resource string }{
-		{"kubernetes_namespaces", "List Kubernetes namespaces.", "namespaces"}, {"kubernetes_nodes", "List Kubernetes nodes.", "nodes"}, {"kubernetes_pods", "List Kubernetes pods.", "pods"}, {"kubernetes_services", "List Kubernetes services.", "services"}, {"kubernetes_configmaps", "List Kubernetes ConfigMaps.", "configmaps"}, {"kubernetes_ingresses", "List Kubernetes ingresses.", "ingresses"}, {"kubernetes_events", "List Kubernetes events.", "events"},
+		{"kubernetes_namespaces", "List Kubernetes namespaces.", "namespaces"}, {"kubernetes_nodes", "List Kubernetes nodes.", "nodes"}, {"kubernetes_pods", "List Kubernetes pods.", "pods"}, {"kubernetes_services", "List Kubernetes services.", "services"}, {"kubernetes_configmaps", "List Kubernetes ConfigMaps.", "configmaps"}, {"kubernetes_ingresses", "List Kubernetes ingresses.", "ingresses"}, {"kubernetes_endpoint_slices", "List Kubernetes EndpointSlices.", "endpointslices"}, {"kubernetes_events", "List Kubernetes events.", "events"},
 	} {
 		item := r
 		register(item.name, item.desc, listExtras(), func(c context.Context, a map[string]any) (any, error) {
@@ -83,10 +82,8 @@ func (s *Service) kubernetesConnection(ctx context.Context, item aiengine.Contex
 	var values map[string]any
 	if json.Unmarshal(secret, &values) == nil {
 		setKubernetesConnectionEmpty(&c, values)
-		if c.KubeconfigBase64 == "" {
-			if raw := stringValue(values, "kubeconfig"); raw != "" {
-				c.KubeconfigBase64 = base64.StdEncoding.EncodeToString([]byte(raw))
-			}
+		if c.ConnectionMode != "endpoint" && c.KubeconfigBase64 == "" {
+			c.KubeconfigBase64 = stringValue(values, "kubeconfig_base64")
 		}
 	}
 	return c, nil
@@ -109,7 +106,7 @@ func setKubernetesConnection(c *kclient.ConnectionInput, v map[string]any) {
 	c.SkipTLSVerify = boolValue(v, "skip_tls_verify")
 }
 func setKubernetesConnectionEmpty(c *kclient.ConnectionInput, v map[string]any) {
-	if c.KubeconfigBase64 == "" {
+	if c.ConnectionMode != "endpoint" && c.KubeconfigBase64 == "" {
 		c.KubeconfigBase64 = stringValue(v, "kubeconfig_base64")
 	}
 	if c.KubeconfigPath == "" {

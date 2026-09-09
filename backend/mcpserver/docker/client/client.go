@@ -44,8 +44,7 @@ func HasExplicitOptions(input ConnectionInput) bool {
 	return strings.TrimSpace(input.DockerHost) != "" ||
 		strings.TrimSpace(input.DockerCA) != "" ||
 		strings.TrimSpace(input.DockerCert) != "" ||
-		strings.TrimSpace(input.DockerKey) != "" ||
-		strings.TrimSpace(input.DockerServerName) != "" || input.DockerSkipVerify
+		strings.TrimSpace(input.DockerKey) != "" || input.DockerSkipVerify
 }
 
 // IsConnectionError identifies failures that are plausibly caused by the

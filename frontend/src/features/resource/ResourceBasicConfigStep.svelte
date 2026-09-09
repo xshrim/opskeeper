@@ -14,7 +14,6 @@
   export let onSelectSubtype: (subtype: string) => void = () => {};
 </script>
 
-<p class="resource-add-description">配置资源的基础身份、归属和标签；资源类型、子类型与名称为必填项。</p>
 <div class="resource-type-selection">
   <div class="resource-basic-type-row">
     <label class:invalid={typeSelectionAttempted && !category}>

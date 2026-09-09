@@ -16,7 +16,6 @@ type DockerDraftInput struct {
 	DockerCA         string `json:"tls_ca"`
 	DockerCert       string `json:"tls_cert"`
 	DockerKey        string `json:"tls_key"`
-	DockerServerName string `json:"tls_server_name"`
 	DockerSkipVerify bool   `json:"skip_tls_verify"`
 }
 
@@ -34,7 +33,7 @@ func (s *Service) TestDockerDraft(ctx context.Context, input DockerDraftInput) (
 	check := DockerDraftCheck{Status: "failed"}
 	err := client.PingDraft(ctx, client.ConnectionInput{
 		DockerHost: input.DockerHost, DockerCA: input.DockerCA, DockerCert: input.DockerCert,
-		DockerKey: input.DockerKey, DockerServerName: input.DockerServerName, DockerSkipVerify: input.DockerSkipVerify,
+		DockerKey: input.DockerKey, DockerSkipVerify: input.DockerSkipVerify,
 	})
 	check.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {

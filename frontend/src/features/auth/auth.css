@@ -9,17 +9,9 @@
   padding: 96px clamp(40px, 7vw, 112px) 56px;
   overflow: auto;
   background-color: var(--theme-fg-muted);
-  background-image: url('../../assets/login-background.jpeg');
+  background-image: url('../../assets/login-background-light.jpeg');
   background-position: center;
   background-size: cover;
-}
-.login-shell::before {
-  position: absolute;
-  inset: 0;
-  background: var(--theme-overlay);
-  content: '';
-  opacity: 0;
-  pointer-events: none;
 }
 .login-shell > * {
   position: relative;
@@ -87,8 +79,8 @@
   font-weight: 700;
   line-height: 1.5;
 }
-:root[data-theme='dark'] .login-shell::before {
-  opacity: 1;
+:root[data-theme='dark'] .login-shell {
+  background-image: url('../../assets/login-background-dark.jpeg');
 }
 :root[data-theme='dark'] .login-kicker {
   color: var(--theme-teal);
