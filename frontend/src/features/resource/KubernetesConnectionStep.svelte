@@ -112,7 +112,7 @@
       <small>使用 kubeconfig 文件连接集群，支持粘贴或导入。</small>
     </button>
     <button class:active={connectionMode === 'endpoint'} type="button" aria-pressed={connectionMode === 'endpoint'} on:click={() => { connectionMode = 'endpoint'; onConfigurationChange(); }}>
-      <strong>API Server Endpoint</strong>
+      <strong>Endpoint</strong>
       <small>直接填写 API Server 与 Endpoint TLS 凭据。</small>
     </button>
   </div>

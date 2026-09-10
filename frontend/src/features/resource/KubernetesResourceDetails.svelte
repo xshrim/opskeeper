@@ -26,6 +26,11 @@
   ];
 
   $: accessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct';
+  $: connectionMode = String(resource.config?.connection_mode ?? (resource.config?.server ? 'endpoint' : 'kubeconfig')).toLowerCase() === 'endpoint' ? 'Endpoint' : 'Kubeconfig';
+  $: hasCustomAgentConnection = accessMode === 'agent' && Boolean(resource.config?.connection_mode || resource.config?.server);
+  $: accessModeDisplay = accessMode === 'agent' && !hasCustomAgentConnection
+    ? 'Agent'
+    : `${accessMode === 'agent' ? 'Agent' : 'Direct'}·${connectionMode}`;
   $: transportCredential = accessMode === 'agent' && !resource.credential_id
     ? '由 MCPServer 管理'
     : resource.credential_id
@@ -39,7 +44,7 @@
 
 <div class="provider-resource-details docker-resource-details">
   <div class="provider-resource-meta">
-    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{accessMode === 'agent' ? 'Agent' : 'Direct'}</strong></div>
+    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{accessModeDisplay}</strong></div>
     <div><span>连接端点</span><strong>{accessMode === 'agent' ? mcpServerEndpoint || '关联 MCPServer' : String(resource.config?.server ?? '默认 kubeconfig')}</strong></div>
     <div><span>工具数量</span><strong>{tools.length} 个</strong></div>
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
