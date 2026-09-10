@@ -82,6 +82,7 @@
     dockerHostSupportsTLS,
     dockerTLSValueValid,
     dockerTLSValueForDisplay,
+    dockerTLSValueForSave,
     type DockerAccessMode,
     type KubernetesConnectionMode,
     kubernetesConfigForSave,
@@ -116,6 +117,7 @@
     name: string;
     status: string;
     labels: string;
+    returnResourceId: string;
     docker: {
       accessMode: DockerAccessMode;
       host: string;
@@ -217,6 +219,10 @@
   let mcpToolAllowlist = '';
   let mcpTimeoutSeconds = 120;
   let mcpMaxResponseBytes = 4 * 1024 * 1024;
+  let mcpTLSCA = '';
+  let mcpTLSCert = '';
+  let mcpTLSKey = '';
+  let mcpTLSSkipVerify = false;
   let mcpDraftTest: any = null;
   let mcpDraftTestBusy = false;
   let mcpConfigurationAttempted = false;
@@ -520,15 +526,23 @@
         : String(config.tool_allowlist ?? '');
       mcpTimeoutSeconds = Number(config.timeout_seconds ?? 120);
       mcpMaxResponseBytes = Number(config.max_response_bytes ?? 4 * 1024 * 1024);
+      mcpTLSCA = '';
+      mcpTLSCert = '';
+      mcpTLSKey = '';
+      mcpTLSSkipVerify = false;
       mcpDraftTest = null;
       mcpConfigurationAttempted = false;
       if (resource.credential_id) {
         void loadResourceCredentialSecret(resource.credential_id).then((credential) => {
           if (selectedResourceId !== resource.id) return;
           try {
-            const secret = JSON.parse(credential.secret) as { token?: string; headers?: Record<string, unknown> };
+            const secret = JSON.parse(credential.secret) as { token?: string; headers?: Record<string, unknown>; tls_ca?: string; tls_cert?: string; tls_key?: string; tls_skip_verify?: boolean };
             mcpToken = String(secret.token ?? '');
             if (secret.headers) mcpRequestHeaders = Object.entries(secret.headers).map(([key, value]) => `${key}: ${String(value)}`).join('\n');
+            mcpTLSCA = dockerTLSValueForDisplay(String(secret.tls_ca ?? ''));
+            mcpTLSCert = dockerTLSValueForDisplay(String(secret.tls_cert ?? ''));
+            mcpTLSKey = dockerTLSValueForDisplay(String(secret.tls_key ?? ''));
+            mcpTLSSkipVerify = secret.tls_skip_verify === true;
           } catch {
             mcpToken = credential.secret.trim();
           }
@@ -653,6 +667,7 @@
       name: resourceName,
       status: resourceStatus,
       labels: resourceLabels,
+      returnResourceId: selectedResourceId,
       docker: {
         accessMode: dockerAccessMode,
         host: dockerHost,
@@ -695,6 +710,10 @@
     mcpToolAllowlist = '';
     mcpTimeoutSeconds = 120;
     mcpMaxResponseBytes = 4 * 1024 * 1024;
+    mcpTLSCA = '';
+    mcpTLSCert = '';
+    mcpTLSKey = '';
+    mcpTLSSkipVerify = false;
     mcpDraftTest = null;
     mcpConfigurationAttempted = false;
     resourceTypeSelectionAttempted = false;
@@ -716,6 +735,7 @@
     resourceName = context.name;
     resourceStatus = context.status;
     resourceLabels = context.labels;
+    selectedResourceId = context.returnResourceId;
     editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
@@ -1124,13 +1144,14 @@
   async function createMCPCredential() {
     const token = mcpToken.trim();
     const headers = parseMCPHeaders(mcpRequestHeaders);
-    if (!selectedScopeId || (!token && Object.keys(headers).length === 0)) return '';
-    return createMCPCredentialAction(selectedScopeId, resourceName, token, headers);
+    const tls = { tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '', tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '', tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '', tls_skip_verify: mcpTLSSkipVerify };
+    if (!selectedScopeId || (!token && Object.keys(headers).length === 0 && !tls.tls_ca && !tls.tls_cert && !tls.tls_key && !tls.tls_skip_verify)) return '';
+    return createMCPCredentialAction(selectedScopeId, resourceName, token, headers, tls);
   }
 
   async function saveMCPCredential(existing: Resource) {
     const headers = parseMCPHeaders(mcpRequestHeaders);
-    return saveMCPCredentialAction(existing, selectedScopeId, editResourceName.trim() || resourceName.trim(), mcpToken, headers);
+    return saveMCPCredentialAction(existing, selectedScopeId, editResourceName.trim() || resourceName.trim(), mcpToken, headers, { tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '', tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '', tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '', tls_skip_verify: mcpTLSSkipVerify });
   }
 
   async function createDockerCredential() {
@@ -1142,7 +1163,7 @@
   }
 
   function mcpDraftSignature() {
-    return JSON.stringify({ transport: mcpTransport, url: mcpURL.trim(), token: mcpToken, headers: mcpRequestHeaders, tools: mcpToolAllowlist, timeout: mcpTimeoutSeconds, max: mcpMaxResponseBytes });
+    return JSON.stringify({ transport: mcpTransport, url: mcpURL.trim(), token: mcpToken, headers: mcpRequestHeaders, tools: mcpToolAllowlist, timeout: mcpTimeoutSeconds, max: mcpMaxResponseBytes, tlsCA: mcpTLSCA, tlsCert: mcpTLSCert, tlsKey: mcpTLSKey, tlsSkipVerify: mcpTLSSkipVerify });
   }
 
   function mcpHeaderCount() {
@@ -1162,7 +1183,11 @@
         request_headers: parseMCPHeaders(mcpRequestHeaders),
         tool_allowlist: mcpToolAllowlist.split(/[\n,]/).map((item) => item.trim()).filter(Boolean),
         timeout_seconds: Number(mcpTimeoutSeconds),
-        max_response_bytes: Number(mcpMaxResponseBytes)
+        max_response_bytes: Number(mcpMaxResponseBytes),
+        tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '',
+        tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '',
+        tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '',
+        tls_skip_verify: mcpTLSSkipVerify
       });
       mcpDraftTest = result.status === 'succeeded' ? { signature, result } : { signature, result, error: result.error_message || 'MCP Server 不可用。' };
     } catch (error) {
@@ -1601,6 +1626,7 @@
       selectedResourceId = created.id;
       if (returnToConnection) {
         await testResourceConnection(created, false);
+        await loadMCPSnapshots(created.id);
         await loadResourceDetails(created.id);
         restoreMCPServerReturnContext(created.id);
         onNotice(`MCPServer“${created.name}”已创建，已返回原资源配置`);
@@ -1616,7 +1642,7 @@
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
       await testResourceConnection(created, false);
-      await loadResourceDetails(created.id);
+        await loadResourceDetails(created.id);
     });
   }
 
@@ -2051,9 +2077,13 @@
                 bind:token={mcpToken}
                 bind:requestHeaders={mcpRequestHeaders}
                 bind:toolAllowlist={mcpToolAllowlist}
-                bind:timeoutSeconds={mcpTimeoutSeconds}
-                bind:maxResponseBytes={mcpMaxResponseBytes}
-                configurationAttempted={mcpConfigurationAttempted}
+              bind:timeoutSeconds={mcpTimeoutSeconds}
+              bind:maxResponseBytes={mcpMaxResponseBytes}
+              bind:tlsCA={mcpTLSCA}
+              bind:tlsCert={mcpTLSCert}
+              bind:tlsKey={mcpTLSKey}
+              bind:skipTLSVerify={mcpTLSSkipVerify}
+              configurationAttempted={mcpConfigurationAttempted}
               />
             </form>
           {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
@@ -2196,6 +2226,10 @@
                 bind:toolAllowlist={mcpToolAllowlist}
                 bind:timeoutSeconds={mcpTimeoutSeconds}
                 bind:maxResponseBytes={mcpMaxResponseBytes}
+                bind:tlsCA={mcpTLSCA}
+                bind:tlsCert={mcpTLSCert}
+                bind:tlsKey={mcpTLSKey}
+                bind:skipTLSVerify={mcpTLSSkipVerify}
                 tokenPlaceholder="留空保持原凭据"
               />
             </div>
@@ -2256,6 +2290,10 @@
       bind:mcpToolAllowlist
       bind:mcpTimeoutSeconds
       bind:mcpMaxResponseBytes
+      bind:mcpTLSCA
+      bind:mcpTLSCert
+      bind:mcpTLSKey
+      bind:mcpTLSSkipVerify
       bind:editResourceName
       bind:editResourceStatus
       bind:editResourceLabels

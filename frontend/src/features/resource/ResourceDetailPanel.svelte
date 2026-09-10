@@ -47,6 +47,10 @@
   export let mcpToolAllowlist = '';
   export let mcpTimeoutSeconds = 120;
   export let mcpMaxResponseBytes = 4 * 1024 * 1024;
+  export let mcpTLSCA = '';
+  export let mcpTLSCert = '';
+  export let mcpTLSKey = '';
+  export let mcpTLSSkipVerify = false;
   export let editResourceName = '';
   export let editResourceStatus = 'active';
   export let editResourceLabels = '';
@@ -107,14 +111,7 @@
         <ResourceBasicEditFields resource={selectedResource} bind:name={editResourceName} bind:status={editResourceStatus} bind:labels={editResourceLabels} {scopeName} />
         {#if selectedResource.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
-            <label class="mcp-url-field"><span><i>*</i>Server 地址</span><input bind:value={mcpURL} type="url" placeholder="https://mcp.example.com/mcp" /></label>
-            <div class="mcp-number-grid">
-              <label><span>超时时间（秒）</span><input bind:value={mcpTimeoutSeconds} type="number" min="1" max="600" /></label>
-              <label><span>响应体大小限制（字节）</span><input bind:value={mcpMaxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label>
-            </div>
-            <label><span>Token</span><input bind:value={mcpToken} type="password" placeholder="留空保持原凭据" /></label>
-            <label><span>请求 Header</span><textarea bind:value={mcpRequestHeaders} rows="3" placeholder="每行一个 Header，例如 X-Tenant: production"></textarea></label>
-            <label class="mcp-tools-field"><span>工具白名单</span><textarea bind:value={mcpToolAllowlist} rows="6" placeholder="支持通配符，例如 docker:*&#10;为空表示允许全部工具"></textarea></label>
+            <McpConnectionFields bind:url={mcpURL} bind:token={mcpToken} bind:requestHeaders={mcpRequestHeaders} bind:toolAllowlist={mcpToolAllowlist} bind:timeoutSeconds={mcpTimeoutSeconds} bind:maxResponseBytes={mcpMaxResponseBytes} bind:tlsCA={mcpTLSCA} bind:tlsCert={mcpTLSCert} bind:tlsKey={mcpTLSKey} bind:skipTLSVerify={mcpTLSSkipVerify} tokenPlaceholder="留空保持原凭据" />
           </div>
         {:else}
           <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} bind:timeoutSeconds={genericTimeoutSeconds} showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)} editMode credentialConfigured={Boolean(selectedResource.credential_id)} isRequired={resourceSchemaFieldRequired} />

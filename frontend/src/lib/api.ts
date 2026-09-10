@@ -934,6 +934,10 @@ export const api = {
     tool_allowlist?: string[];
     timeout_seconds?: number;
     max_response_bytes?: number;
+    tls_ca?: string;
+    tls_cert?: string;
+    tls_key?: string;
+    tls_skip_verify?: boolean;
   }) => request<MCPSnapshot>('api/v1/mcp-servers/test-draft', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),

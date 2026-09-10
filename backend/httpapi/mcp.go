@@ -38,6 +38,10 @@ type testMCPDraftBody struct {
 	ToolAllowlist    []string          `json:"tool_allowlist"`
 	TimeoutSeconds   int               `json:"timeout_seconds"`
 	MaxResponseBytes int64             `json:"max_response_bytes"`
+	TLSCA            string            `json:"tls_ca"`
+	TLSCert          string            `json:"tls_cert"`
+	TLSKey           string            `json:"tls_key"`
+	TLSSkipVerify    bool              `json:"tls_skip_verify"`
 }
 
 func registerMCPRoutes(router chi.Router, service mcpService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -57,7 +61,7 @@ func registerMCPRoutes(router chi.Router, service mcpService, auditor audit.Logg
 			if !decodeRequest(w, r, &body) {
 				return
 			}
-			item, err := draft.TestDraft(r.Context(), mcp.DraftConfig{Transport: body.Transport, URL: body.URL, Token: body.Token, RequestHeaders: body.RequestHeaders, ToolAllowlist: body.ToolAllowlist, TimeoutSeconds: body.TimeoutSeconds, MaxResponseBytes: body.MaxResponseBytes})
+			item, err := draft.TestDraft(r.Context(), mcp.DraftConfig{Transport: body.Transport, URL: body.URL, Token: body.Token, RequestHeaders: body.RequestHeaders, ToolAllowlist: body.ToolAllowlist, TimeoutSeconds: body.TimeoutSeconds, MaxResponseBytes: body.MaxResponseBytes, TLSCA: body.TLSCA, TLSCert: body.TLSCert, TLSKey: body.TLSKey, TLSSkipVerify: body.TLSSkipVerify})
 			if err != nil {
 				writeMCPError(w, r, err)
 				return

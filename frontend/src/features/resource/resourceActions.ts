@@ -71,13 +71,15 @@ export async function saveProviderCredential(
   return provider.credential_id;
 }
 
-export async function createMCPCredential(scopeId: string, name: string, token: string, headers: Record<string, string>) {
-  if (!scopeId || (!token.trim() && Object.keys(headers).length === 0)) return '';
+export async function createMCPCredential(scopeId: string, name: string, token: string, headers: Record<string, string>, tls: Record<string, string | boolean> = {}) {
+  const tlsSecret = Object.fromEntries(Object.entries(tls).filter(([, value]) => typeof value === 'boolean' ? value : String(value).trim() !== ''));
+  const secret = { token: token.trim(), headers, ...tlsSecret };
+  if (!scopeId || (!token.trim() && Object.keys(headers).length === 0 && Object.keys(tlsSecret).length === 0)) return '';
   const credential = await api.createCredential({
     scope_id: scopeId,
     name: `${name || 'MCP Server'} 访问凭据`,
-    purpose: 'MCP Server Token 与请求 Header',
-    secret: JSON.stringify({ token: token.trim(), headers })
+    purpose: 'MCP Server 访问与 TLS 凭据',
+    secret: JSON.stringify(secret)
   });
   return credential.id;
 }
@@ -87,16 +89,20 @@ export async function saveMCPCredential(
   scopeId: string,
   name: string,
   token: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  tls: Record<string, string | boolean> = {}
 ) {
-  if (!existing.credential_id) return createMCPCredential(scopeId, name, token, headers);
+  const tlsSecret = Object.fromEntries(Object.entries(tls).filter(([, value]) => typeof value === 'boolean' ? true : String(value).trim() !== ''));
+  if (!existing.credential_id) return createMCPCredential(scopeId, name, token, headers, tlsSecret);
   let nextToken = token.trim();
-  if (!nextToken) {
+  let existingTLS: Record<string, string | boolean> = {};
+  {
     try {
       const current = await api.credentialSecret(existing.credential_id);
       try {
-        const parsed = JSON.parse(current.secret) as { token?: string };
-        nextToken = String(parsed.token ?? '').trim();
+        const parsed = JSON.parse(current.secret) as { token?: string; tls_ca?: string; tls_cert?: string; tls_key?: string; tls_skip_verify?: boolean };
+        if (!nextToken) nextToken = String(parsed.token ?? '').trim();
+        existingTLS = Object.fromEntries(Object.entries({ tls_ca: parsed.tls_ca, tls_cert: parsed.tls_cert, tls_key: parsed.tls_key, tls_skip_verify: parsed.tls_skip_verify }).filter(([, value]) => typeof value === 'boolean' ? true : String(value ?? '').trim() !== '')) as Record<string, string | boolean>;
       } catch {
         nextToken = current.secret.trim();
       }
@@ -104,11 +110,12 @@ export async function saveMCPCredential(
       // Preserve legacy credentials when no replacement token is supplied.
     }
   }
-  if (!nextToken && Object.keys(headers).length === 0) return existing.credential_id;
+  const nextTLS = { ...existingTLS, ...tlsSecret };
+  if (!nextToken && Object.keys(headers).length === 0 && Object.keys(nextTLS).length === 0) return existing.credential_id;
   await api.updateCredential(existing.credential_id, {
     name: `${name.trim() || 'MCP Server'} 访问凭据`,
-    purpose: 'MCP Server Token 与请求 Header',
-    secret: JSON.stringify({ token: nextToken, headers })
+    purpose: 'MCP Server 访问与 TLS 凭据',
+    secret: JSON.stringify({ token: nextToken, headers, ...nextTLS })
   });
   return existing.credential_id;
 }
@@ -211,6 +218,23 @@ export async function testResourceConnector(
     };
   }
 
+  if (String(resource.subtype ?? '').toLowerCase() === 'agent') {
+    if (!resource.agent_ref) throw new Error('Agent 资源未关联 MCPServer。');
+    const snapshot = await api.discoverMCP(resource.agent_ref);
+    return {
+      snapshot,
+      check: {
+        id: `mcp-agent-${resource.id}`,
+        resource_id: resource.id,
+        status: snapshot.status === 'succeeded' ? 'succeeded' : 'failed',
+        message: snapshot.error_message || (snapshot.status === 'succeeded' ? 'MCPServer 连接正常' : 'MCPServer 连接失败'),
+        latency_ms: snapshot.latency_ms ?? 0,
+        capabilities: [],
+        checked_at: snapshot.created_at || new Date().toISOString()
+      }
+    };
+  }
+
   return { check: await api.testResourceConnection(resource.id) };
 }
 
@@ -222,6 +246,10 @@ export function testDraftMCPConnection(body: {
   tool_allowlist: string[];
   timeout_seconds: number;
   max_response_bytes: number;
+  tls_ca?: string;
+  tls_cert?: string;
+  tls_key?: string;
+  tls_skip_verify?: boolean;
 }) {
   return api.testDraftMCP(body);
 }

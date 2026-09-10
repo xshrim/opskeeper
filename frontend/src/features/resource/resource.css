@@ -364,7 +364,7 @@
 }
 .resource-row-details {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   align-items: end;
   margin: 0 14px;
@@ -843,6 +843,14 @@ body:has(.resource-add-workflow) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+.mcp-tls-fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+}
+.mcp-tls-fieldset .docker-tls-certificate-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .mcp-resource-form > label,
 .mcp-resource-form .mcp-url-field,

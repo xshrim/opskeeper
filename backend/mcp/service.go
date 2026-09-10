@@ -6,6 +6,9 @@ package mcp
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -66,6 +69,10 @@ func DiscoverWithSecurity(ctx context.Context, endpoint string, timeout time.Dur
 }
 
 func discoverWithSecurity(ctx context.Context, endpoint string, timeout time.Duration, enhancedSecurity bool, transport string, headers map[string]string) (Snapshot, error) {
+	return discoverWithSecurityTLS(ctx, endpoint, timeout, enhancedSecurity, transport, headers, nil)
+}
+
+func discoverWithSecurityTLS(ctx context.Context, endpoint string, timeout time.Duration, enhancedSecurity bool, transport string, headers map[string]string, tlsConfig *tls.Config) (Snapshot, error) {
 	u, err := endpointURL(endpoint, enhancedSecurity)
 	if err != nil {
 		return Snapshot{}, err
@@ -76,7 +83,7 @@ func discoverWithSecurity(ctx context.Context, endpoint string, timeout time.Dur
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := gomcp.NewClient(&gomcp.Implementation{Name: "opskeeper", Version: "t14"}, nil)
-	session, err := client.Connect(ctx, clientTransport(transport, u.String(), httpClient(timeout, enhancedSecurity, headers)), nil)
+	session, err := client.Connect(ctx, clientTransport(transport, u.String(), httpClient(timeout, enhancedSecurity, headers, tlsConfig)), nil)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("connect MCP server: %w", err)
 	}
@@ -222,22 +229,80 @@ func firstHeaders(headers []map[string]string) map[string]string {
 	return headers[0]
 }
 
-func httpClient(timeout time.Duration, enhancedSecurity bool, headers map[string]string) *http.Client {
+func httpClient(timeout time.Duration, enhancedSecurity bool, headers map[string]string, tlsConfigs ...*tls.Config) *http.Client {
 	var client *http.Client
 	if enhancedSecurity {
 		client = restrictedClient(timeout)
 	} else {
 		client = &http.Client{Timeout: timeout}
 	}
-	if len(headers) == 0 {
-		return client
-	}
 	base := client.Transport
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	client.Transport = headerTransport{base: base, headers: headers}
+	if len(tlsConfigs) > 0 && tlsConfigs[0] != nil {
+		if transport, ok := base.(*http.Transport); ok {
+			clone := transport.Clone()
+			clone.TLSClientConfig = tlsConfigs[0]
+			base = clone
+		}
+	}
+	if len(headers) > 0 {
+		base = headerTransport{base: base, headers: headers}
+	}
+	client.Transport = base
 	return client
+}
+
+func tlsConfigFromValues(ca, cert, key string, skipVerify bool) (*tls.Config, error) {
+	config := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: skipVerify} //nolint:gosec -- explicitly configured by the resource owner.
+	if strings.TrimSpace(ca) != "" {
+		material, err := tlsMaterial(ca)
+		if err != nil {
+			return nil, fmt.Errorf("read MCP CA material: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(material) {
+			return nil, errors.New("MCP CA material does not contain a valid certificate")
+		}
+		config.RootCAs = pool
+	}
+	if strings.TrimSpace(cert) != "" || strings.TrimSpace(key) != "" {
+		if strings.TrimSpace(cert) == "" || strings.TrimSpace(key) == "" {
+			return nil, errors.New("MCP client certificate and key are required together")
+		}
+		certPEM, err := tlsMaterial(cert)
+		if err != nil {
+			return nil, fmt.Errorf("read MCP client certificate: %w", err)
+		}
+		keyPEM, err := tlsMaterial(key)
+		if err != nil {
+			return nil, fmt.Errorf("read MCP client key: %w", err)
+		}
+		pair, err := tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			return nil, fmt.Errorf("load MCP client certificate: %w", err)
+		}
+		config.Certificates = []tls.Certificate{pair}
+	}
+	return config, nil
+}
+
+func tlsMaterial(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	compact := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, value)
+	if decoded, err := base64.StdEncoding.DecodeString(compact); err == nil {
+		return decoded, nil
+	}
+	if strings.Contains(value, "-----BEGIN") {
+		return []byte(value), nil
+	}
+	return nil, errors.New("value is neither Base64 nor PEM")
 }
 
 type headerTransport struct {

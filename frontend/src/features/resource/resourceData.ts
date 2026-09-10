@@ -30,6 +30,19 @@ export async function loadResourceConnectionCheck(
       checked_at: snapshot.created_at
     };
   }
+  if (String(resource.subtype ?? '').toLowerCase() === 'agent' && resource.agent_ref) {
+    const [snapshot] = await api.mcpSnapshots(resource.agent_ref);
+    if (!snapshot) return null;
+    return {
+      id: `mcp-agent-${resource.id}`,
+      resource_id: resource.id,
+      status: snapshot.status === 'succeeded' ? 'succeeded' : 'failed',
+      message: snapshot.error_message || (snapshot.status === 'succeeded' ? 'MCPServer 连接正常' : 'MCPServer 连接失败'),
+      latency_ms: snapshot.latency_ms ?? 0,
+      capabilities: [],
+      checked_at: snapshot.created_at
+    };
+  }
   try {
     return await api.latestResourceConnectionCheck(resource.id);
   } catch (error) {

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -35,6 +36,16 @@ func TestEndpointAllowsLocalHTTPWhenEnhancedSecurityDisabled(t *testing.T) {
 	}
 	if _, err := endpointURL("http://127.0.0.1:3100/mcp", true); err == nil {
 		t.Fatal("enhanced security accepted local HTTP endpoint")
+	}
+}
+
+func TestTLSConfigAcceptsBase64MaterialAndRequiresClientPair(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----"))
+	if _, err := tlsMaterial(encoded); err != nil {
+		t.Fatalf("base64 TLS material rejected: %v", err)
+	}
+	if _, err := tlsConfigFromValues("", "certificate", "", false); err == nil {
+		t.Fatal("client certificate without key was accepted")
 	}
 }
 

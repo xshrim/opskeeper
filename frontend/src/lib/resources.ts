@@ -15,12 +15,7 @@ export function resourceSupportsEndpointTimeout(kind: string) {
 
 export function resourceHasConnector(resource: Resource) {
   if (resource.kind === 'MCPServer') return true;
-  if (resource.kind === 'Docker' || resource.kind === 'Kubernetes') {
-    // The connector endpoint only performs Direct checks. Agent resources
-    // are exercised through their linked MCPServer and must not fall back to
-    // a local or default endpoint.
-    return String(resource.subtype ?? '').toLowerCase() !== 'agent';
-  }
+  if (String(resource.subtype ?? '').toLowerCase() === 'agent') return Boolean(resource.agent_ref);
   return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'].includes(resource.kind);
 }
 

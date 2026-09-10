@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,10 @@ type DraftConfig struct {
 	ToolAllowlist    []string          `json:"tool_allowlist"`
 	TimeoutSeconds   int               `json:"timeout_seconds"`
 	MaxResponseBytes int64             `json:"max_response_bytes"`
+	TLSCA            string            `json:"tls_ca"`
+	TLSCert          string            `json:"tls_cert"`
+	TLSKey           string            `json:"tls_key"`
+	TLSSkipVerify    bool              `json:"tls_skip_verify"`
 }
 
 func NewService(resources ResourceReader, store SnapshotStore) *Service {
@@ -69,6 +74,10 @@ func (s *Service) TestDraft(ctx context.Context, draft DraftConfig) (Snapshot, e
 		"timeout_seconds":    draft.TimeoutSeconds,
 		"max_response_bytes": draft.MaxResponseBytes,
 		"request_headers":    draft.RequestHeaders,
+		"tls_ca":             draft.TLSCA,
+		"tls_cert":           draft.TLSCert,
+		"tls_key":            draft.TLSKey,
+		"tls_skip_verify":    draft.TLSSkipVerify,
 	}
 	config, err := configFromWithSecurity(input, s != nil && s.enhancedSecurity)
 	if err != nil {
@@ -85,7 +94,11 @@ func (s *Service) TestDraft(ctx context.Context, draft DraftConfig) (Snapshot, e
 		return Snapshot{}, ErrInvalid
 	}
 	started := time.Now()
-	item, discoverErr := discoverWithSecurity(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second, s != nil && s.enhancedSecurity, config.Transport, headers)
+	tlsConfig, tlsErr := tlsConfigFromValues(draft.TLSCA, draft.TLSCert, draft.TLSKey, draft.TLSSkipVerify)
+	if tlsErr != nil {
+		return Snapshot{}, tlsErr
+	}
+	item, discoverErr := discoverWithSecurityTLS(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second, s != nil && s.enhancedSecurity, config.Transport, headers, tlsConfig)
 	item.Status = "succeeded"
 	item.Untrusted = true
 	item.ErrorMessage = ""
@@ -113,7 +126,11 @@ func (s *Service) Discover(ctx context.Context, resourceID string) (Snapshot, er
 		return Snapshot{}, err
 	}
 	headers := s.requestHeaders(ctx, server)
-	item, discoverErr := discoverWithSecurity(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second, s.enhancedSecurity, config.Transport, headers)
+	tlsConfig, tlsErr := s.tlsConfig(ctx, server)
+	if tlsErr != nil {
+		return Snapshot{}, tlsErr
+	}
+	item, discoverErr := discoverWithSecurityTLS(ctx, config.URL, time.Duration(config.TimeoutSeconds)*time.Second, s.enhancedSecurity, config.Transport, headers, tlsConfig)
 	item.ServerResourceID, item.ScopeID, item.Status, item.Untrusted = server.ID, server.ScopeID, "succeeded", true
 	if discoverErr != nil {
 		item.Status = "failed"
@@ -165,7 +182,11 @@ func (s *Service) callConfigured(ctx context.Context, server resource.Resource, 
 	if err != nil {
 		return nil, err
 	}
-	discovered, err := discoverWithSecurity(ctx, normalized.String(), time.Duration(config.TimeoutSeconds)*time.Second, s.enhancedSecurity, config.Transport, headers)
+	tlsConfig, tlsErr := s.tlsConfig(ctx, server)
+	if tlsErr != nil {
+		return nil, tlsErr
+	}
+	discovered, err := discoverWithSecurityTLS(ctx, normalized.String(), time.Duration(config.TimeoutSeconds)*time.Second, s.enhancedSecurity, config.Transport, headers, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +204,7 @@ func (s *Service) callConfigured(ctx context.Context, server resource.Resource, 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	client := gomcp.NewClient(&gomcp.Implementation{Name: "opskeeper", Version: "t14"}, nil)
-	session, err := client.Connect(ctx, clientTransport(config.Transport, normalized.String(), httpClient(timeout, s.enhancedSecurity, headers)), nil)
+	session, err := client.Connect(ctx, clientTransport(config.Transport, normalized.String(), httpClient(timeout, s.enhancedSecurity, headers, tlsConfig)), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +310,26 @@ func (s *Service) requestHeaders(ctx context.Context, server resource.Resource) 
 		return map[string]string{}
 	}
 	return headers
+}
+
+func (s *Service) tlsConfig(ctx context.Context, server resource.Resource) (*tls.Config, error) {
+	if server.CredentialID == nil || s.credentials == nil {
+		return nil, nil
+	}
+	raw, err := s.credentials.RevealLinked(ctx, *server.CredentialID)
+	if err != nil {
+		return nil, err
+	}
+	var secret struct {
+		CA         string `json:"tls_ca"`
+		Cert       string `json:"tls_cert"`
+		Key        string `json:"tls_key"`
+		SkipVerify bool   `json:"tls_skip_verify"`
+	}
+	if json.Unmarshal(raw, &secret) != nil {
+		return nil, nil
+	}
+	return tlsConfigFromValues(secret.CA, secret.Cert, secret.Key, secret.SkipVerify)
 }
 
 func configHeaders(input map[string]any) map[string]string {
