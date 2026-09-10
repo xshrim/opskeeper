@@ -33,6 +33,21 @@ type logsInput struct {
 	Tail          int64  `json:"tail,omitempty"`
 	Timestamps    bool   `json:"timestamps,omitempty"`
 }
+type podStatInput struct {
+	client.ConnectionInput
+	Namespace string `json:"namespace,omitempty"`
+	Pod       string `json:"pod,omitempty"`
+	Filters   string `json:"filters,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Continue  string `json:"continue,omitempty"`
+}
+type nodeStatInput struct {
+	client.ConnectionInput
+	Node     string `json:"node,omitempty"`
+	Filters  string `json:"filters,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+	Continue string `json:"continue,omitempty"`
+}
 
 func clusterInfoTool(ctx context.Context, _ *mcp.CallToolRequest, in baseInput) (*mcp.CallToolResult, any, error) {
 	out, err := kt.ClusterInfo(ctx, in.ConnectionInput)
@@ -55,6 +70,10 @@ func RegisterTools(s *mcp.Server) {
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, logsInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
+		case func(context.Context, *mcp.CallToolRequest, podStatInput) (*mcp.CallToolResult, any, error):
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
+		case func(context.Context, *mcp.CallToolRequest, nodeStatInput) (*mcp.CallToolResult, any, error):
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		}
 	}
 	add("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, clusterInfoTool)
@@ -70,6 +89,14 @@ func RegisterTools(s *mcp.Server) {
 	}
 	add("kubernetes_workloads", "List Kubernetes workloads.", listExtras(), func(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		out, err := kt.Workloads(ctx, in.ConnectionInput, in.Namespace, in.Filters, in.Continue, in.Limit)
+		return nil, out, err
+	})
+	add("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", map[string]any{"namespace": map[string]any{"type": "string"}, "pod": map[string]any{"type": "string"}, "filters": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "continue": map[string]any{"type": "string"}}, func(ctx context.Context, _ *mcp.CallToolRequest, in podStatInput) (*mcp.CallToolResult, any, error) {
+		out, err := kt.PodStats(ctx, in.ConnectionInput, in.Namespace, in.Pod, in.Filters, in.Continue, in.Limit)
+		return nil, out, err
+	})
+	add("kubernetes_node_stat", "Read current node CPU and memory usage from the Kubernetes Metrics API.", map[string]any{"node": map[string]any{"type": "string"}, "filters": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "continue": map[string]any{"type": "string"}}, func(ctx context.Context, _ *mcp.CallToolRequest, in nodeStatInput) (*mcp.CallToolResult, any, error) {
+		out, err := kt.NodeStats(ctx, in.ConnectionInput, in.Node, in.Filters, in.Continue, in.Limit)
 		return nil, out, err
 	})
 	add("kubernetes_pod_logs", "Read bounded, non-following pod logs.", map[string]any{"namespace": map[string]any{"type": "string"}, "pod": map[string]any{"type": "string"}, "container_name": map[string]any{"type": "string"}, "tail": map[string]any{"type": "integer"}, "timestamps": map[string]any{"type": "boolean"}}, func(ctx context.Context, _ *mcp.CallToolRequest, in logsInput) (*mcp.CallToolResult, any, error) {

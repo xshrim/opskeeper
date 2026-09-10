@@ -120,13 +120,13 @@ export function kubernetesCredentialForSave(draft: KubernetesConnectionDraft): R
   const out: Record<string,string> = {};
   if (draft.isAgent && draft.connectionOverride === false) return out;
   if (draft.connectionMode === 'kubeconfig' && draft.kubeconfig.trim()) {
-    out.kubeconfig_base64 = dockerTLSValueForSave(draft.kubeconfig);
+    out.kubeconfig = dockerTLSValueForSave(draft.kubeconfig);
   }
   if (draft.connectionMode === 'endpoint' && draft.token.trim()) out.token = draft.token.trim();
   if (draft.connectionMode === 'endpoint') {
-    if (draft.caBase64.trim()) out.ca_file = dockerTLSValueForSave(draft.caBase64);
-    if (draft.certBase64.trim()) out.client_cert_file = dockerTLSValueForSave(draft.certBase64);
-    if (draft.keyBase64.trim()) out.client_key_file = dockerTLSValueForSave(draft.keyBase64);
+    if (draft.caBase64.trim()) out.ca = dockerTLSValueForSave(draft.caBase64);
+    if (draft.certBase64.trim()) out.client_cert = dockerTLSValueForSave(draft.certBase64);
+    if (draft.keyBase64.trim()) out.client_key = dockerTLSValueForSave(draft.keyBase64);
   }
   return out;
 }

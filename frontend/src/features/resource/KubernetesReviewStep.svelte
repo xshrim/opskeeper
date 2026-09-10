@@ -17,7 +17,7 @@
   export let testError = '';
   export let testLatency: number | undefined;
   export let onSubmit = () => {};
-  const tools = ['kubernetes_cluster_info', 'kubernetes_api_resources', 'kubernetes_namespaces', 'kubernetes_nodes', 'kubernetes_pods', 'kubernetes_workloads', 'kubernetes_services', 'kubernetes_configmaps', 'kubernetes_ingresses', 'kubernetes_endpoint_slices', 'kubernetes_events', 'kubernetes_pod_logs', 'kubernetes_resource_get', 'kubernetes_health'];
+  const tools = ['kubernetes_cluster_info', 'kubernetes_api_resources', 'kubernetes_namespaces', 'kubernetes_nodes', 'kubernetes_pods', 'kubernetes_workloads', 'kubernetes_pod_stat', 'kubernetes_node_stat', 'kubernetes_services', 'kubernetes_configmaps', 'kubernetes_ingresses', 'kubernetes_endpoint_slices', 'kubernetes_events', 'kubernetes_pod_logs', 'kubernetes_resource_get', 'kubernetes_health'];
 </script>
 
 <form id="kubernetes-review-form" class="provider-summary docker-summary" on:submit|preventDefault={onSubmit}>

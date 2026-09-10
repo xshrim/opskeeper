@@ -976,13 +976,12 @@ body:has(.resource-add-workflow) {
 }
 .resource-add-step-heading {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   min-height: 28px;
   margin-bottom: 22px;
-  align-items: center;
 }
 .resource-add-step-heading h3 {
   margin: 0;
@@ -1006,9 +1005,10 @@ body:has(.resource-add-workflow) {
   font-style: normal;
 }
 .resource-add-step-validation {
-  position: absolute;
-  left: 50%;
-  max-width: min(52%, 460px);
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  max-width: min(36vw, 460px);
   margin: 0;
   padding: 5px 9px;
   overflow: hidden;
@@ -1021,7 +1021,6 @@ body:has(.resource-add-workflow) {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transform: translateX(-50%);
 }
 .resource-add-step-actions {
   display: flex;
@@ -1029,6 +1028,9 @@ body:has(.resource-add-workflow) {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
 }
 .resource-add-description {
   margin: 0 0 12px;
@@ -1845,8 +1847,10 @@ body:has(.resource-add-workflow) {
 }
 .docker-form-grid label.invalid input,
 .docker-form-grid label.invalid select,
+.docker-form-grid label.invalid textarea,
 .docker-agent-form label.invalid select {
   border-color: var(--theme-danger);
+  box-shadow: 0 0 0 1px var(--theme-danger);
 }
 .docker-host-field {
   grid-column: span 3;
@@ -2189,6 +2193,14 @@ body:has(.resource-add-workflow) {
   }
   .resource-add-content {
     padding: 18px 16px;
+  }
+  .resource-add-step-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .resource-add-step-validation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: 100%;
   }
   .resource-add-main-heading {
     padding: 8px 16px;

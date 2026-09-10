@@ -41,6 +41,12 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 	register("kubernetes_workloads", "List Kubernetes workloads.", listExtras(), func(c context.Context, a map[string]any) (any, error) {
 		return kt.Workloads(c, connection, stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})
+	register("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", map[string]any{"namespace": map[string]any{"type": "string"}, "pod": map[string]any{"type": "string"}, "filters": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "continue": map[string]any{"type": "string"}}, func(c context.Context, a map[string]any) (any, error) {
+		return kt.PodStats(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
+	})
+	register("kubernetes_node_stat", "Read current node CPU and memory usage from the Kubernetes Metrics API.", map[string]any{"node": map[string]any{"type": "string"}, "filters": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "continue": map[string]any{"type": "string"}}, func(c context.Context, a map[string]any) (any, error) {
+		return kt.NodeStats(c, connection, stringArg(a, "node"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
+	})
 	register("kubernetes_pod_logs", "Read bounded, non-following pod logs.", map[string]any{"namespace": map[string]any{"type": "string"}, "pod": map[string]any{"type": "string"}, "container_name": map[string]any{"type": "string"}, "tail": map[string]any{"type": "integer"}, "timestamps": map[string]any{"type": "boolean"}}, func(c context.Context, a map[string]any) (any, error) {
 		return kt.PodLogs(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), int64Arg(a, "tail"), boolArg(a, "timestamps", false))
 	})
@@ -54,7 +60,7 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 func directKubernetesSchema(extra map[string]any) json.RawMessage {
 	schema := kt.InputSchema(extra)
 	if p, ok := schema["properties"].(map[string]any); ok {
-		for _, k := range []string{"kubeconfig_base64", "connection_mode", "kubeconfig_path", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file", "skip_tls_verify"} {
+		for _, k := range []string{"kubeconfig", "connection_mode", "context", "profile", "server", "ca", "token", "client_cert", "client_key", "skip_tls_verify"} {
 			delete(p, k)
 		}
 	}
@@ -82,8 +88,8 @@ func (s *Service) kubernetesConnection(ctx context.Context, item aiengine.Contex
 	var values map[string]any
 	if json.Unmarshal(secret, &values) == nil {
 		setKubernetesConnectionEmpty(&c, values)
-		if c.ConnectionMode != "endpoint" && c.KubeconfigBase64 == "" {
-			c.KubeconfigBase64 = stringValue(values, "kubeconfig_base64")
+		if c.ConnectionMode != "endpoint" && c.Kubeconfig == "" {
+			c.Kubeconfig = stringValue(values, "kubeconfig")
 		}
 	}
 	return c, nil
@@ -92,25 +98,20 @@ func setKubernetesConnection(c *kclient.ConnectionInput, v map[string]any) {
 	if c == nil {
 		return
 	}
-	c.KubeconfigBase64 = stringValue(v, "kubeconfig_base64")
-	c.KubeconfigPath = stringValue(v, "kubeconfig_path")
+	c.Kubeconfig = stringValue(v, "kubeconfig")
 	c.ConnectionMode = stringValue(v, "connection_mode")
 	c.Context = stringValue(v, "context")
 	c.Profile = stringValue(v, "profile")
 	c.Server = stringValue(v, "server")
-	c.CAFile = stringValue(v, "ca_file")
+	c.CA = stringValue(v, "ca")
 	c.Token = stringValue(v, "token")
-	c.TokenFile = stringValue(v, "token_file")
-	c.ClientCertFile = stringValue(v, "client_cert_file")
-	c.ClientKeyFile = stringValue(v, "client_key_file")
+	c.ClientCert = stringValue(v, "client_cert")
+	c.ClientKey = stringValue(v, "client_key")
 	c.SkipTLSVerify = boolValue(v, "skip_tls_verify")
 }
 func setKubernetesConnectionEmpty(c *kclient.ConnectionInput, v map[string]any) {
-	if c.ConnectionMode != "endpoint" && c.KubeconfigBase64 == "" {
-		c.KubeconfigBase64 = stringValue(v, "kubeconfig_base64")
-	}
-	if c.KubeconfigPath == "" {
-		c.KubeconfigPath = stringValue(v, "kubeconfig_path")
+	if c.ConnectionMode != "endpoint" && c.Kubeconfig == "" {
+		c.Kubeconfig = stringValue(v, "kubeconfig")
 	}
 	if c.ConnectionMode == "" {
 		c.ConnectionMode = stringValue(v, "connection_mode")
@@ -124,20 +125,17 @@ func setKubernetesConnectionEmpty(c *kclient.ConnectionInput, v map[string]any) 
 	if c.Server == "" {
 		c.Server = stringValue(v, "server")
 	}
-	if c.CAFile == "" {
-		c.CAFile = stringValue(v, "ca_file")
+	if c.CA == "" {
+		c.CA = stringValue(v, "ca")
 	}
 	if c.Token == "" {
 		c.Token = stringValue(v, "token")
 	}
-	if c.TokenFile == "" {
-		c.TokenFile = stringValue(v, "token_file")
+	if c.ClientCert == "" {
+		c.ClientCert = stringValue(v, "client_cert")
 	}
-	if c.ClientCertFile == "" {
-		c.ClientCertFile = stringValue(v, "client_cert_file")
-	}
-	if c.ClientKeyFile == "" {
-		c.ClientKeyFile = stringValue(v, "client_key_file")
+	if c.ClientKey == "" {
+		c.ClientKey = stringValue(v, "client_key")
 	}
 	if !c.SkipTLSVerify {
 		c.SkipTLSVerify = boolValue(v, "skip_tls_verify")

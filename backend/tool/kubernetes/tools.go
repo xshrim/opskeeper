@@ -10,6 +10,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -47,6 +48,27 @@ type LogsOutput struct {
 	Truncated bool   `json:"truncated"`
 }
 
+type ContainerUsage struct {
+	Name  string            `json:"name"`
+	Usage map[string]string `json:"usage"`
+}
+
+type MetricStat struct {
+	Namespace  string            `json:"namespace,omitempty"`
+	Name       string            `json:"name"`
+	Timestamp  string            `json:"timestamp,omitempty"`
+	Window     string            `json:"window,omitempty"`
+	Usage      map[string]string `json:"usage"`
+	Containers []ContainerUsage  `json:"containers,omitempty"`
+}
+
+type StatsOutput struct {
+	Items     []MetricStat `json:"items"`
+	Count     int          `json:"count"`
+	Truncated bool         `json:"truncated"`
+	Continue  string       `json:"continue,omitempty"`
+}
+
 type resourceDef struct {
 	gvr        schema.GroupVersionResource
 	namespaced bool
@@ -69,12 +91,21 @@ var resources = map[string]resourceDef{
 	"endpointslices": {gvr: schema.GroupVersionResource{Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"}, namespaced: true, kind: "EndpointSlice"},
 }
 
+var metricsResources = map[string]struct {
+	gvr        schema.GroupVersionResource
+	namespaced bool
+	container  bool
+}{
+	"pods":  {gvr: schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}, namespaced: true, container: true},
+	"nodes": {gvr: schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}},
+}
+
 func InputSchema(extra map[string]any) map[string]any {
 	p := map[string]any{
-		"kubeconfig_base64": map[string]any{"type": "string"}, "connection_mode": map[string]any{"type": "string"},
-		"kubeconfig_path": map[string]any{"type": "string"}, "context": map[string]any{"type": "string"}, "profile": map[string]any{"type": "string"},
-		"server": map[string]any{"type": "string"}, "ca_file": map[string]any{"type": "string"}, "token": map[string]any{"type": "string"}, "token_file": map[string]any{"type": "string"},
-		"client_cert_file": map[string]any{"type": "string"}, "client_key_file": map[string]any{"type": "string"}, "skip_tls_verify": map[string]any{"type": "boolean", "default": false},
+		"kubeconfig": map[string]any{"type": "string"}, "connection_mode": map[string]any{"type": "string"},
+		"context": map[string]any{"type": "string"}, "profile": map[string]any{"type": "string"},
+		"server": map[string]any{"type": "string"}, "ca": map[string]any{"type": "string"}, "token": map[string]any{"type": "string"},
+		"client_cert": map[string]any{"type": "string"}, "client_key": map[string]any{"type": "string"}, "skip_tls_verify": map[string]any{"type": "boolean", "default": false},
 	}
 	for k, v := range extra {
 		p[k] = v
@@ -237,6 +268,120 @@ func PodLogs(ctx context.Context, input client.ConnectionInput, namespace, pod, 
 		data = data[:maxLogBytes]
 	}
 	return LogsOutput{Namespace: namespace, Pod: pod, Container: container, Logs: string(data), Truncated: truncated}, nil
+}
+
+// PodStats reads current usage from the Kubernetes Metrics API. The API is
+// commonly provided by metrics-server and is separate from the core API.
+func PodStats(ctx context.Context, input client.ConnectionInput, namespace, pod, filters, continuation string, limit int) (StatsOutput, error) {
+	return metricStats(ctx, input, "pods", namespace, pod, filters, continuation, limit)
+}
+
+// NodeStats reads current node usage from the Kubernetes Metrics API.
+func NodeStats(ctx context.Context, input client.ConnectionInput, node, filters, continuation string, limit int) (StatsOutput, error) {
+	return metricStats(ctx, input, "nodes", "", node, filters, continuation, limit)
+}
+
+func metricStats(ctx context.Context, input client.ConnectionInput, kind, namespace, name, filters, continuation string, limit int) (StatsOutput, error) {
+	def, ok := metricsResources[kind]
+	if !ok {
+		return StatsOutput{}, fmt.Errorf("metrics resource %q is not allowed", kind)
+	}
+	if limit < 0 || limit > maxListLimit {
+		return StatsOutput{}, fmt.Errorf("limit must be between 0 and %d", maxListLimit)
+	}
+	selector, err := labelsFromString(filters)
+	if err != nil {
+		return StatsOutput{}, err
+	}
+	c, err := client.Open(ctx, input)
+	if err != nil {
+		return StatsOutput{}, err
+	}
+	resourceClient := c.Dynamic.Resource(def.gvr)
+	var items []unstructured.Unstructured
+	var next string
+	if strings.TrimSpace(name) != "" {
+		var item *unstructured.Unstructured
+		if def.namespaced {
+			item, err = resourceClient.Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		} else {
+			item, err = resourceClient.Get(ctx, name, metav1.GetOptions{})
+		}
+		if err != nil {
+			return StatsOutput{}, fmt.Errorf("read Kubernetes %s metrics: %w", kind, err)
+		}
+		items = []unstructured.Unstructured{*item}
+	} else {
+		opts := metav1.ListOptions{LabelSelector: selector, Limit: int64(limit), Continue: continuation}
+		var list *unstructured.UnstructuredList
+		if def.namespaced {
+			list, err = resourceClient.Namespace(namespace).List(ctx, opts)
+		} else {
+			list, err = resourceClient.List(ctx, opts)
+		}
+		if err != nil {
+			return StatsOutput{}, fmt.Errorf("read Kubernetes %s metrics: %w", kind, err)
+		}
+		items, next = list.Items, list.GetContinue()
+	}
+	out := make([]MetricStat, 0, len(items))
+	for _, item := range items {
+		out = append(out, metricStat(item, def.container))
+	}
+	return StatsOutput{Items: out, Count: len(out), Truncated: next != "", Continue: next}, nil
+}
+
+func metricStat(item unstructured.Unstructured, withContainers bool) MetricStat {
+	stat := MetricStat{
+		Namespace: item.GetNamespace(),
+		Name:      item.GetName(),
+		Usage:     nestedUsage(item.Object, "usage"),
+	}
+	stat.Timestamp, _, _ = unstructured.NestedString(item.Object, "timestamp")
+	stat.Window, _, _ = unstructured.NestedString(item.Object, "window")
+	if !withContainers {
+		return stat
+	}
+	containers, _, _ := unstructured.NestedSlice(item.Object, "containers")
+	for _, raw := range containers {
+		container, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _, _ := unstructured.NestedString(container, "name")
+		usage := nestedUsage(container, "usage")
+		stat.Containers = append(stat.Containers, ContainerUsage{Name: name, Usage: usage})
+		addUsage(stat.Usage, usage)
+	}
+	return stat
+}
+
+func nestedUsage(object map[string]any, field string) map[string]string {
+	values, _, _ := unstructured.NestedStringMap(object, field)
+	if values == nil {
+		return map[string]string{}
+	}
+	return values
+}
+
+func addUsage(total map[string]string, current map[string]string) {
+	for name, value := range current {
+		quantity, err := apiresource.ParseQuantity(value)
+		if err != nil {
+			if _, exists := total[name]; !exists {
+				total[name] = value
+			}
+			continue
+		}
+		if existing, ok := total[name]; ok {
+			if previous, parseErr := apiresource.ParseQuantity(existing); parseErr == nil {
+				previous.Add(quantity)
+				total[name] = previous.String()
+				continue
+			}
+		}
+		total[name] = quantity.String()
+	}
 }
 
 func Health(ctx context.Context, input client.ConnectionInput) (map[string]any, error) {

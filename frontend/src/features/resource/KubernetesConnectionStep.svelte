@@ -15,13 +15,16 @@
   export let skipTLSVerify = false;
   export let mcpServerResourceId = '';
   export let mcpServers: Resource[] = [];
+  export let allowAddMCPServer = true;
   export let configurationAttempted = false;
   export let credentialLoading = false;
   export let onConfigurationChange: () => void = () => {};
+  export let onAddMCPServer: () => void = () => {};
 
   type CredentialField = 'kubeconfig' | 'ca' | 'cert' | 'key';
   let selectedFileNames: Record<CredentialField, string> = { kubeconfig: '', ca: '', cert: '', key: '' };
   let fileErrors: Record<CredentialField, string> = { kubeconfig: '', ca: '', cert: '', key: '' };
+  let lastMcpServerResourceId = '';
   let kubeconfigFileInput: HTMLInputElement;
   let caFileInput: HTMLInputElement;
   let certFileInput: HTMLInputElement;
@@ -64,6 +67,18 @@
   function tlsInvalid(value: string) {
     return configurationAttempted && Boolean(value.trim()) && !dockerTLSValueValid(value);
   }
+
+  $: if (mcpServerResourceId !== '__add_mcp_server__') lastMcpServerResourceId = mcpServerResourceId;
+
+  function selectMCPServer(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (value === '__add_mcp_server__') {
+      mcpServerResourceId = lastMcpServerResourceId;
+      onAddMCPServer();
+      return;
+    }
+    onConfigurationChange();
+  }
 </script>
 
 <div class="docker-connection-form">
@@ -72,11 +87,12 @@
       <div class="docker-agent-connection-row">
         <label class:invalid={configurationAttempted && !mcpServerResourceId}>
           <span><i>*</i>关联 MCPServer</span>
-          <select bind:value={mcpServerResourceId} on:change={onConfigurationChange}>
+          <select bind:value={mcpServerResourceId} on:change={selectMCPServer}>
             <option value="">请选择活动的 MCPServer</option>
             {#each mcpServers as server}
               <option value={server.id}>{server.name} · {endpoint(server)}</option>
             {/each}
+            {#if allowAddMCPServer}<option value="__add_mcp_server__">添加 MCPServer</option>{/if}
           </select>
         </label>
         <label class="docker-agent-override-toggle">

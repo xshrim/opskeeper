@@ -12,13 +12,16 @@
 export let mcpServerResourceId = '';
   export let connectionOverride = false;
   export let mcpServers: Resource[] = [];
+  export let allowAddMCPServer = true;
   export let configurationAttempted = false;
   export let credentialLoading = false;
   export let onConfigurationChange: () => void = () => {};
+  export let onAddMCPServer: () => void = () => {};
 
   type TLSField = 'ca' | 'cert' | 'key';
   let selectedFileNames: Record<TLSField, string> = { ca: '', cert: '', key: '' };
   let fileErrors: Record<TLSField, string> = { ca: '', cert: '', key: '' };
+  let lastMcpServerResourceId = '';
   let caFileInput: HTMLInputElement;
   let certFileInput: HTMLInputElement;
   let keyFileInput: HTMLInputElement;
@@ -59,6 +62,17 @@ export let mcpServerResourceId = '';
   }
 
   $: tlsSupported = dockerHostSupportsTLS(host);
+  $: if (mcpServerResourceId !== '__add_mcp_server__') lastMcpServerResourceId = mcpServerResourceId;
+
+  function selectMCPServer(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (value === '__add_mcp_server__') {
+      mcpServerResourceId = lastMcpServerResourceId;
+      onAddMCPServer();
+      return;
+    }
+    onConfigurationChange();
+  }
 </script>
 
 {#if accessMode === 'agent'}
@@ -66,11 +80,12 @@ export let mcpServerResourceId = '';
     <div class="docker-agent-connection-row">
       <label class:invalid={configurationAttempted && !mcpServerResourceId}>
         <span><i>*</i>关联 MCPServer</span>
-        <select bind:value={mcpServerResourceId} on:change={onConfigurationChange} aria-describedby="docker-agent-help">
+        <select bind:value={mcpServerResourceId} on:change={selectMCPServer} aria-describedby="docker-agent-help">
           <option value="">请选择活动的 MCPServer</option>
           {#each mcpServers as server}
             <option value={server.id}>{server.name} · {endpoint(server)}</option>
           {/each}
+          {#if allowAddMCPServer}<option value="__add_mcp_server__">添加 MCPServer</option>{/if}
         </select>
       </label>
       <label class="docker-agent-override-toggle">

@@ -2,8 +2,6 @@ package client
 
 import (
 	"encoding/base64"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -12,7 +10,7 @@ func TestToolKubeconfigHasHighestPriority(t *testing.T) {
 	kubeconfig := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: test\n  cluster:\n    server: https://tool.example:6443\ncontexts:\n- name: test\n  context:\n    cluster: test\n    user: test\ncurrent-context: test\nusers:\n- name: test\n  user: {}\n")
 	t.Setenv("KUBERNETES_MCP_MODE", "endpoint")
 	t.Setenv("KUBERNETES_MCP_SERVER", "https://environment.invalid")
-	config, profile, err := resolveRESTConfig(ConnectionInput{KubeconfigBase64: base64.StdEncoding.EncodeToString(kubeconfig)})
+	config, profile, err := resolveRESTConfig(ConnectionInput{Kubeconfig: base64.StdEncoding.EncodeToString(kubeconfig)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,26 +35,9 @@ func TestEndpointModeUsesEnvironment(t *testing.T) {
 	}
 }
 
-func TestToolKubeconfigPathOverridesEnvironmentMode(t *testing.T) {
-	kubeconfig := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: test\n  cluster:\n    server: https://tool-path.example:6443\ncontexts:\n- name: test\n  context:\n    cluster: test\n    user: test\ncurrent-context: test\nusers:\n- name: test\n  user: {}\n")
-	path := filepath.Join(t.TempDir(), "config")
-	if err := os.WriteFile(path, kubeconfig, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUBERNETES_MCP_MODE", "endpoint")
-	t.Setenv("KUBERNETES_MCP_SERVER", "https://environment.invalid")
-	config, _, err := resolveRESTConfig(ConnectionInput{KubeconfigPath: path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if config.Host != "https://tool-path.example:6443" {
-		t.Fatalf("host=%q", config.Host)
-	}
-}
-
 func TestToolKubeconfigUsesExplicitContext(t *testing.T) {
 	kubeconfig := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: first\n  cluster:\n    server: https://first.example:6443\n- name: second\n  cluster:\n    server: https://second.example:6443\ncontexts:\n- name: first\n  context:\n    cluster: first\n    user: test\n- name: second\n  context:\n    cluster: second\n    user: test\ncurrent-context: first\nusers:\n- name: test\n  user: {}\n")
-	config, _, err := resolveRESTConfig(ConnectionInput{KubeconfigBase64: base64.StdEncoding.EncodeToString(kubeconfig), Context: "second"})
+	config, _, err := resolveRESTConfig(ConnectionInput{Kubeconfig: base64.StdEncoding.EncodeToString(kubeconfig), Context: "second"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +49,7 @@ func TestToolKubeconfigUsesExplicitContext(t *testing.T) {
 func TestEndpointTLSMaterialsAcceptBase64PEM(t *testing.T) {
 	pem := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----"
 	encoded := base64.StdEncoding.EncodeToString([]byte(pem))
-	config, _, err := endpointConfig(ConnectionInput{Server: "https://cluster.example:6443", CAFile: encoded, ClientCertFile: encoded, ClientKeyFile: encoded}, "")
+	config, _, err := endpointConfig(ConnectionInput{Server: "https://cluster.example:6443", CA: encoded, ClientCert: encoded, ClientKey: encoded}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

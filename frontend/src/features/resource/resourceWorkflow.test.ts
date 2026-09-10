@@ -135,9 +135,11 @@ describe('resource workflow helpers', () => {
     };
     expect(kubernetesConfigurationValid(kubeconfig)).toBe(true);
     expect(kubernetesConfigForSave(kubeconfig)).toEqual({ connection_mode: 'kubeconfig' });
-    expect(kubernetesCredentialForSave(kubeconfig)).toEqual({ kubeconfig_base64: 'YXBpVmVyc2lvbjogdjEKa2luZDogQ29uZmln' });
+    expect(kubernetesCredentialForSave(kubeconfig)).toEqual({ kubeconfig: 'YXBpVmVyc2lvbjogdjEKa2luZDogQ29uZmln' });
     expect(kubernetesKubeconfigText('YXBpVmVyc2lvbjogdjEK')).toBe('apiVersion: v1');
-    expect(kubernetesConfigurationValid({ ...kubeconfig, connectionMode: 'endpoint', server: 'https://cluster.example:6443', kubeconfig: '' })).toBe(true);
+    const endpoint = { ...kubeconfig, connectionMode: 'endpoint' as const, server: 'https://cluster.example:6443', kubeconfig: '', token: 'token', caBase64: 'ca-value', certBase64: 'cert-value', keyBase64: 'key-value' };
+    expect(kubernetesConfigurationValid(endpoint)).toBe(true);
+    expect(kubernetesCredentialForSave(endpoint)).toEqual({ token: 'token', ca: 'Y2EtdmFsdWU=', client_cert: 'Y2VydC12YWx1ZQ==', client_key: 'a2V5LXZhbHVl' });
     const agent = { ...kubeconfig, isAgent: true, connectionOverride: false };
     expect(kubernetesConfigurationValid(agent)).toBe(true);
     expect(kubernetesConfigForSave(agent)).toEqual({});

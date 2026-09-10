@@ -27,6 +27,7 @@
   export let onContinueProvider: () => void = () => {};
   export let onContinueMcp: () => void = () => {};
   export let onContinueDocker: () => void = () => {};
+  export let onContinueKubernetes: () => void = () => {};
   export let onSubmitMcp: () => void = () => {};
   export let onSubmitDocker: () => void = () => {};
 </script>
@@ -89,7 +90,7 @@
       {:else if kind === 'Docker' && step === 3}
         <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitDocker} disabled={busy || !scopeSelected}>{editingDocker ? '保存' : '创建'}</button>
       {:else if kind === 'Kubernetes' && step === 2}
-        <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueDocker}>下一步</button>
+        <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click|preventDefault={() => onContinueKubernetes()}>下一步</button>
       {:else if kind === 'Kubernetes' && step === 3}
         <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitDocker} disabled={busy || !scopeSelected}>{editingKubernetes ? '保存' : '创建'}</button>
       {:else if step === 2}

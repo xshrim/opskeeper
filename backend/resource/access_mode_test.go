@@ -15,6 +15,15 @@ func TestNormalizeAccessModeDefaultsConnectionResourcesToDirect(t *testing.T) {
 	}
 }
 
+func TestNormalizeAccessModeLeavesMCPServerSubtypeAlone(t *testing.T) {
+	for _, subtype := range []string{"StreamHTTP", "SSE"} {
+		mode, err := normalizeAccessMode("MCPServer", subtype)
+		if err != nil || mode != "" {
+			t.Fatalf("normalizeAccessMode(MCPServer, %q) = %q, %v", subtype, mode, err)
+		}
+	}
+}
+
 type accessModeStore struct{ resources map[string]Resource }
 
 func (s *accessModeStore) Create(_ context.Context, input CreateInput) (Resource, error) {

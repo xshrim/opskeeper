@@ -18,7 +18,7 @@
   export let providerTypeLabel: (type: unknown) => string;
   export let providerBindingsFor: (resource: Resource) => Array<{ tag: string }>;
   export let providerPurposeLabel: (tag: string) => string;
-  export let mcpServerNameFor: (resource: Resource) => string = () => '';
+  export let mcpServerEndpointFor: (resource: Resource) => string = () => '';
 </script>
 
 {#if resource.kind === 'AIProvider'}
@@ -35,9 +35,9 @@
 {:else if resource.kind === 'MCPServer'}
   <McpResourceDetails {resource} snapshots={operationSnapshots[resource.id] ?? []} {formatDate} />
 {:else if resource.kind === 'Docker'}
-  <DockerResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} />
+  <DockerResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Kubernetes'}
-  <KubernetesResourceDetails {resource} {resourceCheck} mcpServerName={mcpServerNameFor(resource)} {formatDate} />
+  <KubernetesResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else}
-  <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} {formatDate} {resourceCanManage} />
+  <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} {resourceCanManage} />
 {/if}

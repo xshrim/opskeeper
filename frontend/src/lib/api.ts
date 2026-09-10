@@ -771,7 +771,7 @@ export const api = {
     tls_key?: string;
     skip_tls_verify?: boolean;
   }) => request<{ status: string; message: string; latency_ms: number }>('api/v1/docker/connection-tests', json(body)),
-  testDraftKubernetes: (body: { kubeconfig?: string; server?: string; ca_file?: string; token?: string; client_cert_file?: string; client_key_file?: string; context?: string; skip_tls_verify?: boolean }) =>
+  testDraftKubernetes: (body: { kubeconfig?: string; server?: string; ca?: string; token?: string; client_cert?: string; client_key?: string; context?: string; skip_tls_verify?: boolean }) =>
     request<{ status: string; message: string; latency_ms: number }>('api/v1/kubernetes/connection-tests', json(body)),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),

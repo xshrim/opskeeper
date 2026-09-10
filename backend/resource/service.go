@@ -584,9 +584,6 @@ func supportsAccessMode(kind string) bool {
 func normalizeAccessMode(kind, subtype string) (string, error) {
 	subtype = strings.ToLower(strings.TrimSpace(subtype))
 	if !supportsAccessMode(kind) {
-		if subtype != "" {
-			return "", invalid(fmt.Sprintf("%s does not support an access mode", kind))
-		}
 		return "", nil
 	}
 	accessMode := subtype

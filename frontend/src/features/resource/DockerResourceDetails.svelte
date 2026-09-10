@@ -5,7 +5,7 @@
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
-  export let mcpServerName = '';
+  export let mcpServerEndpoint = '';
   export let formatDate: (value: string) => string;
 
   $: accessMode = String(resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
@@ -23,7 +23,7 @@
 <div class="provider-resource-details docker-resource-details">
   <div class="provider-resource-meta">
     <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{dockerAccessModeLabel(accessMode)}</strong></div>
-    <div><span>连接端点</span><strong>{accessMode === 'direct' ? resourceEndpointFor(resource) : (mcpServerName || '关联 MCPServer')}</strong></div>
+    <div><span>连接端点</span><strong>{accessMode === 'direct' ? resourceEndpointFor(resource) : (mcpServerEndpoint || '关联 MCPServer')}</strong></div>
     <div><span>工具数量</span><strong>6 个</strong></div>
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
     <div><span>传输凭据</span><strong>{accessMode === 'agent' ? '由 MCPServer 管理' : resource.credential_id ? 'TLS 凭据已关联' : '未配置 TLS 凭据'}</strong></div>

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -22,18 +21,16 @@ import (
 // ConnectionInput is deliberately flat and primitive-only. Kubeconfig content
 // is accepted as base64 so clients never need to construct a nested schema.
 type ConnectionInput struct {
-	KubeconfigBase64 string `json:"kubeconfig_base64,omitempty"`
-	ConnectionMode   string `json:"connection_mode,omitempty"`
-	KubeconfigPath   string `json:"kubeconfig_path,omitempty"`
-	Context          string `json:"context,omitempty"`
-	Profile          string `json:"profile,omitempty"`
-	Server           string `json:"server,omitempty"`
-	CAFile           string `json:"ca_file,omitempty"`
-	Token            string `json:"token,omitempty"`
-	TokenFile        string `json:"token_file,omitempty"`
-	ClientCertFile   string `json:"client_cert_file,omitempty"`
-	ClientKeyFile    string `json:"client_key_file,omitempty"`
-	SkipTLSVerify    bool   `json:"skip_tls_verify,omitempty"`
+	Kubeconfig     string `json:"kubeconfig,omitempty"`
+	ConnectionMode string `json:"connection_mode,omitempty"`
+	Context        string `json:"context,omitempty"`
+	Profile        string `json:"profile,omitempty"`
+	Server         string `json:"server,omitempty"`
+	CA             string `json:"ca,omitempty"`
+	Token          string `json:"token,omitempty"`
+	ClientCert     string `json:"client_cert,omitempty"`
+	ClientKey      string `json:"client_key,omitempty"`
+	SkipTLSVerify  bool   `json:"skip_tls_verify,omitempty"`
 }
 
 type Config struct {
@@ -54,15 +51,15 @@ type profileFile struct {
 	Profiles map[string]profile `json:"profiles" yaml:"profiles"`
 }
 type profile struct {
-	Mode           string `json:"mode" yaml:"mode"`
-	Path           string `json:"kubeconfig_path" yaml:"kubeconfig_path"`
-	Context        string `json:"context" yaml:"context"`
-	Server         string `json:"server" yaml:"server"`
-	CAFile         string `json:"ca_file" yaml:"ca_file"`
-	TokenFile      string `json:"token_file" yaml:"token_file"`
-	ClientCertFile string `json:"client_cert_file" yaml:"client_cert_file"`
-	ClientKeyFile  string `json:"client_key_file" yaml:"client_key_file"`
-	SkipTLSVerify  bool   `json:"skip_tls_verify" yaml:"skip_tls_verify"`
+	Mode          string `json:"mode" yaml:"mode"`
+	Kubeconfig    string `json:"kubeconfig" yaml:"kubeconfig"`
+	Context       string `json:"context" yaml:"context"`
+	Server        string `json:"server" yaml:"server"`
+	CA            string `json:"ca" yaml:"ca"`
+	Token         string `json:"token" yaml:"token"`
+	ClientCert    string `json:"client_cert" yaml:"client_cert"`
+	ClientKey     string `json:"client_key" yaml:"client_key"`
+	SkipTLSVerify bool   `json:"skip_tls_verify" yaml:"skip_tls_verify"`
 }
 
 func Open(ctx context.Context, input ConnectionInput) (*Connection, error) {
@@ -90,42 +87,22 @@ func Open(ctx context.Context, input ConnectionInput) (*Connection, error) {
 
 func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 	// Tool-supplied kubeconfig is the explicit highest-priority connection.
-	if raw := strings.TrimSpace(input.KubeconfigBase64); raw != "" {
+	if raw := strings.TrimSpace(input.Kubeconfig); raw != "" {
 		decoded, err := base64.StdEncoding.DecodeString(raw)
 		if err != nil {
-			return nil, "tool-kubeconfig", fmt.Errorf("decode kubeconfig_base64: %w", err)
+			return nil, "tool-kubeconfig", fmt.Errorf("decode kubeconfig: %w", err)
 		}
-		config, err := clientcmd.Load(decoded)
-		if err != nil {
-			return nil, "tool-kubeconfig", fmt.Errorf("load tool kubeconfig: %w", err)
-		}
-		restConfig, err := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{CurrentContext: strings.TrimSpace(input.Context)}).ClientConfig()
-		if err != nil {
-			return nil, "tool-kubeconfig", fmt.Errorf("resolve tool kubeconfig: %w", err)
-		}
-		return restConfig, "tool-kubeconfig", nil
+		return restConfigFromBytes(decoded, strings.TrimSpace(input.Context), "tool-kubeconfig")
 	}
-	toolMode := strings.TrimSpace(input.ConnectionMode)
-	toolKubeconfigPath := strings.TrimSpace(input.KubeconfigPath)
-	toolServer := strings.TrimSpace(input.Server)
+	explicitMode := strings.TrimSpace(input.ConnectionMode)
+	explicitServer := strings.TrimSpace(input.Server)
 	resolved := input
 	profileName := strings.TrimSpace(resolved.Profile)
 	if resolved.ConnectionMode == "" {
 		resolved.ConnectionMode = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_MODE"))
 	}
-	if resolved.KubeconfigPath == "" {
-		resolved.KubeconfigPath = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_KUBECONFIG"))
-	}
-	if resolved.KubeconfigPath == "" {
-		resolved.KubeconfigPath = strings.TrimSpace(os.Getenv("KUBECONFIG"))
-	}
-	if resolved.KubeconfigPath == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			candidate := filepath.Join(home, ".kube", "config")
-			if _, statErr := os.Stat(candidate); statErr == nil {
-				resolved.KubeconfigPath = candidate
-			}
-		}
+	if resolved.Kubeconfig == "" {
+		resolved.Kubeconfig = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_KUBECONFIG"))
 	}
 	if resolved.Context == "" {
 		resolved.Context = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CONTEXT"))
@@ -133,20 +110,17 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 	if resolved.Server == "" {
 		resolved.Server = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_SERVER"))
 	}
-	if resolved.CAFile == "" {
-		resolved.CAFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CA_FILE"))
-	}
-	if resolved.TokenFile == "" {
-		resolved.TokenFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_TOKEN_FILE"))
+	if resolved.CA == "" {
+		resolved.CA = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CA"))
 	}
 	if resolved.Token == "" {
 		resolved.Token = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_TOKEN"))
 	}
-	if resolved.ClientCertFile == "" {
-		resolved.ClientCertFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_CERT_FILE"))
+	if resolved.ClientCert == "" {
+		resolved.ClientCert = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_CERT"))
 	}
-	if resolved.ClientKeyFile == "" {
-		resolved.ClientKeyFile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_KEY_FILE"))
+	if resolved.ClientKey == "" {
+		resolved.ClientKey = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_CLIENT_KEY"))
 	}
 	if !resolved.SkipTLSVerify {
 		resolved.SkipTLSVerify = envBool("KUBERNETES_MCP_SKIP_TLS_VERIFY", false)
@@ -162,8 +136,8 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 		if resolved.ConnectionMode == "" {
 			resolved.ConnectionMode = p.Mode
 		}
-		if resolved.KubeconfigPath == "" {
-			resolved.KubeconfigPath = p.Path
+		if resolved.Kubeconfig == "" {
+			resolved.Kubeconfig = p.Kubeconfig
 		}
 		if resolved.Context == "" {
 			resolved.Context = p.Context
@@ -171,17 +145,17 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 		if resolved.Server == "" {
 			resolved.Server = p.Server
 		}
-		if resolved.CAFile == "" {
-			resolved.CAFile = p.CAFile
+		if resolved.CA == "" {
+			resolved.CA = p.CA
 		}
-		if resolved.TokenFile == "" {
-			resolved.TokenFile = p.TokenFile
+		if resolved.Token == "" {
+			resolved.Token = p.Token
 		}
-		if resolved.ClientCertFile == "" {
-			resolved.ClientCertFile = p.ClientCertFile
+		if resolved.ClientCert == "" {
+			resolved.ClientCert = p.ClientCert
 		}
-		if resolved.ClientKeyFile == "" {
-			resolved.ClientKeyFile = p.ClientKeyFile
+		if resolved.ClientKey == "" {
+			resolved.ClientKey = p.ClientKey
 		}
 		if !resolved.SkipTLSVerify {
 			resolved.SkipTLSVerify = p.SkipTLSVerify
@@ -190,11 +164,9 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 	if resolved.ConnectionMode == "" {
 		resolved.ConnectionMode = "auto"
 	}
-	if toolMode == "" {
+	if explicitMode == "" || strings.EqualFold(explicitMode, "auto") {
 		switch {
-		case toolKubeconfigPath != "":
-			resolved.ConnectionMode = "kubeconfig"
-		case toolServer != "":
+		case explicitServer != "":
 			resolved.ConnectionMode = "endpoint"
 		}
 	}
@@ -202,25 +174,24 @@ func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {
 	mode := strings.ToLower(strings.TrimSpace(resolved.ConnectionMode))
 	if mode == "auto" {
 		switch {
+		case resolved.Kubeconfig != "":
+			mode = "kubeconfig"
 		case resolved.Server != "":
 			mode = "endpoint"
-		case resolved.KubeconfigPath != "":
-			mode = "kubeconfig"
 		default:
-			mode = "in_cluster"
+			return defaultRESTConfig(resolved.Context, profileName)
 		}
 	}
 	switch mode {
 	case "kubeconfig":
-		if resolved.KubeconfigPath == "" {
-			return nil, profileName, errors.New("Kubernetes kubeconfig path is required")
+		if strings.TrimSpace(resolved.Kubeconfig) == "" {
+			return nil, profileName, errors.New("Kubernetes kubeconfig is required")
 		}
-		loading := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(&clientcmd.ClientConfigLoadingRules{ExplicitPath: resolved.KubeconfigPath}, &clientcmd.ConfigOverrides{CurrentContext: resolved.Context})
-		config, err := loading.ClientConfig()
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(resolved.Kubeconfig))
 		if err != nil {
-			return nil, profileName, fmt.Errorf("load kubeconfig: %w", err)
+			return nil, profileName, fmt.Errorf("decode kubeconfig: %w", err)
 		}
-		return config, profileName, nil
+		return restConfigFromBytes(decoded, resolved.Context, profileName)
 	case "endpoint":
 		return endpointConfig(resolved, profileName)
 	case "in_cluster", "in-cluster":
@@ -240,28 +211,21 @@ func endpointConfig(input ConnectionInput, profileName string) (*rest.Config, st
 	}
 	config := &rest.Config{Host: input.Server}
 	config.TLSClientConfig.Insecure = input.SkipTLSVerify
-	applyTLSMaterial(input.CAFile, &config.CAFile, &config.CAData)
-	if input.TokenFile != "" {
-		data, err := os.ReadFile(input.TokenFile)
-		if err != nil {
-			return nil, profileName, fmt.Errorf("read Kubernetes token file: %w", err)
-		}
-		config.BearerToken = strings.TrimSpace(string(data))
-	}
+	applyTLSMaterial(input.CA, &config.CAData)
 	if strings.TrimSpace(input.Token) != "" {
 		config.BearerToken = strings.TrimSpace(input.Token)
 	}
-	if input.ClientCertFile != "" || input.ClientKeyFile != "" {
-		if input.ClientCertFile == "" || input.ClientKeyFile == "" {
+	if input.ClientCert != "" || input.ClientKey != "" {
+		if input.ClientCert == "" || input.ClientKey == "" {
 			return nil, profileName, errors.New("Kubernetes client certificate and key are required together")
 		}
-		applyTLSMaterial(input.ClientCertFile, &config.CertFile, &config.CertData)
-		applyTLSMaterial(input.ClientKeyFile, &config.KeyFile, &config.KeyData)
+		applyTLSMaterial(input.ClientCert, &config.CertData)
+		applyTLSMaterial(input.ClientKey, &config.KeyData)
 	}
 	return config, profileName, nil
 }
 
-func applyTLSMaterial(value string, file *string, data *[]byte) {
+func applyTLSMaterial(value string, data *[]byte) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return
@@ -270,11 +234,36 @@ func applyTLSMaterial(value string, file *string, data *[]byte) {
 		*data = []byte(value)
 		return
 	}
-	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil && bytes.Contains(decoded, []byte("-----BEGIN")) {
+	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
 		*data = decoded
 		return
 	}
-	*file = value
+	*data = []byte(value)
+}
+
+func restConfigFromBytes(data []byte, contextName, profileName string) (*rest.Config, string, error) {
+	config, err := clientcmd.Load(data)
+	if err != nil {
+		return nil, profileName, fmt.Errorf("load kubeconfig: %w", err)
+	}
+	restConfig, err := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{CurrentContext: strings.TrimSpace(contextName)}).ClientConfig()
+	if err != nil {
+		return nil, profileName, fmt.Errorf("resolve kubeconfig: %w", err)
+	}
+	return restConfig, profileName, nil
+}
+
+func defaultRESTConfig(contextName, profileName string) (*rest.Config, string, error) {
+	loading := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{CurrentContext: strings.TrimSpace(contextName)})
+	config, kubeconfigErr := loading.ClientConfig()
+	if kubeconfigErr == nil {
+		return config, profileName, nil
+	}
+	config, inClusterErr := rest.InClusterConfig()
+	if inClusterErr == nil {
+		return config, profileName, nil
+	}
+	return nil, profileName, fmt.Errorf("load Kubernetes default config: %v; load in-cluster config: %v", kubeconfigErr, inClusterErr)
 }
 
 func loadProfile(name string) (profile, error) {

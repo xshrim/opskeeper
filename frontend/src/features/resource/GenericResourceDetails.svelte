@@ -4,12 +4,15 @@
   export let resource: Resource;
   export let selectedResourceId = '';
   export let connectionCheck: ConnectionCheck | null = null;
+  export let mcpServerEndpoint = '';
   export let formatDate: (value: string) => string;
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
+
+  $: isAgent = String(resource.subtype ?? '').toLowerCase() === 'agent';
 </script>
 
 <div class="resource-row-details">
-  <div><span>资源地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
+  <div><span>资源地址</span><strong>{isAgent ? mcpServerEndpoint || '关联 MCPServer' : resourceEndpointFor(resource)}</strong></div>
   <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
   <div>
     <span>连接状态</span>

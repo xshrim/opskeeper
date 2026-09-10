@@ -96,7 +96,7 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		}
 	}
 	if strings.EqualFold(kind, "Kubernetes") {
-		for _, key := range []string{"kubeconfig_base64", "kubeconfig_path", "connection_mode", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file"} {
+		for _, key := range []string{"kubeconfig", "connection_mode", "context", "profile", "server", "ca", "token", "client_cert", "client_key"} {
 			setString := func() {
 				if value, ok := contextResource.Config[key].(string); ok && strings.TrimSpace(value) != "" {
 					merged[key] = strings.TrimSpace(value)
@@ -135,19 +135,19 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	connectionMode, _ := contextResource.Config["connection_mode"].(string)
 	if strings.EqualFold(kind, "Kubernetes") {
 		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") {
-			delete(merged, "kubeconfig_base64")
-		} else if _, configured := contextResource.Config["kubeconfig_base64"]; !configured {
-			if raw, ok := values["kubeconfig_base64"].(string); ok && strings.TrimSpace(raw) != "" {
-				merged["kubeconfig_base64"] = strings.TrimSpace(raw)
+			delete(merged, "kubeconfig")
+		} else if _, configured := contextResource.Config["kubeconfig"]; !configured {
+			if raw, ok := values["kubeconfig"].(string); ok && strings.TrimSpace(raw) != "" {
+				merged["kubeconfig"] = strings.TrimSpace(raw)
 			}
 		}
 	}
 	keys := []string{"tls_ca", "tls_cert", "tls_key", "host"}
 	if strings.EqualFold(kind, "Kubernetes") {
-		keys = []string{"kubeconfig_base64", "kubeconfig_path", "connection_mode", "context", "profile", "server", "ca_file", "token", "token_file", "client_cert_file", "client_key_file"}
+		keys = []string{"kubeconfig", "connection_mode", "context", "profile", "server", "ca", "token", "client_cert", "client_key"}
 	}
 	for _, key := range keys {
-		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig_base64" {
+		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig" {
 			continue
 		}
 		if value, ok := values[key].(string); ok && strings.TrimSpace(value) != "" {

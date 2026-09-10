@@ -23,7 +23,7 @@
   export let providerModelCapabilities: (model: Record<string, unknown> | undefined) => string[];
   export let providerBindingsFor: (resource: Resource) => Array<{ tag: string }>;
   export let providerPurposeLabel: (tag: string) => string;
-  export let mcpServerNameFor: (resource: Resource) => string = () => '';
+  export let mcpServerEndpointFor: (resource: Resource) => string = () => '';
   export let onSelect: (resource: Resource) => void = () => {};
   export let onLoadSnapshot: (resourceId: string) => void = () => {};
   export let onToggleEnabled: (resource: Resource, enabled: boolean) => void = () => {};
@@ -41,8 +41,8 @@
   });
 
   function endpointLabel(resource: Resource) {
-    if (resource.kind === 'Docker' && String(resource.subtype ?? '').toLowerCase() === 'agent') {
-      return mcpServerNameFor(resource) || '关联 MCPServer';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') {
+      return mcpServerEndpointFor(resource) || '关联 MCPServer';
     }
     return resourceEndpointFor(resource);
   }
