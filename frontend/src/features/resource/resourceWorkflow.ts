@@ -86,7 +86,6 @@ export function resourceAddStepDescription(step: number, kind: string) {
 }
 
 export type DockerAccessMode = 'direct' | 'agent';
-export type KubernetesAccessMode = 'direct' | 'agent';
 export type KubernetesConnectionMode = 'kubeconfig' | 'endpoint';
 export type KubernetesConnectionDraft = {
   isAgent?: boolean;
@@ -100,7 +99,6 @@ export type KubernetesConnectionDraft = {
   kubeconfig: string;
   skipTLSVerify: boolean;
 };
-export function kubernetesAccessModeLabel(mode: string) { return mode === 'agent' ? 'Agent · MCP 代理' : 'Direct · 直接连接'; }
 export function kubernetesConfigurationValid(draft: KubernetesConnectionDraft) {
   if (draft.isAgent && draft.connectionOverride === false) return true;
   if (draft.connectionMode === 'kubeconfig') return Boolean(draft.kubeconfig.trim());

@@ -35,8 +35,8 @@ func TestToolsUsePrimitiveSchemasAndNoOutputSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Tools) != len(toolCatalog) {
-		t.Fatalf("tools=%d want=%d", len(result.Tools), len(toolCatalog))
+	if len(result.Tools) != len(AvailableTools()) {
+		t.Fatalf("tools=%d want=%d", len(result.Tools), len(AvailableTools()))
 	}
 	for _, tool := range result.Tools {
 		encoded, err := json.Marshal(tool.InputSchema)

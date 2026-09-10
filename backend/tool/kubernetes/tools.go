@@ -21,6 +21,47 @@ import (
 const maxListLimit = 500
 const maxLogBytes = 256 * 1024
 
+type ToolInfo struct {
+	Name        string
+	Description string
+}
+
+type ListTool struct {
+	ToolInfo
+	Resource string
+}
+
+var listTools = []ListTool{
+	{ToolInfo: ToolInfo{Name: "kubernetes_namespaces", Description: "List Kubernetes namespaces."}, Resource: "namespaces"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_nodes", Description: "List Kubernetes nodes."}, Resource: "nodes"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_pods", Description: "List Kubernetes pods."}, Resource: "pods"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_services", Description: "List Kubernetes services."}, Resource: "services"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_configmaps", Description: "List Kubernetes ConfigMaps."}, Resource: "configmaps"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_ingresses", Description: "List Kubernetes ingresses."}, Resource: "ingresses"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_endpoint_slices", Description: "List Kubernetes EndpointSlices."}, Resource: "endpointslices"},
+	{ToolInfo: ToolInfo{Name: "kubernetes_events", Description: "List Kubernetes events."}, Resource: "events"},
+}
+
+func ListTools() []ListTool { return append([]ListTool(nil), listTools...) }
+
+func AvailableTools() []ToolInfo {
+	items := []ToolInfo{
+		{Name: "kubernetes_cluster_info", Description: "Read Kubernetes version and connection information."},
+		{Name: "kubernetes_api_resources", Description: "List API resources supported by the connected cluster."},
+	}
+	for _, item := range listTools {
+		items = append(items, item.ToolInfo)
+	}
+	items = append(items,
+		ToolInfo{Name: "kubernetes_workloads", Description: "List Kubernetes workloads."},
+		ToolInfo{Name: "kubernetes_pod_stat", Description: "Read current pod CPU and memory usage from the Kubernetes Metrics API."},
+		ToolInfo{Name: "kubernetes_node_stat", Description: "Read current node CPU and memory usage from the Kubernetes Metrics API."},
+		ToolInfo{Name: "kubernetes_pod_logs", Description: "Read bounded, non-following pod logs."},
+		ToolInfo{Name: "kubernetes_resource_get", Description: "Get an allowlisted Kubernetes resource by name."},
+		ToolInfo{Name: "kubernetes_health", Description: "Check Kubernetes API health."})
+	return items
+}
+
 type ResourceItem struct {
 	Namespace string            `json:"namespace,omitempty"`
 	Name      string            `json:"name"`
@@ -111,6 +152,46 @@ func InputSchema(extra map[string]any) map[string]any {
 		p[k] = v
 	}
 	return map[string]any{"type": "object", "properties": p}
+}
+
+func ListInputProperties() map[string]any {
+	return map[string]any{
+		"namespace": map[string]any{"type": "string"},
+		"filters":   map[string]any{"type": "string"},
+		"limit":     map[string]any{"type": "integer"},
+		"continue":  map[string]any{"type": "string"},
+	}
+}
+
+func PodStatsInputProperties() map[string]any {
+	properties := ListInputProperties()
+	properties["pod"] = map[string]any{"type": "string"}
+	return properties
+}
+
+func NodeStatsInputProperties() map[string]any {
+	properties := ListInputProperties()
+	delete(properties, "namespace")
+	properties["node"] = map[string]any{"type": "string"}
+	return properties
+}
+
+func PodLogsInputProperties() map[string]any {
+	return map[string]any{
+		"namespace":      map[string]any{"type": "string"},
+		"pod":            map[string]any{"type": "string"},
+		"container_name": map[string]any{"type": "string"},
+		"tail":           map[string]any{"type": "integer"},
+		"timestamps":     map[string]any{"type": "boolean"},
+	}
+}
+
+func GetInputProperties() map[string]any {
+	return map[string]any{
+		"resource":  map[string]any{"type": "string"},
+		"namespace": map[string]any{"type": "string"},
+		"name":      map[string]any{"type": "string"},
+	}
 }
 
 func ClusterInfo(ctx context.Context, input client.ConnectionInput) (map[string]any, error) {

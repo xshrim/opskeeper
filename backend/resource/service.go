@@ -32,82 +32,41 @@ type Service struct{ store Store }
 func NewService(store Store) *Service { return &Service{store: store} }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, error) {
-	input.ScopeID = strings.TrimSpace(input.ScopeID)
-	input.Kind = strings.TrimSpace(input.Kind)
-	input.Name = strings.TrimSpace(input.Name)
-	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
-	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
-	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
-		return Resource{}, err
-	}
-	rawSubtype := strings.TrimSpace(input.Subtype)
-	accessMode, agentRef, err := s.normalizeAccess(ctx, "", input.Kind, rawSubtype, input.AgentRef)
+	input, err := s.prepareCreateInput(ctx, input, false)
 	if err != nil {
 		return Resource{}, err
-	}
-	input.AgentRef = agentRef
-	if accessMode != "" {
-		input.Subtype = strings.Title(accessMode)
-	} else {
-		input.Subtype = normalizeResourceSubtype(input.Kind, rawSubtype)
-	}
-	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
-		return Resource{}, err
-	}
-	if !allowsExactScope(ctx, input.ScopeID) {
-		return Resource{}, authorization.ErrForbidden
-	}
-	if input.Status == "" {
-		input.Status = StatusActive
-	}
-	if err := validateStatus(input.Status); err != nil {
-		return Resource{}, err
-	}
-	if err := validateLabels(input.Labels); err != nil {
-		return Resource{}, err
-	}
-	if input.Labels == nil {
-		input.Labels = map[string]string{}
-	}
-	if input.Config == nil {
-		input.Config = map[string]any{}
-	}
-	schema, err := s.store.GetSchema(ctx, input.Kind, input.SchemaVersion)
-	if err != nil {
-		return Resource{}, err
-	}
-	if err := validateConfig(input.Config, schema); err != nil {
-		return Resource{}, err
-	}
-	if input.Kind == "AIProvider" {
-		if err := validateAIProviderConfig(input.Config); err != nil {
-			return Resource{}, err
-		}
 	}
 	if input.Kind == "Workflow" {
 		if err := validateWorkflowConfig(input.Config); err != nil {
 			return Resource{}, err
 		}
 	}
-	input.SchemaVersion = schema.Version
 	return s.store.Create(ctx, input)
 }
 
 // Import persists a resource discovered from an external system. The source
 // identity is part of the input so repeated discovery runs update one record.
 func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, error) {
+	input, err := s.prepareCreateInput(ctx, input, true)
+	if err != nil {
+		return Resource{}, err
+	}
+	return s.store.UpsertImported(ctx, input)
+}
+
+func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, requireImportedIdentity bool) (CreateInput, error) {
 	input.ScopeID = strings.TrimSpace(input.ScopeID)
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.Name = strings.TrimSpace(input.Name)
 	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
 	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
 	if err := validateResourceInput(input.ScopeID, input.Kind, input.Name); err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	rawSubtype := strings.TrimSpace(input.Subtype)
 	accessMode, agentRef, err := s.normalizeAccess(ctx, "", input.Kind, rawSubtype, input.AgentRef)
 	if err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	input.AgentRef = agentRef
 	if accessMode != "" {
@@ -116,22 +75,22 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 		input.Subtype = normalizeResourceSubtype(input.Kind, rawSubtype)
 	}
 	if err := validateResourceSubtype(input.Kind, input.Subtype); err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
-	if input.ExternalUID == "" || input.SourceResourceID == "" {
-		return Resource{}, invalid("imported resources require external_uid and source_resource_id")
+	if requireImportedIdentity && (input.ExternalUID == "" || input.SourceResourceID == "") {
+		return CreateInput{}, invalid("imported resources require external_uid and source_resource_id")
 	}
 	if !allowsExactScope(ctx, input.ScopeID) {
-		return Resource{}, authorization.ErrForbidden
+		return CreateInput{}, authorization.ErrForbidden
 	}
 	if input.Status == "" {
 		input.Status = StatusActive
 	}
 	if err := validateStatus(input.Status); err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	if err := validateLabels(input.Labels); err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	if input.Labels == nil {
 		input.Labels = map[string]string{}
@@ -141,18 +100,18 @@ func (s *Service) Import(ctx context.Context, input ImportedInput) (Resource, er
 	}
 	schema, err := s.store.GetSchema(ctx, input.Kind, input.SchemaVersion)
 	if err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	if err := validateConfig(input.Config, schema); err != nil {
-		return Resource{}, err
+		return CreateInput{}, err
 	}
 	if input.Kind == "AIProvider" {
 		if err := validateAIProviderConfig(input.Config); err != nil {
-			return Resource{}, err
+			return CreateInput{}, err
 		}
 	}
 	input.SchemaVersion = schema.Version
-	return s.store.UpsertImported(ctx, input)
+	return input, nil
 }
 
 func (s *Service) List(ctx context.Context, pagination Pagination, kind string, labels map[string]string) (Page[Resource], error) {
@@ -591,9 +550,6 @@ func normalizeAccessMode(kind, subtype string) (string, error) {
 		accessMode = AccessModeDirect
 	}
 	if accessMode != AccessModeDirect && accessMode != AccessModeAgent {
-		return "", invalid(fmt.Sprintf("%s subtype must be Direct or Agent", kind))
-	}
-	if subtype != "" && subtype != AccessModeDirect && subtype != AccessModeAgent {
 		return "", invalid(fmt.Sprintf("%s subtype must be Direct or Agent", kind))
 	}
 	return accessMode, nil

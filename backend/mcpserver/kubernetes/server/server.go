@@ -16,6 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	kt "opskeeper/backend/tool/kubernetes"
 )
 
 const (
@@ -30,16 +31,9 @@ type Config struct {
 	CORSEnabled bool
 	Logger      *log.Logger
 }
-type ToolInfo struct {
-	Name        string
-	Description string
-}
+type ToolInfo = kt.ToolInfo
 
-var toolCatalog = []ToolInfo{
-	{Name: "kubernetes_cluster_info", Description: "Read Kubernetes version and connection information."}, {Name: "kubernetes_api_resources", Description: "List API resources supported by the connected cluster."}, {Name: "kubernetes_namespaces", Description: "List Kubernetes namespaces."}, {Name: "kubernetes_nodes", Description: "List Kubernetes nodes."}, {Name: "kubernetes_pods", Description: "List Kubernetes pods."}, {Name: "kubernetes_workloads", Description: "List Kubernetes workloads."}, {Name: "kubernetes_pod_stat", Description: "Read current pod CPU and memory usage from the Kubernetes Metrics API."}, {Name: "kubernetes_node_stat", Description: "Read current node CPU and memory usage from the Kubernetes Metrics API."}, {Name: "kubernetes_services", Description: "List Kubernetes services."}, {Name: "kubernetes_configmaps", Description: "List Kubernetes ConfigMaps."}, {Name: "kubernetes_ingresses", Description: "List Kubernetes ingresses."}, {Name: "kubernetes_endpoint_slices", Description: "List Kubernetes EndpointSlices."}, {Name: "kubernetes_events", Description: "List Kubernetes events."}, {Name: "kubernetes_pod_logs", Description: "Read bounded, non-following pod logs."}, {Name: "kubernetes_resource_get", Description: "Get an allowlisted Kubernetes resource by name."}, {Name: "kubernetes_health", Description: "Check Kubernetes API health."},
-}
-
-func AvailableTools() []ToolInfo { return append([]ToolInfo(nil), toolCatalog...) }
+func AvailableTools() []ToolInfo { return kt.AvailableTools() }
 func ConfigFromEnv() Config {
 	return Config{Address: envOrDefault("KUBERNETES_MCP_HTTP_ADDRESS", "0.0.0.0:8812"), BearerToken: os.Getenv("KUBERNETES_MCP_BEARER_TOKEN"), CORSEnabled: envBool("KUBERNETES_MCP_CORS_ENABLED", false)}
 }
