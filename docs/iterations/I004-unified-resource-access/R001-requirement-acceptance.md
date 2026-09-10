@@ -2,7 +2,7 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01、T02、T03、T05 已完成，其余任务待实施
+**验收结论：** 部分验收：T01、T02、T03、T04、T05 已完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
@@ -19,7 +19,7 @@
 | T01 | 公共工具契约与执行基础 | 已通过 | `cd backend && go test ./tool`；公共包不依赖 MCP、AIEngine 或 HTTP API |
 | T02 | 资源接入模型与上下文解析 | 已通过 | `cd backend && go test ./resource ./aiengine ./mcp ./connector ./httpapi ./migrations`；`go test -race ./resource ./aiengine ./mcp`；`subtype`/`agent_ref` 关联和 Direct/Agent Provider 路由测试通过 |
 | T03 | Docker 工具集统一 | 已通过 | `cd backend && go test ./connector ./tool/... ./mcpserver/docker/...`；公共 Docker 实现由 MCP 薄适配器和 Direct Provider 共用，Direct 注册 6 个工具并隐藏连接字段；MCP Schema 与日志过滤回归通过 |
-| T04 | Host 工具集接入 | 待实施 |  |
+| T04 | Host 工具集接入 | 已通过 | `make host-mcp-test`、`cd backend && go test ./...`、`cd frontend && npm run check`；Host Direct 与 Host MCP Agent 共用五个 Linux 只读工具，SSH 支持密码/私钥和 known_hosts，连接目标遵循工具参数 > HOST_MCP_* 环境变量 > 本机，文件日志支持 tail/since/until/keyword，资源前端支持 Direct/Agent 配置和连接测试 |
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
 | T06 | PostgreSQL 工具集统一 | 待实施 |  |
 | T07 | Redis 工具集统一 | 待实施 |  |

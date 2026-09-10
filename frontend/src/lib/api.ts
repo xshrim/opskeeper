@@ -126,6 +126,11 @@ export interface ResourceSchema {
 
 export type ConnectorCapability =
   | 'kubernetes_read'
+  | 'host_info'
+  | 'host_metrics'
+  | 'host_processes'
+  | 'host_file_logs'
+  | 'host_health'
   | 'query_metrics'
   | 'query_logs'
   | 'query_traces'
@@ -419,7 +424,8 @@ export interface DiagnosisCausalNode {
 export interface DiagnosisCausalLink {
   from: string;
   to: string;
-  relation: 'causes' | 'contributes_to' | 'explains' | 'contradicts' | 'rules_out';
+  relation:
+    'causes' | 'contributes_to' | 'explains' | 'contradicts' | 'rules_out';
   statement?: string;
   status: 'confirmed' | 'likely' | 'unverified' | 'refuted';
   confidence: number;
@@ -640,7 +646,10 @@ export async function request<T>(
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error;
-    throw new ApiError(0, { code: 'network_error', message: API_UNAVAILABLE_MESSAGE });
+    throw new ApiError(0, {
+      code: 'network_error',
+      message: API_UNAVAILABLE_MESSAGE
+    });
   }
 
   if (response.status === 401 && retry && !path.includes('/auth/')) {
@@ -742,7 +751,9 @@ export const api = {
   schemas: () => request<ResourceSchema[]>('api/v1/resources/schemas'),
   credentials: () => request<Credential[]>('api/v1/credentials'),
   credentialSecret: (id: string) =>
-    request<{ secret: string }>(`api/v1/credentials/${encodeURIComponent(id)}/secret`),
+    request<{ secret: string }>(
+      `api/v1/credentials/${encodeURIComponent(id)}/secret`
+    ),
   createCredential: (body: {
     scope_id: string;
     name: string;
@@ -752,7 +763,11 @@ export const api = {
   updateCredential: (
     id: string,
     body: { name?: string; purpose?: string; secret?: string }
-  ) => request<Credential>(`api/v1/credentials/${encodeURIComponent(id)}/`, patch(body)),
+  ) =>
+    request<Credential>(
+      `api/v1/credentials/${encodeURIComponent(id)}/`,
+      patch(body)
+    ),
   createResource: (body: Record<string, unknown>) =>
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>
@@ -770,9 +785,40 @@ export const api = {
     tls_cert?: string;
     tls_key?: string;
     skip_tls_verify?: boolean;
-  }) => request<{ status: string; message: string; latency_ms: number }>('api/v1/docker/connection-tests', json(body)),
-  testDraftKubernetes: (body: { kubeconfig?: string; server?: string; ca?: string; token?: string; client_cert?: string; client_key?: string; context?: string; skip_tls_verify?: boolean }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/kubernetes/connection-tests', json(body)),
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/docker/connection-tests',
+      json(body)
+    ),
+  testDraftKubernetes: (body: {
+    kubeconfig?: string;
+    server?: string;
+    ca?: string;
+    token?: string;
+    client_cert?: string;
+    client_key?: string;
+    context?: string;
+    skip_tls_verify?: boolean;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/kubernetes/connection-tests',
+      json(body)
+    ),
+  testDraftHost: (body: {
+    host?: string;
+    port?: number;
+    username?: string;
+    auth_method?: string;
+    password?: string;
+    private_key?: string;
+    passphrase?: string;
+    known_hosts?: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/host/connection-tests',
+      json(body)
+    ),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
   testAIProvider: (
@@ -785,15 +831,26 @@ export const api = {
       `api/v1/ai-providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
     ),
   aiProviderBindings: (scopeId: string) =>
-    request<Array<{ scope_id: string; provider_resource_id: string; tag: string }>>(
-      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings`
+    request<
+      Array<{ scope_id: string; provider_resource_id: string; tag: string }>
+    >(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings`),
+  setAIProviderBinding: (
+    scopeId: string,
+    purpose: string,
+    providerResourceId: string
+  ) =>
+    request(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ provider_resource_id: providerResourceId })
+      }
     ),
-  setAIProviderBinding: (scopeId: string, purpose: string, providerResourceId: string) =>
-    request(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`, {
-      method: 'PUT', body: JSON.stringify({ provider_resource_id: providerResourceId })
-    }),
   removeAIProviderBinding: (scopeId: string, purpose: string) =>
-    request<void>(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`, { method: 'DELETE' }),
+    request<void>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`,
+      { method: 'DELETE' }
+    ),
   testDraftAIProvider: (body: {
     scope_id: string;
     provider_type: string;
@@ -817,13 +874,27 @@ export const api = {
       { method: 'POST' }
     ),
   agentProfileVersions: (profileId: string) =>
-    request<AgentProfileVersion[]>(`api/v1/agent-profiles/${profileId}/versions`),
-  createAgentProfileVersion: (profileId: string, config: Record<string, unknown>) =>
-    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions`, json({ config })),
+    request<AgentProfileVersion[]>(
+      `api/v1/agent-profiles/${profileId}/versions`
+    ),
+  createAgentProfileVersion: (
+    profileId: string,
+    config: Record<string, unknown>
+  ) =>
+    request<AgentProfileVersion>(
+      `api/v1/agent-profiles/${profileId}/versions`,
+      json({ config })
+    ),
   publishAgentProfileVersion: (profileId: string, versionId: string) =>
-    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions/${versionId}/publish`, { method: 'POST' }),
+    request<AgentProfileVersion>(
+      `api/v1/agent-profiles/${profileId}/versions/${versionId}/publish`,
+      { method: 'POST' }
+    ),
   disableAgentProfileVersion: (profileId: string, versionId: string) =>
-    request<AgentProfileVersion>(`api/v1/agent-profiles/${profileId}/versions/${versionId}/disable`, { method: 'POST' }),
+    request<AgentProfileVersion>(
+      `api/v1/agent-profiles/${profileId}/versions/${versionId}/disable`,
+      { method: 'POST' }
+    ),
   setSkillDefault: (body: {
     scope_id: string;
     skill_resource_id: string;

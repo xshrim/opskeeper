@@ -12,6 +12,9 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		{kind: "Docker", factory: func(target Target) (Adapter, error) {
 			return newDockerAdapter(target), nil
 		}},
+		{kind: "Host", factory: func(target Target) (Adapter, error) {
+			return newHostAdapter(target)
+		}},
 		{kind: "Kubernetes", factory: func(target Target) (Adapter, error) {
 			return newKubernetesAdapter(target, limits)
 		}},

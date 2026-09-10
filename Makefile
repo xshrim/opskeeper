@@ -36,7 +36,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -106,6 +106,16 @@ docker-mcp-build: ## Build the standalone Docker MCP server binary.
 
 docker-mcp-run: ## Run the standalone Docker MCP server.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/docker-mcp
+
+host-mcp-test: ## Run Host MCP unit tests.
+	cd backend && go test ./tool/host ./mcpserver/host/... ./cmd/host-mcp-agent
+
+host-mcp-build: ## Build the standalone Host MCP agent binary.
+	mkdir -p backend/bin
+	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-host-mcp-agent ./cmd/host-mcp-agent
+
+host-mcp-run: ## Run the standalone Host MCP agent.
+	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/host-mcp-agent
 
 kubernetes-mcp-test: ## Run Kubernetes MCP unit tests.
 	cd backend && go test ./mcpserver/kubernetes/... ./cmd/kubernetes-mcp

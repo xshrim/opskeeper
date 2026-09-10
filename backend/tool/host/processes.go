@@ -1,0 +1,185 @@
+package host
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, error) {
+	ctx = contextOrBackground(ctx)
+	if input.PID < 0 {
+		return ProcessesOutput{}, fmt.Errorf("%w: pid must be positive", ErrInvalidArgument)
+	}
+	if strings.TrimSpace(input.Keyword) != "" && len([]rune(input.Keyword)) > 128 {
+		return ProcessesOutput{}, fmt.Errorf("%w: keyword is too long", ErrInvalidArgument)
+	}
+	if input.Limit == 0 {
+		input.Limit = DefaultProcessLimit
+	}
+	if input.Limit < 1 || input.Limit > MaxProcessLimit {
+		return ProcessesOutput{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidArgument, MaxProcessLimit)
+	}
+	if input.SampleSeconds < 0 || input.SampleSeconds > MaxSampleSeconds {
+		return ProcessesOutput{}, fmt.Errorf("%w: sample_seconds must be between 0 and %d", ErrInvalidArgument, MaxSampleSeconds)
+	}
+	src, target, err := openSource(ctx, input.ConnectionInput)
+	if err != nil {
+		return ProcessesOutput{}, err
+	}
+	defer src.Close()
+	paths := make([]string, 0)
+	if input.PID > 0 {
+		paths = append(paths, filepath.Join("/proc", fmt.Sprint(input.PID)))
+	} else {
+		paths, err = src.ReadDir(ctx, "/proc")
+		if err != nil {
+			return ProcessesOutput{}, err
+		}
+	}
+	sort.Strings(paths)
+	output := ProcessesOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target, Processes: make([]ProcessInfo, 0, min(input.Limit, len(paths)))}
+	passwd, _ := readLimited(ctx, src, "/etc/passwd")
+	for _, path := range paths {
+		pid := parseIntField(filepath.Base(path))
+		if pid <= 0 {
+			continue
+		}
+		process, readErr := readProcess(ctx, src, path, passwd)
+		if readErr != nil {
+			output.Partial = true
+			output.Unavailable = append(output.Unavailable, fmt.Sprintf("pid:%d", pid))
+			if input.PID > 0 {
+				return output, nil
+			}
+			continue
+		}
+		if input.Keyword != "" && !strings.Contains(strings.ToLower(process.Name+" "+process.Executable+" "+process.CommandLine), strings.ToLower(input.Keyword)) {
+			continue
+		}
+		output.Processes = append(output.Processes, process)
+		if len(output.Processes) >= input.Limit {
+			break
+		}
+	}
+	return output, nil
+}
+
+func readProcess(ctx context.Context, src source, path string, passwd []byte) (ProcessInfo, error) {
+	var output ProcessInfo
+	output.PID = parseIntField(filepath.Base(path))
+	statusRaw, err := readLimited(ctx, src, filepath.Join(path, "status"))
+	if err != nil {
+		return output, err
+	}
+	status := parseStatus(string(statusRaw))
+	output.Name = status["Name"]
+	output.State = status["State"]
+	output.PPID = parseIntField(status["PPid"])
+	output.UID = uint64(parseUintField(status["Uid"]))
+	output.User = lookupUser(output.UID, passwd)
+	output.Threads = parseIntField(status["Threads"])
+	output.RSSBytes = parseUintField(status["VmRSS"]) * 1024
+	output.VirtualBytes = parseUintField(status["VmSize"]) * 1024
+	statRaw, _ := readLimited(ctx, src, filepath.Join(path, "stat"))
+	if stat := parseProcStat(string(statRaw)); stat != nil {
+		output.Name = firstNonEmpty(output.Name, stat.name)
+		output.State = firstNonEmpty(output.State, stat.state)
+		output.PPID = stat.ppid
+		output.CPUTimeSeconds = float64(stat.utime+stat.stime) / 100
+		output.StartTime = time.Now().Add(-time.Duration(stat.starttime/100) * time.Second)
+	}
+	output.Executable, _ = src.ReadLink(ctx, filepath.Join(path, "exe"))
+	output.CWD, _ = src.ReadLink(ctx, filepath.Join(path, "cwd"))
+	output.Root, _ = src.ReadLink(ctx, filepath.Join(path, "root"))
+	output.CommandLine = redactCommandLine(mustRead(ctx, src, filepath.Join(path, "cmdline")))
+	if raw, readErr := readLimited(ctx, src, filepath.Join(path, "io")); readErr == nil {
+		output.ReadBytes = ioValue(string(raw), "read_bytes")
+		output.WriteBytes = ioValue(string(raw), "write_bytes")
+	}
+	if entries, readErr := src.ReadDir(ctx, filepath.Join(path, "fd")); readErr == nil {
+		output.FileDescriptors = len(entries)
+	}
+	return output, nil
+}
+
+type procStat struct {
+	name, state                   string
+	ppid, utime, stime, starttime int
+}
+
+func parseProcStat(raw string) *procStat {
+	closeParen := strings.LastIndex(raw, ")")
+	if closeParen < 0 {
+		return nil
+	}
+	prefix := strings.TrimSpace(raw[:closeParen+1])
+	open := strings.Index(prefix, "(")
+	name := ""
+	if open >= 0 {
+		name = strings.TrimSpace(prefix[open+1 : closeParen])
+	}
+	fields := strings.Fields(raw[closeParen+1:])
+	if len(fields) < 20 {
+		return nil
+	}
+	return &procStat{name: name, state: fields[0], ppid: parseIntField(fields[1]), utime: parseIntField(fields[11]), stime: parseIntField(fields[12]), starttime: parseIntField(fields[19])}
+}
+func parseStatus(raw string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(raw, "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if ok {
+			out[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+	return out
+}
+func ioValue(raw, key string) uint64 {
+	for _, line := range strings.Split(raw, "\n") {
+		name, value, ok := strings.Cut(line, ":")
+		if ok && strings.TrimSpace(name) == key {
+			return parseUintField(value)
+		}
+	}
+	return 0
+}
+func redactCommandLine(raw []byte) string {
+	value := strings.TrimSpace(strings.ReplaceAll(string(raw), "\x00", " "))
+	if value == "" {
+		return ""
+	}
+	fields := strings.Fields(value)
+	for i, field := range fields {
+		lower := strings.ToLower(field)
+		if strings.Contains(lower, "password") || strings.Contains(lower, "passwd") || strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "private_key") {
+			if equal := strings.Index(field, "="); equal >= 0 {
+				fields[i] = field[:equal+1] + "<redacted>"
+			} else if i+1 < len(fields) {
+				fields[i+1] = "<redacted>"
+			}
+		}
+	}
+	value = strings.Join(fields, " ")
+	if len(value) > 512 {
+		value = value[:512] + "…"
+	}
+	return value
+}
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

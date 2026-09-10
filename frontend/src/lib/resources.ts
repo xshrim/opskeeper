@@ -7,7 +7,14 @@ type ResourceShape = {
   config?: Record<string, unknown>;
 };
 
-export const endpointResourceKinds = ['Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'] as const;
+export const endpointResourceKinds = [
+  'Kubernetes',
+  'Prometheus',
+  'Loki',
+  'PostgreSQL',
+  'Redis',
+  'Kafka'
+] as const;
 
 export function resourceSupportsEndpointTimeout(kind: string) {
   return (endpointResourceKinds as readonly string[]).includes(kind);
@@ -15,8 +22,19 @@ export function resourceSupportsEndpointTimeout(kind: string) {
 
 export function resourceHasConnector(resource: Resource) {
   if (resource.kind === 'MCPServer') return true;
-  if (String(resource.subtype ?? '').toLowerCase() === 'agent') return Boolean(resource.agent_ref);
-  return ['AIProvider', 'Docker', 'Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'].includes(resource.kind);
+  if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+    return Boolean(resource.agent_ref);
+  return [
+    'AIProvider',
+    'Host',
+    'Docker',
+    'Kubernetes',
+    'Prometheus',
+    'Loki',
+    'PostgreSQL',
+    'Redis',
+    'Kafka'
+  ].includes(resource.kind);
 }
 
 export function resourceSchemaName(kind: string, schemas: ResourceSchema[]) {
@@ -31,16 +49,46 @@ export function resourceIcon(kind: string, schemas: ResourceSchema[]) {
 
 export function brandNameFor(resource: ResourceShape) {
   const normalizedNames: Record<string, string> = {
-    redis: 'Redis', kafka: 'Kafka', apachekafka: 'Kafka', rabbitmq: 'RabbitMQ',
-    elastic: 'Elastic', elasticsearch: 'ElasticSearch', elasticstack: 'Elastic',
-    datadog: 'Datadog', jaeger: 'Jaeger', postgresql: 'PostgreSQL', postgres: 'PostgreSQL',
-    mysql: 'MySQL', docker: 'Docker', kubernetes: 'Kubernetes', kubernetescluster: 'Kubernetes', k8s: 'Kubernetes', git: 'Git',
-    github: 'GitHub', gitlab: 'GitLab', helm: 'Helm', prometheus: 'Prometheus',
-    grafana: 'Grafana', openai: 'OpenAI', openaicompatible: 'OpenAI',
-    anthropic: 'Anthropic', deepseek: 'DeepSeek', qwen: 'Qwen', ollama: 'Ollama',
-    gemini: 'Gemini', googlegemini: 'Gemini', kimi: 'Kimi', minimax: 'MiniMax', minimaxai: 'MiniMax', openrouter: 'OpenRouter',
-    moonshot: 'Moonshot', moonshotai: 'Moonshot',
-    minio: 'MinIO', mongodb: 'MongoDB', gitea: 'Gitea', bitbucket: 'Bitbucket',
+    redis: 'Redis',
+    kafka: 'Kafka',
+    apachekafka: 'Kafka',
+    rabbitmq: 'RabbitMQ',
+    elastic: 'Elastic',
+    elasticsearch: 'ElasticSearch',
+    elasticstack: 'Elastic',
+    datadog: 'Datadog',
+    jaeger: 'Jaeger',
+    postgresql: 'PostgreSQL',
+    postgres: 'PostgreSQL',
+    mysql: 'MySQL',
+    docker: 'Docker',
+    kubernetes: 'Kubernetes',
+    kubernetescluster: 'Kubernetes',
+    k8s: 'Kubernetes',
+    git: 'Git',
+    github: 'GitHub',
+    gitlab: 'GitLab',
+    helm: 'Helm',
+    prometheus: 'Prometheus',
+    grafana: 'Grafana',
+    openai: 'OpenAI',
+    openaicompatible: 'OpenAI',
+    anthropic: 'Anthropic',
+    deepseek: 'DeepSeek',
+    qwen: 'Qwen',
+    ollama: 'Ollama',
+    gemini: 'Gemini',
+    googlegemini: 'Gemini',
+    kimi: 'Kimi',
+    minimax: 'MiniMax',
+    minimaxai: 'MiniMax',
+    openrouter: 'OpenRouter',
+    moonshot: 'Moonshot',
+    moonshotai: 'Moonshot',
+    minio: 'MinIO',
+    mongodb: 'MongoDB',
+    gitea: 'Gitea',
+    bitbucket: 'Bitbucket',
     harbor: 'Harbor'
   };
   const candidates = [
@@ -51,7 +99,9 @@ export function brandNameFor(resource: ResourceShape) {
     resource.kind
   ];
   for (const candidate of candidates) {
-    const normalized = String(candidate ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalized = String(candidate ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
     const brand = normalizedNames[normalized];
     if (brand) return brand;
   }

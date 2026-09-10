@@ -25,6 +25,11 @@ const (
 	CapabilityDockerLogs        Capability = "docker_container_logs"
 	CapabilityDockerInspect     Capability = "docker_container_inspect"
 	CapabilityDockerStats       Capability = "docker_container_stats"
+	CapabilityHostInfo          Capability = "host_info"
+	CapabilityHostMetrics       Capability = "host_metrics"
+	CapabilityHostProcesses     Capability = "host_processes"
+	CapabilityHostFileLogs      Capability = "host_file_logs"
+	CapabilityHostHealth        Capability = "host_health"
 )
 
 type Target struct {

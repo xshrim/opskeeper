@@ -20,7 +20,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
+	return []string{"Host", "Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
 }
 
 func (connectorContextProvider) AccessModes() []string { return []string{"direct"} }
@@ -41,6 +41,10 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 		tools = append(tools, aiengine.ToolFunc{Def: aiengine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
 	switch resource.Kind {
+	case "Host":
+		if err := p.service.resolveHostTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "Docker":
 		if err := p.service.resolveDockerTools(ctx, resource, add); err != nil {
 			return nil, nil, err

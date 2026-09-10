@@ -1,4 +1,8 @@
-import type { ConnectorCapability, Resource, ResourceSchema } from '../../lib/api';
+import type {
+  ConnectorCapability,
+  Resource,
+  ResourceSchema
+} from '../../lib/api';
 export { brandNameFor } from '../../lib/resources';
 
 export function relativeConnectionTime(value: string, now = Date.now()) {
@@ -52,6 +56,11 @@ type ResourceShape = {
 export function connectorCapabilityName(capability: ConnectorCapability) {
   const names: Record<ConnectorCapability, string> = {
     kubernetes_read: '读取 Kubernetes',
+    host_info: '读取主机信息',
+    host_metrics: '读取主机指标',
+    host_processes: '读取主机进程',
+    host_file_logs: '读取主机文件日志',
+    host_health: '检查主机健康',
     query_metrics: '查询指标',
     query_logs: '查询日志',
     query_traces: '查询链路',
@@ -63,25 +72,89 @@ export function connectorCapabilityName(capability: ConnectorCapability) {
 export function resourceCategoryFor(resource: ResourceShape) {
   if (resource.kind === 'AIProvider') return 'LLM';
   if (resource.kind === 'MCPServer') return 'MCPServer';
-  if (['Application', 'Artifact', 'Repository', 'Host'].includes(resource.kind)) return resource.kind;
-  if (['Redis', 'Kafka', 'Elasticsearch', 'RabbitMQ', 'TongRDS', 'OceanBase', 'Oracle', 'MySQL', 'PostgreSQL', 'Docker', 'Kubernetes', 'Skill'].includes(resource.kind)) return resource.kind;
-  if (['Prometheus', 'Loki', 'Tempo', 'Jaeger', 'Elastic', 'Datadog', 'Alertmanager'].includes(resource.kind)) return '监控';
+  if (['Application', 'Artifact', 'Repository', 'Host'].includes(resource.kind))
+    return resource.kind;
+  if (
+    [
+      'Redis',
+      'Kafka',
+      'Elasticsearch',
+      'RabbitMQ',
+      'TongRDS',
+      'OceanBase',
+      'Oracle',
+      'MySQL',
+      'PostgreSQL',
+      'Docker',
+      'Kubernetes',
+      'Skill'
+    ].includes(resource.kind)
+  )
+    return resource.kind;
+  if (
+    [
+      'Prometheus',
+      'Loki',
+      'Tempo',
+      'Jaeger',
+      'Elastic',
+      'Datadog',
+      'Alertmanager'
+    ].includes(resource.kind)
+  )
+    return '监控';
   return resource.kind;
 }
 
 export function resourceSubtypeFor(resource: ResourceShape) {
   const fallback: Record<string, string> = {
-    Application: '虚拟机', Artifact: 'Generic', Kubernetes: 'Direct', Host: 'Direct',
-    Docker: 'Direct', Redis: 'Direct', Kafka: 'Direct', Elasticsearch: 'Direct',
-    RabbitMQ: 'Direct', TongRDS: 'Direct', OceanBase: 'Direct', Oracle: 'Direct',
-    MySQL: 'Direct', PostgreSQL: 'Direct', Repository: 'Git', MCPServer: 'StreamHTTP',
-    AIProvider: 'Provider', Prometheus: '指标', Loki: '日志', Tempo: '链路',
+    Application: '虚拟机',
+    Artifact: 'Generic',
+    Kubernetes: 'Direct',
+    Host: 'Direct',
+    Docker: 'Direct',
+    Redis: 'Direct',
+    Kafka: 'Direct',
+    Elasticsearch: 'Direct',
+    RabbitMQ: 'Direct',
+    TongRDS: 'Direct',
+    OceanBase: 'Direct',
+    Oracle: 'Direct',
+    MySQL: 'Direct',
+    PostgreSQL: 'Direct',
+    Repository: 'Git',
+    MCPServer: 'StreamHTTP',
+    AIProvider: 'Provider',
+    Prometheus: '指标',
+    Loki: '日志',
+    Tempo: '链路',
     Alertmanager: '告警'
   };
   const explicit = String(resource.subtype || resource.config?.subtype || '');
   if (resource.kind === 'AIProvider') return 'Provider';
-  if (['Host', 'Docker', 'Kubernetes', 'Redis', 'TongRDS', 'Kafka', 'RabbitMQ', 'Elasticsearch', 'OceanBase', 'Oracle', 'MySQL', 'PostgreSQL'].includes(resource.kind)) return explicit || 'Direct';
-  return String(explicit || resource.config?.provider || fallback[resource.kind] || resource.kind);
+  if (
+    [
+      'Host',
+      'Docker',
+      'Kubernetes',
+      'Redis',
+      'TongRDS',
+      'Kafka',
+      'RabbitMQ',
+      'Elasticsearch',
+      'OceanBase',
+      'Oracle',
+      'MySQL',
+      'PostgreSQL'
+    ].includes(resource.kind)
+  )
+    return explicit || 'Direct';
+  return String(
+    explicit ||
+      resource.config?.provider ||
+      fallback[resource.kind] ||
+      resource.kind
+  );
 }
 
 export function resourceSubtypeOptionsFor(resource: Resource) {
@@ -92,31 +165,65 @@ export function resourceSubtypeOptionsFor(resource: Resource) {
 
 export function resourceCategoryIcon(category: string) {
   const icons: Record<string, string> = {
-    全部: '◇', Application: '⌘', Artifact: '▤', Repository: '⌘', Host: '▣', Docker: '◈',
-    Kubernetes: '⬡', Redis: '◒', TongRDS: '◒', Kafka: '◒', RabbitMQ: '◒',
-    Elasticsearch: '◒', OceanBase: '◉', Oracle: '◉', MySQL: '◉', PostgreSQL: '◉',
-    MCPServer: '⌁', Skill: '✧', LLM: '✦', 监控: '◌'
+    全部: '◇',
+    Application: '⌘',
+    Artifact: '▤',
+    Repository: '⌘',
+    Host: '▣',
+    Docker: '◈',
+    Kubernetes: '⬡',
+    Redis: '◒',
+    TongRDS: '◒',
+    Kafka: '◒',
+    RabbitMQ: '◒',
+    Elasticsearch: '◒',
+    OceanBase: '◉',
+    Oracle: '◉',
+    MySQL: '◉',
+    PostgreSQL: '◉',
+    MCPServer: '⌁',
+    Skill: '✧',
+    LLM: '✦',
+    监控: '◌'
   };
   return icons[category] ?? '◇';
 }
 
-export function resourceSchemaForSelection(schemas: ResourceSchema[], category: string, subtype: string) {
-  return schemas.find((schema) => resourceCategoryFor(schema) === category && resourceSubtypeFor(schema) === subtype)
-    ?? schemas.find((schema) => resourceCategoryFor(schema) === category)
-    ?? schemas[0]
-    ?? null;
+export function resourceSchemaForSelection(
+  schemas: ResourceSchema[],
+  category: string,
+  subtype: string
+) {
+  return (
+    schemas.find(
+      (schema) =>
+        resourceCategoryFor(schema) === category &&
+        resourceSubtypeFor(schema) === subtype
+    ) ??
+    schemas.find((schema) => resourceCategoryFor(schema) === category) ??
+    schemas[0] ??
+    null
+  );
 }
 
 export function resourceEndpointFor(resource: Resource) {
-  if (resource.kind === 'AIProvider') return String(resource.config?.base_url ?? '未设置服务地址');
+  if (resource.kind === 'AIProvider')
+    return String(resource.config?.base_url ?? '未设置服务地址');
   if (resource.kind === 'Docker') {
     const mode = String(resource.subtype ?? '').toLowerCase();
     if (mode === 'agent') return 'MCPServer 代理';
     return String(resource.config?.host ?? '本机默认 Unix Socket');
   }
-  return String(resource.config?.url ?? resource.config?.endpoint ?? resource.config?.host ?? '未设置端点');
+  return String(
+    resource.config?.url ??
+      resource.config?.endpoint ??
+      resource.config?.host ??
+      '未设置端点'
+  );
 }
 
 export function resourceLabelsText(resource: Resource) {
-  return Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ');
+  return Object.entries(resource.labels ?? {})
+    .map(([key, value]) => (value ? `${key}=${value}` : key))
+    .join(', ');
 }
