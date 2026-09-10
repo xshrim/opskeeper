@@ -15,9 +15,10 @@
   --provider-default-bg: #f0eafb;
   --provider-default-fg: #64418c;
   --provider-default-border: #d1bee9;
-  --provider-count-bg: #edf1f5;
-  --provider-count-fg: #526173;
-  --provider-count-border: #c6d0dc;
+  --provider-count-bg: #e3ebf3;
+  --provider-count-fg: #405469;
+  --provider-count-border: #b8c9d8;
+  --resource-connection-status-fg: var(--theme-fg-muted);
 }
 :root[data-theme='dark'] {
   --provider-role-general-bg: #1e3e61;
@@ -35,9 +36,10 @@
   --provider-default-bg: #49336a;
   --provider-default-fg: #ead7ff;
   --provider-default-border: #7655a0;
-  --provider-count-bg: #293642;
-  --provider-count-fg: #c2d6e5;
-  --provider-count-border: #4a6070;
+  --provider-count-bg: #354657;
+  --provider-count-fg: #d7e4ef;
+  --provider-count-border: #5d7284;
+  --resource-connection-status-fg: var(--theme-fg-strong);
 }
 .resources-layout {
   min-width: 0;
@@ -509,6 +511,7 @@
 }
 .resource-connection-cell .status-label.disabled,
 .resource-connection-cell .status-label.unknown {
+  color: var(--resource-connection-status-fg);
   background: var(--theme-bg-warning-soft);
 }
 .resource-row-details > div {
@@ -2436,7 +2439,7 @@ body:has(.resource-add-workflow) {
 }
 :root[data-theme='dark'] .resource-connection-cell .status-label.disabled,
 :root[data-theme='dark'] .resource-connection-cell .status-label.unknown {
-  color: var(--theme-warning);
+  color: var(--resource-connection-status-fg);
   background: var(--theme-bg-surface);
 }
 :root[data-theme='dark'] .resource-row-actions .icon-button {

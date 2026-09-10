@@ -16,7 +16,7 @@ export function resourceSupportsEndpointTimeout(kind: string) {
 export function resourceHasConnector(resource: Resource) {
   if (resource.kind === 'MCPServer') return true;
   if (String(resource.subtype ?? '').toLowerCase() === 'agent') return Boolean(resource.agent_ref);
-  return ['AIProvider', 'Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'].includes(resource.kind);
+  return ['AIProvider', 'Docker', 'Kubernetes', 'Prometheus', 'Loki', 'PostgreSQL', 'Redis', 'Kafka'].includes(resource.kind);
 }
 
 export function resourceSchemaName(kind: string, schemas: ResourceSchema[]) {

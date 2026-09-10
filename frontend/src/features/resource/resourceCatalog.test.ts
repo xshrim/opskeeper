@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { Resource } from '../../lib/api';
+import { resourceHasConnector } from '../../lib/resources';
 import { brandNameFor, connectorCapabilityName, relativeConnectionTime } from './resourceCatalog';
 
 describe('resource catalog helpers', () => {
@@ -23,6 +25,21 @@ describe('resource catalog helpers', () => {
   it('maps connector capabilities to user-facing labels', () => {
     expect(connectorCapabilityName('query_logs')).toBe('查询日志');
     expect(connectorCapabilityName('kubernetes_read')).toBe('读取 Kubernetes');
+  });
+
+  it('includes Docker Unix socket resources in connection checks', () => {
+    expect(resourceHasConnector({
+      id: 'docker-1',
+      scope_id: 'scope-1',
+      kind: 'Docker',
+      schema_version: 1,
+      name: 'local Docker',
+      labels: {},
+      config: { host: 'unix:///var/run/docker.sock' },
+      status: 'active',
+      created_at: '',
+      updated_at: ''
+    } satisfies Resource)).toBe(true);
   });
 
   it('formats the latest connection check age', () => {
