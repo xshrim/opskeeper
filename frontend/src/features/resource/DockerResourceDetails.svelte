@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
-  import { dockerAccessModeLabel } from './resourceWorkflow';
   import { resourceEndpointFor } from './resourceCatalog';
 
   export let resource: Resource;
@@ -26,7 +25,7 @@
 
 <div class="provider-resource-details docker-resource-details">
   <div class="provider-resource-meta">
-    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{dockerAccessModeLabel(accessMode)}</strong></div>
+    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{accessMode === 'agent' ? 'Agent' : 'Direct'}</strong></div>
     <div><span>连接端点</span><strong>{accessMode === 'direct' ? resourceEndpointFor(resource) : (mcpServerEndpoint || '关联 MCPServer')}</strong></div>
     <div><span>工具数量</span><strong>6 个</strong></div>
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>

@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
-  import { kubernetesAccessModeLabel } from './resourceWorkflow';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -40,7 +39,7 @@
 
 <div class="provider-resource-details docker-resource-details">
   <div class="provider-resource-meta">
-    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{kubernetesAccessModeLabel(accessMode)}</strong></div>
+    <div><span>接入方式</span><strong class:agent={accessMode === 'agent'}>{accessMode === 'agent' ? 'Agent' : 'Direct'}</strong></div>
     <div><span>连接端点</span><strong>{accessMode === 'agent' ? mcpServerEndpoint || '关联 MCPServer' : String(resource.config?.server ?? '默认 kubeconfig')}</strong></div>
     <div><span>工具数量</span><strong>{tools.length} 个</strong></div>
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
