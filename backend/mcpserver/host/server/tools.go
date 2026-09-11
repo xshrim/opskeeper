@@ -26,7 +26,7 @@ func RegisterTools(s *mcp.Server) {
 		output, err := host.Metrics(ctx, input)
 		return nil, output, err
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "host_processes", Description: "Read information about selected Linux processes.", InputSchema: host.InputSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}, "sample_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": host.MaxSampleSeconds}})}, func(ctx context.Context, _ *mcp.CallToolRequest, input HostProcessesInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "host_processes", Description: "Read information about selected Linux processes.", InputSchema: host.InputSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}})}, func(ctx context.Context, _ *mcp.CallToolRequest, input HostProcessesInput) (*mcp.CallToolResult, any, error) {
 		output, err := host.Processes(ctx, input)
 		return nil, output, err
 	})

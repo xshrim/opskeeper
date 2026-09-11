@@ -21,6 +21,10 @@ func Info(ctx context.Context, input InfoInput) (InfoOutput, error) {
 		return InfoOutput{}, err
 	}
 	defer src.Close()
+	return infoFromSource(ctx, src, target), nil
+}
+
+func infoFromSource(ctx context.Context, src source, target Target) InfoOutput {
 	now := time.Now().UTC()
 	output := InfoOutput{SchemaVersion: 1, CollectedAt: now, Target: target, Runtime: Runtime{Virtualized: "unknown"}}
 	paths := []string{"/proc/sys/kernel/hostname", "/proc/sys/kernel/osrelease", "/proc/sys/kernel/arch", "/etc/os-release", "/proc/uptime", "/proc/stat", "/proc/meminfo", "/.dockerenv"}
@@ -72,7 +76,7 @@ func Info(ctx context.Context, input InfoInput) (InfoOutput, error) {
 			output.Unavailable = append(output.Unavailable, item.name)
 		}
 	}
-	return output, nil
+	return output
 }
 
 func Metrics(ctx context.Context, input MetricsInput) (MetricsOutput, error) {
@@ -82,11 +86,21 @@ func Metrics(ctx context.Context, input MetricsInput) (MetricsOutput, error) {
 		return MetricsOutput{}, err
 	}
 	defer src.Close()
+	return metricsFromSource(ctx, src, target, input)
+}
+
+func metricsFromSource(ctx context.Context, src source, target Target, input MetricsInput) (MetricsOutput, error) {
 	sample := input.SampleSeconds
 	if sample < 0 || sample > MaxSampleSeconds {
 		return MetricsOutput{}, fmt.Errorf("%w: sample_seconds must be between 0 and %d", ErrInvalidArgument, MaxSampleSeconds)
 	}
-	first := snapshot(ctx, src)
+	first := snapshotCPU(ctx, src)
+	if err := ctx.Err(); err != nil {
+		return MetricsOutput{}, err
+	}
+	if sample == 0 {
+		first = snapshot(ctx, src)
+	}
 	if sample > 0 {
 		timer := time.NewTimer(time.Duration(sample) * time.Second)
 		select {
@@ -99,14 +113,20 @@ func Metrics(ctx context.Context, input MetricsInput) (MetricsOutput, error) {
 	second := first
 	if sample > 0 {
 		second = snapshot(ctx, src)
+		if err := ctx.Err(); err != nil {
+			return MetricsOutput{}, err
+		}
 	}
 	output := MetricsOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target}
-	output.Host = HostSummary{Hostname: first.hostname, Kernel: first.kernel, Arch: runtime.GOARCH}
+	output.Host = HostSummary{Hostname: second.hostname, Kernel: second.kernel, Arch: runtime.GOARCH}
 	output.Metrics = buildMetrics(first, second, float64(max(sample, 1)))
-	if first.hostname == "" || len(first.cpu) == 0 {
+	if second.hostname == "" || len(second.cpu) == 0 {
 		output.Partial = true
 	}
 	output.Unavailable = append(output.Unavailable, first.unavailable...)
+	if sample > 0 {
+		output.Unavailable = append(output.Unavailable, second.unavailable...)
+	}
 	output.Partial = output.Partial || len(output.Unavailable) > 0
 	return output, nil
 }
@@ -128,11 +148,55 @@ type cpuTicks struct {
 	user, system, idle, total, ctx uint64
 	running, blocked               int
 }
+type remoteSnapshot struct {
+	files        map[string][]byte
+	proc         ProcessSummary
+	procOK, fsOK bool
+	fs           fsStat
+}
 
 func snapshot(ctx context.Context, src source) snapshotData {
+	return snapshotWithMode(ctx, src, true)
+}
+
+func snapshotCPU(ctx context.Context, src source) snapshotData {
+	return snapshotWithMode(ctx, src, false)
+}
+
+func snapshotWithMode(ctx context.Context, src source, full bool) snapshotData {
 	data := snapshotData{cpu: map[string]cpuTicks{}, mem: map[string]uint64{}, psi: map[string]PSIMetric{}}
+	if !full {
+		files, batched := readFiles(ctx, src, []string{"/proc/stat"})
+		if batched {
+			if raw, ok := files["/proc/stat"]; ok {
+				data.cpu = parseCPUTicks(string(raw))
+			} else {
+				data.unavailable = append(data.unavailable, "cpu")
+			}
+			return data
+		}
+		if raw, err := readLimited(ctx, src, "/proc/stat"); err == nil {
+			data.cpu = parseCPUTicks(string(raw))
+		} else {
+			data.unavailable = append(data.unavailable, "cpu")
+		}
+		return data
+	}
 	paths := []string{"/proc/sys/kernel/hostname", "/proc/sys/kernel/osrelease", "/proc/loadavg", "/proc/stat", "/proc/meminfo", "/proc/diskstats", "/proc/net/dev", "/proc/pressure/cpu", "/proc/pressure/memory", "/proc/pressure/io"}
-	files, batched := readFiles(ctx, src, paths)
+	var remote remoteSnapshot
+	var files map[string][]byte
+	var batched bool
+	if optimized, ok := src.(interface {
+		ReadSnapshot(context.Context, []string) (remoteSnapshot, error)
+	}); ok {
+		if value, err := optimized.ReadSnapshot(ctx, paths); err == nil {
+			files, batched = value.files, true
+			remote = value
+		}
+	}
+	if !batched {
+		files, batched = readFiles(ctx, src, paths)
+	}
 	read := func(path string) ([]byte, error) {
 		if batched {
 			value, ok := files[path]
@@ -143,8 +207,10 @@ func snapshot(ctx context.Context, src source) snapshotData {
 		}
 		return readLimited(ctx, src, path)
 	}
-	data.hostname = strings.TrimSpace(string(mustReadWith(read, "/proc/sys/kernel/hostname")))
-	data.kernel = strings.TrimSpace(string(mustReadWith(read, "/proc/sys/kernel/osrelease")))
+	hostnameRaw, _ := read("/proc/sys/kernel/hostname")
+	data.hostname = strings.TrimSpace(string(hostnameRaw))
+	kernelRaw, _ := read("/proc/sys/kernel/osrelease")
+	data.kernel = strings.TrimSpace(string(kernelRaw))
 	if raw, err := read("/proc/loadavg"); err == nil {
 		fields := strings.Fields(string(raw))
 		for i := 0; i < 3 && i < len(fields); i++ {
@@ -178,8 +244,14 @@ func snapshot(ctx context.Context, src source) snapshotData {
 			data.psi[kind] = parsePSI(string(raw))
 		}
 	}
-	data.proc = processSummary(ctx, src)
-	if value, err := src.StatFS(ctx, "/"); err == nil {
+	if remote.procOK {
+		data.proc = remote.proc
+	} else {
+		data.proc = processSummary(ctx, src)
+	}
+	if remote.fsOK {
+		data.fs, data.fsOK = remote.fs, true
+	} else if value, err := src.StatFS(ctx, "/"); err == nil {
 		data.fs, data.fsOK = value, true
 	} else {
 		data.unavailable = append(data.unavailable, "filesystem")
@@ -196,11 +268,6 @@ func readFiles(ctx context.Context, src source, paths []string) (map[string][]by
 		}
 	}
 	return nil, false
-}
-
-func mustReadWith(read func(string) ([]byte, error), path string) []byte {
-	value, _ := read(path)
-	return value
 }
 
 func buildMetrics(first, second snapshotData, seconds float64) HostMetrics {

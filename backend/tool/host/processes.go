@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+type processExtras struct {
+	Executable      string
+	CWD             string
+	Root            string
+	FileDescriptors int
+	ReadBytes       uint64
+	WriteBytes      uint64
+}
+
 func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, error) {
 	ctx = contextOrBackground(ctx)
 	if input.PID < 0 {
@@ -23,9 +32,6 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 	}
 	if input.Limit < 1 || input.Limit > MaxProcessLimit {
 		return ProcessesOutput{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidArgument, MaxProcessLimit)
-	}
-	if input.SampleSeconds < 0 || input.SampleSeconds > MaxSampleSeconds {
-		return ProcessesOutput{}, fmt.Errorf("%w: sample_seconds must be between 0 and %d", ErrInvalidArgument, MaxSampleSeconds)
 	}
 	src, target, err := openSource(ctx, input.ConnectionInput)
 	if err != nil {
@@ -48,7 +54,26 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 					break
 				}
 			}
+			if detailReader, ok := src.(interface {
+				ReadProcessExtras(context.Context, []int) (map[int]processExtras, error)
+			}); ok && len(output.Processes) > 0 {
+				pids := make([]int, 0, len(output.Processes))
+				for _, process := range output.Processes {
+					pids = append(pids, process.PID)
+				}
+				if extras, detailErr := detailReader.ReadProcessExtras(ctx, pids); detailErr == nil {
+					for i := range output.Processes {
+						if extra, found := extras[output.Processes[i].PID]; found {
+							applyProcessExtras(&output.Processes[i], extra)
+						}
+					}
+				} else if ctx.Err() != nil {
+					return ProcessesOutput{}, ctx.Err()
+				}
+			}
 			return output, nil
+		} else if ctx.Err() != nil {
+			return ProcessesOutput{}, ctx.Err()
 		}
 	}
 	paths := make([]string, 0)
@@ -92,7 +117,7 @@ func parsePSProcesses(raw []byte, now time.Time, passwd []byte) []ProcessInfo {
 	processes := make([]ProcessInfo, 0)
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 10 {
+		if len(fields) < 11 {
 			continue
 		}
 		pid, err := strconv.Atoi(fields[0])
@@ -107,15 +132,16 @@ func parsePSProcesses(raw []byte, now time.Time, passwd []byte) []ProcessInfo {
 			Threads:      parseIntField(fields[4]),
 			RSSBytes:     parseUintField(fields[5]) * 1024,
 			VirtualBytes: parseUintField(fields[6]) * 1024,
-			Name:         fields[9],
+			Name:         fields[10],
 			User:         lookupUser(parseUintField(fields[3]), passwd),
 		}
 		if elapsed, err := strconv.ParseInt(fields[7], 10, 64); err == nil && elapsed >= 0 {
 			process.StartTime = now.Add(-time.Duration(elapsed) * time.Second)
 		}
 		process.CPUUsagePercent, _ = strconv.ParseFloat(strings.TrimSuffix(fields[8], "%"), 64)
-		if len(fields) > 10 {
-			process.CommandLine = redactCommandLine([]byte(strings.Join(fields[10:], " ")))
+		process.CPUTimeSeconds = parseCPUTime(fields[9])
+		if len(fields) > 11 {
+			process.CommandLine = redactCommandLine([]byte(strings.Join(fields[11:], " ")))
 			if commandFields := strings.Fields(process.CommandLine); len(commandFields) > 0 {
 				process.Executable = commandFields[0]
 			}
@@ -126,6 +152,28 @@ func parsePSProcesses(raw []byte, now time.Time, passwd []byte) []ProcessInfo {
 		processes = append(processes, process)
 	}
 	return processes
+}
+
+func parseCPUTime(value string) float64 {
+	parts := strings.Split(value, ":")
+	if len(parts) != 3 {
+		return 0
+	}
+	hours := parseUintField(parts[0])
+	minutes := parseUintField(parts[1])
+	seconds, _ := strconv.ParseFloat(parts[2], 64)
+	return float64(hours*3600+minutes*60) + seconds
+}
+
+func applyProcessExtras(process *ProcessInfo, extras processExtras) {
+	if extras.Executable != "" {
+		process.Executable = extras.Executable
+	}
+	process.CWD = extras.CWD
+	process.Root = extras.Root
+	process.FileDescriptors = extras.FileDescriptors
+	process.ReadBytes = extras.ReadBytes
+	process.WriteBytes = extras.WriteBytes
 }
 
 func readProcess(ctx context.Context, src source, path string, passwd []byte) (ProcessInfo, error) {

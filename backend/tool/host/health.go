@@ -17,11 +17,14 @@ type HealthOutput struct {
 }
 
 func Health(ctx context.Context, input ConnectionInput) (HealthOutput, error) {
-	info, err := Info(ctx, InfoInput{ConnectionInput: input})
+	ctx = contextOrBackground(ctx)
+	src, target, err := openSource(ctx, input)
 	if err != nil {
 		return HealthOutput{}, err
 	}
-	metrics, err := Metrics(ctx, MetricsInput{ConnectionInput: input})
+	defer src.Close()
+	info := infoFromSource(ctx, src, target)
+	metrics, err := metricsFromSource(ctx, src, target, MetricsInput{ConnectionInput: input})
 	if err != nil {
 		return HealthOutput{}, err
 	}

@@ -78,7 +78,7 @@ func TestParseBatchFiles(t *testing.T) {
 
 func TestParsePSProcesses(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	raw := []byte("123 1 S 0 4 1024 4096 30 2.5 worker /usr/bin/worker --token secret\n")
+	raw := []byte("123 1 S 0 4 1024 4096 30 2.5 00:01:02 worker /usr/bin/worker --token secret\n")
 	processes := parsePSProcesses(raw, now, []byte("root:x:0:0:root:/root:/bin/sh\n"))
 	if len(processes) != 1 {
 		t.Fatalf("process count = %d", len(processes))
@@ -87,7 +87,35 @@ func TestParsePSProcesses(t *testing.T) {
 	if process.PID != 123 || process.User != "root" || process.RSSBytes != 1024*1024 || process.CPUUsagePercent != 2.5 {
 		t.Fatalf("unexpected process: %+v", process)
 	}
+	if process.CPUTimeSeconds != 62 {
+		t.Fatalf("unexpected CPU time: %v", process.CPUTimeSeconds)
+	}
 	if strings.Contains(process.CommandLine, "secret") {
 		t.Fatalf("command line was not redacted: %q", process.CommandLine)
+	}
+}
+
+func TestParseProcessExtras(t *testing.T) {
+	extras := parseProcessExtras([]byte(processExtraMarker + "\t123\t/usr/bin/worker\t/work\t/\t7\t11\t13\n"))
+	value, ok := extras[123]
+	if !ok || value.Executable != "/usr/bin/worker" || value.CWD != "/work" || value.FileDescriptors != 7 || value.ReadBytes != 11 || value.WriteBytes != 13 {
+		t.Fatalf("unexpected process extras: %#v", extras)
+	}
+}
+
+func TestParseRemoteSnapshotSections(t *testing.T) {
+	raw := []byte(remoteProcessBegin + "\nR\nS\n" + remoteProcessEnd + "\n" + remoteFSBegin + "\n4096 10 3 4\n" + remoteFSEnd + "\n")
+	processRaw, ok := parseSection(raw, remoteProcessBegin, remoteProcessEnd)
+	if !ok || string(processRaw) != "R\nS" {
+		t.Fatalf("unexpected process section: %q, %v", processRaw, ok)
+	}
+	processes, ok := parseProcessSummary(string(processRaw))
+	if !ok || processes.Total != 2 || processes.Running != 1 || processes.Sleeping != 1 {
+		t.Fatalf("unexpected process summary: %+v, %v", processes, ok)
+	}
+	fsRaw, ok := parseSection(raw, remoteFSBegin, remoteFSEnd)
+	fs, fsOK := parseFSStat(string(fsRaw))
+	if !ok || !fsOK || fs.Total != 40960 || fs.Free != 12288 || fs.Available != 16384 {
+		t.Fatalf("unexpected filesystem section: %+v, %v, %v", fs, ok, fsOK)
 	}
 }

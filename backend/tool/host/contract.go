@@ -14,15 +14,14 @@ import (
 )
 
 const (
-	DefaultTimeout       = 30 * time.Second
-	MaxTimeout           = 5 * time.Minute
-	MaxReadBytes         = 2 << 20
-	MaxProcessLimit      = 100
-	DefaultProcessLimit  = 20
-	MaxLogLines          = 200
-	DefaultLogLines      = 1000
-	MaxSampleSeconds     = 10
-	DefaultSampleSeconds = 0
+	DefaultTimeout      = 30 * time.Second
+	MaxTimeout          = 5 * time.Minute
+	MaxReadBytes        = 2 << 20
+	MaxProcessLimit     = 100
+	DefaultProcessLimit = 20
+	MaxLogLines         = 200
+	DefaultLogLines     = 1000
+	MaxSampleSeconds    = 10
 )
 
 // ConnectionInput is intentionally shared by every Host tool. Sensitive
@@ -46,10 +45,9 @@ type MetricsInput struct {
 }
 type ProcessesInput struct {
 	ConnectionInput
-	PID           int    `json:"pid,omitempty"`
-	Keyword       string `json:"keyword,omitempty"`
-	Limit         int    `json:"limit,omitempty"`
-	SampleSeconds int    `json:"sample_seconds,omitempty"`
+	PID     int    `json:"pid,omitempty"`
+	Keyword string `json:"keyword,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
 }
 type FileLogsInput struct {
 	ConnectionInput

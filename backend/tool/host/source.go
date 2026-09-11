@@ -120,13 +120,80 @@ func parseBatchFiles(raw []byte) map[string][]byte {
 	return files
 }
 
-func (s *sshSource) ProcessSummary(ctx context.Context) (ProcessSummary, error) {
-	output, err := s.run(ctx, "ps -eo state= --no-headers", 1<<20)
-	if err != nil {
-		return ProcessSummary{}, err
+const (
+	remoteProcessBegin = "__OPSK_PROCESS_BEGIN__"
+	remoteProcessEnd   = "__OPSK_PROCESS_END__"
+	remoteFSBegin      = "__OPSK_FS_BEGIN__"
+	remoteFSEnd        = "__OPSK_FS_END__"
+)
+
+func (s *sshSource) ReadSnapshot(ctx context.Context, paths []string) (remoteSnapshot, error) {
+	var command strings.Builder
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		command.WriteString("if [ -r ")
+		command.WriteString(shellQuote(path))
+		command.WriteString(" ]; then printf '")
+		command.WriteString(batchFileBegin)
+		command.WriteString("%s\\n' ")
+		command.WriteString(shellQuote(path))
+		command.WriteString("; cat -- ")
+		command.WriteString(shellQuote(path))
+		command.WriteString("; printf '\\n")
+		command.WriteString(batchFileEnd)
+		command.WriteString("\\n'; fi\n")
 	}
+	command.WriteString("printf '")
+	command.WriteString(remoteProcessBegin)
+	command.WriteString("\\n'; ps -eo state= --no-headers; printf '\\n")
+	command.WriteString(remoteProcessEnd)
+	command.WriteString("\\n'; printf '")
+	command.WriteString(remoteFSBegin)
+	command.WriteString("\\n'; stat -f -c '%S %b %f %a' -- /; printf '\\n")
+	command.WriteString(remoteFSEnd)
+	command.WriteString("\\n'\n")
+	raw, err := s.run(ctx, command.String(), 8<<20)
+	if err != nil {
+		return remoteSnapshot{}, err
+	}
+	files := parseBatchFiles(raw)
+	processRaw, processOK := parseSection(raw, remoteProcessBegin, remoteProcessEnd)
+	fsRaw, fsOK := parseSection(raw, remoteFSBegin, remoteFSEnd)
+	var snapshot remoteSnapshot
+	snapshot.files = files
+	if processOK {
+		snapshot.proc, snapshot.procOK = parseProcessSummary(string(processRaw))
+	}
+	if fsOK {
+		snapshot.fs, snapshot.fsOK = parseFSStat(string(fsRaw))
+	}
+	return snapshot, nil
+}
+
+func parseSection(raw []byte, begin, end string) ([]byte, bool) {
+	value := string(raw)
+	start := strings.Index(value, begin)
+	if start < 0 {
+		return nil, false
+	}
+	value = value[start+len(begin):]
+	if newline := strings.IndexByte(value, '\n'); newline >= 0 {
+		value = value[newline+1:]
+	} else {
+		return nil, false
+	}
+	stop := strings.Index(value, end)
+	if stop < 0 {
+		return nil, false
+	}
+	return []byte(strings.TrimSuffix(strings.TrimSuffix(value[:stop], "\n"), "\r")), true
+}
+
+func parseProcessSummary(raw string) (ProcessSummary, bool) {
 	var summary ProcessSummary
-	for _, state := range strings.Fields(string(output)) {
+	for _, state := range strings.Fields(raw) {
 		summary.Total++
 		switch state[:1] {
 		case "R":
@@ -139,15 +206,97 @@ func (s *sshSource) ProcessSummary(ctx context.Context) (ProcessSummary, error) 
 			summary.Sleeping++
 		}
 	}
+	return summary, summary.Total > 0
+}
+
+func parseFSStat(raw string) (fsStat, bool) {
+	fields := strings.Fields(raw)
+	if len(fields) != 4 {
+		return fsStat{}, false
+	}
+	values := make([]uint64, 4)
+	for i, field := range fields {
+		value, err := strconv.ParseUint(field, 10, 64)
+		if err != nil {
+			return fsStat{}, false
+		}
+		values[i] = value
+	}
+	return fsStat{Total: values[0] * values[1], Free: values[0] * values[2], Available: values[0] * values[3]}, true
+}
+
+func (s *sshSource) ProcessSummary(ctx context.Context) (ProcessSummary, error) {
+	output, err := s.run(ctx, "ps -eo state= --no-headers", 1<<20)
+	if err != nil {
+		return ProcessSummary{}, err
+	}
+	summary, ok := parseProcessSummary(string(output))
+	if !ok {
+		return ProcessSummary{}, errors.New("invalid remote process summary")
+	}
 	return summary, nil
 }
 
 func (s *sshSource) ReadProcesses(ctx context.Context, pid int) ([]byte, error) {
-	command := "ps -eo pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,comm=,args= --no-headers"
+	command := "ps -eo pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,time=,comm=,args= --no-headers"
 	if pid > 0 {
-		command = fmt.Sprintf("ps -p %d -o pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,comm=,args= --no-headers", pid)
+		command = fmt.Sprintf("ps -p %d -o pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,time=,comm=,args= --no-headers", pid)
 	}
 	return s.run(ctx, command, MaxReadBytes)
+}
+
+func (s *sshSource) ReadProcessExtras(ctx context.Context, pids []int) (map[int]processExtras, error) {
+	var command strings.Builder
+	for _, pid := range pids {
+		if pid <= 0 {
+			continue
+		}
+		command.WriteString(fmt.Sprintf("printf '%s\\t%d\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n' ", processExtraMarker, pid))
+		command.WriteString("\"$(readlink -- /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/exe 2>/dev/null || true)\" ")
+		command.WriteString("\"$(readlink -- /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/cwd 2>/dev/null || true)\" ")
+		command.WriteString("\"$(readlink -- /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/root 2>/dev/null || true)\" ")
+		command.WriteString("\"$(find /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/fd -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l)\" ")
+		command.WriteString("\"$(awk '$1 == \\\"read_bytes:\\\" {print $2}' /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/io 2>/dev/null || true)\" ")
+		command.WriteString("\"$(awk '$1 == \\\"write_bytes:\\\" {print $2}' /proc/")
+		command.WriteString(strconv.Itoa(pid))
+		command.WriteString("/io 2>/dev/null || true)\"\n")
+	}
+	raw, err := s.run(ctx, command.String(), MaxReadBytes)
+	if err != nil {
+		return nil, err
+	}
+	return parseProcessExtras(raw), nil
+}
+
+const processExtraMarker = "__OPSK_PROCESS_EXTRA__"
+
+func parseProcessExtras(raw []byte) map[int]processExtras {
+	result := make(map[int]processExtras)
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if !strings.HasPrefix(line, processExtraMarker+"\t") {
+			continue
+		}
+		fields := strings.SplitN(strings.TrimPrefix(line, processExtraMarker+"\t"), "\t", 7)
+		if len(fields) != 7 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		result[pid] = processExtras{Executable: fields[1], CWD: fields[2], Root: fields[3], FileDescriptors: parseIntField(fields[4]), ReadBytes: parseUintField(fields[5]), WriteBytes: parseUintField(fields[6])}
+	}
+	return result
 }
 
 func (s *sshSource) ReadFile(ctx context.Context, path string) ([]byte, error) {
@@ -175,18 +324,11 @@ func (s *sshSource) StatFS(ctx context.Context, path string) (fsStat, error) {
 	if err != nil {
 		return fsStat{}, err
 	}
-	fields := strings.Fields(string(output))
-	if len(fields) != 4 {
+	value, ok := parseFSStat(string(output))
+	if !ok {
 		return fsStat{}, errors.New("invalid remote filesystem statistics")
 	}
-	values := make([]uint64, 4)
-	for i, field := range fields {
-		values[i], err = strconv.ParseUint(field, 10, 64)
-		if err != nil {
-			return fsStat{}, err
-		}
-	}
-	return fsStat{Total: values[0] * values[1], Free: values[0] * values[2], Available: values[0] * values[3]}, nil
+	return value, nil
 }
 func (s *sshSource) Close() error {
 	if s == nil || s.client == nil {
