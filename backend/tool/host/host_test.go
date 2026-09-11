@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestResolveInputUsesToolThenEnvironmentThenLocal(t *testing.T) {
@@ -64,5 +65,29 @@ func TestParseCPUTicksIgnoresBlankLines(t *testing.T) {
 	ticks := parseCPUTicks("cpu 1 2 3 4 5\n\nctxt 6\n")
 	if ticks["cpu"].total == 0 || ticks["__ctxt"].ctx != 6 {
 		t.Fatalf("unexpected CPU ticks: %+v", ticks)
+	}
+}
+
+func TestParseBatchFiles(t *testing.T) {
+	raw := []byte(batchFileBegin + "/proc/a\nvalue-a\n" + batchFileEnd + "\n" + batchFileBegin + "/proc/b\nvalue-b\n" + batchFileEnd + "\n")
+	files := parseBatchFiles(raw)
+	if string(files["/proc/a"]) != "value-a" || string(files["/proc/b"]) != "value-b" {
+		t.Fatalf("unexpected batch files: %#v", files)
+	}
+}
+
+func TestParsePSProcesses(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	raw := []byte("123 1 S 0 4 1024 4096 30 2.5 worker /usr/bin/worker --token secret\n")
+	processes := parsePSProcesses(raw, now, []byte("root:x:0:0:root:/root:/bin/sh\n"))
+	if len(processes) != 1 {
+		t.Fatalf("process count = %d", len(processes))
+	}
+	process := processes[0]
+	if process.PID != 123 || process.User != "root" || process.RSSBytes != 1024*1024 || process.CPUUsagePercent != 2.5 {
+		t.Fatalf("unexpected process: %+v", process)
+	}
+	if strings.Contains(process.CommandLine, "secret") {
+		t.Fatalf("command line was not redacted: %q", process.CommandLine)
 	}
 }

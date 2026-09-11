@@ -23,20 +23,40 @@ func Info(ctx context.Context, input InfoInput) (InfoOutput, error) {
 	defer src.Close()
 	now := time.Now().UTC()
 	output := InfoOutput{SchemaVersion: 1, CollectedAt: now, Target: target, Runtime: Runtime{Virtualized: "unknown"}}
-	output.Hostname, _ = readText(ctx, src, "/proc/sys/kernel/hostname")
-	output.Kernel, _ = readText(ctx, src, "/proc/sys/kernel/osrelease")
+	paths := []string{"/proc/sys/kernel/hostname", "/proc/sys/kernel/osrelease", "/proc/sys/kernel/arch", "/etc/os-release", "/proc/uptime", "/proc/stat", "/proc/meminfo", "/.dockerenv"}
+	files, batched := readFiles(ctx, src, paths)
+	read := func(path string) ([]byte, error) {
+		if batched {
+			value, ok := files[path]
+			if !ok {
+				return nil, fmt.Errorf("file unavailable: %s", path)
+			}
+			return value, nil
+		}
+		return readLimited(ctx, src, path)
+	}
+	readText := func(path string) string {
+		value, _ := read(path)
+		return strings.TrimSpace(string(value))
+	}
+	output.Hostname = readText("/proc/sys/kernel/hostname")
+	output.Kernel = readText("/proc/sys/kernel/osrelease")
 	output.Architecture = runtime.GOARCH
-	if machine, readErr := readText(ctx, src, "/proc/sys/kernel/arch"); readErr == nil && machine != "" {
+	if machine := readText("/proc/sys/kernel/arch"); machine != "" {
 		output.Architecture = machine
 	}
-	output.OS = parseOSRelease(mustRead(ctx, src, "/etc/os-release"))
-	if uptime, readErr := parseUptime(mustRead(ctx, src, "/proc/uptime")); readErr == nil {
+	osRaw, _ := read("/etc/os-release")
+	output.OS = parseOSRelease(osRaw)
+	uptimeRaw, _ := read("/proc/uptime")
+	if uptime, readErr := parseUptime(uptimeRaw); readErr == nil {
 		output.UptimeSeconds = uptime
 		output.BootTime = now.Add(-time.Duration(uptime * float64(time.Second)))
 	}
-	output.CPUs = cpuCount(mustRead(ctx, src, "/proc/stat"))
-	output.MemoryBytes = memValue(mustRead(ctx, src, "/proc/meminfo"), "MemTotal") * 1024
-	if value, readErr := readText(ctx, src, "/.dockerenv"); readErr == nil && value == "" {
+	statRaw, _ := read("/proc/stat")
+	output.CPUs = cpuCount(statRaw)
+	memRaw, _ := read("/proc/meminfo")
+	output.MemoryBytes = memValue(memRaw, "MemTotal") * 1024
+	if value, readErr := read("/.dockerenv"); readErr == nil && len(value) == 0 {
 		output.Runtime.Containerized = true
 	}
 	if output.Hostname == "" || output.Kernel == "" || output.CPUs == 0 || output.MemoryBytes == 0 {
@@ -111,9 +131,21 @@ type cpuTicks struct {
 
 func snapshot(ctx context.Context, src source) snapshotData {
 	data := snapshotData{cpu: map[string]cpuTicks{}, mem: map[string]uint64{}, psi: map[string]PSIMetric{}}
-	data.hostname, _ = readText(ctx, src, "/proc/sys/kernel/hostname")
-	data.kernel, _ = readText(ctx, src, "/proc/sys/kernel/osrelease")
-	if raw, err := readLimited(ctx, src, "/proc/loadavg"); err == nil {
+	paths := []string{"/proc/sys/kernel/hostname", "/proc/sys/kernel/osrelease", "/proc/loadavg", "/proc/stat", "/proc/meminfo", "/proc/diskstats", "/proc/net/dev", "/proc/pressure/cpu", "/proc/pressure/memory", "/proc/pressure/io"}
+	files, batched := readFiles(ctx, src, paths)
+	read := func(path string) ([]byte, error) {
+		if batched {
+			value, ok := files[path]
+			if !ok {
+				return nil, fmt.Errorf("file unavailable: %s", path)
+			}
+			return value, nil
+		}
+		return readLimited(ctx, src, path)
+	}
+	data.hostname = strings.TrimSpace(string(mustReadWith(read, "/proc/sys/kernel/hostname")))
+	data.kernel = strings.TrimSpace(string(mustReadWith(read, "/proc/sys/kernel/osrelease")))
+	if raw, err := read("/proc/loadavg"); err == nil {
 		fields := strings.Fields(string(raw))
 		for i := 0; i < 3 && i < len(fields); i++ {
 			data.load[i], _ = strconv.ParseFloat(fields[i], 64)
@@ -121,28 +153,28 @@ func snapshot(ctx context.Context, src source) snapshotData {
 	} else {
 		data.unavailable = append(data.unavailable, "load")
 	}
-	if raw, err := readLimited(ctx, src, "/proc/stat"); err == nil {
+	if raw, err := read("/proc/stat"); err == nil {
 		data.cpu = parseCPUTicks(string(raw))
 	} else {
 		data.unavailable = append(data.unavailable, "cpu")
 	}
-	if raw, err := readLimited(ctx, src, "/proc/meminfo"); err == nil {
+	if raw, err := read("/proc/meminfo"); err == nil {
 		data.mem = parseMeminfo(string(raw))
 	} else {
 		data.unavailable = append(data.unavailable, "memory")
 	}
-	if raw, err := readLimited(ctx, src, "/proc/diskstats"); err == nil {
+	if raw, err := read("/proc/diskstats"); err == nil {
 		data.disk = parseDiskstats(string(raw))
 	} else {
 		data.unavailable = append(data.unavailable, "disk")
 	}
-	if raw, err := readLimited(ctx, src, "/proc/net/dev"); err == nil {
+	if raw, err := read("/proc/net/dev"); err == nil {
 		data.network = parseNetdev(string(raw))
 	} else {
 		data.unavailable = append(data.unavailable, "network")
 	}
 	for _, kind := range []string{"cpu", "memory", "io"} {
-		if raw, err := readLimited(ctx, src, "/proc/pressure/"+kind); err == nil {
+		if raw, err := read("/proc/pressure/" + kind); err == nil {
 			data.psi[kind] = parsePSI(string(raw))
 		}
 	}
@@ -153,6 +185,22 @@ func snapshot(ctx context.Context, src source) snapshotData {
 		data.unavailable = append(data.unavailable, "filesystem")
 	}
 	return data
+}
+
+func readFiles(ctx context.Context, src source, paths []string) (map[string][]byte, bool) {
+	if batched, ok := src.(interface {
+		ReadFiles(context.Context, []string) (map[string][]byte, error)
+	}); ok {
+		if files, err := batched.ReadFiles(ctx, paths); err == nil {
+			return files, true
+		}
+	}
+	return nil, false
+}
+
+func mustReadWith(read func(string) ([]byte, error), path string) []byte {
+	value, _ := read(path)
+	return value
 }
 
 func buildMetrics(first, second snapshotData, seconds float64) HostMetrics {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +32,25 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 		return ProcessesOutput{}, err
 	}
 	defer src.Close()
+	if reader, ok := src.(interface {
+		ReadProcesses(context.Context, int) ([]byte, error)
+	}); ok {
+		if raw, readErr := reader.ReadProcesses(ctx, input.PID); readErr == nil {
+			passwd, _ := readLimited(ctx, src, "/etc/passwd")
+			output := ProcessesOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target, Processes: make([]ProcessInfo, 0, input.Limit)}
+			keyword := strings.ToLower(strings.TrimSpace(input.Keyword))
+			for _, process := range parsePSProcesses(raw, output.CollectedAt, passwd) {
+				if keyword != "" && !strings.Contains(strings.ToLower(process.Name+" "+process.Executable+" "+process.CommandLine), keyword) {
+					continue
+				}
+				output.Processes = append(output.Processes, process)
+				if len(output.Processes) >= input.Limit {
+					break
+				}
+			}
+			return output, nil
+		}
+	}
 	paths := make([]string, 0)
 	if input.PID > 0 {
 		paths = append(paths, filepath.Join("/proc", fmt.Sprint(input.PID)))
@@ -66,6 +86,46 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 		}
 	}
 	return output, nil
+}
+
+func parsePSProcesses(raw []byte, now time.Time, passwd []byte) []ProcessInfo {
+	processes := make([]ProcessInfo, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 10 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid <= 0 {
+			continue
+		}
+		process := ProcessInfo{
+			PID:          pid,
+			PPID:         parseIntField(fields[1]),
+			State:        fields[2],
+			UID:          parseUintField(fields[3]),
+			Threads:      parseIntField(fields[4]),
+			RSSBytes:     parseUintField(fields[5]) * 1024,
+			VirtualBytes: parseUintField(fields[6]) * 1024,
+			Name:         fields[9],
+			User:         lookupUser(parseUintField(fields[3]), passwd),
+		}
+		if elapsed, err := strconv.ParseInt(fields[7], 10, 64); err == nil && elapsed >= 0 {
+			process.StartTime = now.Add(-time.Duration(elapsed) * time.Second)
+		}
+		process.CPUUsagePercent, _ = strconv.ParseFloat(strings.TrimSuffix(fields[8], "%"), 64)
+		if len(fields) > 10 {
+			process.CommandLine = redactCommandLine([]byte(strings.Join(fields[10:], " ")))
+			if commandFields := strings.Fields(process.CommandLine); len(commandFields) > 0 {
+				process.Executable = commandFields[0]
+			}
+		}
+		if process.CommandLine == "" {
+			process.CommandLine = process.Name
+		}
+		processes = append(processes, process)
+	}
+	return processes
 }
 
 func readProcess(ctx context.Context, src source, path string, passwd []byte) (ProcessInfo, error) {

@@ -59,23 +59,95 @@ type syscallStatfs struct{ blocks, bfree, bavail, blockSize uint64 }
 
 type sshSource struct{ client *ssh.Client }
 
+const batchFileBegin = "__OPSK_FILE_BEGIN__"
+const batchFileEnd = "__OPSK_FILE_END__"
+
+// ReadFiles batches small, read-only procfs files into one SSH channel. A
+// remote command per file is noticeably expensive on high-latency links.
+func (s *sshSource) ReadFiles(ctx context.Context, paths []string) (map[string][]byte, error) {
+	if len(paths) == 0 {
+		return map[string][]byte{}, nil
+	}
+	var command strings.Builder
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		command.WriteString("if [ -r ")
+		command.WriteString(shellQuote(path))
+		command.WriteString(" ]; then printf '")
+		command.WriteString(batchFileBegin)
+		command.WriteString("%s\\n' ")
+		command.WriteString(shellQuote(path))
+		command.WriteString("; cat -- ")
+		command.WriteString(shellQuote(path))
+		command.WriteString("; printf '\\n")
+		command.WriteString(batchFileEnd)
+		command.WriteString("\\n'; fi\n")
+	}
+	raw, err := s.run(ctx, command.String(), 8<<20)
+	if err != nil {
+		return nil, err
+	}
+	return parseBatchFiles(raw), nil
+}
+
+func parseBatchFiles(raw []byte) map[string][]byte {
+	files := make(map[string][]byte)
+	remaining := string(raw)
+	for {
+		begin := strings.Index(remaining, batchFileBegin)
+		if begin < 0 {
+			break
+		}
+		remaining = remaining[begin+len(batchFileBegin):]
+		lineEnd := strings.IndexByte(remaining, '\n')
+		if lineEnd < 0 {
+			break
+		}
+		path := strings.TrimSpace(remaining[:lineEnd])
+		remaining = remaining[lineEnd+1:]
+		end := strings.Index(remaining, batchFileEnd)
+		if end < 0 {
+			break
+		}
+		value := remaining[:end]
+		value = strings.TrimPrefix(value, "\n")
+		value = strings.TrimSuffix(value, "\n")
+		files[path] = []byte(value)
+		remaining = remaining[end+len(batchFileEnd):]
+	}
+	return files
+}
+
 func (s *sshSource) ProcessSummary(ctx context.Context) (ProcessSummary, error) {
-	output, err := s.run(ctx, "awk '$1 == \"State:\" { total++; if ($2 ~ /^R/) running++; else if ($2 ~ /^T/) stopped++; else if ($2 ~ /^Z/) zombie++; else sleeping++ } END { printf \"%d %d %d %d %d\\n\", total, running, sleeping, stopped, zombie }' /proc/[0-9]*/status", 1024)
+	output, err := s.run(ctx, "ps -eo state= --no-headers", 1<<20)
 	if err != nil {
 		return ProcessSummary{}, err
 	}
-	fields := strings.Fields(string(output))
-	if len(fields) != 5 {
-		return ProcessSummary{}, errors.New("invalid remote process summary")
-	}
-	values := make([]int, len(fields))
-	for i, field := range fields {
-		values[i], err = strconv.Atoi(field)
-		if err != nil {
-			return ProcessSummary{}, err
+	var summary ProcessSummary
+	for _, state := range strings.Fields(string(output)) {
+		summary.Total++
+		switch state[:1] {
+		case "R":
+			summary.Running++
+		case "T":
+			summary.Stopped++
+		case "Z":
+			summary.Zombie++
+		default:
+			summary.Sleeping++
 		}
 	}
-	return ProcessSummary{Total: values[0], Running: values[1], Sleeping: values[2], Stopped: values[3], Zombie: values[4]}, nil
+	return summary, nil
+}
+
+func (s *sshSource) ReadProcesses(ctx context.Context, pid int) ([]byte, error) {
+	command := "ps -eo pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,comm=,args= --no-headers"
+	if pid > 0 {
+		command = fmt.Sprintf("ps -p %d -o pid=,ppid=,state=,uid=,nlwp=,rss=,vsz=,etimes=,pcpu=,comm=,args= --no-headers", pid)
+	}
+	return s.run(ctx, command, MaxReadBytes)
 }
 
 func (s *sshSource) ReadFile(ctx context.Context, path string) ([]byte, error) {
