@@ -59,6 +59,25 @@ type syscallStatfs struct{ blocks, bfree, bavail, blockSize uint64 }
 
 type sshSource struct{ client *ssh.Client }
 
+func (s *sshSource) ProcessSummary(ctx context.Context) (ProcessSummary, error) {
+	output, err := s.run(ctx, "awk '$1 == \"State:\" { total++; if ($2 ~ /^R/) running++; else if ($2 ~ /^T/) stopped++; else if ($2 ~ /^Z/) zombie++; else sleeping++ } END { printf \"%d %d %d %d %d\\n\", total, running, sleeping, stopped, zombie }' /proc/[0-9]*/status", 1024)
+	if err != nil {
+		return ProcessSummary{}, err
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) != 5 {
+		return ProcessSummary{}, errors.New("invalid remote process summary")
+	}
+	values := make([]int, len(fields))
+	for i, field := range fields {
+		values[i], err = strconv.Atoi(field)
+		if err != nil {
+			return ProcessSummary{}, err
+		}
+	}
+	return ProcessSummary{Total: values[0], Running: values[1], Sleeping: values[2], Stopped: values[3], Zombie: values[4]}, nil
+}
+
 func (s *sshSource) ReadFile(ctx context.Context, path string) ([]byte, error) {
 	return s.run(ctx, "cat -- "+shellQuote(path), MaxReadBytes)
 }
@@ -199,14 +218,21 @@ func privateKeyBytes(raw string) ([]byte, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("%w: private_key is empty", ErrInvalidArgument)
 	}
+	if obviousPath(raw) {
+		return nil, fmt.Errorf("%w: private_key must be file content, not a path", ErrInvalidArgument)
+	}
+	if bytes.Contains([]byte(raw), []byte("PRIVATE KEY")) {
+		return []byte(raw), nil
+	}
 	if decoded, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(raw), "")); err == nil && bytes.Contains(decoded, []byte("PRIVATE KEY")) {
 		return decoded, nil
 	}
-	return []byte(raw), nil
+	return nil, fmt.Errorf("%w: private_key must be PEM or Base64 encoded private key content", ErrInvalidArgument)
 }
 
 func knownHostsCallback(raw string) (ssh.HostKeyCallback, func(), error) {
 	raw = strings.TrimSpace(raw)
+	provided := raw != ""
 	if raw == "" {
 		if home, err := os.UserHomeDir(); err == nil {
 			raw = filepath.Join(home, ".ssh", "known_hosts")
@@ -215,9 +241,12 @@ func knownHostsCallback(raw string) (ssh.HostKeyCallback, func(), error) {
 	if raw == "" {
 		return nil, func() {}, fmt.Errorf("%w: known_hosts is required for SSH", ErrInvalidArgument)
 	}
+	if provided && looksLikePath(raw) {
+		return nil, func() {}, fmt.Errorf("%w: known_hosts must be file content, not a path", ErrInvalidArgument)
+	}
 	path := raw
 	cleanup := func() {}
-	if strings.Contains(raw, "\n") || strings.HasPrefix(raw, "ssh-") || strings.HasPrefix(raw, "@cert-authority") {
+	if provided {
 		file, err := os.CreateTemp("", "opskeeper-host-known-hosts-")
 		if err != nil {
 			return nil, func() {}, err
@@ -245,6 +274,23 @@ func knownHostsCallback(raw string) (ssh.HostKeyCallback, func(), error) {
 		return nil, func() {}, fmt.Errorf("load known_hosts: %w", err)
 	}
 	return callback, cleanup, nil
+}
+
+func looksLikePath(value string) bool {
+	return obviousPath(value) || !strings.ContainsAny(value, " \t\r\n")
+}
+
+func obviousPath(value string) bool {
+	if filepath.IsAbs(value) || strings.HasPrefix(value, "~/") || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") {
+		return true
+	}
+	if len(value) >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/') {
+		return true
+	}
+	if info, err := os.Stat(value); err == nil && !info.IsDir() {
+		return true
+	}
+	return false
 }
 
 func lookupUser(uid uint64, passwd []byte) string {

@@ -764,22 +764,140 @@ func TestAgentRunnerEmitsLifecycleForToolArgumentValidation(t *testing.T) {
 	}
 }
 
-type emptyAnswerModel struct{}
+type emptyAnswerModel struct{ calls *int }
 
 func (emptyAnswerModel) Name() string { return "empty-answer-model" }
-func (emptyAnswerModel) GenerateContent(context.Context, *model.LLMRequest, bool) iter.Seq2[*model.LLMResponse, error] {
+func (m emptyAnswerModel) GenerateContent(context.Context, *model.LLMRequest, bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
+		if m.calls != nil {
+			*m.calls++
+		}
 		yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel}}, nil)
 	}
 }
 
 func TestAgentRunnerRejectsEmptyFinalAnswer(t *testing.T) {
+	var calls int
 	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
-		return ModelBuildResult{Client: emptyAnswerModel{}, Capabilities: []string{"text"}}, nil
+		return ModelBuildResult{Client: emptyAnswerModel{calls: &calls}, Capabilities: []string{"text"}}, nil
 	})
 	result, err := runner.Run(context.Background(), Request{ExecutionID: "exec-empty", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer", Budget: Budget{MaxIterations: 1, MaxTokens: 100, MaxOutputBytes: 4096}})
 	if err == nil || result.Status != StatusFailed || result.ErrorCode != "empty_output" {
 		t.Fatalf("result=%+v err=%v, want empty_output failure", result, err)
+	}
+	if result.ErrorMessage != "模型未返回可展示的最终回答，请重试。" {
+		t.Fatalf("error message=%q, want safe empty-output message", result.ErrorMessage)
+	}
+	if calls != 2 {
+		t.Fatalf("empty model calls = %d, want one bounded retry", calls)
+	}
+}
+
+type thoughtOnlyAnswerModel struct{ calls *int }
+
+func (thoughtOnlyAnswerModel) Name() string { return "thought-only-answer-model" }
+func (m thoughtOnlyAnswerModel) GenerateContent(context.Context, *model.LLMRequest, bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		if m.calls != nil {
+			*m.calls++
+		}
+		yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{Thought: true, Text: "internal reasoning"}}}}, nil)
+	}
+}
+
+func TestAgentRunnerRetriesThoughtOnlyResponse(t *testing.T) {
+	var calls int
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{Client: thoughtOnlyAnswerModel{calls: &calls}, Capabilities: []string{"text"}}, nil
+	})
+	result, err := runner.Run(context.Background(), Request{ExecutionID: "exec-thought-only", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer", Budget: Budget{MaxIterations: 1, MaxTokens: 100, MaxOutputBytes: 4096}})
+	if err == nil || result.Status != StatusFailed || result.ErrorCode != "empty_output" {
+		t.Fatalf("result=%+v err=%v, want empty_output after thought-only response", result, err)
+	}
+	if calls != 2 {
+		t.Fatalf("thought-only model calls = %d, want one bounded retry", calls)
+	}
+}
+
+func TestRetryableEmptyModelErrorRecognizesFinalResponseWording(t *testing.T) {
+	if !isRetryableEmptyModelError(errors.New("model returned an empty final response")) {
+		t.Fatal("expected empty final response wording to be retryable")
+	}
+}
+
+type retryAnswerModel struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (m *retryAnswerModel) Name() string { return "retry-answer-model" }
+func (m *retryAnswerModel) GenerateContent(context.Context, *model.LLMRequest, bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		m.mu.Lock()
+		m.calls++
+		call := m.calls
+		m.mu.Unlock()
+		if call == 1 {
+			yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel}}, nil)
+			return
+		}
+		yield(&model.LLMResponse{Content: genai.NewContentFromText("重试成功", genai.RoleModel)}, nil)
+	}
+}
+
+func TestAgentRunnerRetriesEmptyModelTurn(t *testing.T) {
+	client := &retryAnswerModel{}
+	var events []Event
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{Client: client, Capabilities: []string{"text", "stream"}}, nil
+	})
+	result, err := runner.RunStream(context.Background(), Request{
+		ExecutionID: "exec-empty-retry", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer",
+		Budget: Budget{MaxIterations: 1, MaxTokens: 100, MaxOutputBytes: 4096},
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil || result.Status != StatusSucceeded || result.Output != "重试成功" {
+		t.Fatalf("result=%+v err=%v, want successful retry", result, err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("model calls = %d, want 2", client.calls)
+	}
+	var retried bool
+	for _, event := range events {
+		if event.Type == "assistant.progress" && event.Payload["kind"] == "model_retry" {
+			retried = true
+		}
+	}
+	if !retried {
+		t.Fatalf("retry progress event missing: %+v", events)
+	}
+}
+
+type partialOnlyAnswerModel struct{}
+
+func (partialOnlyAnswerModel) Name() string { return "partial-only-answer-model" }
+func (partialOnlyAnswerModel) GenerateContent(context.Context, *model.LLMRequest, bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		for _, text := range []string{"第一行", "\n", "第二行"} {
+			if !yield(&model.LLMResponse{Content: genai.NewContentFromText(text, genai.RoleModel), Partial: true}, nil) {
+				return
+			}
+		}
+	}
+}
+
+func TestAgentRunnerClosesPartialOnlyModelStream(t *testing.T) {
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{Client: partialOnlyAnswerModel{}, Capabilities: []string{"text", "stream"}}, nil
+	})
+	result, err := runner.RunStream(context.Background(), Request{
+		ExecutionID: "exec-partial-only", ActorID: "actor-1", ScopeID: "scope-1", Task: "answer",
+		Budget: Budget{MaxIterations: 1, MaxTokens: 100, MaxOutputBytes: 4096},
+	}, nil)
+	if err != nil || result.Status != StatusSucceeded || result.Output != "第一行\n第二行" {
+		t.Fatalf("result=%+v err=%v, want synthesized final response", result, err)
 	}
 }
 

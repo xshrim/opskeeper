@@ -98,7 +98,11 @@ func (m *ChatCompletionsModel) GenerateContent(ctx context.Context, request *mod
 			return
 		}
 		httpRequest.Header.Set("Content-Type", "application/json")
-		httpRequest.Header.Set("Accept", "application/json")
+		if stream {
+			httpRequest.Header.Set("Accept", "text/event-stream")
+		} else {
+			httpRequest.Header.Set("Accept", "application/json")
+		}
 		if m.apiKey != "" {
 			httpRequest.Header.Set("Authorization", "Bearer "+m.apiKey)
 		}
@@ -378,6 +382,11 @@ func (m *ChatCompletionsModel) decodeStream(reader io.Reader, yield func(*model.
 			continue
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" {
+			// Some OpenAI-compatible gateways emit empty SSE data frames as
+			// keep-alives before the first token. They are not model output.
+			continue
+		}
 		if data == "[DONE]" {
 			break
 		}

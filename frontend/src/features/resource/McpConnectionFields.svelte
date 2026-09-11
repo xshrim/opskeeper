@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Eye, EyeOff } from 'lucide-svelte';
+
   export let url = '';
   export let token = '';
   export let requestHeaders = '';
@@ -7,6 +9,7 @@
   export let maxResponseBytes = 4 * 1024 * 1024;
   export let tokenPlaceholder = '保存于加密凭据';
   export let configurationAttempted = false;
+  let tokenVisible = false;
 
   export let tlsCA = '';
   export let tlsCert = '';
@@ -42,8 +45,8 @@
 </script>
 
 <div class="mcp-resource-form">
-  <label class="mcp-url-field" class:invalid={configurationAttempted && !url.trim()}><span><i>*</i>Server 地址</span><input bind:value={url} type="url" placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
-  <label><span>Token</span><input bind:value={token} type="password" placeholder={tokenPlaceholder} autocomplete="new-password" /></label>
+  <label class="mcp-url-field" class:invalid={configurationAttempted && !url.trim()}><span><i>*</i>Server 地址</span><input bind:value={url} type="url" required placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
+  <label><span>Token</span><span class="resource-secret-control"><input bind:value={token} type={tokenVisible ? 'text' : 'password'} placeholder={tokenPlaceholder} autocomplete="new-password" /><button class="resource-secret-toggle" type="button" aria-label={tokenVisible ? '隐藏 Token' : '显示 Token'} aria-pressed={tokenVisible} data-tooltip={tokenVisible ? '隐藏 Token' : '显示 Token'} on:click={() => (tokenVisible = !tokenVisible)}>{#if tokenVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></label>
   <div class="mcp-number-grid">
     <label><span>超时时间（秒）</span><input bind:value={timeoutSeconds} type="number" min="1" max="600" /></label>
     <label><span>响应体大小限制（字节）</span><input bind:value={maxResponseBytes} type="number" min="1" max="16777216" step="1024" /></label>

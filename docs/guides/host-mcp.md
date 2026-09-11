@@ -30,10 +30,10 @@ make host-mcp-run
 | `HOST_MCP_PASSWORD` | SSH 密码 |
 | `HOST_MCP_PRIVATE_KEY` | PEM 或 Base64 私钥 |
 | `HOST_MCP_PASSPHRASE` | 私钥口令 |
-| `HOST_MCP_KNOWN_HOSTS` | known_hosts 路径或内容；默认读取 `~/.ssh/known_hosts` |
+| `HOST_MCP_KNOWN_HOSTS` | known_hosts 文件内容；为空时读取 Agent 本机默认 `~/.ssh/known_hosts` |
 | `HOST_MCP_TIMEOUT_SECONDS` | 连接超时，范围 1 到 300 秒 |
 
-SSH 强制执行 known_hosts 校验，不提供不安全的自动接受主机密钥模式。
+SSH 强制执行 known_hosts 校验，不提供不安全的自动接受主机密钥模式。`HOST_MCP_PRIVATE_KEY` 和 `HOST_MCP_KNOWN_HOSTS` 均接收文件内容，不接收文件路径。
 
 ## 工具
 

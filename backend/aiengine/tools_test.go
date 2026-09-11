@@ -118,6 +118,9 @@ func TestNewContextToolingUsesResourceUsePolicy(t *testing.T) {
 	if tooling.Registry == nil || tooling.Gateway == nil || tooling.Resolver.Registry != tooling.Registry {
 		t.Fatal("context tooling was not composed with shared registry")
 	}
+	if tooling.Gateway.Timeout != 60*time.Second {
+		t.Fatalf("context tool gateway timeout = %s, want 60s", tooling.Gateway.Timeout)
+	}
 	if err := tooling.Registry.Register("resource-1", ToolFunc{Def: ToolDefinition{Name: "read", Source: "test", ResourceID: "resource-1"}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
 		return ToolResult{Output: "ok"}, nil
 	}}); err != nil {

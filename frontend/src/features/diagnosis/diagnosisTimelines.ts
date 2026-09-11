@@ -461,9 +461,26 @@ export function diagnosisAssistantTimeline(
   const starts = events
     .map((event, index) => (event.type === 'execution.started' ? index : -1))
     .filter((index) => index >= 0);
-  const start = starts[assistantIndex];
+  // Edited questions can hide an older assistant message from the visible
+  // conversation while its execution remains in the event history. Match the
+  // answer to the run through its preceding user question.
+  const assistant = snapshot.messages.filter((message) => message.role === 'assistant')[assistantIndex];
+  const answerPosition = assistant
+    ? snapshot.messages.findIndex((message) => message.id === assistant.id)
+    : -1;
+  const question = snapshot.messages
+    .slice(0, answerPosition)
+    .reverse()
+    .find((message) => message.role === 'user');
+  const runs = [...snapshot.runs].sort((left, right) => left.sequence - right.sequence);
+  let runIndex = assistantIndex;
+  const matchingRun = runs.findIndex(
+    (run) => String(run.question_message_id ?? '') === String(question?.id ?? '')
+  );
+  if (matchingRun >= 0) runIndex = matchingRun;
+  const start = starts[runIndex];
   if (start === undefined) return [];
-  const end = starts[assistantIndex + 1] ?? events.length;
+  const end = starts[runIndex + 1] ?? events.length;
   return diagnosisLiveTimeline({
     ...snapshot,
     session: { ...snapshot.session, status: 'succeeded' },

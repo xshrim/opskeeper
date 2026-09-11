@@ -17,7 +17,7 @@
   <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
   <div><span>接入方式</span><strong>{isAgent ? 'Agent · MCP 代理' : 'Direct'}</strong></div>
   <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
-  <div><span>服务凭据</span><strong>{resource.credential_id ? '已配置' : '未配置'}</strong></div>
+  <div><span>连接凭据</span><strong>{resource.credential_id ? '已配置' : '未配置'}</strong></div>
   <div><span>传输凭据</span><strong>未配置</strong></div>
   <div><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
   <div>

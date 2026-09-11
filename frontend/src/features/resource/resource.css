@@ -410,6 +410,19 @@
   color: var(--theme-fg-subtle);
   font-size: 10px;
 }
+.resource-cell small.provider-model-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+}
+.provider-model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .resource-scope-cell strong.scope-pill {
   display: inline-flex;
   align-items: center;
@@ -628,6 +641,7 @@
   vertical-align: 1px;
 }
 .provider-model-count {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   min-height: 16px;
@@ -1251,6 +1265,10 @@ body:has(.resource-add-workflow) {
 .provider-edit-form .provider-config-purpose {
   grid-column: span 1;
 }
+.provider-edit-form .provider-config-type,
+.provider-edit-form .provider-config-protocol {
+  grid-column: span 1;
+}
 .provider-edit-form .provider-model-row {
   min-width: 0;
 }
@@ -1355,7 +1373,10 @@ body:has(.resource-add-workflow) {
 }
 .provider-config-url,
 .provider-config-api-key {
-  grid-column: span 6;
+  grid-column: span 4;
+}
+.provider-config-api-key {
+  grid-column: span 8;
 }
 .provider-config-timeout,
 .provider-config-concurrency,
@@ -1371,6 +1392,12 @@ body:has(.resource-add-workflow) {
   background: transparent;
   border: 0;
   border-radius: 0;
+}
+.provider-edit-form .provider-config-url {
+  grid-column: span 1;
+}
+.provider-edit-form .provider-config-api-key {
+  grid-column: span 2;
 }
 .provider-toggle-control {
   position: relative;
@@ -1462,6 +1489,41 @@ body:has(.resource-add-workflow) {
 .provider-api-key-control > .provider-api-key-toggle:hover {
   color: var(--theme-fg);
   background: var(--theme-bg-hover);
+}
+.resource-secret-control {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.resource-secret-control input {
+  box-sizing: border-box;
+  width: 100%;
+  padding-right: 42px;
+}
+.resource-secret-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  color: var(--theme-fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  transform: translateY(-50%);
+}
+.resource-secret-toggle:hover {
+  color: var(--theme-fg);
+  background: var(--theme-bg-hover);
+}
+.resource-secret-toggle:focus-visible {
+  outline: 2px solid var(--theme-focus);
+  outline-offset: 1px;
 }
 .provider-model-editor {
   display: grid;
@@ -1843,6 +1905,60 @@ body:has(.resource-add-workflow) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
+.host-ssh-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, auto));
+  gap: 12px;
+  align-items: stretch;
+}
+.host-ssh-form-grid label {
+  display: grid;
+  grid-template-rows: 26px minmax(0, 1fr) auto;
+  align-content: stretch;
+  gap: 6px;
+  min-width: 0;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.host-auth-method,
+.host-password,
+.host-passphrase {
+  grid-column: 1;
+}
+.host-auth-method {
+  grid-row: 1;
+}
+.host-password,
+.host-passphrase {
+  grid-row: 2;
+}
+.host-private-key {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.host-known-hosts {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.host-ssh-form-grid .host-password + .host-known-hosts {
+  grid-column: 2 / -1;
+}
+.host-ssh-form-grid textarea {
+  min-height: 132px;
+  box-sizing: border-box;
+  resize: vertical;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.host-ssh-form-grid input,
+.host-ssh-form-grid select {
+  align-self: start;
+}
+.host-ssh-form-grid .docker-file-picker {
+  align-self: center;
+}
 .docker-form-grid label,
 .docker-agent-form label {
   display: grid;
@@ -2185,6 +2301,7 @@ body:has(.resource-add-workflow) {
   }
   .docker-access-mode,
   .docker-form-grid,
+  .host-ssh-form-grid,
   .docker-agent-connection-row,
   .kubernetes-connection-mode {
     grid-template-columns: 1fr;
@@ -2195,9 +2312,15 @@ body:has(.resource-add-workflow) {
   }
   .docker-host-field,
   .docker-timeout-field,
+  .host-auth-method,
+  .host-password,
+  .host-passphrase,
+  .host-private-key,
+  .host-known-hosts,
   .docker-form-grid > .docker-field-help,
   .docker-tool-summary {
     grid-column: auto;
+    grid-row: auto;
   }
   .docker-tls-fieldset {
     padding: 10px;

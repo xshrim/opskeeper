@@ -245,7 +245,8 @@
     resetStreamState: resetDiagnosisStreamState,
     confirm: (message) => window.confirm(message),
     prompt: (message, initialValue) => window.prompt(message, initialValue),
-    onError
+    onError,
+    setAssistantMessageBaseline: (count) => (diagnosisStreamingAssistantBaseline = count)
   });
 
   async function loadDiagnosis() {
@@ -296,6 +297,10 @@
       if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
       diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
       diagnosisSessionController.syncCursor(diagnosisSnapshot);
+      // Reconcile a snapshot that may already contain a terminal event while
+      // its session row still reports an active phase, then subscribe for any
+      // events written after this baseline.
+      await diagnosisSessionController.refresh(id);
       diagnosisSessionController.open(id);
     } catch (error) {
       onError(describeError(error, '诊断详情加载失败'));

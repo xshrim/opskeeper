@@ -113,6 +113,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	o.appendEvent(ctx, session.ID, CreateEventInput{Type: "plan.created", Payload: map[string]any{"plan_id": plan.ID, "steps": len(plan.Steps)}})
 	if _, err = o.store.SetStatus(ctx, session.ID, StatusCollecting); err != nil {
+		o.fail(session.ID, "status", err)
 		return
 	}
 	o.appendEvent(ctx, session.ID, CreateEventInput{Type: "phase.changed", Payload: map[string]any{"phase": StatusCollecting}})
@@ -144,6 +145,13 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		if !runFinished {
 			finishRun(runStatus)
 		}
+		if runStatus == "failed" {
+			// A post-processing/database error can happen after the model has
+			// returned. Do not leave the session in collecting/analyzing forever.
+			if current, getErr := o.store.Get(context.Background(), session.ID); getErr == nil && !terminalDiagnosisStatus(current.Status) {
+				o.fail(session.ID, "orchestrator", errors.New("诊断执行未正常完成，请重试。"))
+			}
+		}
 		completedQuestionMessageID := ""
 		if run.QuestionMessageID != nil {
 			completedQuestionMessageID = *run.QuestionMessageID
@@ -168,6 +176,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
+	assistantText := ""
 	// Keep streamed text by model iteration. A turn that later resolves to a
 	// function call is process narration, not answer content; retaining the
 	// boundary lets timeout/error persistence preserve only actual answer text.
@@ -205,6 +214,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			return
 		}
 		assistantPersisted = true
+		assistantText = safeText(text, 8000)
 		pendingAssistantCompleted = nil
 	}
 	flushPendingTerminalEvents := func() {
@@ -277,9 +287,11 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 					pendingAssistantCompleted = &copy
 					return nil
 				}
-				_, assistantPersistErr = o.store.AppendMessage(context.WithoutCancel(ctx), session.ID, AppendMessageInput{Role: "assistant", Content: safeText(text, 8000)})
+				assistantContent := safeText(text, 8000)
+				_, assistantPersistErr = o.store.AppendMessage(context.WithoutCancel(ctx), session.ID, AppendMessageInput{Role: "assistant", Content: assistantContent})
 				if assistantPersistErr == nil {
 					assistantPersisted = true
+					assistantText = assistantContent
 					pendingAssistantCompleted = nil
 				}
 			}
@@ -316,13 +328,20 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		// before closing the diagnosis session so cancellation and failure are
 		// visible to reconnecting clients even when no assistant answer exists.
 		flushPendingTerminalEvents()
-		code := runnerErrorCode(err)
+		code := strings.TrimSpace(result.ErrorCode)
+		if code == "" {
+			code = runnerErrorCode(err)
+		}
+		cause := err
+		if message := strings.TrimSpace(result.ErrorMessage); message != "" {
+			cause = errors.New(message)
+		}
 		if result.Status == aiengine.StatusCancelled || code == "cancelled" || code == "timeout" {
 			runStatus = "cancelled"
-			o.cancel(session.ID, code, err)
+			o.cancel(session.ID, code, cause)
 			finishRun("cancelled")
 		} else {
-			o.fail(session.ID, code, err)
+			o.fail(session.ID, code, cause)
 			finishRun("failed")
 		}
 		return
@@ -330,12 +349,20 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	if result.Status == aiengine.StatusFailed || result.Status == aiengine.StatusCancelled {
 		persistPartialAssistant()
 		flushPendingTerminalEvents()
+		code := strings.TrimSpace(result.ErrorCode)
+		message := strings.TrimSpace(result.ErrorMessage)
 		if result.Status == aiengine.StatusCancelled {
+			if code == "" {
+				code = "cancelled"
+			}
 			runStatus = "cancelled"
-			o.cancel(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
+			o.cancel(session.ID, code, errors.New(message))
 			finishRun("cancelled")
 		} else {
-			o.fail(session.ID, result.ErrorCode, errors.New(result.ErrorMessage))
+			if code == "" {
+				code = "ai_engine"
+			}
+			o.fail(session.ID, code, errors.New(message))
 			finishRun("failed")
 		}
 		return
@@ -343,13 +370,21 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	assistantMu.Lock()
 	assistantError := assistantPersistErr
 	assistantDone := assistantPersisted
+	persistedAssistantText := assistantText
 	assistantMu.Unlock()
 	if assistantError != nil {
 		o.fail(session.ID, "assistant_message", assistantError)
 		return
 	}
-	if strings.TrimSpace(result.Output) == "" {
-		o.fail(session.ID, "assistant_message", errors.New("AIEngine returned an empty final response"))
+	// The streamed/persisted answer is the canonical user-visible source. It
+	// also covers adapters that return an empty result after successfully
+	// emitting assistant.completed.
+	output := result.Output
+	if strings.TrimSpace(persistedAssistantText) != "" {
+		output = persistedAssistantText
+	}
+	if strings.TrimSpace(output) == "" {
+		o.fail(session.ID, "empty_output", errors.New("模型未返回可展示的最终回答，请重试。"))
 		return
 	}
 	// Engines that do not expose lifecycle events (for example a minimal test
@@ -357,7 +392,8 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	// returns. The production AgentRunner emits assistant.completed before it
 	// returns, so this branch is normally not taken.
 	if !assistantDone {
-		if _, err := o.store.AppendMessage(context.WithoutCancel(ctx), session.ID, AppendMessageInput{Role: "assistant", Content: safeText(result.Output, 8000)}); err != nil {
+		output = safeText(output, 8000)
+		if _, err := o.store.AppendMessage(context.WithoutCancel(ctx), session.ID, AppendMessageInput{Role: "assistant", Content: output}); err != nil {
 			o.fail(session.ID, "assistant_message", err)
 			return
 		}
@@ -382,7 +418,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			}
 			payload = copied
 		}
-		payload["text"] = safeText(result.Output, 8000)
+		payload["text"] = safeText(output, 8000)
 		if err := o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "assistant.completed", Payload: payload}); err != nil {
 			o.fail(session.ID, "assistant_event", err)
 			return
@@ -419,7 +455,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		o.fail(session.ID, "evidence", err)
 		return
 	}
-	output := safeText(result.Output, 8000)
+	output = safeText(output, 8000)
 	evidenceIDs := make([]string, 0, len(evidence))
 	for _, item := range evidence {
 		evidenceIDs = append(evidenceIDs, item.ID)
@@ -467,10 +503,18 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			_, _ = o.store.UpdateStep(ctx, step.ID, "succeeded", detail)
 		}
 	}
+	if _, err = o.store.Finish(ctx, session.ID, StatusSucceeded, "", ""); err != nil {
+		runStatus = "failed"
+		o.fail(session.ID, "session_finish", err)
+		return
+	}
 	runStatus = "succeeded"
-	_, _ = o.store.Finish(ctx, session.ID, StatusSucceeded, "", "")
 	finishRun("succeeded")
 	o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "report.ready", Payload: map[string]any{"report_id": report.ID, "evidence_ids": evidenceIDs, "status": report.Status}})
+}
+
+func terminalDiagnosisStatus(status Status) bool {
+	return status == StatusSucceeded || status == StatusFailed || status == StatusCancelled
 }
 
 func (o *Orchestrator) captureEvidence(sessionID string, observed connector.Evidence, toolName, targetResourceID string) {

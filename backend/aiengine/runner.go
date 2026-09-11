@@ -367,6 +367,25 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	if err != nil {
 		return Result{}, err
 	}
+	modelClient := modelResult.Client
+	modelClient = &retryingModel{
+		delegate: modelClient,
+		onRetry: func() error {
+			if sink == nil {
+				return nil
+			}
+			return sink(Event{
+				ExecutionID: request.ExecutionID,
+				Type:        "assistant.progress",
+				Status:      StatusRunning,
+				Payload: map[string]any{
+					"text":      "模型未返回可展示内容，正在重试一次",
+					"iteration": modelIteration.Load(),
+					"kind":      "model_retry",
+				},
+			})
+		},
+	}
 	toolErrorCallback := func(toolCtx agent.Context, failedTool tool.Tool, args map[string]any, toolErr error) (map[string]any, error) {
 		// functiontool validates arguments before entering our handler. Such a
 		// failure must still be visible in the same tool lifecycle as gateway
@@ -502,7 +521,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		return nil, nil
 	}
 	agentRoot, err := llmagent.New(llmagent.Config{
-		Name: "ai_engine_agent", Model: modelResult.Client, Instruction: instruction,
+		Name: "ai_engine_agent", Model: modelClient, Instruction: instruction,
 		Tools: tools, OnToolErrorCallbacks: []llmagent.OnToolErrorCallback{toolErrorCallback},
 		BeforeModelCallbacks:     []llmagent.BeforeModelCallback{beforeModel},
 		DisallowTransferToParent: true, DisallowTransferToPeers: true,
@@ -586,6 +605,26 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		}
 		if event == nil {
 			continue
+		}
+		if event.ErrorCode != "" || event.ErrorMessage != "" {
+			code := strings.TrimSpace(event.ErrorCode)
+			if code == "" {
+				code = "model_response"
+			}
+			message := strings.TrimSpace(event.ErrorMessage)
+			if message == "" {
+				message = strings.TrimSpace(event.ErrorCode)
+			}
+			if message == "" {
+				message = "模型返回了无法处理的响应"
+			}
+			return Result{
+				ExecutionID:   request.ExecutionID,
+				Status:        StatusFailed,
+				ErrorCode:     code,
+				ErrorMessage:  publicError(errors.New(message)),
+				ToolCallCount: int(toolCalls.Load()),
+			}, errors.New(message)
 		}
 		if event.Content != nil && event.Content.Role == genai.RoleModel && !modelTurnOpen {
 			if !startModelTurn() {
@@ -804,7 +843,8 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		if sink != nil {
 			_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "failed", "detail": "模型未返回可展示的最终回答", "reason": "empty_output", "iteration": iterations}})
 		}
-		return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "empty_output", ErrorMessage: "model returned an empty final response", ToolCallCount: int(toolCalls.Load())}, errors.New("model returned an empty final response")
+		message := "模型未返回可展示的最终回答，请重试。"
+		return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "empty_output", ErrorMessage: message, ToolCallCount: int(toolCalls.Load())}, errors.New(message)
 	}
 	if len([]byte(text)) > request.Budget.MaxOutputBytes {
 		if sink != nil {

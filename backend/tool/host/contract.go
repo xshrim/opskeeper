@@ -72,7 +72,7 @@ func InputSchema(extra map[string]any) map[string]any {
 		"password":        map[string]any{"type": "string", "format": "password", "x-sensitive": true, "description": "SSH password."},
 		"private_key":     map[string]any{"type": "string", "format": "password", "x-sensitive": true, "description": "PEM or Base64 encoded SSH private key."},
 		"passphrase":      map[string]any{"type": "string", "format": "password", "x-sensitive": true, "description": "Private key passphrase."},
-		"known_hosts":     map[string]any{"type": "string", "format": "password", "x-sensitive": true, "description": "known_hosts path or content."},
+		"known_hosts":     map[string]any{"type": "string", "format": "password", "x-sensitive": true, "description": "known_hosts file content. Empty uses the local default known_hosts file."},
 		"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(MaxTimeout / time.Second), "description": "Connection and read timeout in seconds."},
 	}
 	for name, schema := range extra {

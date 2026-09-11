@@ -48,7 +48,7 @@
     <div><span>连接端点</span><strong>{accessMode === 'agent' ? mcpServerEndpoint || '关联 MCPServer' : String(resource.config?.server ?? '默认 kubeconfig')}</strong></div>
     <div><span>工具数量</span><strong>{tools.length} 个</strong></div>
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
-    <div><span>服务凭据</span><strong>未配置</strong></div>
+    <div><span>连接凭据</span><strong>未配置</strong></div>
     <div><span>传输凭据</span><strong>{transportCredential}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
     <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus} ({enabledStatus})</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>

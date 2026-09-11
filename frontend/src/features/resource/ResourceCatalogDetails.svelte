@@ -3,6 +3,7 @@
   import GenericResourceDetails from './GenericResourceDetails.svelte';
   import DockerResourceDetails from './DockerResourceDetails.svelte';
   import KubernetesResourceDetails from './KubernetesResourceDetails.svelte';
+  import HostResourceDetails from './HostResourceDetails.svelte';
   import McpResourceDetails from './McpResourceDetails.svelte';
   import ProviderResourceDetails from './ProviderResourceDetails.svelte';
 
@@ -38,6 +39,8 @@
   <DockerResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Kubernetes'}
   <KubernetesResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+{:else if resource.kind === 'Host'}
+  <HostResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} {resourceCanManage} />
 {/if}

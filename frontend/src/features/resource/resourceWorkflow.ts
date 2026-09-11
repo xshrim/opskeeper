@@ -152,7 +152,7 @@ export function resourceAddStepDescription(step: number, kind: string) {
       ? '配置 Linux 主机的本机或 SSH 接入方式。'
       : '确认配置并核验 Host 连接。';
   if (kind === 'AIProvider') {
-    if (step === 2) return '配置 Provider 的服务地址、协议和访问凭据。';
+    if (step === 2) return '配置 Provider 的 Base URL、协议和访问凭据。';
     if (step === 3) return '配置 Model 参数、能力和默认模型。';
     return '确认 Provider、Model 和角色配置。';
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Resource } from '../../lib/api';
 import { resourceHasConnector } from '../../lib/resources';
-import { brandNameFor, connectorCapabilityName, relativeConnectionTime } from './resourceCatalog';
+import { brandNameFor, connectorCapabilityName, relativeConnectionTime, resourceEndpointFor } from './resourceCatalog';
 
 describe('resource catalog helpers', () => {
   it('normalizes provider brands for display', () => {
@@ -51,5 +51,10 @@ describe('resource catalog helpers', () => {
     expect(relativeConnectionTime('2026-08-15T00:00:00Z', now)).toBe('3 周前');
     expect(relativeConnectionTime('2026-01-08T00:00:00Z', now)).toBe('8 月前');
     expect(relativeConnectionTime('2024-09-08T00:00:00Z', now)).toBe('2 年前');
+  });
+
+  it('formats direct Host endpoints as SSH URIs', () => {
+    expect(resourceEndpointFor({ kind: 'Host', subtype: 'Direct', config: { host: '192.0.2.10' } })).toBe('ssh://192.0.2.10');
+    expect(resourceEndpointFor({ kind: 'Host', subtype: 'Direct', config: { host: 'host.example', port: 2222 } })).toBe('ssh://host.example:2222');
   });
 });

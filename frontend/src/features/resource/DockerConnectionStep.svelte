@@ -80,7 +80,7 @@ export let mcpServerResourceId = '';
     <div class="docker-agent-connection-row">
       <label class:invalid={configurationAttempted && !mcpServerResourceId}>
         <span><i>*</i>关联 MCPServer</span>
-        <select bind:value={mcpServerResourceId} on:change={selectMCPServer} aria-describedby="docker-agent-help">
+        <select bind:value={mcpServerResourceId} required on:change={selectMCPServer} aria-describedby="docker-agent-help">
           <option value="">请选择活动的 MCPServer</option>
           {#each mcpServers as server}
             <option value={server.id}>{server.name} · {endpoint(server)}</option>

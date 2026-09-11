@@ -47,3 +47,22 @@ func TestFileLogsSupportsTailSinceAndKeyword(t *testing.T) {
 		t.Fatalf("unexpected log output: %q", output.Logs)
 	}
 }
+
+func TestKnownHostsRejectsPath(t *testing.T) {
+	if _, _, err := knownHostsCallback("/tmp/known_hosts"); err == nil {
+		t.Fatal("expected known_hosts path to be rejected")
+	}
+}
+
+func TestPrivateKeyRejectsPath(t *testing.T) {
+	if _, err := privateKeyBytes("id_rsa"); err == nil {
+		t.Fatal("expected private key path to be rejected")
+	}
+}
+
+func TestParseCPUTicksIgnoresBlankLines(t *testing.T) {
+	ticks := parseCPUTicks("cpu 1 2 3 4 5\n\nctxt 6\n")
+	if ticks["cpu"].total == 0 || ticks["__ctxt"].ctx != 6 {
+		t.Fatalf("unexpected CPU ticks: %+v", ticks)
+	}
+}

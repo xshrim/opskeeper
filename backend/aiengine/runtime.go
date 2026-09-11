@@ -227,19 +227,29 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 			_ = sink(Event{Type: "execution.failed", Status: StatusFailed, Payload: map[string]any{"error_code": result.ErrorCode, "error": result.ErrorMessage}})
 			return result, eventErr
 		}
-		status, code := StatusFailed, "runtime"
+		status, code := result.Status, result.ErrorCode
+		if status != StatusCancelled && status != StatusFailed {
+			status = StatusFailed
+		}
+		if code == "" {
+			code = "runtime"
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 			status, code = StatusCancelled, "timeout"
 		} else if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
 			status, code = StatusCancelled, "cancelled"
 		}
 		result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, status, code
-		result.ErrorMessage = publicError(err)
+		if strings.TrimSpace(result.ErrorMessage) == "" {
+			result.ErrorMessage = publicError(err)
+		} else {
+			result.ErrorMessage = publicError(errors.New(result.ErrorMessage))
+		}
 		eventType := "execution.failed"
 		if status == StatusCancelled {
 			eventType = "execution.cancelled"
 		}
-		_ = sink(Event{Type: eventType, Status: status, Payload: map[string]any{"error_code": code, "error": publicError(err)}})
+		_ = sink(Event{Type: eventType, Status: status, Payload: map[string]any{"error_code": code, "error": result.ErrorMessage}})
 		return result, err
 	}
 	sinkErrMu.Lock()

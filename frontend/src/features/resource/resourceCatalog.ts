@@ -206,9 +206,21 @@ export function resourceSchemaForSelection(
   );
 }
 
-export function resourceEndpointFor(resource: Resource) {
+export function resourceEndpointFor(resource: ResourceShape) {
   if (resource.kind === 'AIProvider')
-    return String(resource.config?.base_url ?? '未设置服务地址');
+    return String(resource.config?.base_url ?? '未设置 Base URL');
+  if (resource.kind === 'Host') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    if (!host) return '本机 Linux';
+    const normalizedHost =
+      host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    const port = Number(resource.config?.port ?? 22);
+    const suffix =
+      Number.isFinite(port) && port > 0 && port !== 22 ? `:${port}` : '';
+    return `ssh://${normalizedHost}${suffix}`;
+  }
   if (resource.kind === 'Docker') {
     const mode = String(resource.subtype ?? '').toLowerCase();
     if (mode === 'agent') return 'MCPServer 代理';

@@ -26,7 +26,7 @@
 <div class="provider-config-form">
   <label class="provider-config-type" class:invalid={configurationAttempted && !type}>
     <span><i>*</i>Provider类型</span>
-    <select bind:value={type} on:change={(event) => onSelectType((event.currentTarget as HTMLSelectElement).value)}>
+    <select bind:value={type} required on:change={(event) => onSelectType((event.currentTarget as HTMLSelectElement).value)}>
       {#each typeOptions as option}<option value={option.value}>{option.label}</option>{/each}
     </select>
   </label>
@@ -38,7 +38,7 @@
     </div>
   </div>
   <label class="provider-config-url" class:invalid={configurationAttempted && !baseURLValid}>
-    <span><i>*</i>服务地址</span><input bind:value={baseURL} required type="url" placeholder="https://api.example.com/v1" autocomplete="off" />
+    <span><i>*</i>Base URL</span><input bind:value={baseURL} required type="url" placeholder="https://api.example.com/v1" autocomplete="off" />
   </label>
   {#if showAPIKey}<label class="provider-config-api-key">
       <span>API Key</span>

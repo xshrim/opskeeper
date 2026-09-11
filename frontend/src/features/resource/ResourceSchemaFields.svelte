@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Eye, EyeOff } from 'lucide-svelte';
   import type { ResourceSchema } from '../../lib/api';
 
   export let schema: ResourceSchema | null = null;
@@ -11,6 +12,11 @@
   export let timeoutSeconds = 60;
   export let isRequired: (key: string) => boolean = () => false;
   export let configurationAttempted = false;
+  let sensitiveVisible: Record<string, boolean> = {};
+
+  function toggleSensitive(key: string) {
+    sensitiveVisible = { ...sensitiveVisible, [key]: !sensitiveVisible[key] };
+  }
 </script>
 
 {#if schema?.schema.properties && Object.keys(schema.schema.properties).length > 0}
@@ -20,13 +26,13 @@
       <label class:invalid={configurationAttempted && isRequired(key) && !(field.sensitive ? (sensitiveValues[key] ?? '') : (values[key] ?? '')).trim()}>
         <span>{#if isRequired(key)}<i>*</i>{/if}{field.title || key}</span>
         {#if field.sensitive}
-          <input type="password" bind:value={sensitiveValues[key]} placeholder={editMode && credentialConfigured ? '已有关联凭据，留空保持不变' : '敏感信息将加密保存'} autocomplete="new-password" />
+          <span class="resource-secret-control"><input type={sensitiveVisible[key] ? 'text' : 'password'} bind:value={sensitiveValues[key]} required={isRequired(key) && !(editMode && credentialConfigured)} placeholder={editMode && credentialConfigured ? '已有关联凭据，留空保持不变' : '敏感信息将加密保存'} autocomplete="new-password" /><button class="resource-secret-toggle" type="button" aria-label={sensitiveVisible[key] ? `隐藏${field.title || key}` : `显示${field.title || key}`} aria-pressed={sensitiveVisible[key] ?? false} data-tooltip={sensitiveVisible[key] ? `隐藏${field.title || key}` : `显示${field.title || key}`} on:click={() => toggleSensitive(key)}>{#if sensitiveVisible[key]}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span>
         {:else if field.enum}
-          <select bind:value={values[key]}><option value="">未设置</option>{#each field.enum as option}<option value={option}>{option}</option>{/each}</select>
+          <select bind:value={values[key]} required={isRequired(key)}><option value="">未设置</option>{#each field.enum as option}<option value={option}>{option}</option>{/each}</select>
         {:else if field.type === 'array'}
-          <textarea bind:value={values[key]} rows="4" placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'} spellcheck="false"></textarea>
+          <textarea bind:value={values[key]} required={isRequired(key)} rows="4" placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'} spellcheck="false"></textarea>
         {:else}
-          <input bind:value={values[key]} type={field.type === 'number' || field.type === 'integer' ? 'number' : field.type === 'url' || field.format === 'uri' ? 'url' : 'text'} placeholder={editMode ? undefined : field.description || key} autocomplete="off" />
+          <input bind:value={values[key]} required={isRequired(key)} type={field.type === 'number' || field.type === 'integer' ? 'number' : field.type === 'url' || field.format === 'uri' ? 'url' : 'text'} placeholder={editMode ? undefined : field.description || key} autocomplete="off" />
         {/if}
       </label>
     {/each}

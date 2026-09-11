@@ -3,6 +3,7 @@ package aiengine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"opskeeper/backend/resource"
 )
@@ -19,12 +20,14 @@ type ContextTooling struct {
 func NewContextTooling(resources ContextResourceReader, providers ...ContextProvider) *ContextTooling {
 	registry := NewToolRegistry()
 	tooling := &ContextTooling{Registry: registry}
+	// Host metrics can spend up to ten seconds sampling between two remote
+	// snapshots, plus several SSH reads per pass.
 	tooling.Gateway = NewPolicyGateway(registry, func(ctx context.Context, call ToolCall, definition ToolDefinition) error {
 		if definition.ResourceID != call.ResourceID {
 			return fmt.Errorf("tool resource does not match call resource")
 		}
 		return AuthorizeResourceUse(ctx, ContextResource{ID: call.ResourceID, ScopeID: call.ScopeID})
-	}, 0, 0, 0)
+	}, 60*time.Second, 0, 0)
 	tooling.Resolver = NewResourceContextResolver(resources, registry, providers...)
 	tooling.Resolver.Authorize = AuthorizeResourceUse
 	return tooling

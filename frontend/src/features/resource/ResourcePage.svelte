@@ -1424,8 +1424,8 @@
     const issues: string[] = [];
     if (providerNameDuplicate()) issues.push('资源名称已存在');
     if (!providerType) issues.push('Provider 类型');
-    if (!providerBaseURL.trim()) issues.push('服务地址');
-    else if (!providerBaseURLValid()) issues.push('服务地址格式');
+    if (!providerBaseURL.trim()) issues.push('Base URL');
+    else if (!providerBaseURLValid()) issues.push('Base URL 格式');
     return issues;
   }
 
@@ -1753,7 +1753,7 @@
     if (!providerBaseURLValid()) {
       providerDraftTest = {
         signature: initialSignature,
-        error: '服务地址无效，请返回 Provider 配置检查地址。'
+        error: 'Base URL 无效，请返回 Provider 配置检查地址。'
       };
       providerDraftTestBusy = false;
       return;
@@ -2397,7 +2397,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      await testResourceConnection(created, false);
+      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     } catch (error) {
       onError(describeError(error, '创建资源失败'));
@@ -2437,7 +2437,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      await testResourceConnection(created, false);
+      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -2477,7 +2477,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      await testResourceConnection(created, false);
+      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -2517,7 +2517,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Host 资源“${created.name}”已创建`);
-      await testResourceConnection(created, false);
+      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -2604,7 +2604,7 @@
       resources = [created, ...resources];
       selectedResourceId = created.id;
       if (returnToConnection) {
-        await testResourceConnection(created, false);
+        void testResourceConnection(created, false);
         await loadMCPSnapshots(created.id);
         await loadResourceDetails(created.id);
         restoreMCPServerReturnContext(created.id);
@@ -2620,7 +2620,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      await testResourceConnection(created, false);
+      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -2673,7 +2673,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Provider“${updated.name}”已更新`);
-      await testResourceConnection(updated, false);
+      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2709,7 +2709,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`MCPServer“${updated.name}”已更新`);
-      await testResourceConnection(updated, false);
+      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2749,7 +2749,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Docker 资源“${updated.name}”已更新`);
-      await testResourceConnection(updated, false);
+      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2785,7 +2785,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Kubernetes 资源“${updated.name}”已更新`);
-      await testResourceConnection(updated, false);
+      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2825,7 +2825,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Host 资源“${updated.name}”已更新`);
-      await testResourceConnection(updated, false);
+      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }

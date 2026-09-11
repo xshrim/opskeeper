@@ -39,6 +39,11 @@ export function openDiagnosisEventStream(
   let reportedError = false;
   let closed = false;
   let terminalSeen = false;
+  const stop = () => {
+    if (closed) return;
+    closed = true;
+    stream.close();
+  };
   const dispatch = (event: MessageEvent) => {
     if (
       event.type === 'report.ready' ||
@@ -48,6 +53,7 @@ export function openDiagnosisEventStream(
       terminalSeen = true;
     }
     onEvent(event);
+    if (terminalSeen) stop();
   };
   stream.onmessage = dispatch;
   for (const type of diagnosisEventTypes) {
@@ -61,8 +67,7 @@ export function openDiagnosisEventStream(
     }
   };
   return () => {
-    closed = true;
-    stream.close();
+    stop();
   };
 }
 
@@ -178,6 +183,7 @@ export function reduceDiagnosisStreamEvent(
     state.turnBase = state.text;
     ensureStarted();
     state.generating = true;
+    state.interruptedReason = '';
   } else if (eventType === 'assistant.delta') {
     const text = String(payload.text ?? '');
     if (text) {
@@ -216,8 +222,12 @@ export function reduceDiagnosisStreamEvent(
     eventType === 'tool.failed' ||
     eventType === 'phase.changed'
   ) {
+    if (eventType === 'execution.started') {
+      state.answerCompleted = false;
+      state.interruptedReason = '';
+    }
     if (eventType === 'tool.requested') state.text = state.turnBase;
-    state.generating = true;
+    if (!state.answerCompleted) state.generating = true;
     ensureStarted();
   } else if (
     eventType === 'execution.failed' ||
@@ -232,8 +242,9 @@ export function reduceDiagnosisStreamEvent(
   } else if (eventType === 'execution.completed') {
     refresh = true;
   } else if (eventType === 'report.ready') {
-    // Report persistence belongs to the evidence/report side panel. The
-    // assistant answer is complete only when assistant.completed arrives.
+    // report.ready is the durable terminal marker. If the completion event
+    // was lost or reordered, the composer must still leave the thinking state.
+    state.generating = false;
     refresh = true;
   }
 

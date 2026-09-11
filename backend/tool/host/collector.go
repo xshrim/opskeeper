@@ -215,6 +215,9 @@ func parseCPUTicks(raw string) map[string]cpuTicks {
 	out := map[string]cpuTicks{}
 	for _, line := range strings.Split(raw, "\n") {
 		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
 		if len(fields) < 5 || (fields[0] != "cpu" && !strings.HasPrefix(fields[0], "cpu")) {
 			if fields[0] == "ctxt" && len(fields) > 1 {
 				out["__ctxt"] = cpuTicks{ctx: parseUintField(fields[1])}
@@ -351,6 +354,13 @@ func parsePSI(raw string) PSIMetric {
 	return out
 }
 func processSummary(ctx context.Context, src source) ProcessSummary {
+	if optimized, ok := src.(interface {
+		ProcessSummary(context.Context) (ProcessSummary, error)
+	}); ok {
+		if summary, err := optimized.ProcessSummary(ctx); err == nil {
+			return summary
+		}
+	}
 	paths, err := src.ReadDir(ctx, "/proc")
 	if err != nil {
 		return ProcessSummary{}

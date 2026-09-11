@@ -121,12 +121,68 @@ export function createDiagnosisSessionController(
     return Boolean(latestMessage && latestMessage.id !== latestRun?.question_message_id);
   }
 
+  function hasUnconsumedExecution(snapshot: DiagnosisSnapshot | null) {
+    return Boolean(
+      snapshot?.events?.some(
+        (event) =>
+          event.id > eventCursor &&
+          (event.type === 'execution.started' || event.type === 'model.started')
+      )
+    );
+  }
+
+  function hasActiveLatestRun(snapshot: DiagnosisSnapshot | null) {
+    if (!snapshot) return false;
+    const latestQuestion = [...snapshot.messages]
+      .reverse()
+      .find((message) => message.role === 'user');
+    const latestRun = [...snapshot.runs].sort(
+      (left, right) => right.sequence - left.sequence
+    )[0];
+    return Boolean(
+      latestQuestion &&
+        latestRun?.status === 'running' &&
+        latestRun.question_message_id === latestQuestion.id
+    );
+  }
+
+  function terminalStatusFromEvents(snapshot: DiagnosisSnapshot | null) {
+    if (!snapshot) return '' as DiagnosisSession['status'] | '';
+    const latestExecutionStart = [...(snapshot.events ?? [])]
+      .filter((item) => item.type === 'execution.started')
+      .sort((left, right) => right.id - left.id)[0];
+    const event = [...(snapshot.events ?? [])]
+      .sort((left, right) => right.id - left.id)
+      .find((item) =>
+        ['report.ready', 'diagnosis.failed', 'diagnosis.cancelled'].includes(item.type)
+      );
+    // A terminal marker from an earlier run must not turn off the current
+    // answer while its newer execution is still producing events.
+    if (!event || (latestExecutionStart && event.id <= latestExecutionStart.id)) {
+      return '' as DiagnosisSession['status'] | '';
+    }
+    if (event.type === 'report.ready') return 'succeeded' as const;
+    if (event.type === 'diagnosis.failed') return 'failed' as const;
+    return 'cancelled' as const;
+  }
+
+  function applyTerminalStatus(snapshot: DiagnosisSnapshot | null) {
+    const status = terminalStatusFromEvents(snapshot);
+    if (!snapshot || !status || hasPendingQuestion(snapshot) || hasActiveLatestRun(snapshot)) {
+      return snapshot;
+    }
+    if (snapshot.session.status === status) return snapshot;
+    return { ...snapshot, session: { ...snapshot.session, status } };
+  }
+
   function handleEvent(sessionID: string, event: MessageEvent) {
     if (sessionID !== options.getSelectedDiagnosisId()) return;
     const eventID = Number(event.lastEventId) || 0;
-    eventCursor = eventID || eventCursor;
     if (eventID > 0 && handledEventIds.has(eventID)) return;
-    if (eventID > 0) handledEventIds.add(eventID);
+    if (eventID > 0) {
+      handledEventIds.add(eventID);
+      eventCursor = Math.max(eventCursor, eventID);
+    }
     let payload: Record<string, unknown> = {};
     try {
       payload = event.data ? JSON.parse(event.data) : {};
@@ -134,6 +190,10 @@ export function createDiagnosisSessionController(
       payload = {};
     }
     const eventType = event.type || 'message';
+    const terminal =
+      eventType === 'report.ready' ||
+      eventType === 'diagnosis.failed' ||
+      eventType === 'diagnosis.cancelled';
     const nextSnapshot = appendDiagnosisEvent(
       options.getSnapshot(),
       eventType,
@@ -142,6 +202,13 @@ export function createDiagnosisSessionController(
     );
     if (nextSnapshot && nextSnapshot !== options.getSnapshot()) {
       options.setSnapshot(nextSnapshot);
+    }
+    if (terminal) {
+      const terminalSnapshot = applyTerminalStatus(options.getSnapshot());
+      if (terminalSnapshot && terminalSnapshot !== options.getSnapshot()) {
+        options.setSnapshot(terminalSnapshot);
+        options.updateSession(terminalSnapshot.session);
+      }
     }
 
     const transition = reduceDiagnosisStreamEvent(
@@ -153,11 +220,22 @@ export function createDiagnosisSessionController(
     if (!transition.refresh) return;
 
     const refreshPromise = refresh(sessionID);
-    const terminal = eventType === 'report.ready' || eventType === 'diagnosis.failed' || eventType === 'diagnosis.cancelled';
     if (terminal) {
       void refreshPromise.finally(() => {
-        if (hasPendingQuestion(options.getSnapshot())) {
-          options.setStreamState({ ...options.getStreamState(), generating: true });
+        const snapshot = options.getSnapshot();
+        // The terminal event can belong to the previous run. Ask may already
+        // have queued a follow-up, or the orchestrator may have claimed it by
+        // the time refresh completes. Keep/reopen SSE in both cases.
+        if (
+          hasPendingQuestion(snapshot) ||
+          hasActiveLatestRun(snapshot) ||
+          hasUnconsumedExecution(snapshot)
+        ) {
+          options.setStreamState({
+            ...options.getStreamState(),
+            generating: true,
+            interruptedReason: ''
+          });
           // The current SSE connection closes on the terminal event. Reopen
           // after refresh so a queued follow-up can deliver its new run.
           open(sessionID);
@@ -212,6 +290,16 @@ export function createDiagnosisSessionController(
       // a session is initially opened).
       options.setSnapshot(merged.snapshot);
 
+      const durableTerminal = applyTerminalStatus(merged.snapshot);
+      if (durableTerminal && durableTerminal !== merged.snapshot) {
+        options.setSnapshot(durableTerminal);
+        merged.snapshot = {
+          ...merged.snapshot,
+          ...durableTerminal,
+          events: durableTerminal.events ?? merged.snapshot.events
+        };
+      }
+
       const state = options.getStreamState();
       // The page stores the baseline outside this controller. A persisted
       // answer is detected by the live answer state rather than resetting the
@@ -219,10 +307,22 @@ export function createDiagnosisSessionController(
       // A refresh can observe the durable session a little before the
       // orchestrator changes its status. Once assistant.completed was seen,
       // that stale `analyzing` status must not reopen the thinking indicator.
-      const nextGenerating = state.answerCompleted
-        ? false
-        : !state.interruptedReason &&
-          (state.generating || options.isDiagnosisRunning(merged.snapshot.session.status));
+      const pendingQuestion = hasPendingQuestion(merged.snapshot);
+      const activeLatestRun = hasActiveLatestRun(merged.snapshot);
+      const hasExecutionStart = (merged.snapshot.events ?? []).some(
+        (event) => event.type === 'execution.started'
+      );
+      const terminalSession =
+        !activeLatestRun &&
+        ['succeeded', 'failed', 'cancelled'].includes(merged.snapshot.session.status) &&
+        (!hasExecutionStart || Boolean(terminalStatusFromEvents(merged.snapshot)));
+      const activeGeneration =
+        !terminalSession &&
+        !state.answerCompleted &&
+        (options.isDiagnosisRunning(merged.snapshot.session.status) || state.generating);
+      const nextGenerating =
+        !state.interruptedReason &&
+        (pendingQuestion || hasUnconsumedExecution(merged.snapshot) || activeGeneration);
       options.setStreamState({ ...state, generating: nextGenerating });
       options.updateSession(merged.snapshot.session);
 
@@ -231,6 +331,10 @@ export function createDiagnosisSessionController(
         merged.snapshot.session.status === 'failed' ||
         merged.snapshot.session.status === 'cancelled'
       ) {
+        // A follow-up is stored before its queued run starts. Do not close the
+        // stream on the previous run's terminal snapshot while that question
+        // is still waiting to be claimed.
+        if (pendingQuestion || hasUnconsumedExecution(merged.snapshot)) return;
         close();
       }
     } catch (error) {

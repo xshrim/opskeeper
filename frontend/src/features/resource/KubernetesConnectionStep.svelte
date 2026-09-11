@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Eye, EyeOff } from 'lucide-svelte';
   import type { Resource } from '../../lib/api';
   import { dockerTLSValueValid } from './resourceWorkflow';
   import type { KubernetesConnectionMode } from './resourceWorkflow';
@@ -29,6 +30,7 @@
   let caFileInput: HTMLInputElement;
   let certFileInput: HTMLInputElement;
   let keyFileInput: HTMLInputElement;
+  let tokenVisible = false;
 
   function openFilePicker(input: HTMLInputElement) {
     input?.click();
@@ -87,7 +89,7 @@
       <div class="docker-agent-connection-row">
         <label class:invalid={configurationAttempted && !mcpServerResourceId}>
           <span><i>*</i>关联 MCPServer</span>
-          <select bind:value={mcpServerResourceId} on:change={selectMCPServer}>
+          <select bind:value={mcpServerResourceId} required on:change={selectMCPServer}>
             <option value="">请选择活动的 MCPServer</option>
             {#each mcpServers as server}
               <option value={server.id}>{server.name} · {endpoint(server)}</option>
@@ -124,7 +126,7 @@
         <div class="docker-tls-certificate-row kubernetes-kubeconfig-row">
           <label class:invalid={configurationAttempted && !kubeconfig.trim()}>
             <span class="docker-credential-label"><span><i>*</i>Kubeconfig</span><span class="docker-file-picker">{#if selectedFileNames.kubeconfig}<small>{selectedFileNames.kubeconfig}</small>{/if}<input class="docker-file-input" bind:this={kubeconfigFileInput} type="file" accept=".yaml,.yml,.conf,text/plain,application/yaml" aria-label="选择 kubeconfig 文件" on:change={(event) => void importCredentialFile(event, 'kubeconfig')} /><button class="docker-file-import" type="button" aria-label="导入 kubeconfig 文件" on:click|stopPropagation|preventDefault={() => openFilePicker(kubeconfigFileInput)}>导入</button></span></span>
-            <textarea bind:value={kubeconfig} on:input={onConfigurationChange} rows="6" placeholder="粘贴 kubeconfig 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
+            <textarea bind:value={kubeconfig} on:input={onConfigurationChange} rows="6" required placeholder="粘贴 kubeconfig 文本或 Base64 编码" autocomplete="off" spellcheck="false"></textarea>
             {#if fileErrors.kubeconfig}<small class="field-error">{fileErrors.kubeconfig}</small>{/if}
           </label>
         </div>
@@ -132,8 +134,8 @@
     </fieldset>
   {:else}
     <div class="docker-form-grid kubernetes-endpoint-fields">
-      <label class:invalid={configurationAttempted && !server.trim()} class="kubernetes-api-server-field"><span><i>*</i>API Server URL</span><input bind:value={server} on:input={onConfigurationChange} placeholder="https://kubernetes.example:6443" /></label>
-      <label><span>Token（可选）</span><input type="password" bind:value={token} on:input={onConfigurationChange} autocomplete="off" /></label>
+      <label class:invalid={configurationAttempted && !server.trim()} class="kubernetes-api-server-field"><span><i>*</i>API Server URL</span><input bind:value={server} on:input={onConfigurationChange} required placeholder="https://kubernetes.example:6443" /></label>
+      <label><span>Token（可选）</span><span class="resource-secret-control"><input type={tokenVisible ? 'text' : 'password'} bind:value={token} on:input={onConfigurationChange} autocomplete="off" /><button class="resource-secret-toggle" type="button" aria-label={tokenVisible ? '隐藏 Token' : '显示 Token'} aria-pressed={tokenVisible} data-tooltip={tokenVisible ? '隐藏 Token' : '显示 Token'} on:click={() => (tokenVisible = !tokenVisible)}>{#if tokenVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></label>
     </div>
     <fieldset class="docker-tls-fieldset">
       <legend>Endpoint TLS 凭据（可选）</legend>

@@ -142,6 +142,52 @@ func TestOrchestratorDefersEmptyCompletionUntilResultIsPersisted(t *testing.T) {
 	}
 }
 
+func TestOrchestratorUsesPersistedAssistantWhenResultOutputIsEmpty(t *testing.T) {
+	store := newRecordingStore()
+	store.targets = nil
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "事件中的回答"}}); err != nil {
+			return aiengine.Result{}, err
+		}
+		return aiengine.Result{}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if store.session.Status != StatusSucceeded || store.report.Conclusion != "事件中的回答" {
+		t.Fatalf("session/report=%#v/%#v, want success from persisted assistant", store.session, store.report)
+	}
+	if !store.hasEvent("report.ready") || store.hasEvent("diagnosis.failed") {
+		t.Fatalf("events=%#v, want report.ready without diagnosis.failed", store.events)
+	}
+}
+
+func TestOrchestratorFailsClearlyWhenNoAssistantOutputExists(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+		return aiengine.Result{}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if store.session.Status != StatusFailed || store.session.ErrorCode != "empty_output" {
+		t.Fatalf("session=%#v, want empty_output failure", store.session)
+	}
+	if !store.hasEvent("diagnosis.failed") {
+		t.Fatalf("events=%#v, want diagnosis.failed", store.events)
+	}
+}
+
+func TestOrchestratorUsesRunnerErrorMessageForFailure(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+		return aiengine.Result{Status: aiengine.StatusFailed, ErrorCode: "empty_output", ErrorMessage: "模型未返回可展示的最终回答，请重试。"}, errors.New("model returned an empty final response")
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if store.session.ErrorMessage != "模型未返回可展示的最终回答，请重试。" {
+		t.Fatalf("error message=%q, want runner-safe message", store.session.ErrorMessage)
+	}
+}
+
 func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing.T) {
 	store := newRecordingStore()
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {

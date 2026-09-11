@@ -62,7 +62,22 @@ export type DiagnosisCommandOptions = {
   prompt: (message: string, initialValue: string) => string | null;
   onError: (message: string) => void;
   resetStreamState: () => void;
+  setAssistantMessageBaseline: (count: number) => void;
 };
+
+export function diagnosisMessageIDsReplacedByEdit(
+  messages: DiagnosisMessage[],
+  originalID: string
+) {
+  const index = messages.findIndex((message) => message.id === originalID);
+  if (index < 0) return [];
+  const ids = [originalID];
+  for (const message of messages.slice(index + 1)) {
+    if (message.role === 'user') break;
+    if (message.role === 'assistant') ids.push(message.id);
+  }
+  return ids;
+}
 
 export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
   async function startDiagnosis(question: string) {
@@ -250,14 +265,24 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
         () => options.session.askDiagnosis(state.selectedSessionID, content)
       );
       const current = options.getState();
+      const replacedMessageIDs = diagnosisMessageIDsReplacedByEdit(
+        current.snapshot!.messages,
+        originalID
+      );
+      const visibleMessages = current.snapshot!.messages.filter(
+        (message) => !replacedMessageIDs.includes(message.id)
+      );
+      options.setAssistantMessageBaseline(
+        visibleMessages.filter((message) => message.role === 'assistant').length
+      );
       options.updateState({
-        hiddenMessageIDs: [...current.hiddenMessageIDs, originalID],
+        hiddenMessageIDs: [
+          ...new Set([...current.hiddenMessageIDs, ...replacedMessageIDs])
+        ],
         snapshot: {
           ...current.snapshot!,
           messages: [
-            ...current.snapshot!.messages.filter(
-              (message) => message.id !== originalID
-            ),
+            ...visibleMessages,
             created
           ]
         },

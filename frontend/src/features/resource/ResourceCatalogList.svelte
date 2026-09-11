@@ -79,7 +79,7 @@
           {#if resource.kind === 'AIProvider'}
             {@const models = providerModelsForResource(resource)}
             {@const currentModel = providerDefaultModelForResource(resource)}
-            <strong>LLM · Provider</strong><small>{String(currentModel?.name ?? '未设置')}{#if models.length > 1}<em class="provider-model-count">+{models.length - 1}</em>{/if}</small>
+            <strong>LLM · Provider</strong><small class="provider-model-summary"><span class="provider-model-name">{String(currentModel?.name ?? '未设置')}</span>{#if models.length > 1}<em class="provider-model-count">+{models.length - 1}</em>{/if}</small>
           {:else if resource.kind === 'MCPServer'}
             <strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>
           {:else}

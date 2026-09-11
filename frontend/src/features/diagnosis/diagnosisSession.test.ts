@@ -7,6 +7,7 @@ import {
   reduceDiagnosisStreamEvent,
   type DiagnosisStreamState
 } from './diagnosisSession';
+import { diagnosisMessageIDsReplacedByEdit } from './diagnosisCommands';
 import { diagnosisAssistantTimeline, diagnosisLiveTimeline } from './diagnosisTimelines';
 
 class FakeEventSource {
@@ -211,8 +212,15 @@ describe('diagnosis session event handling', () => {
       'report.ready',
       {}
     );
-    expect(reportWhileGenerating.state.generating).toBe(true);
+    expect(reportWhileGenerating.state.generating).toBe(false);
     expect(reportWhileGenerating.state.answerCompleted).toBe(false);
+
+    const completedPhase = reduceDiagnosisStreamEvent(
+      completed.state,
+      'phase.changed',
+      { phase: 'analyzing' }
+    );
+    expect(completedPhase.state.generating).toBe(false);
   });
 
   it('keeps user cancellation distinct from ordinary failures', () => {
@@ -225,6 +233,14 @@ describe('diagnosis session event handling', () => {
     expect(cancelled.state.answerCompleted).toBe(false);
     expect(cancelled.state.interruptedReason).toBe('回答被取消。');
     expect(cancelled.refresh).toBe(true);
+
+    const restarted = reduceDiagnosisStreamEvent(
+      cancelled.state,
+      'execution.started',
+      {}
+    );
+    expect(restarted.state.generating).toBe(true);
+    expect(restarted.state.interruptedReason).toBe('');
   });
 
   it('does not show the previous execution while a follow-up is queued', () => {
@@ -282,6 +298,47 @@ describe('diagnosis session event handling', () => {
       session: { ...current.session, status: 'succeeded' }
     }, 1);
     expect(currentAnswer.some((item) => item.actions?.some((action) => action.tool === 'new_tool'))).toBe(true);
+  });
+
+  it('replaces the edited question and its previous answer', () => {
+    const messages = [
+      { id: 'question-1', session_id: 'session-1', role: 'user', content: 'old', created_at: '' },
+      { id: 'answer-1', session_id: 'session-1', role: 'assistant', content: 'old answer', created_at: '' },
+      { id: 'question-2', session_id: 'session-1', role: 'user', content: 'later', created_at: '' },
+      { id: 'answer-2', session_id: 'session-1', role: 'assistant', content: 'later answer', created_at: '' }
+    ] as DiagnosisSnapshot['messages'];
+    expect(diagnosisMessageIDsReplacedByEdit(messages, 'question-2')).toEqual([
+      'question-2',
+      'answer-2'
+    ]);
+  });
+
+  it('binds a visible edited answer to its question-matching execution', () => {
+    const current = snapshot({
+      messages: [
+        { id: 'question-0', session_id: 'session-1', role: 'user', content: 'kept question', created_at: '2026-01-01T00:00:01Z' },
+        { id: 'answer-0', session_id: 'session-1', role: 'assistant', content: 'kept', created_at: '2026-01-01T00:00:02Z' },
+        { id: 'question-new', session_id: 'session-1', role: 'user', content: 'new', created_at: '2026-01-01T00:00:10Z' },
+        { id: 'answer-new', session_id: 'session-1', role: 'assistant', content: 'new answer', created_at: '2026-01-01T00:00:12Z' }
+      ],
+      runs: [
+        { id: 'run-0', session_id: 'session-1', sequence: 1, question_message_id: 'question-0', status: 'succeeded', started_at: '2026-01-01T00:00:00Z' },
+        { id: 'run-hidden', session_id: 'session-1', sequence: 2, question_message_id: 'question-hidden', status: 'succeeded', started_at: '2026-01-01T00:00:03Z' },
+        { id: 'run-new', session_id: 'session-1', sequence: 3, question_message_id: 'question-new', status: 'succeeded', started_at: '2026-01-01T00:00:11Z' }
+      ],
+      events: [
+        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:00Z' },
+        { id: 2, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'old_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:01Z' },
+        { id: 3, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:03Z' },
+        { id: 4, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'hidden_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:04Z' },
+        { id: 5, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:11Z' },
+        { id: 6, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'new_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:12Z' },
+        { id: 7, session_id: 'session-1', type: 'tool.completed', payload: { tool: 'new_tool', resource_id: 'r1', output: { ok: true } }, created_at: '2026-01-01T00:00:13Z' }
+      ]
+    });
+    const timeline = diagnosisAssistantTimeline(current, 1);
+    expect(timeline.some((item) => item.actions?.some((action) => action.tool === 'new_tool'))).toBe(true);
+    expect(timeline.some((item) => item.actions?.some((action) => action.tool === 'hidden_tool'))).toBe(false);
   });
 
 });

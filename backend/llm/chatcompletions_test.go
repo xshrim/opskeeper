@@ -78,6 +78,8 @@ func TestChatCompletionsModelStreaming(t *testing.T) {
 		writer.Header().Set("Content-Type", "text/event-stream")
 		flusher := writer.(http.Flusher)
 		for _, line := range []string{
+			`data:`,
+			`data: {"choices":[{"finish_reason":"","delta":{"content":""}}]}`,
 			`data: {"choices":[{"finish_reason":"","delta":{"content":"hel"}}]}`,
 			`data: {"choices":[{"finish_reason":"stop","delta":{"content":"lo"}}]}`,
 			`data: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}`,

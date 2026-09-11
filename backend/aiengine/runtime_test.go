@@ -119,6 +119,50 @@ func TestRuntimeEmitsFailedLifecycleEventForFailedResult(t *testing.T) {
 	}
 }
 
+func TestRuntimePreservesRunnerErrorCode(t *testing.T) {
+	runtime := New(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Status: StatusFailed, ErrorCode: "empty_output", ErrorMessage: "模型未返回可展示的最终回答，请重试。"}, errors.New("model returned an empty final response")
+	}})
+	result, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", Task: "inspect"})
+	if err == nil || result.Status != StatusFailed || result.ErrorCode != "empty_output" {
+		t.Fatalf("result=%+v err=%v, want runner error code preserved", result, err)
+	}
+}
+
+func TestRuntimePreservesRunnerErrorMessageInTerminalEvent(t *testing.T) {
+	var events []Event
+	runtime := New(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Status: StatusFailed, ErrorCode: "empty_output", ErrorMessage: "安全错误消息"}, errors.New("internal provider wording")
+	}})
+	result, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", Task: "inspect", EventSink: func(event Event) error {
+		events = append(events, event)
+		return nil
+	}})
+	if err == nil || result.ErrorMessage != "安全错误消息" {
+		t.Fatalf("result=%+v err=%v, want runner message preserved", result, err)
+	}
+	if len(events) != 2 || events[1].Payload["error"] != "安全错误消息" {
+		t.Fatalf("events=%+v, want safe terminal error message", events)
+	}
+}
+
+func TestRuntimeNormalizesSuccessfulStatusWhenRunnerReturnsError(t *testing.T) {
+	var events []Event
+	runtime := New(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Status: StatusSucceeded, ErrorCode: "provider", ErrorMessage: "provider failed"}, errors.New("provider failed")
+	}})
+	result, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", Task: "inspect", EventSink: func(event Event) error {
+		events = append(events, event)
+		return nil
+	}})
+	if err == nil || result.Status != StatusFailed || result.ErrorCode != "provider" {
+		t.Fatalf("result=%+v err=%v, want failed status with preserved code", result, err)
+	}
+	if len(events) != 2 || events[1].Type != "execution.failed" || events[1].Status != StatusFailed {
+		t.Fatalf("events=%+v, want failed terminal event", events)
+	}
+}
+
 func TestRuntimeStreamRejectsUnavailableRunner(t *testing.T) {
 	if _, err := New(nil).Stream(context.Background(), Request{ScopeID: "scope-1", Task: "inspect"}); !errors.Is(err, ErrRunnerUnavailable) {
 		t.Fatalf("expected ErrRunnerUnavailable, got %v", err)
