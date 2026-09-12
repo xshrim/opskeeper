@@ -13,8 +13,8 @@ Connector 返回的是固定的结构化诊断快照。确定性规则负责将�
 | Skill | 目标资源 | 固定只读能力 | 典型事实 |
 |---|---|---|---|
 | Kubernetes 工作负载诊断 | `Application`、`Kubernetes` | 允许列表内的 Kubernetes 对象读取 | 工作负载、Pod、事件、探针、资源限制、发布状态 |
-| PostgreSQL 健康诊断 | `PostgreSQL` | `postgresql_inspect` | 版本、活跃会话、长时活跃查询、等待锁、复制数量、数据库容量 |
-| Redis 健康诊断 | `Redis` | `redis_inspect` | 内存、客户端、复制、慢命令、拒绝连接；热 Key 安全降级 |
+| PostgreSQL 健康诊断 | `PostgreSQL` | `postgresql_*` 固定工具 | 健康、会话、表、性能、VACUUM、扩展和数据库信息 |
+| Redis 健康诊断 | `Redis` | `redis_health`、`redis_memory`、`redis_clients`、`redis_replication`、`redis_slowlog`、`redis_database_info` | 健康、内存、客户端、复制、慢命令和数据库信息；不扫描全量 Key |
 | Kafka 健康诊断 | `Kafka` | `kafka_inspect` | Broker、Topic、分区、ISR、离线副本、消费组成员与累计积压 |
 
 迁移在默认平台安装内置 Skill，并以已发布 v2 作为当前版本；为保证版本内容不可变，初始 v1 会保留为已禁用的历史版本。管理员可将已发布版本设为 Scope 默认；运行时仍必须验证目标资源类型、Scope 和资源权限。

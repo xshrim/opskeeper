@@ -9,6 +9,7 @@ type ResourceShape = {
 
 export const endpointResourceKinds = [
   'Kubernetes',
+  'Nacos',
   'Prometheus',
   'Loki',
   'PostgreSQL',
@@ -30,6 +31,7 @@ export function resourceHasConnector(resource: Resource) {
     'Host',
     'Docker',
     'Kubernetes',
+    'Nacos',
     'Prometheus',
     'Loki',
     'PostgreSQL',
@@ -64,6 +66,7 @@ export function brandNameFor(resource: ResourceShape) {
     mysql: 'MySQL',
     docker: 'Docker',
     kubernetes: 'Kubernetes',
+    nacos: 'Nacos',
     kubernetescluster: 'Kubernetes',
     k8s: 'Kubernetes',
     git: 'Git',

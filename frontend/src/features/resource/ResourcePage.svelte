@@ -19,6 +19,10 @@
   import HostReviewStep from './HostReviewStep.svelte';
   import PostgreSQLConnectionStep from './PostgreSQLConnectionStep.svelte';
   import PostgreSQLReviewStep from './PostgreSQLReviewStep.svelte';
+  import RedisConnectionStep from './RedisConnectionStep.svelte';
+  import RedisReviewStep from './RedisReviewStep.svelte';
+  import NacosConnectionStep from './NacosConnectionStep.svelte';
+  import NacosReviewStep from './NacosReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ApplicationConnectionStep from './ApplicationConnectionStep.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
@@ -46,6 +50,8 @@
     testDraftAIProviderConnection,
     testDraftMCPConnection,
     testDraftPostgreSQL,
+    testDraftRedis,
+    testDraftNacos,
     loadMCPSnapshots as loadMCPSnapshotsAction,
     loadResourceCredentialSecret,
     syncAIProviderBindings,
@@ -335,6 +341,9 @@
   let postgresqlConfigurationAttempted = false;
   let postgresqlDraftTest: any = null;
   let editingPostgreSQLResourceId = '';
+  let redisAccessMode: 'direct' | 'agent' = 'direct';
+  let redisHost = ''; let redisPort = 6379; let redisDatabase = 0; let redisUsername = ''; let redisPassword = ''; let redisTimeoutSeconds = 10; let redisMCPServerResourceId = ''; let redisConfigurationAttempted = false; let redisDraftTest: any = null; let editingRedisResourceId = '';
+  let nacosAccessMode: 'direct' | 'agent' = 'direct'; let nacosHost=''; let nacosPort=8848; let nacosScheme='http'; let nacosContextPath='/nacos'; let nacosUsername=''; let nacosPassword=''; let nacosAccessToken=''; let nacosTimeoutSeconds=10; let nacosMCPServerResourceId=''; let nacosConfigurationAttempted=false; let nacosDraftTest:any=null; let editingNacosResourceId='';
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
   let selectedSchema: ResourceSchema | null = null;
@@ -383,6 +392,8 @@
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
       (resourceKind === 'Host' && resourceAddStep === 3) ||
       (resourceKind === 'PostgreSQL' && resourceAddStep === 3)
+      || (resourceKind === 'Redis' && resourceAddStep === 3)
+      || (resourceKind === 'Nacos' && resourceAddStep === 3)
     )
   )
     autoSummaryTestKey = '';
@@ -393,7 +404,9 @@
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
       (resourceKind === 'Host' && resourceAddStep === 3) ||
-      (resourceKind === 'PostgreSQL' && resourceAddStep === 3))
+      (resourceKind === 'PostgreSQL' && resourceAddStep === 3) ||
+      (resourceKind === 'Redis' && resourceAddStep === 3) ||
+      (resourceKind === 'Nacos' && resourceAddStep === 3))
   ) {
     const key = `${resourceKind}:${resourceAddStep}:${
       resourceKind === 'MCPServer'
@@ -406,7 +419,7 @@
               ? JSON.stringify(kubernetesDraft())
               : resourceKind === 'Host'
                 ? JSON.stringify(hostDraft())
-                : JSON.stringify(postgresqlDraft())
+                : resourceKind === 'PostgreSQL' ? JSON.stringify(postgresqlDraft()) : resourceKind === 'Redis' ? JSON.stringify(redisDraft()) : JSON.stringify(nacosDraft())
     }`;
     if (autoSummaryTestKey !== key) {
       autoSummaryTestKey = key;
@@ -420,7 +433,7 @@
           ? testKubernetesDraftConnection()
           : resourceKind === 'Host'
             ? testHostDraftConnection()
-            : testPostgreSQLDraftConnection());
+            : resourceKind === 'PostgreSQL' ? testPostgreSQLDraftConnection() : resourceKind === 'Redis' ? testRedisDraftConnection() : testNacosDraftConnection());
     }
   }
 
@@ -844,6 +857,7 @@
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
     editingHostResourceId = '';
+    editingRedisResourceId = '';
     editingHostResourceId = '';
     syncProviderEditor(resource);
     providerPurposeTags = aiProviderBindings
@@ -929,7 +943,9 @@
   }
 
   function openResourceEditor(resource: Resource) {
+    if (resource.kind === 'Nacos') { openNacosWorkflowForEdit(resource); return; }
     if (resource.kind === 'PostgreSQL') { openPostgreSQLWorkflowForEdit(resource); return; }
+    if (resource.kind === 'Redis') { openRedisWorkflowForEdit(resource); return; }
     if (resource.kind === 'AIProvider') {
       openProviderWorkflowForEdit(resource);
       return;
@@ -1224,6 +1240,8 @@
       resetKubernetesDraft();
     resetHostDraft();
       resetPostgreSQLDraft();
+      resetRedisDraft();
+      resetNacosDraft();
       applicationAccessMode = 'virtual_machine';
       applicationTeamId = '';
       applicationProjectId = '';
@@ -1398,6 +1416,8 @@
     editingHostResourceId = '';
   }
   function resetPostgreSQLDraft() { postgresqlAccessMode='direct'; postgresqlHost=''; postgresqlPort=5432; postgresqlDatabase=''; postgresqlUsername=''; postgresqlPassword=''; postgresqlTimeoutSeconds=10; postgresqlMCPServerResourceId=''; postgresqlConfigurationAttempted=false; postgresqlDraftTest=null; editingPostgreSQLResourceId=''; }
+  function resetRedisDraft() { redisAccessMode='direct'; redisHost=''; redisPort=6379; redisDatabase=0; redisUsername=''; redisPassword=''; redisTimeoutSeconds=10; redisMCPServerResourceId=''; redisConfigurationAttempted=false; redisDraftTest=null; editingRedisResourceId=''; }
+  function resetNacosDraft() { nacosAccessMode='direct'; nacosHost=''; nacosPort=8848; nacosScheme='http'; nacosContextPath='/nacos'; nacosUsername=''; nacosPassword=''; nacosAccessToken=''; nacosTimeoutSeconds=10; nacosMCPServerResourceId=''; nacosConfigurationAttempted=false; nacosDraftTest=null; editingNacosResourceId=''; }
 
   function resetProviderDraft() {
     providerType = 'openai_compatible';
@@ -2039,8 +2059,18 @@
     postgresqlDraftTest = { busy: true }; if (postgresqlAccessMode === 'agent') { postgresqlDraftTest = { status: 'succeeded', message: '由 MCPServer 提供连接', latency: 0 }; return; }
     try { const result = await testDraftPostgreSQL({ host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), username: postgresqlUsername.trim(), password: postgresqlPassword, timeout_seconds: Number(postgresqlTimeoutSeconds) }); postgresqlDraftTest = { status: result.status, message: result.message, latency: result.latency_ms, error: result.status === 'succeeded' ? '' : result.message }; } catch (error) { postgresqlDraftTest = { error: describeError(error, 'PostgreSQL 连接测试失败') }; }
   }
+  function redisDraft() { return { accessMode: redisAccessMode, host: redisHost, port: redisPort, database: redisDatabase, username: redisUsername, password: redisPassword, timeoutSeconds: redisTimeoutSeconds, mcpServerResourceId: redisMCPServerResourceId }; }
+  function resetRedisDraftTest() { redisDraftTest=null; }
+  function redisConfigurationComplete() { return redisAccessMode === 'agent' ? Boolean(redisMCPServerResourceId) : Boolean(redisHost.trim()); }
+  async function testRedisDraftConnection() { redisDraftTest={busy:true}; if(redisAccessMode==='agent'){redisDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try { const result=await testDraftRedis({host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),username:redisUsername.trim(),password:redisPassword,timeout_seconds:Number(redisTimeoutSeconds)}); redisDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } catch(error){redisDraftTest={error:describeError(error,'Redis 连接测试失败')};} }
+  function nacosDraft() { return { accessMode:nacosAccessMode,host:nacosHost,port:nacosPort,scheme:nacosScheme,contextPath:nacosContextPath,username:nacosUsername,password:nacosPassword,accessToken:nacosAccessToken,timeoutSeconds:nacosTimeoutSeconds,mcpServerResourceId:nacosMCPServerResourceId }; }
+  function nacosConfigurationComplete() { return nacosAccessMode==='agent' ? Boolean(nacosMCPServerResourceId) : Boolean(nacosHost.trim()); }
+  function resetNacosDraftTest() { nacosDraftTest=null; }
+  async function testNacosDraftConnection() { nacosDraftTest={busy:true}; if(nacosAccessMode==='agent'){nacosDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftNacos({host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,username:nacosUsername,password:nacosPassword,access_token:nacosAccessToken,timeout_seconds:Number(nacosTimeoutSeconds)});nacosDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){nacosDraftTest={error:describeError(error,'Nacos 连接测试失败')};}}
   function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceStatus = resource.status; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
   function openPostgreSQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId = resource.scope_id; selectedResourceId = resource.id; resourceKind='PostgreSQL'; resourceAddCategory='PostgreSQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingPostgreSQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; syncPostgreSQLEditor(resource); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if (resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then((value) => { if (editingPostgreSQLResourceId !== resource.id) return; try { const secret = JSON.parse(value.secret) as Record<string, unknown>; postgresqlUsername = String(secret.username ?? ''); postgresqlPassword = String(secret.password ?? ''); } catch { postgresqlUsername = ''; postgresqlPassword = ''; } }); }
+  function openRedisWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Redis'; resourceAddCategory='Redis'; resourceAddSubtype=resourceSubtypeFor(resource); editingRedisResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; redisAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; redisHost=String(resource.config?.host??''); redisPort=Number(resource.config?.port??6379); redisDatabase=Number(resource.config?.database??0); redisUsername=''; redisPassword=''; redisMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingRedisResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;redisUsername=String(s.username??'');redisPassword=String(s.password??'')}catch{redisUsername='';redisPassword=''}}); }
+  function openNacosWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id);selectedScopeId=resource.scope_id;selectedResourceId=resource.id;resourceKind='Nacos';resourceAddCategory='Nacos';resourceAddSubtype=resourceSubtypeFor(resource);editingNacosResourceId=resource.id;editingResourceId='';editingDockerResourceId='';editingKubernetesResourceId='';editingHostResourceId='';nacosAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct';nacosHost=String(resource.config?.host??'');nacosPort=Number(resource.config?.port??8848);nacosScheme=String(resource.config?.scheme??'http');nacosContextPath=String(resource.config?.context_path??'/nacos');nacosMCPServerResourceId=resource.agent_ref??'';resourceAddStep=1;resourceAddMenuOpen=true;resourceEditorOpen=false;if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingNacosResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;nacosUsername=String(s.username??'');nacosPassword=String(s.password??'');nacosAccessToken=String(s.access_token??'')}catch{nacosUsername='';nacosPassword='';nacosAccessToken=''}}); }
   function hostConfigurationIssues() {
     const issues: string[] = [];
     if (hostCredentialLoading) issues.push('正在读取 Host 凭据');
@@ -2399,6 +2429,8 @@
       editingKubernetesResourceId ||
       editingHostResourceId
       || editingPostgreSQLResourceId
+      || editingRedisResourceId
+      || editingNacosResourceId
     );
     if (!editingWorkflow)
       chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
@@ -2427,6 +2459,8 @@
     autoSummaryTestKey = '';
     resourceAddStep = 3;
   }
+  function continueRedisAdd() { redisConfigurationAttempted=true; if(!redisConfigurationComplete()) return; redisConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
+  function continueNacosAdd() { nacosConfigurationAttempted=true; if(!nacosConfigurationComplete()) return; nacosConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
 
   async function updateSelectedResource() {
     if (!selectedResource) return;
@@ -2493,6 +2527,8 @@
       await runResourceAction(savePostgreSQLWorkflow);
       return;
     }
+    if (resourceKind === 'Redis') { await runResourceAction(saveRedisWorkflow); return; }
+    if (resourceKind === 'Nacos') { await runResourceAction(saveNacosWorkflow); return; }
     if (resourceKind === 'Application') {
       await createApplicationFromWorkflow();
       return;
@@ -3026,6 +3062,20 @@
     else { const updated = await updateResourceRecord(existing.id, body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`PostgreSQL 资源“${updated.name}”已更新`); }
     resourceAddMenuOpen=false; editingPostgreSQLResourceId=''; resourceAddStep=1;
   }
+  async function saveRedisWorkflow() {
+    if (!redisConfigurationComplete()) { redisConfigurationAttempted=true; throw new Error('请检查 Redis 配置。'); }
+    const existing=resources.find(r=>r.id===editingRedisResourceId); let credentialId:string|null=existing?.credential_id??null;
+    if(redisAccessMode==='direct'&&redisPassword.trim()){const secret=JSON.stringify({username:redisUsername.trim(),password:redisPassword}); if(existing?.credential_id) await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Redis'} 凭据`,purpose:'Redis 数据库凭据',secret}); else {const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Redis'} 凭据`,purpose:'Redis 数据库凭据',secret});credentialId=c.id;}}
+    if(redisAccessMode==='agent')credentialId=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:redisAccessMode==='agent'?'Agent':'Direct',agent_ref:redisAccessMode==='agent'?redisMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:redisAccessMode==='agent'?{}:{host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),timeout_seconds:Number(redisTimeoutSeconds)}};
+    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Redis',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Redis 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Redis 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRedisResourceId='';resourceAddStep=1;
+  }
+  async function saveNacosWorkflow() {
+    if (!nacosConfigurationComplete()) { nacosConfigurationAttempted=true; throw new Error('请检查 Nacos 配置。'); }
+    const existing=resources.find(r=>r.id===editingNacosResourceId); let credentialId:string|null=existing?.credential_id??null;
+    if(nacosAccessMode==='direct'&&(nacosUsername.trim()||nacosPassword||nacosAccessToken)){const secret=JSON.stringify({username:nacosUsername.trim(),password:nacosPassword,access_token:nacosAccessToken});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Nacos'} 凭据`,purpose:'Nacos API 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Nacos'} 凭据`,purpose:'Nacos API 凭据',secret});credentialId=c.id;}}
+    if(nacosAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:nacosAccessMode==='agent'?'Agent':'Direct',agent_ref:nacosAccessMode==='agent'?nacosMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:nacosAccessMode==='agent'?{}:{host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,timeout_seconds:Number(nacosTimeoutSeconds)}};
+    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Nacos',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Nacos 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Nacos 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingNacosResourceId='';resourceAddStep=1;
+  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {
@@ -3372,12 +3422,16 @@
         editingKubernetes={Boolean(editingKubernetesResourceId)}
         editingHost={Boolean(editingHostResourceId)}
         editingPostgreSQL={Boolean(editingPostgreSQLResourceId)}
+        editingRedis={Boolean(editingRedisResourceId)}
+        editingNacos={Boolean(editingNacosResourceId)}
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
         dockerConfigurationComplete={dockerConfigurationComplete()}
         kubernetesConfigurationComplete={kubernetesConfigurationComplete()}
         hostConfigurationComplete={hostConfigurationComplete()}
         postgresqlConfigurationComplete={postgresqlConfigurationComplete()}
+        redisConfigurationComplete={redisConfigurationComplete()}
+        nacosConfigurationComplete={nacosConfigurationComplete()}
         applicationConfigurationComplete={applicationConfigurationComplete()}
         providerModelCount={providerModels.length}
         {busy}
@@ -3408,6 +3462,8 @@
         onContinueKubernetes={continueKubernetesAdd}
         onContinueHost={continueHostAdd}
         onContinuePostgreSQL={() => { postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } }}
+        onContinueRedis={continueRedisAdd}
+        onContinueNacos={continueNacosAdd}
         onSubmitMcp={() =>
           void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
         onSubmitDocker={() =>
@@ -3423,6 +3479,8 @@
             ? updateHostFromWorkflow()
             : createHostFromWorkflow())}
         onSubmitPostgreSQL={() => void runResourceAction(savePostgreSQLWorkflow)}
+        onSubmitRedis={() => void runResourceAction(saveRedisWorkflow)}
+        onSubmitNacos={() => void runResourceAction(saveNacosWorkflow)}
         onSubmitApplication={() => void (editingResourceId ? updateApplicationFromWorkflow() : createApplicationFromWorkflow())}
       >
         {#if resourceAddStep === 1}
@@ -3443,6 +3501,8 @@
               editingKubernetesResourceId ||
               editingHostResourceId ||
               editingPostgreSQLResourceId
+              || editingRedisResourceId
+              || editingNacosResourceId
             )}
             scopeSummary={activeScopeSummary()}
             onSelectCategory={selectResourceAddCategory}
@@ -3458,6 +3518,8 @@
                   subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
               if (resourceKind === 'PostgreSQL')
                 postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+              if (resourceKind === 'Redis') redisAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+              if (resourceKind === 'Nacos') nacosAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
             }}
           />
         {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
@@ -3705,6 +3767,14 @@
           <PostgreSQLConnectionStep accessMode={postgresqlAccessMode} bind:host={postgresqlHost} bind:port={postgresqlPort} bind:database={postgresqlDatabase} bind:username={postgresqlUsername} bind:password={postgresqlPassword} bind:timeoutSeconds={postgresqlTimeoutSeconds} bind:mcpServerResourceId={postgresqlMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={postgresqlConfigurationAttempted} onConfigurationChange={resetPostgreSQLDraftTest} />
         {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 3}
           <PostgreSQLReviewStep resourceName={resourceName} accessMode={postgresqlAccessMode} host={postgresqlHost} database={postgresqlDatabase} mcpServerName={resources.find((r) => r.id === postgresqlMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(postgresqlUsername.trim() && postgresqlPassword)} testBusy={Boolean(postgresqlDraftTest?.busy)} testStatus={postgresqlDraftTest?.status ?? ''} testMessage={postgresqlDraftTest?.message ?? ''} testError={postgresqlDraftTest?.error ?? ''} testLatency={postgresqlDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(savePostgreSQLWorkflow)} />
+        {:else if resourceKind === 'Redis' && resourceAddStep === 2}
+          <RedisConnectionStep accessMode={redisAccessMode} bind:host={redisHost} bind:port={redisPort} bind:database={redisDatabase} bind:username={redisUsername} bind:password={redisPassword} bind:timeoutSeconds={redisTimeoutSeconds} bind:mcpServerResourceId={redisMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={redisConfigurationAttempted} onConfigurationChange={resetRedisDraftTest} />
+        {:else if resourceKind === 'Redis' && resourceAddStep === 3}
+          <RedisReviewStep resourceName={resourceName} accessMode={redisAccessMode} host={redisHost} database={redisDatabase} mcpServerName={resources.find((r) => r.id === redisMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(redisUsername.trim() && redisPassword.trim())} testBusy={Boolean(redisDraftTest?.busy)} testStatus={redisDraftTest?.status ?? ''} testMessage={redisDraftTest?.message ?? ''} testError={redisDraftTest?.error ?? ''} testLatency={redisDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(saveRedisWorkflow)} />
+        {:else if resourceKind === 'Nacos' && resourceAddStep === 2}
+          <NacosConnectionStep accessMode={nacosAccessMode} bind:host={nacosHost} bind:port={nacosPort} bind:scheme={nacosScheme} bind:contextPath={nacosContextPath} bind:username={nacosUsername} bind:password={nacosPassword} bind:accessToken={nacosAccessToken} bind:timeoutSeconds={nacosTimeoutSeconds} bind:mcpServerResourceId={nacosMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={nacosConfigurationAttempted} onConfigurationChange={resetNacosDraftTest} />
+        {:else if resourceKind === 'Nacos' && resourceAddStep === 3}
+          <NacosReviewStep resourceName={resourceName} accessMode={nacosAccessMode} host={nacosHost} port={nacosPort} mcpServerName={resources.find((r) => r.id === nacosMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(nacosUsername.trim() || nacosPassword || nacosAccessToken)} testBusy={Boolean(nacosDraftTest?.busy)} testStatus={nacosDraftTest?.status ?? ''} testMessage={nacosDraftTest?.message ?? ''} testError={nacosDraftTest?.error ?? ''} testLatency={nacosDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(saveNacosWorkflow)} />
         {:else if resourceKind === 'Application' && resourceAddStep === 2}
           <ApplicationConnectionStep
             bind:accessMode={applicationAccessMode}

@@ -42,12 +42,13 @@
 | T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 已完成 |
 | T06 | Application 资源接入 | P0 | T01-T05 | 项目归属、虚拟机/容器化/云原生实例关联、日志读取和唯一性验证 | 已完成 |
 | T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | 12 个固定只读 PostgreSQL 工具共用 Direct/MCP 实现及专用管理界面 | 已完成 |
-| T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 待批准 |
-| T09 | AIEngine 与证据链收敛 | P0 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
-| T10 | Kafka、Prometheus、Loki 迁移 | P1 | T01-T02、T09 | 中间件和可观测工具集按同一机制接入 | 待批准 |
-| T11 | 其他数据库和中间件迁移 | P2 | T10 | RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS | 待批准 |
-| T12 | 管理界面与接入校验 | P1 | T02-T09 | Direct/Agent 配置、MCPServer 关联、连接测试和错误展示 | 待批准 |
-| T13 | 删除旧路径与全量验收 | P0 | T03-T12 | 删除重复实现、完成迁移、测试和文档验收 | 待批准 |
+| T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 已完成 |
+| T09 | Nacos 工具集统一 | P0 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
+| T10 | AIEngine 与证据链收敛 | P0 | T03-T09 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
+| T11 | Kafka、Prometheus、Loki 迁移 | P1 | T01-T02、T10 | 中间件和可观测工具集按同一机制接入 | 待批准 |
+| T12 | 其他数据库和中间件迁移 | P2 | T11 | RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS | 待批准 |
+| T13 | 管理界面与接入校验 | P1 | T02-T10 | Direct/Agent 配置、MCPServer 关联、连接测试和错误展示 | 待批准 |
+| T14 | 删除旧路径与全量验收 | P0 | T03-T13 | 删除重复实现、完成迁移、测试和文档验收 | 待批准 |
 
 ## 5. 进入条件
 

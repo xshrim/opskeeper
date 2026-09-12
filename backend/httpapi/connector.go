@@ -27,7 +27,15 @@ type kubernetesDraftConnectorService interface {
 type hostDraftConnectorService interface {
 	TestHostDraft(context.Context, connector.HostDraftInput) (connector.HostDraftCheck, error)
 }
-type postgresqlDraftConnectorService interface { TestPostgreSQLDraft(context.Context, connector.PostgreSQLDraftInput) (connector.PostgreSQLDraftCheck, error) }
+type postgresqlDraftConnectorService interface {
+	TestPostgreSQLDraft(context.Context, connector.PostgreSQLDraftInput) (connector.PostgreSQLDraftCheck, error)
+}
+type redisDraftConnectorService interface {
+	TestRedisDraft(context.Context, connector.RedisDraftInput) (connector.RedisDraftCheck, error)
+}
+type nacosDraftConnectorService interface {
+	TestNacosDraft(context.Context, connector.NacosDraftInput) (connector.NacosDraftCheck, error)
+}
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
 	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
@@ -97,7 +105,44 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 	}
 	if draft, ok := service.(postgresqlDraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/postgresql/connection-tests", func(w http.ResponseWriter, r *http.Request) {
-			var body connector.PostgreSQLDraftInput; if !decodeRequest(w,r,&body){return}; check,err:=draft.TestPostgreSQLDraft(r.Context(),body); if err!=nil{writeConnectorError(w,r,err);return}; writeJSON(w,http.StatusOK,check)
+			var body connector.PostgreSQLDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestPostgreSQLDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(redisDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/redis/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.RedisDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestRedisDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(nacosDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/nacos/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.NacosDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestNacosDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
 		})
 	}
 	if discovery, ok := service.(applicationDiscoveryService); ok {

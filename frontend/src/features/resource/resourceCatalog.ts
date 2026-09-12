@@ -32,19 +32,22 @@ export const resourceCategoryOptions: Record<string, string[]> = {
   Host: ['Direct', 'Agent'],
   Docker: ['Direct', 'Agent'],
   Kubernetes: ['Direct', 'Agent'],
+  Nacos: ['Direct', 'Agent'],
+  Nginx: ['Direct', 'Agent'],
+  TongHttpServer: ['Direct', 'Agent'],
+  PostgreSQL: ['Direct', 'Agent'],
+  Oracle: ['Direct', 'Agent'],
+  MySQL: ['Direct', 'Agent'],
+  OceanBase: ['Direct', 'Agent'],
   Redis: ['Direct', 'Agent'],
   TongRDS: ['Direct', 'Agent'],
   Kafka: ['Direct', 'Agent'],
   RabbitMQ: ['Direct', 'Agent'],
-  Elasticsearch: ['Direct', 'Agent'],
-  OceanBase: ['Direct', 'Agent'],
-  Oracle: ['Direct', 'Agent'],
-  MySQL: ['Direct', 'Agent'],
-  PostgreSQL: ['Direct', 'Agent'],
+  ElasticSearch: ['Direct', 'Agent'],
+  LLM: ['Provider'],
   MCPServer: ['StreamHTTP', 'SSE'],
   Skill: ['诊断', '监控', '优化', '维护'],
-  LLM: ['Provider'],
-  监控: ['指标', '日志', '链路', '告警']
+  Monitor: ['指标', '日志', '链路', '告警']
 };
 
 type ResourceShape = {
@@ -76,9 +79,17 @@ export function resourceCategoryFor(resource: ResourceShape) {
     return resource.kind;
   if (
     [
+      'Nacos',
+      'Nginx',
+      'TongHttpServer',
+      'PostgreSQL',
+      'Oracle',
+      'MySQL',
+      'OceanBase',
       'Redis',
       'Kafka',
       'Elasticsearch',
+      'ElasticSearch',
       'RabbitMQ',
       'TongRDS',
       'OceanBase',
@@ -90,7 +101,7 @@ export function resourceCategoryFor(resource: ResourceShape) {
       'Skill'
     ].includes(resource.kind)
   )
-    return resource.kind;
+    return resource.kind === 'Elasticsearch' ? 'ElasticSearch' : resource.kind;
   if (
     [
       'Prometheus',
@@ -102,7 +113,7 @@ export function resourceCategoryFor(resource: ResourceShape) {
       'Alertmanager'
     ].includes(resource.kind)
   )
-    return '监控';
+    return 'Monitor';
   return resource.kind;
 }
 
@@ -111,6 +122,10 @@ export function resourceSubtypeFor(resource: ResourceShape) {
     Application: '虚拟机',
     Artifact: 'Generic',
     Kubernetes: 'Direct',
+    Nacos: 'Direct',
+    Nginx: 'Direct',
+    TongHttpServer: 'Direct',
+    ElasticSearch: 'Direct',
     Host: 'Direct',
     Docker: 'Direct',
     Redis: 'Direct',
@@ -141,11 +156,15 @@ export function resourceSubtypeFor(resource: ResourceShape) {
       'Host',
       'Docker',
       'Kubernetes',
+      'Nacos',
+      'Nginx',
+      'TongHttpServer',
       'Redis',
       'TongRDS',
       'Kafka',
       'RabbitMQ',
       'Elasticsearch',
+      'ElasticSearch',
       'OceanBase',
       'Oracle',
       'MySQL',
@@ -188,7 +207,7 @@ export function resourceCategoryIcon(category: string) {
     MCPServer: '⌁',
     Skill: '✧',
     LLM: '✦',
-    监控: '◌'
+    Monitor: '◌'
   };
   return icons[category] ?? '◇';
 }
@@ -219,6 +238,21 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const port = Number(resource.config?.port ?? 5432);
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 PostgreSQL 地址';
+  }
+  if (resource.kind === 'Redis') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    const port = Number(resource.config?.port ?? 6379);
+    const database = Number(resource.config?.database ?? 0);
+    return host ? `${host}:${port}/db${database}` : '未设置 Redis 地址';
+  }
+  if (resource.kind === 'Nacos') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    const scheme = String(resource.config?.scheme ?? 'http');
+    const port = Number(resource.config?.port ?? 8848);
+    const path = String(resource.config?.context_path ?? '/nacos').replace(/\/$/, '');
+    return host ? `${scheme}://${host}:${port}${path}` : '未设置 Nacos 地址';
   }
   if (resource.kind === 'Host') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent')

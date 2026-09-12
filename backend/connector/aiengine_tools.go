@@ -20,7 +20,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Application", "Host", "Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
+	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
 }
 
 func (connectorContextProvider) AccessModes() []string {
@@ -83,21 +83,21 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 			return nil, nil, err
 		}
 	case "Redis":
-		add("connector.inspect_redis", "Collect a read-only Redis diagnostic snapshot.", emptySchema, func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
-			return evidenceResult(p.service.InspectRedis(runCtx, resource.ID))
-		})
+		if err := p.service.resolveRedisTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
+	case "Nacos":
+		if err := p.service.resolveNacosTools(ctx, resource, add); err != nil { return nil, nil, err }
 	case "Kafka":
 		add("connector.inspect_kafka", "Collect a read-only Kafka diagnostic snapshot.", emptySchema, func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
 			return evidenceResult(p.service.InspectKafka(runCtx, resource.ID))
 		})
 	}
 	facts := make([]aiengine.ContextFact, 0, 1)
-	if resource.Kind == "Redis" || resource.Kind == "Kafka" {
+	if resource.Kind == "Kafka" {
 		var result aiengine.ToolResult
 		var collectErr error
 		switch resource.Kind {
-		case "Redis":
-			result, collectErr = evidenceResult(p.service.InspectRedis(ctx, resource.ID))
 		case "Kafka":
 			result, collectErr = evidenceResult(p.service.InspectKafka(ctx, resource.ID))
 		}

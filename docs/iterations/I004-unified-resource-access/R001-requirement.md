@@ -59,12 +59,13 @@
 | T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct/Agent 适配器 | 已完成 |
 | T06 | Application 资源接入 | T01-T05 | 项目归属、三种接入方式、实例唯一性、受控日志工具和管理界面 | 已完成 |
 | T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器、专用管理界面 | 已完成 |
-| T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
-| T09 | AIEngine 与证据链收敛 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
-| T10 | Kafka、Prometheus、Loki 迁移 | T01-T02、T09 | P1 工具集接入和一致性测试 | 待批准 |
-| T11 | 其他数据库和中间件迁移 | T10 | P2 工具集接入 | 待批准 |
-| T12 | 管理界面与接入校验 | T02-T09 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
-| T13 | 删除旧路径与全量验收 | T03-T12 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
+| T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 已完成 |
+| T09 | Nacos 工具集统一 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
+| T10 | AIEngine 与证据链收敛 | T03-T09 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
+| T11 | Kafka、Prometheus、Loki 迁移 | T01-T02、T10 | P1 工具集接入和一致性测试 | 待批准 |
+| T12 | 其他数据库和中间件迁移 | T11 | P2 工具集接入 | 待批准 |
+| T13 | 管理界面与接入校验 | T02-T10 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
+| T14 | 删除旧路径与全量验收 | T03-T13 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
 
 ## 6. 任务说明
 
@@ -251,7 +252,7 @@ Kubernetes workload 可能对应多个 Pod 或短生命周期 Job。工具限制
 
 #### 实施范围
 
-- 连接、内存、客户端、复制、慢日志和健康诊断工具；
+- 连接、健康、内存、客户端、复制、慢日志和数据库信息工具，共 6 项固定只读工具；
 - 保持当前不采样全量 Key、不执行任意 Redis 命令的安全边界；
 - Direct 使用资源 config 与 credential；Agent 使用关联 MCPServer；
 - 对不可用的 hot key 等能力返回明确说明。
@@ -259,14 +260,33 @@ Kubernetes workload 可能对应多个 Pod 或短生命周期 Job。工具限制
 #### 验收标准
 
 - 工具不会执行模型提供的任意 Redis 命令；
-- Direct/MCP 结果、不可用能力和错误语义一致；
+- Direct/MCP 使用相同工具名、Schema、DTO 和错误语义；
 - 真实 Redis 完成连接、诊断、超时和取消验证。
 
 #### 风险和回滚
 
-Redis 版本、权限和数据规模会影响诊断能力。采用有限采样和明确上限；如公共实现未通过一致性测试，保留旧 Connector 入口直到修复，不增加新协议分支。
+Redis 版本和权限会影响诊断能力。工具仅调用固定 INFO、PING、DBSIZE 和 SLOWLOG GET 20，不扫描全量 Key、不执行任意命令。
 
-### T09 AIEngine 与证据链收敛
+### T09 Nacos 工具集统一
+
+#### 目标
+
+新增 Nacos 资源，并将服务注册中心、配置中心和命名空间等只读 API 能力抽取为协议无关工具，实现 Direct 与 Agent/MCP 统一调用。
+
+#### 实施范围
+
+- Nacos 资源支持 Direct/Agent 子类型和统一连接配置（地址、协议、上下文路径、认证和超时）。
+- 固定只读工具包括服务列表、服务实例、命名空间、配置元数据、指定配置详情和服务端状态；分页和结果大小必须受控。
+- Direct Provider 与 Nacos MCP Server 复用同一公共工具包，Agent 通过 `agent_ref` 关联 MCPServer，模型不可覆盖服务端注入的连接字段。
+- 不提供任意 URL、任意 HTTP 方法或配置写入能力。
+
+#### 验收标准
+
+- Nacos Direct/Agent 资源可创建、编辑、连接测试，并在资源详情中展示统一工具集。
+- API 请求路径固定、分页有界、错误语义一致，禁止配置发布、删除或任意 API 调用。
+- 前端资源目录顺序调整为 Application、Artifact、Repository、Host、Docker、Kubernetes、Nacos、Nginx、TongHttpServer、PostgreSQL、Oracle、MySQL、OceanBase、Redis、TongRDS、Kafka、RabbitMQ、ElasticSearch、LLM、MCPServer、Skill、Monitor。
+
+### T10 AIEngine 与证据链收敛
 
 #### 目标
 

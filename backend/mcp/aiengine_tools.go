@@ -19,7 +19,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type mcpContextProvider struct{ service *Service }
 
 func (mcpContextProvider) Kinds() []string {
-	return []string{"MCPServer", "Host", "Docker", "Kubernetes", "Redis", "PostgreSQL", "Kafka", "RabbitMQ", "Elasticsearch", "OceanBase", "Oracle", "MySQL", "TongRDS", "Prometheus", "Loki"}
+	return []string{"MCPServer", "Host", "Docker", "Kubernetes", "Nacos", "Redis", "PostgreSQL", "Kafka", "RabbitMQ", "Elasticsearch", "OceanBase", "Oracle", "MySQL", "TongRDS", "Prometheus", "Loki"}
 }
 
 func (mcpContextProvider) AccessModes() []string { return []string{"agent"} }
@@ -47,6 +47,10 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 			inputSchema = hostAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "PostgreSQL") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = postgreSQLAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Redis") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = redisAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Nacos") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = nacosAgentSchema(inputSchema)
 		}
 		tools = append(tools, aiengine.ToolFunc{
 			Def: aiengine.ToolDefinition{
@@ -81,7 +85,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
@@ -119,6 +123,14 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		}
 	} else if strings.EqualFold(kind, "PostgreSQL") {
 		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			setString(key)
+		}
+	} else if strings.EqualFold(kind, "Redis") {
+		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			setString(key)
+		}
+	} else if strings.EqualFold(kind, "Nacos") {
+		for _, key := range []string{"host", "port", "scheme", "context_path", "username", "password", "access_token", "timeout_seconds"} {
 			setString(key)
 		}
 	} else {
@@ -163,6 +175,10 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"host", "port", "username", "auth_method", "password", "private_key", "passphrase", "known_hosts", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "PostgreSQL") {
 		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "Redis") {
+		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "Nacos") {
+		keys = []string{"host", "port", "scheme", "context_path", "username", "password", "access_token", "timeout_seconds"}
 	}
 	for _, key := range keys {
 		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig" {
@@ -231,6 +247,42 @@ func postgreSQLAgentSchema(raw json.RawMessage) json.RawMessage {
 	}
 	if properties, ok := schema["properties"].(map[string]any); ok {
 		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			delete(properties, key)
+		}
+	}
+	delete(schema, "required")
+	encoded, _ := json.Marshal(schema)
+	return encoded
+}
+
+func redisAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			delete(properties, key)
+		}
+	}
+	delete(schema, "required")
+	encoded, _ := json.Marshal(schema)
+	return encoded
+}
+
+func nacosAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"host", "port", "scheme", "context_path", "username", "password", "access_token", "timeout_seconds"} {
 			delete(properties, key)
 		}
 	}
