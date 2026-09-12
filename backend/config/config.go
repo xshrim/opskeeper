@@ -51,6 +51,15 @@ type Config struct {
 	InspectionWorkerPollInterval time.Duration
 	InspectionLeaseDuration      time.Duration
 	MCPEnhancedSecurity          bool
+	RepositoryStorageBackend     string
+	RepositoryLocalRoot          string
+	RepositoryS3Endpoint         string
+	RepositoryS3Bucket           string
+	RepositoryS3Prefix           string
+	RepositoryS3AccessKey        string
+	RepositoryS3SecretKey        string
+	RepositoryS3UseSSL           bool
+	RepositoryMaxBundleBytes     int64
 }
 
 func Load() (Config, error) {
@@ -66,9 +75,16 @@ func Load() (Config, error) {
 		// Diagnosis uses a long-lived SSE response. Keep the server-level write
 		// deadline above the AIEngine's 30-minute execution budget so an idle
 		// tool/model turn cannot terminate the stream prematurely.
-		WriteTimeout:         35 * time.Minute,
-		IdleTimeout:          60 * time.Second,
-		OTLPExporterEndpoint: strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
+		WriteTimeout:             35 * time.Minute,
+		IdleTimeout:              60 * time.Second,
+		OTLPExporterEndpoint:     strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
+		RepositoryStorageBackend: envOrDefault("OPSK_REPOSITORY_STORAGE_BACKEND", "local"),
+		RepositoryLocalRoot:      envOrDefault("OPSK_REPOSITORY_LOCAL_ROOT", "/var/lib/opskeeper/repositories"),
+		RepositoryS3Endpoint:     strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")),
+		RepositoryS3Bucket:       strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_BUCKET")),
+		RepositoryS3Prefix:       envOrDefault("OPSK_REPOSITORY_S3_PREFIX", "repositories"),
+		RepositoryS3AccessKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")),
+		RepositoryS3SecretKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")),
 	}
 
 	var err error
@@ -121,6 +137,18 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.MCPEnhancedSecurity, err = boolFromEnv("OPSK_MCP_ENHANCED_SECURITY", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.RepositoryMaxBundleBytes, err = int64FromEnv("OPSK_REPOSITORY_MAX_BUNDLE_BYTES", 512<<20, 1<<20, 4<<30); err != nil {
+		return Config{}, err
+	}
+	if cfg.RepositoryStorageBackend != "local" && cfg.RepositoryStorageBackend != "s3" {
+		return Config{}, errors.New("OPSK_REPOSITORY_STORAGE_BACKEND must be local or s3")
+	}
+	if cfg.RepositoryStorageBackend == "s3" && (cfg.RepositoryS3Endpoint == "" || cfg.RepositoryS3Bucket == "") {
+		return Config{}, errors.New("OPSK_REPOSITORY_S3_ENDPOINT and OPSK_REPOSITORY_S3_BUCKET are required for s3 backend")
+	}
+	if cfg.RepositoryS3UseSSL, err = boolFromEnv("OPSK_REPOSITORY_S3_USE_SSL", false); err != nil {
 		return Config{}, err
 	}
 

@@ -132,6 +132,8 @@ export function resourceAddStepTitle(step: number, kind: string) {
     return ['Host 配置', '总结核验'][step - 2] ?? 'Host 配置';
   if (kind === 'PostgreSQL')
     return ['PostgreSQL 配置', '总结核验'][step - 2] ?? 'PostgreSQL 配置';
+  if (kind === 'Repository')
+    return ['Repository 配置', '总结核验'][step - 2] ?? 'Repository 配置';
   if (kind !== 'AIProvider') return '配置资源';
   return ['Provider 配置', 'Model 配置', '总结核验'][step - 2] ?? '配置资源';
 }
@@ -153,6 +155,8 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2
       ? '配置 Linux 主机的本机或 SSH 接入方式。'
       : '确认配置并核验 Host 连接。';
+  if (kind === 'Repository')
+    return step === 2 ? '配置 Git 或 Bundle Repository。' : '确认 Repository 配置。';
   if (kind === 'PostgreSQL')
     return step === 2 ? '配置 PostgreSQL 数据库连接方式和凭据。' : '确认配置并核验 PostgreSQL 连接。';
   if (kind === 'Application')

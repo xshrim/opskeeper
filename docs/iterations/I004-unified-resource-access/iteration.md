@@ -16,7 +16,7 @@
 
 - 建立协议无关的公共资源工具层、工具注册和统一结果/错误边界；
 - 在资源模型中明确 Direct/Agent 接入方式及 Agent 对应的 MCPServer；
-- 将 Host、Docker、Kubernetes、Application、PostgreSQL、Redis 接入同一套 Direct/Agent 解析流程；
+- 将 Host、Docker、Kubernetes、Application、PostgreSQL、Redis、Repository 接入同一套 Direct/Agent 解析流程；
 - 将已有 Docker、Kubernetes MCP Server 改为公共工具层的薄适配器；
 - 让 AIEngine 按逻辑资源的接入方式注册内置工具或远程 MCP 工具；
 - 保持资源权限、凭据隔离、超时、取消、响应限制和审计边界；
@@ -44,7 +44,7 @@
 | T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | 12 个固定只读 PostgreSQL 工具共用 Direct/MCP 实现及专用管理界面 | 已完成 |
 | T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 已完成 |
 | T09 | Nacos 工具集统一 | P0 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
-| T10 | AIEngine 与证据链收敛 | P0 | T03-T09 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
+| T10 | Repository 工具集统一 | P0 | T01-T09 | Git/Bundle 仓库接入、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |
 | T11 | Kafka、Prometheus、Loki 迁移 | P1 | T01-T02、T10 | 中间件和可观测工具集按同一机制接入 | 待批准 |
 | T12 | 其他数据库和中间件迁移 | P2 | T11 | RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS | 待批准 |
 | T13 | 管理界面与接入校验 | P1 | T02-T10 | Direct/Agent 配置、MCPServer 关联、连接测试和错误展示 | 待批准 |
@@ -87,6 +87,13 @@
 - **验证证据：** `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check` 通过；Application 关联 Direct/Agent Host、Docker、Kubernetes、Loki 的透明调用与无回退回归通过。
 - **验收范围：** 项目归属、三种实例模式、多实例、Host 表达式及唯一性、Docker 容器唯一性、Kubernetes workload 到 Pod 解析、固定 Application 工具边界、关联资源的 Direct/Agent 透明执行、受控候选发现。
 - **已知边界：** 未运行的 Kubernetes workload（包括零副本和无当前 Pod 的 Job/CronJob）会导致连接校验失败；这是当前状态验证要求 Instance 存在的结果。
+
+### T07-T09 完成记录
+
+- **确认日期：** 2026-09-13
+- **用户确认：** PostgreSQL、Redis、Nacos 工具集统一及专用前端创建/编辑流程验收通过。
+- **验证证据：** `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run && npm run build`、`git diff --check` 均通过；前端 53 个测试通过。
+- **验收范围：** 三项资源的 Direct/Agent 配置、凭据处理、MCPServer 关联、编辑回填、草稿连接测试、总结核验、详情展示和资源目录接入；Nacos 真实服务验证受环境限制，已由契约测试覆盖。
 
 ### T07 完成记录
 
