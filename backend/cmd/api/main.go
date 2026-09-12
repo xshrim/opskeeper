@@ -34,6 +34,7 @@ import (
 	"opskeeper/backend/observability"
 	"opskeeper/backend/operation"
 	"opskeeper/backend/organization"
+	repositorysvc "opskeeper/backend/repository"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/skill"
 	"opskeeper/backend/version"
@@ -143,6 +144,10 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
 	resourceService := resource.NewService(resource.NewStore(pool))
+	if cfg.RepositoryStorageBackend == "s3" {
+		logger.Warn("repository S3 backend configured; using configured endpoint as deployment responsibility", "kind", "repository-storage")
+	}
+	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL}, cfg.RepositoryMaxBundleBytes, resourceService)
 	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, resourceService, organizationService, credentialService, discovery.NewKubernetesScanner())
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
@@ -238,6 +243,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Inspection:         inspectionService,
 			MCP:                mcpService,
 			Operations:         operationService,
+			RepositoryBundles:  repositoryService,
 			CookieSecure:       cfg.CookieSecure,
 			Production:         cfg.Environment == "production",
 			AllowedOrigins:     cfg.AllowedOrigins,

@@ -15,7 +15,7 @@
 
 - 建立协议无关的公共资源工具层；
 - 保持工具名称、业务入参、业务出参和错误语义一致；
-- 让 Host、Docker、Kubernetes、Application 优先完成 Direct/Agent 闭环，随后迁移 PostgreSQL、Redis；
+- 让 Host、Docker、Kubernetes、Application、PostgreSQL、Redis、Repository 完成 Direct/Agent 闭环；
 - 让项目提供的 Docker、Kubernetes MCP Server 与外部 MCP Server 使用同一 AIEngine MCP 路径；
 - 保持逻辑资源权限为唯一授权主体，隔离 MCP 传输资源和凭据；
 - 删除重复 Connector/MCP 资源业务实现，减少后续资源接入成本。
@@ -37,7 +37,7 @@
 - P1：Kafka、Prometheus、Loki；
 - P2：RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS；
 - 可观测平台的 Tempo、Jaeger、Elastic、Datadog、Alertmanager 按同一模式接入；
-- AIProvider、MCPServer、Skill、AgentProfile、Repository、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06。
+- AIProvider、MCPServer、Skill、AgentProfile、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06，Repository 作为 T10 的代码上下文资源实现。
 
 ## 4. 非目标
 
@@ -61,7 +61,7 @@
 | T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器、专用管理界面 | 已完成 |
 | T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 已完成 |
 | T09 | Nacos 工具集统一 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
-| T10 | AIEngine 与证据链收敛 | T03-T09 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
+| T10 | Repository 工具集统一 | T01-T09 | Git/Bundle、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |
 | T11 | Kafka、Prometheus、Loki 迁移 | T01-T02、T10 | P1 工具集接入和一致性测试 | 待批准 |
 | T12 | 其他数据库和中间件迁移 | T11 | P2 工具集接入 | 待批准 |
 | T13 | 管理界面与接入校验 | T02-T10 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |

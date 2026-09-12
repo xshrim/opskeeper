@@ -9,6 +9,7 @@
   import PostgreSQLResourceDetails from './PostgreSQLResourceDetails.svelte';
   import RedisResourceDetails from './RedisResourceDetails.svelte';
   import NacosResourceDetails from './NacosResourceDetails.svelte';
+  import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -48,8 +49,10 @@
     <PostgreSQLResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
   {:else if resource.kind === 'Redis'}
     <RedisResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
-  {:else if resource.kind === 'Nacos'}
+{:else if resource.kind === 'Nacos'}
     <NacosResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+{:else if resource.kind === 'Repository'}
+    <RepositoryResourceDetails {resource} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} {resourceCanManage} />
 {/if}

@@ -42,6 +42,7 @@ type Options struct {
 	Inspection         inspectionService
 	MCP                mcpService
 	Operations         operationService
+	RepositoryBundles  repositoryBundleService
 	CookieSecure       bool
 	Production         bool
 	AllowedOrigins     []string
@@ -107,6 +108,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
 				registerResourceRoutes(resourceRouter, options.Resources, options.Credentials, options.Auditor, requirePermission)
+				registerRepositoryRoutes(resourceRouter, options.RepositoryBundles, requirePermission)
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}

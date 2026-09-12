@@ -23,6 +23,8 @@
   import RedisReviewStep from './RedisReviewStep.svelte';
   import NacosConnectionStep from './NacosConnectionStep.svelte';
   import NacosReviewStep from './NacosReviewStep.svelte';
+  import RepositoryConnectionStep from './RepositoryConnectionStep.svelte';
+  import RepositoryReviewStep from './RepositoryReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ApplicationConnectionStep from './ApplicationConnectionStep.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
@@ -344,6 +346,7 @@
   let redisAccessMode: 'direct' | 'agent' = 'direct';
   let redisHost = ''; let redisPort = 6379; let redisDatabase = 0; let redisUsername = ''; let redisPassword = ''; let redisTimeoutSeconds = 10; let redisMCPServerResourceId = ''; let redisConfigurationAttempted = false; let redisDraftTest: any = null; let editingRedisResourceId = '';
   let nacosAccessMode: 'direct' | 'agent' = 'direct'; let nacosHost=''; let nacosPort=8848; let nacosScheme='http'; let nacosContextPath='/nacos'; let nacosUsername=''; let nacosPassword=''; let nacosAccessToken=''; let nacosTimeoutSeconds=10; let nacosMCPServerResourceId=''; let nacosConfigurationAttempted=false; let nacosDraftTest:any=null; let editingNacosResourceId='';
+  let repositoryURL=''; let repositoryDefaultBranch='main'; let repositoryStorageBackend='local'; let repositoryLocalRoot=''; let repositoryS3Endpoint=''; let repositoryS3Bucket=''; let repositoryS3Prefix='repositories'; let repositoryConfigurationAttempted=false; let editingRepositoryResourceId='';
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
   let selectedSchema: ResourceSchema | null = null;
@@ -857,6 +860,7 @@
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
     editingHostResourceId = '';
+    editingRepositoryResourceId = '';
     editingRedisResourceId = '';
     editingHostResourceId = '';
     syncProviderEditor(resource);
@@ -905,6 +909,7 @@
     editingResourceId = resource.id;
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
+    editingRepositoryResourceId = '';
     editingHostResourceId = '';
     resourceName = resource.name;
     resourceStatus = resource.status;
@@ -942,7 +947,9 @@
     resourceAddMenuOpen = true;
   }
 
+  function openRepositoryWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Repository'; resourceAddCategory='Repository'; resourceAddSubtype=resourceSubtypeFor(resource); editingRepositoryResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); repositoryURL=String(resource.config?.url??''); repositoryDefaultBranch=String(resource.config?.default_branch??'main'); repositoryStorageBackend=String(resource.config?.storage_backend??'local'); repositoryLocalRoot=String(resource.config?.path??''); repositoryS3Endpoint=String(resource.config?.s3_endpoint??''); repositoryS3Bucket=String(resource.config?.s3_bucket??''); repositoryS3Prefix=String(resource.config?.s3_prefix??'repositories'); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function openResourceEditor(resource: Resource) {
+    if (resource.kind === 'Repository') { openRepositoryWorkflowForEdit(resource); return; }
     if (resource.kind === 'Nacos') { openNacosWorkflowForEdit(resource); return; }
     if (resource.kind === 'PostgreSQL') { openPostgreSQLWorkflowForEdit(resource); return; }
     if (resource.kind === 'Redis') { openRedisWorkflowForEdit(resource); return; }
@@ -1242,6 +1249,7 @@
       resetPostgreSQLDraft();
       resetRedisDraft();
       resetNacosDraft();
+      resetRepositoryDraft();
       applicationAccessMode = 'virtual_machine';
       applicationTeamId = '';
       applicationProjectId = '';
@@ -1418,6 +1426,7 @@
   function resetPostgreSQLDraft() { postgresqlAccessMode='direct'; postgresqlHost=''; postgresqlPort=5432; postgresqlDatabase=''; postgresqlUsername=''; postgresqlPassword=''; postgresqlTimeoutSeconds=10; postgresqlMCPServerResourceId=''; postgresqlConfigurationAttempted=false; postgresqlDraftTest=null; editingPostgreSQLResourceId=''; }
   function resetRedisDraft() { redisAccessMode='direct'; redisHost=''; redisPort=6379; redisDatabase=0; redisUsername=''; redisPassword=''; redisTimeoutSeconds=10; redisMCPServerResourceId=''; redisConfigurationAttempted=false; redisDraftTest=null; editingRedisResourceId=''; }
   function resetNacosDraft() { nacosAccessMode='direct'; nacosHost=''; nacosPort=8848; nacosScheme='http'; nacosContextPath='/nacos'; nacosUsername=''; nacosPassword=''; nacosAccessToken=''; nacosTimeoutSeconds=10; nacosMCPServerResourceId=''; nacosConfigurationAttempted=false; nacosDraftTest=null; editingNacosResourceId=''; }
+  function resetRepositoryDraft() { repositoryURL=''; repositoryDefaultBranch='main'; repositoryStorageBackend='local'; repositoryLocalRoot=''; repositoryS3Endpoint=''; repositoryS3Bucket=''; repositoryS3Prefix='repositories'; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; }
 
   function resetProviderDraft() {
     providerType = 'openai_compatible';
@@ -1633,6 +1642,7 @@
       const issues = hostConfigurationIssues();
       return `请检查：${issues.length ? issues.join('、') : 'Host 配置'}。`;
     }
+    if (resourceKind === 'Repository' && resourceAddStep === 2 && repositoryConfigurationAttempted && !repositoryConfigurationComplete()) return '请检查 Repository 配置。';
     return '';
   }
 
@@ -2065,6 +2075,7 @@
   async function testRedisDraftConnection() { redisDraftTest={busy:true}; if(redisAccessMode==='agent'){redisDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try { const result=await testDraftRedis({host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),username:redisUsername.trim(),password:redisPassword,timeout_seconds:Number(redisTimeoutSeconds)}); redisDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } catch(error){redisDraftTest={error:describeError(error,'Redis 连接测试失败')};} }
   function nacosDraft() { return { accessMode:nacosAccessMode,host:nacosHost,port:nacosPort,scheme:nacosScheme,contextPath:nacosContextPath,username:nacosUsername,password:nacosPassword,accessToken:nacosAccessToken,timeoutSeconds:nacosTimeoutSeconds,mcpServerResourceId:nacosMCPServerResourceId }; }
   function nacosConfigurationComplete() { return nacosAccessMode==='agent' ? Boolean(nacosMCPServerResourceId) : Boolean(nacosHost.trim()); }
+  function repositoryConfigurationComplete() { return resourceAddSubtype === 'Git' ? Boolean(repositoryURL.trim()) : repositoryStorageBackend === 'local' || Boolean(repositoryS3Endpoint.trim() && repositoryS3Bucket.trim()); }
   function resetNacosDraftTest() { nacosDraftTest=null; }
   async function testNacosDraftConnection() { nacosDraftTest={busy:true}; if(nacosAccessMode==='agent'){nacosDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftNacos({host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,username:nacosUsername,password:nacosPassword,access_token:nacosAccessToken,timeout_seconds:Number(nacosTimeoutSeconds)});nacosDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){nacosDraftTest={error:describeError(error,'Nacos 连接测试失败')};}}
   function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceStatus = resource.status; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
@@ -2430,7 +2441,7 @@
       editingHostResourceId
       || editingPostgreSQLResourceId
       || editingRedisResourceId
-      || editingNacosResourceId
+      || editingNacosResourceId || editingRepositoryResourceId
     );
     if (!editingWorkflow)
       chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
@@ -2529,6 +2540,7 @@
     }
     if (resourceKind === 'Redis') { await runResourceAction(saveRedisWorkflow); return; }
     if (resourceKind === 'Nacos') { await runResourceAction(saveNacosWorkflow); return; }
+    if (resourceKind === 'Repository') { await runResourceAction(saveRepositoryWorkflow); return; }
     if (resourceKind === 'Application') {
       await createApplicationFromWorkflow();
       return;
@@ -3076,6 +3088,15 @@
     if(nacosAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:nacosAccessMode==='agent'?'Agent':'Direct',agent_ref:nacosAccessMode==='agent'?nacosMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:nacosAccessMode==='agent'?{}:{host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,timeout_seconds:Number(nacosTimeoutSeconds)}};
     if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Nacos',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Nacos 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Nacos 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingNacosResourceId='';resourceAddStep=1;
   }
+  async function saveRepositoryWorkflow() {
+    repositoryConfigurationAttempted = true;
+    if (!repositoryConfigurationComplete()) throw new Error('请检查 Repository 配置。');
+    const config = resourceAddSubtype === 'Git' ? { url: repositoryURL.trim(), default_branch: repositoryDefaultBranch.trim() || 'main' } : { storage_backend: repositoryStorageBackend, path: repositoryLocalRoot.trim(), s3_endpoint: repositoryS3Endpoint.trim(), s3_bucket: repositoryS3Bucket.trim(), s3_prefix: repositoryS3Prefix.trim() || 'repositories' };
+    const existing = resources.find((r) => r.id === editingRepositoryResourceId);
+    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: resourceAddSubtype, status: resourceStatus, labels: parseLabels(resourceLabels), config };
+    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'Repository', subtype: resourceAddSubtype, name: resourceName.trim(), status: resourceStatus, labels: body.labels as Record<string,string>, config }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`Repository“${created.name}”已创建`); } else { const updated=await updateResourceRecord(existing.id,body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`Repository“${updated.name}”已更新`); }
+    resourceAddMenuOpen=false; editingRepositoryResourceId=''; resourceAddStep=1; repositoryConfigurationAttempted=false;
+  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {
@@ -3424,6 +3445,7 @@
         editingPostgreSQL={Boolean(editingPostgreSQLResourceId)}
         editingRedis={Boolean(editingRedisResourceId)}
         editingNacos={Boolean(editingNacosResourceId)}
+        editingRepository={Boolean(editingRepositoryResourceId)}
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
         dockerConfigurationComplete={dockerConfigurationComplete()}
@@ -3432,6 +3454,7 @@
         postgresqlConfigurationComplete={postgresqlConfigurationComplete()}
         redisConfigurationComplete={redisConfigurationComplete()}
         nacosConfigurationComplete={nacosConfigurationComplete()}
+        repositoryConfigurationComplete={repositoryConfigurationComplete()}
         applicationConfigurationComplete={applicationConfigurationComplete()}
         providerModelCount={providerModels.length}
         {busy}
@@ -3464,6 +3487,7 @@
         onContinuePostgreSQL={() => { postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } }}
         onContinueRedis={continueRedisAdd}
         onContinueNacos={continueNacosAdd}
+        onContinueRepository={() => { repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; resourceAddStep = 3; } }}
         onSubmitMcp={() =>
           void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
         onSubmitDocker={() =>
@@ -3481,6 +3505,7 @@
         onSubmitPostgreSQL={() => void runResourceAction(savePostgreSQLWorkflow)}
         onSubmitRedis={() => void runResourceAction(saveRedisWorkflow)}
         onSubmitNacos={() => void runResourceAction(saveNacosWorkflow)}
+        onSubmitRepository={() => void runResourceAction(saveRepositoryWorkflow)}
         onSubmitApplication={() => void (editingResourceId ? updateApplicationFromWorkflow() : createApplicationFromWorkflow())}
       >
         {#if resourceAddStep === 1}
@@ -3503,6 +3528,7 @@
               editingPostgreSQLResourceId
               || editingRedisResourceId
               || editingNacosResourceId
+              || editingRepositoryResourceId
             )}
             scopeSummary={activeScopeSummary()}
             onSelectCategory={selectResourceAddCategory}
@@ -3775,6 +3801,10 @@
           <NacosConnectionStep accessMode={nacosAccessMode} bind:host={nacosHost} bind:port={nacosPort} bind:scheme={nacosScheme} bind:contextPath={nacosContextPath} bind:username={nacosUsername} bind:password={nacosPassword} bind:accessToken={nacosAccessToken} bind:timeoutSeconds={nacosTimeoutSeconds} bind:mcpServerResourceId={nacosMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={nacosConfigurationAttempted} onConfigurationChange={resetNacosDraftTest} />
         {:else if resourceKind === 'Nacos' && resourceAddStep === 3}
           <NacosReviewStep resourceName={resourceName} accessMode={nacosAccessMode} host={nacosHost} port={nacosPort} mcpServerName={resources.find((r) => r.id === nacosMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(nacosUsername.trim() || nacosPassword || nacosAccessToken)} testBusy={Boolean(nacosDraftTest?.busy)} testStatus={nacosDraftTest?.status ?? ''} testMessage={nacosDraftTest?.message ?? ''} testError={nacosDraftTest?.error ?? ''} testLatency={nacosDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(saveNacosWorkflow)} />
+        {:else if resourceKind === 'Repository' && resourceAddStep === 2}
+          <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:defaultBranch={repositoryDefaultBranch} bind:storageBackend={repositoryStorageBackend} bind:localRoot={repositoryLocalRoot} bind:s3Endpoint={repositoryS3Endpoint} bind:s3Bucket={repositoryS3Bucket} bind:s3Prefix={repositoryS3Prefix} configurationAttempted={repositoryConfigurationAttempted} />
+        {:else if resourceKind === 'Repository' && resourceAddStep === 3}
+          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} storageBackend={repositoryStorageBackend} s3Bucket={repositoryS3Bucket} onSubmit={() => void runResourceAction(saveRepositoryWorkflow)} />
         {:else if resourceKind === 'Application' && resourceAddStep === 2}
           <ApplicationConnectionStep
             bind:accessMode={applicationAccessMode}

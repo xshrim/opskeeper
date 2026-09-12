@@ -20,7 +20,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
+	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
 }
 
 func (connectorContextProvider) AccessModes() []string {
@@ -87,7 +87,13 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 			return nil, nil, err
 		}
 	case "Nacos":
-		if err := p.service.resolveNacosTools(ctx, resource, add); err != nil { return nil, nil, err }
+		if err := p.service.resolveNacosTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
+	case "Repository":
+		if err := p.service.resolveRepositoryTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "Kafka":
 		add("connector.inspect_kafka", "Collect a read-only Kafka diagnostic snapshot.", emptySchema, func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
 			return evidenceResult(p.service.InspectKafka(runCtx, resource.ID))
