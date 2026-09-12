@@ -6,8 +6,17 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"opskeeper/backend/aiengine"
+)
+
+const (
+	causalChainTimeout                   = 20 * time.Second
+	causalChainMaxTokens           int64 = 4000
+	causalChainMaxOutputTokens           = 1000
+	causalChainMaxObservations           = 6
+	causalChainObservationMaxChars       = 300
 )
 
 const causalChainInstruction = `你是诊断证据编排器。只根据输入中给出的最终回答、Evidence 和公开分析摘要，输出一个紧凑的 JSON 因果论证图。不要调用工具，不要复述工具调用过程，不要输出隐藏思维过程。
@@ -32,6 +41,10 @@ type causalChainDraft struct {
 }
 
 func (o *Orchestrator) compileCausalChain(ctx context.Context, session Session, run Run, conclusion string, evidence []Evidence) (CausalChain, error) {
+	evidence = evidenceForRun(evidence, run.ID)
+	if len(evidence) == 0 {
+		return fallbackCausalChain(session.ID, run.ID, conclusion, evidence), nil
+	}
 	input := map[string]any{
 		"final_answer":                 conclusion,
 		"evidence":                     causalEvidenceInput(evidence),
@@ -50,7 +63,7 @@ func (o *Orchestrator) compileCausalChain(ctx context.Context, session Session, 
 		Instruction:   causalChainInstruction,
 		Messages:      []aiengine.Message{{Role: "user", Content: string(encoded)}},
 		OutputSchema:  causalChainSchema,
-		Budget:        aiengine.Budget{MaxIterations: 1, MaxToolCalls: 0, MaxTokens: 12000, MaxOutputBytes: 16 << 10, Timeout: o.timeout},
+		Budget:        aiengine.Budget{MaxIterations: 1, MaxToolCalls: 0, MaxTokens: causalChainMaxTokens, MaxOutputTokens: causalChainMaxOutputTokens, MaxOutputBytes: 8 << 10, Timeout: causalChainTimeout},
 		RestrictTools: true,
 	})
 	if err == nil {
@@ -62,6 +75,16 @@ func (o *Orchestrator) compileCausalChain(ctx context.Context, session Session, 
 		}
 	}
 	return fallbackCausalChain(session.ID, run.ID, conclusion, evidence), nil
+}
+
+func evidenceForRun(evidence []Evidence, runID string) []Evidence {
+	items := make([]Evidence, 0, len(evidence))
+	for _, item := range evidence {
+		if item.RunID == runID {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func causalEvidenceInput(evidence []Evidence) []map[string]any {
@@ -120,7 +143,10 @@ func causalObservationInput(ctx context.Context, store Store, sessionID string, 
 		if text == "" {
 			continue
 		}
-		items = append(items, map[string]string{"id": fmt.Sprintf("event-%d", event.ID), "text": safeText(text, 800)})
+		items = append(items, map[string]string{"id": fmt.Sprintf("event-%d", event.ID), "text": safeText(text, causalChainObservationMaxChars)})
+	}
+	if len(items) > causalChainMaxObservations {
+		return items[len(items)-causalChainMaxObservations:]
 	}
 	return items
 }

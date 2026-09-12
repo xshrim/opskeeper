@@ -488,12 +488,6 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		o.fail(session.ID, "report", err)
 		return
 	}
-	chain, chainErr := o.compileCausalChain(ctx, session, run, output, evidence)
-	if chainErr == nil {
-		if saved, saveErr := o.store.SaveCausalChain(ctx, chain); saveErr == nil {
-			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "causal_chain.ready", Payload: map[string]any{"run_id": run.ID, "version": saved.Version, "status": saved.Status}})
-		}
-	}
 	for _, step := range plan.Steps {
 		if step.Phase == "summarize" {
 			detail := "已生成回答。"
@@ -511,6 +505,15 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	runStatus = "succeeded"
 	finishRun("succeeded")
 	o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "report.ready", Payload: map[string]any{"report_id": report.ID, "evidence_ids": evidenceIDs, "status": report.Status}})
+	// Causal-chain compilation is a supplemental, second AIEngine request. The
+	// answer and report are already durable, so it must not delay the session's
+	// visible completion state.
+	chain, chainErr := o.compileCausalChain(ctx, session, run, output, evidence)
+	if chainErr == nil {
+		if saved, saveErr := o.store.SaveCausalChain(ctx, chain); saveErr == nil {
+			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "causal_chain.ready", Payload: map[string]any{"run_id": run.ID, "version": saved.Version, "status": saved.Status}})
+		}
+	}
 }
 
 func terminalDiagnosisStatus(status Status) bool {

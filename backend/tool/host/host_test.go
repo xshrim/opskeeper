@@ -55,6 +55,17 @@ func TestKnownHostsRejectsPath(t *testing.T) {
 	}
 }
 
+func TestKnownHostsIsOptional(t *testing.T) {
+	callback, cleanup, err := knownHostsCallback("")
+	if err != nil || callback == nil {
+		t.Fatalf("empty known_hosts should be accepted: callback=%v err=%v", callback != nil, err)
+	}
+	if err := callback("unknown.example:22", nil, nil); err != nil {
+		t.Fatalf("empty known_hosts should allow an unknown host key: %v", err)
+	}
+	cleanup()
+}
+
 func TestPrivateKeyRejectsPath(t *testing.T) {
 	if _, err := privateKeyBytes("id_rsa"); err == nil {
 		t.Fatal("expected private key path to be rejected")

@@ -144,7 +144,9 @@ func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (
 		return Target{}, err
 	}
 	if session.Status == StatusSucceeded || session.Status == StatusFailed || session.Status == StatusCancelled {
-		return Target{}, ErrConflict
+		if _, err := s.store.Reopen(ctx, session.ID); err != nil {
+			return Target{}, err
+		}
 	}
 	if err := s.validateTarget(ctx, session.ScopeID, strings.TrimSpace(resourceID)); err != nil {
 		return Target{}, err

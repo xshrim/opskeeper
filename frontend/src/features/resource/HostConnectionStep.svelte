@@ -186,7 +186,7 @@
           </label>
           <label class="host-known-hosts">
             <span class="docker-credential-label"><span>known_hosts（可选）</span><span class="docker-file-picker">{#if selectedFileNames.knownHosts}<small>{selectedFileNames.knownHosts}</small>{/if}<input class="docker-file-input" bind:this={knownHostsFileInput} type="file" accept=".conf,.txt,text/plain" aria-label="选择 known_hosts 文件" on:change={(event) => void importCredentialFile(event, 'knownHosts')} /><button class="docker-file-import" type="button" aria-label="导入 known_hosts 文件" on:click|stopPropagation|preventDefault={() => openFilePicker(knownHostsFileInput)}>导入</button></span></span>
-            <textarea bind:value={knownHosts} on:input={onConfigurationChange} rows="4" placeholder="粘贴 known_hosts 内容（可选）" spellcheck="false"></textarea>
+            <textarea bind:value={knownHosts} on:input={onConfigurationChange} rows="4" placeholder="可选；填写后校验 SSH 主机密钥" spellcheck="false"></textarea>
             {#if fileErrors.knownHosts}<small class="field-error">{fileErrors.knownHosts}</small>{/if}
           </label>
         {:else}
@@ -201,7 +201,7 @@
           </label>
           <label class="host-known-hosts">
             <span class="docker-credential-label"><span>known_hosts（可选）</span><span class="docker-file-picker">{#if selectedFileNames.knownHosts}<small>{selectedFileNames.knownHosts}</small>{/if}<input class="docker-file-input" bind:this={knownHostsFileInput} type="file" accept=".conf,.txt,text/plain" aria-label="选择 known_hosts 文件" on:change={(event) => void importCredentialFile(event, 'knownHosts')} /><button class="docker-file-import" type="button" aria-label="导入 known_hosts 文件" on:click|stopPropagation|preventDefault={() => openFilePicker(knownHostsFileInput)}>导入</button></span></span>
-            <textarea bind:value={knownHosts} on:input={onConfigurationChange} rows="4" placeholder="粘贴 known_hosts 内容（可选）" spellcheck="false"></textarea>
+            <textarea bind:value={knownHosts} on:input={onConfigurationChange} rows="4" placeholder="可选；填写后校验 SSH 主机密钥" spellcheck="false"></textarea>
             {#if fileErrors.knownHosts}<small class="field-error">{fileErrors.knownHosts}</small>{/if}
           </label>
         {/if}

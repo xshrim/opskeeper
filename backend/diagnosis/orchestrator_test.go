@@ -37,12 +37,28 @@ func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 	if !store.hasEvent("evidence.collected") || !store.hasEvent("report.ready") {
 		t.Fatalf("events = %#v, want evidence and report events", store.events)
 	}
+	reportReady, chainSaved := -1, -1
+	for index, entry := range store.log {
+		if entry == "event:report.ready" {
+			reportReady = index
+		}
+		if entry == "causal-chain.saved" {
+			chainSaved = index
+		}
+	}
+	if reportReady < 0 || chainSaved < 0 || reportReady > chainSaved {
+		t.Fatalf("persistence order=%v, want report ready before causal chain", store.log)
+	}
 }
 
 func TestOrchestratorMarksResourceAnswerWithoutEvidenceAsNeedsVerification(t *testing.T) {
 	store := newRecordingStore()
+	causalCalls := 0
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
 		return aiengine.Result{Output: "可能是上游依赖变慢。"}, nil
+	}, causal: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+		causalCalls++
+		return aiengine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -51,6 +67,27 @@ func TestOrchestratorMarksResourceAnswerWithoutEvidenceAsNeedsVerification(t *te
 	}
 	if len(store.hypotheses) != 1 || store.hypotheses[0].Status != "needs_verification" || store.hypotheses[0].Confidence != 0 {
 		t.Fatalf("hypothesis = %#v, want unverified", store.hypotheses)
+	}
+	if causalCalls != 0 {
+		t.Fatalf("causal model calls = %d, want 0 without run evidence", causalCalls)
+	}
+}
+
+func TestCompileCausalChainUsesOnlyCurrentEvidenceAndBoundedBudget(t *testing.T) {
+	var request aiengine.Request
+	orchestrator := NewOrchestrator(&Service{store: newRecordingStore()}, fakeEngine{causal: func(_ context.Context, input aiengine.Request) (aiengine.Result, error) {
+		request = input
+		return aiengine.Result{Output: `{"summary":"已确认","nodes":[{"id":"n1","kind":"effect","statement":"错误率升高","status":"likely","confidence":0.4,"evidence_ids":["current"]}],"links":[]}`}, nil
+	}}, time.Minute)
+	chain, err := orchestrator.compileCausalChain(context.Background(), Session{ID: "session-1", ScopeID: "scope-1"}, Run{ID: "run-current", Sequence: 1}, "错误率升高", []Evidence{{ID: "old", RunID: "run-old"}, {ID: "current", RunID: "run-current"}})
+	if err != nil || len(chain.Nodes) != 1 || len(request.Messages) != 1 {
+		t.Fatalf("compile result=%#v request=%#v err=%v", chain, request, err)
+	}
+	if request.Budget.MaxTokens != causalChainMaxTokens || request.Budget.MaxOutputTokens != causalChainMaxOutputTokens || request.Budget.Timeout != causalChainTimeout {
+		t.Fatalf("budget=%#v", request.Budget)
+	}
+	if strings.Contains(request.Messages[0].Content, "\"old\"") || !strings.Contains(request.Messages[0].Content, "\"current\"") {
+		t.Fatalf("causal input must contain only current evidence: %s", request.Messages[0].Content)
 	}
 }
 
@@ -323,6 +360,7 @@ func TestSafeTextRedactsBearerAndPreservesUTF8Boundaries(t *testing.T) {
 
 type fakeEngine struct {
 	execute func(context.Context, aiengine.Request) (aiengine.Result, error)
+	causal  func(context.Context, aiengine.Request) (aiengine.Result, error)
 }
 
 func (f fakeEngine) Name() string { return "fake" }
@@ -331,6 +369,9 @@ func (f fakeEngine) Execute(ctx context.Context, input aiengine.Request) (aiengi
 	// follow-up causal compiler has its own tests and is allowed to fall back
 	// when this fake does not implement structured output.
 	if input.Task == "编排本轮诊断的精选因果证据链" {
+		if f.causal != nil {
+			return f.causal(ctx, input)
+		}
 		return aiengine.Result{}, errors.New("structured output unavailable")
 	}
 	return f.execute(ctx, input)
@@ -449,6 +490,7 @@ func (s *recordingStore) SaveCausalChain(_ context.Context, input CausalChain) (
 	input.ID = fmt.Sprintf("chain-%d", len(s.chains)+1)
 	input.Version = len(s.chains) + 1
 	s.chains = append(s.chains, input)
+	s.log = append(s.log, "causal-chain.saved")
 	return input, nil
 }
 func (s *recordingStore) CausalChains(context.Context, string) ([]CausalChain, error) {

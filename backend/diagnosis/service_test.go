@@ -37,6 +37,18 @@ func TestServiceAskReopensCompletedSession(t *testing.T) {
 	}
 }
 
+func TestServiceAddTargetReopensCompletedSession(t *testing.T) {
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"host-1": {ID: "host-1", ScopeID: "scope-1", Status: resource.StatusActive},
+	}}
+	service := NewService(store, resources)
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	if _, err := service.AddTarget(ctx, "session-1", "host-1"); err != nil || !store.reopened {
+		t.Fatalf("AddTarget() = %v; reopened=%v", err, store.reopened)
+	}
+}
+
 type fakeResources struct{ items map[string]resource.Resource }
 
 func (f fakeResources) Get(_ context.Context, id string) (resource.Resource, error) {

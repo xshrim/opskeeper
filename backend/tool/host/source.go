@@ -448,12 +448,10 @@ func knownHostsCallback(raw string) (ssh.HostKeyCallback, func(), error) {
 	raw = strings.TrimSpace(raw)
 	provided := raw != ""
 	if raw == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			raw = filepath.Join(home, ".ssh", "known_hosts")
-		}
-	}
-	if raw == "" {
-		return nil, func() {}, fmt.Errorf("%w: known_hosts is required for SSH", ErrInvalidArgument)
+		// known_hosts is optional for Direct resources. An explicitly supplied
+		// file is always verified; an empty value keeps compatibility with SSH
+		// targets that do not have a managed host-key inventory.
+		return ssh.InsecureIgnoreHostKey(), func() {}, nil
 	}
 	if provided && looksLikePath(raw) {
 		return nil, func() {}, fmt.Errorf("%w: known_hosts must be file content, not a path", ErrInvalidArgument)
