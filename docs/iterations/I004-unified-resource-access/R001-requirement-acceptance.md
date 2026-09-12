@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T08 已完成，其余任务待实施
+**验收结论：** 部分验收：T01-T08 已完成，T09 Nacos 工具集统一实施中，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T08 已完成验收，确认日期为 2026-09-12。T09-T13 继续按任务表实施。
+T01-T08 已完成验收，确认日期为 2026-09-12。T09 已进入实施，后续任务按任务表顺延。
 
 ## 2. 验收环境和范围
 
@@ -26,11 +26,12 @@ T01-T08 已完成验收，确认日期为 2026-09-12。T09-T13 继续按任务�
 | T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
 | T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
 | T08 | Redis 工具集统一 | 已完成 | `go test ./...`、真实 Redis 六工具集成测试、`npm run check/test/build`、MCP Server 编译与固定工具契约测试通过 |
-| T09 | AIEngine 与证据链收敛 | 待实施 |  |
-| T10 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
-| T11 | 其他数据库和中间件迁移 | 待实施 |  |
-| T12 | 管理界面与接入校验 | 待实施 |  |
-| T13 | 删除旧路径与全量验收 | 待实施 |  |
+| T09 | Nacos 工具集统一 | 实施中 | 公共 Nacos API 工具、Direct/Agent/MCP 适配器、前端资源流程和 0039 迁移已开始实现 |
+| T10 | AIEngine 与证据链收敛 | 待实施 |  |
+| T11 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
+| T12 | 其他数据库和中间件迁移 | 待实施 |  |
+| T13 | 管理界面与接入校验 | 待实施 |  |
+| T14 | 删除旧路径与全量验收 | 待实施 |  |
 
 ## 4. T01 任务验收报告
 

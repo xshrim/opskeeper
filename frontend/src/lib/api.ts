@@ -1096,6 +1096,8 @@ export const api = {
     request<{ status: string; message: string; latency_ms: number }>('api/v1/postgresql/connection-tests', json(body)),
   testDraftRedis: (body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) =>
     request<{ status: string; message: string; latency_ms: number }>('api/v1/redis/connection-tests', json(body)),
+  testDraftNacos: (body: { host: string; port: number; scheme?: string; context_path?: string; username?: string; password?: string; access_token?: string; timeout_seconds?: number }) =>
+    request<{ status: string; message: string; latency_ms: number }>('api/v1/nacos/connection-tests', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

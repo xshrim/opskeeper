@@ -12,6 +12,7 @@
   export let editingHost = false;
   export let editingPostgreSQL = false;
   export let editingRedis = false;
+  export let editingNacos = false;
   export let basicConfigurationComplete = false;
   export let mcpConfigurationComplete = false;
   export let dockerConfigurationComplete = false;
@@ -19,6 +20,7 @@
   export let hostConfigurationComplete = false;
   export let postgresqlConfigurationComplete = false;
   export let redisConfigurationComplete = false;
+  export let nacosConfigurationComplete = false;
   export let applicationConfigurationComplete = false;
   export let providerModelCount = 0;
   export let busy = false;
@@ -38,12 +40,14 @@
   export let onContinueHost: () => void = () => {};
   export let onContinuePostgreSQL: () => void = () => {};
   export let onContinueRedis: () => void = () => {};
+  export let onContinueNacos: () => void = () => {};
   export let onSubmitApplication: () => void = () => {};
   export let onSubmitMcp: () => void = () => {};
   export let onSubmitDocker: () => void = () => {};
   export let onSubmitHost: () => void = () => {};
   export let onSubmitPostgreSQL: () => void = () => {};
   export let onSubmitRedis: () => void = () => {};
+  export let onSubmitNacos: () => void = () => {};
 </script>
 
 <section
@@ -57,7 +61,7 @@
         editingResource ||
         editingDocker ||
         editingKubernetes ||
-        editingHost || editingPostgreSQL || editingRedis
+        editingHost || editingPostgreSQL || editingRedis || editingNacos
           ? 'EDIT RESOURCE'
           : 'ADD RESOURCE'}
       </p>
@@ -67,7 +71,7 @@
           editingResource ||
           editingDocker ||
           editingKubernetes ||
-          editingHost || editingPostgreSQL || editingRedis
+          editingHost || editingPostgreSQL || editingRedis || editingNacos
             ? '编辑资源'
             : '添加资源'}</span
         >
@@ -175,6 +179,9 @@
     {:else if kind === 'Redis'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Redis 配置</span></button>
       <button class:active={step === 3} disabled={!redisConfigurationComplete} type="button" on:click={() => redisConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+    {:else if kind === 'Nacos'}
+      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Nacos 配置</span></button>
+      <button class:active={step === 3} disabled={!nacosConfigurationComplete} type="button" on:click={() => nacosConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
     {:else if kind === 'Application'}
       <button
         class:active={step === 2}
@@ -330,6 +337,10 @@
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRedis}>下一步</button>
         {:else if kind === 'Redis' && step === 3}
           <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitRedis} disabled={busy || !scopeSelected}>{editingRedis ? '保存' : '创建'}</button>
+        {:else if kind === 'Nacos' && step === 2}
+          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueNacos}>下一步</button>
+        {:else if kind === 'Nacos' && step === 3}
+          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitNacos} disabled={busy || !scopeSelected}>{editingNacos ? '保存' : '创建'}</button>
         {:else if kind === 'Application' && step === 2}
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button>
           <button class="primary" type="button" on:click={onSubmitApplication} disabled={busy || !applicationConfigurationComplete || !scopeSelected}>{editingResource ? '保存' : '创建'}</button>

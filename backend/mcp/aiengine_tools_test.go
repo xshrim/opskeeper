@@ -69,6 +69,16 @@ func TestRedisAgentSchemaHidesConnectionFields(t *testing.T) {
 	}
 }
 
+func TestNacosAgentSchemaHidesConnectionFields(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["host"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"service_name":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(nacosAgentSchema(raw), &schema); err != nil { t.Fatal(err) }
+	props := schema["properties"].(map[string]any)
+	if _, ok := props["host"]; ok { t.Fatal("host exposed") }
+	if _, ok := props["password"]; ok { t.Fatal("password exposed") }
+	if _, ok := props["service_name"]; !ok { t.Fatal("business field removed") }
+}
+
 func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}
 	resource := aiengine.ContextResource{

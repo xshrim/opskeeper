@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Resource } from '../../lib/api';
 import { resourceHasConnector } from '../../lib/resources';
-import { brandNameFor, connectorCapabilityName, relativeConnectionTime, resourceEndpointFor } from './resourceCatalog';
+import { brandNameFor, connectorCapabilityName, relativeConnectionTime, resourceEndpointFor, resourceCategoryOptions } from './resourceCatalog';
 
 describe('resource catalog helpers', () => {
   it('normalizes provider brands for display', () => {
@@ -56,5 +56,9 @@ describe('resource catalog helpers', () => {
   it('formats direct Host endpoints as SSH URIs', () => {
     expect(resourceEndpointFor({ kind: 'Host', subtype: 'Direct', config: { host: '192.0.2.10' } })).toBe('ssh://192.0.2.10');
     expect(resourceEndpointFor({ kind: 'Host', subtype: 'Direct', config: { host: 'host.example', port: 2222 } })).toBe('ssh://host.example:2222');
+  });
+
+  it('keeps the requested resource directory order', () => {
+    expect(Object.keys(resourceCategoryOptions)).toEqual(['全部','Application','Artifact','Repository','Host','Docker','Kubernetes','Nacos','Nginx','TongHttpServer','PostgreSQL','Oracle','MySQL','OceanBase','Redis','TongRDS','Kafka','RabbitMQ','ElasticSearch','LLM','MCPServer','Skill','Monitor']);
   });
 });

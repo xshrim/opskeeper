@@ -31,6 +31,7 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		{kind: "Redis", factory: func(target Target) (Adapter, error) {
 			return newRedisAdapter(target, limits)
 		}},
+		{kind: "Nacos", factory: func(target Target) (Adapter, error) { return newNacosAdapter(target, limits) }},
 		{kind: "Kafka", factory: func(target Target) (Adapter, error) {
 			return newKafkaAdapter(target, limits)
 		}},
