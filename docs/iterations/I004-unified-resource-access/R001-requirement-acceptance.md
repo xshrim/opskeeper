@@ -25,7 +25,7 @@ T01-T08 已完成验收，确认日期为 2026-09-12。T09-T13 继续按任务�
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
 | T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
 | T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
-| T08 | Redis 工具集统一 | 已完成 | Go/前端检查、真实 Redis 和 MCP 契约验证通过 |
+| T08 | Redis 工具集统一 | 已完成 | `go test ./...`、真实 Redis 六工具集成测试、`npm run check/test/build`、MCP Server 编译与固定工具契约测试通过 |
 | T09 | AIEngine 与证据链收敛 | 待实施 |  |
 | T10 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
 | T11 | 其他数据库和中间件迁移 | 待实施 |  |
@@ -136,7 +136,8 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 ### 验证步骤和结果
 
 - `cd backend && go test ./...`：通过。
-- `cd frontend && npm run check`：通过。
+- `cd frontend && npm run check && npm run test -- --run && npm run build`：通过（52 个测试）。
+- `cd backend && go test ./mcpserver/redis/server ./mcp ./connector`：通过，Redis MCP Server 与 Agent 参数注入契约编译/回归通过。
 - `cd backend && go test -tags=integration ./tool/redis -run 'TestRealRedis' -count=1`：本机 Redis `127.0.0.1:6383` 六项工具真实连接通过。
 - `git diff --check`：通过。
 
