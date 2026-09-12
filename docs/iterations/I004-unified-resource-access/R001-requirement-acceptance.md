@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T08 已完成，T09 Nacos 工具集统一实施中，其余任务待实施
+**验收结论：** 部分验收：T01-T09 已完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T08 已完成验收，确认日期为 2026-09-12。T09 已进入实施，后续任务按任务表顺延。
+T01-T09 已完成验收，确认日期为 2026-09-12。T10-T14 按任务表继续实施。
 
 ## 2. 验收环境和范围
 
@@ -26,7 +26,7 @@ T01-T08 已完成验收，确认日期为 2026-09-12。T09 已进入实施，后
 | T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
 | T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
 | T08 | Redis 工具集统一 | 已完成 | `go test ./...`、真实 Redis 六工具集成测试、`npm run check/test/build`、MCP Server 编译与固定工具契约测试通过 |
-| T09 | Nacos 工具集统一 | 实施中 | 公共 Nacos API 工具、Direct/Agent/MCP 适配器、前端资源流程和 0039 迁移已开始实现 |
+| T09 | Nacos 工具集统一 | 已通过 | 公共 Nacos API 工具、Direct/Agent/MCP 适配器、前端资源流程、资源目录排序和 0039 迁移完成；契约测试通过 |
 | T10 | AIEngine 与证据链收敛 | 待实施 |  |
 | T11 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
 | T12 | 其他数据库和中间件迁移 | 待实施 |  |
@@ -144,8 +144,26 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 
 ## 9. 需求级遗留事项
 
+## 8.2 T09 Nacos 工具集统一验收
+
+### 实施内容
+
+- 新增 Nacos 资源，支持 Direct/Agent 子类型、统一连接配置、凭据及 MCPServer 关联。
+- 公共包 `backend/tool/nacos` 提供服务端状态、命名空间、服务列表、服务实例、配置元数据和配置详情六项固定只读 API 工具。
+- Direct Provider、Nacos MCP Server 与 Agent 使用统一工具名称、业务 Schema 和结果 DTO；连接字段由服务端注入，禁止模型覆盖。
+- 前端新增 Nacos 创建、编辑、连接测试、总结核验和详情工具列表；资源目录调整为用户指定顺序。
+- 0039 迁移新增 Nacos 资源 Schema。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过。
+- `cd frontend && npm run check && npm run test -- --run && npm run build`：通过（53 个测试）。
+- `cd backend && go test ./tool/nacos ./connector ./mcpserver/nacos/server ./mcp`：通过。
+- `git diff --check`：通过。
+- 本机未运行 Nacos 服务，`127.0.0.1:8848` 连接失败；因此真实 Nacos 集群 API 验证列为环境限制。公共 API 请求、分页边界、参数校验和错误路径已通过 `httptest` 契约测试。
+
 <!-- 将未完成的低优先级资源、驱动限制或外部环境依赖转入 backlog 或后续迭代。 -->
 
 ## 10. 用户确认和最终结论
 
-Application T06、PostgreSQL T07 和 Redis T08 验收通过；I004-R001 仍处于实施中，后续任务未完成。
+Application T06、PostgreSQL T07、Redis T08 和 Nacos T09 验收通过；I004-R001 仍处于实施中，T10-T14 待实施。
