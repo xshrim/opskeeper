@@ -297,3 +297,33 @@ func TestResourceContextResolverDoesNotFallbackAgentToUnconstrainedProvider(t *t
 		t.Fatal("agent without an MCP provider was silently accepted")
 	}
 }
+
+type fixedToolProvider struct {
+	accessModeContextProvider
+	value string
+}
+
+func (p fixedToolProvider) Resolve(_ context.Context, resource ContextResource) ([]Tool, []ContextFact, error) {
+	return []Tool{ToolFunc{Def: ToolDefinition{Name: "host_processes", Source: "test", ResourceID: resource.ID}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
+		return ToolResult{Output: p.value}, nil
+	}}}, nil, nil
+}
+
+func TestResourceToolInvokerSelectsSourceProviderWithoutCallerTransportBranch(t *testing.T) {
+	direct := fixedToolProvider{accessModeContextProvider: accessModeContextProvider{kinds: []string{"Host"}, modes: []string{"direct"}}, value: "direct"}
+	agent := fixedToolProvider{accessModeContextProvider: accessModeContextProvider{kinds: []string{"Host"}, modes: []string{"agent"}}, value: "agent"}
+	invoker := NewResourceToolInvoker(direct, agent)
+	for _, source := range []ContextResource{{ID: "direct-host", Kind: "Host", Subtype: "direct"}, {ID: "agent-host", Kind: "Host", Subtype: "agent"}} {
+		result, err := invoker.InvokeFixed(context.Background(), source, "host_processes", map[string]any{"keyword": "orders"})
+		if err != nil || result.Output != source.Subtype {
+			t.Fatalf("source=%s result=%+v err=%v", source.ID, result, err)
+		}
+	}
+}
+
+func TestResourceToolInvokerDoesNotFallbackAgentToDirectProvider(t *testing.T) {
+	invoker := NewResourceToolInvoker(fixedToolProvider{accessModeContextProvider: accessModeContextProvider{kinds: []string{"Host"}, modes: []string{"direct"}}, value: "direct"})
+	if _, err := invoker.InvokeFixed(context.Background(), ContextResource{ID: "agent-host", Kind: "Host", Subtype: "agent"}, "host_processes", nil); err == nil {
+		t.Fatal("agent resource silently fell back to the direct provider")
+	}
+}

@@ -3,6 +3,7 @@ package aiengine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"opskeeper/backend/resource"
@@ -15,6 +16,45 @@ type ContextTooling struct {
 	Registry *ToolRegistry
 	Resolver ResourceContextResolver
 	Gateway  *PolicyGateway
+}
+
+// FixedResourceToolInvoker invokes one named tool for a resource through the
+// provider selected by that resource's own access mode. Callers provide only
+// a fixed, server-owned operation and arguments; they never choose transport.
+type FixedResourceToolInvoker interface {
+	InvokeFixed(context.Context, ContextResource, string, map[string]any) (ToolResult, error)
+}
+
+type ResourceToolInvoker struct{ Providers []ContextProvider }
+
+func NewResourceToolInvoker(providers ...ContextProvider) ResourceToolInvoker {
+	return ResourceToolInvoker{Providers: providers}
+}
+
+func (i ResourceToolInvoker) InvokeFixed(ctx context.Context, resource ContextResource, name string, arguments map[string]any) (ToolResult, error) {
+	provider, ok := providerFor(i.Providers, resource)
+	if !ok {
+		return ToolResult{}, fmt.Errorf("no context provider is available for resource %s", resource.ID)
+	}
+	tools, _, err := provider.Resolve(ctx, resource)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	for _, tool := range tools {
+		if sameFixedToolName(tool.Definition().Name, name) {
+			return tool.Invoke(ctx, arguments)
+		}
+	}
+	return ToolResult{}, fmt.Errorf("resource %s does not provide required tool %q", resource.ID, name)
+}
+
+func sameFixedToolName(got, wanted string) bool {
+	got = strings.TrimSpace(got)
+	wanted = strings.TrimSpace(wanted)
+	if strings.EqualFold(got, wanted) {
+		return true
+	}
+	return strings.EqualFold(strings.TrimPrefix(got, "connector."), wanted) || strings.EqualFold(got, strings.TrimPrefix(wanted, "connector."))
 }
 
 func NewContextTooling(resources ContextResourceReader, providers ...ContextProvider) *ContextTooling {

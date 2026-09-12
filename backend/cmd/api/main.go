@@ -162,10 +162,13 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	agentProfileResolver.Versions = agentProfileVersions
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentialService)
+	connectorProvider := connectorService.AIEngineProvider()
+	mcpProvider := mcpService.AIEngineProvider()
+	connectorService.SetApplicationToolInvoker(aiengine.NewResourceToolInvoker(connectorProvider, mcpProvider))
 	contextTooling := aiengine.NewContextTooling(
 		aiengine.ResourceServiceReader{Reader: resourceService},
-		connectorService.AIEngineProvider(),
-		mcpService.AIEngineProvider(),
+		connectorProvider,
+		mcpProvider,
 	)
 	aiStore := aiengine.NewPostgresStore(pool)
 	workflowRunStore := aiengine.NewPostgresWorkflowRunStore(pool)

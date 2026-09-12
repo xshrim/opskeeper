@@ -20,6 +20,20 @@ var _ Store = (*store)(nil)
 
 func NewStore(pool *pgxpool.Pool) Store { return &store{pool: pool} }
 
+// ScopeType is used by resource-level invariants that depend on the owning
+// scope kind without making organization a hard dependency of this package.
+func (s *store) ScopeType(ctx context.Context, scopeID string) (string, error) {
+	var value string
+	err := s.pool.QueryRow(ctx, `SELECT scope_type FROM scopes WHERE id = $1::uuid AND deleted_at IS NULL`, scopeID).Scan(&value)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("read scope type: %w", err)
+	}
+	return value, nil
+}
+
 const resourceSelect = `
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name,
        resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels,

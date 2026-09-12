@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -24,6 +25,37 @@ type stubConnectorService struct {
 	actorID    string
 	resourceID string
 	calls      int
+}
+
+type stubApplicationDiscoveryConnectorService struct {
+	stubConnectorService
+	hostKeyword    string
+	hostResource   string
+	hostPID        int
+	discoveryCalls int
+}
+
+func (s *stubApplicationDiscoveryConnectorService) DiscoverApplicationHostProcesses(_ context.Context, resourceID, keyword string, _ int) (connector.ApplicationHostProcesses, error) {
+	s.discoveryCalls++
+	s.hostResource, s.hostKeyword = resourceID, keyword
+	return connector.ApplicationHostProcesses{Keyword: keyword}, nil
+}
+func (s *stubApplicationDiscoveryConnectorService) ValidateApplicationHostProcess(_ context.Context, resourceID, keyword string, pid int) (connector.ApplicationHostProcessValidation, error) {
+	s.discoveryCalls++
+	s.hostResource, s.hostKeyword, s.hostPID = resourceID, keyword, pid
+	return connector.ApplicationHostProcessValidation{Keyword: keyword, PID: pid, Valid: true}, nil
+}
+func (s *stubApplicationDiscoveryConnectorService) DiscoverApplicationDockerContainers(context.Context, string, string, int) (connector.ApplicationDockerContainers, error) {
+	s.discoveryCalls++
+	return connector.ApplicationDockerContainers{}, nil
+}
+func (s *stubApplicationDiscoveryConnectorService) DiscoverApplicationKubernetesNamespaces(context.Context, string, bool, int) (connector.ApplicationKubernetesNamespaces, error) {
+	s.discoveryCalls++
+	return connector.ApplicationKubernetesNamespaces{}, nil
+}
+func (s *stubApplicationDiscoveryConnectorService) DiscoverApplicationKubernetesWorkloads(context.Context, string, string, int) (connector.ApplicationKubernetesWorkloads, error) {
+	s.discoveryCalls++
+	return connector.ApplicationKubernetesWorkloads{}, nil
 }
 
 func (s *stubConnectorService) Test(_ context.Context, actorID, resourceID string) (connector.Check, error) {
@@ -108,6 +140,50 @@ func TestConnectorRouteRejectsMissingPermissionBeforeService(t *testing.T) {
 
 	if response.Code != http.StatusForbidden || service.calls != 0 {
 		t.Fatalf("response = %d %s, service calls = %d", response.Code, response.Body.String(), service.calls)
+	}
+}
+
+func TestApplicationDiscoveryRoutesUseResourceUseAndForwardArguments(t *testing.T) {
+	service := &stubApplicationDiscoveryConnectorService{}
+	authorizer := &connectorAuthorizationService{filter: authorization.ResourceFilter{ResourceIDs: []string{handlerTestUUID}}}
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/resources/"+handlerTestUUID+"/application-targets/host-processes?keyword=orders&limit=7", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+	newConnectorTestRouter(service, authorizer).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || service.discoveryCalls != 1 || service.hostResource != handlerTestUUID || service.hostKeyword != "orders" {
+		t.Fatalf("response = %d %s, calls=%d resource=%q keyword=%q", response.Code, response.Body.String(), service.discoveryCalls, service.hostResource, service.hostKeyword)
+	}
+	if len(authorizer.permissions) != 1 || authorizer.permissions[0] != authorization.ResourceUse {
+		t.Fatalf("permissions = %#v", authorizer.permissions)
+	}
+}
+
+func TestApplicationDiscoveryRouteRejectsMissingPermissionBeforeService(t *testing.T) {
+	service := &stubApplicationDiscoveryConnectorService{}
+	authorizer := &connectorAuthorizationService{}
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/resources/"+handlerTestUUID+"/application-targets/host-processes?keyword=orders", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+	newConnectorTestRouter(service, authorizer).ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || service.discoveryCalls != 0 {
+		t.Fatalf("response = %d %s, calls = %d", response.Code, response.Body.String(), service.discoveryCalls)
+	}
+}
+
+func TestApplicationHostValidationRouteDecodesBody(t *testing.T) {
+	service := &stubApplicationDiscoveryConnectorService{}
+	authorizer := &connectorAuthorizationService{filter: authorization.ResourceFilter{ResourceIDs: []string{handlerTestUUID}}}
+	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/resources/"+handlerTestUUID+"/application-targets/host-processes/validate", strings.NewReader(`{"keyword":"orders&java","pid":42}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+	newConnectorTestRouter(service, authorizer).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || service.hostResource != handlerTestUUID || service.hostKeyword != "orders&java" || service.hostPID != 42 {
+		t.Fatalf("response = %d %s, resource=%q keyword=%q pid=%d", response.Code, response.Body.String(), service.hostResource, service.hostKeyword, service.hostPID)
+	}
+	var result connector.ApplicationHostProcessValidation
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || !result.Valid {
+		t.Fatalf("result = %+v, err=%v", result, err)
 	}
 }
 

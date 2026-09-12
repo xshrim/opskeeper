@@ -148,6 +148,64 @@ export interface ConnectionCheck {
   checked_at: string;
 }
 
+export interface ApplicationHostProcessCandidate {
+  pid: number;
+  name?: string;
+  executable?: string;
+  command_line?: string;
+  state?: string;
+}
+
+export interface ApplicationHostProcesses {
+  keyword: string;
+  processes: ApplicationHostProcessCandidate[];
+  match_count: number;
+  truncated: boolean;
+}
+
+export interface ApplicationHostProcessValidation {
+  keyword: string;
+  pid: number;
+  valid: boolean;
+  match_count: number;
+  message?: string;
+}
+
+export interface ApplicationDockerContainerCandidate {
+  id: string;
+  name: string;
+  image?: string;
+  state?: string;
+  status?: string;
+}
+
+export interface ApplicationDockerContainers {
+  containers: ApplicationDockerContainerCandidate[];
+}
+
+export interface ApplicationKubernetesNamespaceCandidate {
+  name: string;
+}
+
+export interface ApplicationKubernetesNamespaces {
+  namespaces: ApplicationKubernetesNamespaceCandidate[];
+}
+
+export interface ApplicationKubernetesWorkloadCandidate {
+  namespace: string;
+  kind: string;
+  name: string;
+  ready?: boolean;
+  phase?: string;
+  age?: string;
+  labels?: Record<string, string>;
+}
+
+export interface ApplicationKubernetesWorkloads {
+  namespace: string;
+  workloads: ApplicationKubernetesWorkloadCandidate[];
+}
+
 export interface Credential {
   id: string;
   scope_id: string;
@@ -818,6 +876,30 @@ export const api = {
     request<{ status: string; message: string; latency_ms: number }>(
       'api/v1/host/connection-tests',
       json(body)
+    ),
+  applicationHostProcesses: (resourceId: string, keyword: string, limit = 50) =>
+    request<ApplicationHostProcesses>(
+      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/host-processes?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
+    ),
+  validateApplicationHostProcess: (
+    resourceId: string,
+    body: { keyword: string; pid: number }
+  ) =>
+    request<ApplicationHostProcessValidation>(
+      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/host-processes/validate`,
+      json(body)
+    ),
+  applicationDockerContainers: (resourceId: string, keyword = '', limit = 100) =>
+    request<ApplicationDockerContainers>(
+      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/docker-containers?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
+    ),
+  applicationKubernetesNamespaces: (resourceId: string, includeSystem = false, limit = 100) =>
+    request<ApplicationKubernetesNamespaces>(
+      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/kubernetes-namespaces?include_system=${includeSystem ? 'true' : 'false'}&limit=${limit}`
+    ),
+  applicationKubernetesWorkloads: (resourceId: string, namespace: string, limit = 100) =>
+    request<ApplicationKubernetesWorkloads>(
+      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/kubernetes-workloads?namespace=${encodeURIComponent(namespace)}&limit=${limit}`
     ),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),

@@ -24,6 +24,6 @@ func TestKubernetesDirectToolsMatchMCPToolCatalog(t *testing.T) {
 		delete(direct, tool.Name)
 	}
 	for name := range direct {
-		t.Errorf("Direct-only Kubernetes tool %q", name)
+		t.Errorf("Kubernetes tool missing from MCP catalog %q", name)
 	}
 }

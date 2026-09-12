@@ -26,7 +26,7 @@ func RegisterTools(s *mcp.Server) {
 		output, err := host.Metrics(ctx, input)
 		return nil, output, err
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "host_processes", Description: "Read information about selected Linux processes.", InputSchema: host.InputSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}})}, func(ctx context.Context, _ *mcp.CallToolRequest, input HostProcessesInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "host_processes", Description: "Read information about selected Linux processes. Keyword supports & for AND, | for OR, commas/spaces as AND, and quoted terms; empty keyword without pid skips process scanning.", InputSchema: host.InputSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string", "description": "Case-insensitive expression: A&B, A|B, comma/space-separated AND, quoted terms are kept intact."}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}})}, func(ctx context.Context, _ *mcp.CallToolRequest, input HostProcessesInput) (*mcp.CallToolResult, any, error) {
 		output, err := host.Processes(ctx, input)
 		return nil, output, err
 	})

@@ -151,6 +151,8 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2
       ? '配置 Linux 主机的本机或 SSH 接入方式。'
       : '确认配置并核验 Host 连接。';
+  if (kind === 'Application')
+    return step === 2 ? '选择项目、接入方式和应用实例。' : '配置资源';
   if (kind === 'AIProvider') {
     if (step === 2) return '配置 Provider 的 Base URL、协议和访问凭据。';
     if (step === 3) return '配置 Model 参数、能力和默认模型。';

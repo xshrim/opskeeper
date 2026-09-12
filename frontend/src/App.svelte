@@ -922,6 +922,8 @@
       {:else if view === 'resource'}
         <ResourcePage
           {visibleResources}
+          {projects}
+          {teams}
           bind:selectedResourceId
           bind:resourceConnectionChecks
           bind:operationSnapshots

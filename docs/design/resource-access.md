@@ -195,6 +195,12 @@ AIEngine 不为这些 Server 增加特殊分支，也不区分 `managed` 和 `ex
 
 ## 7. 资源模型
 
+### 7.1 Application 聚合资源
+
+Application 是项目级业务资源，不单独配置 MCP 传输。它的 `config.access_mode` 只能为 `virtual_machine`、`containerized` 或 `cloud_native`，并使用 `instances` 保存一个或多个受控实例关联：分别引用 Host、Docker 或 Kubernetes 逻辑资源及其进程、容器或工作负载定位信息。Host 进程关键字支持 `&`、`|`、逗号/空格隐式 AND 和引号保护；Kubernetes 前端将工作负载类型与名称合并为一个“类型 · 名称”候选项，持久化时仍拆分为 `workload_kind` 与 `workload_name`。
+
+Application 作为 AI 上下文时应采用混合设计：Application 是权限、审计和业务语义主体；工具实现复用关联 Host/Docker/Kubernetes/Loki 的公共只读工具，并由 Application 实例固定目标参数。Application 不读取或区分关联资源的 Direct/Agent 接入方式，统一调用器按关联资源自身配置选择唯一 Provider；缺少受控工具时明确失败且不回退。不得将整个关联资源的通用工具集原样暴露给模型，否则模型可以访问与该 Application 无关的进程、容器、命名空间或工作负载。仅在跨实例汇总、实例状态和应用日志等 Application 语义无法由底层资源表达时新增 Application 工具。
+
 所有资源使用统一结构；接入方式是 `subtype` 的值，Agent 传输入口使用统一的 `agent_ref`。不得为 Direct 和 Agent 建立两套结构体。目标字段为：
 
 ```text
@@ -286,7 +292,8 @@ Direct 失败不得自动切换到 Agent，Agent 失败也不得自动切换到 
 | 中间件 | Redis、Kafka、RabbitMQ、Elasticsearch | 连接、节点、客户端、消费/队列、分片和健康等只读诊断 |
 | 可观测 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、Alertmanager | 指标、日志、告警和追踪查询 |
 | 平台管理 | AIProvider、MCPServer、Skill、AgentProfile | 不作为诊断目标工具集；由各自管理和执行模块处理 |
-| 业务目录 | Application、Repository、Artifact | 不在本迭代实现资源直连工具；通过关系、发现或各自模块使用 |
+| 业务目录 | Application | 以项目级聚合资源进入上下文；通过固定的实例状态/日志工具复用 Host、Docker、Kubernetes 公共只读能力 |
+| 业务目录 | Repository、Artifact | 不在本迭代实现资源直连工具；通过关系、发现或各自模块使用 |
 
 ## 12. 测试要求
 

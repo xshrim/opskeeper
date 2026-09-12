@@ -15,6 +15,7 @@
   export let dockerConfigurationComplete = false;
   export let kubernetesConfigurationComplete = false;
   export let hostConfigurationComplete = false;
+  export let applicationConfigurationComplete = false;
   export let providerModelCount = 0;
   export let busy = false;
   export let scopeSelected = false;
@@ -31,6 +32,7 @@
   export let onContinueDocker: () => void = () => {};
   export let onContinueKubernetes: () => void = () => {};
   export let onContinueHost: () => void = () => {};
+  export let onSubmitApplication: () => void = () => {};
   export let onSubmitMcp: () => void = () => {};
   export let onSubmitDocker: () => void = () => {};
   export let onSubmitHost: () => void = () => {};
@@ -158,7 +160,14 @@
         disabled={!hostConfigurationComplete}
         type="button"
         on:click={() => hostConfigurationComplete && onSelectStep(3)}
-        ><b>3</b><span>总结核验</span></button
+      ><b>3</b><span>总结核验</span></button>
+    {:else if kind === 'Application'}
+      <button
+        class:active={step === 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>实例配置</span></button
       >
     {:else}
       <button
@@ -298,8 +307,10 @@
             type="button"
             on:click={onSubmitHost}
             disabled={busy || !scopeSelected}
-            >{editingHost ? '保存' : '创建'}</button
-          >
+            >{editingHost ? '保存' : '创建'}</button>
+        {:else if kind === 'Application' && step === 2}
+          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button>
+          <button class="primary" type="button" on:click={onSubmitApplication} disabled={busy || !applicationConfigurationComplete || !scopeSelected}>{editingResource ? '保存' : '创建'}</button>
         {:else if step === 2}
           <button
             class="secondary"

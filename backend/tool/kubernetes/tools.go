@@ -16,6 +16,7 @@ import (
 	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
@@ -62,6 +63,7 @@ func AvailableTools() []ToolInfo {
 	}
 	items = append(items,
 		ToolInfo{Name: "kubernetes_workloads", Description: "List Kubernetes workloads."},
+		ToolInfo{Name: "kubernetes_workload_pods", Description: "Resolve the running Pods for one Kubernetes workload."},
 		ToolInfo{Name: "kubernetes_pod_stat", Description: "Read current pod CPU and memory usage from the Kubernetes Metrics API."},
 		ToolInfo{Name: "kubernetes_node_stat", Description: "Read current node CPU and memory usage from the Kubernetes Metrics API."},
 		ToolInfo{Name: "kubernetes_pod_logs", Description: "Read bounded, non-following pod logs."},
@@ -105,6 +107,24 @@ type FileOutput struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	Truncated bool   `json:"truncated"`
+}
+
+// PodTarget is a pod selected by a configured workload. Containers are
+// returned so callers can keep pod log/file reads bounded without guessing a
+// container name from user input.
+type PodTarget struct {
+	Namespace  string   `json:"namespace"`
+	Name       string   `json:"name"`
+	Containers []string `json:"containers,omitempty"`
+}
+
+type WorkloadPodsOutput struct {
+	Namespace    string      `json:"namespace"`
+	WorkloadKind string      `json:"workload_kind"`
+	WorkloadName string      `json:"workload_name"`
+	Pods         []PodTarget `json:"pods"`
+	Count        int         `json:"count"`
+	Truncated    bool        `json:"truncated"`
 }
 
 type ContainerUsage struct {
@@ -210,6 +230,15 @@ func PodFileInputProperties() map[string]any {
 		"pod":            map[string]any{"type": "string"},
 		"container_name": map[string]any{"type": "string"},
 		"path":           map[string]any{"type": "string"},
+	}
+}
+
+func WorkloadPodsInputProperties() map[string]any {
+	return map[string]any{
+		"workload_kind": map[string]any{"type": "string", "enum": []string{"Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"}},
+		"namespace":     map[string]any{"type": "string"},
+		"workload_name": map[string]any{"type": "string"},
+		"limit":         map[string]any{"type": "integer", "minimum": 1, "maximum": 100},
 	}
 }
 
@@ -346,6 +375,216 @@ func Get(ctx context.Context, input client.ConnectionInput, resource, namespace,
 		return nil, err
 	}
 	return map[string]any{"item": sanitize(item.Object)}, nil
+}
+
+// WorkloadPods resolves the currently running pods belonging to one named
+// workload. It is intentionally narrower than a generic pod list: the caller
+// supplies only the allowlisted workload kind, namespace and name.
+func WorkloadPods(ctx context.Context, input client.ConnectionInput, kind, namespace, name string, limit int) (WorkloadPodsOutput, error) {
+	kind = strings.TrimSpace(kind)
+	namespace, name = strings.TrimSpace(namespace), strings.TrimSpace(name)
+	if namespace == "" || name == "" {
+		return WorkloadPodsOutput{}, fmt.Errorf("namespace and workload name are required")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	resourceName := map[string]string{"Deployment": "deployments", "StatefulSet": "statefulsets", "DaemonSet": "daemonsets", "Job": "jobs", "CronJob": "cronjobs"}[kind]
+	if resourceName == "" {
+		return WorkloadPodsOutput{}, fmt.Errorf("workload_kind %q is invalid", kind)
+	}
+	c, err := client.Open(ctx, input)
+	if err != nil {
+		return WorkloadPodsOutput{}, err
+	}
+	def := resources[resourceName]
+	workload, err := c.Dynamic.Resource(def.gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return WorkloadPodsOutput{}, err
+	}
+	selectors, err := workloadPodSelectors(ctx, c, kind, namespace, name, workload)
+	if err != nil {
+		return WorkloadPodsOutput{}, err
+	}
+	seen := map[string]bool{}
+	result := WorkloadPodsOutput{Namespace: namespace, WorkloadKind: kind, WorkloadName: name, Pods: []PodTarget{}}
+	for _, selector := range selectors {
+		if strings.TrimSpace(selector) == "" {
+			continue
+		}
+		podList, listErr := c.Kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector, Limit: int64(limit)})
+		if listErr != nil {
+			return WorkloadPodsOutput{}, fmt.Errorf("list workload pods: %w", listErr)
+		}
+		if len(podList.Items) == 0 {
+			if fallback := modernJobSelector(selector); fallback != "" {
+				podList, listErr = c.Kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: fallback, Limit: int64(limit)})
+				if listErr != nil {
+					return WorkloadPodsOutput{}, fmt.Errorf("list workload pods: %w", listErr)
+				}
+			}
+		}
+		for _, pod := range podList.Items {
+			if len(result.Pods) >= limit {
+				result.Truncated = true
+				break
+			}
+			if seen[pod.Name] {
+				continue
+			}
+			seen[pod.Name] = true
+			containers := make([]string, 0, len(pod.Spec.Containers))
+			for _, container := range pod.Spec.Containers {
+				if strings.TrimSpace(container.Name) != "" {
+					containers = append(containers, container.Name)
+				}
+			}
+			result.Pods = append(result.Pods, PodTarget{Namespace: pod.Namespace, Name: pod.Name, Containers: containers})
+		}
+		if result.Truncated {
+			break
+		}
+		if podList.Continue != "" {
+			result.Truncated = true
+		}
+	}
+	result.Count = len(result.Pods)
+	return result, nil
+}
+
+func modernJobSelector(selector string) string {
+	for _, prefix := range []struct{ legacy, modern string }{
+		{legacy: "controller-uid=", modern: "batch.kubernetes.io/controller-uid="},
+		{legacy: "job-name=", modern: "batch.kubernetes.io/job-name="},
+	} {
+		if strings.HasPrefix(selector, prefix.legacy) {
+			return prefix.modern + strings.TrimPrefix(selector, prefix.legacy)
+		}
+	}
+	return ""
+}
+
+func workloadPodSelectors(ctx context.Context, c *client.Connection, kind, namespace, name string, workload *unstructured.Unstructured) ([]string, error) {
+	if kind == "CronJob" {
+		jobs, err := c.Dynamic.Resource(resources["jobs"].gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: "cronjob-name=" + name, Limit: 50})
+		if err != nil {
+			return nil, fmt.Errorf("list CronJob jobs: %w", err)
+		}
+		// Newer clusters use batch.kubernetes.io/cronjob-name. Merge both
+		// selectors while deduplicating jobs by name.
+		modern, modernErr := c.Dynamic.Resource(resources["jobs"].gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/cronjob-name=" + name, Limit: 50})
+		if modernErr == nil {
+			seen := map[string]bool{}
+			for _, job := range jobs.Items {
+				seen[job.GetName()] = true
+			}
+			for _, job := range modern.Items {
+				if !seen[job.GetName()] {
+					jobs.Items = append(jobs.Items, job)
+				}
+			}
+		}
+		selectors := make([]string, 0, len(jobs.Items))
+		for _, job := range jobs.Items {
+			selector, selectorErr := selectorFromWorkload(job.Object, "Job", job.GetName())
+			if selectorErr != nil {
+				return nil, selectorErr
+			}
+			if selector != "" {
+				selectors = append(selectors, selector)
+			}
+		}
+		return selectors, nil
+	}
+	selector, err := selectorFromWorkload(workload.Object, kind, name)
+	if err != nil {
+		return nil, err
+	}
+	if selector == "" {
+		return nil, fmt.Errorf("workload %s/%s has no pod selector", namespace, name)
+	}
+	return []string{selector}, nil
+}
+
+func selectorFromWorkload(object map[string]any, kind, name string) (string, error) {
+	selectorMap, found, err := unstructured.NestedMap(object, "spec", "selector")
+	if err != nil {
+		return "", fmt.Errorf("read %s selector: %w", kind, err)
+	}
+	if !found && kind == "CronJob" {
+		selectorMap, found, err = unstructured.NestedMap(object, "spec", "jobTemplate", "spec", "selector")
+		if err != nil {
+			return "", fmt.Errorf("read CronJob selector: %w", err)
+		}
+	}
+	if found {
+		converted, convertErr := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels:      nestedStringMap(selectorMap, "matchLabels"),
+			MatchExpressions: nestedLabelRequirements(selectorMap, "matchExpressions"),
+		})
+		if convertErr != nil {
+			return "", fmt.Errorf("parse %s selector: %w", kind, convertErr)
+		}
+		if !converted.Empty() {
+			return converted.String(), nil
+		}
+	}
+	uid := strings.TrimSpace(objectUID(object))
+	if kind == "Job" && uid != "" {
+		return labels.Set{"controller-uid": uid}.AsSelector().String(), nil
+	}
+	if kind == "Job" && name != "" {
+		return labels.Set{"job-name": name}.AsSelector().String(), nil
+	}
+	return "", nil
+}
+
+func nestedStringMap(object map[string]any, field string) map[string]string {
+	values := map[string]string{}
+	for key, value := range objectStringMap(object[field]) {
+		values[key] = value
+	}
+	return values
+}
+
+func nestedLabelRequirements(object map[string]any, field string) []metav1.LabelSelectorRequirement {
+	items, _ := object[field].([]any)
+	result := make([]metav1.LabelSelectorRequirement, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		requirement := metav1.LabelSelectorRequirement{Key: strings.TrimSpace(fmt.Sprint(value["key"])), Operator: metav1.LabelSelectorOperator(strings.TrimSpace(fmt.Sprint(value["operator"])))}
+		if rawValues, ok := value["values"].([]any); ok {
+			for _, raw := range rawValues {
+				requirement.Values = append(requirement.Values, strings.TrimSpace(fmt.Sprint(raw)))
+			}
+		}
+		result = append(result, requirement)
+	}
+	return result
+}
+
+func objectStringMap(value any) map[string]string {
+	result := map[string]string{}
+	values, ok := value.(map[string]any)
+	if !ok {
+		return result
+	}
+	for key, raw := range values {
+		result[key] = strings.TrimSpace(fmt.Sprint(raw))
+	}
+	return result
+}
+
+func objectUID(object map[string]any) string {
+	metadata, _ := object["metadata"].(map[string]any)
+	value, _ := metadata["uid"].(string)
+	return strings.TrimSpace(value)
 }
 
 func PodLogs(ctx context.Context, input client.ConnectionInput, namespace, pod, container string, tail int64, timestamps bool) (LogsOutput, error) {

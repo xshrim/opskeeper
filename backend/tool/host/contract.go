@@ -215,6 +215,8 @@ type ProcessesOutput struct {
 	CollectedAt   time.Time     `json:"collected_at"`
 	Target        Target        `json:"target"`
 	Processes     []ProcessInfo `json:"processes"`
+	MatchCount    int           `json:"match_count"`
+	Truncated     bool          `json:"truncated"`
 	Partial       bool          `json:"partial"`
 	Unavailable   []string      `json:"unavailable,omitempty"`
 }

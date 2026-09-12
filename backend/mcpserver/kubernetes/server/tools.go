@@ -37,6 +37,13 @@ type fileInput struct {
 	ContainerName string `json:"container_name,omitempty"`
 	Path          string `json:"path"`
 }
+type workloadPodsInput struct {
+	client.ConnectionInput
+	WorkloadKind string `json:"workload_kind"`
+	Namespace    string `json:"namespace"`
+	WorkloadName string `json:"workload_name"`
+	Limit        int    `json:"limit,omitempty"`
+}
 type podStatInput struct {
 	client.ConnectionInput
 	Namespace string `json:"namespace,omitempty"`
@@ -76,6 +83,8 @@ func RegisterTools(s *mcp.Server) {
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, fileInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
+		case func(context.Context, *mcp.CallToolRequest, workloadPodsInput) (*mcp.CallToolResult, any, error):
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, podStatInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, nodeStatInput) (*mcp.CallToolResult, any, error):
@@ -93,6 +102,10 @@ func RegisterTools(s *mcp.Server) {
 	}
 	add("kubernetes_workloads", "List Kubernetes workloads.", kt.ListInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		out, err := kt.Workloads(ctx, in.ConnectionInput, in.Namespace, in.Filters, in.Continue, in.Limit)
+		return nil, out, err
+	})
+	add("kubernetes_workload_pods", "Resolve the running Pods for one Kubernetes workload.", kt.WorkloadPodsInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in workloadPodsInput) (*mcp.CallToolResult, any, error) {
+		out, err := kt.WorkloadPods(ctx, in.ConnectionInput, in.WorkloadKind, in.Namespace, in.WorkloadName, in.Limit)
 		return nil, out, err
 	})
 	add("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", kt.PodStatsInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in podStatInput) (*mcp.CallToolResult, any, error) {

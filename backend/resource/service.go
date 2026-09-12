@@ -11,6 +11,7 @@ import (
 )
 
 type Store interface {
+	ScopeType(context.Context, string) (string, error)
 	Create(context.Context, CreateInput) (Resource, error)
 	UpsertImported(context.Context, ImportedInput) (Resource, error)
 	List(context.Context, Pagination, string, map[string]string) (Page[Resource], error)
@@ -98,6 +99,14 @@ func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, req
 	if input.Config == nil {
 		input.Config = map[string]any{}
 	}
+	if input.Kind == "Application" {
+		if requireImportedIdentity {
+			input.Config = normalizeImportedApplicationConfig(input.Config, input.SourceResourceID, input.Name)
+		}
+		if err := s.validateApplication(ctx, input.ScopeID, input.Config, requireImportedIdentity); err != nil {
+			return CreateInput{}, err
+		}
+	}
 	schema, err := s.store.GetSchema(ctx, input.Kind, input.SchemaVersion)
 	if err != nil {
 		return CreateInput{}, err
@@ -112,6 +121,182 @@ func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, req
 	}
 	input.SchemaVersion = schema.Version
 	return input, nil
+}
+
+func (s *Service) validateApplication(ctx context.Context, scopeID string, config map[string]any, imported bool) error {
+	scopeType, err := s.store.ScopeType(ctx, scopeID)
+	if err != nil {
+		return err
+	}
+	if scopeType != "project" && !imported {
+		return invalid("Application resources must belong to a project scope")
+	}
+	mode, _ := config["access_mode"].(string)
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	if mode == "" {
+		if imported {
+			mode = "cloud_native"
+		} else {
+			return invalid("Application access_mode is required")
+		}
+	}
+	if mode != "virtual_machine" && mode != "containerized" && mode != "cloud_native" {
+		return invalid("Application access_mode must be virtual_machine, containerized or cloud_native")
+	}
+	rawInstances, ok := config["instances"].([]any)
+	if !ok || len(rawInstances) == 0 {
+		if imported {
+			return nil
+		}
+		return invalid("Application must contain at least one instance")
+	}
+	seenResources := map[string]bool{}
+	for index, raw := range rawInstances {
+		instance, ok := raw.(map[string]any)
+		if !ok {
+			return invalid(fmt.Sprintf("Application instances[%d] must be an object", index))
+		}
+		resourceKey, resourceKind := applicationInstanceResource(instance, mode)
+		if resourceKey == "" {
+			if imported {
+				return nil
+			}
+			return invalid(fmt.Sprintf("Application instances[%d] resource is required", index))
+		}
+		associationKey := applicationAssociationKey(resourceKey, mode, instance)
+		if seenResources[associationKey] {
+			return invalid("Application instance resource associations must be unique")
+		}
+		seenResources[associationKey] = true
+		linked, err := s.store.Get(ctx, resourceKey)
+		if err != nil {
+			return fmt.Errorf("Application instance %d resource: %w", index, err)
+		}
+		if linked.Kind != resourceKind {
+			return invalid(fmt.Sprintf("Application instances[%d] must reference a %s resource", index, resourceKind))
+		}
+		if linked.Status != StatusActive {
+			return invalid(fmt.Sprintf("Application instances[%d] resource must be active", index))
+		}
+		if !allowsResource(ctx, linked.ScopeID, linked.ID) {
+			return authorization.ErrForbidden
+		}
+		if mode == "virtual_machine" {
+			if strings.TrimSpace(stringValue(instance["process_keyword"])) == "" {
+				return invalid(fmt.Sprintf("Application instances[%d].process_keyword is required", index))
+			}
+		}
+		if mode == "containerized" && strings.TrimSpace(stringValue(instance["container_name"])) == "" {
+			return invalid(fmt.Sprintf("Application instances[%d].container_name is required", index))
+		}
+		if mode == "cloud_native" {
+			if strings.TrimSpace(stringValue(instance["namespace"])) == "" || strings.TrimSpace(stringValue(instance["workload_name"])) == "" {
+				return invalid(fmt.Sprintf("Application instances[%d] namespace and workload_name are required", index))
+			}
+			kind := strings.TrimSpace(stringValue(instance["workload_kind"]))
+			if !map[string]bool{"Deployment": true, "StatefulSet": true, "DaemonSet": true, "Job": true, "CronJob": true}[kind] {
+				return invalid(fmt.Sprintf("Application instances[%d].workload_kind is invalid", index))
+			}
+		}
+		if err := validateApplicationLogSource(instance, mode, index); err != nil {
+			return err
+		}
+		if source, ok := instance["log_source"].(map[string]any); ok && strings.EqualFold(stringValue(source["type"]), "query") {
+			logResource, err := s.store.Get(ctx, strings.TrimSpace(stringValue(source["resource_id"])))
+			if err != nil {
+				return fmt.Errorf("Application instances[%d] log source resource: %w", index, err)
+			}
+			if logResource.Kind != "Loki" || logResource.Status != StatusActive {
+				return invalid(fmt.Sprintf("Application instances[%d] log source resource must be an active Loki resource", index))
+			}
+			if !allowsResource(ctx, logResource.ScopeID, logResource.ID) {
+				return authorization.ErrForbidden
+			}
+		}
+	}
+	return nil
+}
+
+func applicationAssociationKey(resourceID, mode string, instance map[string]any) string {
+	parts := []string{resourceID, mode}
+	switch mode {
+	case "virtual_machine":
+		parts = append(parts, strings.TrimSpace(stringValue(instance["process_keyword"])))
+	case "containerized":
+		parts = append(parts, strings.TrimSpace(stringValue(instance["container_name"])))
+	case "cloud_native":
+		parts = append(parts, strings.TrimSpace(stringValue(instance["namespace"])), strings.TrimSpace(stringValue(instance["workload_kind"])), strings.TrimSpace(stringValue(instance["workload_name"])))
+	}
+	return strings.Join(parts, "\x1f")
+}
+
+func applicationInstanceResource(instance map[string]any, mode string) (string, string) {
+	key := map[string]string{"virtual_machine": "host_resource_id", "containerized": "docker_resource_id", "cloud_native": "kubernetes_resource_id"}[mode]
+	kind := map[string]string{"virtual_machine": "Host", "containerized": "Docker", "cloud_native": "Kubernetes"}[mode]
+	return strings.TrimSpace(stringValue(instance[key])), kind
+}
+
+func validateApplicationLogSource(instance map[string]any, mode string, index int) error {
+	raw, exists := instance["log_source"]
+	if !exists || raw == nil {
+		if mode == "virtual_machine" {
+			return invalid(fmt.Sprintf("Application instances[%d].log_source is required for virtual_machine", index))
+		}
+		return nil
+	}
+	source, ok := raw.(map[string]any)
+	if !ok {
+		return invalid(fmt.Sprintf("Application instances[%d].log_source must be an object", index))
+	}
+	sourceType := strings.TrimSpace(stringValue(source["type"]))
+	if sourceType == "stdout" && mode != "virtual_machine" {
+		return nil
+	}
+	if sourceType != "path" && sourceType != "query" {
+		return invalid(fmt.Sprintf("Application instances[%d].log_source.type must be path or query", index))
+	}
+	field := "path"
+	if sourceType == "query" {
+		field = "query"
+	}
+	if strings.TrimSpace(stringValue(source[field])) == "" {
+		return invalid(fmt.Sprintf("Application instances[%d].log_source.%s is required", index, field))
+	}
+	if sourceType == "query" && strings.TrimSpace(stringValue(source["resource_id"])) == "" {
+		return invalid(fmt.Sprintf("Application instances[%d].log_source.resource_id is required for query", index))
+	}
+	return nil
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func normalizeImportedApplicationConfig(config map[string]any, sourceResourceID, applicationName string) map[string]any {
+	if _, exists := config["access_mode"]; exists {
+		return config
+	}
+	kube, ok := config["kubernetes"].(map[string]any)
+	if !ok {
+		return config
+	}
+	instance := map[string]any{
+		"kubernetes_resource_id": strings.TrimSpace(stringValue(config["cluster_resource_id"])),
+		"namespace":              strings.TrimSpace(stringValue(config["namespace"])),
+		"workload_kind":          strings.TrimSpace(stringValue(kube["workload_kind"])),
+		"workload_name":          strings.TrimSpace(stringValue(kube["workload_name"])),
+	}
+	if instance["kubernetes_resource_id"] == "" {
+		instance["kubernetes_resource_id"] = strings.TrimSpace(sourceResourceID)
+	}
+	if strings.TrimSpace(stringValue(instance["workload_name"])) == "" {
+		instance["workload_name"] = strings.TrimSpace(applicationName)
+	}
+	instances := []any{instance}
+	config["access_mode"] = "cloud_native"
+	config["instances"] = instances
+	return config
 }
 
 func (s *Service) List(ctx context.Context, pagination Pagination, kind string, labels map[string]string) (Page[Resource], error) {
@@ -195,6 +380,20 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 			if err := validateWorkflowConfig(*input.Config); err != nil {
 				return Resource{}, err
 			}
+		}
+		if current.Kind == "Application" {
+			scopeID := current.ScopeID
+			if input.ScopeID != nil {
+				scopeID = *input.ScopeID
+			}
+			if err := s.validateApplication(ctx, scopeID, *input.Config, false); err != nil {
+				return Resource{}, err
+			}
+		}
+	}
+	if current.Kind == "Application" && input.Config == nil && input.ScopeID != nil {
+		if err := s.validateApplication(ctx, *input.ScopeID, current.Config, false); err != nil {
+			return Resource{}, err
 		}
 	}
 	subtypeInput := current.Subtype

@@ -41,7 +41,7 @@ make host-mcp-run
 | --- | --- |
 | `host_info` | 主机名、内核、架构、OS、启动时间、运行时长、CPU 和内存总量 |
 | `host_metrics` | Node Exporter 风格结构化 JSON：CPU、负载、内存、Swap、文件系统、磁盘、网络、PSI 和进程汇总；`sample_seconds` 范围 0 到 10 |
-| `host_processes` | 按 `pid` 或不区分大小写的字面 `keyword` 查询进程；返回 PID、父进程、状态、可执行文件、工作目录、用户、资源使用率和脱敏命令行 |
+| `host_processes` | 按 `pid` 或不区分大小写的 `keyword` 表达式查询进程；`A&B` 表示 AND，`A|B` 表示 OR，逗号/空格默认表示 AND，单引号或双引号包裹的项不会拆分；不提供 `pid` 和 `keyword` 时不扫描进程；返回 PID、父进程、状态、可执行文件、工作目录、用户、资源使用率和脱敏命令行 |
 | `host_file_logs` | 读取绝对文件路径日志；支持 `tail`、`since`、`until`、`keyword` 和 `timestamps`，单次最多读取 2 MiB |
 | `host_health` | 汇总 `host_info` 和 `host_metrics`，返回 `healthy` 或 `degraded` |
 

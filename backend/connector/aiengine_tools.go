@@ -20,10 +20,12 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Host", "Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
+	return []string{"Application", "Host", "Docker", "Kubernetes", "Prometheus", "Loki", "PostgreSQL", "Redis", "Kafka"}
 }
 
-func (connectorContextProvider) AccessModes() []string { return []string{"direct"} }
+func (connectorContextProvider) AccessModes() []string {
+	return []string{"direct", "virtual_machine", "containerized", "cloud_native", "虚拟机", "容器化", "云原生"}
+}
 
 func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine.ContextResource) ([]aiengine.Tool, []aiengine.ContextFact, error) {
 	if p.service == nil || p.service.resources == nil {
@@ -41,6 +43,10 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 		tools = append(tools, aiengine.ToolFunc{Def: aiengine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
 	switch resource.Kind {
+	case "Application":
+		if err := p.service.resolveApplicationTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "Host":
 		if err := p.service.resolveHostTools(ctx, resource, add); err != nil {
 			return nil, nil, err

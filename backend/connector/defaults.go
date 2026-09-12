@@ -9,6 +9,7 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		kind    string
 		factory Factory
 	}{
+		{kind: "Application", factory: func(target Target) (Adapter, error) { return applicationAdapter{}, nil }},
 		{kind: "Docker", factory: func(target Target) (Adapter, error) {
 			return newDockerAdapter(target), nil
 		}},

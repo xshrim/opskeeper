@@ -15,7 +15,7 @@
 
 - 建立协议无关的公共资源工具层；
 - 保持工具名称、业务入参、业务出参和错误语义一致；
-- 让 Host、Docker、Kubernetes、PostgreSQL、Redis 优先完成 Direct/Agent 闭环；
+- 让 Host、Docker、Kubernetes、Application 优先完成 Direct/Agent 闭环，随后迁移 PostgreSQL、Redis；
 - 让项目提供的 Docker、Kubernetes MCP Server 与外部 MCP Server 使用同一 AIEngine MCP 路径；
 - 保持逻辑资源权限为唯一授权主体，隔离 MCP 传输资源和凭据；
 - 删除重复 Connector/MCP 资源业务实现，减少后续资源接入成本。
@@ -37,7 +37,7 @@
 - P1：Kafka、Prometheus、Loki；
 - P2：RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS；
 - 可观测平台的 Tempo、Jaeger、Elastic、Datadog、Alertmanager 按同一模式接入；
-- AIProvider、MCPServer、Skill、AgentProfile、Application、Repository、Artifact 不在本需求中作为直连诊断工具集实现。
+- AIProvider、MCPServer、Skill、AgentProfile、Repository、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06。
 
 ## 4. 非目标
 
@@ -57,13 +57,14 @@
 | T03 | Docker 工具集统一 | T01-T02 | Docker 公共工具、MCP 薄适配器、Direct 适配器 | 已完成 |
 | T04 | Host 工具集接入 | T01-T02 | Host Direct/Agent 工具和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct/Agent 适配器 | 已完成 |
-| T06 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器 | 待批准 |
-| T07 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
-| T08 | AIEngine 与证据链收敛 | T03-T07 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
-| T09 | Kafka、Prometheus、Loki 迁移 | T01-T02、T08 | P1 工具集接入和一致性测试 | 待批准 |
-| T10 | 其他数据库和中间件迁移 | T09 | P2 资源工具集接入 | 待批准 |
-| T11 | 管理界面与接入校验 | T02-T08 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
-| T12 | 删除旧路径与全量验收 | T03-T11 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
+| T06 | Application 资源接入 | T01-T05 | 项目归属、三种接入方式、实例唯一性、受控日志工具和管理界面 | 已完成 |
+| T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器 | 待批准 |
+| T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
+| T09 | AIEngine 与证据链收敛 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
+| T10 | Kafka、Prometheus、Loki 迁移 | T01-T02、T09 | P1 工具集接入和一致性测试 | 待批准 |
+| T11 | 其他数据库和中间件迁移 | T10 | P2 工具集接入 | 待批准 |
+| T12 | 管理界面与接入校验 | T02-T09 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
+| T13 | 删除旧路径与全量验收 | T03-T12 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
 
 ## 6. 任务说明
 
@@ -191,7 +192,34 @@ Docker SDK、MCP SDK 和 AIEngine 当前类型不同。采用公共业务调用�
 
 Kubernetes 客户端配置包含 kubeconfig、Token 和证书，必须在适配器边界注入并脱敏；迁移期间先保留旧 MCP Handler，公共实现验证后再替换。
 
-### T06 PostgreSQL 工具集统一
+### T06 Application 资源接入
+
+#### 目标
+
+将 Application 作为项目级聚合资源纳入统一接入流程，以虚拟机、容器化或云原生之一关联现有 Host、Docker 或 Kubernetes 资源，并提供固定实例范围内的状态与日志读取能力。
+
+#### 实施范围
+
+- Application 必须归属于 Project Scope；从平台或团队 Scope 创建时显式选择团队和项目；
+- 虚拟机实例通过 Host 进程关键字表达式关联（支持 `&`、`|`、逗号/空格隐式 AND 和引号保护），可读取 Host 路径或 Loki 查询；
+- 容器化实例通过容器名称关联 Docker，可读取容器路径、默认标准输出或 Loki 查询；
+- 云原生实例通过 namespace、合并显示的 `workload kind · name` 关联 Kubernetes，按 workload selector 解析 Pod 后读取路径或标准输出，也可使用 Loki 查询；
+- 连接验证必须确认每个实例目标唯一存在；实例工具固定目标参数，不允许模型重新选择底层资源；
+- Application 不新增 MCP 传输资源，采用 Application 语义工具复用底层公共只读工具的混合设计。
+
+#### 验收标准
+
+- 后端拒绝非项目 Scope、非法接入方式、缺少实例、错误资源类型、重复资源关联和不完整定位信息；
+- 三种接入方式均可配置多个实例，虚拟机关键字交集恰好匹配一个进程，Docker 容器名称恰好匹配一个容器，Kubernetes workload 可解析到受控 Pod；
+- `application_instances` 和 `application_logs` 以 Application ID 注册，日志路径、查询资源、tail 和 timestamps 受限，响应支持 partial/errors；
+- 前端在非项目 Scope 下要求团队和项目，并提供结构化实例表单；
+- Application 可关联 Direct 或 Agent 类型的 Host、Docker、Kubernetes 和 Loki；Application 仅固定资源 ID 与业务目标参数，由统一调用器按关联资源的接入方式选择唯一 Provider。Agent 缺少所需工具时明确失败，绝不回退到 Direct。
+
+#### 风险和回滚
+
+Kubernetes workload 可能对应多个 Pod 或短生命周期 Job。工具限制 Pod 数量并返回 partial；无法解析 selector 时连接检查失败。若 Application 工具未达到固定目标边界，保留底层工具而暂不开放 Application 工具。
+
+### T07 PostgreSQL 工具集统一
 
 #### 目标
 
@@ -215,7 +243,7 @@ Kubernetes 客户端配置包含 kubeconfig、Token 和证书，必须在适配�
 
 查询版本和权限差异可能导致部分指标不可用。每项能力返回明确 unavailable/partial 信息，不以扩大数据库权限或开放任意 SQL 解决。
 
-### T07 Redis 工具集统一
+### T08 Redis 工具集统一
 
 #### 目标
 
@@ -238,7 +266,7 @@ Kubernetes 客户端配置包含 kubeconfig、Token 和证书，必须在适配�
 
 Redis 版本、权限和数据规模会影响诊断能力。采用有限采样和明确上限；如公共实现未通过一致性测试，保留旧 Connector 入口直到修复，不增加新协议分支。
 
-### T08 AIEngine 与证据链收敛
+### T09 AIEngine 与证据链收敛
 
 #### 目标
 
@@ -263,7 +291,7 @@ Redis 版本、权限和数据规模会影响诊断能力。采用有限采样�
 
 工具事件和诊断事件已有历史边界。先增加适配层测试并复用既有 Gateway，不修改对话渲染协议；发现事件重复时优先删除旁路发射路径。
 
-### T09 Kafka、Prometheus、Loki 迁移
+### T10 Kafka、Prometheus、Loki 迁移
 
 #### 目标
 
@@ -286,7 +314,7 @@ Redis 版本、权限和数据规模会影响诊断能力。采用有限采样�
 
 监控系统返回格式差异较大。先固定结构化结果和原始内容大小上限；旧 Connector 仅在单类工具迁移未通过时暂留，不引入第二套长期名称。
 
-### T10 其他数据库和中间件迁移
+### T11 其他数据库和中间件迁移
 
 #### 目标
 
@@ -309,7 +337,7 @@ Redis 版本、权限和数据规模会影响诊断能力。采用有限采样�
 
 不同数据库驱动和权限模型差异可能扩大范围。按资源类型独立验收，任何一类未达到边界不阻塞已完成资源，但不得把未完成能力标记为已支持。
 
-### T11 管理界面与接入校验
+### T12 管理界面与接入校验
 
 #### 目标
 
@@ -334,7 +362,7 @@ Redis 版本、权限和数据规模会影响诊断能力。采用有限采样�
 
 前端旧 `subtype` 字段和后端新接入字段可能短期并存。表单统一调用后端解析结果，迁移完成后删除前端兼容分支。
 
-### T12 删除旧路径与全量验收
+### T13 删除旧路径与全量验收
 
 #### 目标
 

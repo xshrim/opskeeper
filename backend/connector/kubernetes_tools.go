@@ -39,6 +39,9 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 	register("kubernetes_workloads", "List Kubernetes workloads.", kt.ListInputProperties(), func(c context.Context, a map[string]any) (any, error) {
 		return kt.Workloads(c, connection, stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})
+	register("kubernetes_workload_pods", "Resolve the running Pods for one Kubernetes workload.", kt.WorkloadPodsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+		return kt.WorkloadPods(c, connection, stringArg(a, "workload_kind"), stringArg(a, "namespace"), stringArg(a, "workload_name"), int(int64Arg(a, "limit")))
+	})
 	register("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", kt.PodStatsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
 		return kt.PodStats(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})

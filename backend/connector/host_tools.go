@@ -34,7 +34,7 @@ func (s *Service) resolveHostTools(ctx context.Context, item aiengine.ContextRes
 		input.ConnectionInput = connection
 		return hostOutput(host.Metrics(ctx, input))
 	})
-	add("host_processes", "Read information about selected Linux processes.", hostDirectSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}}), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_processes", "Read information about selected Linux processes. A keyword supports case-insensitive substring terms joined by & for AND or | for OR; commas and spaces imply AND, and quoted terms are kept intact.", hostDirectSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string", "description": "Case-insensitive process filter. A&B means AND, A|B means OR, commas/spaces imply AND, and single/double quoted terms are not split."}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}}), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
 		input, err := decodeHost[host.ProcessesInput](args)
 		if err != nil {
 			return aiengine.ToolResult{}, err

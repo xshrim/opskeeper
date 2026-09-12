@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01、T02、T03、T04、T05 已完成，其余任务待实施
+**验收结论：** 部分验收：T01-T06 已完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-<!-- 实施完成后填写结论和日期。 -->
+T01-T06 已完成验收，确认日期为 2026-09-12。T07-T13 继续按任务表实施。
 
 ## 2. 验收环境和范围
 
@@ -21,13 +21,14 @@
 | T03 | Docker 工具集统一 | 已通过 | `cd backend && go test ./connector ./tool/... ./mcpserver/docker/...`；公共 Docker 实现由 MCP 薄适配器和 Direct Provider 共用，Direct 注册 6 个工具并隐藏连接字段；MCP Schema 与日志过滤回归通过 |
 | T04 | Host 工具集接入 | 已通过 | `make host-mcp-test`、`cd backend && go test ./...`、`cd frontend && npm run check`；Host Direct 与 Host MCP Agent 共用五个 Linux 只读工具，SSH 支持密码/私钥和 known_hosts，连接目标遵循工具参数 > HOST_MCP_* 环境变量 > 本机，文件日志支持 tail/since/until/keyword，资源前端支持 Direct/Agent 配置和连接测试 |
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
-| T06 | PostgreSQL 工具集统一 | 待实施 |  |
-| T07 | Redis 工具集统一 | 待实施 |  |
-| T08 | AIEngine 与证据链收敛 | 待实施 |  |
-| T09 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
-| T10 | 其他数据库和中间件迁移 | 待实施 |  |
-| T11 | 管理界面与接入校验 | 待实施 |  |
-| T12 | 删除旧路径与全量验收 | 待实施 |  |
+| T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
+| T07 | PostgreSQL 工具集统一 | 待实施 |  |
+| T08 | Redis 工具集统一 | 待实施 |  |
+| T09 | AIEngine 与证据链收敛 | 待实施 |  |
+| T10 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
+| T11 | 其他数据库和中间件迁移 | 待实施 |  |
+| T12 | 管理界面与接入校验 | 待实施 |  |
+| T13 | 删除旧路径与全量验收 | 待实施 |  |
 
 ## 4. T01 任务验收报告
 
@@ -82,10 +83,31 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - Direct Provider 工具集、逻辑资源 ID、配置优先于凭据和连接字段隔离测试通过。
 - Docker MCP 工具发现、Schema、连接测试和工具调用测试通过；`docker_container_logs` 的 `&`/`|` 语义继续由公共实现覆盖。
 
-## 7. 需求级遗留事项
+## 7. T06 Application 资源接入验收
+
+### 实施内容
+
+- Application schema v2 使用 `access_mode` 与 `instances`，服务层要求项目 Scope、活动的 Host/Docker/Kubernetes 关联和按接入方式完整的实例定位字段。
+- 虚拟机实例通过唯一的 `process_keyword` 字符串表达式确认唯一 PID，表达式支持 `&`、`|`、逗号/空格和引号保护；未输入关键字时不扫描全量进程，候选选择后即时复核唯一性。容器化实例通过容器名称确认唯一容器；云原生实例确认 namespace/workload 存在并可解析到至少一个受控 Pod，前端以“类型 · 名称”合并候选，日志读取再按 workload selector 解析受控 Pod。
+- Application 工具只注册 `application_instances` 和 `application_logs`，实例索引是唯一可选目标参数，复用底层公共只读工具；日志支持 Host 文件、Docker/Pod 文件或 stdout，以及活动 Loki 的查询语句。统一调用器按关联资源自身的接入方式选择 Connector 或 MCP Provider，Application 不区分 Direct/Agent。
+- 资源管理界面要求团队与项目，提供三种接入方式和多实例结构化编辑；Host、Docker、Kubernetes 和 Loki 的活动 Direct/Agent 资源均可作为关联候选。I004 任务表已将原 T06 及后续任务顺延为 T07-T13。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过。
+- Direct/Agent 透明关联回归：`Application` 对两类 Host、Docker、Kubernetes 发出相同的固定工具调用；Agent Loki 使用相同受控 `query_logs` 调用；统一调用器在缺少 Agent Provider 时明确失败，不回退到 Direct。
+- `cd frontend && npm run check && npm run test -- --run`：通过，52 个测试通过。
+- `git diff --check`：通过。
+
+### 已知边界
+
+- Application 本身不提供 MCP 传输；它固定关联资源 ID 与业务目标参数，统一调用器据此选择关联资源的唯一执行 Provider。Agent 缺少受控工具时明确失败，不会回退到 Direct。
+- Kubernetes Job/CronJob 可能没有当前 Pod，或 workload 对应多个 Pod；连接验证要求当前至少存在一个 Pod，工具限制解析数量并在返回中保留 `partial`/`errors`。
+
+## 8. 需求级遗留事项
 
 <!-- 将未完成的低优先级资源、驱动限制或外部环境依赖转入 backlog 或后续迭代。 -->
 
-## 8. 用户确认和最终结论
+## 9. 用户确认和最终结论
 
-<!-- 封板时填写用户确认、提交基线和最终结论。 -->
+Application T06 验收通过；I004-R001 仍处于实施中，后续任务未完成。

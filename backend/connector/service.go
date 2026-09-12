@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"opskeeper/backend/aiengine"
 	"opskeeper/backend/observability"
 	"opskeeper/backend/resource"
 )
@@ -21,13 +22,18 @@ type CredentialReader interface {
 }
 
 type Service struct {
-	registry    *Registry
-	resources   ResourceReader
-	credentials CredentialReader
-	checks      CheckStore
-	limits      Limits
-	slots       chan struct{}
-	now         func() time.Time
+	registry         *Registry
+	resources        ResourceReader
+	credentials      CredentialReader
+	checks           CheckStore
+	applicationTools aiengine.FixedResourceToolInvoker
+	limits           Limits
+	slots            chan struct{}
+	now              func() time.Time
+}
+
+func (s *Service) SetApplicationToolInvoker(invoker aiengine.FixedResourceToolInvoker) {
+	s.applicationTools = invoker
 }
 
 func NewService(registry *Registry, resources ResourceReader, credentials CredentialReader, checks CheckStore, limits Limits) *Service {
@@ -60,7 +66,10 @@ func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, 
 	}
 
 	adapter, err := s.prepare(ctx, item)
-	if err == nil {
+	if item.Kind == "Application" && err == nil {
+		check.Capabilities = nil
+		err = s.testApplication(ctx, item)
+	} else if err == nil {
 		check.Capabilities = adapter.Capabilities()
 		err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return adapter.Test(runCtx) })
 	}

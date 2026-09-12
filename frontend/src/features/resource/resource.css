@@ -1192,6 +1192,43 @@ body:has(.resource-add-workflow) {
   border-color: var(--theme-danger);
   box-shadow: 0 0 0 1px var(--theme-danger);
 }
+.application-config-step {
+  max-width: 920px;
+}
+.application-owner-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.application-instance-list {
+  display: grid;
+  gap: 10px;
+}
+.application-instance-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+}
+.application-instance-editor header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--theme-fg-strong);
+}
+.application-instance-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .application-owner-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .resource-type-selection select {
   min-height: 36px;
   color: var(--theme-fg);

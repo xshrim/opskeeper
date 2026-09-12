@@ -106,6 +106,49 @@ func TestParsePSProcesses(t *testing.T) {
 	}
 }
 
+func TestKeywordExpressionSupportsAndOrSeparatorsAndQuotes(t *testing.T) {
+	tests := []struct {
+		name  string
+		expr  string
+		text  string
+		match bool
+	}{
+		{name: "and", expr: "worker&java", text: "/usr/bin/worker --runtime java", match: true},
+		{name: "and separator", expr: "worker, java", text: "/usr/bin/worker --runtime java", match: true},
+		{name: "and separator mismatch", expr: "worker java", text: "/usr/bin/worker", match: false},
+		{name: "or", expr: "worker|java", text: "/usr/bin/java", match: true},
+		{name: "and precedence", expr: "worker&java|python", text: "/usr/bin/python", match: true},
+		{name: "quoted separators", expr: `"worker java"`, text: "/usr/bin/worker java", match: true},
+		{name: "quoted operator", expr: `'worker|java'`, text: "/usr/bin/worker|java", match: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expression, err := parseKeywordExpression(test.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := expression.Match(test.text); got != test.match {
+				t.Fatalf("Match(%q) = %v, want %v", test.text, got, test.match)
+			}
+		})
+	}
+	for _, expression := range []string{"|worker", "worker&", `"worker`} {
+		if _, err := parseKeywordExpression(expression); err == nil {
+			t.Fatalf("parseKeywordExpression(%q) succeeded", expression)
+		}
+	}
+}
+
+func TestProcessesDoesNotListAllProcessesWithoutKeyword(t *testing.T) {
+	output, err := Processes(context.Background(), ProcessesInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Processes) != 0 || output.MatchCount != 0 {
+		t.Fatalf("empty keyword returned processes: %+v", output)
+	}
+}
+
 func TestParseProcessExtras(t *testing.T) {
 	extras := parseProcessExtras([]byte(processExtraMarker + "\t123\t/usr/bin/worker\t/work\t/\t7\t11\t13\n"))
 	value, ok := extras[123]

@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-T06 已实现资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询；T07 已实现资源管理控制台基础页面；T08 已完成 Kubernetes 发现、Project/Application 映射和具体资源授权；T09 已完成 Kubernetes、Prometheus、Loki Connector 和连接检查；T10 已实现 LLM Provider 模型配置、不可变 SkillVersion、作用域默认解析和受控执行记录。
+资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询已实现；资源管理控制台、Kubernetes 发现、Project/Application 映射、具体资源授权、Kubernetes/Prometheus/Loki Connector、LLM Provider 模型配置、不可变 SkillVersion、作用域默认解析和受控执行记录已实现。I004 的 Application 资源接入在 T06 实施。
 
 ## 1. 设计原则
 
@@ -80,6 +80,8 @@ resources {
 Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。连接凭据由独立的 `resource_credentials` 管理，不把 Credential 当作资源登记。
 
 Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型。该字段描述来源工作负载，不改变资源类型，也不产生新的权限层级。
+
+手工创建的 Application 必须归属于 Project Scope；从平台或团队视图发起时，界面必须先选择团队下的项目。其接入方式只能为虚拟机、容器化或云原生，并至少配置一个实例。虚拟机实例关联 Host 与唯一定位进程的关键字表达式（支持 `&`、`|`、逗号/空格分隔和引号保护）；容器化实例关联 Docker 与容器名称；云原生实例关联 Kubernetes 与命名空间及合并显示的“工作负载类型 · 名称”，后端仍分别保存工作负载类型和名称。实例日志来源可以是受控文件路径或已关联日志平台的查询语句；容器化和云原生未指定文件路径时使用标准输出。关联资源可以是 Direct 或 Agent，Application 不保存或判断该接入方式。
 
 `resource_schemas` 同时保存 `display_name`、`description` 和 `icon`，前端据此展示中文名称、说明和类型图标。`config` 使用 JSONB 保存非敏感类型字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。
 

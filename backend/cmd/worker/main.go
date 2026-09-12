@@ -81,12 +81,15 @@ func main() {
 	resourceService := resource.NewService(resource.NewStore(pool))
 	connectors := connector.NewService(registry, resourceService, credentials, connector.NewStore(pool), limits)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentials)
+	connectorProvider := connectors.AIEngineProvider()
+	mcpProvider := mcpService.AIEngineProvider()
+	connectors.SetApplicationToolInvoker(aiengine.NewResourceToolInvoker(connectorProvider, mcpProvider))
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentials)
 	skillService := skill.NewService(skill.NewStore(pool), resourceService)
 	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
 	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
 	agentProfileResolver.Versions = agentProfileVersions
-	contextTooling := aiengine.NewContextTooling(aiengine.ResourceServiceReader{Reader: resourceService}, connectors.AIEngineProvider(), mcpService.AIEngineProvider())
+	contextTooling := aiengine.NewContextTooling(aiengine.ResourceServiceReader{Reader: resourceService}, connectorProvider, mcpProvider)
 	aiStore := aiengine.NewPostgresStore(pool)
 	contextTooling.Gateway.AuditStore = aiStore
 	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose aiengine.Purpose) (aiengine.ModelBuildResult, error) {

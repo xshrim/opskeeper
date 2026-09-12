@@ -131,6 +131,10 @@ export function resourceSubtypeFor(resource: ResourceShape) {
     Alertmanager: '告警'
   };
   const explicit = String(resource.subtype || resource.config?.subtype || '');
+  if (resource.kind === 'Application') {
+    const mode = String(resource.config?.access_mode ?? explicit).toLowerCase();
+    return mode === 'containerized' ? '容器化' : mode === 'cloud_native' ? '云原生' : '虚拟机';
+  }
   if (resource.kind === 'AIProvider') return 'Provider';
   if (
     [

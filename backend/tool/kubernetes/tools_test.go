@@ -17,6 +17,35 @@ func TestValidatePodPath(t *testing.T) {
 	}
 }
 
+func TestSelectorFromWorkload(t *testing.T) {
+	selector, err := selectorFromWorkload(map[string]any{
+		"metadata": map[string]any{"uid": "job-uid"},
+		"spec": map[string]any{"selector": map[string]any{
+			"matchLabels":      map[string]any{"app": "orders"},
+			"matchExpressions": []any{map[string]any{"key": "tier", "operator": "In", "values": []any{"api"}}},
+		}},
+	}, "Deployment", "orders")
+	if err != nil || selector != "app=orders,tier in (api)" {
+		t.Fatalf("selector = %q, %v", selector, err)
+	}
+}
+
+func TestSelectorFromJobFallsBackToName(t *testing.T) {
+	selector, err := selectorFromWorkload(map[string]any{"metadata": map[string]any{"name": "batch-1"}}, "Job", "batch-1")
+	if err != nil || selector != "job-name=batch-1" {
+		t.Fatalf("selector = %q, %v", selector, err)
+	}
+}
+
+func TestModernJobSelector(t *testing.T) {
+	if got := modernJobSelector("controller-uid=uid-1"); got != "batch.kubernetes.io/controller-uid=uid-1" {
+		t.Fatalf("modern controller selector = %q", got)
+	}
+	if got := modernJobSelector("app=orders"); got != "" {
+		t.Fatalf("unexpected selector fallback = %q", got)
+	}
+}
+
 func TestMetricStatAggregatesPodContainerUsage(t *testing.T) {
 	item := unstructured.Unstructured{Object: map[string]any{
 		"metadata":  map[string]any{"namespace": "platform", "name": "api-1"},

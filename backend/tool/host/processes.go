@@ -24,14 +24,26 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 	if input.PID < 0 {
 		return ProcessesOutput{}, fmt.Errorf("%w: pid must be positive", ErrInvalidArgument)
 	}
-	if strings.TrimSpace(input.Keyword) != "" && len([]rune(input.Keyword)) > 128 {
+	keyword := strings.TrimSpace(input.Keyword)
+	if keyword != "" && len([]rune(keyword)) > 128 {
 		return ProcessesOutput{}, fmt.Errorf("%w: keyword is too long", ErrInvalidArgument)
+	}
+	expression, err := parseKeywordExpression(keyword)
+	if err != nil {
+		return ProcessesOutput{}, fmt.Errorf("%w: %v", ErrInvalidArgument, err)
 	}
 	if input.Limit == 0 {
 		input.Limit = DefaultProcessLimit
 	}
 	if input.Limit < 1 || input.Limit > MaxProcessLimit {
 		return ProcessesOutput{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidArgument, MaxProcessLimit)
+	}
+	if input.PID <= 0 && keyword == "" {
+		_, target, resolveErr := resolveInput(input.ConnectionInput)
+		if resolveErr != nil {
+			return ProcessesOutput{}, resolveErr
+		}
+		return ProcessesOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target, Processes: []ProcessInfo{}}, nil
 	}
 	src, target, err := openSource(ctx, input.ConnectionInput)
 	if err != nil {
@@ -44,14 +56,15 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 		if raw, readErr := reader.ReadProcesses(ctx, input.PID); readErr == nil {
 			passwd, _ := readLimited(ctx, src, "/etc/passwd")
 			output := ProcessesOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target, Processes: make([]ProcessInfo, 0, input.Limit)}
-			keyword := strings.ToLower(strings.TrimSpace(input.Keyword))
 			for _, process := range parsePSProcesses(raw, output.CollectedAt, passwd) {
-				if keyword != "" && !strings.Contains(strings.ToLower(process.Name+" "+process.Executable+" "+process.CommandLine), keyword) {
+				if keyword != "" && !expression.Match(processSearchText(process)) {
 					continue
 				}
-				output.Processes = append(output.Processes, process)
-				if len(output.Processes) >= input.Limit {
-					break
+				output.MatchCount++
+				if len(output.Processes) < input.Limit {
+					output.Processes = append(output.Processes, process)
+				} else {
+					output.Truncated = true
 				}
 			}
 			if detailReader, ok := src.(interface {
@@ -102,12 +115,14 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 			}
 			continue
 		}
-		if input.Keyword != "" && !strings.Contains(strings.ToLower(process.Name+" "+process.Executable+" "+process.CommandLine), strings.ToLower(input.Keyword)) {
+		if keyword != "" && !expression.Match(processSearchText(process)) {
 			continue
 		}
-		output.Processes = append(output.Processes, process)
-		if len(output.Processes) >= input.Limit {
-			break
+		output.MatchCount++
+		if len(output.Processes) < input.Limit {
+			output.Processes = append(output.Processes, process)
+		} else {
+			output.Truncated = true
 		}
 	}
 	return output, nil
