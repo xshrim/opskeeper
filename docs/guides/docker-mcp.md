@@ -118,6 +118,7 @@ Header: Authorization: Bearer change-me   # 仅启用 Token 时需要
 | `docker_images` | 镜像列表 | 支持 `all` 和过滤器 |
 | `docker_containers` | 容器列表 | 支持 `all`、过滤器，最多 500 条 |
 | `docker_container_logs` | 容器日志 | 永不 follow，默认请求最近 1000 行，支持时间范围和 keyword 上下文筛选，最终最多返回 200 行、2 MiB |
+| `docker_container_file` | 容器文件 | 只读绝对路径常规文件，最多返回 1 MiB，超限时 `truncated=true` |
 | `docker_container_inspect` | 容器详情 | 只读，敏感环境变量和凭据字段脱敏 |
 | `docker_container_stats` | 容器资源快照 | 使用一次性 stats，不建立持续流 |
 

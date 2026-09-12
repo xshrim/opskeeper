@@ -71,6 +71,18 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.ContainerLogs(runCtx, input))
 	})
+	add("docker_container_file", "Read a bounded regular file from a Docker container.", directDockerSchema(map[string]any{
+		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
+		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+		"path":           map[string]any{"type": "string", "description": "Absolute path of a regular file inside the container."},
+	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+		input, err := decodeDockerInput[dockertool.ContainerFileInput](args)
+		if err != nil {
+			return aiengine.ToolResult{}, err
+		}
+		input.ConnectionInput = connection
+		return dockerOutput(dockertool.ContainerFile(runCtx, input))
+	})
 	add("docker_container_inspect", "Inspect a Docker container.", directDockerSchema(map[string]any{
 		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
 		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},

@@ -3,9 +3,12 @@
 package kubernetes
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	pathpkg "path"
 	"strings"
 	"time"
 
@@ -14,12 +17,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/remotecommand"
 
 	"opskeeper/backend/mcpserver/kubernetes/client"
 )
 
 const maxListLimit = 500
 const maxLogBytes = 256 * 1024
+const maxFileBytes = 1024 * 1024
+
+var errFileLimit = errors.New("file output limit reached")
 
 type ToolInfo struct {
 	Name        string
@@ -57,6 +65,7 @@ func AvailableTools() []ToolInfo {
 		ToolInfo{Name: "kubernetes_pod_stat", Description: "Read current pod CPU and memory usage from the Kubernetes Metrics API."},
 		ToolInfo{Name: "kubernetes_node_stat", Description: "Read current node CPU and memory usage from the Kubernetes Metrics API."},
 		ToolInfo{Name: "kubernetes_pod_logs", Description: "Read bounded, non-following pod logs."},
+		ToolInfo{Name: "kubernetes_pod_file", Description: "Read a bounded regular file from a Kubernetes pod."},
 		ToolInfo{Name: "kubernetes_resource_get", Description: "Get an allowlisted Kubernetes resource by name."},
 		ToolInfo{Name: "kubernetes_health", Description: "Check Kubernetes API health."})
 	return items
@@ -86,6 +95,15 @@ type LogsOutput struct {
 	Pod       string `json:"pod"`
 	Container string `json:"container,omitempty"`
 	Logs      string `json:"logs"`
+	Truncated bool   `json:"truncated"`
+}
+
+type FileOutput struct {
+	Namespace string `json:"namespace"`
+	Pod       string `json:"pod"`
+	Container string `json:"container,omitempty"`
+	Path      string `json:"path"`
+	Content   string `json:"content"`
 	Truncated bool   `json:"truncated"`
 }
 
@@ -183,6 +201,15 @@ func PodLogsInputProperties() map[string]any {
 		"container_name": map[string]any{"type": "string"},
 		"tail":           map[string]any{"type": "integer"},
 		"timestamps":     map[string]any{"type": "boolean"},
+	}
+}
+
+func PodFileInputProperties() map[string]any {
+	return map[string]any{
+		"namespace":      map[string]any{"type": "string"},
+		"pod":            map[string]any{"type": "string"},
+		"container_name": map[string]any{"type": "string"},
+		"path":           map[string]any{"type": "string"},
 	}
 }
 
@@ -349,6 +376,68 @@ func PodLogs(ctx context.Context, input client.ConnectionInput, namespace, pod, 
 		data = data[:maxLogBytes]
 	}
 	return LogsOutput{Namespace: namespace, Pod: pod, Container: container, Logs: string(data), Truncated: truncated}, nil
+}
+
+func PodFile(ctx context.Context, input client.ConnectionInput, namespace, pod, container, path string) (FileOutput, error) {
+	if strings.TrimSpace(namespace) == "" || strings.TrimSpace(pod) == "" {
+		return FileOutput{}, fmt.Errorf("namespace and pod are required")
+	}
+	path, err := validatePodPath(path)
+	if err != nil {
+		return FileOutput{}, err
+	}
+	c, err := client.Open(ctx, input)
+	if err != nil {
+		return FileOutput{}, err
+	}
+	req := c.Kubernetes.CoreV1().RESTClient().Post().Resource("pods").Namespace(namespace).Name(pod).SubResource("exec").VersionedParams(&corev1.PodExecOptions{Container: container, Command: []string{"/bin/cat", "--", path}, Stdin: false, Stdout: true, Stderr: true, TTY: false}, scheme.ParameterCodec)
+	exec, err := remotecommand.NewSPDYExecutor(c.RESTConfig, "POST", req.URL())
+	if err != nil {
+		return FileOutput{}, fmt.Errorf("create pod file reader: %w", err)
+	}
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	writer := &limitedWriter{Buffer: &out, Limit: maxFileBytes}
+	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{Stdout: writer, Stderr: &stderr}); err != nil && !errors.Is(err, errFileLimit) {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return FileOutput{}, fmt.Errorf("read pod file: %w: %s", err, msg)
+		}
+		return FileOutput{}, fmt.Errorf("read pod file: %w", err)
+	}
+	raw := out.Bytes()
+	return FileOutput{Namespace: namespace, Pod: pod, Container: container, Path: path, Content: string(raw), Truncated: writer.Truncated}, nil
+}
+
+type limitedWriter struct {
+	Buffer    *bytes.Buffer
+	Limit     int
+	Truncated bool
+}
+
+func (w *limitedWriter) Write(p []byte) (int, error) {
+	remaining := w.Limit - w.Buffer.Len()
+	if remaining <= 0 {
+		w.Truncated = true
+		return 0, errFileLimit
+	}
+	if len(p) > remaining {
+		_, _ = w.Buffer.Write(p[:remaining])
+		w.Truncated = true
+		return remaining, errFileLimit
+	}
+	return w.Buffer.Write(p)
+}
+
+func validatePodPath(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" || !strings.HasPrefix(path, "/") || strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("path must be an absolute pod path")
+	}
+	clean := pathpkg.Clean(path)
+	if clean != path || clean == "/" {
+		return "", fmt.Errorf("path must identify a file without traversal")
+	}
+	return clean, nil
 }
 
 // PodStats reads current usage from the Kubernetes Metrics API. The API is

@@ -14,9 +14,11 @@ type DockerInfoInput = docker.DockerInfoInput
 type ListImagesInput = docker.ListImagesInput
 type ListContainersInput = docker.ListContainersInput
 type ContainerLogsInput = docker.ContainerLogsInput
+type ContainerFileInput = docker.ContainerFileInput
 type ContainerInspectInput = docker.ContainerInspectInput
 type ContainerStatsInput = docker.ContainerStatsInput
 type LogsOutput = docker.LogsOutput
+type FileOutput = docker.FileOutput
 type DockerInfoOutput = docker.DockerInfoOutput
 type ImagesOutput = docker.ImagesOutput
 type ContainersOutput = docker.ContainersOutput
@@ -57,6 +59,14 @@ func RegisterTools(s *mcp.Server) {
 		"details":        map[string]any{"type": "boolean", "description": "Include extra Docker log attributes."},
 	})}, func(ctx context.Context, _ *mcp.CallToolRequest, input ContainerLogsInput) (*mcp.CallToolResult, any, error) {
 		output, err := docker.ContainerLogs(ctx, input)
+		return nil, output, err
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_file", Description: "Read a bounded regular file from a Docker container.", InputSchema: docker.InputSchema(map[string]any{
+		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
+		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+		"path":           map[string]any{"type": "string", "description": "Absolute path of a regular file inside the container."},
+	})}, func(ctx context.Context, _ *mcp.CallToolRequest, input docker.ContainerFileInput) (*mcp.CallToolResult, any, error) {
+		output, err := docker.ContainerFile(ctx, input)
 		return nil, output, err
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_inspect", Description: "Inspect a Docker container.", InputSchema: docker.InputSchema(map[string]any{

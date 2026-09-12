@@ -30,6 +30,13 @@ type logsInput struct {
 	Tail          int64  `json:"tail,omitempty"`
 	Timestamps    bool   `json:"timestamps,omitempty"`
 }
+type fileInput struct {
+	client.ConnectionInput
+	Namespace     string `json:"namespace"`
+	Pod           string `json:"pod"`
+	ContainerName string `json:"container_name,omitempty"`
+	Path          string `json:"path"`
+}
 type podStatInput struct {
 	client.ConnectionInput
 	Namespace string `json:"namespace,omitempty"`
@@ -67,6 +74,8 @@ func RegisterTools(s *mcp.Server) {
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, logsInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
+		case func(context.Context, *mcp.CallToolRequest, fileInput) (*mcp.CallToolResult, any, error):
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, podStatInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, nodeStatInput) (*mcp.CallToolResult, any, error):
@@ -96,6 +105,10 @@ func RegisterTools(s *mcp.Server) {
 	})
 	add("kubernetes_pod_logs", "Read bounded, non-following pod logs.", kt.PodLogsInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in logsInput) (*mcp.CallToolResult, any, error) {
 		out, err := kt.PodLogs(ctx, in.ConnectionInput, in.Namespace, in.Pod, in.ContainerName, in.Tail, in.Timestamps)
+		return nil, out, err
+	})
+	add("kubernetes_pod_file", "Read a bounded regular file from a Kubernetes pod.", kt.PodFileInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in fileInput) (*mcp.CallToolResult, any, error) {
+		out, err := kt.PodFile(ctx, in.ConnectionInput, in.Namespace, in.Pod, in.ContainerName, in.Path)
 		return nil, out, err
 	})
 	add("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in getInput) (*mcp.CallToolResult, any, error) {

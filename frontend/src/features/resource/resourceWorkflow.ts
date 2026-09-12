@@ -394,6 +394,17 @@ export function hostAccessModeLabel(mode: string) {
   return mode === 'agent' ? 'Agent · MCP 代理' : 'Direct · 直接连接';
 }
 
+export function hostAccessSummary(
+  subtype: string,
+  config: Record<string, unknown> | undefined
+) {
+  const mode = String(subtype).toLowerCase();
+  const authMethod = String(config?.auth_method ?? '').toLowerCase();
+  if (mode === 'agent' && !authMethod) return subtype;
+  if (!authMethod) return subtype;
+  return `${subtype} · ${authMethod === 'key' ? 'SSH 私钥' : 'SSH 密码'}`;
+}
+
 export function hostConnectionConfigurationValid(draft: HostConnectionDraft) {
   if (
     !Number.isFinite(draft.timeoutSeconds) ||

@@ -8,6 +8,7 @@ import {
   dockerAccessModeLabel,
   dockerTLSValueValid,
   emptyProviderModelDraft,
+  hostAccessSummary,
   kubernetesConfigForSave,
   kubernetesConfigurationValid,
   kubernetesCredentialForSave,
@@ -120,6 +121,12 @@ describe('resource workflow helpers', () => {
     expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '', keyBase64: '' })).toBe(true);
     expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '/etc/docker/cert.pem', keyBase64: '' })).toBe(false);
     expect(dockerConnectionConfigurationValid({ ...direct, host: 'http://docker.example.com:2375' })).toBe(false);
+  });
+
+  it('summarizes Host subtype and configured SSH authentication', () => {
+    expect(hostAccessSummary('Direct', { auth_method: 'password' })).toBe('Direct · SSH 密码');
+    expect(hostAccessSummary('Agent', { auth_method: 'key' })).toBe('Agent · SSH 私钥');
+    expect(hostAccessSummary('Agent', {})).toBe('Agent');
   });
 
   it('separates Kubernetes API connection modes and stores kubeconfig as Base64', () => {

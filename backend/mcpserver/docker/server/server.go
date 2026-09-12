@@ -44,6 +44,7 @@ var toolCatalog = []ToolInfo{
 	{Name: "docker_images", Description: "List Docker images."},
 	{Name: "docker_containers", Description: "List Docker containers."},
 	{Name: "docker_container_logs", Description: "Read bounded, non-following logs from a Docker container."},
+	{Name: "docker_container_file", Description: "Read a bounded regular file from a Docker container."},
 	{Name: "docker_container_inspect", Description: "Inspect a Docker container with sensitive values removed."},
 	{Name: "docker_container_stats", Description: "Read one snapshot of Docker container statistics."},
 }

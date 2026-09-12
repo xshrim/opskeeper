@@ -26,7 +26,7 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 	if len(facts) != 0 {
 		t.Fatalf("facts = %#v, want none", facts)
 	}
-	want := []string{"docker_info", "docker_images", "docker_containers", "docker_container_logs", "docker_container_inspect", "docker_container_stats"}
+	want := []string{"docker_info", "docker_images", "docker_containers", "docker_container_logs", "docker_container_file", "docker_container_inspect", "docker_container_stats"}
 	got := make([]string, 0, len(tools))
 	for _, tool := range tools {
 		got = append(got, tool.Definition().Name)

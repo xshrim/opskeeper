@@ -82,8 +82,8 @@ func TestStreamableHTTPToolsOmitComplexOutputSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MCP tools/list failed: %v", err)
 	}
-	if len(result.Tools) != 6 {
-		t.Fatalf("tool count = %d, want 6", len(result.Tools))
+	if len(result.Tools) != 7 {
+		t.Fatalf("tool count = %d, want 7", len(result.Tools))
 	}
 	for _, tool := range result.Tools {
 		encoded, err := json.Marshal(tool.InputSchema)
@@ -150,8 +150,8 @@ func TestSSEToolsAreAvailableAtSSEEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MCP SSE tools/list failed: %v", err)
 	}
-	if len(result.Tools) != 6 {
-		t.Fatalf("SSE tool count = %d, want 6", len(result.Tools))
+	if len(result.Tools) != 7 {
+		t.Fatalf("SSE tool count = %d, want 7", len(result.Tools))
 	}
 }
 

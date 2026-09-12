@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { resourceEndpointFor } from './resourceCatalog';
-  import { hostAccessModeLabel } from './resourceWorkflow';
+  import { hostAccessSummary } from './resourceWorkflow';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -17,10 +17,9 @@
   ];
 
   $: config = resource.config ?? {};
-  $: accessMode =
-    String(resource.subtype ?? '').toLowerCase() === 'agent'
-      ? 'agent'
-      : 'direct';
+  $: subtype = String(resource.subtype ?? 'Direct');
+  $: accessMode = subtype.toLowerCase() === 'agent' ? 'agent' : 'direct';
+  $: accessSummary = hostAccessSummary(subtype, config);
   $: connectionEndpoint =
     accessMode === 'agent'
       ? mcpServerEndpoint || '关联 MCPServer'
@@ -41,7 +40,7 @@
 <div class="provider-resource-details host-resource-details">
   <div class="provider-resource-meta">
     <div>
-      <span>接入方式</span><strong>{hostAccessModeLabel(accessMode)}</strong>
+      <span>接入方式</span><strong>{accessSummary}</strong>
     </div>
     <div><span>连接端点</span><strong>{connectionEndpoint}</strong></div>
     <div><span>工具数量</span><strong>{tools.length} 个</strong></div>

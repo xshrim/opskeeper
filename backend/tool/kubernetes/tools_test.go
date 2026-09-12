@@ -6,6 +6,17 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+func TestValidatePodPath(t *testing.T) {
+	for _, path := range []string{"", "relative.log", "/var/log/../etc/passwd", "/"} {
+		if _, err := validatePodPath(path); err == nil {
+			t.Errorf("validatePodPath(%q) succeeded", path)
+		}
+	}
+	if got, err := validatePodPath("/var/log/app.log"); err != nil || got != "/var/log/app.log" {
+		t.Fatalf("validatePodPath = %q, %v", got, err)
+	}
+}
+
 func TestMetricStatAggregatesPodContainerUsage(t *testing.T) {
 	item := unstructured.Unstructured{Object: map[string]any{
 		"metadata":  map[string]any{"namespace": "platform", "name": "api-1"},

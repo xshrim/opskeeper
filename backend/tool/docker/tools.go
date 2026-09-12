@@ -1,11 +1,13 @@
 package docker
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -26,6 +28,7 @@ const (
 	defaultLogTail      = 1000
 	maxOutputLogLines   = 200
 	keywordContextLines = 3
+	maxFileBytes        = 1024 * 1024
 )
 
 type DockerInfoInput struct{ client.ConnectionInput }
@@ -55,6 +58,13 @@ type ContainerLogsInput struct {
 	Details       bool   `json:"details,omitempty" jsonschema:"Include extra log attributes."`
 }
 
+type ContainerFileInput struct {
+	client.ConnectionInput
+	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
+	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
+	Path          string `json:"path" jsonschema:"Absolute path of a regular file inside the container."`
+}
+
 type ContainerInspectInput struct {
 	client.ConnectionInput
 	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
@@ -70,6 +80,14 @@ type ContainerStatsInput struct {
 type LogsOutput struct {
 	ContainerID        string                            `json:"container_id"`
 	Logs               string                            `json:"logs"`
+	Truncated          bool                              `json:"truncated"`
+	ConnectionFallback *client.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
+}
+
+type FileOutput struct {
+	ContainerID        string                            `json:"container_id"`
+	Path               string                            `json:"path"`
+	Content            string                            `json:"content"`
 	Truncated          bool                              `json:"truncated"`
 	ConnectionFallback *client.ConnectionFallbackWarning `json:"connection_fallback,omitempty"`
 }
@@ -186,6 +204,70 @@ func ContainerLogs(ctx context.Context, input ContainerLogsInput) (LogsOutput, e
 		return nil
 	})
 	return LogsOutput{ContainerID: id, Logs: logs, Truncated: truncated, ConnectionFallback: warning}, err
+}
+
+func ContainerFile(ctx context.Context, input ContainerFileInput) (FileOutput, error) {
+	id, err := resolveContainerIdentifier(input.ContainerID, input.ContainerName)
+	if err != nil {
+		return FileOutput{}, err
+	}
+	path, err := validateContainerPath(input.Path)
+	if err != nil {
+		return FileOutput{}, err
+	}
+	var content []byte
+	var truncated bool
+	warning, err := client.WithFallback(ctx, input.ConnectionInput, func(cli *dockerapi.Client) error {
+		reader, _, callErr := cli.CopyFromContainer(ctx, id, path)
+		if callErr != nil {
+			return callErr
+		}
+		defer reader.Close()
+		tr, readErr := readContainerTar(reader)
+		if readErr != nil {
+			return readErr
+		}
+		content, truncated = tr.content, tr.truncated
+		return nil
+	})
+	return FileOutput{ContainerID: id, Path: path, Content: string(content), Truncated: truncated, ConnectionFallback: warning}, err
+}
+
+type containerFileRead struct {
+	content   []byte
+	truncated bool
+}
+
+func readContainerTar(r io.Reader) (containerFileRead, error) {
+	reader := tar.NewReader(r)
+	header, err := reader.Next()
+	if err != nil {
+		return containerFileRead{}, fmt.Errorf("read container file archive: %w", err)
+	}
+	if !header.FileInfo().Mode().IsRegular() {
+		return containerFileRead{}, fmt.Errorf("container path is not a regular file")
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, maxFileBytes+1))
+	if err != nil {
+		return containerFileRead{}, fmt.Errorf("read container file: %w", err)
+	}
+	truncated := len(raw) > maxFileBytes
+	if truncated {
+		raw = raw[:maxFileBytes]
+	}
+	return containerFileRead{content: raw, truncated: truncated}, nil
+}
+
+func validateContainerPath(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" || !filepath.IsAbs(path) || strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("path must be an absolute container path")
+	}
+	clean := filepath.Clean(path)
+	if clean != path || clean == "/" {
+		return "", fmt.Errorf("path must identify a file without traversal")
+	}
+	return clean, nil
 }
 
 func ContainerInspect(ctx context.Context, input ContainerInspectInput) (ContainerInspectDTO, error) {

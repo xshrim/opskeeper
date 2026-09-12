@@ -48,6 +48,9 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 	register("kubernetes_pod_logs", "Read bounded, non-following pod logs.", kt.PodLogsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
 		return kt.PodLogs(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), int64Arg(a, "tail"), boolArg(a, "timestamps", false))
 	})
+	register("kubernetes_pod_file", "Read a bounded regular file from a Kubernetes pod.", kt.PodFileInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+		return kt.PodFile(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), stringArg(a, "path"))
+	})
 	register("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(c context.Context, a map[string]any) (any, error) {
 		return kt.Get(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "name"))
 	})
