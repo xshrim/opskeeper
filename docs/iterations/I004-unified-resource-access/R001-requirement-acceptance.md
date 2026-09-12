@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T07 已完成，其余任务待实施
+**验收结论：** 部分验收：T01-T08 已完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T07 已完成验收，确认日期为 2026-09-12。T08-T13 继续按任务表实施。
+T01-T08 已完成验收，确认日期为 2026-09-12。T09-T13 继续按任务表实施。
 
 ## 2. 验收环境和范围
 
@@ -25,7 +25,7 @@ T01-T07 已完成验收，确认日期为 2026-09-12。T08-T13 继续按任务�
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
 | T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
 | T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
-| T08 | Redis 工具集统一 | 待实施 |  |
+| T08 | Redis 工具集统一 | 已完成 | Go/前端检查、真实 Redis 和 MCP 契约验证通过 |
 | T09 | AIEngine 与证据链收敛 | 待实施 |  |
 | T10 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
 | T11 | 其他数据库和中间件迁移 | 待实施 |  |
@@ -124,10 +124,26 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - 本机 Docker PostgreSQL 16（仅执行受控只读查询）执行：`cd backend && set -a && . ../.env && set +a && go test -tags=integration ./tool/postgresql ./mcpserver/postgresql/server -run 'TestRealPostgreSQL' -count=1`：通过。验证全部 12 项 Direct 工具，以及 PostgreSQL MCP 的 `tools/list` 和 `postgresql_health` 实际调用。
 - 实际运行发现 `pg_settings.unit` 和 `short_desc` 可为空，性能/VACUUM 公共查询已用 `COALESCE` 规范化后复测通过。
 
+## 8.1 T08 Redis 工具集统一验收
+
+### 实施内容
+
+- 公共包 `backend/tool/redis` 固定提供 `redis_health`、`redis_memory`、`redis_clients`、`redis_replication`、`redis_slowlog`、`redis_database_info` 六项只读工具。
+- Direct Provider 与 Redis MCP Server 共享工具名、Schema、DTO 和错误边界；Agent 通过 `agent_ref` 调用 MCPServer，连接字段由服务端注入且不会暴露给模型。
+- 前端新增 Redis Direct/Agent 配置、草稿连接测试、创建/编辑、总结核验和详情工具列表，样式与 PostgreSQL/Docker/Kubernetes 一致；0038 迁移更新 Redis 资源 schema 与内置 Skill 工具契约。
+- 仅调用 PING、固定 INFO 分区、DBSIZE、SLOWLOG GET 20；不接受任意 Redis 命令、不扫描全量 Key，慢日志只返回命令名和参数数量。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过。
+- `cd frontend && npm run check`：通过。
+- `cd backend && go test -tags=integration ./tool/redis -run 'TestRealRedis' -count=1`：本机 Redis `127.0.0.1:6383` 六项工具真实连接通过。
+- `git diff --check`：通过。
+
 ## 9. 需求级遗留事项
 
 <!-- 将未完成的低优先级资源、驱动限制或外部环境依赖转入 backlog 或后续迭代。 -->
 
 ## 10. 用户确认和最终结论
 
-Application T06 验收通过；I004-R001 仍处于实施中，后续任务未完成。
+Application T06、PostgreSQL T07 和 Redis T08 验收通过；I004-R001 仍处于实施中，后续任务未完成。

@@ -220,6 +220,13 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 PostgreSQL 地址';
   }
+  if (resource.kind === 'Redis') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    const port = Number(resource.config?.port ?? 6379);
+    const database = Number(resource.config?.database ?? 0);
+    return host ? `${host}:${port}/db${database}` : '未设置 Redis 地址';
+  }
   if (resource.kind === 'Host') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent')
       return 'MCPServer 代理';

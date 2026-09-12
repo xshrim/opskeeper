@@ -392,6 +392,7 @@ export function testDraftMCPConnection(body: {
   return api.testDraftMCP(body);
 }
 export function testDraftPostgreSQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftPostgreSQL(body); }
+export function testDraftRedis(body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) { return api.testDraftRedis(body); }
 
 export function testDraftAIProviderConnection(body: {
   scope_id: string;

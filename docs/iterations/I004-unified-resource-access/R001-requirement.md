@@ -59,7 +59,7 @@
 | T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct/Agent 适配器 | 已完成 |
 | T06 | Application 资源接入 | T01-T05 | 项目归属、三种接入方式、实例唯一性、受控日志工具和管理界面 | 已完成 |
 | T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器、专用管理界面 | 已完成 |
-| T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
+| T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 已完成 |
 | T09 | AIEngine 与证据链收敛 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
 | T10 | Kafka、Prometheus、Loki 迁移 | T01-T02、T09 | P1 工具集接入和一致性测试 | 待批准 |
 | T11 | 其他数据库和中间件迁移 | T10 | P2 工具集接入 | 待批准 |
@@ -251,7 +251,7 @@ Kubernetes workload 可能对应多个 Pod 或短生命周期 Job。工具限制
 
 #### 实施范围
 
-- 连接、内存、客户端、复制、慢日志和健康诊断工具；
+- 连接、健康、内存、客户端、复制、慢日志和数据库信息工具，共 6 项固定只读工具；
 - 保持当前不采样全量 Key、不执行任意 Redis 命令的安全边界；
 - Direct 使用资源 config 与 credential；Agent 使用关联 MCPServer；
 - 对不可用的 hot key 等能力返回明确说明。
@@ -259,12 +259,12 @@ Kubernetes workload 可能对应多个 Pod 或短生命周期 Job。工具限制
 #### 验收标准
 
 - 工具不会执行模型提供的任意 Redis 命令；
-- Direct/MCP 结果、不可用能力和错误语义一致；
+- Direct/MCP 使用相同工具名、Schema、DTO 和错误语义；
 - 真实 Redis 完成连接、诊断、超时和取消验证。
 
 #### 风险和回滚
 
-Redis 版本、权限和数据规模会影响诊断能力。采用有限采样和明确上限；如公共实现未通过一致性测试，保留旧 Connector 入口直到修复，不增加新协议分支。
+Redis 版本和权限会影响诊断能力。工具仅调用固定 INFO、PING、DBSIZE 和 SLOWLOG GET 20，不扫描全量 Key、不执行任意命令。
 
 ### T09 AIEngine 与证据链收敛
 

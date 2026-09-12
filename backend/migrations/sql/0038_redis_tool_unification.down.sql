@@ -1,0 +1,1 @@
+-- Redis T08 is a hard cutover; rollback intentionally keeps the unified contract.

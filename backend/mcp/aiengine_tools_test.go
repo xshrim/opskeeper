@@ -42,6 +42,33 @@ func TestPostgreSQLAgentSchemaHidesConnectionFields(t *testing.T) {
 	}
 }
 
+func TestRedisAgentArgumentsUseResourceConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	r := aiengine.ContextResource{Kind: "Redis", Subtype: "agent", Config: map[string]any{"host": "configured-redis", "port": float64(6379), "database": float64(2), "timeout_seconds": float64(9)}}
+	got, err := p.agentArguments(context.Background(), r, map[string]any{"host": "model-redis", "database": 0})
+	if err != nil || got["host"] != "configured-redis" || got["database"] != float64(2) {
+		t.Fatalf("arguments=%#v err=%v", got, err)
+	}
+}
+
+func TestRedisAgentSchemaHidesConnectionFields(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["host"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"limit":{"type":"integer"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(redisAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	if _, ok := props["host"]; ok {
+		t.Fatal("host exposed")
+	}
+	if _, ok := props["password"]; ok {
+		t.Fatal("password exposed")
+	}
+	if _, ok := props["limit"]; !ok {
+		t.Fatal("business field removed")
+	}
+}
+
 func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}
 	resource := aiengine.ContextResource{
