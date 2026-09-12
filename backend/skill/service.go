@@ -250,7 +250,7 @@ func validateSchema(raw json.RawMessage) error {
 
 func allowedToolName(name string) bool {
 	switch name {
-	case "connector_kubernetes_read", "connector_metrics_query", "connector_logs_query", "connector_traces_query", "connector_alerts_get", "connector_postgresql_inspect", "connector_redis_inspect", "connector_kafka_inspect":
+	case "connector_kubernetes_read", "connector_metrics_query", "connector_logs_query", "connector_traces_query", "connector_alerts_get", "connector_postgresql_inspect", "connector_redis_inspect", "connector_kafka_inspect", "postgresql_health", "postgresql_sessions", "postgresql_long_running_queries", "postgresql_locks", "postgresql_replication", "postgresql_capacity", "postgresql_tables", "postgresql_table_columns", "postgresql_performance", "postgresql_vacuum", "postgresql_extensions", "postgresql_database_info":
 		return true
 	default:
 		return false

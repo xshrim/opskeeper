@@ -41,7 +41,7 @@
 | T04 | Host 工具集接入 | P0 | T01-T02 | Host Direct 工具集、Agent MCP 代理和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 已完成 |
 | T06 | Application 资源接入 | P0 | T01-T05 | 项目归属、虚拟机/容器化/云原生实例关联、日志读取和唯一性验证 | 已完成 |
-| T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | 固定诊断快照及后续只读工具共用 Direct/MCP 实现 | 待批准 |
+| T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | 12 个固定只读 PostgreSQL 工具共用 Direct/MCP 实现及专用管理界面 | 已完成 |
 | T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 待批准 |
 | T09 | AIEngine 与证据链收敛 | P0 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
 | T10 | Kafka、Prometheus、Loki 迁移 | P1 | T01-T02、T09 | 中间件和可观测工具集按同一机制接入 | 待批准 |
@@ -86,3 +86,11 @@
 - **验证证据：** `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check` 通过；Application 关联 Direct/Agent Host、Docker、Kubernetes、Loki 的透明调用与无回退回归通过。
 - **验收范围：** 项目归属、三种实例模式、多实例、Host 表达式及唯一性、Docker 容器唯一性、Kubernetes workload 到 Pod 解析、固定 Application 工具边界、关联资源的 Direct/Agent 透明执行、受控候选发现。
 - **已知边界：** 未运行的 Kubernetes workload（包括零副本和无当前 Pod 的 Job/CronJob）会导致连接校验失败；这是当前状态验证要求 Instance 存在的结果。
+
+### T07 完成记录
+
+- **确认日期：** 2026-09-12
+- **实现范围：** PostgreSQL Direct/Agent 资源统一使用公共只读工具包；移除旧 `connector.inspect_postgresql` 快照入口、Worker 路径和旧 Skill 工具名。
+- **工具范围：** 健康、会话、长查询、锁、复制、容量、用户表统计、指定表列、性能与配置、VACUUM 配置、扩展与数据库概要，共 12 项。所有 SQL 固定在代码内，禁止任意 SQL；用户表查询过滤系统 schema。
+- **验证证据：** `cd backend && go test ./...`、`cd frontend && npm run check && npm run build`、`git diff --check` 通过；以本机 PostgreSQL 16 运行 `go test -tags=integration ./tool/postgresql ./mcpserver/postgresql/server -run 'TestRealPostgreSQL' -count=1`，12 项 Direct 工具和 MCP `tools/list`、`postgresql_health` 真实调用均通过。
+- **修复项：** 真实数据库验收发现 `pg_settings.unit`/`short_desc` 可为 NULL，公共查询改用 `COALESCE`，保证性能和 VACUUM 工具的结构化结果稳定。

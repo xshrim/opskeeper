@@ -217,16 +217,6 @@ func (s *Service) ReadKubernetes(ctx context.Context, resourceID string, query K
 	})
 }
 
-func (s *Service) InspectPostgreSQL(ctx context.Context, resourceID string) (Evidence, error) {
-	return s.inspect(ctx, resourceID, CapabilityPostgreSQLInspect, func(adapter Adapter, runCtx context.Context) (DiagnosticSnapshot, error) {
-		inspector, ok := adapter.(PostgreSQLInspector)
-		if !ok {
-			return DiagnosticSnapshot{}, connectorError(CategoryUnsupported, "inspect PostgreSQL", false, ErrUnsupported)
-		}
-		return inspector.InspectPostgreSQL(runCtx)
-	})
-}
-
 func (s *Service) InspectRedis(ctx context.Context, resourceID string) (Evidence, error) {
 	return s.inspect(ctx, resourceID, CapabilityRedisInspect, func(adapter Adapter, runCtx context.Context) (DiagnosticSnapshot, error) {
 		inspector, ok := adapter.(RedisInspector)

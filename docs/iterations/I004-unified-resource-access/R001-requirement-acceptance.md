@@ -2,15 +2,17 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T06 已完成，其余任务待实施
+**验收结论：** 部分验收：T01-T07 已完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T06 已完成验收，确认日期为 2026-09-12。T07-T13 继续按任务表实施。
+T01-T07 已完成验收，确认日期为 2026-09-12。T08-T13 继续按任务表实施。
 
 ## 2. 验收环境和范围
 
-<!-- 记录代码提交、数据库版本、Docker/Kubernetes/PostgreSQL/Redis 环境和测试范围。 -->
+- **PostgreSQL：** 本机 Docker PostgreSQL 16，`127.0.0.1:5432`，仅对已有 OpsKeeper 数据库执行固定只读查询；连接串、用户名和密码未写入报告或测试输出。
+- **MCP：** `httptest` 启动 PostgreSQL MCP HTTP Server，经项目 MCP 客户端完成 `tools/list` 与 `postgresql_health` 调用。
+- **前端：** Svelte 类型检查与生产构建。
 
 ## 3. 任务验收汇总
 
@@ -22,7 +24,7 @@ T01-T06 已完成验收，确认日期为 2026-09-12。T07-T13 继续按任务�
 | T04 | Host 工具集接入 | 已通过 | `make host-mcp-test`、`cd backend && go test ./...`、`cd frontend && npm run check`；Host Direct 与 Host MCP Agent 共用五个 Linux 只读工具，SSH 支持密码/私钥和 known_hosts，连接目标遵循工具参数 > HOST_MCP_* 环境变量 > 本机，文件日志支持 tail/since/until/keyword，资源前端支持 Direct/Agent 配置和连接测试 |
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
 | T06 | Application 资源接入 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run`、`cd frontend && npm run build`、`git diff --check`；Application 项目归属、三种接入方式、多实例唯一性、结构化表单、受控候选发现和日志工具已通过验收 |
-| T07 | PostgreSQL 工具集统一 | 待实施 |  |
+| T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
 | T08 | Redis 工具集统一 | 待实施 |  |
 | T09 | AIEngine 与证据链收敛 | 待实施 |  |
 | T10 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
@@ -104,10 +106,28 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - Application 本身不提供 MCP 传输；它固定关联资源 ID 与业务目标参数，统一调用器据此选择关联资源的唯一执行 Provider。Agent 缺少受控工具时明确失败，不会回退到 Direct。
 - Kubernetes Job/CronJob 可能没有当前 Pod，或 workload 对应多个 Pod；连接验证要求当前至少存在一个 Pod，工具限制解析数量并在返回中保留 `partial`/`errors`。
 
-## 8. 需求级遗留事项
+## 8. T07 PostgreSQL 工具集统一验收
+
+### 实施内容
+
+- 公共包 `backend/tool/postgresql` 固定提供 12 个只读工具：健康、活跃会话、长查询、等待锁、复制、容量、用户表统计、指定用户表列、性能与参数、VACUUM 参数、已安装扩展和数据库概要。
+- Direct Provider 使用 PostgreSQL 逻辑资源的 config 和加密 credential 注入连接；工具 schema 不暴露主机、数据库、账号或密码。
+- Agent 资源仅通过 `agent_ref` 对应的 MCPServer 发现和调用同名工具。Agent schema 仅保留业务参数，连接字段由逻辑资源服务器端注入，且 Agent 解析失败不会回退到 Direct。
+- 新增 PostgreSQL MCP 可执行程序、草稿连接测试 API、Direct/Agent 专用资源创建、编辑、总结核验和详情展示；0037 迁移更新资源 schema 和内置 Skill 工具契约。
+- 移除旧的 `connector.inspect_postgresql` 聚合快照、PostgreSQL Inspector 接口、Worker 调用和旧工具名注册。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过。
+- `cd frontend && npm run check && npm run build`：通过。
+- `git diff --check`：通过。
+- 本机 Docker PostgreSQL 16（仅执行受控只读查询）执行：`cd backend && set -a && . ../.env && set +a && go test -tags=integration ./tool/postgresql ./mcpserver/postgresql/server -run 'TestRealPostgreSQL' -count=1`：通过。验证全部 12 项 Direct 工具，以及 PostgreSQL MCP 的 `tools/list` 和 `postgresql_health` 实际调用。
+- 实际运行发现 `pg_settings.unit` 和 `short_desc` 可为空，性能/VACUUM 公共查询已用 `COALESCE` 规范化后复测通过。
+
+## 9. 需求级遗留事项
 
 <!-- 将未完成的低优先级资源、驱动限制或外部环境依赖转入 backlog 或后续迭代。 -->
 
-## 9. 用户确认和最终结论
+## 10. 用户确认和最终结论
 
 Application T06 验收通过；I004-R001 仍处于实施中，后续任务未完成。

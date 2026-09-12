@@ -6,6 +6,7 @@
   import HostResourceDetails from './HostResourceDetails.svelte';
   import McpResourceDetails from './McpResourceDetails.svelte';
   import ProviderResourceDetails from './ProviderResourceDetails.svelte';
+  import PostgreSQLResourceDetails from './PostgreSQLResourceDetails.svelte';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -39,8 +40,10 @@
   <DockerResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Kubernetes'}
   <KubernetesResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
-{:else if resource.kind === 'Host'}
-  <HostResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+  {:else if resource.kind === 'Host'}
+    <HostResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+  {:else if resource.kind === 'PostgreSQL'}
+    <PostgreSQLResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} {resourceCanManage} />
 {/if}

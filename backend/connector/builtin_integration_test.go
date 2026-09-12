@@ -30,9 +30,8 @@ func TestBuiltinPostgreSQLAndRedisSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new PostgreSQL adapter: %v", err)
 	}
-	pgSnapshot, err := postgres.(PostgreSQLInspector).InspectPostgreSQL(ctx)
-	if err != nil || pgSnapshot.Kind != "PostgreSQL" || pgSnapshot.Facts["server_version"] == "" {
-		t.Fatalf("PostgreSQL snapshot = %#v, %v", pgSnapshot, err)
+	if err := postgres.Test(ctx); err != nil {
+		t.Fatalf("PostgreSQL health = %v", err)
 	}
 
 	redisConfig, err := url.Parse(redisURL)

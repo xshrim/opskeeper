@@ -11,25 +11,25 @@ import (
 type Capability string
 
 const (
-	CapabilityKubernetesRead    Capability = "kubernetes_read"
-	CapabilityQueryMetrics      Capability = "query_metrics"
-	CapabilityQueryLogs         Capability = "query_logs"
-	CapabilityQueryTraces       Capability = "query_traces"
-	CapabilityGetAlerts         Capability = "get_alerts"
-	CapabilityPostgreSQLInspect Capability = "postgresql_inspect"
-	CapabilityRedisInspect      Capability = "redis_inspect"
-	CapabilityKafkaInspect      Capability = "kafka_inspect"
-	CapabilityDockerInfo        Capability = "docker_info"
-	CapabilityDockerImages      Capability = "docker_images"
-	CapabilityDockerContainers  Capability = "docker_containers"
-	CapabilityDockerLogs        Capability = "docker_container_logs"
-	CapabilityDockerInspect     Capability = "docker_container_inspect"
-	CapabilityDockerStats       Capability = "docker_container_stats"
-	CapabilityHostInfo          Capability = "host_info"
-	CapabilityHostMetrics       Capability = "host_metrics"
-	CapabilityHostProcesses     Capability = "host_processes"
-	CapabilityHostFileLogs      Capability = "host_file_logs"
-	CapabilityHostHealth        Capability = "host_health"
+	CapabilityKubernetesRead   Capability = "kubernetes_read"
+	CapabilityQueryMetrics     Capability = "query_metrics"
+	CapabilityQueryLogs        Capability = "query_logs"
+	CapabilityQueryTraces      Capability = "query_traces"
+	CapabilityGetAlerts        Capability = "get_alerts"
+	CapabilityPostgreSQLHealth Capability = "postgresql_health"
+	CapabilityRedisInspect     Capability = "redis_inspect"
+	CapabilityKafkaInspect     Capability = "kafka_inspect"
+	CapabilityDockerInfo       Capability = "docker_info"
+	CapabilityDockerImages     Capability = "docker_images"
+	CapabilityDockerContainers Capability = "docker_containers"
+	CapabilityDockerLogs       Capability = "docker_container_logs"
+	CapabilityDockerInspect    Capability = "docker_container_inspect"
+	CapabilityDockerStats      Capability = "docker_container_stats"
+	CapabilityHostInfo         Capability = "host_info"
+	CapabilityHostMetrics      Capability = "host_metrics"
+	CapabilityHostProcesses    Capability = "host_processes"
+	CapabilityHostFileLogs     Capability = "host_file_logs"
+	CapabilityHostHealth       Capability = "host_health"
 )
 
 type Target struct {
@@ -139,10 +139,6 @@ type Finding struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
 	Message  string `json:"message"`
-}
-
-type PostgreSQLInspector interface {
-	InspectPostgreSQL(context.Context) (DiagnosticSnapshot, error)
 }
 
 type RedisInspector interface {

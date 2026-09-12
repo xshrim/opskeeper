@@ -1,0 +1,2 @@
+-- PostgreSQL T07 is a hard cutover; rollback intentionally leaves the current
+-- catalog schema and skill contract untouched.

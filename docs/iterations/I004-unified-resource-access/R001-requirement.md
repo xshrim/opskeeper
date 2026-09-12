@@ -58,7 +58,7 @@
 | T04 | Host 工具集接入 | T01-T02 | Host Direct/Agent 工具和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | T01-T02 | Kubernetes 公共工具、MCP 薄适配器、Direct/Agent 适配器 | 已完成 |
 | T06 | Application 资源接入 | T01-T05 | 项目归属、三种接入方式、实例唯一性、受控日志工具和管理界面 | 已完成 |
-| T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器 | 待批准 |
+| T07 | PostgreSQL 工具集统一 | T01-T02 | PostgreSQL 公共工具、Direct/MCP 适配器、专用管理界面 | 已完成 |
 | T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 待批准 |
 | T09 | AIEngine 与证据链收敛 | T03-T08 | 工具注册、别名、证据、事件、审计和错误统一 | 待批准 |
 | T10 | Kafka、Prometheus、Loki 迁移 | T01-T02、T09 | P1 工具集接入和一致性测试 | 待批准 |

@@ -2,11 +2,45 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 
 	"opskeeper/backend/aiengine"
 )
+
+func TestPostgreSQLAgentArgumentsUseResourceConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	resource := aiengine.ContextResource{Kind: "PostgreSQL", Subtype: "agent", Config: map[string]any{"host": "configured-db", "port": float64(5432), "database": "ops", "timeout_seconds": float64(10)}}
+	got, err := p.agentArguments(context.Background(), resource, map[string]any{"host": "model-db", "database": "other"})
+	if err != nil {
+		t.Fatalf("agentArguments(): %v", err)
+	}
+	if got["host"] != "configured-db" || got["database"] != "ops" || got["port"] != float64(5432) {
+		t.Fatalf("arguments = %#v, want resource connection", got)
+	}
+}
+
+func TestPostgreSQLAgentSchemaHidesConnectionFields(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["host","schema","table"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"schema":{"type":"string"},"table":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(postgreSQLAgentSchema(raw), &schema); err != nil {
+		t.Fatalf("decode schema: %v", err)
+	}
+	properties := schema["properties"].(map[string]any)
+	if _, ok := properties["host"]; ok {
+		t.Fatal("host must not be model-facing for Agent")
+	}
+	if _, ok := properties["password"]; ok {
+		t.Fatal("password must not be model-facing for Agent")
+	}
+	if _, ok := properties["schema"]; !ok {
+		t.Fatal("table schema argument must remain available")
+	}
+	if _, ok := schema["required"]; ok {
+		t.Fatal("resource-owned connection requirements must be removed")
+	}
+}
 
 func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}

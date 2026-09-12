@@ -1092,6 +1092,8 @@ export const api = {
     tls_key?: string;
     tls_skip_verify?: boolean;
   }) => request<MCPSnapshot>('api/v1/mcp-servers/test-draft', json(body)),
+  testDraftPostgreSQL: (body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) =>
+    request<{ status: string; message: string; latency_ms: number }>('api/v1/postgresql/connection-tests', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

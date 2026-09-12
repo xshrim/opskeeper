@@ -45,6 +45,8 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 		inputSchema := item.InputSchema
 		if strings.EqualFold(strings.TrimSpace(resource.Kind), "Host") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = hostAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "PostgreSQL") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = postgreSQLAgentSchema(inputSchema)
 		}
 		tools = append(tools, aiengine.ToolFunc{
 			Def: aiengine.ToolDefinition{
@@ -79,7 +81,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
@@ -115,6 +117,10 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		for _, key := range []string{"host", "port", "username", "auth_method", "password", "private_key", "passphrase", "known_hosts", "timeout_seconds"} {
 			setString(key)
 		}
+	} else if strings.EqualFold(kind, "PostgreSQL") {
+		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			setString(key)
+		}
 	} else {
 		setString("host")
 	}
@@ -134,7 +140,7 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	}
 	secret, err := p.service.credentials.RevealLinked(ctx, *contextResource.CredentialID)
 	if err != nil {
-		return nil, fmt.Errorf("read Docker Agent credential: %w", err)
+		return nil, fmt.Errorf("read %s Agent credential: %w", kind, err)
 	}
 	var values map[string]any
 	if err := json.Unmarshal(secret, &values); err != nil {
@@ -155,6 +161,8 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"kubeconfig", "connection_mode", "context", "profile", "server", "ca", "token", "client_cert", "client_key"}
 	} else if strings.EqualFold(kind, "Host") {
 		keys = []string{"host", "port", "username", "auth_method", "password", "private_key", "passphrase", "known_hosts", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "PostgreSQL") {
+		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
 	}
 	for _, key := range keys {
 		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig" {
@@ -210,6 +218,24 @@ func hostAgentSchema(raw json.RawMessage) json.RawMessage {
 	if err != nil {
 		return raw
 	}
+	return encoded
+}
+
+func postgreSQLAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"host", "port", "database", "username", "password", "timeout_seconds"} {
+			delete(properties, key)
+		}
+	}
+	delete(schema, "required")
+	encoded, _ := json.Marshal(schema)
 	return encoded
 }
 

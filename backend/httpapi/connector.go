@@ -27,6 +27,7 @@ type kubernetesDraftConnectorService interface {
 type hostDraftConnectorService interface {
 	TestHostDraft(context.Context, connector.HostDraftInput) (connector.HostDraftCheck, error)
 }
+type postgresqlDraftConnectorService interface { TestPostgreSQLDraft(context.Context, connector.PostgreSQLDraftInput) (connector.PostgreSQLDraftCheck, error) }
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
 	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
@@ -92,6 +93,11 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				return
 			}
 			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(postgresqlDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/postgresql/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.PostgreSQLDraftInput; if !decodeRequest(w,r,&body){return}; check,err:=draft.TestPostgreSQLDraft(r.Context(),body); if err!=nil{writeConnectorError(w,r,err);return}; writeJSON(w,http.StatusOK,check)
 		})
 	}
 	if discovery, ok := service.(applicationDiscoveryService); ok {

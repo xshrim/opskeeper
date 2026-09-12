@@ -164,7 +164,6 @@ type connectorChecker struct {
 	service interface {
 		Test(context.Context, string, string) (connector.Check, error)
 		ReadKubernetes(context.Context, string, connector.KubernetesQuery) (connector.Evidence, error)
-		InspectPostgreSQL(context.Context, string) (connector.Evidence, error)
 		InspectRedis(context.Context, string) (connector.Evidence, error)
 		InspectKafka(context.Context, string) (connector.Evidence, error)
 	}
@@ -177,8 +176,6 @@ func (c connectorChecker) Check(ctx context.Context, id string) ([]inspection.Ru
 	}
 	var evidence connector.Evidence
 	switch target.Kind {
-	case "PostgreSQL":
-		evidence, err = c.service.InspectPostgreSQL(ctx, id)
 	case "Redis":
 		evidence, err = c.service.InspectRedis(ctx, id)
 	case "Kafka":

@@ -17,6 +17,8 @@
   import KubernetesReviewStep from './KubernetesReviewStep.svelte';
   import HostConnectionStep from './HostConnectionStep.svelte';
   import HostReviewStep from './HostReviewStep.svelte';
+  import PostgreSQLConnectionStep from './PostgreSQLConnectionStep.svelte';
+  import PostgreSQLReviewStep from './PostgreSQLReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ApplicationConnectionStep from './ApplicationConnectionStep.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
@@ -43,6 +45,7 @@
     saveProviderCredential as saveProviderCredentialAction,
     testDraftAIProviderConnection,
     testDraftMCPConnection,
+    testDraftPostgreSQL,
     loadMCPSnapshots as loadMCPSnapshotsAction,
     loadResourceCredentialSecret,
     syncAIProviderBindings,
@@ -321,6 +324,17 @@
   let hostCredentialLoading = false;
   let hostDraftTestBusy = false;
   let hostDraftTest: any = null;
+  let postgresqlAccessMode: 'direct' | 'agent' = 'direct';
+  let postgresqlHost = '';
+  let postgresqlPort = 5432;
+  let postgresqlDatabase = '';
+  let postgresqlUsername = '';
+  let postgresqlPassword = '';
+  let postgresqlTimeoutSeconds = 10;
+  let postgresqlMCPServerResourceId = '';
+  let postgresqlConfigurationAttempted = false;
+  let postgresqlDraftTest: any = null;
+  let editingPostgreSQLResourceId = '';
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
   let selectedSchema: ResourceSchema | null = null;
@@ -367,7 +381,8 @@
       (resourceKind === 'AIProvider' && resourceAddStep === 4) ||
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
-      (resourceKind === 'Host' && resourceAddStep === 3)
+      (resourceKind === 'Host' && resourceAddStep === 3) ||
+      (resourceKind === 'PostgreSQL' && resourceAddStep === 3)
     )
   )
     autoSummaryTestKey = '';
@@ -377,7 +392,8 @@
       (resourceKind === 'AIProvider' && resourceAddStep === 4) ||
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
-      (resourceKind === 'Host' && resourceAddStep === 3))
+      (resourceKind === 'Host' && resourceAddStep === 3) ||
+      (resourceKind === 'PostgreSQL' && resourceAddStep === 3))
   ) {
     const key = `${resourceKind}:${resourceAddStep}:${
       resourceKind === 'MCPServer'
@@ -388,7 +404,9 @@
             ? JSON.stringify(dockerDraft())
             : resourceKind === 'Kubernetes'
               ? JSON.stringify(kubernetesDraft())
-              : JSON.stringify(hostDraft())
+              : resourceKind === 'Host'
+                ? JSON.stringify(hostDraft())
+                : JSON.stringify(postgresqlDraft())
     }`;
     if (autoSummaryTestKey !== key) {
       autoSummaryTestKey = key;
@@ -398,9 +416,11 @@
           ? testProviderDraftConnection()
           : resourceKind === 'Docker'
             ? testDockerDraftConnection()
-            : resourceKind === 'Kubernetes'
-              ? testKubernetesDraftConnection()
-              : testHostDraftConnection());
+        : resourceKind === 'Kubernetes'
+          ? testKubernetesDraftConnection()
+          : resourceKind === 'Host'
+            ? testHostDraftConnection()
+            : testPostgreSQLDraftConnection());
     }
   }
 
@@ -909,6 +929,7 @@
   }
 
   function openResourceEditor(resource: Resource) {
+    if (resource.kind === 'PostgreSQL') { openPostgreSQLWorkflowForEdit(resource); return; }
     if (resource.kind === 'AIProvider') {
       openProviderWorkflowForEdit(resource);
       return;
@@ -1201,7 +1222,8 @@
       resetProviderDraft();
       resetDockerDraft();
       resetKubernetesDraft();
-      resetHostDraft();
+    resetHostDraft();
+      resetPostgreSQLDraft();
       applicationAccessMode = 'virtual_machine';
       applicationTeamId = '';
       applicationProjectId = '';
@@ -1261,6 +1283,7 @@
       hostAccessMode =
         subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     }
+    if (resourceKind === 'PostgreSQL') postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
@@ -1374,6 +1397,7 @@
     hostDraftTest = null;
     editingHostResourceId = '';
   }
+  function resetPostgreSQLDraft() { postgresqlAccessMode='direct'; postgresqlHost=''; postgresqlPort=5432; postgresqlDatabase=''; postgresqlUsername=''; postgresqlPassword=''; postgresqlTimeoutSeconds=10; postgresqlMCPServerResourceId=''; postgresqlConfigurationAttempted=false; postgresqlDraftTest=null; editingPostgreSQLResourceId=''; }
 
   function resetProviderDraft() {
     providerType = 'openai_compatible';
@@ -2008,6 +2032,15 @@
       connectionOverride: hostConnectionOverride
     } as const;
   }
+  function postgresqlDraft() { return { accessMode: postgresqlAccessMode, host: postgresqlHost, port: postgresqlPort, database: postgresqlDatabase, username: postgresqlUsername, password: postgresqlPassword, timeoutSeconds: postgresqlTimeoutSeconds, mcpServerResourceId: postgresqlMCPServerResourceId }; }
+  function postgresqlConfigurationComplete() { return postgresqlAccessMode === 'agent' ? Boolean(postgresqlMCPServerResourceId) : Boolean(postgresqlHost.trim() && postgresqlDatabase.trim() && postgresqlUsername.trim() && postgresqlPassword.trim()); }
+  function resetPostgreSQLDraftTest() { postgresqlDraftTest = null; }
+  async function testPostgreSQLDraftConnection() {
+    postgresqlDraftTest = { busy: true }; if (postgresqlAccessMode === 'agent') { postgresqlDraftTest = { status: 'succeeded', message: '由 MCPServer 提供连接', latency: 0 }; return; }
+    try { const result = await testDraftPostgreSQL({ host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), username: postgresqlUsername.trim(), password: postgresqlPassword, timeout_seconds: Number(postgresqlTimeoutSeconds) }); postgresqlDraftTest = { status: result.status, message: result.message, latency: result.latency_ms, error: result.status === 'succeeded' ? '' : result.message }; } catch (error) { postgresqlDraftTest = { error: describeError(error, 'PostgreSQL 连接测试失败') }; }
+  }
+  function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceStatus = resource.status; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
+  function openPostgreSQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId = resource.scope_id; selectedResourceId = resource.id; resourceKind='PostgreSQL'; resourceAddCategory='PostgreSQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingPostgreSQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; syncPostgreSQLEditor(resource); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if (resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then((value) => { if (editingPostgreSQLResourceId !== resource.id) return; try { const secret = JSON.parse(value.secret) as Record<string, unknown>; postgresqlUsername = String(secret.username ?? ''); postgresqlPassword = String(secret.password ?? ''); } catch { postgresqlUsername = ''; postgresqlPassword = ''; } }); }
   function hostConfigurationIssues() {
     const issues: string[] = [];
     if (hostCredentialLoading) issues.push('正在读取 Host 凭据');
@@ -2365,6 +2398,7 @@
       editingDockerResourceId ||
       editingKubernetesResourceId ||
       editingHostResourceId
+      || editingPostgreSQLResourceId
     );
     if (!editingWorkflow)
       chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
@@ -2453,6 +2487,10 @@
     }
     if (resourceKind === 'Host') {
       await createHostFromWorkflow();
+      return;
+    }
+    if (resourceKind === 'PostgreSQL') {
+      await runResourceAction(savePostgreSQLWorkflow);
       return;
     }
     if (resourceKind === 'Application') {
@@ -2973,6 +3011,21 @@
       ? updateProviderFromWorkflow()
       : createSpecialResource());
   }
+  async function savePostgreSQLWorkflow() {
+    if (!postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = true; throw new Error('请检查 PostgreSQL 配置。'); }
+    const existing = resources.find((r) => r.id === editingPostgreSQLResourceId);
+    let credentialId: string | null = existing?.credential_id ?? null;
+    if (postgresqlAccessMode === 'direct' && postgresqlUsername.trim() && postgresqlPassword) {
+      const secret = JSON.stringify({ username: postgresqlUsername.trim(), password: postgresqlPassword });
+      if (existing?.credential_id) await api.updateCredential(existing.credential_id, { name: `${resourceName.trim() || 'PostgreSQL'} 凭据`, purpose: 'PostgreSQL 数据库凭据', secret });
+      else { const credential = await api.createCredential({ scope_id: selectedScopeId, name: `${resourceName.trim() || 'PostgreSQL'} 凭据`, purpose: 'PostgreSQL 数据库凭据', secret }); credentialId = credential.id; }
+    }
+    if (postgresqlAccessMode === 'agent') credentialId = null;
+    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null, status: resourceStatus, labels: parseLabels(resourceLabels), credential_id: credentialId, config: postgresqlAccessMode === 'agent' ? {} : { host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), timeout_seconds: Number(postgresqlTimeoutSeconds) } };
+    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential_id: credentialId, name: body.name as string, status: body.status as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
+    else { const updated = await updateResourceRecord(existing.id, body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`PostgreSQL 资源“${updated.name}”已更新`); }
+    resourceAddMenuOpen=false; editingPostgreSQLResourceId=''; resourceAddStep=1;
+  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {
@@ -3318,11 +3371,13 @@
         editingDocker={Boolean(editingDockerResourceId)}
         editingKubernetes={Boolean(editingKubernetesResourceId)}
         editingHost={Boolean(editingHostResourceId)}
+        editingPostgreSQL={Boolean(editingPostgreSQLResourceId)}
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
         dockerConfigurationComplete={dockerConfigurationComplete()}
         kubernetesConfigurationComplete={kubernetesConfigurationComplete()}
         hostConfigurationComplete={hostConfigurationComplete()}
+        postgresqlConfigurationComplete={postgresqlConfigurationComplete()}
         applicationConfigurationComplete={applicationConfigurationComplete()}
         providerModelCount={providerModels.length}
         {busy}
@@ -3352,6 +3407,7 @@
         onContinueDocker={continueDockerAdd}
         onContinueKubernetes={continueKubernetesAdd}
         onContinueHost={continueHostAdd}
+        onContinuePostgreSQL={() => { postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } }}
         onSubmitMcp={() =>
           void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
         onSubmitDocker={() =>
@@ -3366,6 +3422,7 @@
           void (editingHostResourceId
             ? updateHostFromWorkflow()
             : createHostFromWorkflow())}
+        onSubmitPostgreSQL={() => void runResourceAction(savePostgreSQLWorkflow)}
         onSubmitApplication={() => void (editingResourceId ? updateApplicationFromWorkflow() : createApplicationFromWorkflow())}
       >
         {#if resourceAddStep === 1}
@@ -3384,7 +3441,8 @@
               editingResourceId ||
               editingDockerResourceId ||
               editingKubernetesResourceId ||
-              editingHostResourceId
+              editingHostResourceId ||
+              editingPostgreSQLResourceId
             )}
             scopeSummary={activeScopeSummary()}
             onSelectCategory={selectResourceAddCategory}
@@ -3398,6 +3456,8 @@
               if (resourceKind === 'Host')
                 hostAccessMode =
                   subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+              if (resourceKind === 'PostgreSQL')
+                postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
             }}
           />
         {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
@@ -3641,6 +3701,10 @@
                 ? updateHostFromWorkflow()
                 : createHostFromWorkflow())}
           />
+        {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 2}
+          <PostgreSQLConnectionStep accessMode={postgresqlAccessMode} bind:host={postgresqlHost} bind:port={postgresqlPort} bind:database={postgresqlDatabase} bind:username={postgresqlUsername} bind:password={postgresqlPassword} bind:timeoutSeconds={postgresqlTimeoutSeconds} bind:mcpServerResourceId={postgresqlMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={postgresqlConfigurationAttempted} onConfigurationChange={resetPostgreSQLDraftTest} />
+        {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 3}
+          <PostgreSQLReviewStep resourceName={resourceName} accessMode={postgresqlAccessMode} host={postgresqlHost} database={postgresqlDatabase} mcpServerName={resources.find((r) => r.id === postgresqlMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(postgresqlUsername.trim() && postgresqlPassword)} testBusy={Boolean(postgresqlDraftTest?.busy)} testStatus={postgresqlDraftTest?.status ?? ''} testMessage={postgresqlDraftTest?.message ?? ''} testError={postgresqlDraftTest?.error ?? ''} testLatency={postgresqlDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(savePostgreSQLWorkflow)} />
         {:else if resourceKind === 'Application' && resourceAddStep === 2}
           <ApplicationConnectionStep
             bind:accessMode={applicationAccessMode}
