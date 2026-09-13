@@ -36,6 +36,9 @@ type redisDraftConnectorService interface {
 type nacosDraftConnectorService interface {
 	TestNacosDraft(context.Context, connector.NacosDraftInput) (connector.NacosDraftCheck, error)
 }
+type mysqlDraftConnectorService interface {
+	TestMySQLDraft(context.Context, connector.MySQLDraftInput) (connector.MySQLDraftCheck, error)
+}
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
 	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
@@ -142,6 +145,15 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				writeConnectorError(w, r, err)
 				return
 			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(mysqlDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/mysql/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.MySQLDraftInput
+			if !decodeRequest(w, r, &body) { return }
+			check, err := draft.TestMySQLDraft(r.Context(), body)
+			if err != nil { writeConnectorError(w, r, err); return }
 			writeJSON(w, http.StatusOK, check)
 		})
 	}

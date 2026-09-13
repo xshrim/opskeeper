@@ -7,6 +7,7 @@
   import McpResourceDetails from './McpResourceDetails.svelte';
   import ProviderResourceDetails from './ProviderResourceDetails.svelte';
   import PostgreSQLResourceDetails from './PostgreSQLResourceDetails.svelte';
+  import MySQLResourceDetails from './MySQLResourceDetails.svelte';
   import RedisResourceDetails from './RedisResourceDetails.svelte';
   import NacosResourceDetails from './NacosResourceDetails.svelte';
   import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
@@ -47,6 +48,8 @@
     <HostResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'PostgreSQL'}
     <PostgreSQLResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+{:else if resource.kind === 'MySQL'}
+    <MySQLResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
   {:else if resource.kind === 'Redis'}
     <RedisResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Nacos'}

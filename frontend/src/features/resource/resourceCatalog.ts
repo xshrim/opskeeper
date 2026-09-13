@@ -83,8 +83,8 @@ export function resourceCategoryFor(resource: ResourceShape) {
       'Nginx',
       'TongHttpServer',
       'PostgreSQL',
-      'Oracle',
       'MySQL',
+      'Oracle',
       'OceanBase',
       'Redis',
       'Kafka',
@@ -168,7 +168,8 @@ export function resourceSubtypeFor(resource: ResourceShape) {
       'OceanBase',
       'Oracle',
       'MySQL',
-      'PostgreSQL'
+      'PostgreSQL',
+      'MySQL'
     ].includes(resource.kind)
   )
     return explicit || 'Direct';
@@ -238,6 +239,13 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const port = Number(resource.config?.port ?? 5432);
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 PostgreSQL 地址';
+  }
+  if (resource.kind === 'MySQL') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    const port = Number(resource.config?.port ?? 3306);
+    const database = String(resource.config?.database ?? '').trim();
+    return host ? `${host}:${port}/${database}` : '未设置 MySQL 地址';
   }
   if (resource.kind === 'Redis') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';

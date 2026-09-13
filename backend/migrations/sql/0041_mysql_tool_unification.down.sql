@@ -1,0 +1,1 @@
+-- MySQL tool unification is a hard cutover; keep the resource schema and Skill contract on rollback.
