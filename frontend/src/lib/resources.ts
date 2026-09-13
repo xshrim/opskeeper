@@ -14,6 +14,8 @@ export const endpointResourceKinds = [
   'Loki',
   'PostgreSQL',
   'Oracle',
+  'RabbitMQ',
+  'MinIO',
   'MySQL',
   'Redis',
   'Kafka'
@@ -38,6 +40,8 @@ export function resourceHasConnector(resource: Resource) {
     'Loki',
     'PostgreSQL',
     'Oracle',
+    'RabbitMQ',
+    'MinIO',
     'MySQL',
     'Redis',
     'Kafka'

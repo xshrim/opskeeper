@@ -44,11 +44,63 @@ export const resourceCategoryOptions: Record<string, string[]> = {
   Kafka: ['Direct', 'Agent'],
   RabbitMQ: ['Direct', 'Agent'],
   ElasticSearch: ['Direct', 'Agent'],
+  MinIO: ['Direct', 'Agent'],
   LLM: ['Provider'],
   MCPServer: ['StreamHTTP', 'SSE'],
   Skill: ['诊断', '监控', '优化', '维护'],
   Monitor: ['指标', '日志', '链路', '告警']
 };
+
+export const resourceCatalogTags: Record<string, string[]> = {
+  Application: ['应用'],
+  Artifact: ['仓库'],
+  Repository: ['仓库'],
+  Host: ['运行时'],
+  Docker: ['运行时'],
+  Kubernetes: ['运行时'],
+  Nacos: ['注册', '配置'],
+  Nginx: ['网关'],
+  TongHttpServer: ['网关'],
+  PostgreSQL: ['数据库'],
+  Oracle: ['数据库'],
+  MySQL: ['数据库'],
+  OceanBase: ['数据库'],
+  TongRDS: ['数据库'],
+  Redis: ['缓存'],
+  Kafka: ['消息'],
+  RabbitMQ: ['消息'],
+  ElasticSearch: ['检索'],
+  Elasticsearch: ['检索'],
+  MinIO: ['存储'],
+  LLM: ['AI'],
+  AIProvider: ['AI'],
+  MCPServer: ['AI'],
+  Skill: ['AI'],
+  Monitor: ['监控'],
+  Prometheus: ['监控'],
+  Loki: ['监控'],
+  Tempo: ['监控'],
+  Jaeger: ['监控'],
+  Elastic: ['监控'],
+  Datadog: ['监控'],
+  Alertmanager: ['监控']
+};
+
+export function resourceCatalogTagsFor(resource: ResourceShape | string) {
+  const kind = typeof resource === 'string' ? resource : resource.kind;
+  const category = resourceCategoryFor(typeof resource === 'string' ? { kind: resource } : resource);
+  return resourceCatalogTags[kind] ?? resourceCatalogTags[category] ?? [];
+}
+
+export const resourceCatalogTagOptions = [...new Set(Object.values(resourceCatalogTags).flat())];
+
+export function resourceCatalogTagClass(tag: string) {
+  const classes: Record<string, string> = {
+    应用: 'application', 仓库: 'repository', 运行时: 'runtime', 注册: 'registry', 配置: 'configuration',
+    网关: 'gateway', 数据库: 'database', 缓存: 'cache', 消息: 'message', 检索: 'search', 存储: 'storage', AI: 'ai', 监控: 'monitor'
+  };
+  return classes[tag] ?? 'default';
+}
 
 type ResourceShape = {
   kind: string;
@@ -91,6 +143,7 @@ export function resourceCategoryFor(resource: ResourceShape) {
       'Elasticsearch',
       'ElasticSearch',
       'RabbitMQ',
+      'MinIO',
       'TongRDS',
       'OceanBase',
       'Oracle',
@@ -132,6 +185,7 @@ export function resourceSubtypeFor(resource: ResourceShape) {
     Kafka: 'Direct',
     Elasticsearch: 'Direct',
     RabbitMQ: 'Direct',
+    MinIO: 'Direct',
     TongRDS: 'Direct',
     OceanBase: 'Direct',
     Oracle: 'Direct',
@@ -169,7 +223,7 @@ export function resourceSubtypeFor(resource: ResourceShape) {
       'Oracle',
       'MySQL',
       'PostgreSQL',
-      'MySQL'
+      'MinIO'
     ].includes(resource.kind)
   )
     return explicit || 'Direct';
@@ -205,6 +259,7 @@ export function resourceCategoryIcon(category: string) {
     Oracle: '◉',
     MySQL: '◉',
     PostgreSQL: '◉',
+    MinIO: '◈',
     MCPServer: '⌁',
     Skill: '✧',
     LLM: '✦',
@@ -253,6 +308,15 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const port = Number(resource.config?.port ?? 1521);
     const service = String(resource.config?.service_name ?? resource.config?.sid ?? '').trim();
     return host ? `${host}:${port}/${service || '未设置服务'}` : '未设置 Oracle 地址';
+  }
+  if (resource.kind === 'RabbitMQ') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    return String(resource.config?.url ?? '').trim() || '未设置 RabbitMQ Management API';
+  }
+  if (resource.kind === 'MinIO') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const endpoint = String(resource.config?.endpoint ?? '').trim();
+    return endpoint || '未设置 MinIO Endpoint';
   }
   if (resource.kind === 'Redis') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';

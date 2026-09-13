@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Resource } from '../../lib/api';
 import { resourceHasConnector } from '../../lib/resources';
-import { brandNameFor, connectorCapabilityName, relativeConnectionTime, resourceEndpointFor, resourceCategoryOptions } from './resourceCatalog';
+import { brandNameFor, connectorCapabilityName, relativeConnectionTime, resourceEndpointFor, resourceCategoryOptions, resourceCatalogTagsFor } from './resourceCatalog';
 
 describe('resource catalog helpers', () => {
   it('normalizes provider brands for display', () => {
@@ -59,6 +59,12 @@ describe('resource catalog helpers', () => {
   });
 
   it('keeps the requested resource directory order', () => {
-    expect(Object.keys(resourceCategoryOptions)).toEqual(['全部','Application','Artifact','Repository','Host','Docker','Kubernetes','Nacos','Nginx','TongHttpServer','PostgreSQL','Oracle','MySQL','OceanBase','Redis','TongRDS','Kafka','RabbitMQ','ElasticSearch','LLM','MCPServer','Skill','Monitor']);
+    expect(Object.keys(resourceCategoryOptions)).toEqual(['全部','Application','Artifact','Repository','Host','Docker','Kubernetes','Nacos','Nginx','TongHttpServer','PostgreSQL','Oracle','MySQL','OceanBase','Redis','TongRDS','Kafka','RabbitMQ','ElasticSearch','MinIO','LLM','MCPServer','Skill','Monitor']);
+  });
+
+  it('keeps catalog tags separate from resource labels', () => {
+    expect(resourceCatalogTagsFor('Host')).toEqual(['运行时']);
+    expect(resourceCatalogTagsFor('Nacos')).toEqual(['注册', '配置']);
+    expect(resourceCatalogTagsFor('MinIO')).toEqual(['存储']);
   });
 });

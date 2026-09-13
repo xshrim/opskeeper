@@ -1102,6 +1102,10 @@ export const api = {
     request<{ status: string; message: string; latency_ms: number }>('api/v1/mysql/connection-tests', json(body)),
   testDraftOracle: (body: { host: string; port: number; service_name?: string; sid?: string; username: string; password: string; timeout_seconds?: number; tls?: boolean }) =>
     request<{ status: string; message: string; latency_ms: number }>('api/v1/oracle/connection-tests', json(body)),
+  testDraftRabbitMQ: (body: { url: string; username?: string; password?: string; timeout_seconds?: number; tls_insecure?: boolean }) =>
+    request<{ status: string; message: string; latency_ms: number }>('api/v1/rabbitmq/connection-tests', json(body)),
+  testDraftMinIO: (body: { endpoint: string; access_key?: string; secret_key?: string; session_token?: string; region?: string; secure?: boolean; timeout_seconds?: number }) =>
+    request<{ status: string; message: string; latency_ms: number }>('api/v1/minio/connection-tests', json(body)),
   testDraftKafka: (body: { brokers: string[]; username?: string; password?: string; tls?: boolean; tls_server_name?: string; timeout_seconds?: number }) =>
     request<{ status: string; message: string; latency_ms: number }>('api/v1/kafka/connection-tests', json(body)),
   testDraftElasticsearch: (body: { url: string; username?: string; password?: string; tls_insecure?: boolean; timeout_seconds?: number }) =>

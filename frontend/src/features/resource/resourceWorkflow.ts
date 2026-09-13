@@ -134,6 +134,10 @@ export function resourceAddStepTitle(step: number, kind: string) {
     return ['PostgreSQL 配置', '总结核验'][step - 2] ?? 'PostgreSQL 配置';
   if (kind === 'Oracle')
     return ['Oracle 配置', '总结核验'][step - 2] ?? 'Oracle 配置';
+  if (kind === 'RabbitMQ')
+    return ['RabbitMQ 配置', '总结核验'][step - 2] ?? 'RabbitMQ 配置';
+  if (kind === 'MinIO')
+    return ['MinIO 配置', '总结核验'][step - 2] ?? 'MinIO 配置';
   if (kind === 'Repository')
     return ['Repository 配置', '总结核验'][step - 2] ?? 'Repository 配置';
   if (kind !== 'AIProvider') return '配置资源';
@@ -163,6 +167,10 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2 ? '配置 PostgreSQL 数据库连接方式和凭据。' : '确认配置并核验 PostgreSQL 连接。';
   if (kind === 'Oracle')
     return step === 2 ? '配置 Oracle 数据库连接方式和凭据。' : '确认配置并核验 Oracle 连接。';
+  if (kind === 'RabbitMQ')
+    return step === 2 ? '配置 RabbitMQ Management API 连接方式和凭据。' : '确认配置并核验 RabbitMQ 连接。';
+  if (kind === 'MinIO')
+    return step === 2 ? '配置 MinIO S3 API 连接方式和凭据。' : '确认配置并核验 MinIO 连接。';
   if (kind === 'Application')
     return step === 2 ? '选择项目、接入方式和应用实例。' : '配置资源';
   if (kind === 'AIProvider') {

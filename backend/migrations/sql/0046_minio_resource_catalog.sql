@@ -1,0 +1,3 @@
+INSERT INTO resource_schemas (kind, version, schema, status, display_name, description, icon)
+VALUES ('MinIO', 1, '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"properties":{"endpoint":{"type":"string","minLength":1},"region":{"type":"string"},"secure":{"type":"boolean","default":false},"timeout_seconds":{"type":"integer","minimum":1,"maximum":300,"default":10}}}'::jsonb, 'active', 'MinIO', 'MinIO object storage resource with unified Direct/Agent access.', 'storage')
+ON CONFLICT (kind, version) DO UPDATE SET status=EXCLUDED.status, display_name=EXCLUDED.display_name, description=EXCLUDED.description, icon=EXCLUDED.icon, schema=EXCLUDED.schema;

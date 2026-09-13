@@ -37,6 +37,8 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		{kind: "Oracle", factory: func(target Target) (Adapter, error) {
 			return newOracleAdapter(target, limits)
 		}},
+		{kind: "RabbitMQ", factory: func(target Target) (Adapter, error) { return newRabbitMQAdapter(target, limits) }},
+		{kind: "MinIO", factory: func(target Target) (Adapter, error) { return newMinIOAdapter(target, limits) }},
 		{kind: "Nacos", factory: func(target Target) (Adapter, error) { return newNacosAdapter(target, limits) }},
 		{kind: "Kafka", factory: func(target Target) (Adapter, error) {
 			return newKafkaAdapter(target, limits)
