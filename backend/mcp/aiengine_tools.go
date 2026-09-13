@@ -19,7 +19,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type mcpContextProvider struct{ service *Service }
 
 func (mcpContextProvider) Kinds() []string {
-	return []string{"MCPServer", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Redis", "PostgreSQL", "Kafka", "RabbitMQ", "Elasticsearch", "OceanBase", "Oracle", "MySQL", "TongRDS", "Prometheus", "Loki"}
+	return []string{"MCPServer", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Redis", "PostgreSQL", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO", "OceanBase", "Oracle", "MySQL", "TongRDS", "Prometheus", "Loki"}
 }
 
 func (mcpContextProvider) AccessModes() []string { return []string{"agent"} }
@@ -51,6 +51,10 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 			inputSchema = mysqlAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Oracle") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = oracleAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "RabbitMQ") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = rabbitMQAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "MinIO") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = minIOAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Redis") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = redisAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Nacos") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
@@ -95,7 +99,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "Elasticsearch")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "RabbitMQ") && !strings.EqualFold(kind, "Elasticsearch") && !strings.EqualFold(kind, "MinIO")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
@@ -141,6 +145,18 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		}
 	} else if strings.EqualFold(kind, "Oracle") {
 		for _, key := range []string{"host", "port", "service_name", "sid", "username", "password", "timeout_seconds", "tls"} {
+			if value, ok := contextResource.Config[key]; ok && value != nil {
+				merged[key] = value
+			}
+		}
+	} else if strings.EqualFold(kind, "RabbitMQ") {
+		for _, key := range []string{"url", "timeout_seconds", "tls_insecure"} {
+			if value, ok := contextResource.Config[key]; ok && value != nil {
+				merged[key] = value
+			}
+		}
+	} else if strings.EqualFold(kind, "MinIO") {
+		for _, key := range []string{"endpoint", "region", "secure", "timeout_seconds"} {
 			if value, ok := contextResource.Config[key]; ok && value != nil {
 				merged[key] = value
 			}
@@ -215,6 +231,10 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "Oracle") {
 		keys = []string{"host", "port", "service_name", "sid", "username", "password", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "RabbitMQ") {
+		keys = []string{"url", "username", "password", "timeout_seconds", "tls_insecure"}
+	} else if strings.EqualFold(kind, "MinIO") {
+		keys = []string{"endpoint", "access_key", "secret_key", "session_token", "region", "timeout_seconds", "secure"}
 	} else if strings.EqualFold(kind, "Redis") {
 		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "Nacos") {
@@ -358,7 +378,40 @@ func oracleAgentSchema(raw json.RawMessage) json.RawMessage {
 	encoded, _ := json.Marshal(schema)
 	return encoded
 }
-
+func rabbitMQAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if p, ok := schema["properties"].(map[string]any); ok {
+		for _, k := range []string{"url", "username", "password", "timeout_seconds", "tls_insecure"} {
+			delete(p, k)
+		}
+	}
+	delete(schema, "required")
+	b, _ := json.Marshal(schema)
+	return b
+}
+func minIOAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if p, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"endpoint", "access_key", "secret_key", "session_token", "region", "secure", "timeout_seconds"} {
+			delete(p, key)
+		}
+	}
+	delete(schema, "required")
+	b, _ := json.Marshal(schema)
+	return b
+}
 func nacosAgentSchema(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return raw

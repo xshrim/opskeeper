@@ -49,6 +49,8 @@
 | T12 | Kafka 工具集统一 | P1 | T11 | Kafka Direct/Agent、Direct/MCP 统一工具集与前端连接流程 | 已完成 |
 | T13 | Elasticsearch 工具集统一 | P1 | T01-T02、T12 | Elasticsearch Direct/Agent、Direct/MCP 统一只读工具集与资源流程 | 已完成 |
 | T14 | Oracle 工具集统一 | P1 | T01-T02、T11 | Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
+| T15 | RabbitMQ 工具集统一 | P1 | T01-T02、T12 | RabbitMQ Direct/Agent、Management API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
+| T16 | MinIO 工具集统一 | P1 | T01-T02、T15 | MinIO Direct/Agent、S3 API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
 
 ## 5. 进入条件
 

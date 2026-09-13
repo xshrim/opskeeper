@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T09、T11-T14 已完成，T10 保持部分完成
+**验收结论：** T01-T09、T11-T16 已完成，T10 保持部分完成
 
 ## 1. 需求级验收结论
 
-T01-T09、T11-T14 已完成验收，确认日期更新为 2026-09-13。T10 按任务表继续实施。
+T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按任务表继续实施。
 
 ## 2. 验收环境和范围
 
@@ -32,6 +32,8 @@ T01-T09、T11-T14 已完成验收，确认日期更新为 2026-09-13。T10 按�
 | T12 | Kafka 工具集统一 | 已通过 | 公共 7 项只读工具、Direct/MCP/Agent、0042 迁移、连接测试和专用前端已完成；见下方 T12 验收 |
 | T13 | Elasticsearch 工具集统一 | 已通过 | 公共 Elasticsearch API 工具、Direct/MCP/Agent 适配、0043 迁移及资源详情流程已完成；见下方 T13 验收 |
 | T14 | Oracle 工具集统一 | 已通过 | 纯 Go 驱动公共工具、Direct/MCP/Agent、0044 迁移和专用前端已完成；见下方 T14 验收 |
+| T15 | RabbitMQ 工具集统一 | 已通过 | RabbitMQ 公共只读工具、Direct/MCP/Agent 适配、0045 迁移、连接测试和专用前端已完成；见下方 T15 验收 |
+| T16 | MinIO 工具集统一 | 已通过 | MinIO 公共只读工具、Direct/MCP/Agent 适配、0046/0047 迁移、连接测试和专用前端已完成；见下方 T16 验收 |
 
 ## 8.6 T14 Oracle 工具集统一验收
 
@@ -230,6 +232,47 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 
 - 当前环境未运行真实 Elasticsearch 集群，因此真实节点、索引和 TLS/Basic Auth 连通性尚未执行；公共 API、Direct Provider、MCP 路由和参数隔离已完成编译与契约验证。
 - Elasticsearch 旧 Connector/数据库字段未做兼容，按用户要求采用直接切换到统一实现。
+
+## 8.6 T15 RabbitMQ 工具集统一验收
+
+### 实施内容
+
+- 新增 RabbitMQ 公共 Management HTTP API 只读工具集（health、overview、nodes、queues、exchanges、connections、channels、consumers、vhosts）。
+- Direct Provider、RabbitMQ MCP Server 和 Agent 统一使用同一工具名称、参数和结果边界；Agent 连接字段由服务端注入。
+- RabbitMQ 支持 Direct/Agent 子类型、Management API URL、Basic Auth、超时和可选跳过 TLS 校验；前端提供创建、编辑、连接测试、总结核验和详情工具列表。
+- 新增 0045 migration 更新资源 Schema 并安装 RabbitMQ 内置只读 Skill；不修改历史 migration。
+
+### 验证步骤和结果
+
+- backend go test ./...：通过。
+- frontend npm run check && npm run build：通过，Svelte 检查无错误和警告，Vite 生产构建通过。
+- git diff --check：通过。
+- 公共 RabbitMQ HTTP 契约测试覆盖工具目录数量、URL 协议校验、/api 自动补全和受控 GET 请求。
+
+### 已知边界
+
+- 当前环境未运行真实 RabbitMQ 集群，因此真实节点、队列、认证和 TLS 连通性尚未执行；契约测试和草稿连接测试覆盖错误路径。
+- 队列查询默认带 disable_stats=true 以限制响应规模。
+
+## 8.7 T16 MinIO 工具集统一验收
+
+### 实施内容
+
+- 新增 MinIO 公共只读工具集：`minio_health`、`minio_buckets`、`minio_bucket_objects`、`minio_object_stat`、`minio_bucket_versioning`、`minio_bucket_lifecycle`。
+- Direct Provider、MinIO MCP Server 和 Agent 使用统一工具契约；Agent 的 Endpoint、凭据、Region、TLS 和超时由资源配置注入，模型不能覆盖。
+- MinIO 支持 Direct/Agent 子类型、S3 Endpoint、Access Key、Secret Key、Session Token、Region、HTTPS 和超时；前端提供统一创建、编辑、连接测试、总结核验、列表端点和详情工具列表。
+- 新增 0046 MinIO 资源 Schema 和 0047 MinIO 内置只读 Skill 迁移，历史迁移保持不变。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过。
+- `cd frontend && npm run check && npm run test -- --run && npm run build`：通过，54 个前端测试通过，Svelte 检查无错误和警告，生产构建通过。
+- `git diff --check`：通过。
+- MinIO 工具 Schema 覆盖必填业务参数、对象列表数量上限、Agent 参数注入及连接字段隐藏。
+
+### 已知边界
+
+- 当前环境未运行真实 MinIO 集群，因此真实存储桶、对象、版本和生命周期数据尚未执行；公共工具契约、MCP 路由、Direct/Agent 参数隔离和草稿连接测试已完成编译验证。
 
 ## 10. 用户确认和最终结论
 

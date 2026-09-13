@@ -42,11 +42,17 @@ type mysqlDraftConnectorService interface {
 type oracleDraftConnectorService interface {
 	TestOracleDraft(context.Context, connector.OracleDraftInput) (connector.OracleDraftCheck, error)
 }
+type rabbitMQDraftConnectorService interface {
+	TestRabbitMQDraft(context.Context, connector.RabbitMQDraftInput) (connector.RabbitMQDraftCheck, error)
+}
 type kafkaDraftConnectorService interface {
 	TestKafkaDraft(context.Context, connector.KafkaDraftInput) (connector.KafkaDraftCheck, error)
 }
 type elasticsearchDraftConnectorService interface {
 	TestElasticsearchDraft(context.Context, connector.ElasticsearchDraftInput) (connector.ElasticsearchDraftCheck, error)
+}
+type minIODraftConnectorService interface {
+	TestMinIODraft(context.Context, connector.MinIODraftInput) (connector.MinIODraftCheck, error)
 }
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
@@ -180,6 +186,15 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 			writeJSON(w, http.StatusOK, check)
 		})
 	}
+	if draft, ok := service.(rabbitMQDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/rabbitmq/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.RabbitMQDraftInput
+			if !decodeRequest(w, r, &body) { return }
+			check, err := draft.TestRabbitMQDraft(r.Context(), body)
+			if err != nil { writeConnectorError(w, r, err); return }
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
 	if draft, ok := service.(kafkaDraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/kafka/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.KafkaDraftInput
@@ -195,7 +210,7 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 		})
 	}
 	if draft, ok := service.(elasticsearchDraftConnectorService); ok {
-		router.With(guard(authorization.ResourceUpdate)).Post("/elasticsearch/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+	router.With(guard(authorization.ResourceUpdate)).Post("/elasticsearch/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.ElasticsearchDraftInput
 			if !decodeRequest(w, r, &body) {
 				return
@@ -205,6 +220,15 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				writeConnectorError(w, r, err)
 				return
 			}
+			writeJSON(w, http.StatusOK, check)
+	})
+	}
+	if draft, ok := service.(minIODraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/minio/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.MinIODraftInput
+			if !decodeRequest(w, r, &body) { return }
+			check, err := draft.TestMinIODraft(r.Context(), body)
+			if err != nil { writeConnectorError(w, r, err); return }
 			writeJSON(w, http.StatusOK, check)
 		})
 	}

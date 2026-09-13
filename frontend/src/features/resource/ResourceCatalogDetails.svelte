@@ -9,6 +9,8 @@
   import PostgreSQLResourceDetails from './PostgreSQLResourceDetails.svelte';
   import MySQLResourceDetails from './MySQLResourceDetails.svelte';
   import OracleResourceDetails from './OracleResourceDetails.svelte';
+  import RabbitMQResourceDetails from './RabbitMQResourceDetails.svelte';
+  import MinIOResourceDetails from './MinIOResourceDetails.svelte';
   import RedisResourceDetails from './RedisResourceDetails.svelte';
   import NacosResourceDetails from './NacosResourceDetails.svelte';
   import KafkaResourceDetails from './KafkaResourceDetails.svelte';
@@ -55,6 +57,10 @@
     <MySQLResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Oracle'}
     <OracleResourceDetails {resource} />
+{:else if resource.kind === 'RabbitMQ'}
+    <RabbitMQResourceDetails {resource} />
+{:else if resource.kind === 'MinIO'}
+    <MinIOResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
   {:else if resource.kind === 'Redis'}
     <RedisResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Nacos'}

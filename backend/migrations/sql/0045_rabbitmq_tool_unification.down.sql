@@ -1,0 +1,1 @@
+-- RabbitMQ tool unification is a hard cutover; preserve schema and Skill records on rollback.

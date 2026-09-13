@@ -111,6 +111,42 @@ func TestNacosAgentSchemaHidesConnectionFields(t *testing.T) {
 	}
 }
 
+func TestRabbitMQAgentArgumentsUseResourceConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	r := aiengine.ContextResource{Kind: "RabbitMQ", Subtype: "agent", Config: map[string]any{"url": "http://configured:15672", "timeout_seconds": float64(12), "tls_insecure": true}}
+	got, err := p.agentArguments(context.Background(), r, map[string]any{"url": "http://model:1"})
+	if err != nil || got["url"] != "http://configured:15672" {
+		t.Fatalf("arguments=%#v err=%v", got, err)
+	}
+}
+
+func TestMinIOAgentSchemaHidesConnectionFields(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["endpoint","bucket"],"properties":{"endpoint":{"type":"string"},"access_key":{"type":"string"},"bucket":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(minIOAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	if _, ok := props["endpoint"]; ok {
+		t.Fatal("endpoint exposed")
+	}
+	if _, ok := props["access_key"]; ok {
+		t.Fatal("access key exposed")
+	}
+	if _, ok := props["bucket"]; !ok {
+		t.Fatal("bucket argument removed")
+	}
+}
+
+func TestMinIOAgentArgumentsUseResourceConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	r := aiengine.ContextResource{Kind: "MinIO", Subtype: "agent", Config: map[string]any{"endpoint": "configured:9000", "region": "us-east-1", "secure": true}}
+	got, err := p.agentArguments(context.Background(), r, map[string]any{"endpoint": "model:9000"})
+	if err != nil || got["endpoint"] != "configured:9000" || got["region"] != "us-east-1" || got["secure"] != true {
+		t.Fatalf("arguments=%#v err=%v", got, err)
+	}
+}
+
 func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}
 	resource := aiengine.ContextResource{

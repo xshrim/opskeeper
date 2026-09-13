@@ -1,7 +1,7 @@
 # I004-R001 统一资源接入
 
 **迭代：** I004-unified-resource-access  
-**需求状态：** 实施中  
+**需求状态：** T16 MinIO 工具集统一已完成
 **设计文档：** [统一资源接入设计](../../design/resource-access.md)  
 **验收报告：** [R001-requirement-acceptance.md](R001-requirement-acceptance.md)
 
@@ -35,7 +35,7 @@
 ### 3.2 后续资源
 
 - P1：Kafka、Prometheus、Loki；
-- P2：RabbitMQ、Elasticsearch、MySQL、Oracle、OceanBase、TongRDS；
+- P2：Elasticsearch、MySQL、Oracle、OceanBase、TongRDS；
 - 可观测平台的 Tempo、Jaeger、Elastic、Datadog、Alertmanager 按同一模式接入；
 - AIProvider、MCPServer、Skill、AgentProfile、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06，Repository 作为 T10 的代码上下文资源实现。
 
@@ -66,6 +66,8 @@
 | T12 | Kafka 工具集统一 | T11 | Kafka Direct/Agent、Direct/MCP 统一工具集与前端连接流程 | 已完成 |
 | T13 | Elasticsearch 工具集统一 | T01-T02、T12 | Elasticsearch Direct/Agent、统一 Direct/MCP 只读工具集和资源流程 | 已完成 |
 | T14 | Oracle 工具集统一 | T01-T02、T11 | Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
+| T15 | RabbitMQ 工具集统一 | T01-T02、T12 | RabbitMQ Direct/Agent、Management API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
+| T16 | MinIO 工具集统一 | T01-T02、T15 | MinIO Direct/Agent、S3 API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
 
 ## 6. 任务说明
 
