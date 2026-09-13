@@ -10,6 +10,7 @@
   import MySQLResourceDetails from './MySQLResourceDetails.svelte';
   import RedisResourceDetails from './RedisResourceDetails.svelte';
   import NacosResourceDetails from './NacosResourceDetails.svelte';
+  import KafkaResourceDetails from './KafkaResourceDetails.svelte';
   import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
 
   export let resource: Resource;
@@ -54,6 +55,8 @@
     <RedisResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Nacos'}
     <NacosResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+  {:else if resource.kind === 'Kafka'}
+    <KafkaResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
 {:else if resource.kind === 'Repository'}
     <RepositoryResourceDetails {resource} />
 {:else}

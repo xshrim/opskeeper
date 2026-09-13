@@ -39,6 +39,9 @@ type nacosDraftConnectorService interface {
 type mysqlDraftConnectorService interface {
 	TestMySQLDraft(context.Context, connector.MySQLDraftInput) (connector.MySQLDraftCheck, error)
 }
+type kafkaDraftConnectorService interface {
+	TestKafkaDraft(context.Context, connector.KafkaDraftInput) (connector.KafkaDraftCheck, error)
+}
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
 	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
@@ -151,9 +154,28 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 	if draft, ok := service.(mysqlDraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/mysql/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.MySQLDraftInput
-			if !decodeRequest(w, r, &body) { return }
+			if !decodeRequest(w, r, &body) {
+				return
+			}
 			check, err := draft.TestMySQLDraft(r.Context(), body)
-			if err != nil { writeConnectorError(w, r, err); return }
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(kafkaDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/kafka/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.KafkaDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestKafkaDraft(r.Context(), body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			writeJSON(w, http.StatusOK, check)
 		})
 	}

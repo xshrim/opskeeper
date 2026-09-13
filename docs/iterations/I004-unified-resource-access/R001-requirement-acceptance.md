@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T09 已完成，其余任务待实施
+**验收结论：** 部分验收：T01-T09、T11-T12 已完成，T10 保持部分完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T09 已完成验收，确认日期更新为 2026-09-13。T10-T14 按任务表继续实施。
+T01-T09、T11-T12 已完成验收，确认日期更新为 2026-09-13。T10、T13-T14 按任务表继续实施。
 
 ## 2. 验收环境和范围
 
@@ -27,9 +27,9 @@ T01-T09 已完成验收，确认日期更新为 2026-09-13。T10-T14 按任务�
 | T07 | PostgreSQL 工具集统一 | 已通过 | 公共 PostgreSQL 工具、Direct Provider、PostgreSQL MCP Server、Agent 参数注入、专用管理界面及数据库迁移已完成；真实 PostgreSQL 16 上 12 项 Direct 工具、MCP `tools/list` 和 `postgresql_health` 调用通过 |
 | T08 | Redis 工具集统一 | 已通过 | `go test ./...`、真实 Redis 六工具集成测试、前端专用创建/编辑流程、`npm run check/test/build`、MCP Server 编译与固定工具契约测试通过 |
 | T09 | Nacos 工具集统一 | 已通过 | 公共 Nacos API 工具、Direct/Agent/MCP 适配器、前端资源流程、资源目录排序和 0039 迁移完成；契约测试通过 |
-| T10 | AIEngine 与证据链收敛 | 待实施 |  |
-| T11 | Kafka、Prometheus、Loki 迁移 | 待实施 |  |
-| T12 | 其他数据库和中间件迁移 | 待实施 |  |
+| T10 | Repository 工具集统一 | 部分完成 | Git/Bundle、上传存储、代码阅读工具已完成；标准 Git clone/pull 服务及完整 S3 验证仍待补齐 |
+| T11 | MySQL 工具集统一 | 已通过 | 统一 Direct/Agent、公共只读工具、MCP 适配器、迁移和专用前端已在 main 完成 |
+| T12 | Kafka 工具集统一 | 已通过 | 公共 7 项只读工具、Direct/MCP/Agent、0042 迁移、连接测试和专用前端已完成；见下方 T12 验收 |
 | T13 | 管理界面与接入校验 | 待实施 |  |
 | T14 | 删除旧路径与全量验收 | 待实施 |  |
 
@@ -167,6 +167,28 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - 本机未运行 Nacos 服务，`127.0.0.1:8848` 连接失败；因此真实 Nacos 集群 API 验证列为环境限制。公共 API 请求、分页边界、参数校验和错误路径已通过 `httptest` 契约测试。
 
 <!-- 将未完成的低优先级资源、驱动限制或外部环境依赖转入 backlog 或后续迭代。 -->
+
+## 8.4 T12 Kafka 工具集统一验收
+
+### 实施内容
+
+- 新增 `backend/tool/kafka` 公共 Kafka 工具包，固定提供 `kafka_health`、`kafka_brokers`、`kafka_topics`、`kafka_consumer_groups`、`kafka_consumer_lag`、`kafka_cluster_info`、`kafka_topic_partitions` 七项只读工具。
+- 工具覆盖 Kafka Exporter 风格的健康摘要、Controller、Broker、Topic 分区/复制/ISR/离线副本、消费组成员数、消费积压和指定 Topic 分区明细；Topic、消费组和积压结果设置上限并稳定排序。
+- Connector Direct Provider、Kafka MCP Server 和 Agent 参数注入共享同一公共工具契约。Direct 连接信息由资源配置和凭据提供，Agent 通过 `agent_ref` 发现 MCP 工具并由服务端注入资源拥有的连接字段，不允许模型覆盖 Broker、TLS 或凭据。
+- Kafka 资源前端新增 Direct/Agent 创建、编辑、Broker/TLS/SASL/超时配置、MCPServer 关联、草稿连接测试、总结核验和详情工具列表；资源目录已加入 Kafka。
+- 0042 迁移更新 Kafka `resource_schemas` 并新增不可变内置 Skill 版本，未改写已应用历史迁移。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./tool/kafka ./mcpserver/kafka/server ./connector ./httpapi ./mcp ./migrations`：通过。
+- `cd frontend && npm run check && npm run build`：通过，`svelte-check` 无错误和警告，Vite 生产构建通过。
+- `git diff --check`：通过。
+- Kafka 工具回归覆盖 Schema/工具目录稳定性、Topic 指标 JSON 字段、连接输入边界、Direct Provider 注册、Agent Schema 过滤、MCP 路由和迁移装载数量。
+
+### 已知边界
+
+- 当前环境未运行真实 Kafka 集群，因此 Broker、SASL/PLAIN 和 TLS 的真实连通性未在本次验收中执行；草稿连接测试和固定工具契约已覆盖错误路径。
+- `kafka_consumer_groups` 的成员数依赖 `DescribeGroups` 权限；仅具备 `ListGroups` 权限时仍返回消费组，但成员数为 0。
 
 ## 10. 用户确认和最终结论
 
