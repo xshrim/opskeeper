@@ -19,6 +19,7 @@ const (
 	CapabilityPostgreSQLHealth Capability = "postgresql_health"
 	CapabilityRedisInspect     Capability = "redis_inspect"
 	CapabilityNacosHealth      Capability = "nacos_health"
+	CapabilityMySQLHealth      Capability = "mysql_health"
 	CapabilityKafkaInspect     Capability = "kafka_inspect"
 	CapabilityDockerInfo       Capability = "docker_info"
 	CapabilityDockerImages     Capability = "docker_images"

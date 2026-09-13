@@ -62,8 +62,8 @@
 | T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 已完成 |
 | T09 | Nacos 工具集统一 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
 | T10 | Repository 工具集统一 | T01-T09 | Git/Bundle、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |
-| T11 | Kafka、Prometheus、Loki 迁移 | T01-T02、T10 | P1 工具集接入和一致性测试 | 待批准 |
-| T12 | 其他数据库和中间件迁移 | T11 | P2 工具集接入 | 待批准 |
+| T11 | MySQL 工具集统一 | T01-T02、T10 | MySQL Direct/Agent、统一 Direct/MCP 只读工具集及专用管理流程 | 实施中 |
+| T12 | 其他数据库和中间件迁移 | T11 | Kafka、Prometheus、Loki、RabbitMQ、Elasticsearch、Oracle、OceanBase、TongRDS | 待批准 |
 | T13 | 管理界面与接入校验 | T02-T10 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
 | T14 | 删除旧路径与全量验收 | T03-T13 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
 
@@ -285,6 +285,14 @@ Redis 版本和权限会影响诊断能力。工具仅调用固定 INFO、PING�
 - Nacos Direct/Agent 资源可创建、编辑、连接测试，并在资源详情中展示统一工具集。
 - API 请求路径固定、分页有界、错误语义一致，禁止配置发布、删除或任意 API 调用。
 - 前端资源目录顺序调整为 Application、Artifact、Repository、Host、Docker、Kubernetes、Nacos、Nginx、TongHttpServer、PostgreSQL、Oracle、MySQL、OceanBase、Redis、TongRDS、Kafka、RabbitMQ、ElasticSearch、LLM、MCPServer、Skill、Monitor。
+
+### T11 MySQL 工具集统一
+
+#### 实施范围
+
+- MySQL 支持 Direct/Agent 子类型、凭据和 MCPServer 关联，并复用统一资源管理流程。
+- 公共只读工具包括健康状态、全局状态计数器、性能与配置、用户表信息、指定表结构与索引、指定表列信息和数据库概要。
+- Direct Connector 与 MySQL MCP Server 共用 `backend/tool/mysql`，Agent 调用时由 MCP Provider 注入资源连接参数，模型不能覆盖连接配置。
 
 ### T10 AIEngine 与证据链收敛
 

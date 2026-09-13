@@ -8,8 +8,8 @@ import (
 
 func TestDefinitionsAreReadOnlyAndBounded(t *testing.T) {
 	items := Definitions()
-	if len(items) != 4 {
-		t.Fatalf("definition count = %d, want 4", len(items))
+	if len(items) != 5 {
+		t.Fatalf("definition count = %d, want 5", len(items))
 	}
 	for _, item := range items {
 		if item.Key == "" || item.Manifest.Instruction == "" || len(item.Manifest.TargetKinds) == 0 || len(item.Tools) == 0 || item.Capability == "" || item.Timeout <= 0 {
@@ -24,11 +24,22 @@ func TestDefinitionsAreReadOnlyAndBounded(t *testing.T) {
 }
 
 func TestDefinitionsMatchBuiltinMigrationNamesAndTools(t *testing.T) {
-	migration, err := os.ReadFile("../../migrations/sql/0001_initial.sql")
+	entries, err := os.ReadDir("../../migrations/sql")
 	if err != nil {
-		t.Fatalf("read migration: %v", err)
+		t.Fatalf("read migrations: %v", err)
 	}
-	text := string(migration)
+	var migrations strings.Builder
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") || strings.HasSuffix(entry.Name(), ".down.sql") {
+			continue
+		}
+		migration, err := os.ReadFile("../../migrations/sql/" + entry.Name())
+		if err != nil {
+			t.Fatalf("read migration %s: %v", entry.Name(), err)
+		}
+		migrations.Write(migration)
+	}
+	text := migrations.String()
 	for _, item := range Definitions() {
 		if !strings.Contains(text, item.Manifest.Name) {
 			t.Fatalf("migration is missing definition %q", item.Manifest.Name)

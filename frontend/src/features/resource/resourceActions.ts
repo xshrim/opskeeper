@@ -392,6 +392,7 @@ export function testDraftMCPConnection(body: {
   return api.testDraftMCP(body);
 }
 export function testDraftPostgreSQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftPostgreSQL(body); }
+export function testDraftMySQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftMySQL(body); }
 export function testDraftRedis(body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) { return api.testDraftRedis(body); }
 export function testDraftNacos(body: { host: string; port: number; scheme?: string; context_path?: string; username?: string; password?: string; access_token?: string; timeout_seconds?: number }) { return api.testDraftNacos(body); }
 
