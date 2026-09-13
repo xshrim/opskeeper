@@ -20,7 +20,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Redis", "Kafka", "Elasticsearch"}
+	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Oracle", "Redis", "Kafka", "Elasticsearch"}
 }
 
 func (connectorContextProvider) AccessModes() []string {
@@ -88,6 +88,10 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 		}
 	case "MySQL":
 		if err := p.service.resolveMySQLTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
+	case "Oracle":
+		if err := p.service.resolveOracleTools(ctx, resource, add); err != nil {
 			return nil, nil, err
 		}
 	case "Nacos":

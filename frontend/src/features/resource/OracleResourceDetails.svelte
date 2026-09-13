@@ -1,0 +1,1 @@
+<script lang="ts">export let resource:any; const tools=['oracle_health','oracle_status','oracle_performance','oracle_database_info','oracle_tables','oracle_table_columns','oracle_table_structure'];</script><div class="resource-detail"><h3>Oracle 工具集</h3><p>{String(resource.subtype??'Direct')} · 统一只读工具</p><ul>{#each tools as tool}<li><code>{tool}</code></li>{/each}</ul></div>

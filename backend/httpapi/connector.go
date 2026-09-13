@@ -39,6 +39,9 @@ type nacosDraftConnectorService interface {
 type mysqlDraftConnectorService interface {
 	TestMySQLDraft(context.Context, connector.MySQLDraftInput) (connector.MySQLDraftCheck, error)
 }
+type oracleDraftConnectorService interface {
+	TestOracleDraft(context.Context, connector.OracleDraftInput) (connector.OracleDraftCheck, error)
+}
 type kafkaDraftConnectorService interface {
 	TestKafkaDraft(context.Context, connector.KafkaDraftInput) (connector.KafkaDraftCheck, error)
 }
@@ -165,6 +168,15 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				writeConnectorError(w, r, err)
 				return
 			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(oracleDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/oracle/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.OracleDraftInput
+			if !decodeRequest(w, r, &body) { return }
+			check, err := draft.TestOracleDraft(r.Context(), body)
+			if err != nil { writeConnectorError(w, r, err); return }
 			writeJSON(w, http.StatusOK, check)
 		})
 	}

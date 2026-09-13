@@ -132,6 +132,8 @@ export function resourceAddStepTitle(step: number, kind: string) {
     return ['Host 配置', '总结核验'][step - 2] ?? 'Host 配置';
   if (kind === 'PostgreSQL')
     return ['PostgreSQL 配置', '总结核验'][step - 2] ?? 'PostgreSQL 配置';
+  if (kind === 'Oracle')
+    return ['Oracle 配置', '总结核验'][step - 2] ?? 'Oracle 配置';
   if (kind === 'Repository')
     return ['Repository 配置', '总结核验'][step - 2] ?? 'Repository 配置';
   if (kind !== 'AIProvider') return '配置资源';
@@ -159,6 +161,8 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2 ? '配置 Git 或 Bundle Repository。' : '确认 Repository 配置。';
   if (kind === 'PostgreSQL')
     return step === 2 ? '配置 PostgreSQL 数据库连接方式和凭据。' : '确认配置并核验 PostgreSQL 连接。';
+  if (kind === 'Oracle')
+    return step === 2 ? '配置 Oracle 数据库连接方式和凭据。' : '确认配置并核验 Oracle 连接。';
   if (kind === 'Application')
     return step === 2 ? '选择项目、接入方式和应用实例。' : '配置资源';
   if (kind === 'AIProvider') {

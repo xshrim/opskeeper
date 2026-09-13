@@ -12,6 +12,7 @@
   export let editingHost = false;
   export let editingPostgreSQL = false;
   export let editingMySQL = false;
+  export let editingOracle = false;
   export let editingRedis = false;
   export let editingNacos = false;
   export let editingKafka = false;
@@ -24,6 +25,7 @@
   export let hostConfigurationComplete = false;
   export let postgresqlConfigurationComplete = false;
   export let mysqlConfigurationComplete = false;
+  export let oracleConfigurationComplete = false;
   export let redisConfigurationComplete = false;
   export let nacosConfigurationComplete = false;
   export let kafkaConfigurationComplete = false;
@@ -48,6 +50,7 @@
   export let onContinueHost: () => void = () => {};
   export let onContinuePostgreSQL: () => void = () => {};
   export let onContinueMySQL: () => void = () => {};
+  export let onContinueOracle: () => void = () => {};
   export let onContinueRedis: () => void = () => {};
   export let onContinueNacos: () => void = () => {};
   export let onContinueKafka: () => void = () => {};
@@ -59,6 +62,7 @@
   export let onSubmitHost: () => void = () => {};
   export let onSubmitPostgreSQL: () => void = () => {};
   export let onSubmitMySQL: () => void = () => {};
+  export let onSubmitOracle: () => void = () => {};
   export let onSubmitRedis: () => void = () => {};
   export let onSubmitNacos: () => void = () => {};
   export let onSubmitKafka: () => void = () => {};
@@ -77,7 +81,7 @@
         editingResource ||
         editingDocker ||
         editingKubernetes ||
-        editingHost || editingPostgreSQL || editingMySQL || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
+        editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
           ? 'EDIT RESOURCE'
           : 'ADD RESOURCE'}
       </p>
@@ -87,7 +91,7 @@
           editingResource ||
           editingDocker ||
           editingKubernetes ||
-          editingHost || editingPostgreSQL || editingMySQL || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
+          editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
             ? '编辑资源'
             : '添加资源'}</span
         >
@@ -195,6 +199,9 @@
     {:else if kind === 'MySQL'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>MySQL 配置</span></button>
       <button class:active={step === 3} disabled={!mysqlConfigurationComplete} type="button" on:click={() => mysqlConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+    {:else if kind === 'Oracle'}
+      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Oracle 配置</span></button>
+      <button class:active={step === 3} disabled={!oracleConfigurationComplete} type="button" on:click={() => oracleConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
     {:else if kind === 'Redis'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Redis 配置</span></button>
       <button class:active={step === 3} disabled={!redisConfigurationComplete} type="button" on:click={() => redisConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
@@ -365,6 +372,10 @@
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueMySQL}>下一步</button>
         {:else if kind === 'MySQL' && step === 3}
           <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitMySQL} disabled={busy || !scopeSelected}>{editingMySQL ? '保存' : '创建'}</button>
+        {:else if kind === 'Oracle' && step === 2}
+          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueOracle}>下一步</button>
+        {:else if kind === 'Oracle' && step === 3}
+          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitOracle} disabled={busy || !scopeSelected}>{editingOracle ? '保存' : '创建'}</button>
         {:else if kind === 'Redis' && step === 2}
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRedis}>下一步</button>
         {:else if kind === 'Redis' && step === 3}

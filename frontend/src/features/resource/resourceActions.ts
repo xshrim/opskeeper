@@ -393,6 +393,7 @@ export function testDraftMCPConnection(body: {
 }
 export function testDraftPostgreSQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftPostgreSQL(body); }
 export function testDraftMySQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftMySQL(body); }
+export function testDraftOracle(body: { host: string; port: number; service_name?: string; sid?: string; username: string; password: string; timeout_seconds?: number; tls?: boolean }) { return api.testDraftOracle(body); }
 export function testDraftKafka(body: { brokers: string[]; username?: string; password?: string; tls?: boolean; tls_server_name?: string; timeout_seconds?: number }) { return api.testDraftKafka(body); }
 export function testDraftElasticsearch(body: { url: string; username?: string; password?: string; tls_insecure?: boolean; timeout_seconds?: number }) { return api.testDraftElasticsearch(body); }
 export function testDraftRedis(body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) { return api.testDraftRedis(body); }

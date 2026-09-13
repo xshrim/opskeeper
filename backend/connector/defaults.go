@@ -34,6 +34,9 @@ func DefaultRegistry(limits Limits) (*Registry, error) {
 		{kind: "MySQL", factory: func(target Target) (Adapter, error) {
 			return newMySQLAdapter(target, limits)
 		}},
+		{kind: "Oracle", factory: func(target Target) (Adapter, error) {
+			return newOracleAdapter(target, limits)
+		}},
 		{kind: "Nacos", factory: func(target Target) (Adapter, error) { return newNacosAdapter(target, limits) }},
 		{kind: "Kafka", factory: func(target Target) (Adapter, error) {
 			return newKafkaAdapter(target, limits)

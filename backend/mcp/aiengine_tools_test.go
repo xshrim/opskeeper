@@ -42,6 +42,30 @@ func TestPostgreSQLAgentSchemaHidesConnectionFields(t *testing.T) {
 	}
 }
 
+func TestOracleAgentArgumentsAndSchemaHideConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	r := aiengine.ContextResource{Kind: "Oracle", Subtype: "agent", Config: map[string]any{"host": "configured-oracle", "port": float64(1521), "service_name": "ORCL", "timeout_seconds": float64(10)}}
+	got, err := p.agentArguments(context.Background(), r, map[string]any{"host": "model-oracle"})
+	if err != nil || got["host"] != "configured-oracle" || got["service_name"] != "ORCL" {
+		t.Fatalf("arguments=%#v err=%v", got, err)
+	}
+	raw := json.RawMessage(`{"type":"object","required":["host","schema","table"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"schema":{"type":"string"},"table":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(oracleAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	if _, ok := props["host"]; ok {
+		t.Fatal("host exposed")
+	}
+	if _, ok := props["password"]; ok {
+		t.Fatal("password exposed")
+	}
+	if _, ok := props["schema"]; !ok {
+		t.Fatal("business argument removed")
+	}
+}
+
 func TestRedisAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}
 	r := aiengine.ContextResource{Kind: "Redis", Subtype: "agent", Config: map[string]any{"host": "configured-redis", "port": float64(6379), "database": float64(2), "timeout_seconds": float64(9)}}
@@ -72,11 +96,19 @@ func TestRedisAgentSchemaHidesConnectionFields(t *testing.T) {
 func TestNacosAgentSchemaHidesConnectionFields(t *testing.T) {
 	raw := json.RawMessage(`{"type":"object","required":["host"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"service_name":{"type":"string"}}}`)
 	var schema map[string]any
-	if err := json.Unmarshal(nacosAgentSchema(raw), &schema); err != nil { t.Fatal(err) }
+	if err := json.Unmarshal(nacosAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
 	props := schema["properties"].(map[string]any)
-	if _, ok := props["host"]; ok { t.Fatal("host exposed") }
-	if _, ok := props["password"]; ok { t.Fatal("password exposed") }
-	if _, ok := props["service_name"]; !ok { t.Fatal("business field removed") }
+	if _, ok := props["host"]; ok {
+		t.Fatal("host exposed")
+	}
+	if _, ok := props["password"]; ok {
+		t.Fatal("password exposed")
+	}
+	if _, ok := props["service_name"]; !ok {
+		t.Fatal("business field removed")
+	}
 }
 
 func TestDockerAgentArgumentsUseResourceConnection(t *testing.T) {

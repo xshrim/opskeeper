@@ -247,6 +247,13 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 MySQL 地址';
   }
+  if (resource.kind === 'Oracle') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const host = String(resource.config?.host ?? '').trim();
+    const port = Number(resource.config?.port ?? 1521);
+    const service = String(resource.config?.service_name ?? resource.config?.sid ?? '').trim();
+    return host ? `${host}:${port}/${service || '未设置服务'}` : '未设置 Oracle 地址';
+  }
   if (resource.kind === 'Redis') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();

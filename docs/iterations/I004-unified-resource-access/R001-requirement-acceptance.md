@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T09、T11-T13 已完成，T10 保持部分完成，其余任务待实施
+**验收结论：** 部分验收：T01-T09、T11-T14 已完成，T10 保持部分完成
 
 ## 1. 需求级验收结论
 
-T01-T09、T11-T13 已完成验收，确认日期更新为 2026-09-13。T10、T14 按任务表继续实施。
+T01-T09、T11-T14 已完成验收，确认日期更新为 2026-09-13。T10 按任务表继续实施。
 
 ## 2. 验收环境和范围
 
@@ -31,8 +31,28 @@ T01-T09、T11-T13 已完成验收，确认日期更新为 2026-09-13。T10、T14
 | T11 | MySQL 工具集统一 | 已通过 | 统一 Direct/Agent、公共只读工具、MCP 适配器、迁移和专用前端已在 main 完成 |
 | T12 | Kafka 工具集统一 | 已通过 | 公共 7 项只读工具、Direct/MCP/Agent、0042 迁移、连接测试和专用前端已完成；见下方 T12 验收 |
 | T13 | Elasticsearch 工具集统一 | 已通过 | 公共 Elasticsearch API 工具、Direct/MCP/Agent 适配、0043 迁移及资源详情流程已完成；见下方 T13 验收 |
-| T13 | 管理界面与接入校验 | 待实施 |  |
-| T14 | 删除旧路径与全量验收 | 待实施 |  |
+| T14 | Oracle 工具集统一 | 已通过 | 纯 Go 驱动公共工具、Direct/MCP/Agent、0044 迁移和专用前端已完成；见下方 T14 验收 |
+
+## 8.6 T14 Oracle 工具集统一验收
+
+### 实施内容
+
+- 新增纯 Go 驱动 go-ora/v2；不依赖 Oracle Instant Client、OCI 动态库或系统级 Oracle Client。
+- 新增七项固定只读工具：oracle_health、oracle_status、oracle_performance、oracle_database_info、oracle_tables、oracle_table_columns、oracle_table_structure。
+- Direct Provider、Oracle MCP Server（默认 0.0.0.0:8819）和 Agent 参数注入使用同一公共工具包；Agent schema 不向模型暴露连接字段。
+- 新增 0044 增量迁移、Oracle 内置只读 Skill、草稿连接测试 API，以及 Direct/Agent 创建、编辑、总结核验和详情工具列表。
+
+### 验证步骤和结果
+
+- cd backend && go test ./...：通过；DSN Service Name/SID 互斥、工具目录和 Agent 参数隔离测试通过。
+- cd frontend && npm run check && npm run build：通过，Svelte 检查无错误和警告，生产构建通过。
+- git diff --check：通过。
+
+### 驱动评估与已知边界
+
+- go-ora/v2 纯 Go、部署无需携带 Instant Client、可经 database/sql 复用既有连接/超时控制，适合固定只读工具。
+- 相比通常依赖 Oracle Client 的 OCI 驱动（如 godror），其高级特性、特殊数据类型、RAC、TCPS 钱包、版本组合和极端负载兼容性可能较弱。
+- 当前工作区没有可用 Oracle 服务，未执行真实 Oracle 的版本、权限、字符集、TLS、RAC 与性能集成测试；上线前应使用目标 Oracle 版本和只读账户补充验证。
 
 ## 4. T01 任务验收报告
 

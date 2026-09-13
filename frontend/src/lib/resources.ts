@@ -13,6 +13,7 @@ export const endpointResourceKinds = [
   'Prometheus',
   'Loki',
   'PostgreSQL',
+  'Oracle',
   'MySQL',
   'Redis',
   'Kafka'
@@ -36,6 +37,7 @@ export function resourceHasConnector(resource: Resource) {
     'Prometheus',
     'Loki',
     'PostgreSQL',
+    'Oracle',
     'MySQL',
     'Redis',
     'Kafka'

@@ -20,6 +20,7 @@ const (
 	CapabilityRedisInspect         Capability = "redis_inspect"
 	CapabilityNacosHealth          Capability = "nacos_health"
 	CapabilityMySQLHealth          Capability = "mysql_health"
+	CapabilityOracleHealth         Capability = "oracle_health"
 	CapabilityKafkaInspect         Capability = "kafka_inspect"
 	CapabilityElasticsearchInspect Capability = "elasticsearch_inspect"
 	CapabilityDockerInfo           Capability = "docker_info"

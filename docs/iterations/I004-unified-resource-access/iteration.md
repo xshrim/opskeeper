@@ -48,7 +48,7 @@
 | T11 | MySQL 工具集统一 | P1 | T01-T02、T10 | MySQL Direct/Agent 资源、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
 | T12 | Kafka 工具集统一 | P1 | T11 | Kafka Direct/Agent、Direct/MCP 统一工具集与前端连接流程 | 已完成 |
 | T13 | Elasticsearch 工具集统一 | P1 | T01-T02、T12 | Elasticsearch Direct/Agent、Direct/MCP 统一只读工具集与资源流程 | 已完成 |
-| T14 | 删除旧路径与全量验收 | P0 | T03-T13 | 删除重复实现、完成迁移、测试和文档验收 | 待批准 |
+| T14 | Oracle 工具集统一 | P1 | T01-T02、T11 | Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
 
 ## 5. 进入条件
 
