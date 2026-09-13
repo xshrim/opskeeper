@@ -11,6 +11,7 @@
   import RedisResourceDetails from './RedisResourceDetails.svelte';
   import NacosResourceDetails from './NacosResourceDetails.svelte';
   import KafkaResourceDetails from './KafkaResourceDetails.svelte';
+  import ElasticsearchResourceDetails from './ElasticsearchResourceDetails.svelte';
   import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
 
   export let resource: Resource;
@@ -57,6 +58,8 @@
     <NacosResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
   {:else if resource.kind === 'Kafka'}
     <KafkaResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} />
+  {:else if resource.kind === 'Elasticsearch' || resource.kind === 'ElasticSearch'}
+    <ElasticsearchResourceDetails {resource} {resourceCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} />
 {:else if resource.kind === 'Repository'}
     <RepositoryResourceDetails {resource} />
 {:else}

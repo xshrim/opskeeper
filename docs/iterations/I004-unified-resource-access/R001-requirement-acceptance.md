@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** 部分验收：T01-T09、T11-T12 已完成，T10 保持部分完成，其余任务待实施
+**验收结论：** 部分验收：T01-T09、T11-T13 已完成，T10 保持部分完成，其余任务待实施
 
 ## 1. 需求级验收结论
 
-T01-T09、T11-T12 已完成验收，确认日期更新为 2026-09-13。T10、T13-T14 按任务表继续实施。
+T01-T09、T11-T13 已完成验收，确认日期更新为 2026-09-13。T10、T14 按任务表继续实施。
 
 ## 2. 验收环境和范围
 
@@ -30,6 +30,7 @@ T01-T09、T11-T12 已完成验收，确认日期更新为 2026-09-13。T10、T13
 | T10 | Repository 工具集统一 | 部分完成 | Git/Bundle、上传存储、代码阅读工具已完成；标准 Git clone/pull 服务及完整 S3 验证仍待补齐 |
 | T11 | MySQL 工具集统一 | 已通过 | 统一 Direct/Agent、公共只读工具、MCP 适配器、迁移和专用前端已在 main 完成 |
 | T12 | Kafka 工具集统一 | 已通过 | 公共 7 项只读工具、Direct/MCP/Agent、0042 迁移、连接测试和专用前端已完成；见下方 T12 验收 |
+| T13 | Elasticsearch 工具集统一 | 已通过 | 公共 Elasticsearch API 工具、Direct/MCP/Agent 适配、0043 迁移及资源详情流程已完成；见下方 T13 验收 |
 | T13 | 管理界面与接入校验 | 待实施 |  |
 | T14 | 删除旧路径与全量验收 | 待实施 |  |
 
@@ -189,6 +190,26 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 
 - 当前环境未运行真实 Kafka 集群，因此 Broker、SASL/PLAIN 和 TLS 的真实连通性未在本次验收中执行；草稿连接测试和固定工具契约已覆盖错误路径。
 - `kafka_consumer_groups` 的成员数依赖 `DescribeGroups` 权限；仅具备 `ListGroups` 权限时仍返回消费组，但成员数为 0。
+
+## 8.5 T13 Elasticsearch 工具集统一验收
+
+### 实施内容
+
+- 新增公共 `backend/tool/elasticsearch` 客户端，固定提供集群健康、集群信息、节点统计、用户索引、分片摘要、集群配置和指定索引 Mapping 七项只读工具。
+- Direct Provider、Elasticsearch MCP Server 和 Agent 统一使用公共工具；Agent 连接参数由资源侧注入，不能由模型覆盖。
+- 支持 URL、Basic Auth、HTTPS/TLS、可选跳过证书校验和请求超时；响应限制为 8 MiB，索引 Mapping 的索引名为必填参数。
+- 新增 0043 迁移和 Elasticsearch MCP 可执行程序；前端完成 Direct/Agent 创建、编辑回填、凭据更新、MCPServer 关联、草稿连接测试、总结核验，以及资源详情中的连接状态和固定工具列表展示。
+
+### 验证步骤和结果
+
+- `cd backend && go test ./...`：通过；公共 Elasticsearch HTTP 契约测试验证所有工具仅使用 GET、Mapping 路径编码与 HTTP/HTTPS URL 限制。
+- `cd frontend && npm run check && npm run build`：通过，Svelte 检查无错误和警告，生产构建通过。
+- `git diff --check`：通过。
+
+### 已知边界
+
+- 当前环境未运行真实 Elasticsearch 集群，因此真实节点、索引和 TLS/Basic Auth 连通性尚未执行；公共 API、Direct Provider、MCP 路由和参数隔离已完成编译与契约验证。
+- Elasticsearch 旧 Connector/数据库字段未做兼容，按用户要求采用直接切换到统一实现。
 
 ## 10. 用户确认和最终结论
 

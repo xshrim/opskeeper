@@ -267,6 +267,10 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const brokers = Array.isArray(resource.config?.brokers) ? resource.config.brokers.map(String).filter(Boolean) : [];
     return brokers.length ? brokers.join(', ') : '未设置 Kafka Broker';
   }
+  if (resource.kind === 'Elasticsearch' || resource.kind === 'ElasticSearch') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    return String(resource.config?.url ?? '').trim() || '未设置 Elasticsearch URL';
+  }
   if (resource.kind === 'Host') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent')
       return 'MCPServer 代理';

@@ -1102,6 +1102,8 @@ export const api = {
     request<{ status: string; message: string; latency_ms: number }>('api/v1/mysql/connection-tests', json(body)),
   testDraftKafka: (body: { brokers: string[]; username?: string; password?: string; tls?: boolean; tls_server_name?: string; timeout_seconds?: number }) =>
     request<{ status: string; message: string; latency_ms: number }>('api/v1/kafka/connection-tests', json(body)),
+  testDraftElasticsearch: (body: { url: string; username?: string; password?: string; tls_insecure?: boolean; timeout_seconds?: number }) =>
+    request<{ status: string; message: string; latency_ms: number }>('api/v1/elasticsearch/connection-tests', json(body)),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>

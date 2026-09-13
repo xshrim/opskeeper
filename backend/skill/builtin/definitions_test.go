@@ -8,8 +8,8 @@ import (
 
 func TestDefinitionsAreReadOnlyAndBounded(t *testing.T) {
 	items := Definitions()
-	if len(items) != 5 {
-		t.Fatalf("definition count = %d, want 5", len(items))
+	if len(items) != 6 {
+		t.Fatalf("definition count = %d, want 6", len(items))
 	}
 	for _, item := range items {
 		if item.Key == "" || item.Manifest.Instruction == "" || len(item.Manifest.TargetKinds) == 0 || len(item.Tools) == 0 || item.Capability == "" || item.Timeout <= 0 {
