@@ -45,8 +45,8 @@
 | T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 已完成 |
 | T09 | Nacos 工具集统一 | P0 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
 | T10 | Repository 工具集统一 | P0 | T01-T09 | Git/Bundle 仓库接入、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |
-| T11 | MySQL 工具集统一 | P1 | T01-T02、T10 | MySQL Direct/Agent 资源、统一 Direct/MCP 只读工具集和专用管理流程 | 实施中 |
-| T12 | 其他数据库和中间件迁移 | P2 | T11 | Kafka、Prometheus、Loki、RabbitMQ、Elasticsearch、Oracle、OceanBase、TongRDS | 待批准 |
+| T11 | MySQL 工具集统一 | P1 | T01-T02、T10 | MySQL Direct/Agent 资源、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
+| T12 | Kafka 工具集统一 | P1 | T11 | Kafka Direct/Agent、Direct/MCP 统一工具集与前端连接流程 | 已完成 |
 | T13 | 管理界面与接入校验 | P1 | T02-T10 | Direct/Agent 配置、MCPServer 关联、连接测试和错误展示 | 待批准 |
 | T14 | 删除旧路径与全量验收 | P0 | T03-T13 | 删除重复实现、完成迁移、测试和文档验收 | 待批准 |
 
@@ -95,6 +95,15 @@
 - **验证证据：** `cd backend && go test ./...`、`cd frontend && npm run check && npm run test -- --run && npm run build`、`git diff --check` 均通过；前端 53 个测试通过。
 - **验收范围：** 三项资源的 Direct/Agent 配置、凭据处理、MCPServer 关联、编辑回填、草稿连接测试、总结核验、详情展示和资源目录接入；Nacos 真实服务验证受环境限制，已由契约测试覆盖。
 - **迁移链修复：** 恢复 `0001_initial.sql` 与已部署数据库 checksum 一致；修正 0037/0038 对 `resource_schemas` 的引用，并通过新增不可变 Skill 版本完成 PostgreSQL/Redis 工具更新。迁移 1–40 已在本机数据库执行验证。
+
+### T12 完成记录
+
+- **确认日期：** 2026-09-13
+- **实现范围：** Kafka 资源支持 Direct/Agent 子类型、MCPServer 关联、凭据隔离和专用创建/编辑流程；Direct Provider、Kafka MCP Server 与 Agent 共享公共 Kafka 工具契约。
+- **工具范围：** 集群健康摘要、Broker、Topic 指标、消费组、消费积压、Controller/Broker 集群信息和指定 Topic 分区信息，共 7 项固定只读工具；结果有界、排序稳定，支持 TLS、SASL/PLAIN 和超时。
+- **验证证据：** `cd backend && go test ./tool/kafka ./mcpserver/kafka/server ./connector ./httpapi ./mcp ./migrations`、`cd frontend && npm run check && npm run build`、`git diff --check` 通过。
+- **迁移和文档：** 新增 0042 Kafka 资源 Schema 与内置 Skill 版本，不修改已应用历史迁移；Kafka Direct/Agent 创建、编辑、连接测试、详情工具列表和资源目录已接入。
+- **已知边界：** 本次验证未连接真实 Kafka 集群；真实 Broker、SASL 和 TLS 验证需在具备测试集群的环境执行。Kafka MCP Server 仍按 MCP 调用参数接收目标连接信息，由 Agent 资源侧按统一注入规则提供。
 
 ### T07 完成记录
 

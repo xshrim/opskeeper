@@ -99,9 +99,9 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 			return nil, nil, err
 		}
 	case "Kafka":
-		add("connector.inspect_kafka", "Collect a read-only Kafka diagnostic snapshot.", emptySchema, func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
-			return evidenceResult(p.service.InspectKafka(runCtx, resource.ID))
-		})
+		if err := p.service.resolveKafkaTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	}
 	facts := make([]aiengine.ContextFact, 0, 1)
 	if resource.Kind == "Kafka" {

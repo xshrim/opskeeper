@@ -55,6 +55,8 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 			inputSchema = nacosAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Repository") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = repositoryAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Kafka") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = kafkaAgentSchema(inputSchema)
 		}
 		tools = append(tools, aiengine.ToolFunc{
 			Def: aiengine.ToolDefinition{
@@ -89,7 +91,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
@@ -145,6 +147,12 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		for _, key := range []string{"path", "url", "default_branch", "timeout_seconds"} {
 			setString(key)
 		}
+	} else if strings.EqualFold(kind, "Kafka") {
+		for _, key := range []string{"brokers", "tls", "tls_server_name", "timeout_seconds"} {
+			if value, ok := contextResource.Config[key]; ok && value != nil {
+				merged[key] = value
+			}
+		}
 	} else {
 		setString("host")
 	}
@@ -195,6 +203,8 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"host", "port", "scheme", "context_path", "username", "password", "access_token", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "Repository") {
 		keys = []string{"path", "url", "default_branch", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "Kafka") {
+		keys = []string{"brokers", "username", "password", "tls_server_name", "timeout_seconds"}
 	}
 	for _, key := range keys {
 		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig" {
@@ -321,6 +331,24 @@ func nacosAgentSchema(raw json.RawMessage) json.RawMessage {
 	}
 	if properties, ok := schema["properties"].(map[string]any); ok {
 		for _, key := range []string{"host", "port", "scheme", "context_path", "username", "password", "access_token", "timeout_seconds"} {
+			delete(properties, key)
+		}
+	}
+	delete(schema, "required")
+	encoded, _ := json.Marshal(schema)
+	return encoded
+}
+
+func kafkaAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"brokers", "username", "password", "tls", "tls_server_name", "timeout_seconds"} {
 			delete(properties, key)
 		}
 	}

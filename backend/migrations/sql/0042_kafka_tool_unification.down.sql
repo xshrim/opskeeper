@@ -1,0 +1,1 @@
+-- Kafka tool unification is a hard cutover; retain the resource schema on rollback.

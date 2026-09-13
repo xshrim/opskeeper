@@ -62,8 +62,8 @@
 | T08 | Redis 工具集统一 | T01-T02 | Redis 公共工具、Direct/MCP 适配器 | 已完成 |
 | T09 | Nacos 工具集统一 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
 | T10 | Repository 工具集统一 | T01-T09 | Git/Bundle、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |
-| T11 | MySQL 工具集统一 | T01-T02、T10 | MySQL Direct/Agent、统一 Direct/MCP 只读工具集及专用管理流程 | 实施中 |
-| T12 | 其他数据库和中间件迁移 | T11 | Kafka、Prometheus、Loki、RabbitMQ、Elasticsearch、Oracle、OceanBase、TongRDS | 待批准 |
+| T11 | MySQL 工具集统一 | T01-T02、T10 | MySQL Direct/Agent、统一 Direct/MCP 只读工具集及专用管理流程 | 已完成 |
+| T12 | Kafka 工具集统一 | T11 | Kafka Direct/Agent、Direct/MCP 统一工具集与前端连接流程 | 已完成 |
 | T13 | 管理界面与接入校验 | T02-T10 | 接入方式、MCPServer 关联、连接测试和错误展示 | 待批准 |
 | T14 | 删除旧路径与全量验收 | T03-T13 | 删除重复实现、迁移、回归和验收报告 | 待批准 |
 

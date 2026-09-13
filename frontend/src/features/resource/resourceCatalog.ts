@@ -262,6 +262,11 @@ export function resourceEndpointFor(resource: ResourceShape) {
     const path = String(resource.config?.context_path ?? '/nacos').replace(/\/$/, '');
     return host ? `${scheme}://${host}:${port}${path}` : '未设置 Nacos 地址';
   }
+  if (resource.kind === 'Kafka') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const brokers = Array.isArray(resource.config?.brokers) ? resource.config.brokers.map(String).filter(Boolean) : [];
+    return brokers.length ? brokers.join(', ') : '未设置 Kafka Broker';
+  }
   if (resource.kind === 'Host') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent')
       return 'MCPServer 代理';
