@@ -27,6 +27,8 @@
   import NacosReviewStep from './NacosReviewStep.svelte';
   import KafkaConnectionStep from './KafkaConnectionStep.svelte';
   import KafkaReviewStep from './KafkaReviewStep.svelte';
+  import ElasticsearchConnectionStep from './ElasticsearchConnectionStep.svelte';
+  import ElasticsearchReviewStep from './ElasticsearchReviewStep.svelte';
   import RepositoryConnectionStep from './RepositoryConnectionStep.svelte';
   import RepositoryReviewStep from './RepositoryReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
@@ -60,6 +62,7 @@
     testDraftRedis,
     testDraftNacos,
     testDraftKafka,
+    testDraftElasticsearch,
     loadMCPSnapshots as loadMCPSnapshotsAction,
     loadResourceCredentialSecret,
     syncAIProviderBindings,
@@ -354,6 +357,7 @@
   let redisHost = ''; let redisPort = 6379; let redisDatabase = 0; let redisUsername = ''; let redisPassword = ''; let redisTimeoutSeconds = 10; let redisMCPServerResourceId = ''; let redisConfigurationAttempted = false; let redisDraftTest: any = null; let editingRedisResourceId = '';
   let nacosAccessMode: 'direct' | 'agent' = 'direct'; let nacosHost=''; let nacosPort=8848; let nacosScheme='http'; let nacosContextPath='/nacos'; let nacosUsername=''; let nacosPassword=''; let nacosAccessToken=''; let nacosTimeoutSeconds=10; let nacosMCPServerResourceId=''; let nacosConfigurationAttempted=false; let nacosDraftTest:any=null; let editingNacosResourceId='';
   let kafkaAccessMode: 'direct' | 'agent' = 'direct'; let kafkaBrokers=''; let kafkaTLS=false; let kafkaTLSServerName=''; let kafkaUsername=''; let kafkaPassword=''; let kafkaTimeoutSeconds=10; let kafkaMCPServerResourceId=''; let kafkaConfigurationAttempted=false; let kafkaDraftTest:any=null; let editingKafkaResourceId='';
+  let elasticsearchAccessMode: 'direct' | 'agent' = 'direct'; let elasticsearchURL=''; let elasticsearchUsername=''; let elasticsearchPassword=''; let elasticsearchTLSInsecure=false; let elasticsearchTimeoutSeconds=10; let elasticsearchMCPServerResourceId=''; let elasticsearchConfigurationAttempted=false; let elasticsearchDraftTest:any=null; let editingElasticsearchResourceId='';
   let repositoryURL=''; let repositoryDefaultBranch='main'; let repositoryStorageBackend='local'; let repositoryLocalRoot=''; let repositoryS3Endpoint=''; let repositoryS3Bucket=''; let repositoryS3Prefix='repositories'; let repositoryConfigurationAttempted=false; let editingRepositoryResourceId='';
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
@@ -407,6 +411,7 @@
       || (resourceKind === 'Redis' && resourceAddStep === 3)
       || (resourceKind === 'Kafka' && resourceAddStep === 3)
       || (resourceKind === 'Nacos' && resourceAddStep === 3)
+      || (resourceKind === 'Elasticsearch' && resourceAddStep === 3)
     )
   )
     autoSummaryTestKey = '';
@@ -421,7 +426,8 @@
       (resourceKind === 'MySQL' && resourceAddStep === 3) ||
       (resourceKind === 'Redis' && resourceAddStep === 3) ||
       (resourceKind === 'Kafka' && resourceAddStep === 3) ||
-      (resourceKind === 'Nacos' && resourceAddStep === 3))
+      (resourceKind === 'Nacos' && resourceAddStep === 3) ||
+      (resourceKind === 'Elasticsearch' && resourceAddStep === 3))
   ) {
     const key = `${resourceKind}:${resourceAddStep}:${
       resourceKind === 'MCPServer'
@@ -434,7 +440,7 @@
               ? JSON.stringify(kubernetesDraft())
               : resourceKind === 'Host'
                 ? JSON.stringify(hostDraft())
-                : resourceKind === 'PostgreSQL' ? JSON.stringify(postgresqlDraft()) : resourceKind === 'MySQL' ? JSON.stringify({accessMode:mysqlAccessMode,host:mysqlHost,port:mysqlPort,database:mysqlDatabase,username:mysqlUsername,password:mysqlPassword,timeoutSeconds:mysqlTimeoutSeconds,mcpServerResourceId:mysqlMCPServerResourceId}) : resourceKind === 'Redis' ? JSON.stringify(redisDraft()) : resourceKind === 'Kafka' ? JSON.stringify({accessMode:kafkaAccessMode,brokers:kafkaBrokers,tls:kafkaTLS,tlsServerName:kafkaTLSServerName,username:kafkaUsername,password:kafkaPassword,timeoutSeconds:kafkaTimeoutSeconds,mcpServerResourceId:kafkaMCPServerResourceId}) : JSON.stringify(nacosDraft())
+              : resourceKind === 'PostgreSQL' ? JSON.stringify(postgresqlDraft()) : resourceKind === 'MySQL' ? JSON.stringify({accessMode:mysqlAccessMode,host:mysqlHost,port:mysqlPort,database:mysqlDatabase,username:mysqlUsername,password:mysqlPassword,timeoutSeconds:mysqlTimeoutSeconds,mcpServerResourceId:mysqlMCPServerResourceId}) : resourceKind === 'Redis' ? JSON.stringify(redisDraft()) : resourceKind === 'Kafka' ? JSON.stringify({accessMode:kafkaAccessMode,brokers:kafkaBrokers,tls:kafkaTLS,tlsServerName:kafkaTLSServerName,username:kafkaUsername,password:kafkaPassword,timeoutSeconds:kafkaTimeoutSeconds,mcpServerResourceId:kafkaMCPServerResourceId}) : resourceKind === 'Elasticsearch' ? JSON.stringify({accessMode:elasticsearchAccessMode,url:elasticsearchURL,username:elasticsearchUsername,password:elasticsearchPassword,tlsInsecure:elasticsearchTLSInsecure,timeoutSeconds:elasticsearchTimeoutSeconds,mcpServerResourceId:elasticsearchMCPServerResourceId}) : JSON.stringify(nacosDraft())
     }`;
     if (autoSummaryTestKey !== key) {
       autoSummaryTestKey = key;
@@ -448,7 +454,7 @@
           ? testKubernetesDraftConnection()
           : resourceKind === 'Host'
             ? testHostDraftConnection()
-            : resourceKind === 'PostgreSQL' ? testPostgreSQLDraftConnection() : resourceKind === 'MySQL' ? testMySQLDraftConnection() : resourceKind === 'Redis' ? testRedisDraftConnection() : resourceKind === 'Kafka' ? testKafkaDraftConnection() : testNacosDraftConnection());
+            : resourceKind === 'PostgreSQL' ? testPostgreSQLDraftConnection() : resourceKind === 'MySQL' ? testMySQLDraftConnection() : resourceKind === 'Redis' ? testRedisDraftConnection() : resourceKind === 'Kafka' ? testKafkaDraftConnection() : resourceKind === 'Elasticsearch' ? testElasticsearchDraftConnection() : testNacosDraftConnection());
     }
   }
 
@@ -966,6 +972,7 @@
     if (resource.kind === 'PostgreSQL') { openPostgreSQLWorkflowForEdit(resource); return; }
     if (resource.kind === 'MySQL') { openMySQLWorkflowForEdit(resource); return; }
     if (resource.kind === 'Kafka') { openKafkaWorkflowForEdit(resource); return; }
+    if (resource.kind === 'Elasticsearch') { openElasticsearchWorkflowForEdit(resource); return; }
     if (resource.kind === 'Redis') { openRedisWorkflowForEdit(resource); return; }
     if (resource.kind === 'AIProvider') {
       openProviderWorkflowForEdit(resource);
@@ -1316,6 +1323,7 @@
       resetHostDraft();
       resetMySQLDraft();
       resetKafkaDraft();
+      resetElasticsearchDraft();
     }
     if (resourceKind === 'Docker') {
       dockerAccessMode =
@@ -1328,6 +1336,7 @@
     if (resourceKind === 'PostgreSQL') postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     if (resourceKind === 'MySQL') mysqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     if (resourceKind === 'Kafka') kafkaAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'Elasticsearch') elasticsearchAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
@@ -1446,6 +1455,7 @@
   function resetRedisDraft() { redisAccessMode='direct'; redisHost=''; redisPort=6379; redisDatabase=0; redisUsername=''; redisPassword=''; redisTimeoutSeconds=10; redisMCPServerResourceId=''; redisConfigurationAttempted=false; redisDraftTest=null; editingRedisResourceId=''; }
   function resetNacosDraft() { nacosAccessMode='direct'; nacosHost=''; nacosPort=8848; nacosScheme='http'; nacosContextPath='/nacos'; nacosUsername=''; nacosPassword=''; nacosAccessToken=''; nacosTimeoutSeconds=10; nacosMCPServerResourceId=''; nacosConfigurationAttempted=false; nacosDraftTest=null; editingNacosResourceId=''; }
   function resetKafkaDraft() { kafkaAccessMode='direct'; kafkaBrokers=''; kafkaTLS=false; kafkaTLSServerName=''; kafkaUsername=''; kafkaPassword=''; kafkaTimeoutSeconds=10; kafkaMCPServerResourceId=''; kafkaConfigurationAttempted=false; kafkaDraftTest=null; editingKafkaResourceId=''; }
+  function resetElasticsearchDraft() { elasticsearchAccessMode='direct'; elasticsearchURL=''; elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchTLSInsecure=false; elasticsearchTimeoutSeconds=10; elasticsearchMCPServerResourceId=''; elasticsearchConfigurationAttempted=false; elasticsearchDraftTest=null; editingElasticsearchResourceId=''; }
   function resetRepositoryDraft() { repositoryURL=''; repositoryDefaultBranch='main'; repositoryStorageBackend='local'; repositoryLocalRoot=''; repositoryS3Endpoint=''; repositoryS3Bucket=''; repositoryS3Prefix='repositories'; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; }
 
   function resetProviderDraft() {
@@ -2104,6 +2114,10 @@
   function kafkaConfigurationComplete() { return kafkaAccessMode === 'agent' ? Boolean(kafkaMCPServerResourceId) : Boolean(kafkaBrokers.split(/[\n,]+/).map(v => v.trim()).filter(Boolean).length); }
   function resetKafkaDraftTest() { kafkaDraftTest = null; }
   async function testKafkaDraftConnection() { kafkaDraftTest={busy:true}; if(kafkaAccessMode==='agent'){kafkaDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftKafka({brokers:kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean),username:kafkaUsername.trim(),password:kafkaPassword,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)});kafkaDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){kafkaDraftTest={error:describeError(error,'Kafka 连接测试失败')};} }
+  function elasticsearchConfigurationComplete() { return elasticsearchAccessMode === 'agent' ? Boolean(elasticsearchMCPServerResourceId) : Boolean(elasticsearchURL.trim()); }
+  function resetElasticsearchDraftTest() { elasticsearchDraftTest = null; }
+  async function testElasticsearchDraftConnection() { elasticsearchDraftTest={busy:true}; if(elasticsearchAccessMode==='agent'){elasticsearchDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftElasticsearch({url:elasticsearchURL.trim(),username:elasticsearchUsername.trim(),password:elasticsearchPassword,tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)});elasticsearchDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){elasticsearchDraftTest={error:describeError(error,'Elasticsearch 连接测试失败')};} }
+  function openElasticsearchWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Elasticsearch'; resourceAddCategory='ElasticSearch'; resourceAddSubtype=resourceSubtypeFor(resource); editingElasticsearchResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); elasticsearchAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; elasticsearchURL=String(resource.config?.url??''); elasticsearchTLSInsecure=Boolean(resource.config?.tls_insecure); elasticsearchTimeoutSeconds=Number(resource.config?.timeout_seconds??10); elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingElasticsearchResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;elasticsearchUsername=String(s.username??'');elasticsearchPassword=String(s.password??'')}catch{elasticsearchUsername='';elasticsearchPassword=''}}); }
   function openKafkaWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Kafka'; resourceAddCategory='Kafka'; resourceAddSubtype=resourceSubtypeFor(resource); editingKafkaResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); kafkaAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; kafkaBrokers=Array.isArray(resource.config?.brokers)?resource.config.brokers.join('\n'):''; kafkaTLS=Boolean(resource.config?.tls); kafkaTLSServerName=String(resource.config?.tls_server_name??''); kafkaUsername=''; kafkaPassword=''; kafkaMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingKafkaResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;kafkaUsername=String(s.username??'');kafkaPassword=String(s.password??'')}catch{}}); }
   function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceStatus = resource.status; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
   function openMySQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MySQL'; resourceAddCategory='MySQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingMySQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); mysqlAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; mysqlHost=String(resource.config?.host??''); mysqlPort=Number(resource.config?.port??3306); mysqlDatabase=String(resource.config?.database??''); mysqlUsername=''; mysqlPassword=''; mysqlMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingMySQLResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;mysqlUsername=String(s.username??'');mysqlPassword=String(s.password??'')}catch{mysqlUsername='';mysqlPassword=''}}); }
@@ -2470,7 +2484,7 @@
       || editingPostgreSQLResourceId
       || editingMySQLResourceId
       || editingRedisResourceId
-      || editingNacosResourceId || editingRepositoryResourceId
+      || editingNacosResourceId || editingElasticsearchResourceId || editingRepositoryResourceId
     );
     if (!editingWorkflow)
       chooseResourceAddSubtype(resourceAddCategory, resourceAddSubtype);
@@ -2502,6 +2516,7 @@
   function continueRedisAdd() { redisConfigurationAttempted=true; if(!redisConfigurationComplete()) return; redisConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
   function continueNacosAdd() { nacosConfigurationAttempted=true; if(!nacosConfigurationComplete()) return; nacosConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
   function continueKafkaAdd() { kafkaConfigurationAttempted=true; if(!kafkaConfigurationComplete()) return; kafkaConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
+  function continueElasticsearchAdd() { elasticsearchConfigurationAttempted=true; if(!elasticsearchConfigurationComplete()) return; elasticsearchConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
   function continueMySQLAdd() { mysqlConfigurationAttempted=true; if(!mysqlConfigurationComplete()) return; mysqlConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
 
   async function updateSelectedResource() {
@@ -2573,6 +2588,7 @@
     if (resourceKind === 'Redis') { await runResourceAction(saveRedisWorkflow); return; }
     if (resourceKind === 'Nacos') { await runResourceAction(saveNacosWorkflow); return; }
     if (resourceKind === 'Kafka') { await runResourceAction(saveKafkaWorkflow); return; }
+    if (resourceKind === 'Elasticsearch') { await runResourceAction(saveElasticsearchWorkflow); return; }
     if (resourceKind === 'Repository') { await runResourceAction(saveRepositoryWorkflow); return; }
     if (resourceKind === 'Application') {
       await createApplicationFromWorkflow();
@@ -3109,6 +3125,7 @@
   }
   async function saveMySQLWorkflow() { if(!mysqlConfigurationComplete()){mysqlConfigurationAttempted=true;throw new Error('请检查 MySQL 配置。')} const existing=resources.find(r=>r.id===editingMySQLResourceId);let credentialId:string|null=existing?.credential_id??null;if(mysqlAccessMode==='direct'&&mysqlUsername.trim()&&mysqlPassword){const secret=JSON.stringify({username:mysqlUsername.trim(),password:mysqlPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'MySQL'} 凭据`,purpose:'MySQL 数据库凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'MySQL'} 凭据`,purpose:'MySQL 数据库凭据',secret});credentialId=c.id;}}if(mysqlAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:mysqlAccessMode==='agent'?'Agent':'Direct',agent_ref:mysqlAccessMode==='agent'?mysqlMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:mysqlAccessMode==='agent'?{}:{host:mysqlHost.trim(),port:Number(mysqlPort),database:mysqlDatabase.trim(),timeout_seconds:Number(mysqlTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'MySQL',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`MySQL 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`MySQL 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingMySQLResourceId='';resourceAddStep=1; }
   async function saveKafkaWorkflow() { if(!kafkaConfigurationComplete()){kafkaConfigurationAttempted=true;throw new Error('请检查 Kafka 配置。')} const existing=resources.find(r=>r.id===editingKafkaResourceId); let credentialId:string|null=existing?.credential_id??null; if(kafkaAccessMode==='direct'&&(kafkaUsername.trim()||kafkaPassword)){const secret=JSON.stringify({username:kafkaUsername.trim(),password:kafkaPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Kafka'} 凭据`,purpose:'Kafka 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Kafka'} 凭据`,purpose:'Kafka 凭据',secret});credentialId=c.id;}} if(kafkaAccessMode==='agent')credentialId=null; const brokers=kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean); const body:Record<string,unknown>={name:resourceName.trim(),subtype:kafkaAccessMode==='agent'?'Agent':'Direct',agent_ref:kafkaAccessMode==='agent'?kafkaMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:kafkaAccessMode==='agent'?{}:{brokers,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Kafka',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Kafka 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Kafka 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingKafkaResourceId='';resourceAddStep=1; }
+  async function saveElasticsearchWorkflow() { if(!elasticsearchConfigurationComplete()){elasticsearchConfigurationAttempted=true;throw new Error('请检查 Elasticsearch 配置。')} const existing=resources.find(r=>r.id===editingElasticsearchResourceId);let credentialId:string|null=existing?.credential_id??null;if(elasticsearchAccessMode==='direct'&&(elasticsearchUsername.trim()||elasticsearchPassword)){const secret=JSON.stringify({username:elasticsearchUsername.trim(),password:elasticsearchPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Elasticsearch'} 凭据`,purpose:'Elasticsearch API 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Elasticsearch'} 凭据`,purpose:'Elasticsearch API 凭据',secret});credentialId=c.id;}}if(elasticsearchAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:elasticsearchAccessMode==='agent'?'Agent':'Direct',agent_ref:elasticsearchAccessMode==='agent'?elasticsearchMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:elasticsearchAccessMode==='agent'?{}:{url:elasticsearchURL.trim(),tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Elasticsearch',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Elasticsearch 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Elasticsearch 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingElasticsearchResourceId='';resourceAddStep=1; }
   async function saveRedisWorkflow() {
     if (!redisConfigurationComplete()) { redisConfigurationAttempted=true; throw new Error('请检查 Redis 配置。'); }
     const existing=resources.find(r=>r.id===editingRedisResourceId); let credentialId:string|null=existing?.credential_id??null;
@@ -3482,6 +3499,7 @@
         editingRedis={Boolean(editingRedisResourceId)}
         editingNacos={Boolean(editingNacosResourceId)}
         editingKafka={Boolean(editingKafkaResourceId)}
+        editingElasticsearch={Boolean(editingElasticsearchResourceId)}
         editingRepository={Boolean(editingRepositoryResourceId)}
         basicConfigurationComplete={resourceBasicConfigurationComplete()}
         mcpConfigurationComplete={mcpConfigurationValid()}
@@ -3493,6 +3511,7 @@
         redisConfigurationComplete={redisConfigurationComplete()}
         nacosConfigurationComplete={nacosConfigurationComplete()}
         kafkaConfigurationComplete={kafkaConfigurationComplete()}
+        elasticsearchConfigurationComplete={elasticsearchConfigurationComplete()}
         repositoryConfigurationComplete={repositoryConfigurationComplete()}
         applicationConfigurationComplete={applicationConfigurationComplete()}
         providerModelCount={providerModels.length}
@@ -3528,6 +3547,7 @@
         onContinueRedis={continueRedisAdd}
         onContinueNacos={continueNacosAdd}
         onContinueKafka={continueKafkaAdd}
+        onContinueElasticsearch={continueElasticsearchAdd}
         onContinueRepository={() => { repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; resourceAddStep = 3; } }}
         onSubmitMcp={() =>
           void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
@@ -3548,6 +3568,7 @@
         onSubmitRedis={() => void runResourceAction(saveRedisWorkflow)}
         onSubmitNacos={() => void runResourceAction(saveNacosWorkflow)}
         onSubmitKafka={() => void runResourceAction(saveKafkaWorkflow)}
+        onSubmitElasticsearch={() => void runResourceAction(saveElasticsearchWorkflow)}
         onSubmitRepository={() => void runResourceAction(saveRepositoryWorkflow)}
         onSubmitApplication={() => void (editingResourceId ? updateApplicationFromWorkflow() : createApplicationFromWorkflow())}
       >
@@ -3573,6 +3594,7 @@
               || editingRedisResourceId
               || editingNacosResourceId
               || editingKafkaResourceId
+              || editingElasticsearchResourceId
               || editingRepositoryResourceId
             )}
             scopeSummary={activeScopeSummary()}
@@ -3593,6 +3615,7 @@
               if (resourceKind === 'Redis') redisAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
               if (resourceKind === 'Nacos') nacosAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
               if (resourceKind === 'Kafka') kafkaAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+              if (resourceKind === 'Elasticsearch') elasticsearchAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
             }}
           />
         {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
@@ -3856,6 +3879,10 @@
           <KafkaConnectionStep accessMode={kafkaAccessMode} bind:brokers={kafkaBrokers} bind:tls={kafkaTLS} bind:tlsServerName={kafkaTLSServerName} bind:username={kafkaUsername} bind:password={kafkaPassword} bind:timeoutSeconds={kafkaTimeoutSeconds} bind:mcpServerResourceId={kafkaMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={kafkaConfigurationAttempted} onConfigurationChange={resetKafkaDraftTest} />
         {:else if resourceKind === 'Kafka' && resourceAddStep === 3}
           <KafkaReviewStep resourceName={resourceName} accessMode={kafkaAccessMode} brokers={kafkaBrokers} mcpServerName={resources.find((r) => r.id === kafkaMCPServerResourceId)?.name ?? ''} testBusy={Boolean(kafkaDraftTest?.busy)} testStatus={kafkaDraftTest?.status ?? ''} testMessage={kafkaDraftTest?.message ?? ''} testError={kafkaDraftTest?.error ?? ''} testLatency={Number(kafkaDraftTest?.latency ?? 0)} />
+        {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 2}
+          <ElasticsearchConnectionStep accessMode={elasticsearchAccessMode} bind:url={elasticsearchURL} bind:username={elasticsearchUsername} bind:password={elasticsearchPassword} bind:tlsInsecure={elasticsearchTLSInsecure} bind:timeoutSeconds={elasticsearchTimeoutSeconds} bind:mcpServerResourceId={elasticsearchMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={elasticsearchConfigurationAttempted} onConfigurationChange={resetElasticsearchDraftTest} />
+        {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 3}
+          <ElasticsearchReviewStep resourceName={resourceName} accessMode={elasticsearchAccessMode} url={elasticsearchURL} mcpServerName={resources.find((r) => r.id === elasticsearchMCPServerResourceId)?.name ?? ''} testBusy={Boolean(elasticsearchDraftTest?.busy)} testStatus={elasticsearchDraftTest?.status ?? ''} testMessage={elasticsearchDraftTest?.message ?? ''} testError={elasticsearchDraftTest?.error ?? ''} testLatency={Number(elasticsearchDraftTest?.latency ?? 0)} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 2}
           <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:defaultBranch={repositoryDefaultBranch} bind:storageBackend={repositoryStorageBackend} bind:localRoot={repositoryLocalRoot} bind:s3Endpoint={repositoryS3Endpoint} bind:s3Bucket={repositoryS3Bucket} bind:s3Prefix={repositoryS3Prefix} configurationAttempted={repositoryConfigurationAttempted} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 3}

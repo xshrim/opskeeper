@@ -42,6 +42,9 @@ type mysqlDraftConnectorService interface {
 type kafkaDraftConnectorService interface {
 	TestKafkaDraft(context.Context, connector.KafkaDraftInput) (connector.KafkaDraftCheck, error)
 }
+type elasticsearchDraftConnectorService interface {
+	TestElasticsearchDraft(context.Context, connector.ElasticsearchDraftInput) (connector.ElasticsearchDraftCheck, error)
+}
 type applicationDiscoveryService interface {
 	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
 	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
@@ -174,6 +177,20 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 			check, err := draft.TestKafkaDraft(r.Context(), body)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(elasticsearchDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/elasticsearch/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.ElasticsearchDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestElasticsearchDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, check)

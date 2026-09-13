@@ -57,6 +57,8 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource aiengine.Conte
 			inputSchema = repositoryAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Kafka") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = kafkaAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Elasticsearch") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = elasticsearchAgentSchema(inputSchema)
 		}
 		tools = append(tools, aiengine.ToolFunc{
 			Def: aiengine.ToolDefinition{
@@ -91,7 +93,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource aiengine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "Elasticsearch")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
@@ -153,6 +155,12 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 				merged[key] = value
 			}
 		}
+	} else if strings.EqualFold(kind, "Elasticsearch") {
+		for _, key := range []string{"url", "tls_insecure", "timeout_seconds"} {
+			if value, ok := contextResource.Config[key]; ok && value != nil {
+				merged[key] = value
+			}
+		}
 	} else {
 		setString("host")
 	}
@@ -205,6 +213,8 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"path", "url", "default_branch", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "Kafka") {
 		keys = []string{"brokers", "username", "password", "tls_server_name", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "Elasticsearch") {
+		keys = []string{"url", "username", "password", "tls_insecure", "timeout_seconds"}
 	}
 	for _, key := range keys {
 		if strings.EqualFold(strings.TrimSpace(connectionMode), "endpoint") && key == "kubeconfig" {
@@ -355,6 +365,24 @@ func kafkaAgentSchema(raw json.RawMessage) json.RawMessage {
 	delete(schema, "required")
 	encoded, _ := json.Marshal(schema)
 	return encoded
+}
+
+func elasticsearchAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if p, ok := schema["properties"].(map[string]any); ok {
+		for _, k := range []string{"url", "username", "password", "tls_insecure", "timeout_seconds"} {
+			delete(p, k)
+		}
+	}
+	delete(schema, "required")
+	b, _ := json.Marshal(schema)
+	return b
 }
 
 func isHostConnectionKey(key string) bool {

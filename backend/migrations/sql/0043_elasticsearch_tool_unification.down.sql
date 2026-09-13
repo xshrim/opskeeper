@@ -1,0 +1,1 @@
+-- Elasticsearch tool unification is a hard cutover; preserve schema and skill data on rollback.
