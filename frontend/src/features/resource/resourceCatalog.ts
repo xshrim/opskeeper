@@ -26,7 +26,6 @@ export function relativeConnectionTime(value: string, now = Date.now()) {
 
 export const resourceCategoryOptions: Record<string, string[]> = {
   全部: [],
-  Application: ['虚拟机', '容器化', '云原生'],
   Artifact: ['Generic', 'Docker', 'Helm'],
   Repository: ['Git', 'Bundle'],
   Host: ['Direct', 'Agent'],
@@ -52,7 +51,6 @@ export const resourceCategoryOptions: Record<string, string[]> = {
 };
 
 export const resourceCatalogTags: Record<string, string[]> = {
-  Application: ['应用'],
   Artifact: ['仓库'],
   Repository: ['仓库'],
   Host: ['运行时'],
@@ -127,7 +125,7 @@ export function connectorCapabilityName(capability: ConnectorCapability) {
 export function resourceCategoryFor(resource: ResourceShape) {
   if (resource.kind === 'AIProvider') return 'LLM';
   if (resource.kind === 'MCPServer') return 'MCPServer';
-  if (['Application', 'Artifact', 'Repository', 'Host'].includes(resource.kind))
+  if (['Artifact', 'Repository', 'Host'].includes(resource.kind))
     return resource.kind;
   if (
     [
@@ -172,7 +170,6 @@ export function resourceCategoryFor(resource: ResourceShape) {
 
 export function resourceSubtypeFor(resource: ResourceShape) {
   const fallback: Record<string, string> = {
-    Application: '虚拟机',
     Artifact: 'Generic',
     Kubernetes: 'Direct',
     Nacos: 'Direct',
@@ -200,10 +197,6 @@ export function resourceSubtypeFor(resource: ResourceShape) {
     Alertmanager: '告警'
   };
   const explicit = String(resource.subtype || resource.config?.subtype || '');
-  if (resource.kind === 'Application') {
-    const mode = String(resource.config?.access_mode ?? explicit).toLowerCase();
-    return mode === 'containerized' ? '容器化' : mode === 'cloud_native' ? '云原生' : '虚拟机';
-  }
   if (resource.kind === 'AIProvider') return 'Provider';
   if (
     [
@@ -244,7 +237,6 @@ export function resourceSubtypeOptionsFor(resource: Resource) {
 export function resourceCategoryIcon(category: string) {
   const icons: Record<string, string> = {
     全部: '◇',
-    Application: '⌘',
     Artifact: '▤',
     Repository: '⌘',
     Host: '▣',

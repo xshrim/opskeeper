@@ -185,8 +185,8 @@
         : projects.filter((project) => project.scope.id === selectedScopeId)
     : projects;
   $: visibleResources = selectedScopeId
-    ? resources.filter((resource) => resourceInActiveWorkspace(resource))
-    : resources;
+    ? resources.filter((resource) => resource.kind !== 'Application' && resourceInActiveWorkspace(resource))
+    : resources.filter((resource) => resource.kind !== 'Application');
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
   $: selectedResourceCanUpdate = selectedResource
@@ -895,15 +895,16 @@
         <ProjectPage
           {teams}
           {visibleProjects}
+          bind:selectedProjectId
           bind:selectedScopeId
           {busy}
-          {scopeName}
-          onSelectTeam={(team) => (selectedScopeId = team.scope.id)}
-          onSelectProject={(project) => (selectedScopeId = project.scope.id)}
+          onSelectTeam={(team) => { selectedTeamId = team.id; selectedProjectId = ''; selectedScopeId = team.scope.id; }}
+          onSelectProject={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedTeamId = project.team_id; }}
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
+          onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; chooseView('diagnosis'); }}
         />
       {:else if view === 'discovery'}
         <DiscoveryPage

@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"opskeeper/backend/aiengine"
+	"opskeeper/backend/application"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
@@ -144,6 +145,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
 	resourceService := resource.NewService(resource.NewStore(pool))
+	applicationService := application.NewService(application.NewStore(pool))
 	if cfg.RepositoryStorageBackend == "s3" {
 		logger.Warn("repository S3 backend configured; using configured endpoint as deployment responsibility", "kind", "repository-storage")
 	}
@@ -244,6 +246,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			MCP:                mcpService,
 			Operations:         operationService,
 			RepositoryBundles:  repositoryService,
+			Applications:       applicationService,
 			CookieSecure:       cfg.CookieSecure,
 			Production:         cfg.Environment == "production",
 			AllowedOrigins:     cfg.AllowedOrigins,

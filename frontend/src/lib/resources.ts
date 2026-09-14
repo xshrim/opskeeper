@@ -31,7 +31,6 @@ export function resourceHasConnector(resource: Resource) {
     return Boolean(resource.agent_ref);
   return [
     'AIProvider',
-    'Application',
     'Host',
     'Docker',
     'Kubernetes',

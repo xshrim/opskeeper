@@ -43,6 +43,7 @@ type Options struct {
 	MCP                mcpService
 	Operations         operationService
 	RepositoryBundles  repositoryBundleService
+	Applications       applicationService
 	CookieSecure       bool
 	Production         bool
 	AllowedOrigins     []string
@@ -89,6 +90,14 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 					requirePermission = authorizationMiddleware.requirePermission
 				}
 				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"), requirePermission, options.Access)
+			}
+			if options.Identity != nil && options.Applications != nil {
+				applicationRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
+				if options.Authorization != nil {
+					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
+				}
+				registerApplicationRoutes(applicationRouter, options.Applications, path.Join(basePath, "api/v1"), requirePermission)
 			}
 			if options.Identity != nil {
 				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure, options.Access)

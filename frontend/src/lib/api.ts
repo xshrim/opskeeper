@@ -74,6 +74,28 @@ export interface Project {
   updated_at: string;
 }
 
+export interface ApplicationInstance {
+  id: string; application_id: string; name: string; runtime_kind: string;
+  target_resource_id: string; target_resource_name?: string; target_resource_kind?: string;
+  selector: Record<string, unknown>; log_binding: Record<string, unknown>; status: string;
+}
+export interface ApplicationDependency {
+  id: string; application_id: string; target_resource_id: string; target_resource_name?: string;
+  target_resource_kind?: string; dependency_kind: string; binding: Record<string, unknown>;
+  required: boolean; status: string;
+}
+export interface Application {
+  id: string; project_id: string; name: string; code: string; description: string; icon: string;
+  status: string; source: string; external_uid?: string; labels: Record<string, string>;
+  instances: ApplicationInstance[]; dependencies: ApplicationDependency[]; created_at: string; updated_at: string;
+}
+export interface ProjectWorkspace {
+  summary: { project_id: string; applications: number; instances: number; resources: number; dependencies: number; alerts: number };
+  resources: Array<{ id: string; name: string; kind: string; status: string; role: string }>;
+  alerts: Array<{ id: string; severity: string; title: string; status: string }>;
+  applications: Application[];
+}
+
 export interface Page<T> {
   items: T[];
   page: number;
@@ -799,6 +821,16 @@ export const api = {
   ) => request<Project>(`api/v1/teams/${teamId}/projects`, json(body)),
   updateProject: (id: string, body: Record<string, unknown>) =>
     request<Project>(`api/v1/projects/${id}/`, patch(body)),
+  projectWorkspace: (id: string) => request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
+  applications: (projectId: string) => request<{ items: Application[] }>(`api/v1/projects/${projectId}/applications`),
+  createApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications`, json(body)),
+  importApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications/import`, json(body)),
+  updateApplication: (id: string, body: Record<string, unknown>) => request<Application>(`api/v1/applications/${id}/`, patch(body)),
+  deleteApplication: (id: string) => request<void>(`api/v1/applications/${id}/`, { method: 'DELETE' }),
+  createApplicationInstance: (applicationId: string, body: Record<string, unknown>) => request<ApplicationInstance>(`api/v1/applications/${applicationId}/instances`, json(body)),
+  createApplicationDependency: (applicationId: string, body: Record<string, unknown>) => request<ApplicationDependency>(`api/v1/applications/${applicationId}/dependencies`, json(body)),
+  deleteApplicationInstance: (id: string) => request<void>(`api/v1/application-instances/${id}/`, { method: 'DELETE' }),
+  deleteApplicationDependency: (id: string) => request<void>(`api/v1/application-dependencies/${id}/`, { method: 'DELETE' }),
   resources: (kind = '') =>
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
