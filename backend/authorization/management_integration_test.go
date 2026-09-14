@@ -157,14 +157,14 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
-	application, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+	managedResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
 		ScopeID: project.Scope.ID,
-		Kind:    "Application",
+		Kind:    "Host",
 		Name:    "orders",
-		Config:  map[string]any{},
+		Config:  map[string]any{"host": "127.0.0.1", "port": 22, "username": "root", "auth_method": "password", "password": "test"},
 	})
 	if err != nil {
-		t.Fatalf("Create(Application) error = %v", err)
+		t.Fatalf("Create(Host) error = %v", err)
 	}
 	platform, err := organizations.GetPlatform(ctx)
 	if err != nil {
@@ -172,21 +172,21 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	}
 	platformResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
 		ScopeID: platform.Scope.ID,
-		Kind:    "Application",
+		Kind:    "Host",
 		Name:    "platform-tooling",
-		Config:  map[string]any{},
+		Config:  map[string]any{"host": "127.0.0.1", "port": 22, "username": "root", "auth_method": "password", "password": "test"},
 	})
 	if err != nil {
-		t.Fatalf("Create(platform Application) error = %v", err)
+		t.Fatalf("Create(platform Host) error = %v", err)
 	}
 	teamResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
 		ScopeID: team.Scope.ID,
-		Kind:    "Application",
+		Kind:    "Host",
 		Name:    "team-tooling",
-		Config:  map[string]any{},
+		Config:  map[string]any{"host": "127.0.0.1", "port": 22, "username": "root", "auth_method": "password", "password": "test"},
 	})
 	if err != nil {
-		t.Fatalf("Create(team Application) error = %v", err)
+		t.Fatalf("Create(team Host) error = %v", err)
 	}
 
 	identityService := identity.NewService(identity.NewStore(pool), 15*time.Minute, 7*24*time.Hour)
@@ -208,7 +208,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 		t.Fatalf("ListResourceRoles() error = %v", err)
 	}
 	resourceOperatorID := findResourceRoleID(t, resourceRoles, "ResourceOperator")
-	grant := authorization.GrantResourceRoleInput{SubjectType: "user", SubjectID: memberID, RoleID: resourceOperatorID, ResourceID: application.ID}
+	grant := authorization.GrantResourceRoleInput{SubjectType: "user", SubjectID: memberID, RoleID: resourceOperatorID, ResourceID: managedResource.ID}
 	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, grant, authorizationEvent(admin.ID)); !errors.Is(err, authorization.ErrInvalidInput) {
 		t.Fatalf("resource grant without project viewer error = %v, want ErrInvalidInput", err)
 	}
@@ -264,7 +264,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 		t.Fatalf("CreateResourceRoleBinding() error = %v", err)
 	}
 	readFilter, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceRead)
-	if err != nil || !readFilter.Allows(project.Scope.ID, application.ID) {
+	if err != nil || !readFilter.Allows(project.Scope.ID, managedResource.ID) {
 		t.Fatalf("project viewer read filter = %#v, %v", readFilter, err)
 	}
 	afterCreate, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUpdate)
@@ -272,12 +272,12 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 		t.Fatalf("resource update filter after operator grant = %#v, %v", afterCreate, err)
 	}
 	viewerUse, err := authorizationService.ResourceFilter(ctx, authorization.Subject{UserID: memberID}, authorization.ResourceUse)
-	if err != nil || !viewerUse.Allows(platform.Scope.ID, platformResource.ID) || !viewerUse.Allows(project.Scope.ID, application.ID) {
+	if err != nil || !viewerUse.Allows(platform.Scope.ID, platformResource.ID) || !viewerUse.Allows(project.Scope.ID, managedResource.ID) {
 		t.Fatalf("project viewer resource use filter = %#v, %v", viewerUse, err)
 	}
 	resourceAdminID := findResourceRoleID(t, resourceRoles, "ResourceAdmin")
 	if _, err := management.CreateResourceRoleBinding(ctx, admin.ID, authorization.GrantResourceRoleInput{
-		SubjectType: "user", SubjectID: memberID, RoleID: resourceAdminID, ResourceID: application.ID,
+		SubjectType: "user", SubjectID: memberID, RoleID: resourceAdminID, ResourceID: managedResource.ID,
 	}, authorizationEvent(admin.ID)); !errors.Is(err, authorization.ErrGrantNotAllowed) {
 		t.Fatalf("project viewer resource admin grant = %v, want ErrGrantNotAllowed", err)
 	}

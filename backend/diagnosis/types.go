@@ -20,6 +20,7 @@ const (
 type Session struct {
 	ID                 string     `json:"id"`
 	ScopeID            string     `json:"scope_id"`
+	ApplicationID      string     `json:"application_id,omitempty"`
 	ProviderResourceID string     `json:"ai_provider_resource_id,omitempty"`
 	ModelName          string     `json:"model_name,omitempty"`
 	Title              string     `json:"title"`
@@ -178,6 +179,7 @@ type Snapshot struct {
 
 type StartInput struct {
 	ScopeID, ActorUserID, Title, Question string
+	ApplicationID                         string
 	ProviderResourceID, ModelName         string
 	TargetResourceIDs                     []string
 }

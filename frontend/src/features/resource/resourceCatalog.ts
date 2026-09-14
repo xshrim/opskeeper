@@ -94,7 +94,7 @@ export const resourceCatalogTagOptions = [...new Set(Object.values(resourceCatal
 
 export function resourceCatalogTagClass(tag: string) {
   const classes: Record<string, string> = {
-    应用: 'application', 仓库: 'repository', 运行时: 'runtime', 注册: 'registry', 配置: 'configuration',
+    仓库: 'repository', 运行时: 'runtime', 注册: 'registry', 配置: 'configuration',
     网关: 'gateway', 数据库: 'database', 缓存: 'cache', 消息: 'message', 检索: 'search', 存储: 'storage', AI: 'ai', 监控: 'monitor'
   };
   return classes[tag] ?? 'default';

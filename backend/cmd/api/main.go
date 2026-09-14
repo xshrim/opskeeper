@@ -150,7 +150,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		logger.Warn("repository S3 backend configured; using configured endpoint as deployment responsibility", "kind", "repository-storage")
 	}
 	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL}, cfg.RepositoryMaxBundleBytes, resourceService)
-	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, resourceService, organizationService, credentialService, discovery.NewKubernetesScanner())
+	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, organizationService, applicationService, credentialService, discovery.NewKubernetesScanner())
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
 	connectorLimits.MaxConcurrent = cfg.ConnectorMaxConcurrency
@@ -171,7 +171,6 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentialService)
 	connectorProvider := connectorService.AIEngineProvider()
 	mcpProvider := mcpService.AIEngineProvider()
-	connectorService.SetApplicationToolInvoker(aiengine.NewResourceToolInvoker(connectorProvider, mcpProvider))
 	contextTooling := aiengine.NewContextTooling(
 		aiengine.ResourceServiceReader{Reader: resourceService},
 		connectorProvider,
@@ -208,7 +207,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
 		WithAgentProfileResolver(agentProfileResolver).
 		WithPlanResolver(skillService)
-	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService), aiEngine, 30*time.Minute)
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService, applicationService), aiEngine, 30*time.Minute)
 	workflowService := aiengine.NewWorkflowService(workflowRunStore, aiEngine, contextTooling.Gateway, workflowRetriever, aiStore)
 	operationStore := operation.NewStore(pool)
 	var operationService *operation.Service

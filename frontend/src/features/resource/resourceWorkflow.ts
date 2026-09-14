@@ -171,8 +171,6 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2 ? '配置 RabbitMQ Management API 连接方式和凭据。' : '确认配置并核验 RabbitMQ 连接。';
   if (kind === 'MinIO')
     return step === 2 ? '配置 MinIO S3 API 连接方式和凭据。' : '确认配置并核验 MinIO 连接。';
-  if (kind === 'Application')
-    return step === 2 ? '选择项目、接入方式和应用实例。' : '配置资源';
   if (kind === 'AIProvider') {
     if (step === 2) return '配置 Provider 的 Base URL、协议和访问凭据。';
     if (step === 3) return '配置 Model 参数、能力和默认模型。';

@@ -4,7 +4,6 @@ const ids = {
   platform: 'scope-platform',
   team: 'scope-team',
   project: 'scope-project',
-  app: 'resource-app',
   provider: 'resource-provider',
   skill: 'resource-skill',
   session: 'diagnosis-session'
@@ -115,6 +114,13 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         page_size: 100,
         total: 1
       });
+    if (path.endsWith('/workspace'))
+      return json({
+        summary: { project_id: 'project-1', applications: 0, instances: 0, resources: 0, dependencies: 0, alerts: 0 },
+        resources: [],
+        alerts: [],
+        applications: []
+      });
     if (path.includes('/projects'))
       return json({
         items: [
@@ -148,18 +154,6 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
       return json({
         items: [
           {
-            id: ids.app,
-            scope_id: ids.project,
-            kind: 'Application',
-            schema_version: 1,
-            name: 'payments-api',
-            labels: { env: 'test' },
-            config: {},
-            status: 'active',
-            created_at: user.created_at,
-            updated_at: user.updated_at
-          },
-          {
             id: ids.provider,
             scope_id: ids.platform,
             kind: 'AIProvider',
@@ -190,7 +184,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         ],
         page: 1,
         page_size: 100,
-        total: 3
+        total: 2
       });
     if (path.includes('/skills/') && path.endsWith('/versions'))
       return json([

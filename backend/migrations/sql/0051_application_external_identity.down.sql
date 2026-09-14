@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS applications_project_external_uid_idx;

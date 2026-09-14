@@ -15,7 +15,7 @@ import App from './App.svelte';
 const target = document.getElementById('app');
 
 if (!target) {
-  throw new Error('Application target was not found');
+  throw new Error('Target was not found');
 }
 
 mount(App, { target });

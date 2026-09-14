@@ -148,6 +148,7 @@
   let healthInterval: number | null = null;
   let selectedScopeId = '';
   let selectedResourceId = '';
+  let selectedApplicationId = '';
   let connectionBusy = false;
   let resourceConnectionChecks: Record<string, ConnectionCheck | null> = {};
   let groups: Group[] = [];
@@ -185,8 +186,8 @@
         : projects.filter((project) => project.scope.id === selectedScopeId)
     : projects;
   $: visibleResources = selectedScopeId
-    ? resources.filter((resource) => resource.kind !== 'Application' && resourceInActiveWorkspace(resource))
-    : resources.filter((resource) => resource.kind !== 'Application');
+    ? resources.filter((resource) => resourceInActiveWorkspace(resource))
+    : resources;
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
   $: selectedResourceCanUpdate = selectedResource
@@ -381,6 +382,7 @@
 
   function chooseView(nextView: View) {
     view = nextView;
+    if (nextView !== 'diagnosis') selectedApplicationId = '';
     notice = '';
     errorMessage = '';
     userMenuOpen = false;
@@ -904,7 +906,8 @@
           onProjectCreated={(project) => (projects = [...projects, project])}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
-          onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; chooseView('diagnosis'); }}
+          onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
+          onOpenApplicationDiagnosis={(project, application) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = application.id; chooseView('diagnosis'); }}
         />
       {:else if view === 'discovery'}
         <DiscoveryPage
@@ -923,8 +926,6 @@
       {:else if view === 'resource'}
         <ResourcePage
           {visibleResources}
-          {projects}
-          {teams}
           bind:selectedResourceId
           bind:resourceConnectionChecks
           bind:operationSnapshots
@@ -981,6 +982,7 @@
       {:else if view === 'diagnosis'}
         <DiagnosisPage
           scopeId={selectedScopeId}
+          applicationId={selectedApplicationId}
           runAction={action}
           {describeError}
           onError={(message) => (errorMessage = message)}

@@ -59,10 +59,10 @@ func TestLabelSelectorResolvesOnlyMatchingActiveTargets(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM inspection_policy_targets WHERE policy_id IN (SELECT id FROM inspection_policies WHERE scope_id=$1::uuid); DELETE FROM inspection_jobs WHERE run_id IN (SELECT id FROM inspection_runs WHERE scope_id=$1::uuid); DELETE FROM inspection_runs WHERE scope_id=$1::uuid; DELETE FROM inspection_policies WHERE scope_id=$1::uuid; DELETE FROM resources WHERE scope_id=$1::uuid; DELETE FROM scopes WHERE id=$1::uuid`, scope)
 	})
-	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels) VALUES($1::uuid,'Application','matching', '{"env":"prod","team":"payments"}') RETURNING id::text`, scope).Scan(&matching); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels) VALUES($1::uuid,'Host','matching', '{"env":"prod","team":"payments"}') RETURNING id::text`, scope).Scan(&matching); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels,status) VALUES($1::uuid,'Application','wrong', '{"env":"dev"}','active') RETURNING id::text`, scope).Scan(&wrong); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,name,labels,status) VALUES($1::uuid,'Host','wrong', '{"env":"dev"}','active') RETURNING id::text`, scope).Scan(&wrong); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO inspection_policies(scope_id,name,cron,timezone,target_labels) VALUES($1::uuid,'label-'||gen_random_uuid()::text,'* * * * *','UTC','{"env":"prod"}') RETURNING id::text`, scope).Scan(&policy); err != nil {

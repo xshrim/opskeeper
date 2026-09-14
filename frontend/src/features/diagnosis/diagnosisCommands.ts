@@ -20,6 +20,7 @@ type DiagnosisSessionActions = {
   ) => Promise<{ result: T; stopRequested: boolean }>;
   startDiagnosis: (body: {
     scope_id: string;
+    application_id?: string;
     question: string;
     target_resource_ids: string[];
     ai_provider_resource_id?: string;
@@ -34,6 +35,7 @@ type DiagnosisSessionActions = {
 
 export type DiagnosisCommandState = {
   scopeID: string;
+  applicationID: string;
   sessions: DiagnosisSession[];
   selectedSessionID: string;
   snapshot: DiagnosisSnapshot | null;
@@ -93,6 +95,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
         () =>
           options.session.startDiagnosis({
             scope_id: state.scopeID,
+            application_id: state.applicationID || undefined,
             question: content,
             target_resource_ids: state.targetIDs,
             ai_provider_resource_id: state.providerID || undefined,

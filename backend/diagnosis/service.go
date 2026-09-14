@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"opskeeper/backend/application"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/resource"
 )
@@ -15,16 +16,22 @@ type ResourceReader interface {
 	Get(context.Context, string) (resource.Resource, error)
 }
 
-type Service struct {
-	store       Store
-	resources   ResourceReader
-	eventMu     sync.Mutex
-	subMu       sync.Mutex
-	subscribers map[string]map[chan struct{}]struct{}
+type ApplicationReader interface {
+	Get(context.Context, string) (application.Application, error)
+	ContextResourceIDs(context.Context, string, string) ([]string, error)
 }
 
-func NewService(store Store, resources ResourceReader) *Service {
-	return &Service{store: store, resources: resources, subscribers: make(map[string]map[chan struct{}]struct{})}
+type Service struct {
+	store        Store
+	resources    ResourceReader
+	applications ApplicationReader
+	eventMu      sync.Mutex
+	subMu        sync.Mutex
+	subscribers  map[string]map[chan struct{}]struct{}
+}
+
+func NewService(store Store, resources ResourceReader, applications ApplicationReader) *Service {
+	return &Service{store: store, resources: resources, applications: applications, subscribers: make(map[string]map[chan struct{}]struct{})}
 }
 
 func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) {
@@ -32,6 +39,7 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	input.ActorUserID = strings.TrimSpace(input.ActorUserID)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Question = strings.TrimSpace(input.Question)
+	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
 	input.ProviderResourceID = strings.TrimSpace(input.ProviderResourceID)
 	input.ModelName = strings.TrimSpace(input.ModelName)
 	if input.ScopeID == "" || input.ActorUserID == "" || input.Question == "" {
@@ -39,6 +47,26 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	}
 	if len([]rune(input.Title)) > 200 || len([]rune(input.Question)) > 16000 {
 		return Session{}, invalid("diagnosis title or question is too long")
+	}
+	if input.ApplicationID != "" {
+		if s.applications == nil {
+			return Session{}, invalid("application context is unavailable")
+		}
+		app, err := s.applications.Get(ctx, input.ApplicationID)
+		if err != nil {
+			return Session{}, err
+		}
+		if app.Status == "disabled" {
+			return Session{}, invalid("application is disabled")
+		}
+		if app.ProjectScopeID != "" && app.ProjectScopeID != input.ScopeID {
+			return Session{}, authorization.ErrForbidden
+		}
+		associated, err := s.applications.ContextResourceIDs(ctx, input.ApplicationID, input.ScopeID)
+		if err != nil {
+			return Session{}, err
+		}
+		input.TargetResourceIDs = append(associated, input.TargetResourceIDs...)
 	}
 	input.TargetResourceIDs = distinctIDs(input.TargetResourceIDs)
 	if len(input.TargetResourceIDs) > 20 {

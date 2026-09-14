@@ -9,7 +9,7 @@
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
   let selectedProfileId = ''; let selectedVersionId = ''; let versions: AgentProfileVersion[] = [];
-  let profileName = ''; let profileInstruction = ''; let profileCapabilities = 'text, tool_calling, stream'; let profileAllowedTools = ''; let profileTargetKinds = 'Application'; let profileInputSchema = '{"type":"object","additionalProperties":true}'; let profileOutputSchema = '{"type":"object","additionalProperties":true}'; let busy = false;
+  let profileName = ''; let profileInstruction = ''; let profileCapabilities = 'text, tool_calling, stream'; let profileAllowedTools = ''; let profileTargetKinds = ''; let profileInputSchema = '{"type":"object","additionalProperties":true}'; let profileOutputSchema = '{"type":"object","additionalProperties":true}'; let busy = false;
   $: if (!selectedProfileId && profiles[0]) { selectedProfileId = profiles[0].id; void loadVersions(); }
   function describeError(error: unknown, fallback: string) { if (error instanceof ApiError) { if (error.status === 403) return '当前账号没有执行此操作的权限。'; if (error.status === 401) return '会话已过期，请重新登录。'; return error.message || fallback; } if (error instanceof SyntaxError) return '配置必须是有效的 JSON 对象。'; return error instanceof Error ? error.message || fallback : fallback; }
   async function loadVersions() { if (!selectedProfileId) return; try { versions = await api.agentProfileVersions(selectedProfileId); selectedVersionId = versions.find((item) => item.status === 'published')?.id || versions[0]?.id || ''; } catch (error) { onError(describeError(error, 'AgentProfile 版本加载失败')); } }
@@ -35,7 +35,7 @@
     <form class="stack-form" on:submit|preventDefault={createProfile}>
       <div class="form-row">
         <label>名称<input bind:value={profileName} required placeholder="例如：PostgreSQL 故障专家" /></label>
-        <label>适用资源类型<input bind:value={profileTargetKinds} required placeholder="Application, PostgreSQL" /></label>
+        <label>适用资源类型<input bind:value={profileTargetKinds} required placeholder="Kubernetes, PostgreSQL" /></label>
       </div>
       <label>专家指令<textarea bind:value={profileInstruction} rows="5" required placeholder="描述诊断范围、判断原则和输出要求"></textarea></label>
       <div class="form-row">

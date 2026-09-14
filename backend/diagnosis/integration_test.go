@@ -39,7 +39,7 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 	if err != nil {
 		t.Fatalf("create provider: %v", err)
 	}
-	target, err := resources.Create(ctx, resource.CreateInput{ScopeID: scopeID, Kind: "Application", Name: "diagnosis-target", Config: map[string]any{}})
+	target, err := resources.Create(ctx, resource.CreateInput{ScopeID: scopeID, Kind: "PostgreSQL", Name: "diagnosis-target", Config: map[string]any{}})
 	if err != nil {
 		t.Fatalf("create target resource: %v", err)
 	}

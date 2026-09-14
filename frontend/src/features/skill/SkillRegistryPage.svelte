@@ -101,7 +101,7 @@
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
   let selectedSkillId = ''; let selectedVersionId = ''; let versions: SkillVersion[] = [];
-  let instruction = ''; let targetKinds = 'Application'; let selectedToolNames: string[] = [];
+  let instruction = ''; let targetKinds = 'Kubernetes'; let selectedToolNames: string[] = [];
   let inputSchema = '{"type":"object","additionalProperties":true}'; let outputSchema = '{"type":"object","additionalProperties":true}'; let busy = false;
   $: if (!selectedSkillId && resources[0]) { selectedSkillId = resources[0].id; void loadVersions(); }
   function describeError(error: unknown, fallback: string) { if (error instanceof ApiError) { if (error.status === 403) return '当前账号没有执行此操作的权限。'; if (error.status === 401) return '会话已过期，请重新登录。'; return error.message || fallback; } return error instanceof Error ? error.message || fallback : fallback; }
@@ -128,7 +128,7 @@
     <div class="panel-heading"><div><p class="eyebrow">NEW VERSION</p><h2>创建 Skill 草稿</h2></div><span class="scope-type">不可变版本</span></div>
     <form class="stack-form" on:submit|preventDefault={createVersion}>
       <label>Agent Instruction<textarea bind:value={instruction} rows="5" required placeholder="明确目标、边界与输出 JSON 结构"></textarea></label>
-      <label>适用资源类型<input bind:value={targetKinds} required placeholder="Application, Kubernetes" /></label>
+      <label>适用资源类型<input bind:value={targetKinds} required placeholder="Kubernetes, PostgreSQL" /></label>
       <fieldset class="skill-tool-picker">
         <legend>允许调用的 Connector 工具</legend>
         <p>仅已勾选的只读工具会暴露给模型；每个版本创建后不可修改。</p>

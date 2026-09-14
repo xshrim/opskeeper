@@ -83,7 +83,6 @@ func main() {
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentials)
 	connectorProvider := connectors.AIEngineProvider()
 	mcpProvider := mcpService.AIEngineProvider()
-	connectors.SetApplicationToolInvoker(aiengine.NewResourceToolInvoker(connectorProvider, mcpProvider))
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentials)
 	skillService := skill.NewService(skill.NewStore(pool), resourceService)
 	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
@@ -180,7 +179,7 @@ func (c connectorChecker) Check(ctx context.Context, id string) ([]inspection.Ru
 		evidence, err = c.service.InspectRedis(ctx, id)
 	case "Kafka":
 		evidence, err = c.service.InspectKafka(ctx, id)
-	case "Application", "BusinessApplication", "CronApplication", "Kubernetes", "KubernetesCluster":
+	case "Kubernetes":
 		clusterID := target.SourceResourceID
 		if clusterID == "" {
 			clusterID = id
@@ -193,7 +192,7 @@ func (c connectorChecker) Check(ctx context.Context, id string) ([]inspection.Ru
 			resourceName += "s"
 		}
 		workloadName := nestedConfigString(target.Config, "kubernetes", "workload_name")
-		if workloadName == "" && target.Kind != "Kubernetes" && target.Kind != "KubernetesCluster" {
+		if workloadName == "" {
 			workloadName = target.Name
 		}
 		evidence, err = c.service.ReadKubernetes(ctx, clusterID, connector.KubernetesQuery{Resource: resourceName, Namespace: configString(target.Config, "namespace"), Name: workloadName, Limit: 20})

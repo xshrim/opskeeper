@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"opskeeper/backend/application"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/resource"
 )
@@ -14,16 +15,16 @@ import (
 const scanTimeout = 5 * time.Minute
 
 type Service struct {
-	store       Store
-	resources   ResourceReader
-	importer    ResourceImporter
-	projects    ProjectManager
-	credentials CredentialReader
-	scanner     Scanner
+	store        Store
+	resources    ResourceReader
+	projects     ProjectManager
+	applications ApplicationManager
+	credentials  CredentialReader
+	scanner      Scanner
 }
 
-func NewService(store Store, resources ResourceReader, importer ResourceImporter, projects ProjectManager, credentials CredentialReader, scanner Scanner) *Service {
-	return &Service{store: store, resources: resources, importer: importer, projects: projects, credentials: credentials, scanner: scanner}
+func NewService(store Store, resources ResourceReader, projects ProjectManager, applications ApplicationManager, credentials CredentialReader, scanner Scanner) *Service {
+	return &Service{store: store, resources: resources, projects: projects, applications: applications, credentials: credentials, scanner: scanner}
 }
 
 func (s *Service) Start(ctx context.Context, actorID, clusterID string) (Run, error) {
@@ -75,15 +76,17 @@ func (s *Service) execute(ctx context.Context, runID string, cluster resource.Re
 		_ = s.store.FailRun(ctx, runID, err)
 		return
 	}
-	uids := make([]string, 0, len(items))
+	workloadUIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		uids = append(uids, item.ExternalUID)
+		if item.Kind == "Workload" {
+			workloadUIDs = append(workloadUIDs, item.ExternalUID)
+		}
 	}
 	if err := s.store.ReplaceItems(ctx, runID, items); err != nil {
 		_ = s.store.FailRun(ctx, runID, err)
 		return
 	}
-	if err := s.store.MarkMissing(ctx, cluster.ID, uids); err != nil {
+	if err := s.store.MarkMissing(ctx, cluster.ID, runID, workloadUIDs); err != nil {
 		_ = s.store.FailRun(ctx, runID, err)
 		return
 	}
@@ -170,47 +173,41 @@ func (s *Service) Import(ctx context.Context, actorID, runID string, input Impor
 	}
 
 	for _, item := range items {
-		if item.Kind != "Application" {
-			continue
-		}
-		if _, ok := selected[item.ID]; !ok {
+		if item.Kind != "Workload" || !selectedItem(item, selected) {
 			continue
 		}
 		mapping, mapped := input.ProjectMappings[item.Namespace]
-		if mapped && mapping.Ignore {
-			if err := s.store.MarkIgnored(ctx, item.ID); err != nil {
-				return ImportResult{}, err
+		if !mapped || mapping.Ignore {
+			if mapped {
+				if err := s.store.MarkIgnored(ctx, item.ID); err != nil {
+					return ImportResult{}, err
+				}
+				item.Status = ItemIgnored
+				result.Ignored = append(result.Ignored, item)
 			}
-			item.Status = ItemIgnored
-			result.Ignored = append(result.Ignored, item)
 			continue
 		}
 		project, ok := namespaceProjects[item.Namespace]
 		if !ok {
-			return ImportResult{}, fmt.Errorf("%w: namespace %q must be mapped to a project before importing applications", ErrInvalid, item.Namespace)
+			return ImportResult{}, fmt.Errorf("%w: namespace %q must be mapped before importing workloads", ErrInvalid, item.Namespace)
+		}
+		if s.applications == nil {
+			return ImportResult{}, fmt.Errorf("%w: application import is unavailable", ErrInvalid)
 		}
 		config := cloneMap(item.Payload)
 		config["cluster_resource_id"] = cluster.ID
 		config["namespace"] = item.Namespace
 		config["resource_version"] = item.ResourceVersion
-		imported, err := s.importer.Import(ctx, resource.ImportedInput{
-			ScopeID:          project.Scope.ID,
-			Kind:             "Application",
-			Name:             item.Name,
-			ExternalUID:      item.ExternalUID,
-			SourceResourceID: cluster.ID,
-			Labels:           item.Labels,
-			Config:           config,
-			Status:           resource.StatusActive,
-		})
+		instance := application.CreateInstanceInput{Name: item.Name, RuntimeKind: "cloud_native", TargetResourceID: cluster.ID, Selector: config, Status: "active"}
+		imported, err := s.applications.Import(ctx, application.ImportInput{ProjectID: project.ID, Name: item.Name, Code: workloadCode(item), Source: "kubernetes", ExternalUID: item.ExternalUID, Labels: item.Labels, Instances: []application.CreateInstanceInput{instance}})
 		if err != nil {
 			return ImportResult{}, err
 		}
+		item.Status = ItemImported
+		item.ImportedApplicationID = &imported.ID
 		if err := s.store.MarkImported(ctx, item.ID, imported.ID, runID); err != nil {
 			return ImportResult{}, err
 		}
-		item.Status = ItemImported
-		item.ImportedResourceID = &imported.ID
 		result.Imported = append(result.Imported, item)
 	}
 	result.Run, err = s.store.GetRun(ctx, runID)
@@ -287,7 +284,7 @@ func validateScannedItems(items []ScannedItem) error {
 			return fmt.Errorf("%w: discovered item requires name and UID", ErrInvalid)
 		}
 		switch item.Kind {
-		case "Project", "Application":
+		case "Project", "Workload":
 		default:
 			return fmt.Errorf("%w: unsupported discovered kind %q", ErrInvalid, item.Kind)
 		}
@@ -318,6 +315,32 @@ func stringSet(values []string) map[string]struct{} {
 		}
 	}
 	return set
+}
+
+func selectedItem(item Item, selected map[string]struct{}) bool {
+	if len(selected) == 0 {
+		return item.Status != ItemIgnored
+	}
+	_, ok := selected[item.ID]
+	return ok
+}
+
+func workloadCode(item Item) string {
+	value := strings.ToLower(strings.TrimSpace(item.Namespace + "-" + item.Name))
+	value = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return '-'
+	}, value)
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "kubernetes-workload"
+	}
+	if len(value) > 63 {
+		value = strings.TrimRight(value[:63], "-")
+	}
+	return value
 }
 
 func cloneMap(value map[string]any) map[string]any {

@@ -101,10 +101,11 @@ func registerOrganizationRoutes(router chi.Router, service organizationService, 
 			router.With(guard(authorization.ProjectManage)).Post("/projects", handler.createProject)
 		})
 	})
-	router.Route("/projects/{projectID}", func(router chi.Router) {
-		router.With(guard(authorization.OrganizationRead)).Get("/", handler.getProject)
-		router.With(guard(authorization.ProjectManage)).Patch("/", handler.updateProject)
-	})
+	// Keep project handlers as ordinary routes. Mounting a subrouter at
+	// /projects/{projectID} installs a wildcard that prevents the independent
+	// application workspace routes from being registered on the same mux.
+	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/", handler.getProject)
+	router.With(guard(authorization.ProjectManage)).Patch("/projects/{projectID}/", handler.updateProject)
 }
 
 func (h organizationHandler) deleteTeam(writer http.ResponseWriter, request *http.Request) {

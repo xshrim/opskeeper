@@ -170,63 +170,6 @@ export interface ConnectionCheck {
   checked_at: string;
 }
 
-export interface ApplicationHostProcessCandidate {
-  pid: number;
-  name?: string;
-  executable?: string;
-  command_line?: string;
-  state?: string;
-}
-
-export interface ApplicationHostProcesses {
-  keyword: string;
-  processes: ApplicationHostProcessCandidate[];
-  match_count: number;
-  truncated: boolean;
-}
-
-export interface ApplicationHostProcessValidation {
-  keyword: string;
-  pid: number;
-  valid: boolean;
-  match_count: number;
-  message?: string;
-}
-
-export interface ApplicationDockerContainerCandidate {
-  id: string;
-  name: string;
-  image?: string;
-  state?: string;
-  status?: string;
-}
-
-export interface ApplicationDockerContainers {
-  containers: ApplicationDockerContainerCandidate[];
-}
-
-export interface ApplicationKubernetesNamespaceCandidate {
-  name: string;
-}
-
-export interface ApplicationKubernetesNamespaces {
-  namespaces: ApplicationKubernetesNamespaceCandidate[];
-}
-
-export interface ApplicationKubernetesWorkloadCandidate {
-  namespace: string;
-  kind: string;
-  name: string;
-  ready?: boolean;
-  phase?: string;
-  age?: string;
-  labels?: Record<string, string>;
-}
-
-export interface ApplicationKubernetesWorkloads {
-  namespace: string;
-  workloads: ApplicationKubernetesWorkloadCandidate[];
-}
 
 export interface Credential {
   id: string;
@@ -417,6 +360,7 @@ export interface DiagnosisSession {
   scope_id: string;
   ai_provider_resource_id?: string;
   model_name?: string;
+  application_id?: string;
   actor_user_id?: string;
   status: DiagnosisStatus;
   title: string;
@@ -592,7 +536,7 @@ export interface DiscoveryItem {
   labels: Record<string, string>;
   payload: Record<string, unknown>;
   status: 'pending' | 'imported' | 'ignored' | 'missing';
-  imported_resource_id?: string;
+  imported_application_id?: string;
   imported_project_id?: string;
   created_at: string;
   updated_at: string;
@@ -825,12 +769,12 @@ export const api = {
   applications: (projectId: string) => request<{ items: Application[] }>(`api/v1/projects/${projectId}/applications`),
   createApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications`, json(body)),
   importApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications/import`, json(body)),
-  updateApplication: (id: string, body: Record<string, unknown>) => request<Application>(`api/v1/applications/${id}/`, patch(body)),
-  deleteApplication: (id: string) => request<void>(`api/v1/applications/${id}/`, { method: 'DELETE' }),
-  createApplicationInstance: (applicationId: string, body: Record<string, unknown>) => request<ApplicationInstance>(`api/v1/applications/${applicationId}/instances`, json(body)),
-  createApplicationDependency: (applicationId: string, body: Record<string, unknown>) => request<ApplicationDependency>(`api/v1/applications/${applicationId}/dependencies`, json(body)),
-  deleteApplicationInstance: (id: string) => request<void>(`api/v1/application-instances/${id}/`, { method: 'DELETE' }),
-  deleteApplicationDependency: (id: string) => request<void>(`api/v1/application-dependencies/${id}/`, { method: 'DELETE' }),
+  updateApplication: (projectId: string, id: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications/${id}/`, patch(body)),
+  deleteApplication: (projectId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${id}/`, { method: 'DELETE' }),
+  createApplicationInstance: (projectId: string, applicationId: string, body: Record<string, unknown>) => request<ApplicationInstance>(`api/v1/projects/${projectId}/applications/${applicationId}/instances`, json(body)),
+  createApplicationDependency: (projectId: string, applicationId: string, body: Record<string, unknown>) => request<ApplicationDependency>(`api/v1/projects/${projectId}/applications/${applicationId}/dependencies`, json(body)),
+  deleteApplicationInstance: (projectId: string, applicationId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${applicationId}/instances/${id}/`, { method: 'DELETE' }),
+  deleteApplicationDependency: (projectId: string, applicationId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${applicationId}/dependencies/${id}/`, { method: 'DELETE' }),
   resources: (kind = '') =>
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
@@ -908,30 +852,6 @@ export const api = {
     request<{ status: string; message: string; latency_ms: number }>(
       'api/v1/host/connection-tests',
       json(body)
-    ),
-  applicationHostProcesses: (resourceId: string, keyword: string, limit = 50) =>
-    request<ApplicationHostProcesses>(
-      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/host-processes?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
-    ),
-  validateApplicationHostProcess: (
-    resourceId: string,
-    body: { keyword: string; pid: number }
-  ) =>
-    request<ApplicationHostProcessValidation>(
-      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/host-processes/validate`,
-      json(body)
-    ),
-  applicationDockerContainers: (resourceId: string, keyword = '', limit = 100) =>
-    request<ApplicationDockerContainers>(
-      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/docker-containers?keyword=${encodeURIComponent(keyword)}&limit=${limit}`
-    ),
-  applicationKubernetesNamespaces: (resourceId: string, includeSystem = false, limit = 100) =>
-    request<ApplicationKubernetesNamespaces>(
-      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/kubernetes-namespaces?include_system=${includeSystem ? 'true' : 'false'}&limit=${limit}`
-    ),
-  applicationKubernetesWorkloads: (resourceId: string, namespace: string, limit = 100) =>
-    request<ApplicationKubernetesWorkloads>(
-      `api/v1/resources/${encodeURIComponent(resourceId)}/application-targets/kubernetes-workloads?namespace=${encodeURIComponent(namespace)}&limit=${limit}`
     ),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
@@ -1022,6 +942,7 @@ export const api = {
     request<DiagnosisSnapshot>(`api/v1/diagnosis-sessions/${id}/`),
   startDiagnosis: (body: {
     scope_id: string;
+    application_id?: string;
     title?: string;
     question: string;
     target_resource_ids: string[];

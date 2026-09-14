@@ -11,14 +11,15 @@ import (
 
 type applicationService interface {
 	Create(context.Context, application.CreateInput) (application.Application, error)
-	Get(context.Context, string) (application.Application, error)
+	Import(context.Context, application.ImportInput) (application.Application, error)
+	GetInProject(context.Context, string, string) (application.Application, error)
 	List(context.Context, string) ([]application.Application, error)
-	Update(context.Context, string, application.UpdateInput) (application.Application, error)
-	Delete(context.Context, string) error
-	CreateInstance(context.Context, application.CreateInstanceInput) (application.Instance, error)
-	DeleteInstance(context.Context, string) error
-	CreateDependency(context.Context, application.CreateDependencyInput) (application.Dependency, error)
-	DeleteDependency(context.Context, string) error
+	UpdateInProject(context.Context, string, string, application.UpdateInput) (application.Application, error)
+	DeleteInProject(context.Context, string, string) error
+	CreateInstanceInProject(context.Context, string, string, application.CreateInstanceInput) (application.Instance, error)
+	DeleteInstanceInProject(context.Context, string, string, string) error
+	CreateDependencyInProject(context.Context, string, string, application.CreateDependencyInput) (application.Dependency, error)
+	DeleteDependencyInProject(context.Context, string, string, string) error
 	Workspace(context.Context, string) (application.Workspace, error)
 }
 type applicationHandler struct {
@@ -70,19 +71,14 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/workspace", h.workspace)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
-	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/import", h.create)
+	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/import", h.importApplication)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications/{applicationID}/", h.get)
 	router.With(guard(authorization.ProjectManage)).Patch("/projects/{projectID}/applications/{applicationID}/", h.update)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/", h.delete)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/instances", h.createInstance)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/dependencies", h.createDependency)
-	router.With(guard(authorization.ProjectManage)).Delete("/application-instances/{instanceID}/", h.deleteInstance)
-	router.With(guard(authorization.ProjectManage)).Delete("/application-dependencies/{dependencyID}/", h.deleteDependency)
-	router.With(guard(authorization.OrganizationRead)).Get("/applications/{applicationID}/", h.get)
-	router.With(guard(authorization.ProjectManage)).Patch("/applications/{applicationID}/", h.update)
-	router.With(guard(authorization.ProjectManage)).Delete("/applications/{applicationID}/", h.delete)
-	router.With(guard(authorization.ProjectManage)).Post("/applications/{applicationID}/instances", h.createInstance)
-	router.With(guard(authorization.ProjectManage)).Post("/applications/{applicationID}/dependencies", h.createDependency)
+	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/instances/{instanceID}/", h.deleteInstance)
+	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/dependencies/{dependencyID}/", h.deleteDependency)
 }
 func (h applicationHandler) workspace(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.Workspace(r.Context(), chi.URLParam(r, "projectID"))
@@ -105,30 +101,30 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Source: b.Source, ExternalUID: b.ExternalUID, Labels: b.Labels})
+	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Source: b.Source, ExternalUID: b.ExternalUID, Labels: b.Labels, Instances: b.Instances, Dependencies: b.Dependencies})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}
-	for _, instance := range b.Instances {
-		instance.ApplicationID = v.ID
-		if _, e = h.service.CreateInstance(r.Context(), instance); e != nil {
-			writeApplicationError(w, r, e)
-			return
-		}
+	w.Header().Set("Location", h.apiBasePath+"/projects/"+chi.URLParam(r, "projectID")+"/applications/"+v.ID)
+	writeJSON(w, http.StatusCreated, v)
+}
+func (h applicationHandler) importApplication(w http.ResponseWriter, r *http.Request) {
+	var b application.ImportInput
+	if !decodeRequest(w, r, &b) {
+		return
 	}
-	for _, dependency := range b.Dependencies {
-		dependency.ApplicationID = v.ID
-		if _, e = h.service.CreateDependency(r.Context(), dependency); e != nil {
-			writeApplicationError(w, r, e)
-			return
-		}
+	b.ProjectID = chi.URLParam(r, "projectID")
+	v, err := h.service.Import(r.Context(), b)
+	if err != nil {
+		writeApplicationError(w, r, err)
+		return
 	}
-	w.Header().Set("Location", h.apiBasePath+"/applications/"+v.ID)
+	w.Header().Set("Location", h.apiBasePath+"/projects/"+b.ProjectID+"/applications/"+v.ID)
 	writeJSON(w, http.StatusCreated, v)
 }
 func (h applicationHandler) get(w http.ResponseWriter, r *http.Request) {
-	v, e := h.service.Get(r.Context(), chi.URLParam(r, "applicationID"))
+	v, e := h.service.GetInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"))
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -140,7 +136,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Update(r.Context(), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -148,7 +144,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 func (h applicationHandler) delete(w http.ResponseWriter, r *http.Request) {
-	if e := h.service.Delete(r.Context(), chi.URLParam(r, "applicationID")); e != nil {
+	if e := h.service.DeleteInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID")); e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}
@@ -159,7 +155,7 @@ func (h applicationHandler) createInstance(w http.ResponseWriter, r *http.Reques
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.CreateInstance(r.Context(), application.CreateInstanceInput{ApplicationID: chi.URLParam(r, "applicationID"), Name: b.Name, RuntimeKind: b.RuntimeKind, TargetResourceID: b.TargetResourceID, Selector: b.Selector, LogBinding: b.LogBinding, Status: b.Status})
+	v, e := h.service.CreateInstanceInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.CreateInstanceInput{Name: b.Name, RuntimeKind: b.RuntimeKind, TargetResourceID: b.TargetResourceID, Selector: b.Selector, LogBinding: b.LogBinding, Status: b.Status})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -167,7 +163,7 @@ func (h applicationHandler) createInstance(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusCreated, v)
 }
 func (h applicationHandler) deleteInstance(w http.ResponseWriter, r *http.Request) {
-	if e := h.service.DeleteInstance(r.Context(), chi.URLParam(r, "instanceID")); e != nil {
+	if e := h.service.DeleteInstanceInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), chi.URLParam(r, "instanceID")); e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}
@@ -182,7 +178,7 @@ func (h applicationHandler) createDependency(w http.ResponseWriter, r *http.Requ
 	if b.Required != nil {
 		required = *b.Required
 	}
-	v, e := h.service.CreateDependency(r.Context(), application.CreateDependencyInput{ApplicationID: chi.URLParam(r, "applicationID"), TargetResourceID: b.TargetResourceID, DependencyKind: b.DependencyKind, Binding: b.Binding, Required: required, Status: b.Status})
+	v, e := h.service.CreateDependencyInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.CreateDependencyInput{TargetResourceID: b.TargetResourceID, DependencyKind: b.DependencyKind, Binding: b.Binding, Required: required, Status: b.Status})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -190,7 +186,7 @@ func (h applicationHandler) createDependency(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, v)
 }
 func (h applicationHandler) deleteDependency(w http.ResponseWriter, r *http.Request) {
-	if e := h.service.DeleteDependency(r.Context(), chi.URLParam(r, "dependencyID")); e != nil {
+	if e := h.service.DeleteDependencyInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), chi.URLParam(r, "dependencyID")); e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}

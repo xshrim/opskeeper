@@ -20,7 +20,7 @@ func (s *Service) AIEngineProvider() aiengine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Application", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Oracle", "Redis", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO"}
+	return []string{"Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Oracle", "Redis", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO"}
 }
 
 func (connectorContextProvider) AccessModes() []string {
@@ -43,10 +43,6 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 		tools = append(tools, aiengine.ToolFunc{Def: aiengine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
 	switch resource.Kind {
-	case "Application":
-		if err := p.service.resolveApplicationTools(ctx, resource, add); err != nil {
-			return nil, nil, err
-		}
 	case "Host":
 		if err := p.service.resolveHostTools(ctx, resource, add); err != nil {
 			return nil, nil, err
@@ -99,7 +95,9 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource aiengine
 			return nil, nil, err
 		}
 	case "MinIO":
-		if err := p.service.resolveMinIOTools(ctx, resource, add); err != nil { return nil, nil, err }
+		if err := p.service.resolveMinIOTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
 	case "Nacos":
 		if err := p.service.resolveNacosTools(ctx, resource, add); err != nil {
 			return nil, nil, err

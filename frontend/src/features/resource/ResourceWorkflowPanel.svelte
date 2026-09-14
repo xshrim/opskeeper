@@ -35,7 +35,6 @@
   export let kafkaConfigurationComplete = false;
   export let elasticsearchConfigurationComplete = false;
   export let repositoryConfigurationComplete = false;
-  export let applicationConfigurationComplete = false;
   export let providerModelCount = 0;
   export let busy = false;
   export let scopeSelected = false;
@@ -62,7 +61,6 @@
   export let onContinueKafka: () => void = () => {};
   export let onContinueElasticsearch: () => void = () => {};
   export let onContinueRepository: () => void = () => {};
-  export let onSubmitApplication: () => void = () => {};
   export let onSubmitMcp: () => void = () => {};
   export let onSubmitDocker: () => void = () => {};
   export let onSubmitHost: () => void = () => {};
@@ -231,14 +229,6 @@
     {:else if kind === 'Repository'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Repository 配置</span></button>
       <button class:active={step === 3} disabled={!repositoryConfigurationComplete} type="button" on:click={() => repositoryConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
-    {:else if kind === 'Application'}
-      <button
-        class:active={step === 2}
-        disabled={!basicConfigurationComplete}
-        type="button"
-        on:click={() => basicConfigurationComplete && onSelectStep(2)}
-        ><b>2</b><span>实例配置</span></button
-      >
     {:else}
       <button
         class:active={step === 2}
@@ -418,9 +408,6 @@
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRepository}>下一步</button>
         {:else if kind === 'Repository' && step === 3}
           <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitRepository} disabled={busy || !scopeSelected}>{editingRepository ? '保存' : '创建'}</button>
-        {:else if kind === 'Application' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button>
-          <button class="primary" type="button" on:click={onSubmitApplication} disabled={busy || !applicationConfigurationComplete || !scopeSelected}>{editingResource ? '保存' : '创建'}</button>
         {:else if step === 2}
           <button
             class="secondary"

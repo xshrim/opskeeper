@@ -72,7 +72,4 @@ func TestResourceSubtypeDirectAgentKinds(t *testing.T) {
 	if err := validateResourceSubtype("PostgreSQL", "API"); err == nil {
 		t.Fatal("validateResourceSubtype(PostgreSQL, API) error = nil")
 	}
-	if err := validateResourceSubtype("Application", "虚拟机"); err != nil {
-		t.Fatalf("validateResourceSubtype(Application) error = %v", err)
-	}
 }

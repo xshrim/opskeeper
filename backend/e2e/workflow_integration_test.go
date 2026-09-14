@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"opskeeper/backend/application"
 	"opskeeper/backend/diagnosis"
 	"opskeeper/backend/discovery"
 	"opskeeper/backend/inspection"
@@ -51,7 +52,7 @@ func TestOperatorWorkflowFromImportThroughDiagnosisAndInspection(t *testing.T) {
 	}
 	if err := discoveryStore.ReplaceItems(ctx, run.ID, []discovery.ScannedItem{
 		{Kind: "Project", Namespace: "orders", Name: "orders", ExternalUID: "namespace-orders", Labels: map[string]string{}, Payload: map[string]any{"kubernetes_kind": "Namespace"}},
-		{Kind: "Application", Namespace: "orders", Name: "orders-api", ExternalUID: "deployment-orders", Labels: map[string]string{"app": "orders"}, Payload: map[string]any{"kubernetes": map[string]any{"workload_kind": "Deployment"}}},
+		{Kind: "Workload", Namespace: "orders", Name: "orders-api", ExternalUID: "deployment-orders", Labels: map[string]string{"app": "orders"}, Payload: map[string]any{"kubernetes": map[string]any{"workload_kind": "Deployment"}}},
 	}); err != nil {
 		t.Fatalf("ReplaceItems() error = %v", err)
 	}
@@ -64,12 +65,13 @@ func TestOperatorWorkflowFromImportThroughDiagnosisAndInspection(t *testing.T) {
 	}
 	var applicationItemID string
 	for _, item := range items {
-		if item.Kind == "Application" {
+		if item.Kind == "Workload" {
 			applicationItemID = item.ID
 		}
 	}
-	discoveryService := discovery.NewService(discoveryStore, resources, resources, organizations, nil, nil)
-	imported, err := discoveryService.Import(ctx, actorID, run.ID, discovery.ImportInput{
+	applications := application.NewService(application.NewStore(pool))
+	discoveryService := discovery.NewService(discoveryStore, resources, organizations, applications, nil, nil)
+	importResult, err := discoveryService.Import(ctx, actorID, run.ID, discovery.ImportInput{
 		ItemIDs: []string{applicationItemID},
 		ProjectMappings: map[string]discovery.ProjectMapping{
 			"orders": {ProjectID: project.ID},
@@ -78,34 +80,30 @@ func TestOperatorWorkflowFromImportThroughDiagnosisAndInspection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
-	var application resource.Resource
-	for _, item := range imported.Imported {
-		if item.ImportedResourceID != nil {
-			application, err = resources.Get(ctx, *item.ImportedResourceID)
+	var importedApplication application.Application
+	for _, item := range importResult.Imported {
+		if item.ImportedApplicationID != nil {
+			importedApplication, err = applications.Get(ctx, *item.ImportedApplicationID)
 			if err != nil {
 				t.Fatalf("Get(imported application) error = %v", err)
 			}
 		}
 	}
-	if application.ID == "" || application.ScopeID != project.Scope.ID {
-		t.Fatalf("imported application = %#v", application)
+	if importedApplication.ID == "" || importedApplication.ProjectID != project.ID {
+		t.Fatalf("imported application = %#v", importedApplication)
 	}
 
 	postgres, err := resources.Create(ctx, resource.CreateInput{ScopeID: project.Scope.ID, Kind: "PostgreSQL", Name: "orders-db", Config: map[string]any{"host": "db.internal", "port": 5432, "database": "orders"}})
 	if err != nil {
 		t.Fatalf("Create(PostgreSQL) error = %v", err)
 	}
-	if _, err := resources.CreateRelation(ctx, actorID, resource.CreateRelationInput{SourceResourceID: application.ID, TargetResourceID: postgres.ID, RelationType: "depends_on"}); err != nil {
-		t.Fatalf("CreateRelation() error = %v", err)
-	}
-	topology, err := resources.Topology(ctx, application.ID, 3, 20)
-	if err != nil || len(topology) != 2 {
-		t.Fatalf("Topology() = %#v, %v", topology, err)
+	if _, err := applications.CreateDependencyInProject(ctx, project.ID, importedApplication.ID, application.CreateDependencyInput{TargetResourceID: postgres.ID, DependencyKind: "database", Binding: map[string]any{"database": "orders"}, Required: true}); err != nil {
+		t.Fatalf("CreateDependency() error = %v", err)
 	}
 
 	diagnosisStore := diagnosis.NewStore(pool)
-	diagnosisService := diagnosis.NewService(diagnosisStore, resources)
-	session, err := diagnosisService.Start(ctx, diagnosis.StartInput{ScopeID: project.Scope.ID, ActorUserID: actorID, Question: "Why is orders unhealthy?", TargetResourceIDs: []string{application.ID, postgres.ID}})
+	diagnosisService := diagnosis.NewService(diagnosisStore, resources, applications)
+	session, err := diagnosisService.Start(ctx, diagnosis.StartInput{ScopeID: project.Scope.ID, ActorUserID: actorID, ApplicationID: importedApplication.ID, Question: "Why is orders unhealthy?", TargetResourceIDs: []string{postgres.ID}})
 	if err != nil {
 		t.Fatalf("Start(diagnosis) error = %v", err)
 	}

@@ -95,6 +95,7 @@
   let diagnosisSessionSearch = '';
   export let formatDate: (value: string) => string;
   export let scopeId = '';
+  export let applicationId = '';
   export let runAction: (operation: () => Promise<void>) => Promise<void>;
   export let describeError: (error: unknown, fallback: string) => string;
   export let onError: (message: string) => void;
@@ -200,6 +201,7 @@
   function getDiagnosisCommandState(): DiagnosisCommandState {
     return {
       scopeID: scopeId,
+      applicationID: applicationId,
       sessions: diagnosisSessions,
       selectedSessionID: selectedDiagnosisId,
       snapshot: diagnosisSnapshot,
@@ -295,6 +297,7 @@
       diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
       if (diagnosisSnapshot.session.ai_provider_resource_id) selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
       if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
+      applicationId = diagnosisSnapshot.session.application_id ?? '';
       diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
       diagnosisSessionController.syncCursor(diagnosisSnapshot);
       // Reconcile a snapshot that may already contain a terminal event while

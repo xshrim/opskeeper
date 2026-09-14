@@ -154,7 +154,7 @@ func (s *store) ListItems(ctx context.Context, runID string) ([]Item, error) {
 		SELECT item.id::text, item.run_id::text, item.kind, item.namespace, item.name,
 		       item.external_uid, item.resource_version, item.labels, item.payload,
 		       item.status, item.imported_project_id::text,
-		       item.imported_resource_id::text,
+		       item.imported_application_id::text,
 		       item.created_at, item.updated_at
 		  FROM discovery_items item
 		  JOIN discovery_runs run ON run.id = item.run_id
@@ -176,7 +176,7 @@ func (s *store) scanItems(ctx context.Context, query string, args ...any) ([]Ite
 		var labels, payload []byte
 		if err := rows.Scan(&item.ID, &item.RunID, &item.Kind, &item.Namespace, &item.Name,
 			&item.ExternalUID, &item.ResourceVersion, &labels, &payload,
-			&item.Status, &item.ImportedProjectID, &item.ImportedResourceID,
+			&item.Status, &item.ImportedProjectID, &item.ImportedApplicationID,
 			&item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan discovery item: %w", err)
 		}
@@ -191,8 +191,8 @@ func (s *store) scanItems(ctx context.Context, query string, args ...any) ([]Ite
 	return items, rows.Err()
 }
 
-func (s *store) MarkImported(ctx context.Context, itemID, resourceID, runID string) error {
-	return s.markImported(ctx, itemID, runID, "imported_resource_id", resourceID)
+func (s *store) MarkImported(ctx context.Context, itemID, applicationID, runID string) error {
+	return s.markImported(ctx, itemID, runID, "imported_application_id", applicationID)
 }
 
 func (s *store) MarkProjectMapped(ctx context.Context, itemID, projectID, runID string) error {
@@ -205,7 +205,14 @@ func (s *store) markImported(ctx context.Context, itemID, runID, targetColumn, t
 		return fmt.Errorf("begin discovery import marker: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	command, err := tx.Exec(ctx, `UPDATE discovery_items SET status = 'imported', `+targetColumn+` = $2::uuid, updated_at = now() WHERE id = $1::uuid AND run_id = $3::uuid`, itemID, targetID, runID)
+	query := `UPDATE discovery_items SET status = 'imported', updated_at = now()`
+	args := []any{itemID, runID}
+	if targetColumn != "" {
+		query += `, ` + targetColumn + ` = NULLIF($3, '')::uuid`
+		args = append(args, targetID)
+	}
+	query += ` WHERE id = $1::uuid AND run_id = $2::uuid`
+	command, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return mapError(err)
 	}
@@ -223,9 +230,36 @@ func (s *store) MarkIgnored(ctx context.Context, itemID string) error {
 	return mapError(err)
 }
 
-func (s *store) MarkMissing(ctx context.Context, clusterID string, currentUIDs []string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE resources SET status = 'unknown', updated_at = now() WHERE source_resource_id = $1 AND kind = 'Application' AND deleted_at IS NULL AND ($2::text[] IS NULL OR external_uid <> ALL($2::text[]))`, clusterID, nullableTextArray(currentUIDs))
-	return mapError(err)
+func (s *store) MarkMissing(ctx context.Context, clusterID, runID string, currentUIDs []string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin discovery missing marker: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	query := `
+WITH stale AS (
+    UPDATE discovery_items item
+       SET status = 'missing', updated_at = now()
+      FROM discovery_runs run
+     WHERE run.id = item.run_id
+       AND run.cluster_resource_id = $1::uuid
+       AND item.run_id <> $2::uuid
+       AND item.kind = 'Workload'
+       AND ($3::text[] IS NULL OR NOT (item.external_uid = ANY($3::text[])))
+       AND item.status <> 'missing'
+     RETURNING item.imported_application_id
+)
+UPDATE applications app
+   SET status = 'unknown', updated_at = now()
+ WHERE app.id IN (
+       SELECT imported_application_id
+         FROM stale
+        WHERE imported_application_id IS NOT NULL
+ )`
+	if _, err := tx.Exec(ctx, query, clusterID, runID, nullableTextArray(currentUIDs)); err != nil {
+		return mapError(err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *store) ValidateProjectParent(ctx context.Context, clusterScopeID, teamScopeID string) error {

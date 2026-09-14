@@ -26,7 +26,7 @@
   let destroyed = false;
 
   $: namespaceCandidates = discoveryItems.filter((item) => item.kind === 'Project');
-  $: applicationCandidates = discoveryItems.filter((item) => item.kind === 'Application');
+  $: workloadCandidates = discoveryItems.filter((item) => item.kind === 'Workload');
   $: if (!selectedClusterId && kubernetesClusters[0]) {
     selectedClusterId = kubernetesClusters[0].id;
     void loadRuns();
@@ -95,7 +95,7 @@
     const items = await api.discoveryItems(id);
     if (destroyed || activeDiscovery?.id !== id) return;
     discoveryItems = items;
-    selectedDiscoveryItems = Object.fromEntries(items.filter((item) => item.kind === 'Application').map((item) => [item.id, item.status !== 'ignored']));
+    selectedDiscoveryItems = Object.fromEntries(items.filter((item) => item.kind === 'Workload').map((item) => [item.id, item.status !== 'ignored']));
     projectMappingDrafts = Object.fromEntries(items.filter((item) => item.kind === 'Project').map((item) => [item.namespace || item.name, defaultProjectMapping(item)]));
   }
   function allowedTeamsForCluster() {
@@ -131,7 +131,7 @@
       const result = await api.importDiscovery(activeDiscovery.id, { item_ids: Object.entries(selectedDiscoveryItems).filter(([, selected]) => selected).map(([id]) => id), project_mappings: projectMappings });
       activeDiscovery = result.run;
       await Promise.all([onWorkspaceReload(), loadItems(result.run.id)]);
-      onNotice(`已映射 ${result.imported.filter((item) => item.kind === 'Project').length} 个项目并导入 ${result.imported.filter((item) => item.kind === 'Application').length} 个应用`);
+      onNotice(`已映射 ${result.imported.filter((item) => item.kind === 'Project').length} 个项目`);
     } catch (error) { onError(describeError(error, '导入集群发现结果失败')); } finally { busy = false; }
   }
 </script>
@@ -160,9 +160,9 @@
       </div>
     </section>
 
-    <section class="panel application-preview-panel">
-      <div class="panel-heading"><div><p class="eyebrow">APPLICATION PREVIEW</p><h2>工作负载映射应用</h2></div><span class="count">{applicationCandidates.length}</span></div>
-      <div class="application-preview-list">{#each applicationCandidates as item}<label class="application-preview-row"><input type="checkbox" bind:checked={selectedDiscoveryItems[item.id]} disabled={projectMappingDrafts[item.namespace || '']?.mode === 'ignore'} /><span class="entity-icon resource-icon"><ResourceBrandIcon resource={{ kind: 'Application' }} fallback={iconGlyph('application')} size={17} /></span><span class="application-identity"><strong>{item.name}</strong><small>{item.namespace} · {String((item.payload.kubernetes as Record<string, unknown> | undefined)?.workload_kind || 'Workload')}</small></span><span class="application-facts"><span>{payloadCount(item, 'services')} Service</span><span>{payloadCount(item, 'ingresses')} Ingress</span><span>{payloadCount(item, 'endpoints')} Endpoint</span><span>{payloadCount(item, 'instances')} Instance</span></span></label>{:else}<div class="empty-state">集群中没有可导入的工作负载。</div>{/each}</div>
+    <section class="panel workload-preview-panel">
+      <div class="panel-heading"><div><p class="eyebrow">WORKLOAD PREVIEW</p><h2>工作负载</h2></div><span class="count">{workloadCandidates.length}</span></div>
+      <div class="workload-preview-list">{#each workloadCandidates as item}<div class="workload-preview-row"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={{ kind: 'Kubernetes' }} fallback={iconGlyph('kubernetes')} size={17} /></span><span class="workload-identity"><strong>{item.name}</strong><small>{item.namespace} · 工作负载</small></span><span class="workload-facts"><span>{payloadCount(item, 'services')} Service</span><span>{payloadCount(item, 'instances')} Instance</span></span></div>{:else}<div class="empty-state">集群中没有可发现的工作负载。</div>{/each}</div>
       <div class="import-actions"><p class="muted">确认后创建或绑定项目，并将选中的工作负载写入项目应用；Kubernetes 子对象不会登记为独立资源。</p><button class="primary" on:click={importDiscovery} disabled={busy || namespaceCandidates.length === 0}>确认导入项目与应用</button></div>
     </section>
   {/if}

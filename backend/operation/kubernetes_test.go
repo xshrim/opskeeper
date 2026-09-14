@@ -25,11 +25,11 @@ func (items resourceMap) Get(_ context.Context, id string) (resource.Resource, e
 func TestKubernetesSubmitterCreatesFixedOperationJob(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	resources := resourceMap{
-		"application": {ID: "application", Kind: "Application", Name: "payments", SourceResourceID: "cluster", Config: map[string]any{"namespace": "payments", "kubernetes": map[string]any{"workload_kind": "Deployment", "workload_name": "payments-api"}}},
-		"cluster":     {ID: "cluster", Kind: "Kubernetes"},
+		"workload": {ID: "workload", Kind: "Kubernetes", Name: "payments-api", Config: map[string]any{"namespace": "payments", "kubernetes": map[string]any{"workload_kind": "Deployment", "workload_name": "payments-api"}}},
+		"cluster":   {ID: "cluster", Kind: "Kubernetes"},
 	}
 	submitter := &KubernetesSubmitter{Resources: resources, Image: "opskeeper:test", Factory: func(context.Context, resource.Resource) (kubernetes.Interface, error) { return client, nil }}
-	request := Request{TargetResourceID: "application", OperationName: ScaleWorkload, Status: Executing, Parameters: map[string]any{"replicas": float64(3)}}
+	request := Request{TargetResourceID: "workload", OperationName: ScaleWorkload, Status: Executing, Parameters: map[string]any{"replicas": float64(3)}}
 	ref, err := submitter.Submit(context.Background(), request, "01234567-89ab-cdef")
 	if err != nil {
 		t.Fatal(err)

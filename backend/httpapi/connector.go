@@ -54,14 +54,6 @@ type elasticsearchDraftConnectorService interface {
 type minIODraftConnectorService interface {
 	TestMinIODraft(context.Context, connector.MinIODraftInput) (connector.MinIODraftCheck, error)
 }
-type applicationDiscoveryService interface {
-	DiscoverApplicationHostProcesses(context.Context, string, string, int) (connector.ApplicationHostProcesses, error)
-	ValidateApplicationHostProcess(context.Context, string, string, int) (connector.ApplicationHostProcessValidation, error)
-	DiscoverApplicationDockerContainers(context.Context, string, string, int) (connector.ApplicationDockerContainers, error)
-	DiscoverApplicationKubernetesNamespaces(context.Context, string, bool, int) (connector.ApplicationKubernetesNamespaces, error)
-	DiscoverApplicationKubernetesWorkloads(context.Context, string, string, int) (connector.ApplicationKubernetesWorkloads, error)
-}
-
 type connectorHandler struct {
 	service connectorService
 	auditor audit.Logger
@@ -180,18 +172,28 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 	if draft, ok := service.(oracleDraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/oracle/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.OracleDraftInput
-			if !decodeRequest(w, r, &body) { return }
+			if !decodeRequest(w, r, &body) {
+				return
+			}
 			check, err := draft.TestOracleDraft(r.Context(), body)
-			if err != nil { writeConnectorError(w, r, err); return }
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
 			writeJSON(w, http.StatusOK, check)
 		})
 	}
 	if draft, ok := service.(rabbitMQDraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/rabbitmq/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.RabbitMQDraftInput
-			if !decodeRequest(w, r, &body) { return }
+			if !decodeRequest(w, r, &body) {
+				return
+			}
 			check, err := draft.TestRabbitMQDraft(r.Context(), body)
-			if err != nil { writeConnectorError(w, r, err); return }
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
 			writeJSON(w, http.StatusOK, check)
 		})
 	}
@@ -210,7 +212,7 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 		})
 	}
 	if draft, ok := service.(elasticsearchDraftConnectorService); ok {
-	router.With(guard(authorization.ResourceUpdate)).Post("/elasticsearch/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+		router.With(guard(authorization.ResourceUpdate)).Post("/elasticsearch/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.ElasticsearchDraftInput
 			if !decodeRequest(w, r, &body) {
 				return
@@ -221,65 +223,20 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				return
 			}
 			writeJSON(w, http.StatusOK, check)
-	})
+		})
 	}
 	if draft, ok := service.(minIODraftConnectorService); ok {
 		router.With(guard(authorization.ResourceUpdate)).Post("/minio/connection-tests", func(w http.ResponseWriter, r *http.Request) {
 			var body connector.MinIODraftInput
-			if !decodeRequest(w, r, &body) { return }
-			check, err := draft.TestMinIODraft(r.Context(), body)
-			if err != nil { writeConnectorError(w, r, err); return }
-			writeJSON(w, http.StatusOK, check)
-		})
-	}
-	if discovery, ok := service.(applicationDiscoveryService); ok {
-		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-targets/host-processes", func(w http.ResponseWriter, r *http.Request) {
-			limit := queryLimit(r)
-			result, err := discovery.DiscoverApplicationHostProcesses(r.Context(), chi.URLParam(r, "resourceID"), r.URL.Query().Get("keyword"), limit)
-			if err != nil {
-				writeConnectorError(w, r, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, result)
-		})
-		router.With(guard(authorization.ResourceUse)).Post("/resources/{resourceID}/application-targets/host-processes/validate", func(w http.ResponseWriter, r *http.Request) {
-			var body struct {
-				Keyword string `json:"keyword"`
-				PID     int    `json:"pid"`
-			}
 			if !decodeRequest(w, r, &body) {
 				return
 			}
-			result, err := discovery.ValidateApplicationHostProcess(r.Context(), chi.URLParam(r, "resourceID"), body.Keyword, body.PID)
+			check, err := draft.TestMinIODraft(r.Context(), body)
 			if err != nil {
 				writeConnectorError(w, r, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, result)
-		})
-		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-targets/docker-containers", func(w http.ResponseWriter, r *http.Request) {
-			result, err := discovery.DiscoverApplicationDockerContainers(r.Context(), chi.URLParam(r, "resourceID"), r.URL.Query().Get("keyword"), queryLimit(r))
-			if err != nil {
-				writeConnectorError(w, r, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, result)
-		})
-		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-targets/kubernetes-namespaces", func(w http.ResponseWriter, r *http.Request) {
-			result, err := discovery.DiscoverApplicationKubernetesNamespaces(r.Context(), chi.URLParam(r, "resourceID"), queryBool(r, "include_system"), queryLimit(r))
-			if err != nil {
-				writeConnectorError(w, r, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, result)
-		})
-		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-targets/kubernetes-workloads", func(w http.ResponseWriter, r *http.Request) {
-			result, err := discovery.DiscoverApplicationKubernetesWorkloads(r.Context(), chi.URLParam(r, "resourceID"), r.URL.Query().Get("namespace"), queryLimit(r))
-			if err != nil {
-				writeConnectorError(w, r, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, result)
+			writeJSON(w, http.StatusOK, check)
 		})
 	}
 	router.With(guard(authorization.ResourceRead)).Get("/resources/{resourceID}/connection-tests/latest", handler.latest)

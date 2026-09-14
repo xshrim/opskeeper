@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	appdomain "opskeeper/backend/application"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/resource"
 )
@@ -16,7 +17,7 @@ func TestServiceStartRequiresAuthorizedSameScopeTarget(t *testing.T) {
 		"target-1": {ID: "target-1", ScopeID: "scope-1", Status: resource.StatusActive},
 		"target-2": {ID: "target-2", ScopeID: "scope-2", Status: resource.StatusActive},
 	}}
-	service := NewService(store, resources)
+	service := NewService(store, resources, nil)
 	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"scope-1"}, ResourceIDs: []string{"target-1"}})
 	item, err := service.Start(ctx, StartInput{ScopeID: "scope-1", ActorUserID: "actor-1", Question: "inspect", TargetResourceIDs: []string{"target-1", "target-1"}})
 	if err != nil || item.ID == "" || len(store.started.TargetResourceIDs) != 1 {
@@ -29,7 +30,7 @@ func TestServiceStartRequiresAuthorizedSameScopeTarget(t *testing.T) {
 
 func TestServiceAskReopensCompletedSession(t *testing.T) {
 	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
-	service := NewService(store, fakeResources{})
+	service := NewService(store, fakeResources{}, nil)
 	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
 	message, err := service.Ask(ctx, "session-1", "continue")
 	if err != nil || !store.reopened || message.Role != "user" || message.Content != "continue" {
@@ -42,10 +43,37 @@ func TestServiceAddTargetReopensCompletedSession(t *testing.T) {
 	resources := fakeResources{items: map[string]resource.Resource{
 		"host-1": {ID: "host-1", ScopeID: "scope-1", Status: resource.StatusActive},
 	}}
-	service := NewService(store, resources)
+	service := NewService(store, resources, nil)
 	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
 	if _, err := service.AddTarget(ctx, "session-1", "host-1"); err != nil || !store.reopened {
 		t.Fatalf("AddTarget() = %v; reopened=%v", err, store.reopened)
+	}
+}
+
+func TestServiceStartAddsApplicationContextResources(t *testing.T) {
+	store := &memoryStore{}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"runtime-1":  {ID: "runtime-1", ScopeID: "scope-1", Status: resource.StatusActive},
+		"database-1": {ID: "database-1", ScopeID: "scope-1", Status: resource.StatusActive},
+		"explicit-1": {ID: "explicit-1", ScopeID: "scope-1", Status: resource.StatusActive},
+	}}
+	applications := fakeApplications{
+		item:      appdomain.Application{ID: "app-1", ProjectScopeID: "scope-1", Status: "active"},
+		resources: []string{"runtime-1", "database-1"},
+	}
+	service := NewService(store, resources, applications)
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	if _, err := service.Start(ctx, StartInput{ScopeID: "scope-1", ActorUserID: "actor-1", ApplicationID: "app-1", Question: "inspect", TargetResourceIDs: []string{"explicit-1"}}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	want := []string{"runtime-1", "database-1", "explicit-1"}
+	if len(store.started.TargetResourceIDs) != len(want) {
+		t.Fatalf("context resources = %v, want %v", store.started.TargetResourceIDs, want)
+	}
+	for index, id := range want {
+		if store.started.TargetResourceIDs[index] != id {
+			t.Fatalf("context resources = %v, want %v", store.started.TargetResourceIDs, want)
+		}
 	}
 }
 
@@ -57,6 +85,19 @@ func (f fakeResources) Get(_ context.Context, id string) (resource.Resource, err
 		return resource.Resource{}, resource.ErrNotFound
 	}
 	return item, nil
+}
+
+type fakeApplications struct {
+	item      appdomain.Application
+	resources []string
+}
+
+func (f fakeApplications) Get(context.Context, string) (appdomain.Application, error) {
+	return f.item, nil
+}
+
+func (f fakeApplications) ContextResourceIDs(context.Context, string, string) ([]string, error) {
+	return append([]string(nil), f.resources...), nil
 }
 
 type memoryStore struct {

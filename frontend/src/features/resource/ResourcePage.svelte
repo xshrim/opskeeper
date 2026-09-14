@@ -38,7 +38,6 @@
   import RepositoryConnectionStep from './RepositoryConnectionStep.svelte';
   import RepositoryReviewStep from './RepositoryReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
-  import ApplicationConnectionStep from './ApplicationConnectionStep.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
   import {
     resourceHasConnector,
@@ -141,9 +140,7 @@
     Relation,
     Resource,
     ResourceSchema,
-    TopologyNode,
-    Project,
-    Team
+    TopologyNode
   } from '../../lib/api';
 
   type AIProviderBindingSummary = {
@@ -228,8 +225,6 @@
   export let onNotice: (message: string) => void = () => {};
   export let onError: (message: string) => void = () => {};
   export let resources: Resource[] = [];
-  export let projects: Project[] = [];
-  export let teams: Team[] = [];
   export let schemas: ResourceSchema[] = [];
   export let childSurfaceActive = false;
   let connectionDetailResourceId = '';
@@ -248,12 +243,6 @@
   let resourceConfig = '{}';
   let resourceConfigValues: Record<string, string> = {};
   let resourceSensitiveValues: Record<string, string> = {};
-  let applicationAccessMode = 'virtual_machine';
-  let applicationProjectId = '';
-  let applicationTeamId = '';
-  let applicationInstancesJSON = '[]';
-  let applicationConfigurationAttempted = false;
-  let applicationTargetInvalid = false;
   let editResourceName = '';
   let editResourceStatus = 'active';
   let editResourceLabels = '';
@@ -1021,24 +1010,6 @@
       openHostWorkflowForEdit(resource);
       return;
     }
-    if (resource.kind === 'Application') {
-      onSelectResourceScope(resource.scope_id);
-      selectedScopeId = resource.scope_id;
-      selectedResourceId = resource.id;
-      resourceKind = 'Application';
-      resourceAddCategory = 'Application';
-      resourceAddSubtype = resourceSubtypeFor(resource);
-      editingResourceId = resource.id;
-      editingProviderResourceId = '';
-      editingDockerResourceId = '';
-      editingKubernetesResourceId = '';
-      editingHostResourceId = '';
-      syncApplicationEditor(resource);
-      resourceAddStep = 1;
-      resourceEditorOpen = false;
-      resourceAddMenuOpen = true;
-      return;
-    }
     selectedResourceId = resource.id;
     syncResourceEditor(resource);
     resourceEditorOpen = true;
@@ -1300,12 +1271,6 @@
       resetRedisDraft();
       resetNacosDraft();
       resetRepositoryDraft();
-      applicationAccessMode = 'virtual_machine';
-      applicationTeamId = '';
-      applicationProjectId = '';
-      applicationInstancesJSON = '[]';
-      applicationConfigurationAttempted = false;
-      applicationTargetInvalid = false;
       resourceName = '';
       resourceLabels = '';
       resourceStatus = 'active';
@@ -1337,9 +1302,6 @@
       category === 'LLM' && subtype === 'Provider'
         ? 'AIProvider'
         : (schema?.kind ?? '');
-    if (resourceKind === 'Application') {
-      applicationAccessMode = subtype === '容器化' ? 'containerized' : subtype === '云原生' ? 'cloud_native' : 'virtual_machine';
-    }
     if (resourceKind === 'MCPServer')
       mcpTransport = mcpTransportForSubtype(subtype);
     resourceCategory = category;
@@ -2010,67 +1972,6 @@
     );
   }
 
-  function applicationProjects() {
-    const currentType = scopeType(selectedScopeId);
-    if (currentType === 'project') return projects.filter((item) => item.scope.id === selectedScopeId);
-    if (currentType === 'team') {
-      const currentTeam = teams.find((item) => item.scope.id === selectedScopeId);
-      return currentTeam ? projects.filter((item) => item.team_id === currentTeam.id) : [];
-    }
-    return projects;
-  }
-
-  function applicationSourceResources() {
-    const kind = applicationAccessMode === 'virtual_machine' ? 'Host' : applicationAccessMode === 'containerized' ? 'Docker' : 'Kubernetes';
-    return visibleResources.filter((item) => item.kind === kind && item.status === 'active');
-  }
-
-  function applicationLogResources() {
-    return visibleResources.filter((item) => item.kind === 'Loki' && item.status === 'active');
-  }
-
-  function applicationConfigurationComplete() {
-    if (applicationTargetInvalid || !applicationTeamId || !applicationProjectId || !applicationInstancesJSON.trim()) return false;
-    try {
-      const instances = JSON.parse(applicationInstancesJSON);
-      if (!Array.isArray(instances) || instances.length === 0) return false;
-      const sourceKey = applicationAccessMode === 'virtual_machine' ? 'host_resource_id' : applicationAccessMode === 'containerized' ? 'docker_resource_id' : 'kubernetes_resource_id';
-      return instances.every((instance: any) => {
-        if (!instance || typeof instance !== 'object' || !String(instance[sourceKey] ?? '').trim()) return false;
-        const source = instance.log_source;
-        const logValid = !source || source.type === 'stdout' || (source.type === 'path' && Boolean(String(source.path ?? '').trim())) || (source.type === 'query' && Boolean(String(source.resource_id ?? '').trim()) && Boolean(String(source.query ?? '').trim()));
-        if (!logValid) return false;
-        if (applicationAccessMode === 'virtual_machine') {
-          return Boolean(String(instance.process_keyword ?? '').trim()) && ((instance.log_source?.type === 'query' && Boolean(String(instance.log_source.resource_id ?? '').trim()) && Boolean(String(instance.log_source.query ?? '').trim())) || (instance.log_source?.type === 'path' && Boolean(String(instance.log_source.path ?? '').trim())));
-        }
-        if (applicationAccessMode === 'containerized') return Boolean(String(instance.container_name ?? '').trim());
-        return Boolean(String(instance.namespace ?? '').trim() && String(instance.workload_kind ?? '').trim() && String(instance.workload_name ?? '').trim());
-      });
-    } catch {
-      return false;
-    }
-  }
-
-  function applicationConfigForSave() {
-    let instances: unknown;
-    try { instances = JSON.parse(applicationInstancesJSON); } catch { throw new Error('实例配置必须是合法 JSON 数组。'); }
-    if (!Array.isArray(instances) || instances.length === 0) throw new Error('至少配置一个 Application 实例。');
-    const project = projects.find((item) => item.id === applicationProjectId);
-    if (!project || project.team_id !== applicationTeamId) throw new Error('Application 必须归属于所选团队下的项目。');
-    return { scope_id: project.scope.id, config: { access_mode: applicationAccessMode, instances } };
-  }
-
-  function syncApplicationEditor(resource: Resource) {
-    resourceName = resource.name;
-    resourceStatus = resource.status;
-    resourceLabels = Object.entries(resource.labels ?? {}).map(([key, value]) => `${key}=${value}`).join(', ');
-    applicationAccessMode = String(resource.config.access_mode ?? 'virtual_machine');
-    applicationInstancesJSON = JSON.stringify(resource.config.instances ?? [], null, 2);
-    applicationTargetInvalid = false;
-    const project = projects.find((item) => item.scope.id === resource.scope_id);
-    applicationProjectId = project?.id ?? '';
-    applicationTeamId = project?.team_id ?? '';
-  }
 
   function resourceSchemaConfigurationComplete() {
     if (!createSchema?.schema.required?.length) return true;
@@ -2650,10 +2551,6 @@
     if (resourceKind === 'RabbitMQ') { await runResourceAction(saveRabbitMQWorkflow); return; }
     if (resourceKind === 'MinIO') { await runResourceAction(saveMinIOWorkflow); return; }
     if (resourceKind === 'Repository') { await runResourceAction(saveRepositoryWorkflow); return; }
-    if (resourceKind === 'Application') {
-      await createApplicationFromWorkflow();
-      return;
-    }
     try {
       if (!resourceSchemaConfigurationComplete()) {
         resourceBasicConfigurationAttempted = true;
@@ -2701,39 +2598,6 @@
     } catch (error) {
       onError(describeError(error, '创建资源失败'));
     }
-  }
-
-  async function createApplicationFromWorkflow() {
-    await runResourceAction(async () => {
-      if (!resourceBasicConfigurationComplete()) throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
-      if (!applicationConfigurationComplete()) { applicationConfigurationAttempted = true; throw new Error('请完成项目、接入方式和实例配置。'); }
-      const payload = applicationConfigForSave();
-      const created = await createResourceRecord({ scope_id: payload.scope_id, kind: 'Application', subtype: applicationAccessMode, name: resourceName.trim(), status: resourceStatus, labels: parseLabels(resourceLabels), config: payload.config });
-      resources = [created, ...resources];
-      selectedResourceId = created.id;
-      resourceName = '';
-      resourceLabels = '';
-      applicationInstancesJSON = '[]';
-      applicationTeamId = '';
-      applicationProjectId = '';
-      applicationConfigurationAttempted = false;
-      resourceAddMenuOpen = false;
-      resourceAddStep = 1;
-      onNotice(`Application“${created.name}”已创建`);
-      void testResourceConnection(created, false);
-      await loadResourceDetails(created.id);
-    });
-  }
-
-  async function updateApplicationFromWorkflow() {
-    const application = resources.find((item) => item.id === editingResourceId);
-    if (!application) return;
-    await runResourceAction(async () => {
-      if (!applicationConfigurationComplete()) { applicationConfigurationAttempted = true; throw new Error('请完成项目、接入方式和实例配置。'); }
-      const payload = applicationConfigForSave();
-      const updated = await updateResourceRecord(application.id, { scope_id: payload.scope_id, subtype: applicationAccessMode, name: resourceName.trim(), status: resourceStatus, labels: parseLabels(resourceLabels), config: payload.config });
-      resources = resources.map((item) => item.id === updated.id ? updated : item); selectedResourceId = updated.id; resourceAddMenuOpen = false; resourceAddStep = 1; editingResourceId = ''; applicationConfigurationAttempted = false; onNotice(`Application“${updated.name}”已更新`); await loadResourceDetails(updated.id);
-    });
   }
 
   async function createKubernetesFromWorkflow() {
@@ -3590,7 +3454,6 @@
         rabbitMQConfigurationComplete={rabbitMQConfigurationComplete()}
         minIOConfigurationComplete={minIOConfigurationComplete()}
         repositoryConfigurationComplete={repositoryConfigurationComplete()}
-        applicationConfigurationComplete={applicationConfigurationComplete()}
         providerModelCount={providerModels.length}
         {busy}
         scopeSelected={Boolean(selectedScopeId)}
@@ -3653,7 +3516,6 @@
         onSubmitRabbitMQ={() => void runResourceAction(saveRabbitMQWorkflow)}
         onSubmitMinIO={() => void runResourceAction(saveMinIOWorkflow)}
         onSubmitRepository={() => void runResourceAction(saveRepositoryWorkflow)}
-        onSubmitApplication={() => void (editingResourceId ? updateApplicationFromWorkflow() : createApplicationFromWorkflow())}
       >
         {#if resourceAddStep === 1}
           <ResourceBasicConfigStep
@@ -3988,20 +3850,6 @@
           <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:defaultBranch={repositoryDefaultBranch} bind:storageBackend={repositoryStorageBackend} bind:localRoot={repositoryLocalRoot} bind:s3Endpoint={repositoryS3Endpoint} bind:s3Bucket={repositoryS3Bucket} bind:s3Prefix={repositoryS3Prefix} configurationAttempted={repositoryConfigurationAttempted} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 3}
           <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} storageBackend={repositoryStorageBackend} s3Bucket={repositoryS3Bucket} onSubmit={() => void runResourceAction(saveRepositoryWorkflow)} />
-        {:else if resourceKind === 'Application' && resourceAddStep === 2}
-          <ApplicationConnectionStep
-            bind:accessMode={applicationAccessMode}
-            bind:projectId={applicationProjectId}
-            bind:teamId={applicationTeamId}
-            bind:instancesJSON={applicationInstancesJSON}
-            projects={applicationProjects()}
-            teams={teams}
-            sourceResources={applicationSourceResources()}
-            logResources={applicationLogResources()}
-            configurationAttempted={applicationConfigurationAttempted}
-            onConfigurationChange={() => (applicationConfigurationAttempted = false)}
-            onValidationChange={(invalid) => (applicationTargetInvalid = invalid)}
-          />
         {:else if selectedResource?.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">

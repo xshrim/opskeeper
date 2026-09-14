@@ -87,13 +87,13 @@ func (s *KubernetesScanner) Scan(ctx context.Context, _ resource.Resource, kubec
 			return nil, fmt.Errorf("list Kubernetes %s: %w", query.gvr.Resource, err)
 		}
 		for _, workload := range workloads {
-			items = append(items, applicationItem(query.objectKind, query.gvr, workload, services, ingresses, endpointSlices, pods))
+			items = append(items, workloadItem(query.objectKind, query.gvr, workload, services, ingresses, endpointSlices, pods))
 		}
 	}
 	return items, nil
 }
 
-func applicationItem(objectKind string, gvr schema.GroupVersionResource, workload unstructured.Unstructured, services, ingresses, endpointSlices, pods []unstructured.Unstructured) ScannedItem {
+func workloadItem(objectKind string, gvr schema.GroupVersionResource, workload unstructured.Unstructured, services, ingresses, endpointSlices, pods []unstructured.Unstructured) ScannedItem {
 	namespace := workload.GetNamespace()
 	podLabels := workloadPodLabels(objectKind, workload.Object)
 	matchedServices := make([]map[string]any, 0)
@@ -185,7 +185,7 @@ func applicationItem(objectKind string, gvr schema.GroupVersionResource, workloa
 		"instances": instances,
 	}
 	return ScannedItem{
-		Kind:            "Application",
+		Kind:            "Workload",
 		Namespace:       namespace,
 		Name:            workload.GetName(),
 		ExternalUID:     string(workload.GetUID()),
