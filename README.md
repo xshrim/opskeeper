@@ -14,7 +14,7 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 # 1. 生成应用本地配置
 cp .env.example .env
 
-# 2. 生成 PostgreSQL 和 Redis 本地配置
+# 2. 生成 PostgreSQL 本地配置
 cp deploy/compose/.env.example deploy/compose/.env
 
 # 3. 安装 Go 和前端依赖
@@ -23,7 +23,7 @@ make deps
 # 预先清理本地中间件容器、网络和数据卷（按需执行）
 # make infra-clean
 
-# 4. 启动并等待 PostgreSQL 和 Redis
+# 4. 启动并等待 PostgreSQL
 make infra-up
 
 # 5. 执行数据库迁移
@@ -37,6 +37,16 @@ make front-api-run
 ```
 
 `make admin-create` 在未提供密码时生成随机密码并打印一次，请立即保存。
+
+本地查看链路数据时，单独启动可观测服务并配置 API、Worker 或 Scheduler：
+
+```bash
+make obs-up
+# 在 .env 中设置：OPSK_OTEL_ENDPOINT=http://127.0.0.1:4318
+make api-run
+```
+
+本地监控组件包括 Jaeger（链路）、Prometheus（指标）、Loki（日志）、Grafana（统一展示）和 OTel Collector（OTLP 接收与转发）。Jaeger UI 地址为 `http://127.0.0.1:16686`，Grafana 地址为 `http://127.0.0.1:3000`（默认账号密码 `admin/admin`）。不需要时执行 `make obs-down`。
 
 ### 一键启动
 
@@ -52,7 +62,7 @@ make start
 make run
 ```
 
-`make run` 会先应用待执行的数据库迁移，再构建并嵌入前端，最后启动 API；它不会自动启动 PostgreSQL/Redis，也不会创建管理员。访问地址仍为 `http://localhost:8080/opskeeper/`。
+`make run` 会先应用待执行的数据库迁移，再构建并嵌入前端，最后启动 API；它不会自动启动 PostgreSQL，也不会创建管理员。访问地址仍为 `http://localhost:8080/opskeeper/`。
 
 ## 文档分类
 
@@ -81,6 +91,7 @@ make run
 - [前端 UI 与交互规范](docs/standards/frontend-ui.md)
 - [后端日志规范](docs/standards/backend-logging.md)
 - [Go 编码与工程组织通用规范](docs/standards/go-coding-conventions.md)
+- [PostgreSQL First 中间件规约](docs/standards/postgresql-first.md)
 - [Git 版本控制与开发模式](docs/standards/version-control.md)
 
 ## 操作指南

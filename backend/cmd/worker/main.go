@@ -80,6 +80,7 @@ func main() {
 	store := inspection.NewStore(pool)
 	resourceService := resource.NewService(resource.NewStore(pool))
 	connectors := connector.NewService(registry, resourceService, credentials, connector.NewStore(pool), limits)
+	connectors.SetPostgresPool(pool)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentials)
 	connectorProvider := connectors.AIEngineProvider()
 	mcpProvider := mcpService.AIEngineProvider()

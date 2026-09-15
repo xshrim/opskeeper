@@ -33,3 +33,11 @@ WHERE NOT EXISTS (
 REVOKE ALL ON DATABASE :"opsk_db_name" FROM PUBLIC;
 GRANT CONNECT, TEMPORARY ON DATABASE :"opsk_db_name" TO :"opsk_db_user";
 SQL
+
+# pgvector is installed by the PostgreSQL administrator before the restricted
+# application role is used for migrations.
+psql \
+  --set=ON_ERROR_STOP=1 \
+  --username "$POSTGRES_USER" \
+  --dbname "$OPSK_DB_NAME" \
+  --command 'CREATE EXTENSION IF NOT EXISTS vector;'

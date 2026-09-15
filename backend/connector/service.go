@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/observability"
 	"opskeeper/backend/resource"
 )
@@ -21,13 +22,14 @@ type CredentialReader interface {
 }
 
 type Service struct {
-	registry    *Registry
-	resources   ResourceReader
-	credentials CredentialReader
-	checks      CheckStore
-	limits      Limits
-	slots       chan struct{}
-	now         func() time.Time
+	registry     *Registry
+	resources    ResourceReader
+	credentials  CredentialReader
+	checks       CheckStore
+	limits       Limits
+	slots        chan struct{}
+	now          func() time.Time
+	postgresPool *pgxpool.Pool
 }
 
 func NewService(registry *Registry, resources ResourceReader, credentials CredentialReader, checks CheckStore, limits Limits) *Service {
@@ -39,6 +41,8 @@ func NewService(registry *Registry, resources ResourceReader, credentials Creden
 		limits: limits, slots: make(chan struct{}, limits.MaxConcurrent), now: time.Now,
 	}
 }
+
+func (s *Service) SetPostgresPool(pool *pgxpool.Pool) { s.postgresPool = pool }
 
 func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, error) {
 	metricStarted := time.Now()

@@ -191,7 +191,7 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 | Migration 角色 | 拥有目标 Schema DDL 权限，只注入 Migration Job |
 | Application 角色 | 只拥有运行所需查询和 DML 权限，注入 API、Worker、Scheduler |
 
-当前阶段迁移器和应用使用受限的 `opskeeper` 业务数据库所有者，不使用 `postgres` 超级用户。生产环境应继续拆分 Migration 和 Application 角色。构建阶段不得获得任何数据库、Redis 或其他运行时 Secret。
+当前阶段迁移器和应用使用受限的 `opskeeper` 业务数据库所有者，不使用 `postgres` 超级用户。生产环境应继续拆分 Migration 和 Application 角色。构建阶段不得获得任何数据库、缓存、存储或其他运行时 Secret。
 
 ## 9. 回滚
 

@@ -23,7 +23,10 @@ export interface StatusRow {
 }
 
 export function toStatusRows(report: HealthReport | null): StatusRow[] {
-  const dependencies = ['postgres', 'redis'];
+  const dependencies = ['postgres'];
+  if (report?.checks && Object.prototype.hasOwnProperty.call(report.checks, 'redis')) {
+    dependencies.push('redis');
+  }
   return [
     {
       name: 'API',
@@ -32,7 +35,7 @@ export function toStatusRows(report: HealthReport | null): StatusRow[] {
     ...dependencies.map((name) => {
       const check = report?.checks[name];
       return {
-        name: name === 'postgres' ? 'PostgreSQL' : 'Redis',
+        name: name === 'postgres' ? 'PostgreSQL' : name === 'redis' ? 'Redis' : name,
         status: check?.status ?? 'unknown',
         latency:
           check?.latency_ms === undefined ? undefined : `${check.latency_ms} ms`

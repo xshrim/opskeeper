@@ -15,7 +15,7 @@ OpsKeeper 以业务项目为最终运维对象，以团队为基础设施和共�
 平台重点管理：
 
 - 部署在 Kubernetes 上的业务应用和工作负载。
-- 部署在任意环境中的 PostgreSQL、Redis、Kafka 等中间件。
+- 可接入部署在任意环境中的 PostgreSQL、Redis、Kafka 等外部中间件资源。
 - Prometheus、Loki、Tempo、Elastic 等外部可观测平台。
 - AIProvider、MCP Server、Skill 等 AI 运维能力。
 - 平台、团队和项目三级用户、角色及授权关系。
@@ -40,7 +40,7 @@ Platform
 
 ## 3. 目标总体架构
 
-下图描述当前系统形态。Browser、嵌入式 Web、Go API、PostgreSQL、Redis、组织与授权、资源目录、发现、Connector、诊断、巡检、MCP、受控执行和审批均已实现；T15 的生产部署与可观测配置已经入库，仍需在干净 Kubernetes 环境完成部署验收。
+下图描述当前系统形态。Browser、嵌入式 Web、Go API、PostgreSQL、组织与授权、资源目录、发现、Connector、诊断、巡检、MCP、受控执行和审批均已实现。T15 的生产部署与可观测配置已经入库，仍需在干净 Kubernetes 环境完成部署验收。
 
 ```mermaid
 flowchart LR
@@ -49,7 +49,7 @@ flowchart LR
     API --> Catalog[Resource Catalog]
     API --> AI[AIEngine Runtime]
     API --> PG[(PostgreSQL)]
-    API --> Redis[(Redis)]
+    API --> Cache[Cache: Memory / PostgreSQL]
     Scheduler[Inspection Scheduler] --> Jobs[PostgreSQL Job Queue]
     Jobs --> Worker[Worker Pool]
     Worker --> Discovery[Kubernetes Discovery]
@@ -77,15 +77,18 @@ flowchart LR
 | Agent 与 Runner | Google ADK Go `v2.2.0` | 已实现，T10-T14 | `llmagent`、Runner 和 Function Tool 为执行内核；外层保留 OpsKeeper 权限、预算、审批和审计 |
 | OpenAI-compatible | 项目内 Chat Completions Adapter | 已实现，T10 | 实现 ADK `model.LLM`，支持文本、SSE、usage 和 Tool Calling；来源归属见根目录 `THIRD_PARTY_NOTICES.md` |
 | MCP | Model Context Protocol 官方 Go SDK | 已实现，T14 | MCP 连接、能力发现和 Tool 调用，不自行实现协议栈 |
-| 数据库 | PostgreSQL 16 | 已实现，T01-T15 | 保存组织、身份、授权、审计、资源、诊断、巡检、审批和任务数据 |
-| 缓存 | Redis 7 | 已接入健康检查；业务用途未实现 | 目标用于缓存、限流和可恢复短期状态 |
+| 数据库 | PostgreSQL 16 + pgvector | 已实现，T01-T15 | 保存组织、身份、授权、审计、资源、诊断、巡检、审批和任务数据；默认 Compose 镜像包含并启用 `vector` 扩展 |
+| 缓存 | Memory / PostgreSQL | 默认 PostgreSQL；按配置切换 | 授权缓存等短期状态可使用内存或共享 PostgreSQL |
+| Bundle 存储 | Local / PostgreSQL | 默认 PostgreSQL；按配置切换 | Repository Bundle 以 Git Bundle 原始二进制写入 PostgreSQL `bytea`，不额外套 FlatBuffers；也可写本地磁盘 |
 | 实时交互 | SSE | 已实现，T11 | 推送诊断过程和工具调用事件 |
 | 日志 | `slog` + 项目日志 Handler（`json`/`text`/`raw`） | 规范已确定，待统一接入 | 全部 Go 进程遵循[后端日志规范](../standards/backend-logging.md) |
 | 指标和链路 | OpenTelemetry OTLP/HTTP | 已实现，T15，待环境验收 | HTTP 链路以及任务、Connector、LLM Token 和错误等低基数指标；未配置端点时本地无外部依赖 |
-| 本地部署 | Docker Compose | 已实现，T01 | PostgreSQL 和 Redis 开发环境 |
+| 本地部署 | Docker Compose | 已实现，T01 | 默认仅启动 PostgreSQL，数据库、缓存和 Bundle 存储共用该实例 |
 | 生产部署 | 单镜像、Kubernetes、Helm、Ingress | Chart 已实现，T15，待干净集群验收 | API、Worker 可独立扩容；Scheduler 单副本；Migration 使用发布前 Hook |
 
-目标任务模型使用 PostgreSQL Job 表和 `FOR UPDATE SKIP LOCKED`，确保 Redis 故障不会造成任务丢失，在 T10-T13 实施。规模确实超过数据库任务队列边界后，再评估 Temporal，不将其作为当前预设依赖。
+目标任务模型使用 PostgreSQL Job 表和 `FOR UPDATE SKIP LOCKED`，确保缓存后端故障不会造成任务丢失，在 T10-T13 实施。规模确实超过数据库任务队列边界后，再评估 Temporal，不将其作为当前预设依赖。
+
+平台自身的缓存、任务、检索、文档、时序、向量和二进制存储均遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。默认 Compose 只启动 PostgreSQL；Jaeger、OpenTelemetry Collector、Prometheus、Loki 和 Grafana 位于独立 `obs` profile，通过 `make obs-up` 启动。
 
 ## 5. 后端模块
 
@@ -168,7 +171,7 @@ flowchart LR
 - T15 Helm Chart 已包含 API、Worker、Scheduler、Migration Hook、探针、资源限制、非 root 安全上下文、PDB、可选 HPA 和 NetworkPolicy；Chart 不生成或接管运行时 Secret。
 - API 在生产环境启用 HSTS，并统一设置 CSP、点击劫持与内容嗅探防护、Permissions Policy；状态变更请求经过 Origin/Fetch Metadata 校验，并有 CORS、请求体上限和按客户端 IP 的进程内限流。
 - API、Worker、Scheduler 和 Migration 可通过 OTLP/HTTP 导出链路与指标；审计事件及保留批次采用数据库追加写保护，保留清理必须携带已验证导出引用和变更单。
-- 生产配置拒绝开发数据库/Redis 默认地址、不安全 Cookie 以及非 HTTPS 跨域 Origin。
+- 生产配置拒绝开发数据库默认地址，并拒绝不安全 Cookie 以及非 HTTPS 跨域 Origin。
 
 ### 目标设计
 

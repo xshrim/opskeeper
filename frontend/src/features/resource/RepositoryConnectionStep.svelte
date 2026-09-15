@@ -2,7 +2,7 @@
   export let subtype = 'Git';
   export let url = '';
   export let defaultBranch = 'main';
-  export let storageBackend = 'local';
+  export let storageBackend = 'postgres';
   export let localRoot = '';
   export let s3Endpoint = '';
   export let s3Bucket = '';
@@ -21,10 +21,10 @@
     <label><span>默认分支</span><input bind:value={defaultBranch} placeholder="main" /></label>
     <p class="muted">Git 仓库按需实时读取；认证凭据可在保存后关联资源凭据。</p>
   {:else}
-    <label><span>Bundle 存储后端</span><select bind:value={storageBackend}><option value="local">本地磁盘</option><option value="s3">S3-compatible</option></select></label>
+    <label><span>Bundle 存储后端</span><select bind:value={storageBackend}><option value="local">本地磁盘</option><option value="postgres">PostgreSQL</option><option value="s3">S3-compatible</option></select></label>
     {#if storageBackend === 'local'}
       <label><span>本地目录（可选）</span><input bind:value={localRoot} placeholder="由服务端默认目录管理" /></label>
-    {:else}
+    {:else if storageBackend === 's3'}
       <label><span>S3 Endpoint</span><input bind:value={s3Endpoint} placeholder="http://minio:9000 或 https://silo.example.com" /></label>
       <label><span>Bucket</span><input bind:value={s3Bucket} placeholder="opskeeper" /></label>
       <label><span>对象前缀</span><input bind:value={s3Prefix} placeholder="repositories" /></label>

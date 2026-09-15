@@ -25,6 +25,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogFormat != "raw" {
 		t.Fatalf("Load() LogFormat = %q, want raw", cfg.LogFormat)
 	}
+	if cfg.CacheBackend != "postgres" || cfg.RepositoryStorageBackend != "postgres" {
+		t.Fatalf("Load() backend defaults = cache %q, storage %q", cfg.CacheBackend, cfg.RepositoryStorageBackend)
+	}
+	if cfg.RepositoryS3Provider != "minio" {
+		t.Fatalf("Load() S3 provider = %q, want minio", cfg.RepositoryS3Provider)
+	}
 	if !cfg.LogHealthIgnore {
 		t.Fatalf("Load() LogHealthIgnore = false, want true")
 	}
@@ -52,7 +58,7 @@ func TestLoadAcceptsHTTPSOriginsAndHTTPLimits(t *testing.T) {
 	t.Setenv("OPSK_ALLOWED_ORIGINS", "https://ops.example.com, http://localhost:5173, https://OPS.EXAMPLE.COM")
 	t.Setenv("OPSK_HTTP_MAX_BODY_BYTES", "4096")
 	t.Setenv("OPSK_HTTP_RATE_LIMIT_PER_MINUTE", "120")
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://otel.example.com")
+	t.Setenv("OPSK_OTEL_ENDPOINT", "https://otel.example.com")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -78,6 +84,32 @@ func TestLoadRejectsInvalidOriginsAndHTTPLimits(t *testing.T) {
 				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
 			}
 		})
+	}
+}
+
+func TestLoadRejectsInvalidStorageBackends(t *testing.T) {
+	tests := []struct {
+		key   string
+		value string
+	}{
+		{key: "OPSK_CACHE_BACKEND", value: "filesystem"},
+		{key: "OPSK_REPOSITORY_STORAGE_BACKEND", value: "redis"},
+	}
+	for _, test := range tests {
+		t.Run(test.key, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
+			}
+		})
+	}
+}
+
+func TestLoadRequiresRedisURLOnlyForRedisCache(t *testing.T) {
+	t.Setenv("OPSK_CACHE_BACKEND", "redis")
+	t.Setenv("OPSK_REDIS_URL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want Redis URL validation")
 	}
 }
 

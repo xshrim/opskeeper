@@ -27,7 +27,7 @@ type Build struct {
 // no-op through the global OpenTelemetry API.
 func Setup(ctx context.Context, serviceName, environment, endpoint string, build Build) (func(context.Context) error, error) {
 	if strings.TrimSpace(endpoint) == "" {
-		return func(context.Context) error { return nil }, nil
+		return noopShutdown(), nil
 	}
 	res, err := resource.New(ctx, resource.WithAttributes(
 		attribute.String("service.name", serviceName),
@@ -36,16 +36,16 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 		attribute.String("deployment.environment.name", environment),
 	))
 	if err != nil {
-		return nil, err
+		return noopShutdown(), nil
 	}
-	traceExporter, err := otlptracehttp.New(ctx)
+	traceExporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
 	if err != nil {
-		return nil, err
+		return noopShutdown(), nil
 	}
-	metricExporter, err := otlpmetrichttp.New(ctx)
+	metricExporter, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(endpoint))
 	if err != nil {
 		_ = traceExporter.Shutdown(ctx)
-		return nil, err
+		return noopShutdown(), nil
 	}
 	traces := sdktrace.NewTracerProvider(sdktrace.WithBatcher(traceExporter), sdktrace.WithResource(res))
 	metrics := sdkmetric.NewMeterProvider(
@@ -58,6 +58,12 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 	return func(shutdownCtx context.Context) error {
 		return errors.Join(metrics.Shutdown(shutdownCtx), traces.Shutdown(shutdownCtx))
 	}, nil
+}
+
+// Telemetry is optional. A malformed or unavailable OTLP endpoint must never
+// prevent the application process from starting or serving requests.
+func noopShutdown() func(context.Context) error {
+	return func(context.Context) error { return nil }
 }
 
 var instruments struct {

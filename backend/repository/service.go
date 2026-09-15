@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"io"
 	"net/url"
 	"opskeeper/backend/resource"
@@ -15,6 +13,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type Service struct {
@@ -27,8 +30,9 @@ type Service struct {
 	storage StorageConfig
 }
 type StorageConfig struct {
-	Backend, Root, Endpoint, Bucket, Prefix, AccessKey, SecretKey string
-	UseSSL                                                        bool
+	Backend, Root, Endpoint, Bucket, Prefix, AccessKey, SecretKey, Provider string
+	UseSSL                                                                  bool
+	Postgres                                                                *pgxpool.Pool
 }
 type UploadResult struct {
 	ResourceID   string   `json:"resource_id"`
@@ -73,8 +77,11 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if item.Kind != "Repository" || !strings.EqualFold(item.Subtype, "Bundle") {
 		return UploadResult{}, errors.New("resource must be a Bundle Repository")
 	}
-	if s.storage.Backend == "s3" {
+	switch strings.ToLower(strings.TrimSpace(s.storage.Backend)) {
+	case "s3":
 		return s.uploadS3(ctx, id, r, size, item)
+	case "postgres":
+		return s.uploadPostgres(ctx, id, r, size, item)
 	}
 	if err := os.MkdirAll(s.root, 0700); err != nil {
 		return UploadResult{}, err
@@ -116,18 +123,113 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if e != nil {
 		return UploadResult{}, e
 	}
-	if updater, ok := s.resources.(interface {
-		Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
-	}); ok {
-		cfg := item.Config
-		if cfg == nil {
-			cfg = map[string]any{}
-		}
-		cfg["path"] = repoDir
-		cfg["storage_key"] = id
-		_, _ = updater.Update(ctx, id, resource.UpdateInput{Config: &cfg})
-	}
+	s.updateStorageConfig(ctx, id, item, "local", id, repoDir, nil)
 	return UploadResult{ResourceID: id, StorageKey: id, Branches: branches, ArchivedRefs: archived}, nil
+}
+
+func (s *Service) uploadPostgres(ctx context.Context, id string, r io.Reader, size int64, item resource.Resource) (UploadResult, error) {
+	if s.storage.Postgres == nil {
+		return UploadResult{}, errors.New("PostgreSQL repository storage is not configured")
+	}
+	dir, err := os.MkdirTemp("", "opskeeper-postgres-repo-")
+	if err != nil {
+		return UploadResult{}, err
+	}
+	defer os.RemoveAll(dir)
+	repoDir := filepath.Join(dir, "repo.git")
+	if err := os.MkdirAll(repoDir, 0700); err != nil {
+		return UploadResult{}, err
+	}
+	upload := filepath.Join(dir, "upload.bundle")
+	f, err := os.OpenFile(upload, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if _, err = io.CopyN(f, r, size); err != nil {
+		_ = f.Close()
+		return UploadResult{}, err
+	}
+	if err = f.Close(); err != nil {
+		return UploadResult{}, err
+	}
+	if err := run(ctx, "bundle", "verify", upload); err != nil {
+		return UploadResult{}, err
+	}
+	var existing []byte
+	if err := s.storage.Postgres.QueryRow(ctx, `SELECT bundle FROM repository_bundles WHERE resource_id=$1::uuid`, id).Scan(&existing); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return UploadResult{}, err
+	}
+	if len(existing) > 0 {
+		old := filepath.Join(dir, "existing.bundle")
+		if err := os.WriteFile(old, existing, 0600); err != nil {
+			return UploadResult{}, err
+		}
+		if err := run(ctx, "init", "--bare", repoDir); err != nil {
+			return UploadResult{}, err
+		}
+		if err := run(ctx, "--git-dir", repoDir, "fetch", old, "+refs/heads/*:refs/heads/*"); err != nil {
+			return UploadResult{}, err
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repoDir, "HEAD")); os.IsNotExist(err) {
+		if err := run(ctx, "init", "--bare", repoDir); err != nil {
+			return UploadResult{}, err
+		}
+	}
+	archived, err := archiveHeads(ctx, repoDir)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if err := run(ctx, "--git-dir", repoDir, "fetch", upload, "+refs/heads/*:refs/heads/*"); err != nil {
+		return UploadResult{}, err
+	}
+	full := filepath.Join(dir, "full.bundle")
+	if err := run(ctx, "--git-dir", repoDir, "bundle", "create", full, "--all"); err != nil {
+		return UploadResult{}, err
+	}
+	bundle, err := os.ReadFile(full)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if _, err := s.storage.Postgres.Exec(ctx, `INSERT INTO repository_bundles(resource_id,bundle) VALUES($1::uuid,$2) ON CONFLICT(resource_id) DO UPDATE SET bundle=EXCLUDED.bundle,updated_at=now()`, id, bundle); err != nil {
+		return UploadResult{}, err
+	}
+	return s.finishUpload(ctx, id, item, "postgres", id, repoDir, archived)
+}
+
+func (s *Service) finishUpload(ctx context.Context, id string, item resource.Resource, backend, key, repoDir string, archived []string) (UploadResult, error) {
+	branches, err := repoBranches(ctx, repoDir)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	s.updateStorageConfig(ctx, id, item, backend, key, "", nil)
+	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
+}
+
+func (s *Service) updateStorageConfig(ctx context.Context, id string, item resource.Resource, backend, key, path string, extra map[string]string) {
+	updater, ok := s.resources.(interface {
+		Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
+	})
+	if !ok {
+		return
+	}
+	cfg := make(map[string]any, len(item.Config)+len(extra)+2)
+	for name, value := range item.Config {
+		cfg[name] = value
+	}
+	delete(cfg, "path")
+	delete(cfg, "s3_endpoint")
+	delete(cfg, "s3_bucket")
+	delete(cfg, "s3_prefix")
+	if path != "" {
+		cfg["path"] = path
+	}
+	cfg["storage_backend"] = backend
+	cfg["storage_key"] = key
+	for name, value := range extra {
+		cfg[name] = value
+	}
+	_, _ = updater.Update(ctx, id, resource.UpdateInput{Config: &cfg})
 }
 
 func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int64, item resource.Resource) (UploadResult, error) {
@@ -209,20 +311,7 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	if e != nil {
 		return UploadResult{}, e
 	}
-	if updater, ok := s.resources.(interface {
-		Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
-	}); ok {
-		cfg := item.Config
-		if cfg == nil {
-			cfg = map[string]any{}
-		}
-		cfg["storage_backend"] = "s3"
-		cfg["storage_key"] = key
-		cfg["s3_endpoint"] = s.storage.Endpoint
-		cfg["s3_bucket"] = s.storage.Bucket
-		cfg["s3_prefix"] = s.storage.Prefix
-		_, _ = updater.Update(ctx, id, resource.UpdateInput{Config: &cfg})
-	}
+	s.updateStorageConfig(ctx, id, item, "s3", key, "", map[string]string{"s3_endpoint": s.storage.Endpoint, "s3_bucket": s.storage.Bucket, "s3_prefix": s.storage.Prefix})
 	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
 }
 func (s *Service) objectKey(id string) string {

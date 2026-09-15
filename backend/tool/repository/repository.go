@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"io"
 	"net/url"
 	"os"
@@ -16,21 +14,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type ConnectionInput struct {
-	Path           string `json:"path,omitempty"`
-	URL            string `json:"url,omitempty"`
-	Branch         string `json:"branch,omitempty"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
-	StorageBackend string `json:"storage_backend,omitempty"`
-	StorageKey     string `json:"storage_key,omitempty"`
-	S3Endpoint     string `json:"s3_endpoint,omitempty"`
-	S3Bucket       string `json:"s3_bucket,omitempty"`
-	S3Prefix       string `json:"s3_prefix,omitempty"`
-	S3AccessKey    string `json:"s3_access_key,omitempty"`
-	S3SecretKey    string `json:"s3_secret_key,omitempty"`
-	S3UseSSL       bool   `json:"s3_use_ssl,omitempty"`
+	Path           string        `json:"path,omitempty"`
+	URL            string        `json:"url,omitempty"`
+	Branch         string        `json:"branch,omitempty"`
+	TimeoutSeconds int           `json:"timeout_seconds,omitempty"`
+	StorageBackend string        `json:"storage_backend,omitempty"`
+	StorageKey     string        `json:"storage_key,omitempty"`
+	S3Endpoint     string        `json:"s3_endpoint,omitempty"`
+	S3Bucket       string        `json:"s3_bucket,omitempty"`
+	S3Prefix       string        `json:"s3_prefix,omitempty"`
+	S3AccessKey    string        `json:"s3_access_key,omitempty"`
+	S3SecretKey    string        `json:"s3_secret_key,omitempty"`
+	S3UseSSL       bool          `json:"s3_use_ssl,omitempty"`
+	Postgres       *pgxpool.Pool `json:"-"`
 }
 type ToolInfo struct{ Name, Description string }
 
@@ -46,7 +49,7 @@ var tools = []ToolInfo{
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
 func InputSchema(extra map[string]any) map[string]any {
-	p := map[string]any{"path": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}, "branch": map[string]any{"type": "string"}, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 300}, "storage_backend": map[string]any{"type": "string", "enum": []string{"local", "s3"}}, "storage_key": map[string]any{"type": "string"}, "s3_endpoint": map[string]any{"type": "string"}, "s3_bucket": map[string]any{"type": "string"}, "s3_prefix": map[string]any{"type": "string"}}
+	p := map[string]any{"path": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}, "branch": map[string]any{"type": "string"}, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 300}, "storage_backend": map[string]any{"type": "string", "enum": []string{"local", "postgres", "s3"}}, "storage_key": map[string]any{"type": "string"}, "s3_endpoint": map[string]any{"type": "string"}, "s3_bucket": map[string]any{"type": "string"}, "s3_prefix": map[string]any{"type": "string"}}
 	for k, v := range extra {
 		p[k] = v
 	}
@@ -64,9 +67,18 @@ func command(ctx context.Context, in ConnectionInput, args ...string) ([]byte, e
 	defer cancel()
 	root := strings.TrimSpace(in.Path)
 	cleanup := func() {}
-	if root == "" && strings.EqualFold(in.StorageBackend, "s3") {
+	defer func() { cleanup() }()
+	backend := strings.ToLower(strings.TrimSpace(in.StorageBackend))
+	if backend == "s3" {
 		var err error
 		root, cleanup, err = materializeS3(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if backend == "postgres" {
+		var err error
+		root, cleanup, err = materializePostgres(ctx, in)
 		if err != nil {
 			return nil, err
 		}
@@ -98,11 +110,58 @@ func command(ctx context.Context, in ConnectionInput, args ...string) ([]byte, e
 	root = clean
 	all := append([]string{"-C", root}, args...)
 	out, err := exec.CommandContext(ctx, "git", all...).CombinedOutput()
-	cleanup()
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+func materializePostgres(ctx context.Context, in ConnectionInput) (string, func(), error) {
+	pool := in.Postgres
+	closePool := func() {}
+	if pool == nil {
+		url := strings.TrimSpace(os.Getenv("OPSK_DATABASE_URL"))
+		if url == "" || strings.TrimSpace(in.StorageKey) == "" {
+			return "", func() {}, errors.New("PostgreSQL repository database URL and storage key are required")
+		}
+		var err error
+		pool, err = pgxpool.New(ctx, url)
+		if err != nil {
+			return "", func() {}, err
+		}
+		closePool = pool.Close
+	}
+	if strings.TrimSpace(in.StorageKey) == "" {
+		closePool()
+		return "", func() {}, errors.New("PostgreSQL repository storage key is required")
+	}
+	var bundle []byte
+	err := pool.QueryRow(ctx, `SELECT bundle FROM repository_bundles WHERE resource_id=$1::uuid`, in.StorageKey).Scan(&bundle)
+	if err != nil {
+		closePool()
+		return "", func() {}, err
+	}
+	dir, err := os.MkdirTemp("", "opskeeper-repository-postgres-")
+	if err != nil {
+		closePool()
+		return "", func() {}, err
+	}
+	cleanup := func() { closePool(); _ = os.RemoveAll(dir) }
+	bundlePath := filepath.Join(dir, "repository.bundle")
+	if err := os.WriteFile(bundlePath, bundle, 0600); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	repo := filepath.Join(dir, "repo.git")
+	if err := exec.CommandContext(ctx, "git", "init", "--bare", repo).Run(); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	if err := exec.CommandContext(ctx, "git", "--git-dir", repo, "fetch", bundlePath, "+refs/heads/*:refs/heads/*").Run(); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return repo, cleanup, nil
 }
 func materializeS3(ctx context.Context, in ConnectionInput) (string, func(), error) {
 	if in.S3Endpoint == "" {
@@ -323,5 +382,3 @@ func safePath(p string) (string, error) {
 	return c, nil
 }
 func utf8ish(b []byte) bool { return bytes.IndexByte(b, 0) < 0 }
-
-var _ io.Reader

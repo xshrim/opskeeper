@@ -36,7 +36,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs obs-up obs-down obs-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -63,17 +63,26 @@ migrate-down: ## Roll back the latest PostgreSQL migration.
 admin-create: ## Create the first administrator through the controlled bootstrap flow.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
 
-infra-up: ## Start PostgreSQL and Redis.
+infra-up: ## Start the PostgreSQL development dependency.
 	$(call compose,up -d --wait --wait-timeout 60)
 
-infra-down: ## Stop PostgreSQL and Redis.
+infra-down: ## Stop the PostgreSQL development dependency.
 	$(call compose,down)
 
-infra-clean: ## Delete middleware containers, network, and data volumes.
-	$(call compose,down --volumes --remove-orphans)
+infra-clean: ## Delete Compose containers, network, and data volumes.
+	$(call compose,--profile obs down --volumes --remove-orphans)
 
-infra-logs: ## Follow PostgreSQL and Redis logs.
+infra-logs: ## Follow PostgreSQL logs.
 	$(call compose,logs -f)
+
+obs-up: ## Start Jaeger, OpenTelemetry, Prometheus, Loki, and Grafana.
+	$(call compose,--profile obs up -d --wait --wait-timeout 60 jaeger otel-collector prometheus loki grafana)
+
+obs-down: ## Stop the local observability stack.
+	$(call compose,--profile obs stop jaeger otel-collector prometheus loki grafana)
+
+obs-logs: ## Follow local observability stack logs.
+	$(call compose,--profile obs logs -f jaeger otel-collector prometheus loki grafana)
 
 api-stop:
 	set -a; source $(APP_ENV_FILE); set +a; \

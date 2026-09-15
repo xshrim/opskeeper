@@ -31,6 +31,7 @@ type Config struct {
 	TrustedProxies               []netip.Prefix
 	DatabaseURL                  string
 	RedisURL                     string
+	CacheBackend                 string
 	ShutdownTimeout              time.Duration
 	DependencyTimeout            time.Duration
 	ReadHeaderTimeout            time.Duration
@@ -59,6 +60,7 @@ type Config struct {
 	RepositoryS3AccessKey        string
 	RepositoryS3SecretKey        string
 	RepositoryS3UseSSL           bool
+	RepositoryS3Provider         string
 	RepositoryMaxBundleBytes     int64
 }
 
@@ -69,7 +71,8 @@ func Load() (Config, error) {
 		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
 		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
 		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:          envOrDefault("OPSK_REDIS_URL", defaultRedisURL),
+		RedisURL:          strings.TrimSpace(os.Getenv("OPSK_REDIS_URL")),
+		CacheBackend:      envOrDefault("OPSK_CACHE_BACKEND", "postgres"),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		// Diagnosis uses a long-lived SSE response. Keep the server-level write
@@ -77,14 +80,15 @@ func Load() (Config, error) {
 		// tool/model turn cannot terminate the stream prematurely.
 		WriteTimeout:             35 * time.Minute,
 		IdleTimeout:              60 * time.Second,
-		OTLPExporterEndpoint:     strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
-		RepositoryStorageBackend: envOrDefault("OPSK_REPOSITORY_STORAGE_BACKEND", "local"),
+		OTLPExporterEndpoint:     strings.TrimSpace(os.Getenv("OPSK_OTEL_ENDPOINT")),
+		RepositoryStorageBackend: envOrDefault("OPSK_REPOSITORY_STORAGE_BACKEND", "postgres"),
 		RepositoryLocalRoot:      envOrDefault("OPSK_REPOSITORY_LOCAL_ROOT", "/var/lib/opskeeper/repositories"),
 		RepositoryS3Endpoint:     strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")),
 		RepositoryS3Bucket:       strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_BUCKET")),
 		RepositoryS3Prefix:       envOrDefault("OPSK_REPOSITORY_S3_PREFIX", "repositories"),
 		RepositoryS3AccessKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")),
 		RepositoryS3SecretKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")),
+		RepositoryS3Provider:     envOrDefault("OPSK_REPOSITORY_S3_PROVIDER", "minio"),
 	}
 
 	var err error
@@ -142,11 +146,17 @@ func Load() (Config, error) {
 	if cfg.RepositoryMaxBundleBytes, err = int64FromEnv("OPSK_REPOSITORY_MAX_BUNDLE_BYTES", 512<<20, 1<<20, 4<<30); err != nil {
 		return Config{}, err
 	}
-	if cfg.RepositoryStorageBackend != "local" && cfg.RepositoryStorageBackend != "s3" {
-		return Config{}, errors.New("OPSK_REPOSITORY_STORAGE_BACKEND must be local or s3")
+	if cfg.CacheBackend != "memory" && cfg.CacheBackend != "postgres" && cfg.CacheBackend != "redis" {
+		return Config{}, errors.New("OPSK_CACHE_BACKEND must be memory, postgres or redis")
+	}
+	if cfg.RepositoryStorageBackend != "local" && cfg.RepositoryStorageBackend != "postgres" && cfg.RepositoryStorageBackend != "s3" {
+		return Config{}, errors.New("OPSK_REPOSITORY_STORAGE_BACKEND must be local, postgres or s3")
 	}
 	if cfg.RepositoryStorageBackend == "s3" && (cfg.RepositoryS3Endpoint == "" || cfg.RepositoryS3Bucket == "") {
 		return Config{}, errors.New("OPSK_REPOSITORY_S3_ENDPOINT and OPSK_REPOSITORY_S3_BUCKET are required for s3 backend")
+	}
+	if strings.TrimSpace(cfg.RepositoryS3Provider) == "" {
+		return Config{}, errors.New("OPSK_REPOSITORY_S3_PROVIDER must not be empty")
 	}
 	if cfg.RepositoryS3UseSSL, err = boolFromEnv("OPSK_REPOSITORY_S3_USE_SSL", false); err != nil {
 		return Config{}, err
@@ -164,8 +174,8 @@ func Load() (Config, error) {
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")
 	}
-	if cfg.RedisURL == "" {
-		return Config{}, errors.New("OPSK_REDIS_URL must not be empty")
+	if cfg.CacheBackend == "redis" && cfg.RedisURL == "" {
+		return Config{}, errors.New("OPSK_REDIS_URL must not be empty when OPSK_CACHE_BACKEND=redis")
 	}
 	if cfg.Environment == "production" && !cfg.CookieSecure {
 		return Config{}, errors.New("OPSK_COOKIE_SECURE must be true in production")
@@ -174,7 +184,7 @@ func Load() (Config, error) {
 		if cfg.DatabaseURL == defaultDatabaseURL {
 			return Config{}, errors.New("OPSK_DATABASE_URL must not use the development default in production")
 		}
-		if cfg.RedisURL == defaultRedisURL {
+		if cfg.CacheBackend == "redis" && cfg.RedisURL == defaultRedisURL {
 			return Config{}, errors.New("OPSK_REDIS_URL must not use the development default in production")
 		}
 		for _, origin := range cfg.AllowedOrigins {

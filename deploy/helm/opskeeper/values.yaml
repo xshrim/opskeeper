@@ -11,6 +11,9 @@ existingSecret: opskeeper-runtime
 migrationSecret: opskeeper-migration
 trustedProxies: ""
 otelExporterEndpoint: ""
+cacheBackend: postgres
+repositoryStorageBackend: postgres
+repositoryS3Provider: minio
 
 operation:
   enabled: false
@@ -56,8 +59,6 @@ networkPolicy:
   ingressNamespaceSelector: {}
   databaseCIDR: 10.0.0.0/8
   databasePort: 5432
-  redisCIDR: 10.0.0.0/8
-  redisPort: 6379
   allowExternalHTTPS: true
 
 migration:

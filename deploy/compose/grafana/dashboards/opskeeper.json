@@ -1,0 +1,41 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Errors per second",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(opskeeper_errors_total[5m]))", "legendFormat": "errors/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "LLM executions per second",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(opskeeper_llm_executions_total[5m]))", "legendFormat": "executions/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "title": "Connector calls per second",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(opskeeper_connector_calls_total[5m]))", "legendFormat": "calls/s", "refId": "A"}]
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["opskeeper"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "title": "OpsKeeper Observability",
+  "uid": "opskeeper-observability",
+  "version": 1
+}

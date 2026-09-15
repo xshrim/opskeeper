@@ -7,7 +7,7 @@
 - Kubernetes 1.29 或更高版本，支持 NetworkPolicy 的 CNI。
 - Helm 3.18 或更高版本。
 - 以 digest 标识的 OpsKeeper 镜像。
-- PostgreSQL 16、Redis 7 和可接收 OTLP/HTTP 的 Collector。
+- PostgreSQL 16（安装 `pgvector` 扩展）和可接收 OTLP/HTTP 的 Collector。缓存与 Repository Bundle 存储默认复用 PostgreSQL。平台自身中间件选择必须遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。Migration 会执行 `CREATE EXTENSION IF NOT EXISTS vector`，迁移角色必须具有相应权限。
 - 应用与迁移凭据已分离，且 Ingress 直连地址范围已确认。
 
 ## 2. Secret 契约
@@ -17,16 +17,16 @@ Chart 不生成 Secret。先从受控密钥系统创建两个 Secret：
 ```bash
 kubectl -n opskeeper create secret generic opskeeper-runtime \
   --from-literal=OPSK_DATABASE_URL='<application-role-url>' \
-  --from-literal=OPSK_REDIS_URL='<redis-url>' \
   --from-literal=OPSK_CREDENTIAL_KEY='<32-byte-or-base64-key>'
 
 kubectl -n opskeeper create secret generic opskeeper-migration \
   --from-literal=OPSK_DATABASE_URL='<migration-role-url>' \
-  --from-literal=OPSK_REDIS_URL='<redis-url>' \
   --from-literal=OPSK_CREDENTIAL_KEY='<same-active-key>'
 ```
 
 不要将 Secret 值写入 `values.yaml`、Helm 参数、终端历史或 CI 日志。上述命令中的占位符只说明必需键。
+
+默认无需提供独立缓存或对象存储凭据。平台内部中间件使用 PostgreSQL；如确有容量或隔离需求需要外置后端，必须先按 [PostgreSQL First 规约](../standards/postgresql-first.md) 建立 ADR，并将连接信息注入运行时 Secret。
 
 ## 3. 生产 values
 
@@ -39,6 +39,9 @@ existingSecret: opskeeper-runtime
 migrationSecret: opskeeper-migration
 trustedProxies: 10.42.0.0/16
 otelExporterEndpoint: https://otel-collector.observability.svc:4318
+cacheBackend: postgres
+repositoryStorageBackend: postgres
+repositoryS3Provider: minio
 ingress:
   enabled: true
   className: nginx
@@ -46,10 +49,9 @@ ingress:
   tlsSecretName: opskeeper-tls
 networkPolicy:
   databaseCIDR: 10.50.1.10/32
-  redisCIDR: 10.50.1.11/32
 ```
 
-`databaseCIDR`、`redisCIDR` 和 Ingress Namespace Selector 必须收紧到实际环境。若 Connector/LLM 不需访问公网 HTTPS，将 `allowExternalHTTPS` 设为 `false`。
+`databaseCIDR` 和 Ingress Namespace Selector 必须收紧到实际环境。若 Connector/LLM 不需访问公网 HTTPS，将 `allowExternalHTTPS` 设为 `false`。
 
 ## 4. 部署与验证
 

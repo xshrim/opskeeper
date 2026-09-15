@@ -112,29 +112,36 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	defer pool.Close()
 
-	redisOptions, err := redis.ParseURL(cfg.RedisURL)
-	if err != nil {
-		return errors.Join(errors.New("configure Redis client"), err)
-	}
-	redisClient := redis.NewClient(redisOptions)
-	defer func() {
-		if closeErr := redisClient.Close(); closeErr != nil {
-			logger.Warn("close Redis client", "kind", "error", "error_type", "redis-close", "error", closeErr)
+	checks := []health.Check{{Name: "postgres", Run: pool.Ping}}
+	var redisClient *redis.Client
+	if cfg.CacheBackend == "redis" {
+		redisOptions, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			return errors.Join(errors.New("configure Redis client"), err)
 		}
-	}()
-
-	healthService := health.NewService(serviceName, cfg.DependencyTimeout, []health.Check{
-		{Name: "postgres", Run: pool.Ping},
-		{Name: "redis", Run: func(checkCtx context.Context) error {
-			return redisClient.Ping(checkCtx).Err()
-		}},
-	})
+		redisClient = redis.NewClient(redisOptions)
+		defer func() {
+			if closeErr := redisClient.Close(); closeErr != nil {
+				logger.Warn("close Redis client", "kind", "error", "error_type", "redis-close", "error", closeErr)
+			}
+		}()
+		checks = append(checks, health.Check{Name: "redis", Run: func(checkCtx context.Context) error { return redisClient.Ping(checkCtx).Err() }})
+	}
+	healthService := health.NewService(serviceName, cfg.DependencyTimeout, checks)
 	organizationStore := organization.NewStore(pool)
 	organizationService := organization.NewService(organizationStore)
 	identityStore := identity.NewStore(pool)
 	auditService := audit.NewService(audit.NewStore(pool))
 	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL, auditService)
-	authorizationCache := authorization.NewRedisScopeCache(redisClient)
+	var authorizationCache authorization.ScopeCache
+	switch cfg.CacheBackend {
+	case "memory":
+		authorizationCache = authorization.NewMemoryScopeCache()
+	case "postgres":
+		authorizationCache = authorization.NewPostgresScopeCache(pool)
+	case "redis":
+		authorizationCache = authorization.NewRedisScopeCache(redisClient)
+	}
 	authorizationStore := authorization.NewStore(pool, authorizationCache)
 	authorizationService := authorization.NewService(authorizationStore)
 	managementStore := authorization.NewManagementStore(pool)
@@ -147,9 +154,9 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	resourceService := resource.NewService(resource.NewStore(pool))
 	applicationService := application.NewService(application.NewStore(pool))
 	if cfg.RepositoryStorageBackend == "s3" {
-		logger.Warn("repository S3 backend configured; using configured endpoint as deployment responsibility", "kind", "repository-storage")
+		logger.Warn("repository S3-compatible backend configured", "kind", "repository-storage", "provider", cfg.RepositoryS3Provider)
 	}
-	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL}, cfg.RepositoryMaxBundleBytes, resourceService)
+	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, Provider: cfg.RepositoryS3Provider, UseSSL: cfg.RepositoryS3UseSSL, Postgres: pool}, cfg.RepositoryMaxBundleBytes, resourceService)
 	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, organizationService, applicationService, credentialService, discovery.NewKubernetesScanner())
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
@@ -160,6 +167,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		return fmt.Errorf("build connector registry: %w", err)
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, credentialService, connector.NewStore(pool), connectorLimits)
+	connectorService.SetPostgresPool(pool)
 	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentialService)
 	skillStore := skill.NewStore(pool)
 	skillService := skill.NewService(skillStore, resourceService)

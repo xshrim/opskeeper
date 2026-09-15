@@ -19,3 +19,13 @@ func TestSetupWithoutEndpointIsNoop(t *testing.T) {
 	RecordLLM(context.Background(), "success", 10)
 	RecordError(context.Background(), "test", "expected")
 }
+
+func TestSetupWithInvalidEndpointDoesNotFailStartup(t *testing.T) {
+	shutdown, err := Setup(context.Background(), "test", "test", "not a URL", Build{})
+	if err != nil {
+		t.Fatalf("Setup() error = %v", err)
+	}
+	if shutdown == nil {
+		t.Fatal("Setup() returned nil shutdown function")
+	}
+}

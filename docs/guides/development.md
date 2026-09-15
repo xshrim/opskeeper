@@ -21,7 +21,7 @@ make image NPM_REGISTRY=https://registry.npmmirror.com
 make start
 ```
 
-`make start` 自动创建缺失的 `.env` 和 `deploy/compose/.env`，安装前后端依赖，启动并等待 PostgreSQL/Redis，执行迁移，在用户表为空时创建默认管理员，最后调用 `make front-api-run`。首次创建管理员时会打印随机密码；后续执行会保留已有管理员和数据。最终只运行一个 Go 进程，由 API 同时提供前端页面、静态资源和业务接口。按 `Ctrl+C` 停止 API 后，中间件仍会运行，可通过 `make infra-down` 停止。
+`make start` 自动创建缺失的 `.env` 和 `deploy/compose/.env`，安装前后端依赖，启动并等待 PostgreSQL，执行迁移，在用户表为空时创建默认管理员，最后调用 `make front-api-run`。首次创建管理员时会打印随机密码；后续执行会保留已有管理员和数据。默认缓存和 Bundle 存储也共用该 PostgreSQL。
 
 默认地址：
 
@@ -38,10 +38,13 @@ make start
 | `make help`                     | 查看全部 Make 入口                                                       |
 | `make start`                    | 一键准备并启动完整本地开发环境                                           |
 | `make deps`                     | 安装 Go 和前端依赖                                                       |
-| `make infra-up`                 | 启动 PostgreSQL 和 Redis                                                 |
-| `make infra-logs`               | 持续查看中间件日志                                                       |
-| `make infra-down`               | 停止中间件，保留数据卷                                                   |
-| `make infra-clean`             | 删除中间件容器、网络和全部数据卷                                         |
+| `make infra-up`                 | 启动 PostgreSQL（缓存和 Bundle 存储默认共用）                             |
+| `make infra-logs`               | 持续查看 PostgreSQL 日志                                                 |
+| `make infra-down`               | 停止 PostgreSQL，保留数据卷                                              |
+| `make infra-clean`             | 删除 Compose 容器、网络和全部数据卷                                      |
+| `make obs-up`                   | 启动 Jaeger、OTel Collector、Prometheus、Loki 和 Grafana                 |
+| `make obs-logs`                 | 持续查看本地监控组件日志                                                  |
+| `make obs-down`                 | 停止本地监控组件                                                          |
 | `make migrate`                  | 应用待执行迁移                                                           |
 | `make migrate-down`             | 回滚最近一条迁移，仅用于开发和测试                                       |
 | `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
@@ -89,7 +92,7 @@ migrate
     -> go run -tags=embed_webui ./cmd/api
 ```
 
-该命令不会启动 PostgreSQL/Redis，也不会创建管理员；首次初始化环境仍应使用 `make start`，或按前面的步骤分别执行 `make infra-up`、`make migrate` 和 `make admin-create`。访问地址为 `http://localhost:8080/opskeeper/`。
+该命令不会启动 PostgreSQL，也不会创建管理员；首次初始化环境仍应使用 `make start`，或按前面的步骤分别执行 `make infra-up`、`make migrate` 和 `make admin-create`。访问地址为 `http://localhost:8080/opskeeper/`。
 
 执行链路为：
 
@@ -148,8 +151,13 @@ make scheduler-run
 | `OPSK_HTTP_RATE_LIMIT_PER_MINUTE`      | `600`                                    | 每客户端 IP 每分钟请求速率，范围 1-100000                                |
 | `OPSK_CREDENTIAL_KEY`                  | 开发环境使用内置本地密钥；生产环境必须设置 | 资源凭据密文加密密钥，支持 32 字节原值或 Base64 编码值                   |
 | `OPSK_DATABASE_URL`                    | 本地`opskeeper` 连接串                   | 业务数据库连接                                                           |
-| `OPSK_REDIS_URL`                       | `redis://localhost:6379/0`               | Redis 连接                                                               |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`          | 空                                         | OTLP/HTTP Collector 地址；空值禁用导出                                   |
+| `OPSK_CACHE_BACKEND`                   | `postgres`                               | 缓存后端：`memory` 或 `postgres`                                          |
+| `OPSK_REPOSITORY_STORAGE_BACKEND`     | `postgres`                               | Bundle 存储后端：`local`、`postgres` 或 `s3`                              |
+| `OPSK_REPOSITORY_LOCAL_ROOT`           | `/var/lib/opskeeper/repositories`        | Local Bundle 存储目录                                                     |
+| `OPSK_REPOSITORY_S3_PROVIDER`          | `minio`                                  | S3-compatible 后端标识                                                    |
+| `OPSK_REPOSITORY_S3_ENDPOINT`          | 空                                         | S3 Endpoint；默认后端为 MinIO                                             |
+| `OPSK_REPOSITORY_S3_BUCKET`            | 空                                         | S3 Bucket                                                                 |
+| `OPSK_OTEL_ENDPOINT`                   | 空                                         | OTLP/HTTP Collector 地址；空值禁用导出                                   |
 | `OPSK_SHUTDOWN_TIMEOUT`                | `10s`                                    | 优雅退出期限                                                             |
 | `OPSK_DEPENDENCY_TIMEOUT`              | `2s`                                     | 健康检查依赖超时                                                         |
 | `OPSK_CONNECTOR_TIMEOUT`               | `10s`                                    | 单次 Connector 执行总超时，必须为正数                                    |
@@ -245,7 +253,7 @@ make llm-provider-test
 
 应用中登记 AIProvider 时，连接地址、凭据引用和模型目录保存在 Provider 资源；模型条目只保留上游名称、参数和能力。业务调用方通过 AIEngine 选择 Provider/Model，未显式选择时按 Scope 场景标签解析并固定最终模型。API Token 必须通过资源凭据加密保存，不能出现在资源配置或审计响应中。AIProvider 不划分单模态或多模态子类；`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段。
 
-## 5. PostgreSQL 与 Redis
+## 5. PostgreSQL、缓存与 Bundle 存储
 
 启动、查看和停止中间件：
 
@@ -255,11 +263,25 @@ make infra-logs
 make infra-down
 ```
 
+默认 Compose 使用 `pgvector/pgvector:pg16`，初始化脚本预装 `vector` 扩展，迁移通过幂等声明确保扩展存在。授权缓存写入 `cache_entries`（`UNLOGGED`，可安全重建），Repository Bundle 以原始 Git Bundle `bytea` 写入 `repository_bundles`，不使用 FlatBuffers；数据库、缓存和存储共用同一个 PostgreSQL 实例。`memory` 适合单进程开发或测试。平台内部中间件选择遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。
+
 `make infra-down` 不删除持久化数据卷，再次启动会复用已有数据。PostgreSQL 初始化变量和初始化脚本仅在数据目录为空时生效；修改环境变量不会更新已有数据卷中的用户、密码或数据库所有权。
 
-需要彻底清理当前 Compose 项目的本地中间件环境时，使用 `make infra-clean`。该命令会删除 PostgreSQL、Redis 及其他 Compose 中间件容器、网络和数据卷，数据不可恢复，仅适用于明确确认的本地环境。
+### 5.1 本地链路追踪
 
-### 5.1 管理员与业务角色
+Jaeger、OpenTelemetry Collector、Prometheus、Loki 和 Grafana 属于独立的 `obs` profile，`make infra-up` 不会启动它们：
+
+```bash
+make obs-up
+# 在 .env 中设置：OPSK_OTEL_ENDPOINT=http://127.0.0.1:4318
+make api-run
+```
+
+也可将 `OPSK_OTEL_ENDPOINT=http://127.0.0.1:4318` 写入本地 `.env` 后启动 API、Worker 和 Scheduler。执行一次诊断或巡检后，访问 Jaeger UI 查看 Trace，访问 Grafana 查看已自动配置的 Prometheus 指标、Loki 日志和 Jaeger 链路数据。完成后使用 `make obs-down` 停止服务。
+
+需要彻底清理当前 Compose 项目的本地环境时，使用 `make infra-clean`。该命令会删除 PostgreSQL、可观测容器、网络和数据卷，数据不可恢复，仅适用于明确确认的本地环境。
+
+### 5.2 管理员与业务角色
 
 默认开发凭据：
 
@@ -270,7 +292,7 @@ make infra-down
 
 API、Worker、Scheduler 和 Migration 只使用 `opskeeper` 业务凭据。`opskeeper` 是 `NOSUPERUSER`、`NOCREATEDB`、`NOCREATEROLE`、`NOREPLICATION`、`NOBYPASSRLS` 角色。
 
-### 5.2 `POSTGRES_*` 的关系
+### 5.3 `POSTGRES_*` 的关系
 
 | 变量                  | PostgreSQL 官方镜像语义                        | 本地值       |
 | --------------------- | ---------------------------------------------- | ------------ |

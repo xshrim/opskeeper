@@ -305,7 +305,7 @@ Direct 失败不得自动切换到 Agent，Agent 失败也不得自动切换到 
 - Direct/MCP 一致性测试：相同目标和业务参数得到等价工具名、字段和错误语义；
 - 多资源测试：同名工具不会串用资源连接或审计对象；
 - 安全测试：模型不能通过连接字段改变 Direct 目标，远端内容不能改变工具权限；
-- 集成测试：真实 Docker、Kubernetes、PostgreSQL 和 Redis 环境各至少完成一次连接及工具调用验证。
+- 集成测试：真实 Docker、Kubernetes、PostgreSQL 环境各至少完成一次连接及工具调用验证；Redis 后端按启用配置验证。
 
 ## 13. 迁移与删除原则
 

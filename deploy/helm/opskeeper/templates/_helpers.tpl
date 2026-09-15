@@ -44,7 +44,13 @@ capabilities:
   value: "true"
 - name: OPSK_TRUSTED_PROXIES
   value: {{ .Values.trustedProxies | quote }}
-- name: OTEL_EXPORTER_OTLP_ENDPOINT
+- name: OPSK_CACHE_BACKEND
+  value: {{ .Values.cacheBackend | quote }}
+- name: OPSK_REPOSITORY_STORAGE_BACKEND
+  value: {{ .Values.repositoryStorageBackend | quote }}
+- name: OPSK_REPOSITORY_S3_PROVIDER
+  value: {{ .Values.repositoryS3Provider | quote }}
+- name: OPSK_OTEL_ENDPOINT
   value: {{ .Values.otelExporterEndpoint | quote }}
 - name: OPSK_OPERATION_SUBMITTER_ENABLED
   value: {{ .Values.operation.enabled | quote }}

@@ -134,7 +134,7 @@ resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 4. 判断资源类型、标签、环境和操作风险等条件。
 5. 对敏感操作执行二次校验或审批。
 
-结果可短期缓存到 Redis，但角色变更必须主动失效缓存。后端必须始终以数据库中的组织归属为事实来源。
+结果可短期缓存到配置的缓存后端（Memory、PostgreSQL 或 Redis），但角色变更必须主动失效缓存。后端必须始终以数据库中的组织归属为事实来源。
 
 ## 5.1 T05 管理边界
 
@@ -144,7 +144,7 @@ resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 - 授权人必须同时拥有被授予角色包含的每个权限点，不能把自身没有的权限转授给其他用户或组。
 - 用户组、角色绑定和用户状态变更都写入安全审计；审计记录至少包含操作者、动作、目标、Scope、请求 ID、来源 IP、结果和时间。
 
-授权查询使用 PostgreSQL 中的 `authorization_revision` 单调版本号构造 Redis 缓存键。任何影响授权的用户、Scope、组、成员、角色或绑定变化都会递增版本号；缓存读取失败时回源 PostgreSQL，绝不复用可能过期的成功结果。
+授权查询使用 PostgreSQL 中的 `authorization_revision` 单调版本号构造缓存键。任何影响授权的用户、Scope、组、成员、角色或绑定变化都会递增版本号；缓存读取失败时回源 PostgreSQL，绝不复用可能过期的成功结果。
 
 ## 6. 数据隔离
 

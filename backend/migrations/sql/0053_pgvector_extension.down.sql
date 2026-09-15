@@ -1,0 +1,2 @@
+-- The extension is an instance prerequisite managed by the database owner.
+-- Rolling back application migrations must not remove it.

@@ -45,4 +45,6 @@ Connector 返回的是固定的结构化诊断快照。确定性规则负责将�
 
 ## 5. 验证边界
 
-`make backend-integration-test` 会在本地 Compose 提供的 PostgreSQL 和 Redis 上实际采集健康快照，并在隔离 Schema 中验证内置 Skill 迁移可应用、回滚、再应用。Kubernetes 规则以动态客户端兼容的 JSON 故障夹具和黄金 Finding 验证；Kafka 分区/ISR/离线副本及认证配置使用 `kafka-go` 的结构化夹具验证。真实 Kafka 集群由部署环境提供，未配置消费组 ACL、旧 Broker API 或无法读取 Offset 时，运行时将该能力明确写入 `unavailable`，不会以测试替代真实连接结论。
+默认集成环境使用 PostgreSQL。Redis Skill 的真实快照测试仅在配置外部 Redis 测试目标时运行，与 OpsKeeper 的缓存后端无关。
+
+`make backend-integration-test` 会在本地 Compose 提供的 PostgreSQL 上实际采集健康快照，并在隔离 Schema 中验证内置 Skill 迁移可应用、回滚、再应用。配置外部 Redis 测试目标时才额外验证 Redis 连接。Kubernetes 规则以动态客户端兼容的 JSON 故障夹具和黄金 Finding 验证；Kafka 分区/ISR/离线副本及认证配置使用 `kafka-go` 的结构化夹具验证。真实 Kafka 集群由部署环境提供，未配置消费组 ACL、旧 Broker API 或无法读取 Offset 时，运行时将该能力明确写入 `unavailable`，不会以测试替代真实连接结论。
