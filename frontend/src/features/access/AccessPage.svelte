@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { ClipboardCheck, Copy, Pencil, Plus, Search, ShieldCheck, Trash2, ChevronDown } from 'lucide-svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
+  import IconPicker from '../../components/IconPicker.svelte';
+  import IconValue from '../../components/IconValue.svelte';
   import { api, ApiError, type Group, type Project, type Resource, type ResourceRoleBinding, type ResourceRoleDefinition, type RoleBinding, type RoleDefinition, type Team, type User } from '../../lib/api';
   import {
     actorPermissionsAtScope as getActorPermissionsAtScope,
@@ -48,8 +50,6 @@
   export let teamName = '';
   export let teamCode = '';
   export let teamIcon = 'UsersRound';
-  export let iconPickerTarget: 'create' | 'edit' | null = null;
-  export let teamIconSearch = '';
   export let userDialogOpen = false;
   export let editingTeam: Team | null = null;
   export let editTeamName = '';
@@ -79,14 +79,12 @@
   export let scopeViewerResourceBindings: Array<ResourceRoleBinding & { resource_name: string; role_name: string }> = [];
   export let scopeChoices: Array<{ id: string; type: string; name: string; parentId?: string }> = [];
   export let preferredScopeId = '';
-  export let teamIconOptions: Array<{ value: string; label: string; keywords: string }> = [];
   export let currentUser: User | null = null;
   export let isPlatformAdmin = false;
   export let busy = false;
   export let copiedControl: 'created-password' | 'reset-username' | 'reset-credentials' | null = null;
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
-  export let filteredTeamIconOptions: Array<{ value: string; label: string; keywords: string }> = [];
 
   let accessSearchQuery = '';
 
@@ -178,7 +176,6 @@
   function resourceVisibleToScope(viewerScopeID: string, resourceScopeID: string) { return isResourceVisibleToScope(scopeChoices, viewerScopeID, resourceScopeID); }
   function viewerResourceRoleAllowed(resourceRole: ResourceRoleDefinition) { return isViewerResourceRoleAllowed(resourceRole); }
 
-  export let teamIconComponent: (icon: string) => any = () => null;
   export let onNotice: (message: string) => void = () => {};
   export let onError: (message: string) => void = () => {};
 
@@ -216,9 +213,7 @@
   function updateNewUserResourceGrant(gi: number, ri: number, updates: Partial<NewUserResourceGrant>) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.map((item, i) => i === ri ? { ...item, ...updates } : item) }); }
   function removeNewUserResourceGrant(gi: number, ri: number) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.filter((_, i) => i !== ri) }); }
   function updateNewUserUsername(value: string) { if (!newUserDisplayName || newUserDisplayName === newUserUsername) newUserDisplayName = value; newUserUsername = value; }
-  function openTeamDialog() { teamName = ''; teamCode = ''; teamIcon = teamIconOptions[Math.floor(Math.random() * teamIconOptions.length)]?.value ?? 'UsersRound'; teamDialogOpen = true; }
-  function openTeamIconPicker(target: 'create' | 'edit') { iconPickerTarget = target; }
-  function selectTeamIcon(icon: string) { if (iconPickerTarget === 'create') teamIcon = icon; if (iconPickerTarget === 'edit') editTeamIcon = icon; iconPickerTarget = null; }
+  function openTeamDialog() { teamName = ''; teamCode = ''; teamIcon = 'UsersRound'; teamDialogOpen = true; }
   function openEditTeam(team: Team) { editingTeam = team; editTeamName = team.name; editTeamIcon = team.icon; editTeamStatus = team.status; }
   function openEditUser(user: User) { editingUser = user; editUserDisplayName = user.display_name || user.username; passwordResetCredentials = null; const direct = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === user.id); editUserScopeId = direct.find((binding) => manageableScopeChoices.some((scope) => scope.id === binding.scope_id))?.scope_id ?? manageableScopeChoices[0]?.id ?? ''; editUserRoleIds = direct.filter((binding) => binding.scope_id === editUserScopeId).map((binding) => binding.role_id); }
   function chooseEditUserScope(scopeID: string) { editUserScopeId = scopeID; editUserRoleIds = editingUser ? bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === scopeID).map((binding) => binding.role_id) : []; editUserResourceRoleId = ''; editUserResourceId = ''; }
@@ -346,7 +341,6 @@
                   {@const teamProjects = projects.filter(
                     (project) => project.team_id === team.id
                   )}
-                  {@const TeamIcon = teamIconComponent(team.icon)}
                   <article class="access-record">
                     <div class="access-table-row">
                       <input
@@ -364,7 +358,7 @@
                         on:click={() => toggleTeamAccess(team.id)}
                       >
                         <span class="entity-icon team-icon"
-                          ><TeamIcon size={17} strokeWidth={1.8} /></span
+                          ><IconValue value={team.icon} size={17} /></span
                         ><span
                           ><strong>{team.name}</strong><small>{team.code}</small
                           ></span
@@ -631,37 +625,21 @@
               </div>
               <form class="stack-form" on:submit|preventDefault={createTeam}>
                 <div class="team-identity-field">
-                  <button
-                    class="team-icon-picker-trigger"
-                    type="button"
-                    aria-label="选择团队图标"
-                    data-tooltip="选择团队图标"
-                    on:click={() => openTeamIconPicker('create')}
-                    ><span class="entity-icon team-icon"
-                      ><svelte:component
-                        this={teamIconComponent(teamIcon)}
-                        size={16}
-                        strokeWidth={1.8}
-                      /></span
-                    ></button
-                  ><label
+                  <IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" />
+                  <label
                     >名称<input
                       bind:value={teamName}
                       required
                       maxlength="120"
                       placeholder="例如：支付平台"
-                    /></label
-                  >
+                    /></label>
                 </div>
                 <label
                   >团队编码<input
                     bind:value={teamCode}
                     required
                     placeholder="例如：payments"
-                  /></label
-                ><label
-                  >图标<input bind:value={teamIcon} placeholder="team" /></label
-                >
+                  /></label>
                 <div class="form-actions">
                   <button
                     class="secondary"
@@ -708,13 +686,12 @@
                         updateNewUserUsername(event.currentTarget.value)}
                       required
                       placeholder="登录用户名"
-                    /></label
-                  ><label
+                    /></label>
+                  <label
                     >显示名<input
                       bind:value={newUserDisplayName}
                       placeholder="默认使用用户名"
-                    /></label
-                  >
+                    /></label>
                 </div>
                 <div class="form-row">
                   <label
@@ -722,13 +699,12 @@
                       type="email"
                       bind:value={newUserEmail}
                       placeholder="name@example.com"
-                    /></label
-                  ><label
+                    /></label>
+                  <label
                     >手机号<input
                       bind:value={newUserPhone}
                       placeholder="+86"
-                    /></label
-                  >
+                  /></label>
                 </div>
                 <fieldset class="preference-group">
                   <legend>一次性密码</legend>
@@ -1010,27 +986,14 @@
               </div>
               <form class="stack-form" on:submit|preventDefault={saveTeam}>
                 <div class="team-identity-field">
-                  <button
-                    class="team-icon-picker-trigger"
-                    type="button"
-                    aria-label="选择团队图标"
-                    data-tooltip="选择团队图标"
-                    on:click={() => openTeamIconPicker('edit')}
-                    ><span class="entity-icon team-icon"
-                      ><svelte:component
-                        this={teamIconComponent(editTeamIcon)}
-                        size={16}
-                        strokeWidth={1.8}
-                      /></span
-                    ></button
-                  ><label
+                  <IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
+                  <label
                     >名称<input
                       bind:value={editTeamName}
                       required
                       maxlength="120"
                       placeholder="例如：支付平台"
-                    /></label
-                  >
+                    /></label>
                 </div>
                 <label
                   >状态<select bind:value={editTeamStatus}
@@ -1047,64 +1010,6 @@
                   ><button class="primary" disabled={busy}>保存团队</button>
                 </div>
               </form>
-            </dialog>
-          </div>
-        {/if}
-        {#if iconPickerTarget}
-          <div
-            class="dialog-backdrop"
-            role="presentation"
-            on:click={(event) => {
-              if (event.currentTarget === event.target) iconPickerTarget = null;
-            }}
-          >
-            <dialog
-              open
-              class="dialog icon-picker-dialog"
-              aria-labelledby="icon-picker-title"
-            >
-              <div class="dialog-heading">
-                <div>
-                  <p class="eyebrow">ICON PICKER</p>
-                  <h2 id="icon-picker-title">选择图标</h2>
-                </div>
-                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="关闭"
-                  on:click={() => (iconPickerTarget = null)}>×</button
-                >
-              </div>
-              <div class="icon-picker-body">
-                <label class="icon-search"
-                  ><Search size={16} aria-hidden="true" /><span class="sr-only"
-                    >搜索图标</span
-                  ><input
-                    bind:value={teamIconSearch}
-                    placeholder="搜索图标，如 Kubernetes、数据库"
-                    aria-label="搜索图标"
-                  /></label
-                >
-                <div class="team-icon-grid" aria-label="团队图标列表">
-                  {#each filteredTeamIconOptions as option}
-                    {@const TeamIcon = teamIconComponent(option.value)}
-                    <button
-                      class:active={(iconPickerTarget === 'create'
-                        ? teamIcon
-                        : editTeamIcon) === option.value}
-                      type="button"
-                      on:click={() => selectTeamIcon(option.value)}
-                      aria-label={`选择图标 ${option.label}`}
-                      ><span class="entity-icon team-icon"
-                        ><TeamIcon size={18} strokeWidth={1.8} /></span
-                      ><span>{option.label}</span></button
-                    >
-                  {:else}
-                    <p class="icon-picker-empty">没有匹配的图标。</p>
-                  {/each}
-                </div>
-              </div>
             </dialog>
           </div>
         {/if}

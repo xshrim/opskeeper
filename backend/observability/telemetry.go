@@ -56,7 +56,11 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 	otel.SetMeterProvider(metrics)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	return func(shutdownCtx context.Context) error {
-		return errors.Join(metrics.Shutdown(shutdownCtx), traces.Shutdown(shutdownCtx))
+		// Telemetry is best-effort. A collector being stopped or unreachable must
+		// never turn a successful command or graceful process shutdown into an
+		// application warning or failure.
+		_ = errors.Join(metrics.Shutdown(shutdownCtx), traces.Shutdown(shutdownCtx))
+		return nil
 	}, nil
 }
 

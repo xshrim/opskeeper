@@ -56,12 +56,14 @@ func validateStatus(status string) error {
 	return nil
 }
 
+const maxIconLength = 262144
+
 func normalizeIcon(icon, fallback string) string {
 	icon = strings.TrimSpace(icon)
 	if icon == "" {
 		return fallback
 	}
-	if len([]rune(icon)) > 64 {
+	if len([]rune(icon)) > maxIconLength {
 		return fallback
 	}
 	return icon

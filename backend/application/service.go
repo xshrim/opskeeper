@@ -12,6 +12,8 @@ var ErrNotFound = errors.New("application not found")
 var ErrInvalid = errors.New("invalid application")
 var codePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$`)
 
+const maxIconLength = 262144
+
 type Store interface {
 	Create(context.Context, CreateInput) (Application, error)
 	Import(context.Context, ImportInput) (Application, error)
@@ -42,7 +44,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Application, erro
 	in.ProjectID = strings.TrimSpace(in.ProjectID)
 	in.Description = strings.TrimSpace(in.Description)
 	in.ExternalUID = strings.TrimSpace(in.ExternalUID)
-	if in.Icon == "" {
+	in.Icon = strings.TrimSpace(in.Icon)
+	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
 		in.Icon = "AppWindow"
 	}
 	if in.Source == "" {
@@ -69,7 +72,8 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Application, erro
 	in.Code = strings.TrimSpace(in.Code)
 	in.Description = strings.TrimSpace(in.Description)
 	in.ExternalUID = strings.TrimSpace(in.ExternalUID)
-	if in.Icon == "" {
+	in.Icon = strings.TrimSpace(in.Icon)
+	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
 		in.Icon = "AppWindow"
 	}
 	if in.Source == "" {
@@ -111,6 +115,13 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 			return Application{}, ErrInvalid
 		}
 		in.Name = &value
+	}
+	if in.Icon != nil {
+		value := strings.TrimSpace(*in.Icon)
+		if value == "" || len([]rune(value)) > maxIconLength {
+			value = "AppWindow"
+		}
+		in.Icon = &value
 	}
 	return s.store.Update(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id), in)
 }

@@ -1,6 +1,7 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    container_name: opskeeper-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -23,6 +24,7 @@ services:
 
   jaeger:
     image: jaegertracing/all-in-one:1.67.0
+    container_name: opskeeper-jaeger
     profiles: ["obs"]
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
@@ -32,6 +34,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.121.0
+    container_name: opskeeper-otel-collector
     profiles: ["obs"]
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -47,6 +50,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.2.1
+    container_name: opskeeper-prometheus
     profiles: ["obs"]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -61,6 +65,7 @@ services:
 
   loki:
     image: grafana/loki:3.4.2
+    container_name: opskeeper-loki
     profiles: ["obs"]
     command: ["-config.file=/etc/loki/config.yaml"]
     volumes:
@@ -72,6 +77,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.5.2
+    container_name: opskeeper-grafana
     profiles: ["obs"]
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}

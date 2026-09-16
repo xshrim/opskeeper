@@ -7,7 +7,7 @@
 - Kubernetes 1.29 或更高版本，支持 NetworkPolicy 的 CNI。
 - Helm 3.18 或更高版本。
 - 以 digest 标识的 OpsKeeper 镜像。
-- PostgreSQL 16（安装 `pgvector` 扩展）和可接收 OTLP/HTTP 的 Collector。缓存与 Repository Bundle 存储默认复用 PostgreSQL。平台自身中间件选择必须遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。Migration 会执行 `CREATE EXTENSION IF NOT EXISTS vector`，迁移角色必须具有相应权限。
+- PostgreSQL 16（由数据库管理员预装 `pgvector` 扩展）和可接收 OTLP/HTTP 的 Collector。缓存与 Repository Bundle 存储默认复用 PostgreSQL。平台自身中间件选择必须遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。业务迁移角色不需要、也不得拥有创建实例级扩展的权限。
 - 应用与迁移凭据已分离，且 Ingress 直连地址范围已确认。
 
 ## 2. Secret 契约

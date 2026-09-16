@@ -1,5 +1,16 @@
 <script lang="ts">
-  import { Server } from 'lucide-svelte';
+  import {
+    Activity,
+    BrainCircuit,
+    Database,
+    FolderGit2,
+    Globe2,
+    Network,
+    Package,
+    Server,
+    Sparkles,
+    Waypoints
+  } from 'lucide-svelte';
   import { brandNameFor } from '../lib/resources';
   import BrandIcon from '../lib/BrandIcon.svelte';
 
@@ -11,11 +22,29 @@
   export let fallback = '◇';
   export let size = 18;
 
-  $: brand = brandNameFor(resource);
+$: brand = brandNameFor(resource);
+$: kindIcon = {
+  Artifact: Package,
+  Repository: FolderGit2,
+  Nacos: Network,
+  Nginx: Globe2,
+  TongHttpServer: Globe2,
+  Oracle: Database,
+  OceanBase: Database,
+  TongRDS: Database,
+  LLM: BrainCircuit,
+  AIProvider: BrainCircuit,
+  MCPServer: Waypoints,
+  Skill: Sparkles,
+  Monitor: Activity,
+  Loki: Activity,
+  Tempo: Activity,
+  Alertmanager: Activity
+}[resource.kind];
 </script>
 
-{#if resource.kind === 'AIProvider'}
-  <span class="resource-brand-monogram" aria-label="LLM">AI</span>
+{#if kindIcon}
+  <svelte:component this={kindIcon} size={size} strokeWidth={1.8} aria-hidden="true" />
 {:else if resource.kind === 'Host'}
   <Server size={size} strokeWidth={1.8} aria-hidden="true" />
 {:else if brand === 'OpenAI'}

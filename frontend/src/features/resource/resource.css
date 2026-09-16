@@ -211,10 +211,16 @@
   font-weight: 700;
 }
 .catalog-root {
+  position: relative;
+  justify-content: center;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--theme-divider);
   border-radius: 0;
   font-weight: 700;
+}
+.catalog-root > span:last-child {
+  position: absolute;
+  right: 9px;
 }
 .catalog-root,
 .catalog-category-button,

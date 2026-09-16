@@ -1,14 +1,7 @@
-import { icons as lucideIcons } from 'lucide-svelte';
-
 export function formatIconName(name: string) {
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
-}
-
-export function teamIconComponent(icon: string | undefined): any {
-  const key = icon ?? 'UsersRound';
-  return lucideIcons[key as keyof typeof lucideIcons] ?? lucideIcons.UsersRound;
 }
 
 export function iconGlyph(icon: string | undefined) {

@@ -231,11 +231,6 @@
 .dialog .primary:hover {
   background: var(--color-primary-hover);
 }
-.team-icon-grid .entity-icon {
-  width: 34px;
-  height: 34px;
-  font-size: 17px;
-}
 .created-credentials-inline .icon-button {
   width: 30px;
   height: 30px;

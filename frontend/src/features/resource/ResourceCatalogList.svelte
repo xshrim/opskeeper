@@ -4,7 +4,7 @@
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
-  import { relativeConnectionTime, resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor, resourceCatalogTagsFor, resourceCatalogTagClass } from './resourceCatalog';
+  import { relativeConnectionTime, resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
 
   export let resources: Resource[] = [];
   export let selectedResourceId = '';
@@ -79,11 +79,11 @@
           {#if resource.kind === 'AIProvider'}
             {@const models = providerModelsForResource(resource)}
             {@const currentModel = providerDefaultModelForResource(resource)}
-            <strong>LLM <span class="resource-catalog-tags">{#each resourceCatalogTagsFor(resource) as tag}<em class={`resource-catalog-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}>{tag}</em>{/each}</span></strong><small class="provider-model-summary"><span class="provider-model-name">{String(currentModel?.name ?? '未设置')}</span>{#if models.length > 1}<em class="provider-model-count">+{models.length - 1}</em>{/if}</small>
+            <strong>LLM</strong><small class="provider-model-summary"><span class="provider-model-name">{String(currentModel?.name ?? '未设置')}</span>{#if models.length > 1}<em class="provider-model-count">+{models.length - 1}</em>{/if}</small>
           {:else if resource.kind === 'MCPServer'}
-            <strong>MCPServer <span class="resource-catalog-tags">{#each resourceCatalogTagsFor(resource) as tag}<em class={`resource-catalog-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}>{tag}</em>{/each}</span></strong><small>{resourceSubtypeFor(resource)}</small>
+            <strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>
           {:else}
-            <strong>{resourceCategoryFor(resource)} <span class="resource-catalog-tags">{#each resourceCatalogTagsFor(resource) as tag}<em class={`resource-catalog-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}>{tag}</em>{/each}</span></strong><small>{resourceSubtypeFor(resource)}</small>
+            <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
           {/if}
         </span>
         <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>

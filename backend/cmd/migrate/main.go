@@ -7,14 +7,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/config"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/migrations"
-	"opskeeper/backend/observability"
-	"opskeeper/backend/version"
 )
 
 const serviceName = "opskeeper-migrate"
@@ -34,31 +31,15 @@ func main() {
 	logger = logger.With("service", serviceName)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	build := version.Current()
-	shutdownTelemetry, err := observability.Setup(ctx, serviceName, cfg.Environment, cfg.OTLPExporterEndpoint, observability.Build{Version: build.Version, Commit: build.Commit})
-	if err != nil {
-		logger.Error("configure telemetry", "kind", "error", "error_type", "telemetry", "error", err)
-		os.Exit(1)
-	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := shutdownTelemetry(shutdownCtx); err != nil {
-			logger.Warn("shutdown telemetry", "kind", "error", "error_type", "telemetry-shutdown", "error", err)
-		}
-	}()
 
 	direction := "up"
 	if len(os.Args) > 1 {
 		direction = os.Args[1]
 	}
-	started := time.Now()
 	if err := run(ctx, direction, cfg); err != nil {
-		observability.RecordTask(ctx, "migration", "failure", time.Since(started))
 		logger.Error("migration failed", "kind", "error", "error_type", "migration", "error_summary", migrationErrorSummary(err))
 		os.Exit(1)
 	}
-	observability.RecordTask(ctx, "migration", "success", time.Since(started))
 	logger.Info("migration command completed", "kind", "job", "direction", direction)
 }
 

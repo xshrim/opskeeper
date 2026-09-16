@@ -21,6 +21,8 @@
   let requiredNewPasswordVisible = false;
   let requiredConfirmPasswordVisible = false;
   let busy = false;
+  let loginIdentifierInput: HTMLInputElement;
+  let passwordInput: HTMLInputElement;
 
   function focusOnMount(node: HTMLInputElement) {
     node.focus();
@@ -63,6 +65,8 @@
   }
 
   async function login() {
+    loginIdentifier = loginIdentifierInput?.value ?? loginIdentifier;
+    password = passwordInput?.value ?? password;
     busy = true;
     authError = '';
     try {
@@ -127,9 +131,9 @@
     <section class="login-panel" aria-labelledby="login-heading">
       <header class="login-panel-header"><p class="login-kicker">账号登录</p><h1 id="login-heading">欢迎回来</h1><p class="login-intro">使用平台账号继续访问 OpsKeeper。</p>{#if authError}<MessageBanner message={authError} tone="error" />{/if}</header>
       <form class="stack-form login-form" on:submit|preventDefault={login}>
-        <div class="login-field"><label for="login-identifier">账号</label><input id="login-identifier" type="text" bind:value={loginIdentifier} autocomplete="username" required use:focusOnMount placeholder="用户名、邮箱或手机号" /></div>
-        <div class="login-field"><label for="login-password">密码</label><span class="password-control"><input id="login-password" type={passwordVisible ? 'text' : 'password'} bind:value={password} autocomplete="current-password" required placeholder="请输入登录密码" /><button class="password-toggle" type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} data-tooltip={passwordVisible ? '隐藏密码' : '显示密码'} on:click={() => (passwordVisible = !passwordVisible)}>{#if passwordVisible}<EyeOff size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={18} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></div>
-        <span class="login-submit-wrap" data-tooltip={!loginIdentifier.trim() || !password ? '请先填写账号和密码' : undefined}><button class="login-submit" type="submit" disabled={busy || !loginIdentifier.trim() || !password} aria-busy={busy}>{#if busy}<span class="button-spinner" aria-hidden="true"></span>{/if}<span>{busy ? '正在登录' : '登录'}</span></button></span>
+        <div class="login-field"><label for="login-identifier">账号</label><input bind:this={loginIdentifierInput} id="login-identifier" type="text" bind:value={loginIdentifier} autocomplete="username" required use:focusOnMount placeholder="用户名、邮箱或手机号" /></div>
+        <div class="login-field"><label for="login-password">密码</label><span class="password-control"><input bind:this={passwordInput} id="login-password" type={passwordVisible ? 'text' : 'password'} bind:value={password} autocomplete="current-password" required placeholder="请输入登录密码" /><button class="password-toggle" type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} data-tooltip={passwordVisible ? '隐藏密码' : '显示密码'} on:click={() => (passwordVisible = !passwordVisible)}>{#if passwordVisible}<EyeOff size={18} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={18} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></div>
+        <span class="login-submit-wrap"><button class="login-submit" type="submit" disabled={busy} aria-busy={busy}>{#if busy}<span class="button-spinner" aria-hidden="true"></span>{/if}<span>{busy ? '正在登录' : '登录'}</span></button></span>
       </form>
       <p class="login-footnote">账号权限由平台管理员统一配置</p>
     </section>

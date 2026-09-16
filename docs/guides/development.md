@@ -263,7 +263,11 @@ make infra-logs
 make infra-down
 ```
 
-默认 Compose 使用 `pgvector/pgvector:pg16`，初始化脚本预装 `vector` 扩展，迁移通过幂等声明确保扩展存在。授权缓存写入 `cache_entries`（`UNLOGGED`，可安全重建），Repository Bundle 以原始 Git Bundle `bytea` 写入 `repository_bundles`，不使用 FlatBuffers；数据库、缓存和存储共用同一个 PostgreSQL 实例。`memory` 适合单进程开发或测试。平台内部中间件选择遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。
+默认 Compose 使用 `pgvector/pgvector:pg16`。PostgreSQL 初始化脚本由数据库管理员在首次创建业务数据库时安装 `vector` 扩展；业务迁移不创建实例级扩展。删除本地数据卷后重新执行 `make infra-up` 即会重新运行初始化脚本。授权缓存写入 `cache_entries`（`UNLOGGED`，可安全重建），Repository Bundle 以原始 Git Bundle `bytea` 写入 `repository_bundles`，不使用 FlatBuffers；数据库、缓存和存储共用同一个 PostgreSQL 实例。`memory` 适合单进程开发或测试。平台内部中间件选择遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。
+
+本地 PostgreSQL 容器名固定为 `opskeeper-postgres`，可使用 `docker logs opskeeper-postgres` 或 `docker exec -it opskeeper-postgres psql -U postgres` 排查。
+
+`obs` profile 的容器名固定为 `opskeeper-jaeger`、`opskeeper-otel-collector`、`opskeeper-prometheus`、`opskeeper-loki` 和 `opskeeper-grafana`，可直接用对应名称执行 `docker logs` 或 `docker exec`。
 
 `make infra-down` 不删除持久化数据卷，再次启动会复用已有数据。PostgreSQL 初始化变量和初始化脚本仅在数据目录为空时生效；修改环境变量不会更新已有数据卷中的用户、密码或数据库所有权。
 
