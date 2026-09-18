@@ -39,12 +39,11 @@ type policyRequest struct {
 	Maintenance            []inspection.MaintenanceWindow `json:"maintenance"`
 }
 type channelRequest struct {
-	ScopeID            string  `json:"scope_id"`
-	Name               string  `json:"name"`
-	WebhookURL         string  `json:"webhook_url"`
-	Status             string  `json:"status"`
-	CredentialID       *string `json:"credential_id"`
-	RateLimitPerMinute int     `json:"rate_limit_per_minute"`
+	ScopeID            string `json:"scope_id"`
+	Name               string `json:"name"`
+	WebhookURL         string `json:"webhook_url"`
+	Status             string `json:"status"`
+	RateLimitPerMinute int    `json:"rate_limit_per_minute"`
 }
 
 func registerInspectionRoutes(router chi.Router, service inspectionService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -131,7 +130,7 @@ func (h inspectionHandler) createChannel(w http.ResponseWriter, r *http.Request)
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.CreateChannel(r.Context(), inspection.NotificationChannel{ScopeID: body.ScopeID, Name: body.Name, WebhookURL: body.WebhookURL, Status: body.Status, CredentialID: body.CredentialID, RateLimitPerMinute: body.RateLimitPerMinute})
+	item, err := h.service.CreateChannel(r.Context(), inspection.NotificationChannel{ScopeID: body.ScopeID, Name: body.Name, WebhookURL: body.WebhookURL, Status: body.Status, RateLimitPerMinute: body.RateLimitPerMinute})
 	if err != nil {
 		writeInspectionError(w, r, err)
 		return

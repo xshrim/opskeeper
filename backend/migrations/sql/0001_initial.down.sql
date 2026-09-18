@@ -198,7 +198,7 @@ ALTER TABLE platforms DROP COLUMN IF EXISTS icon;
 -- <<< 0007_resource_catalog_metadata.down.sql
 UPDATE resource_schemas
    SET status = 'active'
- WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model', 'Credential');
+ WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model');
 
 ALTER TABLE resource_schemas
     DROP COLUMN IF EXISTS display_name,
@@ -208,24 +208,18 @@ ALTER TABLE resource_schemas
 -- <<< 0006_resource_catalog.down.sql
 DROP TRIGGER IF EXISTS scope_defaults_authorization_revision ON scope_defaults;
 DROP TRIGGER IF EXISTS resource_relations_authorization_revision ON resource_relations;
-DROP TRIGGER IF EXISTS resource_credentials_authorization_revision ON resource_credentials;
 DROP TRIGGER IF EXISTS resources_authorization_revision ON resources;
 DROP TRIGGER IF EXISTS scope_defaults_validate ON scope_defaults;
 DROP TRIGGER IF EXISTS resources_validate_scope_move ON resources;
 DROP TRIGGER IF EXISTS resource_relations_validate ON resource_relations;
-DROP TRIGGER IF EXISTS resources_validate_credential_scope ON resources;
-DROP TRIGGER IF EXISTS resource_credentials_validate_scope ON resource_credentials;
 DROP FUNCTION IF EXISTS validate_scope_default();
 DROP FUNCTION IF EXISTS validate_resource_scope_move();
 DROP FUNCTION IF EXISTS validate_resource_relation();
-DROP FUNCTION IF EXISTS validate_resource_credential_scope();
-DROP FUNCTION IF EXISTS validate_resource_credential_record_scope();
 DROP FUNCTION IF EXISTS resource_scope_contains(uuid, uuid);
 DROP TABLE IF EXISTS scope_defaults;
 DROP TABLE IF EXISTS resource_relations;
 DROP TABLE IF EXISTS resource_sync_states;
 DROP TABLE IF EXISTS resources;
-DROP TABLE IF EXISTS resource_credentials;
 DROP TABLE IF EXISTS resource_schemas;
 
 -- <<< 0005_access_audit.down.sql

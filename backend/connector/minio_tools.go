@@ -15,11 +15,11 @@ func (s *Service) resolveMinIOTools(ctx context.Context, item aiengine.ContextRe
 		return fmt.Errorf("MinIO agent resources must use the MCP provider")
 	}
 	in := mt.ConnectionInput{Endpoint: stringValue(item.Config, "endpoint"), Region: stringValue(item.Config, "region"), Secure: configBool(item.Config, "secure"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID != nil && strings.TrimSpace(*item.CredentialID) != "" {
-		raw, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
-		if err != nil {
-			return err
-		}
+	raw, configured, err := s.resourceSecret(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if configured {
 		var v map[string]any
 		if err := json.Unmarshal(raw, &v); err != nil {
 			return err

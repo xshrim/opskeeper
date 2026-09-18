@@ -25,19 +25,15 @@ var ErrNotFound = errors.New("MCP snapshot not found")
 type ResourceReader interface {
 	Get(context.Context, string) (resource.Resource, error)
 }
-type CredentialReader interface {
-	RevealLinked(context.Context, string) ([]byte, error)
-}
 
 type Service struct {
 	resources        ResourceReader
 	store            SnapshotStore
 	enhancedSecurity bool
-	credentials      CredentialReader
 }
 
 // DraftConfig is used by the creation wizard to verify an MCP endpoint before
-// a resource or credential is persisted.
+// the resource configuration and secret are persisted.
 type DraftConfig struct {
 	Transport        string            `json:"transport"`
 	URL              string            `json:"url"`
@@ -56,12 +52,8 @@ func NewService(resources ResourceReader, store SnapshotStore) *Service {
 	return &Service{resources: resources, store: store}
 }
 
-func NewServiceWithSecurity(resources ResourceReader, store SnapshotStore, enhancedSecurity bool, credentials ...CredentialReader) *Service {
-	var reader CredentialReader
-	if len(credentials) > 0 {
-		reader = credentials[0]
-	}
-	return &Service{resources: resources, store: store, enhancedSecurity: enhancedSecurity, credentials: reader}
+func NewServiceWithSecurity(resources ResourceReader, store SnapshotStore, enhancedSecurity bool) *Service {
+	return &Service{resources: resources, store: store, enhancedSecurity: enhancedSecurity}
 }
 
 // TestDraft performs initialization and tools/list against an in-memory
@@ -288,22 +280,26 @@ func (s *Service) requestHeaders(ctx context.Context, server resource.Resource) 
 	for key, value := range configHeaders(server.Config) {
 		headers[key] = value
 	}
-	if server.CredentialID != nil && s.credentials != nil {
-		if raw, err := s.credentials.RevealLinked(ctx, *server.CredentialID); err == nil {
-			var secret struct {
-				Token   string            `json:"token"`
-				Headers map[string]string `json:"headers"`
+	reader, _ := s.resources.(interface {
+		RevealSecret(context.Context, string) ([]byte, error)
+	})
+	if reader == nil {
+		return headers
+	}
+	if raw, err := reader.RevealSecret(ctx, server.ID); err == nil {
+		var secret struct {
+			Token   string            `json:"token"`
+			Headers map[string]string `json:"headers"`
+		}
+		if json.Unmarshal(raw, &secret) == nil {
+			for key, value := range secret.Headers {
+				headers[key] = value
 			}
-			if json.Unmarshal(raw, &secret) == nil {
-				for key, value := range secret.Headers {
-					headers[key] = value
-				}
-				if strings.TrimSpace(secret.Token) != "" {
-					headers["Authorization"] = "Bearer " + strings.TrimSpace(secret.Token)
-				}
-			} else if token := strings.TrimSpace(string(raw)); token != "" {
-				headers["Authorization"] = "Bearer " + token
+			if strings.TrimSpace(secret.Token) != "" {
+				headers["Authorization"] = "Bearer " + strings.TrimSpace(secret.Token)
 			}
+		} else if token := strings.TrimSpace(string(raw)); token != "" {
+			headers["Authorization"] = "Bearer " + token
 		}
 	}
 	if err := validateHeaders(headers); err != nil {
@@ -313,11 +309,17 @@ func (s *Service) requestHeaders(ctx context.Context, server resource.Resource) 
 }
 
 func (s *Service) tlsConfig(ctx context.Context, server resource.Resource) (*tls.Config, error) {
-	if server.CredentialID == nil || s.credentials == nil {
+	reader, ok := s.resources.(interface {
+		RevealSecret(context.Context, string) ([]byte, error)
+	})
+	if !ok {
 		return nil, nil
 	}
-	raw, err := s.credentials.RevealLinked(ctx, *server.CredentialID)
+	raw, err := reader.RevealSecret(ctx, server.ID)
 	if err != nil {
+		if errors.Is(err, resource.ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	var secret struct {

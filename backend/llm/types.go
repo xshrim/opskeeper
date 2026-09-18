@@ -40,11 +40,10 @@ type AIProviderConfig struct {
 }
 
 type AIProvider struct {
-	ResourceID   string           `json:"resource_id"`
-	ScopeID      string           `json:"scope_id"`
-	Name         string           `json:"name"`
-	CredentialID string           `json:"-"`
-	Config       AIProviderConfig `json:"config"`
+	ResourceID string           `json:"resource_id"`
+	ScopeID    string           `json:"scope_id"`
+	Name       string           `json:"name"`
+	Config     AIProviderConfig `json:"config"`
 }
 
 type ScopeProviderBinding struct {

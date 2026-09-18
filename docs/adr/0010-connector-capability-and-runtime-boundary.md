@@ -9,7 +9,7 @@ Kubernetes、Prometheus 和 Loki 使用不同协议，但后续 Skill 和诊断�
 
 ## 决策
 
-1. Connector 是独立的外部协议与能力层，不是资源类型。`resources` 和关联的加密凭据是连接配置的权威来源。
+1. Connector 是独立的外部协议与能力层，不是资源类型。`resources` 的配置和资源自身的连接密文是连接配置的权威来源。
 2. 注册表按资源 `kind + schema_version` 解析适配器；重叠版本注册被拒绝，未知类型或版本返回 `unsupported`。
 3. 上层依赖小型能力接口：`kubernetes_read`、`query_metrics`、`query_logs`、`query_traces` 和 `get_alerts`。首批实现 Kubernetes、Prometheus 和 Loki。
 4. 每次调用统一受超时、有限重试、全局并发、查询窗口、结果数量和响应大小限制；只重试明确标记为临时的失败。

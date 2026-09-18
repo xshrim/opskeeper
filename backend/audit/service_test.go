@@ -19,13 +19,13 @@ func TestRecordRedactsSensitiveDetails(t *testing.T) {
 	longValue := strings.Repeat("x", 3000)
 	err := service.Record(context.Background(), Event{Action: "test", Details: map[string]any{
 		"token":         "visible",
-		"credential_id": "safe-id",
+		"credential_reference": "safe-id",
 		"nested":        map[string]any{"db_password": "visible", "message": longValue},
 	}})
 	if err != nil {
 		t.Fatalf("Record() error = %v", err)
 	}
-	if store.event.Details["token"] != "[REDACTED]" || store.event.Details["credential_id"] != "safe-id" {
+	if store.event.Details["token"] != "[REDACTED]" || store.event.Details["credential_reference"] != "safe-id" {
 		t.Fatalf("sanitized details = %#v", store.event.Details)
 	}
 	nested := store.event.Details["nested"].(map[string]any)

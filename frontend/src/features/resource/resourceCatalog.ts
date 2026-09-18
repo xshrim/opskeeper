@@ -351,6 +351,14 @@ export function resourceEndpointFor(resource: ResourceShape) {
     if (mode === 'agent') return 'MCPServer 代理';
     return String(resource.config?.host ?? '本机默认 Unix Socket');
   }
+  if (resource.kind === 'Kubernetes') {
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    const mode = String(
+      resource.config?.connection_mode ?? (resource.config?.server ? 'endpoint' : 'kubeconfig')
+    ).toLowerCase();
+    if (mode === 'kubeconfig') return '由 kubeconfig 提供 API Server';
+    return String(resource.config?.server ?? '').trim() || '未设置 Kubernetes API Server';
+  }
   return String(
     resource.config?.url ??
       resource.config?.endpoint ??

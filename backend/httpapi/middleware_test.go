@@ -65,6 +65,13 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Fatalf("security header %s is empty", name)
 		}
 	}
+	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "img-src 'self' data:") {
+		t.Fatalf("CSP must allow uploaded image data URLs, got %q", policy)
+	}
+	if strings.Contains(policy, "script-src data:") {
+		t.Fatalf("CSP must not allow data URLs for scripts, got %q", policy)
+	}
 }
 
 func TestCORSPolicyAllowsConfiguredOriginAndRejectsUnknown(t *testing.T) {

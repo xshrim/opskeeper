@@ -30,6 +30,9 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 	}
 	register("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.ClusterInfo(c, connection) })
 	register("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.APIResources(c, connection) })
+	register("kubernetes_resource_search", "Search Kubernetes resource names by keyword.", kt.SearchInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+		return kt.Search(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "keyword"), int(int64Arg(a, "limit")))
+	})
 	for _, tool := range kt.ListTools() {
 		item := tool
 		register(item.Name, item.Description, kt.ListInputProperties(), func(c context.Context, a map[string]any) (any, error) {
@@ -75,15 +78,12 @@ func directKubernetesSchema(extra map[string]any) json.RawMessage {
 func (s *Service) kubernetesConnection(ctx context.Context, item aiengine.ContextResource) (kclient.ConnectionInput, error) {
 	c := kclient.ConnectionInput{}
 	setKubernetesConnection(&c, item.Config)
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return c, nil
-	}
-	if s.credentials == nil {
-		return c, fmt.Errorf("credential service is unavailable")
-	}
-	secret, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {
 		return c, err
+	}
+	if !configured {
+		return c, nil
 	}
 	var values map[string]any
 	if json.Unmarshal(secret, &values) == nil {

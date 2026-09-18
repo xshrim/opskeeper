@@ -14,8 +14,6 @@ const (
 	ResourceUpdate    Permission = "resource:update"
 	ResourceDelete    Permission = "resource:delete"
 	ResourceUse       Permission = "resource:use"
-	CredentialManage  Permission = "credential:manage"
-	CredentialTest    Permission = "credential:test"
 	RelationManage    Permission = "relation:manage"
 	DiscoveryRun      Permission = "discovery:run"
 	DiscoveryImport   Permission = "discovery:import"

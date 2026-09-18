@@ -14,11 +14,11 @@ func (s *Service) resolveRabbitMQTools(ctx context.Context, item aiengine.Contex
 		return fmt.Errorf("RabbitMQ agent resources must use the MCP provider")
 	}
 	in := rmq.ConnectionInput{URL: stringValue(item.Config, "url"), TimeoutSeconds: intValue(item.Config, "timeout_seconds"), TLSInsecure: configBool(item.Config, "tls_insecure")}
-	if item.CredentialID != nil && strings.TrimSpace(*item.CredentialID) != "" {
-		raw, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
-		if e != nil {
-			return e
-		}
+	raw, configured, e := s.resourceSecret(ctx, item.ID)
+	if e != nil {
+		return e
+	}
+	if configured {
 		var v map[string]any
 		if e = json.Unmarshal(raw, &v); e != nil {
 			return e

@@ -142,6 +142,41 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	if identityTables != 3 {
 		t.Fatalf("identity tables = %d, want 3", identityTables)
 	}
+	var resourceCredentialTables int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.tables
+		 WHERE table_schema = current_schema()
+		   AND table_name = 'resource_credentials'`).Scan(&resourceCredentialTables); err != nil {
+		t.Fatalf("count resource credential tables: %v", err)
+	}
+	if resourceCredentialTables != 0 {
+		t.Fatalf("resource credential tables = %d, want 0", resourceCredentialTables)
+	}
+	var resourceCredentialColumns int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name = 'resources'
+		   AND column_name IN ('credential_id', 'credential_ciphertext', 'credential_key_version', 'credential_purpose')`).Scan(&resourceCredentialColumns); err != nil {
+		t.Fatalf("count resource credential columns: %v", err)
+	}
+	if resourceCredentialColumns != 3 {
+		t.Fatalf("resource credential columns = %d, want 3 embedded columns", resourceCredentialColumns)
+	}
+	var notificationCredentialColumns int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name = 'notification_channels'
+		   AND column_name = 'credential_id'`).Scan(&notificationCredentialColumns); err != nil {
+		t.Fatalf("count notification credential columns: %v", err)
+	}
+	if notificationCredentialColumns != 0 {
+		t.Fatalf("notification credential columns = %d, want 0", notificationCredentialColumns)
+	}
 }
 
 func TestAuditRetentionIsAppendOnlyAndRecorded(t *testing.T) {
@@ -240,11 +275,16 @@ func TestProjectMemberMigrationPreservesProjectAccess(t *testing.T) {
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("RollbackLast() error = %v", err)
+	// The initial baseline now includes migration 6's final state. Restore the
+	// pre-migration role explicitly so this test can replay its data migration.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO roles (name, scope_type, builtin)
+		VALUES ('ProjectMember', 'project', true)
+		ON CONFLICT (name) DO NOTHING`); err != nil {
+		t.Fatalf("restore pre-migration ProjectMember role: %v", err)
 	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("RollbackLast(project viewer migration) error = %v", err)
+	if _, err := pool.Exec(ctx, "DELETE FROM schema_migrations WHERE version = 6"); err != nil {
+		t.Fatalf("make project viewer migration pending: %v", err)
 	}
 
 	var platformID, platformScopeID string

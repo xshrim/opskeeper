@@ -3,10 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"opskeeper/backend/aiengine"
+	"opskeeper/backend/resource"
 )
 
 // AIEngineProvider exposes MCPServer resources and Agent logical resources as
@@ -102,9 +104,6 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "RabbitMQ") && !strings.EqualFold(kind, "Elasticsearch") && !strings.EqualFold(kind, "MinIO")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
-	if len(contextResource.Config) == 0 && (contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "") {
-		return arguments, nil
-	}
 	merged := make(map[string]any, len(arguments)+12)
 	for key, value := range arguments {
 		merged[key] = value
@@ -189,8 +188,8 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		setString("host")
 	}
 	for _, key := range []string{"tls_ca", "tls_cert", "tls_key"} {
-		// These values are normally credential-owned; config support also keeps
-		// compatibility with resources that store non-secret paths there.
+		// These values may be resource secrets; config support also permits
+		// non-secret paths when a connector explicitly needs them.
 		setString(key)
 	}
 	if value, ok := contextResource.Config["timeout"]; ok {
@@ -199,12 +198,18 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	if value, ok := contextResource.Config["skip_tls_verify"].(bool); ok {
 		merged["skip_tls_verify"] = value
 	}
-	if contextResource.CredentialID == nil || strings.TrimSpace(*contextResource.CredentialID) == "" || p.service.credentials == nil {
+	reader, ok := p.service.resources.(interface {
+		RevealSecret(context.Context, string) ([]byte, error)
+	})
+	if !ok {
 		return merged, nil
 	}
-	secret, err := p.service.credentials.RevealLinked(ctx, *contextResource.CredentialID)
+	secret, err := reader.RevealSecret(ctx, contextResource.ID)
 	if err != nil {
-		return nil, fmt.Errorf("read %s Agent credential: %w", kind, err)
+		if errors.Is(err, resource.ErrNotFound) {
+			return merged, nil
+		}
+		return nil, fmt.Errorf("read %s Agent resource secret: %w", kind, err)
 	}
 	var values map[string]any
 	if err := json.Unmarshal(secret, &values); err != nil {

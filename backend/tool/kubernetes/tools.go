@@ -63,6 +63,7 @@ func AvailableTools() []ToolInfo {
 	}
 	items = append(items,
 		ToolInfo{Name: "kubernetes_workloads", Description: "List Kubernetes workloads."},
+		ToolInfo{Name: "kubernetes_resource_search", Description: "Search Kubernetes resource names by keyword."},
 		ToolInfo{Name: "kubernetes_workload_pods", Description: "Resolve the running Pods for one Kubernetes workload."},
 		ToolInfo{Name: "kubernetes_pod_stat", Description: "Read current pod CPU and memory usage from the Kubernetes Metrics API."},
 		ToolInfo{Name: "kubernetes_node_stat", Description: "Read current node CPU and memory usage from the Kubernetes Metrics API."},
@@ -201,6 +202,14 @@ func ListInputProperties() map[string]any {
 	}
 }
 
+func SearchInputProperties() map[string]any {
+	properties := ListInputProperties()
+	delete(properties, "continue")
+	properties["resource"] = map[string]any{"type": "string", "description": "Resource type, case-insensitive; workload searches all supported workload types."}
+	properties["keyword"] = map[string]any{"type": "string", "description": "Case-insensitive name expression. Use & for AND, | for OR, * for any sequence, and ? for one character."}
+	return properties
+}
+
 func PodStatsInputProperties() map[string]any {
 	properties := ListInputProperties()
 	properties["pod"] = map[string]any{"type": "string"}
@@ -313,6 +322,160 @@ func List(ctx context.Context, input client.ConnectionInput, resource, namespace
 		items = append(items, toResourceItem(def.kind, item))
 	}
 	return ListOutput{Items: items, Count: len(items), Truncated: list.GetContinue() != "", Continue: list.GetContinue()}, nil
+}
+
+type SearchOutput struct {
+	Items     []ResourceItem `json:"items"`
+	Count     int            `json:"count"`
+	Truncated bool           `json:"truncated"`
+}
+
+func Search(ctx context.Context, input client.ConnectionInput, resource, namespace, filters, keyword string, limit int) (SearchOutput, error) {
+	definitions, err := searchResourceDefinitions(resource)
+	if err != nil {
+		return SearchOutput{}, err
+	}
+	expression, err := parseSearchExpression(keyword)
+	if err != nil {
+		return SearchOutput{}, err
+	}
+	selector, err := labelsFromString(filters)
+	if err != nil {
+		return SearchOutput{}, err
+	}
+	if limit < 0 || limit > maxListLimit {
+		return SearchOutput{}, fmt.Errorf("limit must be between 0 and %d", maxListLimit)
+	}
+	if limit == 0 {
+		limit = maxListLimit
+	}
+	c, err := client.Open(ctx, input)
+	if err != nil {
+		return SearchOutput{}, err
+	}
+	items := make([]ResourceItem, 0)
+	truncated := false
+	for _, def := range definitions {
+		var list *unstructured.UnstructuredList
+		if def.namespaced {
+			list, err = c.Dynamic.Resource(def.gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+		} else {
+			list, err = c.Dynamic.Resource(def.gvr).List(ctx, metav1.ListOptions{LabelSelector: selector})
+		}
+		if err != nil {
+			return SearchOutput{}, err
+		}
+		for _, item := range list.Items {
+			if !expression.Match(item.GetName()) {
+				continue
+			}
+			items = append(items, toResourceItem(def.kind, item))
+			if len(items) > limit {
+				items = items[:limit]
+				truncated = true
+				break
+			}
+		}
+		if truncated {
+			break
+		}
+	}
+	return SearchOutput{Items: items, Count: len(items), Truncated: truncated}, nil
+}
+
+var workloadResourceNames = []string{"deployments", "statefulsets", "daemonsets", "jobs", "cronjobs"}
+
+func searchResourceDefinitions(raw string) ([]resourceDef, error) {
+	name := strings.ToLower(strings.TrimSpace(raw))
+	if name == "" {
+		return nil, errors.New("resource is required")
+	}
+	if name == "workload" || name == "workloads" {
+		result := make([]resourceDef, 0, len(workloadResourceNames))
+		for _, item := range workloadResourceNames {
+			result = append(result, resources[item])
+		}
+		return result, nil
+	}
+	if def, ok := resources[name]; ok {
+		return []resourceDef{def}, nil
+	}
+	if def, ok := resources[name+"s"]; ok {
+		return []resourceDef{def}, nil
+	}
+	for _, def := range resources {
+		if strings.EqualFold(def.kind, name) {
+			return []resourceDef{def}, nil
+		}
+	}
+	return nil, fmt.Errorf("resource %q is not allowed", raw)
+}
+
+type searchExpression [][]string
+
+func parseSearchExpression(raw string) (searchExpression, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("keyword is required")
+	}
+	var expression searchExpression
+	for _, rawGroup := range strings.Split(raw, "|") {
+		rawGroup = strings.TrimSpace(rawGroup)
+		if rawGroup == "" {
+			return nil, errors.New("keyword expression contains an empty OR group")
+		}
+		terms := strings.Split(rawGroup, "&")
+		group := make([]string, 0, len(terms))
+		for _, term := range terms {
+			term = strings.ToLower(strings.TrimSpace(term))
+			if term == "" {
+				return nil, errors.New("keyword expression contains an empty AND term")
+			}
+			group = append(group, term)
+		}
+		expression = append(expression, group)
+	}
+	return expression, nil
+}
+
+func (expression searchExpression) Match(value string) bool {
+	value = strings.ToLower(value)
+	for _, group := range expression {
+		matched := true
+		for _, pattern := range group {
+			if !wildcardMatch("*"+pattern+"*", value) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func wildcardMatch(pattern, value string) bool {
+	patterns, values := []rune(pattern), []rune(value)
+	previous := make([]bool, len(values)+1)
+	previous[0] = true
+	for _, token := range patterns {
+		current := make([]bool, len(values)+1)
+		if token == '*' {
+			current[0] = previous[0]
+			for index := 1; index <= len(values); index++ {
+				current[index] = current[index-1] || previous[index]
+			}
+		} else {
+			for index, value := range values {
+				if token == '?' || token == value {
+					current[index+1] = previous[index]
+				}
+			}
+		}
+		previous = current
+	}
+	return previous[len(values)]
 }
 
 func labelsFromString(raw string) (string, error) {

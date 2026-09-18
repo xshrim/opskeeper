@@ -49,17 +49,12 @@
     removeResource,
     setResourceEnabled,
     testResourceConnector,
-    createMCPCredential as createMCPCredentialAction,
-    createDockerCredential as createDockerCredentialAction,
-    createProviderCredential as createProviderCredentialAction,
-    createSchemaCredential,
-    saveMCPCredential as saveMCPCredentialAction,
-    saveDockerCredential as saveDockerCredentialAction,
-    createKubernetesCredential as createKubernetesCredentialAction,
-    saveKubernetesCredential as saveKubernetesCredentialAction,
-    createHostCredential as createHostCredentialAction,
-    saveHostCredential as saveHostCredentialAction,
-    saveProviderCredential as saveProviderCredentialAction,
+    schemaSecret,
+    providerSecret,
+    mcpSecret,
+    dockerSecret,
+    kubernetesSecret,
+    hostSecret,
     testDraftAIProviderConnection,
     testDraftMCPConnection,
     testDraftPostgreSQL,
@@ -72,7 +67,6 @@
     testDraftRabbitMQ,
     testDraftMinIO,
     loadMCPSnapshots as loadMCPSnapshotsAction,
-    loadResourceCredentialSecret,
     syncAIProviderBindings,
     createResourceRecord,
     updateResourceRecord
@@ -545,13 +539,11 @@
     schema: ResourceSchema | null | undefined,
     values: Record<string, string>
   ) {
-    const scopeId = selectedResource?.scope_id ?? selectedScopeId;
-    return createSchemaCredential(
-      schema,
-      values,
-      scopeId,
-      resourceName || selectedResource?.name || ''
-    );
+    return schemaSecret(schema, values);
+  }
+
+  function stageCredential(purpose: string, secret: string) {
+    return secret.trim() ? { purpose, secret } : null;
   }
 
   function providerBindingsFor(resource: Resource) {
@@ -644,41 +636,6 @@
     dockerCertBase64 = '';
     dockerKeyBase64 = '';
     dockerCredentialLoading = false;
-    if (
-      (dockerAccessMode === 'direct' || dockerAgentConnectionOverride) &&
-      resource.credential_id
-    ) {
-      dockerCredentialLoading = true;
-      void loadResourceCredentialSecret(resource.credential_id)
-        .then((credential) => {
-          if (selectedResourceId !== resource.id) return;
-          try {
-            const secret = JSON.parse(credential.secret) as Record<
-              string,
-              unknown
-            >;
-            dockerCABase64 = dockerTLSValueForDisplay(
-              String(secret.tls_ca ?? '')
-            );
-            dockerCertBase64 = dockerTLSValueForDisplay(
-              String(secret.tls_cert ?? '')
-            );
-            dockerKeyBase64 = dockerTLSValueForDisplay(
-              String(secret.tls_key ?? '')
-            );
-          } catch {
-            dockerCABase64 = '';
-            dockerCertBase64 = '';
-            dockerKeyBase64 = '';
-          } finally {
-            dockerCredentialLoading = false;
-          }
-        })
-        .catch(() => {
-          if (selectedResourceId === resource.id)
-            dockerCredentialLoading = false;
-        });
-    }
   }
 
   function syncKubernetesEditor(resource: Resource) {
@@ -704,10 +661,9 @@
     kubernetesKubeconfig = '';
     kubernetesToken = '';
     kubernetesConnectionOverride =
-      Boolean(resource.credential_id) ||
+      Boolean(resource.credential_configured) ||
       Object.keys(config).some((key) => key !== 'connection_mode');
     kubernetesCredentialLoading = false;
-    if (resource.credential_id) void loadKubernetesCredential(resource);
   }
 
   function syncHostEditor(resource: Resource) {
@@ -730,76 +686,12 @@
     hostTimeoutSeconds = Number(config.timeout_seconds ?? 30);
     hostMCPServerResourceId = String(resource.agent_ref ?? '');
     hostConnectionOverride =
-      Object.keys(config).length > 0 || Boolean(resource.credential_id);
+      Object.keys(config).length > 0 || Boolean(resource.credential_configured);
     hostPassword = '';
     hostPrivateKey = '';
     hostPassphrase = '';
     hostKnownHosts = '';
     hostCredentialLoading = false;
-    if (
-      resource.credential_id &&
-      (hostAccessMode === 'direct' || hostConnectionOverride)
-    ) {
-      hostCredentialLoading = true;
-      void loadResourceCredentialSecret(resource.credential_id)
-        .then((credential) => {
-          if (selectedResourceId !== resource.id) return;
-          try {
-            const secret = JSON.parse(credential.secret) as Record<
-              string,
-              unknown
-            >;
-            hostPassword = String(secret.password ?? '');
-            hostPrivateKey = String(secret.private_key ?? '');
-            hostPassphrase = String(secret.passphrase ?? '');
-            hostKnownHosts = String(secret.known_hosts ?? '');
-          } catch {
-            hostPassword = credential.secret;
-          } finally {
-            hostCredentialLoading = false;
-          }
-        })
-        .catch(() => {
-          if (selectedResourceId === resource.id) hostCredentialLoading = false;
-        });
-    }
-  }
-
-  async function loadKubernetesCredential(resource: Resource) {
-    if (!resource.credential_id) return;
-    kubernetesCredentialLoading = true;
-    try {
-      const credential = await loadResourceCredentialSecret(
-        resource.credential_id
-      );
-      if (selectedResourceId !== resource.id) return;
-      try {
-        const secret = JSON.parse(credential.secret) as Record<string, unknown>;
-        const encoded = String(secret.kubeconfig ?? '');
-        kubernetesKubeconfig = encoded ? kubernetesKubeconfigText(encoded) : '';
-        kubernetesToken = String(secret.token ?? '');
-        kubernetesCABase64 = dockerTLSValueForDisplay(String(secret.ca ?? ''));
-        kubernetesCertBase64 = dockerTLSValueForDisplay(
-          String(secret.client_cert ?? '')
-        );
-        kubernetesKeyBase64 = dockerTLSValueForDisplay(
-          String(secret.client_key ?? '')
-        );
-      } catch {
-        kubernetesKubeconfig = '';
-        kubernetesToken = credential.secret;
-        kubernetesCABase64 = '';
-        kubernetesCertBase64 = '';
-        kubernetesKeyBase64 = '';
-      }
-    } catch (error) {
-      if (selectedResourceId === resource.id) {
-        onError(describeError(error, 'Kubernetes 凭据加载失败'));
-      }
-    } finally {
-      if (selectedResourceId === resource.id)
-        kubernetesCredentialLoading = false;
-    }
   }
 
   function syncResourceEditor(resource: Resource) {
@@ -842,38 +734,7 @@
       mcpTLSSkipVerify = false;
       mcpDraftTest = null;
       mcpConfigurationAttempted = false;
-      if (resource.credential_id) {
-        void loadResourceCredentialSecret(resource.credential_id)
-          .then((credential) => {
-            if (selectedResourceId !== resource.id) return;
-            try {
-              const secret = JSON.parse(credential.secret) as {
-                token?: string;
-                headers?: Record<string, unknown>;
-                tls_ca?: string;
-                tls_cert?: string;
-                tls_key?: string;
-                tls_skip_verify?: boolean;
-              };
-              mcpToken = String(secret.token ?? '');
-              if (secret.headers)
-                mcpRequestHeaders = Object.entries(secret.headers)
-                  .map(([key, value]) => `${key}: ${String(value)}`)
-                  .join('\n');
-              mcpTLSCA = dockerTLSValueForDisplay(String(secret.tls_ca ?? ''));
-              mcpTLSCert = dockerTLSValueForDisplay(
-                String(secret.tls_cert ?? '')
-              );
-              mcpTLSKey = dockerTLSValueForDisplay(
-                String(secret.tls_key ?? '')
-              );
-              mcpTLSSkipVerify = secret.tls_skip_verify === true;
-            } catch {
-              mcpToken = credential.secret.trim();
-            }
-          })
-          .catch(() => undefined);
-      }
+      // Existing MCP secrets are write-only and are not revealed on edit.
     }
     if (resource.kind === 'AIProvider') syncProviderEditor(resource);
   }
@@ -906,26 +767,9 @@
     resourceBasicConfigurationAttempted = false;
     resourceEditorOpen = false;
     resourceAddMenuOpen = true;
-    if (resource.credential_id) {
-      providerAPIKeyLoading = true;
-      void loadResourceCredentialSecret(resource.credential_id).then(
-        (credential) => {
-          if (editingProviderResourceId === resource.id) {
-            providerAPIKey = credential.secret;
-            providerAPIKeyLoading = false;
-          }
-        },
-        (error) => {
-          if (editingProviderResourceId === resource.id) {
-            providerAPIKey = '';
-            providerAPIKeyLoading = false;
-            onError(describeError(error, '无法读取 Provider API Key'));
-          }
-        }
-      );
-    } else {
-      providerAPIKeyLoading = false;
-    }
+    // Existing secrets are intentionally not revealed when editing a resource.
+    providerAPIKey = '';
+    providerAPIKeyLoading = false;
   }
 
   function openMCPWorkflowForEdit(resource: Resource) {
@@ -978,7 +822,7 @@
   }
 
   function openRepositoryWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Repository'; resourceAddCategory='Repository'; resourceAddSubtype=resourceSubtypeFor(resource); editingRepositoryResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); repositoryURL=String(resource.config?.url??''); repositoryDefaultBranch=String(resource.config?.default_branch??'main'); repositoryStorageBackend=String(resource.config?.storage_backend??'local'); repositoryLocalRoot=String(resource.config?.path??''); repositoryS3Endpoint=String(resource.config?.s3_endpoint??''); repositoryS3Bucket=String(resource.config?.s3_bucket??''); repositoryS3Prefix=String(resource.config?.s3_prefix??'repositories'); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openOracleWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Oracle'; resourceAddCategory='Oracle'; resourceAddSubtype=resourceSubtypeFor(resource); editingOracleResourceId=resource.id; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oracleAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oracleHost=String(resource.config?.host??''); oraclePort=Number(resource.config?.port??1521); oracleServiceName=String(resource.config?.service_name??''); oracleSID=String(resource.config?.sid??''); oracleTLS=Boolean(resource.config?.tls); oracleTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oracleMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingOracleResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;oracleUsername=String(s.username??'');oraclePassword=String(s.password??'')}catch{}}); }
+  function openOracleWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Oracle'; resourceAddCategory='Oracle'; resourceAddSubtype=resourceSubtypeFor(resource); editingOracleResourceId=resource.id; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oracleAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oracleHost=String(resource.config?.host??''); oraclePort=Number(resource.config?.port??1521); oracleServiceName=String(resource.config?.service_name??''); oracleSID=String(resource.config?.sid??''); oracleTLS=Boolean(resource.config?.tls); oracleTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oracleMCPServerResourceId=resource.agent_ref??''; oracleUsername=''; oraclePassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function openResourceEditor(resource: Resource) {
     if (resource.kind === 'Repository') { openRepositoryWorkflowForEdit(resource); return; }
     if (resource.kind === 'Nacos') { openNacosWorkflowForEdit(resource); return; }
@@ -1703,22 +1547,11 @@
   }
 
   async function createProviderCredential(name = resourceName) {
-    if (!selectedScopeId)
-      throw new Error('未选择资源归属级别，无法保存 Provider。');
-    return createProviderCredentialAction(
-      selectedScopeId,
-      name,
-      providerAPIKey
-    );
+    return providerSecret(providerAPIKey);
   }
 
   async function saveProviderCredential(provider: Resource) {
-    return saveProviderCredentialAction(
-      provider,
-      selectedScopeId,
-      resourceName,
-      providerAPIKey
-    );
+    return providerSecret(providerAPIKey);
   }
 
   async function createMCPCredential() {
@@ -1740,47 +1573,25 @@
         !tls.tls_skip_verify)
     )
       return '';
-    return createMCPCredentialAction(
-      selectedScopeId,
-      resourceName,
-      token,
-      headers,
-      tls
-    );
+    return mcpSecret(token, headers, tls);
   }
 
   async function saveMCPCredential(existing: Resource) {
     const headers = parseMCPHeaders(mcpRequestHeaders);
-    return saveMCPCredentialAction(
-      existing,
-      selectedScopeId,
-      editResourceName.trim() || resourceName.trim(),
-      mcpToken,
-      headers,
-      {
+    return mcpSecret(mcpToken, headers, {
         tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '',
         tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '',
         tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '',
         tls_skip_verify: mcpTLSSkipVerify
-      }
-    );
+      });
   }
 
   async function createDockerCredential() {
-    return createDockerCredentialAction(
-      selectedScopeId,
-      resourceName,
-      dockerCredentialForSave(dockerDraft())
-    );
+    return dockerSecret(dockerCredentialForSave(dockerDraft()));
   }
 
   async function saveDockerCredential(existing: Resource) {
-    return saveDockerCredentialAction(
-      existing,
-      selectedScopeId,
-      resourceName,
-      dockerCredentialForSave(dockerDraft())
-    );
+    return dockerSecret(dockerCredentialForSave(dockerDraft()));
   }
 
   function mcpDraftSignature() {
@@ -2068,15 +1879,15 @@
   async function testRabbitMQDraftConnection() { rabbitMQDraftTest={busy:true}; if(rabbitMQAccessMode==='agent'){rabbitMQDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftRabbitMQ({url:rabbitMQURL.trim(),username:rabbitMQUsername.trim(),password:rabbitMQPassword,tls_insecure:rabbitMQTLSInsecure,timeout_seconds:Number(rabbitMQTimeoutSeconds)}); rabbitMQDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};} catch(error){rabbitMQDraftTest={error:describeError(error,'RabbitMQ 连接测试失败')};} }
   function resetMinIODraftTest() { minIODraftTest = null; }
   async function testMinIODraftConnection() { minIODraftTest={busy:true}; if(minIOAccessMode==='agent'){minIODraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftMinIO({endpoint:minIOEndpoint.trim(),access_key:minIOAccessKey.trim(),secret_key:minIOSecretKey,session_token:minIOSessionToken,region:minIORegion.trim(),secure:minIOSecure,timeout_seconds:Number(minIOTimeoutSeconds)}); minIODraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};} catch(error){minIODraftTest={error:describeError(error,'MinIO 连接测试失败')};} }
-  function openElasticsearchWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Elasticsearch'; resourceAddCategory='ElasticSearch'; resourceAddSubtype=resourceSubtypeFor(resource); editingElasticsearchResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); elasticsearchAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; elasticsearchURL=String(resource.config?.url??''); elasticsearchTLSInsecure=Boolean(resource.config?.tls_insecure); elasticsearchTimeoutSeconds=Number(resource.config?.timeout_seconds??10); elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingElasticsearchResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;elasticsearchUsername=String(s.username??'');elasticsearchPassword=String(s.password??'')}catch{elasticsearchUsername='';elasticsearchPassword=''}}); }
-  function openRabbitMQWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='RabbitMQ'; resourceAddCategory='RabbitMQ'; resourceAddSubtype=resourceSubtypeFor(resource); editingRabbitMQResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); rabbitMQAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; rabbitMQURL=String(resource.config?.url??''); rabbitMQTimeoutSeconds=Number(resource.config?.timeout_seconds??10); rabbitMQTLSInsecure=Boolean(resource.config?.tls_insecure); rabbitMQMCPServerResourceId=resource.agent_ref??''; rabbitMQUsername=''; rabbitMQPassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingRabbitMQResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;rabbitMQUsername=String(s.username??'');rabbitMQPassword=String(s.password??'')}catch{}}); }
-  function openMinIOWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MinIO'; resourceAddCategory='MinIO'; resourceAddSubtype=resourceSubtypeFor(resource); editingMinIOResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); minIOAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; minIOEndpoint=String(resource.config?.endpoint??''); minIORegion=String(resource.config?.region??''); minIOSecure=Boolean(resource.config?.secure); minIOTimeoutSeconds=Number(resource.config?.timeout_seconds??10); minIOMCPServerResourceId=resource.agent_ref??''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingMinIOResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;minIOAccessKey=String(s.access_key??'');minIOSecretKey=String(s.secret_key??'');minIOSessionToken=String(s.session_token??'')}catch{}}); }
-  function openKafkaWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Kafka'; resourceAddCategory='Kafka'; resourceAddSubtype=resourceSubtypeFor(resource); editingKafkaResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); kafkaAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; kafkaBrokers=Array.isArray(resource.config?.brokers)?resource.config.brokers.join('\n'):''; kafkaTLS=Boolean(resource.config?.tls); kafkaTLSServerName=String(resource.config?.tls_server_name??''); kafkaUsername=''; kafkaPassword=''; kafkaMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingKafkaResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;kafkaUsername=String(s.username??'');kafkaPassword=String(s.password??'')}catch{}}); }
+  function openElasticsearchWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Elasticsearch'; resourceAddCategory='ElasticSearch'; resourceAddSubtype=resourceSubtypeFor(resource); editingElasticsearchResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); elasticsearchAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; elasticsearchURL=String(resource.config?.url??''); elasticsearchTLSInsecure=Boolean(resource.config?.tls_insecure); elasticsearchTimeoutSeconds=Number(resource.config?.timeout_seconds??10); elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openRabbitMQWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='RabbitMQ'; resourceAddCategory='RabbitMQ'; resourceAddSubtype=resourceSubtypeFor(resource); editingRabbitMQResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); rabbitMQAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; rabbitMQURL=String(resource.config?.url??''); rabbitMQTimeoutSeconds=Number(resource.config?.timeout_seconds??10); rabbitMQTLSInsecure=Boolean(resource.config?.tls_insecure); rabbitMQMCPServerResourceId=resource.agent_ref??''; rabbitMQUsername=''; rabbitMQPassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openMinIOWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MinIO'; resourceAddCategory='MinIO'; resourceAddSubtype=resourceSubtypeFor(resource); editingMinIOResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); minIOAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; minIOEndpoint=String(resource.config?.endpoint??''); minIORegion=String(resource.config?.region??''); minIOSecure=Boolean(resource.config?.secure); minIOTimeoutSeconds=Number(resource.config?.timeout_seconds??10); minIOMCPServerResourceId=resource.agent_ref??''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openKafkaWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Kafka'; resourceAddCategory='Kafka'; resourceAddSubtype=resourceSubtypeFor(resource); editingKafkaResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); kafkaAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; kafkaBrokers=Array.isArray(resource.config?.brokers)?resource.config.brokers.join('\n'):''; kafkaTLS=Boolean(resource.config?.tls); kafkaTLSServerName=String(resource.config?.tls_server_name??''); kafkaUsername=''; kafkaPassword=''; kafkaMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceStatus = resource.status; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
-  function openMySQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MySQL'; resourceAddCategory='MySQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingMySQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); mysqlAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; mysqlHost=String(resource.config?.host??''); mysqlPort=Number(resource.config?.port??3306); mysqlDatabase=String(resource.config?.database??''); mysqlUsername=''; mysqlPassword=''; mysqlMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingMySQLResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;mysqlUsername=String(s.username??'');mysqlPassword=String(s.password??'')}catch{mysqlUsername='';mysqlPassword=''}}); }
-  function openPostgreSQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId = resource.scope_id; selectedResourceId = resource.id; resourceKind='PostgreSQL'; resourceAddCategory='PostgreSQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingPostgreSQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; syncPostgreSQLEditor(resource); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if (resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then((value) => { if (editingPostgreSQLResourceId !== resource.id) return; try { const secret = JSON.parse(value.secret) as Record<string, unknown>; postgresqlUsername = String(secret.username ?? ''); postgresqlPassword = String(secret.password ?? ''); } catch { postgresqlUsername = ''; postgresqlPassword = ''; } }); }
-  function openRedisWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Redis'; resourceAddCategory='Redis'; resourceAddSubtype=resourceSubtypeFor(resource); editingRedisResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; redisAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; redisHost=String(resource.config?.host??''); redisPort=Number(resource.config?.port??6379); redisDatabase=Number(resource.config?.database??0); redisUsername=''; redisPassword=''; redisMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; if(resource.credential_id) void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingRedisResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;redisUsername=String(s.username??'');redisPassword=String(s.password??'')}catch{redisUsername='';redisPassword=''}}); }
-  function openNacosWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id);selectedScopeId=resource.scope_id;selectedResourceId=resource.id;resourceKind='Nacos';resourceAddCategory='Nacos';resourceAddSubtype=resourceSubtypeFor(resource);editingNacosResourceId=resource.id;editingResourceId='';editingDockerResourceId='';editingKubernetesResourceId='';editingHostResourceId='';nacosAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct';nacosHost=String(resource.config?.host??'');nacosPort=Number(resource.config?.port??8848);nacosScheme=String(resource.config?.scheme??'http');nacosContextPath=String(resource.config?.context_path??'/nacos');nacosMCPServerResourceId=resource.agent_ref??'';resourceAddStep=1;resourceAddMenuOpen=true;resourceEditorOpen=false;if(resource.credential_id)void loadResourceCredentialSecret(resource.credential_id).then(v=>{if(editingNacosResourceId!==resource.id)return;try{const s=JSON.parse(v.secret) as Record<string,unknown>;nacosUsername=String(s.username??'');nacosPassword=String(s.password??'');nacosAccessToken=String(s.access_token??'')}catch{nacosUsername='';nacosPassword='';nacosAccessToken=''}}); }
+  function openMySQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MySQL'; resourceAddCategory='MySQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingMySQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceStatus=resource.status; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); mysqlAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; mysqlHost=String(resource.config?.host??''); mysqlPort=Number(resource.config?.port??3306); mysqlDatabase=String(resource.config?.database??''); mysqlUsername=''; mysqlPassword=''; mysqlMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openPostgreSQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId = resource.scope_id; selectedResourceId = resource.id; resourceKind='PostgreSQL'; resourceAddCategory='PostgreSQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingPostgreSQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; syncPostgreSQLEditor(resource); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openRedisWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Redis'; resourceAddCategory='Redis'; resourceAddSubtype=resourceSubtypeFor(resource); editingRedisResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; redisAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; redisHost=String(resource.config?.host??''); redisPort=Number(resource.config?.port??6379); redisDatabase=Number(resource.config?.database??0); redisUsername=''; redisPassword=''; redisMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openNacosWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id);selectedScopeId=resource.scope_id;selectedResourceId=resource.id;resourceKind='Nacos';resourceAddCategory='Nacos';resourceAddSubtype=resourceSubtypeFor(resource);editingNacosResourceId=resource.id;editingResourceId='';editingDockerResourceId='';editingKubernetesResourceId='';editingHostResourceId='';nacosAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct';nacosHost=String(resource.config?.host??'');nacosPort=Number(resource.config?.port??8848);nacosScheme=String(resource.config?.scheme??'http');nacosContextPath=String(resource.config?.context_path??'/nacos');nacosUsername='';nacosPassword='';nacosAccessToken='';nacosMCPServerResourceId=resource.agent_ref??'';resourceAddStep=1;resourceAddMenuOpen=true;resourceEditorOpen=false; }
   function hostConfigurationIssues() {
     const issues: string[] = [];
     if (hostCredentialLoading) issues.push('正在读取 Host 凭据');
@@ -2109,19 +1920,10 @@
     );
   }
   async function createHostCredential() {
-    return createHostCredentialAction(
-      selectedScopeId,
-      resourceName,
-      hostCredentialForSave(hostDraft())
-    );
+    return hostSecret(hostCredentialForSave(hostDraft()));
   }
   async function saveHostCredential(existing: Resource) {
-    return saveHostCredentialAction(
-      existing,
-      selectedScopeId,
-      resourceName,
-      hostCredentialForSave(hostDraft())
-    );
+    return hostSecret(hostCredentialForSave(hostDraft()));
   }
   function hostMCPServerName() {
     return (
@@ -2216,20 +2018,11 @@
   }
 
   async function createKubernetesCredential() {
-    return createKubernetesCredentialAction(
-      selectedScopeId,
-      resourceName,
-      kubernetesCredentialForSave(kubernetesDraft())
-    );
+    return kubernetesSecret(kubernetesCredentialForSave(kubernetesDraft()));
   }
 
   async function saveKubernetesCredential(existing: Resource) {
-    return saveKubernetesCredentialAction(
-      existing,
-      selectedScopeId,
-      resourceName,
-      kubernetesCredentialForSave(kubernetesDraft())
-    );
+    return kubernetesSecret(kubernetesCredentialForSave(kubernetesDraft()));
   }
 
   async function testKubernetesDraftConnection() {
@@ -2495,7 +2288,7 @@
       );
       if (resourceSupportsEndpointTimeout(selectedResource.kind))
         config.timeout_seconds = genericTimeoutSeconds;
-      const credentialId = await createResourceCredential(
+      const credentialDraft = await createResourceCredential(
         selectedSchema,
         editResourceSensitiveValues
       );
@@ -2505,7 +2298,7 @@
         status: editResourceStatus,
         labels: parseLabels(editResourceLabels),
         config,
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = resources.map((resource) =>
         resource.id === updated.id ? updated : resource
@@ -2566,7 +2359,7 @@
       );
       if (resourceSupportsEndpointTimeout(resourceKind))
         config.timeout_seconds = genericTimeoutSeconds;
-      const credentialId = await createResourceCredential(
+      const credentialDraft = await createResourceCredential(
         createSchema,
         resourceSensitiveValues
       );
@@ -2580,7 +2373,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config,
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = [created, ...resources];
       selectedResourceId = created.id;
@@ -2611,7 +2404,7 @@
       }
       const draft = kubernetesDraft();
       const credentialValues = kubernetesCredentialForSave(draft);
-      const credentialId = Object.keys(credentialValues).length
+      const credentialDraft = Object.keys(credentialValues).length
         ? await createKubernetesCredential()
         : '';
       const created = await createResourceRecord({
@@ -2623,7 +2416,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: kubernetesConfigForSave(draft),
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = [created, ...resources];
       selectedResourceId = created.id;
@@ -2649,7 +2442,7 @@
         );
       }
       const draft = dockerDraft();
-      const credentialId =
+      const credentialDraft =
         draft.accessMode === 'direct' || draft.connectionOverride
           ? await createDockerCredential()
           : '';
@@ -2663,7 +2456,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: dockerConfigForSave(draft),
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = [created, ...resources];
       selectedResourceId = created.id;
@@ -2690,7 +2483,7 @@
       }
       const draft = hostDraft();
       const credentialValues = hostCredentialForSave(draft);
-      const credentialId = Object.keys(credentialValues).length
+      const credentialDraft = Object.keys(credentialValues).length
         ? await createHostCredential()
         : '';
       const created = await createResourceRecord({
@@ -2703,7 +2496,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: hostConfigForSave(draft),
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = [created, ...resources];
       selectedResourceId = created.id;
@@ -2763,7 +2556,7 @@
         resourceSupportsEndpointTimeout(resourceKind)
       )
         config.timeout_seconds = genericTimeoutSeconds;
-      const credentialId = isProvider
+      const credentialDraft = isProvider
         ? await createProviderCredential()
         : resourceKind === 'MCPServer'
           ? await createMCPCredential()
@@ -2781,7 +2574,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config,
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       if (isProvider && providerPurposeTags.length > 0) {
         const currentScopeBindings = await syncAIProviderBindings(
@@ -2832,7 +2625,7 @@
       }
       const summaryError = providerSummaryValidationMessage();
       if (summaryError) throw new Error(summaryError);
-      const credentialId = await saveProviderCredential(provider);
+      const credentialDraft = await saveProviderCredential(provider);
       const config = providerConfigForCreate();
       const updated = await updateResourceRecord(provider.id, {
         name: resourceName.trim(),
@@ -2840,7 +2633,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config,
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       const existingTags = aiProviderBindings
         .filter(
@@ -2884,7 +2677,7 @@
         throw new Error('请填写有效的 MCP Server 地址和配置。');
       }
       const config = mcpConfigForSave();
-      const credentialId = await saveMCPCredential(server);
+      const credentialDraft = await saveMCPCredential(server);
       const updated = await updateResourceRecord(server.id, {
         name: resourceName.trim(),
         subtype: resourceSubtypeFor({
@@ -2895,7 +2688,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config,
-        ...(credentialId ? { credential_id: credentialId } : {})
+        ...(credentialDraft ? { credential: credentialDraft } : {})
       });
       resources = resources.map((resource) =>
         resource.id === updated.id ? updated : resource
@@ -2923,7 +2716,7 @@
         );
       }
       const draft = dockerDraft();
-      const credentialId =
+      const credentialDraft =
         draft.accessMode === 'direct' || draft.connectionOverride
           ? await saveDockerCredential(docker)
           : null;
@@ -2935,7 +2728,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: dockerConfigForSave(draft),
-        credential_id: credentialId || null
+        credential: credentialDraft || null
       });
       resources = resources.map((resource) =>
         resource.id === updated.id ? updated : resource
@@ -2961,7 +2754,7 @@
       }
       const draft = kubernetesDraft();
       const credentialValues = kubernetesCredentialForSave(draft);
-      const credentialId = Object.keys(credentialValues).length
+      const credentialDraft = Object.keys(credentialValues).length
         ? await saveKubernetesCredential(resource)
         : null;
       const updated = await updateResourceRecord(resource.id, {
@@ -2971,7 +2764,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: kubernetesConfigForSave(draft),
-        credential_id: credentialId
+        credential: credentialDraft
       });
       resources = resources.map((item) =>
         item.id === updated.id ? updated : item
@@ -3000,7 +2793,7 @@
       }
       const draft = hostDraft();
       const credentialValues = hostCredentialForSave(draft);
-      const credentialId = Object.keys(credentialValues).length
+      const credentialDraft = Object.keys(credentialValues).length
         ? await saveHostCredential(existing)
         : null;
       const updated = await updateResourceRecord(existing.id, {
@@ -3011,7 +2804,7 @@
         status: resourceStatus,
         labels: parseLabels(resourceLabels),
         config: hostConfigForSave(draft),
-        credential_id: credentialId
+        credential: credentialDraft
       });
       resources = resources.map((item) =>
         item.id === updated.id ? updated : item
@@ -3035,36 +2828,34 @@
   async function savePostgreSQLWorkflow() {
     if (!postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = true; throw new Error('请检查 PostgreSQL 配置。'); }
     const existing = resources.find((r) => r.id === editingPostgreSQLResourceId);
-    let credentialId: string | null = existing?.credential_id ?? null;
+      let credentialDraft: Record<string, unknown> | null | undefined = undefined;
     if (postgresqlAccessMode === 'direct' && postgresqlUsername.trim() && postgresqlPassword) {
       const secret = JSON.stringify({ username: postgresqlUsername.trim(), password: postgresqlPassword });
-      if (existing?.credential_id) await api.updateCredential(existing.credential_id, { name: `${resourceName.trim() || 'PostgreSQL'} 凭据`, purpose: 'PostgreSQL 数据库凭据', secret });
-      else { const credential = await api.createCredential({ scope_id: selectedScopeId, name: `${resourceName.trim() || 'PostgreSQL'} 凭据`, purpose: 'PostgreSQL 数据库凭据', secret }); credentialId = credential.id; }
+      credentialDraft = stageCredential('PostgreSQL 数据库凭据', secret);
     }
-    if (postgresqlAccessMode === 'agent') credentialId = null;
-    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null, status: resourceStatus, labels: parseLabels(resourceLabels), credential_id: credentialId, config: postgresqlAccessMode === 'agent' ? {} : { host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), timeout_seconds: Number(postgresqlTimeoutSeconds) } };
-    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential_id: credentialId, name: body.name as string, status: body.status as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
+    if (postgresqlAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null, status: resourceStatus, labels: parseLabels(resourceLabels), credential: credentialDraft, config: postgresqlAccessMode === 'agent' ? {} : { host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), timeout_seconds: Number(postgresqlTimeoutSeconds) } };
+    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, status: body.status as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
     else { const updated = await updateResourceRecord(existing.id, body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`PostgreSQL 资源“${updated.name}”已更新`); }
     resourceAddMenuOpen=false; editingPostgreSQLResourceId=''; resourceAddStep=1;
   }
-  async function saveOracleWorkflow() { if(!oracleConfigurationComplete()){oracleConfigurationAttempted=true;throw new Error('请检查 Oracle 配置。')} const existing=resources.find(r=>r.id===editingOracleResourceId); let credentialId:string|null=existing?.credential_id??null; if(oracleAccessMode==='direct'&&oracleUsername.trim()&&oraclePassword){const secret=JSON.stringify({username:oracleUsername.trim(),password:oraclePassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Oracle'} 凭据`,purpose:'Oracle 数据库凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Oracle'} 凭据`,purpose:'Oracle 数据库凭据',secret});credentialId=c.id;}} if(oracleAccessMode==='agent')credentialId=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:oracleAccessMode==='agent'?'Agent':'Direct',agent_ref:oracleAccessMode==='agent'?oracleMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:oracleAccessMode==='agent'?{}:{host:oracleHost.trim(),port:Number(oraclePort),service_name:oracleServiceName.trim(),sid:oracleSID.trim(),tls:oracleTLS,timeout_seconds:Number(oracleTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Oracle',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Oracle 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Oracle 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingOracleResourceId='';resourceAddStep=1; }
-  async function saveMySQLWorkflow() { if(!mysqlConfigurationComplete()){mysqlConfigurationAttempted=true;throw new Error('请检查 MySQL 配置。')} const existing=resources.find(r=>r.id===editingMySQLResourceId);let credentialId:string|null=existing?.credential_id??null;if(mysqlAccessMode==='direct'&&mysqlUsername.trim()&&mysqlPassword){const secret=JSON.stringify({username:mysqlUsername.trim(),password:mysqlPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'MySQL'} 凭据`,purpose:'MySQL 数据库凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'MySQL'} 凭据`,purpose:'MySQL 数据库凭据',secret});credentialId=c.id;}}if(mysqlAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:mysqlAccessMode==='agent'?'Agent':'Direct',agent_ref:mysqlAccessMode==='agent'?mysqlMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:mysqlAccessMode==='agent'?{}:{host:mysqlHost.trim(),port:Number(mysqlPort),database:mysqlDatabase.trim(),timeout_seconds:Number(mysqlTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'MySQL',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`MySQL 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`MySQL 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingMySQLResourceId='';resourceAddStep=1; }
-  async function saveKafkaWorkflow() { if(!kafkaConfigurationComplete()){kafkaConfigurationAttempted=true;throw new Error('请检查 Kafka 配置。')} const existing=resources.find(r=>r.id===editingKafkaResourceId); let credentialId:string|null=existing?.credential_id??null; if(kafkaAccessMode==='direct'&&(kafkaUsername.trim()||kafkaPassword)){const secret=JSON.stringify({username:kafkaUsername.trim(),password:kafkaPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Kafka'} 凭据`,purpose:'Kafka 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Kafka'} 凭据`,purpose:'Kafka 凭据',secret});credentialId=c.id;}} if(kafkaAccessMode==='agent')credentialId=null; const brokers=kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean); const body:Record<string,unknown>={name:resourceName.trim(),subtype:kafkaAccessMode==='agent'?'Agent':'Direct',agent_ref:kafkaAccessMode==='agent'?kafkaMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:kafkaAccessMode==='agent'?{}:{brokers,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Kafka',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Kafka 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Kafka 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingKafkaResourceId='';resourceAddStep=1; }
-  async function saveElasticsearchWorkflow() { if(!elasticsearchConfigurationComplete()){elasticsearchConfigurationAttempted=true;throw new Error('请检查 Elasticsearch 配置。')} const existing=resources.find(r=>r.id===editingElasticsearchResourceId);let credentialId:string|null=existing?.credential_id??null;if(elasticsearchAccessMode==='direct'&&(elasticsearchUsername.trim()||elasticsearchPassword)){const secret=JSON.stringify({username:elasticsearchUsername.trim(),password:elasticsearchPassword});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Elasticsearch'} 凭据`,purpose:'Elasticsearch API 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Elasticsearch'} 凭据`,purpose:'Elasticsearch API 凭据',secret});credentialId=c.id;}}if(elasticsearchAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:elasticsearchAccessMode==='agent'?'Agent':'Direct',agent_ref:elasticsearchAccessMode==='agent'?elasticsearchMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:elasticsearchAccessMode==='agent'?{}:{url:elasticsearchURL.trim(),tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Elasticsearch',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Elasticsearch 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Elasticsearch 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingElasticsearchResourceId='';resourceAddStep=1; }
-  async function saveRabbitMQWorkflow() { if(!rabbitMQConfigurationComplete()){rabbitMQConfigurationAttempted=true;throw new Error('请检查 RabbitMQ 配置。')} const existing=resources.find(r=>r.id===editingRabbitMQResourceId); let credentialId:string|null=existing?.credential_id??null; if(rabbitMQAccessMode==='direct'&&(rabbitMQUsername.trim()||rabbitMQPassword)){const secret=JSON.stringify({username:rabbitMQUsername.trim(),password:rabbitMQPassword}); if(existing?.credential_id) await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'RabbitMQ'} 凭据`,purpose:'RabbitMQ Management API 凭据',secret}); else {const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'RabbitMQ'} 凭据`,purpose:'RabbitMQ Management API 凭据',secret}); credentialId=c.id;}} if(rabbitMQAccessMode==='agent') credentialId=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:rabbitMQAccessMode==='agent'?'Agent':'Direct',agent_ref:rabbitMQAccessMode==='agent'?rabbitMQMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:rabbitMQAccessMode==='agent'?{}:{url:rabbitMQURL.trim(),timeout_seconds:Number(rabbitMQTimeoutSeconds),tls_insecure:rabbitMQTLSInsecure}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'RabbitMQ',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`RabbitMQ 资源“${c.name}”已创建`);} else {const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`RabbitMQ 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRabbitMQResourceId='';resourceAddStep=1; }
+  async function saveOracleWorkflow() { if(!oracleConfigurationComplete()){oracleConfigurationAttempted=true;throw new Error('请检查 Oracle 配置。')} const existing=resources.find(r=>r.id===editingOracleResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(oracleAccessMode==='direct'&&oracleUsername.trim()&&oraclePassword){const secret=JSON.stringify({username:oracleUsername.trim(),password:oraclePassword});credentialDraft=stageCredential('Oracle 数据库凭据',secret);} if(oracleAccessMode==='agent')credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:oracleAccessMode==='agent'?'Agent':'Direct',agent_ref:oracleAccessMode==='agent'?oracleMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:oracleAccessMode==='agent'?{}:{host:oracleHost.trim(),port:Number(oraclePort),service_name:oracleServiceName.trim(),sid:oracleSID.trim(),tls:oracleTLS,timeout_seconds:Number(oracleTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Oracle',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Oracle 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Oracle 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingOracleResourceId='';resourceAddStep=1; }
+  async function saveMySQLWorkflow() { if(!mysqlConfigurationComplete()){mysqlConfigurationAttempted=true;throw new Error('请检查 MySQL 配置。')} const existing=resources.find(r=>r.id===editingMySQLResourceId);let credentialDraft:Record<string, unknown> | null | undefined = undefined;if(mysqlAccessMode==='direct'&&mysqlUsername.trim()&&mysqlPassword){const secret=JSON.stringify({username:mysqlUsername.trim(),password:mysqlPassword});credentialDraft=stageCredential('MySQL 数据库凭据',secret);}if(mysqlAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:mysqlAccessMode==='agent'?'Agent':'Direct',agent_ref:mysqlAccessMode==='agent'?mysqlMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:mysqlAccessMode==='agent'?{}:{host:mysqlHost.trim(),port:Number(mysqlPort),database:mysqlDatabase.trim(),timeout_seconds:Number(mysqlTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'MySQL',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`MySQL 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`MySQL 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingMySQLResourceId='';resourceAddStep=1; }
+  async function saveKafkaWorkflow() { if(!kafkaConfigurationComplete()){kafkaConfigurationAttempted=true;throw new Error('请检查 Kafka 配置。')} const existing=resources.find(r=>r.id===editingKafkaResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(kafkaAccessMode==='direct'&&(kafkaUsername.trim()||kafkaPassword)){const secret=JSON.stringify({username:kafkaUsername.trim(),password:kafkaPassword});credentialDraft=stageCredential('Kafka 凭据',secret);} if(kafkaAccessMode==='agent')credentialDraft=null; const brokers=kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean); const body:Record<string,unknown>={name:resourceName.trim(),subtype:kafkaAccessMode==='agent'?'Agent':'Direct',agent_ref:kafkaAccessMode==='agent'?kafkaMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:kafkaAccessMode==='agent'?{}:{brokers,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Kafka',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Kafka 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Kafka 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingKafkaResourceId='';resourceAddStep=1; }
+  async function saveElasticsearchWorkflow() { if(!elasticsearchConfigurationComplete()){elasticsearchConfigurationAttempted=true;throw new Error('请检查 Elasticsearch 配置。')} const existing=resources.find(r=>r.id===editingElasticsearchResourceId);let credentialDraft:Record<string, unknown> | null | undefined = undefined;if(elasticsearchAccessMode==='direct'&&(elasticsearchUsername.trim()||elasticsearchPassword)){const secret=JSON.stringify({username:elasticsearchUsername.trim(),password:elasticsearchPassword});credentialDraft=stageCredential('Elasticsearch API 凭据',secret);}if(elasticsearchAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:elasticsearchAccessMode==='agent'?'Agent':'Direct',agent_ref:elasticsearchAccessMode==='agent'?elasticsearchMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:elasticsearchAccessMode==='agent'?{}:{url:elasticsearchURL.trim(),tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Elasticsearch',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Elasticsearch 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Elasticsearch 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingElasticsearchResourceId='';resourceAddStep=1; }
+  async function saveRabbitMQWorkflow() { if(!rabbitMQConfigurationComplete()){rabbitMQConfigurationAttempted=true;throw new Error('请检查 RabbitMQ 配置。')} const existing=resources.find(r=>r.id===editingRabbitMQResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(rabbitMQAccessMode==='direct'&&(rabbitMQUsername.trim()||rabbitMQPassword)){const secret=JSON.stringify({username:rabbitMQUsername.trim(),password:rabbitMQPassword});credentialDraft=stageCredential('RabbitMQ Management API 凭据',secret);} if(rabbitMQAccessMode==='agent') credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:rabbitMQAccessMode==='agent'?'Agent':'Direct',agent_ref:rabbitMQAccessMode==='agent'?rabbitMQMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:rabbitMQAccessMode==='agent'?{}:{url:rabbitMQURL.trim(),timeout_seconds:Number(rabbitMQTimeoutSeconds),tls_insecure:rabbitMQTLSInsecure}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'RabbitMQ',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`RabbitMQ 资源“${c.name}”已创建`);} else {const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`RabbitMQ 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRabbitMQResourceId='';resourceAddStep=1; }
   async function saveMinIOWorkflow() {
     if (!minIOConfigurationComplete()) { minIOConfigurationAttempted = true; throw new Error('请检查 MinIO 配置。'); }
     const existing = resources.find((r) => r.id === editingMinIOResourceId);
-    let credentialId: string | null = existing?.credential_id ?? null;
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
     if (minIOAccessMode === 'direct' && (minIOAccessKey.trim() || minIOSecretKey || minIOSessionToken)) {
       const secret = JSON.stringify({ access_key: minIOAccessKey.trim(), secret_key: minIOSecretKey, session_token: minIOSessionToken });
-      if (existing?.credential_id) await api.updateCredential(existing.credential_id, { name: `${resourceName.trim() || 'MinIO'} 凭据`, purpose: 'MinIO S3 凭据', secret });
-      else { const credential = await api.createCredential({ scope_id: selectedScopeId, name: `${resourceName.trim() || 'MinIO'} 凭据`, purpose: 'MinIO S3 凭据', secret }); credentialId = credential.id; }
+      credentialDraft = stageCredential('MinIO S3 凭据', secret);
     }
-    if (minIOAccessMode === 'agent') credentialId = null;
-    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: minIOAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: minIOAccessMode === 'agent' ? minIOMCPServerResourceId : null, status: resourceStatus, labels: parseLabels(resourceLabels), credential_id: credentialId, config: minIOAccessMode === 'agent' ? {} : { endpoint: minIOEndpoint.trim(), region: minIORegion.trim(), secure: minIOSecure, timeout_seconds: Number(minIOTimeoutSeconds) } };
+    if (minIOAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: minIOAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: minIOAccessMode === 'agent' ? minIOMCPServerResourceId : null, status: resourceStatus, labels: parseLabels(resourceLabels), credential: credentialDraft, config: minIOAccessMode === 'agent' ? {} : { endpoint: minIOEndpoint.trim(), region: minIORegion.trim(), secure: minIOSecure, timeout_seconds: Number(minIOTimeoutSeconds) } };
     if (!existing) {
-      const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'MinIO', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential_id: credentialId, name: body.name as string, status: body.status as string, labels: body.labels as Record<string, string>, config: body.config as Record<string, unknown> });
+      const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'MinIO', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, status: body.status as string, labels: body.labels as Record<string, string>, config: body.config as Record<string, unknown> });
       resources = [created, ...resources]; selectedResourceId = created.id; onNotice(`MinIO 资源“${created.name}”已创建`);
     } else {
       const updated = await updateResourceRecord(existing.id, body); resources = resources.map((r) => r.id === updated.id ? updated : r); selectedResourceId = updated.id; onNotice(`MinIO 资源“${updated.name}”已更新`);
@@ -3073,17 +2864,17 @@
   }
   async function saveRedisWorkflow() {
     if (!redisConfigurationComplete()) { redisConfigurationAttempted=true; throw new Error('请检查 Redis 配置。'); }
-    const existing=resources.find(r=>r.id===editingRedisResourceId); let credentialId:string|null=existing?.credential_id??null;
-    if(redisAccessMode==='direct'&&redisPassword.trim()){const secret=JSON.stringify({username:redisUsername.trim(),password:redisPassword}); if(existing?.credential_id) await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Redis'} 凭据`,purpose:'Redis 数据库凭据',secret}); else {const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Redis'} 凭据`,purpose:'Redis 数据库凭据',secret});credentialId=c.id;}}
-    if(redisAccessMode==='agent')credentialId=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:redisAccessMode==='agent'?'Agent':'Direct',agent_ref:redisAccessMode==='agent'?redisMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:redisAccessMode==='agent'?{}:{host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),timeout_seconds:Number(redisTimeoutSeconds)}};
-    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Redis',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Redis 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Redis 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRedisResourceId='';resourceAddStep=1;
+    const existing=resources.find(r=>r.id===editingRedisResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined;
+    if(redisAccessMode==='direct'&&redisPassword.trim()){const secret=JSON.stringify({username:redisUsername.trim(),password:redisPassword}); credentialDraft=stageCredential('Redis 数据库凭据',secret);}
+    if(redisAccessMode==='agent')credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:redisAccessMode==='agent'?'Agent':'Direct',agent_ref:redisAccessMode==='agent'?redisMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:redisAccessMode==='agent'?{}:{host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),timeout_seconds:Number(redisTimeoutSeconds)}};
+    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Redis',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Redis 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Redis 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRedisResourceId='';resourceAddStep=1;
   }
   async function saveNacosWorkflow() {
     if (!nacosConfigurationComplete()) { nacosConfigurationAttempted=true; throw new Error('请检查 Nacos 配置。'); }
-    const existing=resources.find(r=>r.id===editingNacosResourceId); let credentialId:string|null=existing?.credential_id??null;
-    if(nacosAccessMode==='direct'&&(nacosUsername.trim()||nacosPassword||nacosAccessToken)){const secret=JSON.stringify({username:nacosUsername.trim(),password:nacosPassword,access_token:nacosAccessToken});if(existing?.credential_id)await api.updateCredential(existing.credential_id,{name:`${resourceName.trim()||'Nacos'} 凭据`,purpose:'Nacos API 凭据',secret});else{const c=await api.createCredential({scope_id:selectedScopeId,name:`${resourceName.trim()||'Nacos'} 凭据`,purpose:'Nacos API 凭据',secret});credentialId=c.id;}}
-    if(nacosAccessMode==='agent')credentialId=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:nacosAccessMode==='agent'?'Agent':'Direct',agent_ref:nacosAccessMode==='agent'?nacosMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential_id:credentialId,config:nacosAccessMode==='agent'?{}:{host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,timeout_seconds:Number(nacosTimeoutSeconds)}};
-    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Nacos',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential_id:credentialId,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Nacos 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Nacos 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingNacosResourceId='';resourceAddStep=1;
+    const existing=resources.find(r=>r.id===editingNacosResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined;
+    if(nacosAccessMode==='direct'&&(nacosUsername.trim()||nacosPassword||nacosAccessToken)){const secret=JSON.stringify({username:nacosUsername.trim(),password:nacosPassword,access_token:nacosAccessToken});credentialDraft=stageCredential('Nacos API 凭据',secret);}
+    if(nacosAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:nacosAccessMode==='agent'?'Agent':'Direct',agent_ref:nacosAccessMode==='agent'?nacosMCPServerResourceId:null,status:resourceStatus,labels:parseLabels(resourceLabels),credential:credentialDraft,config:nacosAccessMode==='agent'?{}:{host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,timeout_seconds:Number(nacosTimeoutSeconds)}};
+    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Nacos',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,status:body.status as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Nacos 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Nacos 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingNacosResourceId='';resourceAddStep=1;
   }
   async function saveRepositoryWorkflow() {
     repositoryConfigurationAttempted = true;
@@ -3688,8 +3479,6 @@
           />
         {:else if resourceKind === 'Docker' && resourceAddStep === 3}
           <DockerReviewStep
-            {resourceName}
-            {resourceStatus}
             accessMode={dockerAccessMode}
             connectionOverride={dockerAgentConnectionOverride}
             host={dockerHost}

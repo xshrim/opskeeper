@@ -49,7 +49,7 @@
     </div>
     <div>
       <span>连接凭据</span><strong
-        >{resource.credential_id ? '已配置' : '未配置'}</strong
+        >{resource.credential_configured ? '已配置' : '未配置'}</strong
       >
     </div>
     <div>

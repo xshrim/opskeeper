@@ -22,7 +22,7 @@ func TestConnectionCheckStorePersistsLatestResult(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT scope_id::text FROM platforms LIMIT 1").Scan(&scopeID); err != nil {
 		t.Fatalf("read platform scope: %v", err)
 	}
-	item, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+	item, err := resource.NewService(resource.NewStore(pool), nil).Create(ctx, resource.CreateInput{
 		ScopeID: scopeID, Kind: "Prometheus", Name: "integration-prometheus", Config: map[string]any{"url": "https://prometheus.example"},
 	})
 	if err != nil {

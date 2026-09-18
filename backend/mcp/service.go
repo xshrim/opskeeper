@@ -48,8 +48,8 @@ type Snapshot struct {
 }
 
 // Config is deliberately resource-owned. It describes only the transport and
-// explicit tools available from one MCPServer resource; credentials remain in
-// the normal credential store and are never copied into MCP snapshots.
+// explicit tools available from one MCPServer resource; resource secrets are
+// never copied into MCP snapshots.
 type Config struct {
 	Transport        string            `json:"transport"`
 	URL              string            `json:"url"`

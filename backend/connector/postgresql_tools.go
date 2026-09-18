@@ -79,15 +79,12 @@ func postgreSQLDirectSchema() json.RawMessage {
 
 func (s *Service) postgreSQLConnection(ctx context.Context, item aiengine.ContextResource) (pt.ConnectionInput, error) {
 	input := pt.ConnectionInput{Host: stringValue(item.Config, "host"), Database: stringValue(item.Config, "database"), Port: intValue(item.Config, "port"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return input, fmt.Errorf("PostgreSQL credential is required")
-	}
-	if s.credentials == nil {
-		return input, fmt.Errorf("credential service is unavailable")
-	}
-	secret, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {
 		return input, err
+	}
+	if !configured {
+		return input, fmt.Errorf("PostgreSQL credential is required")
 	}
 	var values map[string]any
 	if err := json.Unmarshal(secret, &values); err != nil {

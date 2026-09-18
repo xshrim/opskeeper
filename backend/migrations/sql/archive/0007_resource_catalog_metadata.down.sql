@@ -1,6 +1,6 @@
 UPDATE resource_schemas
    SET status = 'active'
- WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model', 'Credential');
+ WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model');
 
 ALTER TABLE resource_schemas
     DROP COLUMN IF EXISTS display_name,

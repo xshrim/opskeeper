@@ -60,7 +60,9 @@ resources {
   schema_version,
   config,
   status,
-  credential_id,
+  credential_ciphertext,
+  credential_key_version,
+  credential_purpose,
   created_at, updated_at, deleted_at
 }
 ```
@@ -77,7 +79,7 @@ resources {
 | 开发交付 | Repository、Artifact |
 | 运维支撑 | NotificationChannel、Runbook |
 
-Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。连接凭据由独立的 `resource_credentials` 管理，不把 Credential 当作资源登记。
+Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。资源连接密文直接保存在资源行中，不把 Credential 当作资源登记。
 
 Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型。该字段描述来源工作负载，不改变资源类型，也不产生新的权限层级。
 
@@ -85,23 +87,23 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 
 `resource_schemas` 同时保存 `display_name`、`description` 和 `icon`，前端据此展示中文名称、说明和类型图标。`config` 使用 JSONB 保存非敏感类型字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。
 
-敏感字段按照类型定义进入加密凭据，例如：
+敏感字段按照类型定义进入资源连接密文，例如：
 
-| 资源类型 | 非敏感配置 | 加密凭据 |
+| 资源类型 | 非敏感配置 | 资源连接密文 |
 |---|---|---|
 | Kubernetes | Context、API Server | kubeconfig |
 | PostgreSQL | Host、Port、Database、Username | Password |
 | Redis | Host、Port、Database、Username | Password |
 | Kafka | Brokers、TLS | Username、Password |
-| AIProvider | 服务地址、模型目录、超时 | API Token 等凭据引用 |
+| AIProvider | 服务地址、模型目录、超时 | API Token 等资源连接密文 |
 | Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
 | Artifact | URL、Provider、Namespace | Username、Password、Token |
 | Prometheus | URL | Username、Password、Token |
 | Loki | URL、Tenant ID | Username、Password、Token |
 
-登录用户的 `credentials` 表与外部资源凭据严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段写入加密凭据并保存 `credential_id`；用户不需要手写配置 JSON。
+登录用户的 `credentials` 表与资源连接密文严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段加密后写入同一资源行；用户不需要手写配置 JSON。
 
-Connector 不是新的资源类型。它根据资源 `kind + schema_version` 解析适配器，读取资源配置和关联的加密凭据，并声明该资源支持的查询能力。连接测试结果独立保存在 `resource_connection_checks`，资源本身仍是配置和授权的权威对象。
+Connector 不是新的资源类型。它根据资源 `kind + schema_version` 解析适配器，读取资源配置和资源自身的连接密文，并声明该资源支持的查询能力。连接测试结果独立保存在 `resource_connection_checks`，资源本身仍是配置和授权的权威对象。
 
 ## 4. 可见性与引用规则
 
@@ -184,7 +186,6 @@ scopes
 resources
 resource_relations
 resource_schemas
-resource_credentials
 resource_sync_states
 discovery_runs
 discovery_items

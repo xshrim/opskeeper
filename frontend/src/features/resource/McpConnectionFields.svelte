@@ -7,7 +7,7 @@
   export let toolAllowlist = '';
   export let timeoutSeconds = 120;
   export let maxResponseBytes = 4 * 1024 * 1024;
-  export let tokenPlaceholder = '保存于加密凭据';
+  export let tokenPlaceholder = '保存于资源加密字段';
   export let configurationAttempted = false;
   let tokenVisible = false;
 

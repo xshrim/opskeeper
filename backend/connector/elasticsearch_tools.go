@@ -14,14 +14,11 @@ func (s *Service) resolveElasticsearchTools(ctx context.Context, item aiengine.C
 		return fmt.Errorf("Elasticsearch agent resources must use the MCP provider")
 	}
 	in := es.ConnectionInput{URL: stringValue(item.Config, "url"), TLSInsecure: configBool(item.Config, "tls_insecure"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID != nil && strings.TrimSpace(*item.CredentialID) != "" {
-		if s.credentials == nil {
-			return fmt.Errorf("credential service is unavailable")
-		}
-		raw, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
-		if e != nil {
-			return e
-		}
+	raw, configured, err := s.resourceSecret(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	if configured {
 		var v map[string]any
 		_ = json.Unmarshal(raw, &v)
 		in.Username = stringValue(v, "username")

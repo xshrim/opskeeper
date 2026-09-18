@@ -56,15 +56,12 @@ func redisToolError(name string, err error) error {
 }
 func (s *Service) redisConnection(ctx context.Context, item aiengine.ContextResource) (rt.ConnectionInput, error) {
 	in := rt.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), Database: intValue(item.Config, "database"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return in, nil
-	}
-	if s.credentials == nil {
-		return in, fmt.Errorf("credential service is unavailable")
-	}
-	secret, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {
 		return in, e
+	}
+	if !configured {
+		return in, nil
 	}
 	var values map[string]any
 	if e := json.Unmarshal(secret, &values); e != nil {

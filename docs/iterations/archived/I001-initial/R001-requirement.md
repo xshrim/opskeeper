@@ -290,10 +290,10 @@ opskeeper/
 
 ### 实施细节
 
-1. 创建资源、资源 Schema、凭据密文、资源关系、同步状态和 Scope 默认配置表。
+1. 创建资源、资源 Schema、内嵌资源密文、资源关系、同步状态和 Scope 默认配置表。
 2. 资源只引用 `scope_id`，由 Scope 节点确定平台、团队或项目层级。
 3. 使用版本化 JSON Schema 校验不同 `kind` 的 `config`，首批注册架构设计中的资源类型。
-4. Credential 资源保存元数据，密文使用信封加密接口存储；开发环境提供本地密钥实现。
+4. 资源连接密文随资源行保存，密文使用信封加密接口存储；开发环境提供本地密钥实现。
 5. 实现资源 CRUD、标签过滤、分页、连接状态和软删除。
 6. 实现关系创建、查询和删除，严格校验“同 Scope 或向上引用”规则。
 7. 使用递归 CTE 提供有限深度的上下游拓扑查询，并限制节点数量。
@@ -302,7 +302,7 @@ opskeeper/
 
 ### 预计文件范围
 
-资源迁移、`backend/resource/`、`backend/credential/`、拓扑查询和相关 API。
+资源迁移、`backend/resource/`、拓扑查询和相关 API。
 
 ### 验收标准
 
@@ -369,7 +369,7 @@ Kubernetes 导入向导、AI 对话和巡检页面。
 
 ### 实施细节
 
-1. 将集群资源类型统一命名为 `Kubernetes`，保存非敏感连接配置并通过独立加密凭据关联 kubeconfig。
+1. 将集群资源类型统一命名为 `Kubernetes`，保存非敏感连接配置并将 kubeconfig 加密后直接保存在资源行。
 2. 使用 `client-go` 和 Kubernetes API 分页扫描 Namespace、Deployment、StatefulSet、DaemonSet、Job、CronJob、Pod、Service、Ingress 和 EndpointSlice。
 3. 创建发现运行和发现项表；API 异步执行扫描，前端轮询进度并保留同步历史。
 4. Namespace 只作为 Project 候选，用户可选择新建 Project、绑定已有 Project 或忽略；Namespace 本身不登记为资源。

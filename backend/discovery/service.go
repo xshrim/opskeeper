@@ -19,12 +19,11 @@ type Service struct {
 	resources    ResourceReader
 	projects     ProjectManager
 	applications ApplicationManager
-	credentials  CredentialReader
 	scanner      Scanner
 }
 
-func NewService(store Store, resources ResourceReader, projects ProjectManager, applications ApplicationManager, credentials CredentialReader, scanner Scanner) *Service {
-	return &Service{store: store, resources: resources, projects: projects, applications: applications, credentials: credentials, scanner: scanner}
+func NewService(store Store, resources ResourceReader, projects ProjectManager, applications ApplicationManager, scanner Scanner) *Service {
+	return &Service{store: store, resources: resources, projects: projects, applications: applications, scanner: scanner}
 }
 
 func (s *Service) Start(ctx context.Context, actorID, clusterID string) (Run, error) {
@@ -39,9 +38,6 @@ func (s *Service) Start(ctx context.Context, actorID, clusterID string) (Run, er
 	if cluster.Kind != "Kubernetes" {
 		return Run{}, fmt.Errorf("%w: resource is not Kubernetes", ErrInvalid)
 	}
-	if cluster.CredentialID == nil || strings.TrimSpace(*cluster.CredentialID) == "" {
-		return Run{}, fmt.Errorf("%w: Kubernetes requires a kubeconfig credential", ErrInvalid)
-	}
 	run, err := s.store.CreateRun(ctx, cluster.ID, actorID)
 	if err != nil {
 		return Run{}, err
@@ -55,7 +51,14 @@ func (s *Service) execute(ctx context.Context, runID string, cluster resource.Re
 		_ = s.store.FailRun(ctx, runID, err)
 		return
 	}
-	secret, err := s.credentials.RevealLinked(ctx, *cluster.CredentialID)
+	reader, ok := s.resources.(interface {
+		RevealSecret(context.Context, string) ([]byte, error)
+	})
+	if !ok {
+		_ = s.store.FailRun(ctx, runID, fmt.Errorf("resource secret service is unavailable"))
+		return
+	}
+	secret, err := reader.RevealSecret(ctx, cluster.ID)
 	if err != nil {
 		_ = s.store.FailRun(ctx, runID, fmt.Errorf("read cluster credential: %w", err))
 		return

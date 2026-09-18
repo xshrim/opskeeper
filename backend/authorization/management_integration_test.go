@@ -157,7 +157,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
-	managedResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+	managedResource, err := resource.NewService(resource.NewStore(pool), nil).Create(ctx, resource.CreateInput{
 		ScopeID: project.Scope.ID,
 		Kind:    "Host",
 		Name:    "orders",
@@ -170,7 +170,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}
-	platformResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+	platformResource, err := resource.NewService(resource.NewStore(pool), nil).Create(ctx, resource.CreateInput{
 		ScopeID: platform.Scope.ID,
 		Kind:    "Host",
 		Name:    "platform-tooling",
@@ -179,7 +179,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create(platform Host) error = %v", err)
 	}
-	teamResource, err := resource.NewService(resource.NewStore(pool)).Create(ctx, resource.CreateInput{
+	teamResource, err := resource.NewService(resource.NewStore(pool), nil).Create(ctx, resource.CreateInput{
 		ScopeID: team.Scope.ID,
 		Kind:    "Host",
 		Name:    "team-tooling",

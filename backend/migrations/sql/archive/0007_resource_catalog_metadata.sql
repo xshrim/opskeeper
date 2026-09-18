@@ -29,8 +29,7 @@ UPDATE resource_schemas
     ('GenericAPI', '通用 API', '可通过 HTTP 访问的外部 API。', 'api'),
     ('NotificationChannel', '通知渠道', 'Webhook、邮件或其他通知目标。', 'notification'),
     ('Runbook', '运行手册', '可供运维流程引用的运行手册。', 'runbook'),
-    ('ArtifactStore', '制品存储', '保存诊断报告和其他制品的存储服务。', 'storage'),
-    ('Credential', '连接凭据', '已由独立凭据模型管理，不应作为资源登记。', 'credential')
+    ('ArtifactStore', '制品存储', '保存诊断报告和其他制品的存储服务。', 'storage')
   ) AS metadata(kind, display_name, description, icon)
  WHERE resource_schemas.kind = metadata.kind;
 
@@ -47,5 +46,4 @@ UPDATE resource_schemas
 
 UPDATE resource_schemas
    SET status = 'disabled'
- WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model', 'Credential');
-
+ WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model');

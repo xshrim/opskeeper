@@ -114,10 +114,6 @@ type ApplicationManager interface {
 	Import(context.Context, application.ImportInput) (application.Application, error)
 }
 
-type CredentialReader interface {
-	RevealLinked(context.Context, string) ([]byte, error)
-}
-
 type Scanner interface {
 	Scan(context.Context, resource.Resource, string) ([]ScannedItem, error)
 }

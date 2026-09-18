@@ -75,7 +75,7 @@ AIEngine（统一执行、工具、上下文、流式响应和审计）
 
 ### 3.1 AIProvider
 
-AIProvider 是一个可连接的模型服务配置，包含服务地址、协议、凭据引用、服务级限制和模型目录。Provider 本身不生成回答，具体回答由其目录中的某个模型完成。
+AIProvider 是一个可连接的模型服务配置，包含服务地址、协议、资源自身的连接密文、服务级限制和模型目录。Provider 本身不生成回答，具体回答由其目录中的某个模型完成。
 
 ### 3.2 Model
 
@@ -153,7 +153,7 @@ AgentProfile 的契约快照通过以下版本 API 管理：
 
 ### 4.1 Resource 配置
 
-AIProvider 仍然作为统一 Resource 保存。凭据通过 `resource.credential_id` 关联加密凭据，API 响应不得返回密钥明文。
+AIProvider 仍然作为统一 Resource 保存。连接密文直接保存在资源的加密字段中，API 响应不得返回密钥明文。
 
 ```json
 {
@@ -249,7 +249,7 @@ Provider 本身不保存诊断、巡检或工作流标签。标签属于 Scope �
 
 | 参数 | 归属 | 原因 |
 |---|---|---|
-| 服务地址、协议、凭据 | AIProvider | 同一服务连接共享 |
+| 服务地址、协议、连接密文 | AIProvider | 同一资源连接使用 |
 | Provider 并发、限流和请求超时 | AIProvider | 账号或服务地址级限制 |
 | 模型名称 | Model | 上游模型唯一标识 |
 | 上下文窗口 | Model | 不同模型通常不同 |
@@ -349,7 +349,7 @@ type GenerationParameters struct {
 }
 ```
 
-`Purpose` 表示本次执行场景（`default`、`diagnosis`、`inspection` 或 `workflow`），用于选择 Scope 默认 Provider 和确定能力要求。`AIProviderResourceID` 可以为空；为空时按“当前级别具体 purpose -> 当前级别 `default` -> 上级级别具体 purpose -> 上级级别 `default`”解析，不为空时只使用指定 Provider，不要求该 Provider 拥有当前场景 purpose。凭据资源中的 `purpose` 仍表示凭据用途说明，两者语义不同。
+`Purpose` 表示本次执行场景（`default`、`diagnosis`、`inspection` 或 `workflow`），用于选择 Scope 默认 Provider 和确定能力要求。`AIProviderResourceID` 可以为空；为空时按“当前级别具体 purpose -> 当前级别 `default` -> 上级级别具体 purpose -> 上级级别 `default`”解析，不为空时只使用指定 Provider，不要求该 Provider 拥有当前场景 purpose。资源中的 `credential_purpose` 表示该资源密文用途说明，两者语义不同。
 
 `ModelName` 是用户明确选择的模型；为空时按以下顺序解析：
 

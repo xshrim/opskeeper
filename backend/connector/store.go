@@ -22,10 +22,11 @@ func (s *store) Save(ctx context.Context, input Check) (Check, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO resource_connection_checks
-		       (resource_id, status, error_category, message, latency_ms, capabilities, checked_by, checked_at)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8)
-		RETURNING id::text`, input.ResourceID, input.Status, input.ErrorCategory, input.Message,
-		input.LatencyMS, capabilitiesToStrings(input.Capabilities), input.CheckedBy, input.CheckedAt).Scan(&id)
+		       (resource_id, endpoint, status, error_category, message, latency_ms, capabilities, checked_by, checked_at)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::uuid, $9)
+		RETURNING id::text`, input.ResourceID, input.Endpoint, input.Status, input.ErrorCategory,
+		input.Message, input.LatencyMS, capabilitiesToStrings(input.Capabilities), input.CheckedBy,
+		input.CheckedAt).Scan(&id)
 	if err != nil {
 		return Check{}, fmt.Errorf("save resource connection check: %w", err)
 	}
@@ -47,7 +48,7 @@ func (s *store) scan(row pgx.Row) (Check, error) {
 	var item Check
 	var category string
 	var capabilities []string
-	if err := row.Scan(&item.ID, &item.ResourceID, &item.Status, &category, &item.Message,
+	if err := row.Scan(&item.ID, &item.ResourceID, &item.Endpoint, &item.Status, &category, &item.Message,
 		&item.LatencyMS, &capabilities, &item.CheckedBy, &item.CheckedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Check{}, ErrNotFound
@@ -62,7 +63,7 @@ func (s *store) scan(row pgx.Row) (Check, error) {
 }
 
 const checkSelect = `
-	SELECT check_record.id::text, check_record.resource_id::text, check_record.status,
+	SELECT check_record.id::text, check_record.resource_id::text, check_record.endpoint, check_record.status,
 	       check_record.error_category, check_record.message, check_record.latency_ms,
 	       check_record.capabilities, check_record.checked_by::text, check_record.checked_at
 	  FROM resource_connection_checks check_record`

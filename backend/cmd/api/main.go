@@ -22,7 +22,6 @@ import (
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
-	"opskeeper/backend/credential"
 	"opskeeper/backend/diagnosis"
 	"opskeeper/backend/discovery"
 	"opskeeper/backend/health"
@@ -37,6 +36,7 @@ import (
 	"opskeeper/backend/organization"
 	repositorysvc "opskeeper/backend/repository"
 	"opskeeper/backend/resource"
+	"opskeeper/backend/secret"
 	"opskeeper/backend/skill"
 	"opskeeper/backend/version"
 	"opskeeper/backend/webui"
@@ -146,18 +146,17 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	authorizationService := authorization.NewService(authorizationStore)
 	managementStore := authorization.NewManagementStore(pool)
 	managementService := authorization.NewManagementService(managementStore, authorizationService, auditService)
-	credentialEncryptor, err := credential.FromEnvironment(cfg.Environment)
+	credentialEncryptor, err := secret.FromEnvironment(cfg.Environment)
 	if err != nil {
 		return errors.Join(errors.New("configure credential encryption"), err)
 	}
-	credentialService := credential.NewService(credential.NewStore(pool), credentialEncryptor)
-	resourceService := resource.NewService(resource.NewStore(pool))
+	resourceService := resource.NewService(resource.NewStore(pool), credentialEncryptor)
 	applicationService := application.NewService(application.NewStore(pool))
 	if cfg.RepositoryStorageBackend == "s3" {
 		logger.Warn("repository S3-compatible backend configured", "kind", "repository-storage", "provider", cfg.RepositoryS3Provider)
 	}
 	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, Provider: cfg.RepositoryS3Provider, UseSSL: cfg.RepositoryS3UseSSL, Postgres: pool}, cfg.RepositoryMaxBundleBytes, resourceService)
-	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, organizationService, applicationService, credentialService, discovery.NewKubernetesScanner())
+	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, organizationService, applicationService, discovery.NewKubernetesScanner())
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
 	connectorLimits.MaxConcurrent = cfg.ConnectorMaxConcurrency
@@ -166,9 +165,9 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("build connector registry: %w", err)
 	}
-	connectorService := connector.NewService(connectorRegistry, resourceService, credentialService, connector.NewStore(pool), connectorLimits)
+	connectorService := connector.NewService(connectorRegistry, resourceService, connector.NewStore(pool), connectorLimits)
 	connectorService.SetPostgresPool(pool)
-	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentialService)
+	llmService := llm.NewService(llm.NewStore(pool), resourceService)
 	skillStore := skill.NewStore(pool)
 	skillService := skill.NewService(skillStore, resourceService)
 	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
@@ -176,7 +175,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
 	agentProfileResolver.Versions = agentProfileVersions
 	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
-	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentialService)
+	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectorService.AIEngineProvider()
 	mcpProvider := mcpService.AIEngineProvider()
 	contextTooling := aiengine.NewContextTooling(
@@ -237,7 +236,6 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Auditor:            auditService,
 			AuditLog:           auditService,
 			Resources:          resourceService,
-			Credentials:        credentialService,
 			Discovery:          discoveryService,
 			Connectors:         connectorService,
 			LLMs:               llmService,

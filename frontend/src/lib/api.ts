@@ -116,7 +116,7 @@ export interface Resource {
   labels: Record<string, string>;
   config: Record<string, unknown>;
   status: string;
-  credential_id?: string;
+  credential_configured?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -161,6 +161,7 @@ export type ConnectorCapability =
 export interface ConnectionCheck {
   id: string;
   resource_id: string;
+  endpoint?: string;
   status: 'succeeded' | 'failed';
   error_category?: string;
   message: string;
@@ -170,16 +171,6 @@ export interface ConnectionCheck {
   checked_at: string;
 }
 
-
-export interface Credential {
-  id: string;
-  scope_id: string;
-  name: string;
-  purpose: string;
-  key_version: string;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface Relation {
   id: string;
@@ -209,7 +200,7 @@ export interface AIConnectionResult {
 export interface AIProviderAvailability {
   provider_resource_id: string;
   name: string;
-  models: Array<{ name: string; capabilities: string[] }>;
+  models: Array<{ name: string; context_window_tokens?: number; capabilities: string[] }>;
   default: boolean;
 }
 
@@ -783,25 +774,6 @@ export const api = {
     request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),
   schemas: () => request<ResourceSchema[]>('api/v1/resources/schemas'),
-  credentials: () => request<Credential[]>('api/v1/credentials'),
-  credentialSecret: (id: string) =>
-    request<{ secret: string }>(
-      `api/v1/credentials/${encodeURIComponent(id)}/secret`
-    ),
-  createCredential: (body: {
-    scope_id: string;
-    name: string;
-    purpose: string;
-    secret: string;
-  }) => request<Credential>('api/v1/credentials', json(body)),
-  updateCredential: (
-    id: string,
-    body: { name?: string; purpose?: string; secret?: string }
-  ) =>
-    request<Credential>(
-      `api/v1/credentials/${encodeURIComponent(id)}/`,
-      patch(body)
-    ),
   createResource: (body: Record<string, unknown>) =>
     request<Resource>('api/v1/resources', json(body)),
   updateResource: (id: string, body: Record<string, unknown>) =>

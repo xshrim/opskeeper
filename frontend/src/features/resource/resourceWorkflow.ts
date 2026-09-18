@@ -328,7 +328,7 @@ export function dockerTLSValueForDisplay(value: string) {
     )
       return decoded.trim();
   } catch {
-    // Legacy credentials may already contain PEM text.
+    // PEM text is accepted directly as well as Base64-encoded PEM.
   }
   return trimmed;
 }

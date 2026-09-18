@@ -119,7 +119,6 @@ CREATE TABLE notification_channels (
     name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
     kind text NOT NULL CHECK (kind = 'webhook'),
     webhook_url text NOT NULL CHECK (length(btrim(webhook_url)) BETWEEN 1 AND 2000),
-    credential_id uuid REFERENCES resource_credentials(id) ON DELETE SET NULL,
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     rate_limit_per_minute integer NOT NULL DEFAULT 30 CHECK (rate_limit_per_minute BETWEEN 1 AND 600),
     created_at timestamptz NOT NULL DEFAULT now(),

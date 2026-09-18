@@ -37,7 +37,7 @@ func (s *store) ScopeType(ctx context.Context, scopeID string) (string, error) {
 const resourceSelect = `
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name,
        resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels,
-       resource.config, resource.status, resource.credential_id::text,
+       resource.config, resource.status, resource.credential_ciphertext IS NOT NULL,
        resource.created_at, resource.updated_at
   FROM resources resource
  WHERE resource.deleted_at IS NULL`
@@ -52,10 +52,14 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Resource, error)
 		return Resource{}, fmt.Errorf("encode resource config: %w", err)
 	}
 	var id string
+	var ciphertext, keyVersion, purpose any
+	if input.Credential != nil {
+		ciphertext, keyVersion, purpose = input.Credential.Ciphertext, input.Credential.KeyVersion, input.Credential.Purpose
+	}
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO resources (scope_id, kind, subtype, agent_ref, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
-		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12::uuid)
-		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, nullableString(input.AgentRef), input.SchemaVersion, input.Name, input.ExternalUID, input.SourceResourceID, labels, config, input.Status, nullableString(input.CredentialID)).Scan(&id)
+		INSERT INTO resources (scope_id, kind, subtype, agent_ref, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_ciphertext, credential_key_version, credential_purpose)
+		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, nullableString(input.AgentRef), input.SchemaVersion, input.Name, input.ExternalUID, input.SourceResourceID, labels, config, input.Status, ciphertext, keyVersion, purpose).Scan(&id)
 	if err != nil {
 		return Resource{}, mapStoreError(err)
 	}
@@ -73,17 +77,16 @@ func (s *store) UpsertImported(ctx context.Context, input ImportedInput) (Resour
 	}
 	var id string
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO resources (scope_id, kind, subtype, agent_ref, schema_version, name, external_uid, source_resource_id, labels, config, status, credential_id)
-		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12::uuid)
+		INSERT INTO resources (scope_id, kind, subtype, agent_ref, schema_version, name, external_uid, source_resource_id, labels, config, status)
+		VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (scope_id, kind, external_uid, source_resource_id)
 		WHERE deleted_at IS NULL AND external_uid <> '' AND source_resource_id <> ''
 		DO UPDATE SET subtype = EXCLUDED.subtype, agent_ref = EXCLUDED.agent_ref, schema_version = EXCLUDED.schema_version, name = EXCLUDED.name,
 		              labels = EXCLUDED.labels, config = EXCLUDED.config,
-		              status = EXCLUDED.status, credential_id = EXCLUDED.credential_id,
+		              status = EXCLUDED.status,
 		              updated_at = now(), deleted_at = NULL
 		RETURNING id::text`, input.ScopeID, input.Kind, input.Subtype, nullableString(input.AgentRef), input.SchemaVersion, input.Name,
-		input.ExternalUID, input.SourceResourceID, labels, config, input.Status,
-		nullableString(input.CredentialID)).Scan(&id)
+		input.ExternalUID, input.SourceResourceID, labels, config, input.Status).Scan(&id)
 	if err != nil {
 		return Resource{}, mapStoreError(err)
 	}
@@ -114,7 +117,7 @@ func (s *store) List(ctx context.Context, pagination Pagination, kind string, la
 	limitPosition := len(queryArgs) + 1
 	offsetPosition := len(queryArgs) + 2
 	queryArgs = append(queryArgs, pagination.PageSize, pagination.Offset())
-	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_id::text, resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
+	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_ciphertext IS NOT NULL, resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
 	if err != nil {
 		return Page[Resource]{}, fmt.Errorf("list resources: %w", err)
 	}
@@ -139,6 +142,21 @@ func (s *store) Get(ctx context.Context, id string) (Resource, error) {
 }
 
 func (s *store) Update(ctx context.Context, id string, input UpdateInput) (Resource, error) {
+	query, queryArgs, err := resourceUpdateStatement(ctx, id, input)
+	if err != nil {
+		return Resource{}, err
+	}
+	command, err := s.pool.Exec(ctx, query, queryArgs...)
+	if err != nil {
+		return Resource{}, mapStoreError(err)
+	}
+	if command.RowsAffected() != 1 {
+		return Resource{}, ErrNotFound
+	}
+	return s.Get(ctx, id)
+}
+
+func resourceUpdateStatement(ctx context.Context, id string, input UpdateInput) (string, []any, error) {
 	set := []string{"updated_at = now()"}
 	args := []any{id}
 	appendValue := func(column string, value any, cast string) {
@@ -166,36 +184,34 @@ func (s *store) Update(ctx context.Context, id string, input UpdateInput) (Resou
 	if input.Labels != nil {
 		encoded, err := json.Marshal(*input.Labels)
 		if err != nil {
-			return Resource{}, fmt.Errorf("encode resource labels: %w", err)
+			return "", nil, fmt.Errorf("encode resource labels: %w", err)
 		}
 		appendValue("labels", encoded, "::jsonb")
 	}
 	if input.Config != nil {
 		encoded, err := json.Marshal(*input.Config)
 		if err != nil {
-			return Resource{}, fmt.Errorf("encode resource config: %w", err)
+			return "", nil, fmt.Errorf("encode resource config: %w", err)
 		}
 		appendValue("config", encoded, "::jsonb")
 	}
 	if input.Status != nil {
 		appendValue("status", *input.Status, "")
 	}
-	if input.CredentialID != nil {
-		var value any
-		if *input.CredentialID != nil {
-			value = **input.CredentialID
+	if input.ClearCredential {
+		set = append(set, "credential_purpose = ''", "credential_ciphertext = NULL", "credential_key_version = ''")
+	}
+	if input.Credential != nil {
+		if input.Credential.Purpose != nil {
+			appendValue("credential_purpose", *input.Credential.Purpose, "")
 		}
-		appendValue("credential_id", value, "::uuid")
+		if input.Credential.Secret != nil {
+			appendValue("credential_ciphertext", input.Credential.Ciphertext, "")
+			appendValue("credential_key_version", input.Credential.KeyVersion, "")
+		}
 	}
 	query, queryArgs := exactResourceQuery("UPDATE resources resource SET "+strings.Join(set, ", ")+" WHERE resource.id = $1::uuid AND resource.deleted_at IS NULL", ctx, args...)
-	command, err := s.pool.Exec(ctx, query, queryArgs...)
-	if err != nil {
-		return Resource{}, mapStoreError(err)
-	}
-	if command.RowsAffected() != 1 {
-		return Resource{}, ErrNotFound
-	}
-	return s.Get(ctx, id)
+	return query, queryArgs, nil
 }
 
 func (s *store) Delete(ctx context.Context, id string) error {
@@ -208,6 +224,16 @@ func (s *store) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *store) Secret(ctx context.Context, id string) ([]byte, string, error) {
+	query, args := visibleQuery("SELECT resource.credential_ciphertext, resource.credential_key_version FROM resources resource WHERE resource.id = $1::uuid AND resource.deleted_at IS NULL AND resource.credential_ciphertext IS NOT NULL", "resource", ctx, id)
+	var ciphertext []byte
+	var keyVersion string
+	if err := s.pool.QueryRow(ctx, query, args...).Scan(&ciphertext, &keyVersion); err != nil {
+		return nil, "", mapStoreError(err)
+	}
+	return ciphertext, keyVersion, nil
 }
 
 func (s *store) GetSchema(ctx context.Context, kind string, version int) (Schema, error) {
@@ -327,8 +353,8 @@ WITH RECURSIVE walk(id, depth) AS (
     SELECT id, min(depth) AS depth FROM walk GROUP BY id
 )
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid,
-       resource.source_resource_id, resource.labels, resource.config, resource.status,
-       resource.credential_id::text, resource.created_at, resource.updated_at, selected.depth
+       resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_ciphertext IS NOT NULL,
+       resource.created_at, resource.updated_at, selected.depth
   FROM selected JOIN resources resource ON resource.id = selected.id
  WHERE resource.deleted_at IS NULL`
 	args := []any{resourceID, depth}
@@ -376,7 +402,7 @@ WITH RECURSIVE chain(id, depth) AS (
 )
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version,
        resource.external_uid, resource.source_resource_id, resource.labels, resource.config,
-       resource.status, resource.credential_id::text, resource.created_at, resource.updated_at
+	       resource.status, resource.credential_ciphertext IS NOT NULL, resource.created_at, resource.updated_at
   FROM chain
   JOIN scope_defaults defaults ON defaults.scope_id = chain.id AND defaults.default_key = $2
   JOIN resources resource ON resource.id = defaults.resource_id
@@ -390,7 +416,7 @@ func scanTopologyNode(row rowScanner) (Resource, int, error) {
 	var item Resource
 	var labelsRaw, configRaw []byte
 	var depth int
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt, &depth); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialConfigured, &item.CreatedAt, &item.UpdatedAt, &depth); err != nil {
 		return Resource{}, 0, mapStoreError(err)
 	}
 	if err := json.Unmarshal(labelsRaw, &item.Labels); err != nil {
@@ -407,7 +433,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanResource(row rowScanner) (Resource, error) {
 	var item Resource
 	var labelsRaw, configRaw []byte
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialID, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialConfigured, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return Resource{}, mapStoreError(err)
 	}
 	if err := json.Unmarshal(labelsRaw, &item.Labels); err != nil {

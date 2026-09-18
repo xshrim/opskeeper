@@ -22,6 +22,14 @@ type getInput struct {
 	Namespace string `json:"namespace,omitempty"`
 	Name      string `json:"name,omitempty"`
 }
+type searchInput struct {
+	client.ConnectionInput
+	Resource  string `json:"resource"`
+	Keyword   string `json:"keyword"`
+	Namespace string `json:"namespace,omitempty"`
+	Filters   string `json:"filters,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+}
 type logsInput struct {
 	client.ConnectionInput
 	Namespace     string `json:"namespace"`
@@ -79,6 +87,8 @@ func RegisterTools(s *mcp.Server) {
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, getInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
+		case func(context.Context, *mcp.CallToolRequest, searchInput) (*mcp.CallToolResult, any, error):
+			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, logsInput) (*mcp.CallToolResult, any, error):
 			mcp.AddTool(s, &mcp.Tool{Name: name, Description: description, InputSchema: kt.InputSchema(extra)}, h)
 		case func(context.Context, *mcp.CallToolRequest, fileInput) (*mcp.CallToolResult, any, error):
@@ -93,6 +103,10 @@ func RegisterTools(s *mcp.Server) {
 	}
 	add("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, clusterInfoTool)
 	add("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, apiResourcesTool)
+	add("kubernetes_resource_search", "Search Kubernetes resource names by keyword.", kt.SearchInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, any, error) {
+		out, err := kt.Search(ctx, in.ConnectionInput, in.Resource, in.Namespace, in.Filters, in.Keyword, in.Limit)
+		return nil, out, err
+	})
 	for _, tool := range kt.ListTools() {
 		item := tool
 		add(item.Name, item.Description, kt.ListInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {

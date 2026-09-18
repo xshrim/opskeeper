@@ -472,21 +472,15 @@ func (s *store) ListFindings(ctx context.Context, scopeID string, limit int) ([]
 }
 
 func (s *store) CreateChannel(ctx context.Context, item NotificationChannel) (NotificationChannel, error) {
-	err := s.pool.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,credential_id,status,rate_limit_per_minute) VALUES ($1::uuid,$2,'webhook',$3,NULLIF($4,'')::uuid,$5,$6) RETURNING id::text`, item.ScopeID, item.Name, item.WebhookURL, credentialID(item.CredentialID), item.Status, item.RateLimitPerMinute).Scan(&item.ID)
+	err := s.pool.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,status,rate_limit_per_minute) VALUES ($1::uuid,$2,'webhook',$3,$4,$5) RETURNING id::text`, item.ScopeID, item.Name, item.WebhookURL, item.Status, item.RateLimitPerMinute).Scan(&item.ID)
 	if err != nil {
 		return NotificationChannel{}, mapError(err)
 	}
 	item.Kind = "webhook"
 	return item, nil
 }
-func credentialID(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
 func (s *store) ListChannels(ctx context.Context, scopeID string) ([]NotificationChannel, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text,scope_id::text,name,kind,webhook_url,credential_id::text,status,rate_limit_per_minute FROM notification_channels WHERE scope_id=$1::uuid AND deleted_at IS NULL ORDER BY created_at DESC`, scopeID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,scope_id::text,name,kind,webhook_url,status,rate_limit_per_minute FROM notification_channels WHERE scope_id=$1::uuid AND deleted_at IS NULL ORDER BY created_at DESC`, scopeID)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -494,7 +488,7 @@ func (s *store) ListChannels(ctx context.Context, scopeID string) ([]Notificatio
 	out := []NotificationChannel{}
 	for rows.Next() {
 		var n NotificationChannel
-		if err := rows.Scan(&n.ID, &n.ScopeID, &n.Name, &n.Kind, &n.WebhookURL, &n.CredentialID, &n.Status, &n.RateLimitPerMinute); err != nil {
+		if err := rows.Scan(&n.ID, &n.ScopeID, &n.Name, &n.Kind, &n.WebhookURL, &n.Status, &n.RateLimitPerMinute); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -537,7 +531,7 @@ func (s *store) ClaimDelivery(ctx context.Context) (Delivery, NotificationChanne
 	defer tx.Rollback(ctx)
 	var d Delivery
 	var c NotificationChannel
-	err = tx.QueryRow(ctx, `WITH next AS (SELECT id FROM notification_deliveries WHERE status='queued' AND available_at<=now() ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE notification_deliveries d SET status='delivering',attempt=attempt+1,updated_at=now() FROM next JOIN notification_channels c ON c.id=d.channel_id WHERE d.id=next.id AND (SELECT count(*) FROM notification_deliveries recent WHERE recent.channel_id=c.id AND recent.created_at>=date_trunc('minute',now()) AND recent.status='succeeded') < c.rate_limit_per_minute RETURNING d.id::text,d.channel_id::text,COALESCE(d.finding_id::text,''),COALESCE(d.run_id::text,''),d.idempotency_key,d.status,d.attempt,COALESCE(d.response_status,0),d.response_body,d.error_message,c.id::text,c.scope_id::text,c.name,c.kind,c.webhook_url,c.credential_id::text,c.status,c.rate_limit_per_minute`).Scan(&d.ID, &d.ChannelID, &d.FindingID, &d.RunID, &d.IdempotencyKey, &d.Status, &d.Attempt, &d.ResponseStatus, &d.ResponseBody, &d.ErrorMessage, &c.ID, &c.ScopeID, &c.Name, &c.Kind, &c.WebhookURL, &c.CredentialID, &c.Status, &c.RateLimitPerMinute)
+	err = tx.QueryRow(ctx, `WITH next AS (SELECT id FROM notification_deliveries WHERE status='queued' AND available_at<=now() ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE notification_deliveries d SET status='delivering',attempt=attempt+1,updated_at=now() FROM next JOIN notification_channels c ON c.id=d.channel_id WHERE d.id=next.id AND (SELECT count(*) FROM notification_deliveries recent WHERE recent.channel_id=c.id AND recent.created_at>=date_trunc('minute',now()) AND recent.status='succeeded') < c.rate_limit_per_minute RETURNING d.id::text,d.channel_id::text,COALESCE(d.finding_id::text,''),COALESCE(d.run_id::text,''),d.idempotency_key,d.status,d.attempt,COALESCE(d.response_status,0),d.response_body,d.error_message,c.id::text,c.scope_id::text,c.name,c.kind,c.webhook_url,c.status,c.rate_limit_per_minute`).Scan(&d.ID, &d.ChannelID, &d.FindingID, &d.RunID, &d.IdempotencyKey, &d.Status, &d.Attempt, &d.ResponseStatus, &d.ResponseBody, &d.ErrorMessage, &c.ID, &c.ScopeID, &c.Name, &c.Kind, &c.WebhookURL, &c.Status, &c.RateLimitPerMinute)
 	if err == pgx.ErrNoRows {
 		return Delivery{}, NotificationChannel{}, false, tx.Commit(ctx)
 	}

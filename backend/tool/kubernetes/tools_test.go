@@ -79,3 +79,33 @@ func TestMetricStatKeepsNodeUsage(t *testing.T) {
 		t.Fatalf("node stat = %#v", stat)
 	}
 }
+
+func TestSearchExpressionSupportsAndOrAndWildcards(t *testing.T) {
+	expression, err := parseSearchExpression("api*&v?|worker")
+	if err != nil {
+		t.Fatalf("parseSearchExpression() error = %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		want bool
+	}{
+		{name: "api-test", want: false},
+		{name: "api-v1", want: true},
+		{name: "api-worker", want: true},
+		{name: "worker", want: true},
+		{name: "frontend", want: false},
+	} {
+		if got := expression.Match(test.name); got != test.want {
+			t.Errorf("expression.Match(%q) = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
+func TestSearchResourceDefinitionsIsCaseInsensitiveAndSupportsWorkloads(t *testing.T) {
+	if got, err := searchResourceDefinitions("PoD"); err != nil || len(got) != 1 || got[0].kind != "Pod" {
+		t.Fatalf("pod definitions = %#v, %v", got, err)
+	}
+	if got, err := searchResourceDefinitions("WORKLOAD"); err != nil || len(got) != len(workloadResourceNames) {
+		t.Fatalf("workload definitions = %#v, %v", got, err)
+	}
+}

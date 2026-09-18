@@ -33,7 +33,7 @@ func (s *Service) TestKubernetesDraft(ctx context.Context, input KubernetesDraft
 	if input.Kubeconfig != "" {
 		connection.Kubeconfig = base64.StdEncoding.EncodeToString([]byte(input.Kubeconfig))
 	}
-	_, err := kt.ClusterInfo(ctx, connection)
+	info, err := kt.ClusterInfo(ctx, connection)
 	check.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
 		check.Message = fmt.Sprintf("Kubernetes 连接测试失败：%s", err)
@@ -41,5 +41,8 @@ func (s *Service) TestKubernetesDraft(ctx context.Context, input KubernetesDraft
 	}
 	check.Status = "succeeded"
 	check.Message = "Kubernetes 连接测试通过"
+	if endpoint, ok := info["server"].(string); ok && endpoint != "" {
+		check.Message = fmt.Sprintf("Kubernetes 连接测试通过，API Server：%s", endpoint)
+	}
 	return check, nil
 }

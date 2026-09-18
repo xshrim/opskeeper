@@ -23,7 +23,7 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 	if err := pool.QueryRow(ctx, "SELECT scope_id::text FROM platforms LIMIT 1").Scan(&scopeID); err != nil {
 		t.Fatalf("read platform scope: %v", err)
 	}
-	resources := resource.NewService(resource.NewStore(pool))
+	resources := resource.NewService(resource.NewStore(pool), nil)
 	provider, err := resources.Create(ctx, resource.CreateInput{ScopeID: scopeID, Kind: "AIProvider", Name: "diagnosis-provider", Config: map[string]any{
 		"provider_type": "openai-compatible",
 		"base_url":      "https://example.com/v1",

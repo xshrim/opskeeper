@@ -10,10 +10,16 @@ import (
 	"opskeeper/backend/resource"
 )
 
-type dockerResourceReader struct{ item resource.Resource }
+type dockerResourceReader struct {
+	item   resource.Resource
+	secret []byte
+}
 
 func (r dockerResourceReader) Get(context.Context, string) (resource.Resource, error) {
 	return r.item, nil
+}
+func (r dockerResourceReader) RevealSecret(context.Context, string) ([]byte, error) {
+	return r.secret, nil
 }
 
 func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
@@ -51,9 +57,8 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 
 func TestDockerConnectionConfigWinsOverCredential(t *testing.T) {
 	service := &Service{}
-	credentialID := "credential-1"
-	item := aiengine.ContextResource{CredentialID: &credentialID, Config: map[string]any{"host": "tcp://configured:2375", "skip_tls_verify": true}}
-	service.credentials = fakeDockerCredentialReader{secret: []byte(`{"host":"tcp://credential:2375","tls_ca":"credential-ca"}`)}
+	item := aiengine.ContextResource{ID: "docker-1", Config: map[string]any{"host": "tcp://configured:2375", "skip_tls_verify": true}}
+	service.resources = dockerResourceReader{secret: []byte(`{"host":"tcp://credential:2375","tls_ca":"credential-ca"}`)}
 	connection, err := service.dockerConnection(context.Background(), item)
 	if err != nil {
 		t.Fatalf("dockerConnection: %v", err)
@@ -61,10 +66,4 @@ func TestDockerConnectionConfigWinsOverCredential(t *testing.T) {
 	if connection.DockerHost != "tcp://configured:2375" || connection.DockerCA != "credential-ca" || !connection.DockerSkipVerify {
 		t.Fatalf("connection = %#v", connection)
 	}
-}
-
-type fakeDockerCredentialReader struct{ secret []byte }
-
-func (f fakeDockerCredentialReader) RevealLinked(context.Context, string) ([]byte, error) {
-	return f.secret, nil
 }

@@ -19,7 +19,7 @@
   {#if subtype === 'Git'}
     <label><span>Git 仓库 URL</span><input bind:value={url} placeholder="https://git.example.com/team/repo.git" /></label>
     <label><span>默认分支</span><input bind:value={defaultBranch} placeholder="main" /></label>
-    <p class="muted">Git 仓库按需实时读取；认证凭据可在保存后关联资源凭据。</p>
+    <p class="muted">Git 仓库按需实时读取；认证信息会随资源加密保存。</p>
   {:else}
     <label><span>Bundle 存储后端</span><select bind:value={storageBackend}><option value="local">本地磁盘</option><option value="postgres">PostgreSQL</option><option value="s3">S3-compatible</option></select></label>
     {#if storageBackend === 'local'}

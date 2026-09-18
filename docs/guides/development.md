@@ -251,7 +251,7 @@ make llm-provider-test
 
 该入口通过项目内 OpenAI-compatible Adapter、ADK `llmagent` 和 ADK Runner 分别执行非流式与 SSE 请求，并验证响应非空及 Token usage。它会访问外部服务并可能产生费用，因此不并入默认 `make test` 或 `make quality`。测试只输出模式、字符数和 Token 数，不输出 Token 或模型正文。
 
-应用中登记 AIProvider 时，连接地址、凭据引用和模型目录保存在 Provider 资源；模型条目只保留上游名称、参数和能力。业务调用方通过 AIEngine 选择 Provider/Model，未显式选择时按 Scope 场景标签解析并固定最终模型。API Token 必须通过资源凭据加密保存，不能出现在资源配置或审计响应中。AIProvider 不划分单模态或多模态子类；`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段。
+应用中登记 AIProvider 时，连接地址、资源连接密文和模型目录保存在 Provider 资源；模型条目只保留上游名称、参数和能力。业务调用方通过 AIEngine 选择 Provider/Model，未显式选择时按 Scope 场景标签解析并固定最终模型。API Token 必须加密保存在 Provider 资源行，不能出现在资源配置或审计响应中。AIProvider 不划分单模态或多模态子类；`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段。
 
 ## 5. PostgreSQL、缓存与 Bundle 存储
 

@@ -1314,7 +1314,7 @@ git log -4 --oneline --decorate
 git diff --check origin/main...HEAD
 ```
 
-结果：当前分支为 `feat/t06-resource-catalog`，工作树干净，基于已完成 T05 的 `main`；变更集中在 `0006` 迁移、`backend/resource/`、`backend/credential/`、资源 HTTP API、测试和设计文档。
+结果：当前分支为 `feat/t06-resource-catalog`，工作树干净，基于已完成 T05 的 `main`；变更集中在 `0006` 迁移、`backend/resource/`、资源 HTTP API、测试和设计文档。
 
 结论：**通过**。
 
@@ -1350,7 +1350,7 @@ cd backend
 env GOMODCACHE=/tmp/opskeeper-gomodcache \
   GOCACHE=/tmp/opskeeper-gocache \
   go test -race -count=1 \
-    ./config ./httpapi ./authorization ./identity ./audit ./credential ./resource
+    ./config ./httpapi ./authorization ./identity ./audit ./resource
 ```
 
 结果：全部通过，无 race detector 报告。
@@ -1426,8 +1426,8 @@ ok opskeeper/backend/resource
 - Schema 校验覆盖对象类型、必填字段、属性类型和额外属性；
 - 项目默认配置优先于团队默认配置，团队默认配置优先于平台默认配置；
 - 默认资源必须位于请求 Scope 的祖先链上；
-- `resource_credentials` 与登录用户 `credentials` 分离；
-- API 响应只包含凭据 ID、名称、用途、Scope 和密钥版本；
+- 资源连接密文直接保存在 `resources`，并与登录用户 `credentials` 分离；
+- API 响应仅报告资源是否已配置连接密文，不返回密文、明文、密钥版本或用途；
 - API 响应不包含 `secret`、`ciphertext` 或密码摘要；
 - AES-GCM 使用随机 nonce；
 - 数据库中的凭据字段不包含明文；
@@ -1482,8 +1482,8 @@ T07 在现有 Svelte/Vite 前端上实现了可操作的管理控制台，使用
 6. 统一加载、空数据、错误、无权限、登录中和操作中状态，支持桌面和移动布局。
 7. 前端 API 客户端统一处理 `OPSK_BASE_PATH`、JSON 错误、Cookie 会话和 401 刷新重试。
 8. 团队、项目和资源类型图标；资源 Schema 中文名称、说明和类型化选择卡片。
-9. PostgreSQL、Redis、Kafka、LLMProvider 和 KubernetesCluster 的差异化字段；密码、Token 和 kubeconfig 通过加密凭据保存。
-10. 禁止将 Kubernetes Namespace、Node、Workload、Pod、Service、Ingress、LLM Model 和 Credential 登记为资源。
+9. PostgreSQL、Redis、Kafka、LLMProvider 和 KubernetesCluster 的差异化字段；密码、Token 和 kubeconfig 加密后保存在所属资源行。
+10. 禁止将 Kubernetes Namespace、Node、Workload、Pod、Service、Ingress 和 LLM Model 登记为资源。
 
 后端仍是最终权限边界。前端只根据接口结果展示或禁用操作，不能替代服务端授权判断。
 
@@ -1523,8 +1523,8 @@ npm run build
 
 - `/api/v1/resources/schemas` 返回中文名称、说明和图标字段。
 - `Pod` 等 Kubernetes 派生对象创建请求返回 HTTP `400`，错误为 `Resource kind or schema is not registered`。
-- PostgreSQL 类型表单的 Host、Port、Database、Username 进入资源配置，Password 创建独立加密凭据并通过 `credential_id` 关联。
-- 测试资源和凭据在验证后已删除。
+- PostgreSQL 类型表单的 Host、Port、Database、Username 进入资源配置，Password 加密后直接保存在该资源行。
+- 测试资源及其内嵌密文在验证后已删除。
 
 结果：通过。
 
@@ -1649,7 +1649,7 @@ env \
 #### 4. 人工验收步骤
 
 1. 使用管理员账号登录 `http://localhost:58080/opskeeper/`。
-2. 在平台、团队或项目 Scope 登记一个 `Kubernetes` 资源，并通过凭据表单保存 kubeconfig。
+2. 在平台、团队或项目 Scope 登记一个 `Kubernetes` 资源，并在资源连接表单中保存 kubeconfig。
 3. 进入“集群导入”，启动发现并确认页面能显示 Namespace、Application 候选、工作负载类型、实例、Service 和 Ingress 摘要。
 4. 将 Namespace 选择为新建 Project、映射已有 Project 或忽略，确认未提交前不会创建 Project 或 Application。
 5. 确认导入后检查资源目录：存在 `Application`，其 Kubernetes 类型显示自 `kubernetes.workload_kind`；不存在 Namespace、Pod、Service、Ingress 或 Endpoint 资源。
@@ -1790,7 +1790,7 @@ env GOMODCACHE=/tmp/opskeeper-gomodcache GOCACHE=/tmp/opskeeper-gocache \
 #### 2. 本次交付
 
 1. 固定 `google.golang.org/adk/v2 v2.2.0`，Agent、Runner 和 Function Tool 分别使用 ADK `llmagent`、`runner` 和 `functiontool`。
-2. LLMProvider v2 Schema 保存 Provider 类型、Base URL、模型、上下文窗口、能力和价格，API Token 继续使用独立加密凭据；Model 不登记为资源。
+2. LLMProvider v2 Schema 保存 Provider 类型、Base URL、模型、上下文窗口、能力和价格，API Token 加密后直接保存在 AIProvider 资源行；Model 不登记为资源。
 3. OpenAI 原生模式使用 ADK Responses API；项目内 OpenAI-compatible Chat Completions Adapter 支持文本、SSE、usage 和 Tool Calling，不 import 或依赖 `achetronic/adk-utils-go`。
 4. 新增不可变 SkillVersion、发布/停用、输入输出 Schema、Tool Schema、工具白名单、风险等级，以及项目 > 团队 > 平台默认解析。
 5. Runner 在 ADK 外统一执行 Skill/目标授权、参数 Schema、适用资源、超时、Tool 次数、Token 和输出预算，并固定每次执行的 SkillVersion、Provider 和 Model。

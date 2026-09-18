@@ -7,15 +7,14 @@ import (
 )
 
 type ContextResource struct {
-	ID           string         `json:"id"`
-	ScopeID      string         `json:"scope_id"`
-	Kind         string         `json:"kind"`
-	Name         string         `json:"name"`
-	Status       string         `json:"status"`
-	Subtype      string         `json:"subtype,omitempty"`
-	AgentRef     *string        `json:"agent_ref,omitempty"`
-	CredentialID *string        `json:"-"`
-	Config       map[string]any `json:"-"`
+	ID       string         `json:"id"`
+	ScopeID  string         `json:"scope_id"`
+	Kind     string         `json:"kind"`
+	Name     string         `json:"name"`
+	Status   string         `json:"status"`
+	Subtype  string         `json:"subtype,omitempty"`
+	AgentRef *string        `json:"agent_ref,omitempty"`
+	Config   map[string]any `json:"-"`
 }
 
 type ContextFact struct {

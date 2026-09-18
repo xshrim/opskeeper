@@ -1,6 +1,9 @@
 package resource
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateConfigRequiredAndPropertyTypes(t *testing.T) {
 	schema := Schema{Kind: "Test", Schema: map[string]any{
@@ -57,6 +60,20 @@ func TestValidateConfigEnforcesNestedSchemaConstraints(t *testing.T) {
 	}
 	if err := validateConfig(map[string]any{"models": []any{}}, schema); err == nil {
 		t.Fatal("validateConfig(nested minItems) error = nil")
+	}
+}
+
+func TestValidateConfigErrorDoesNotExposeLocalSchemaPath(t *testing.T) {
+	schema := Schema{Kind: "Kubernetes", Schema: map[string]any{
+		"type": "object", "properties": map[string]any{"skip_tls_verify": map[string]any{"type": "boolean"}},
+		"additionalProperties": false,
+	}}
+	err := validateConfig(map[string]any{"skip_tls_verify": "yes"}, schema)
+	if err == nil {
+		t.Fatal("validateConfig() error = nil")
+	}
+	if got := err.Error(); strings.Contains(got, "file://") || !strings.Contains(got, "skip_tls_verify") {
+		t.Fatalf("validateConfig() error = %q, want complete portable validation detail", got)
 	}
 }
 

@@ -24,6 +24,7 @@
     DiagnosisMessage,
     DiagnosisSession,
     DiagnosisSnapshot,
+    Application,
     Resource
   } from '../../lib/api';
   import {
@@ -103,8 +104,13 @@
   export let scopeLabel = '当前级别';
   export let resources: Resource[] = [];
   export let contextResources: Resource[] = [];
+  export let projectId = '';
   export let resourceInActiveWorkspace: (resource: Resource) => boolean;
   let diagnosisTargetIds: string[] = [];
+  let diagnosisApplicationIds: string[] = [];
+  let diagnosisApplications: Application[] = [];
+  let diagnosisApplicationCandidates: Application[] = [];
+  let selectedApplicationResourceIDs = new Set<string>();
   let diagnosisGenerating = false;
   export let busy = false;
   let diagnosisMessageListElement: HTMLDivElement | null = null;
@@ -122,6 +128,7 @@
   let diagnosisAvailableProviders: Provider[] = [];
   let selectedProviderId = '';
   let llmModelName = '';
+  let selectedDiagnosisModel: Provider['models'][number] | undefined;
   export let onNotice: (message: string) => void;
 
   let diagnosisContextTab: 'context' | 'evidence' = 'context';
@@ -130,6 +137,7 @@
   export let scopeName: (id: string) => string;
 
   let diagnosisLoadedScopeId = '';
+  let diagnosisLoadedProjectId = '';
   let diagnosisTargets: Resource[] = [];
   let diagnosisStopRequested = false;
   let diagnosisSubmissionPending = false;
@@ -253,6 +261,18 @@
 
   async function loadDiagnosis() {
     if (!scopeId) return;
+    if (projectId) {
+      try {
+        const result = await api.applications(projectId);
+        diagnosisApplicationCandidates = result.items.filter((item) => item.status !== 'disabled');
+        if (applicationId && !diagnosisApplicationCandidates.some((item) => item.id === applicationId)) applicationId = '';
+      } catch (error) {
+        diagnosisApplicationCandidates = [];
+        onError(describeError(error, '可用应用加载失败'));
+      }
+    } else {
+      diagnosisApplicationCandidates = [];
+    }
     try {
       diagnosisAvailableProviders = await api.availableAIProviders(scopeId, 'diagnosis');
       if (
@@ -295,6 +315,7 @@
       };
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length;
       diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
+      diagnosisApplicationIds = diagnosisSnapshot.session.application_id ? [diagnosisSnapshot.session.application_id] : [];
       if (diagnosisSnapshot.session.ai_provider_resource_id) selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
       if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
       applicationId = diagnosisSnapshot.session.application_id ?? '';
@@ -405,7 +426,38 @@
   }
 
   function toggleDiagnosisContext(resourceID: string) {
+    if (selectedApplicationResourceIDs.has(resourceID)) return;
     diagnosisCommands.toggleDiagnosisContext(resourceID);
+  }
+
+  function toggleDiagnosisApplication(application: Application) {
+    const selected = diagnosisApplicationIds.includes(application.id);
+    const nextApplicationIDs = selected
+      ? diagnosisApplicationIds.filter((id) => id !== application.id)
+      : [...diagnosisApplicationIds, application.id];
+    diagnosisApplicationIds = nextApplicationIDs;
+    applicationId = nextApplicationIDs[0] ?? '';
+    const associated = applicationResourceIDs(application);
+    const remainingAssociated = new Set(
+      diagnosisApplications
+        .filter((item) => nextApplicationIDs.includes(item.id))
+        .flatMap(applicationResourceIDs)
+    );
+    diagnosisTargetIds = selected
+      ? diagnosisTargetIds.filter((id) => remainingAssociated.has(id) || !associated.includes(id))
+      : [...new Set([...diagnosisTargetIds, ...associated])];
+  }
+
+  function applicationResourceIDs(application: Application) {
+    return [...application.instances, ...application.dependencies]
+      .map((item) => item.target_resource_id)
+      .filter((id) => diagnosisTargets.some((resource) => resource.id === id));
+  }
+
+  function isDiagnosisContextExcluded(resource: Resource) {
+    return ['skill', 'aiprovider', 'llm', 'llmprovider', 'agentprofile'].includes(
+      resource.kind.trim().toLowerCase()
+    );
   }
 
   function clearDiagnosisHistory() {
@@ -414,6 +466,8 @@
 
   function newDiagnosisSession() {
     diagnosisCommands.newDiagnosisSession();
+    diagnosisApplicationIds = [];
+    applicationId = '';
   }
 
   function renameDiagnosisSession(session: DiagnosisSession) {
@@ -424,23 +478,61 @@
     return diagnosisCommands.deleteDiagnosisSession(session);
   }
 
-  $: if (scopeId && scopeId !== diagnosisLoadedScopeId) {
+  $: if (scopeId && (scopeId !== diagnosisLoadedScopeId || projectId !== diagnosisLoadedProjectId)) {
     diagnosisLoadedScopeId = scopeId;
+    diagnosisLoadedProjectId = projectId;
     diagnosisSessionController.close();
     selectedDiagnosisId = '';
     diagnosisSnapshot = null;
     diagnosisSessions = [];
     diagnosisTargetIds = [];
+    diagnosisApplicationIds = [];
     resetDiagnosisStreamState();
     void loadDiagnosis();
   }
   $: diagnosisTargets = contextResources.filter(
-    (resource) => resource.status === 'active' && resourceInActiveWorkspace(resource)
+    (resource) => resource.status === 'active' && resourceInActiveWorkspace(resource) && !isDiagnosisContextExcluded(resource)
   );
+  $: {
+    const usableResourceIDs = new Set(diagnosisTargets.map((resource) => resource.id));
+    diagnosisApplications = diagnosisApplicationCandidates.filter((application) =>
+      [...application.instances, ...application.dependencies].some((item) => usableResourceIDs.has(item.target_resource_id))
+    );
+  }
+  $: selectedApplicationResourceIDs = new Set(
+    diagnosisApplications
+      .filter((application) => diagnosisApplicationIds.includes(application.id))
+      .flatMap(applicationResourceIDs)
+  );
+  $: if (!selectedDiagnosisId && !diagnosisSnapshot && applicationId) {
+    const initialApplication = diagnosisApplications.find((item) => item.id === applicationId);
+    if (initialApplication && !diagnosisApplicationIds.includes(initialApplication.id)) {
+      diagnosisApplicationIds = [initialApplication.id];
+      diagnosisTargetIds = applicationResourceIDs(initialApplication);
+    }
+  }
   $: if (!llmModelName && selectedProviderId) {
     const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
     llmModelName = String(available?.models[0]?.name ?? '');
   }
+  $: selectedDiagnosisModel = diagnosisAvailableProviders
+    .find((item) => item.provider_resource_id === selectedProviderId)
+    ?.models.find((item) => item.name === llmModelName);
+  $: diagnosisContextUsage = {
+    used: Math.max(1, Math.ceil((
+      diagnosisComposerText.length
+      + (diagnosisSnapshot?.messages ?? []).reduce((sum, message) => sum + message.content.length, 0)
+      + diagnosisTargetIds.reduce((sum, id) => {
+        const resource = diagnosisTargets.find((item) => item.id === id);
+        return sum + JSON.stringify(resource?.config ?? {}).length + 160;
+      }, 0)
+      + diagnosisApplicationIds.length * 120
+      + (diagnosisSnapshot?.events ?? [])
+        .filter((event) => /skill|agent_profile|agent/i.test(event.type))
+        .reduce((sum, event) => sum + JSON.stringify(event.payload ?? {}).length + 320, 0)
+    ) / 4)),
+    total: Number(selectedDiagnosisModel?.context_window_tokens ?? 128000)
+  };
   $: {
     const list = diagnosisMessageListElement;
     if (list !== diagnosisScrollListenerElement) {
@@ -857,9 +949,13 @@
   {#if !diagnosisContextCollapsed}<DiagnosisContextPanel
       {diagnosisSnapshot}
       {diagnosisTargets}
+      {diagnosisApplications}
+      {diagnosisApplicationIds}
       {diagnosisTargetIds}
       bind:diagnosisContextTab
       {toggleDiagnosisContext}
+      {toggleDiagnosisApplication}
+      contextUsage={diagnosisContextUsage}
       {resourceIcon}
       {resourceSchemaName}
       {scopeName}

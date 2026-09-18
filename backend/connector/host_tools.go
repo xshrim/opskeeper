@@ -91,15 +91,12 @@ func hostOutput[T any](value T, err error) (aiengine.ToolResult, error) {
 func (s *Service) hostConnection(ctx context.Context, item aiengine.ContextResource) (host.ConnectionInput, error) {
 	input := host.ConnectionInput{}
 	setHostInput(&input, item.Config)
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return input, nil
-	}
-	if s.credentials == nil {
-		return host.ConnectionInput{}, connectorError(CategoryConfiguration, "read Host credential", false, fmt.Errorf("credential service is unavailable"))
-	}
-	secret, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {
 		return host.ConnectionInput{}, connectorError(CategoryConfiguration, "read Host credential", false, err)
+	}
+	if !configured {
+		return input, nil
 	}
 	var values map[string]any
 	if json.Unmarshal(secret, &values) == nil {

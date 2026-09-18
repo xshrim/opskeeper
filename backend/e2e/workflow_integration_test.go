@@ -37,7 +37,7 @@ func TestOperatorWorkflowFromImportThroughDiagnosisAndInspection(t *testing.T) {
 		t.Fatalf("create operator: %v", err)
 	}
 
-	resources := resource.NewService(resource.NewStore(pool))
+	resources := resource.NewService(resource.NewStore(pool), nil)
 	cluster, err := resources.Create(ctx, resource.CreateInput{ScopeID: team.Scope.ID, Kind: "Kubernetes", Name: "e2e-cluster", Config: map[string]any{}})
 	if err != nil {
 		t.Fatalf("Create(Kubernetes) error = %v", err)

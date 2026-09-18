@@ -172,7 +172,10 @@ func securityHeaders(production bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			header := writer.Header()
-			header.Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
+			// Custom entity icons are stored and rendered as image data URLs. Keep
+			// the restrictive default policy for every other resource type, while
+			// explicitly allowing those same-origin-free image payloads only here.
+			header.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
 			header.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
 			header.Set("Referrer-Policy", "no-referrer")
 			header.Set("X-Content-Type-Options", "nosniff")

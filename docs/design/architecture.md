@@ -99,7 +99,7 @@ flowchart LR
 | Organization | 平台、团队、项目及 Scope 关系 | 已实现，T02；T08 增加 Kubernetes 来源信息 |
 | Identity | 用户、凭据、登录、会话和用户管理 | 已实现，T03-T05 |
 | Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
-| Resource Catalog | 资源、凭据、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
+| Resource Catalog | 资源、连接密文、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
 | Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
 | Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 AIProvider 在后续目标设计中扩展 |
 | Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现，T10-T14；Markdown Skill 编辑体验见 OI-006 |
@@ -138,7 +138,7 @@ flowchart LR
 
 所有公开页面、健康检查和业务 API 统一挂载在 `OPSK_BASE_PATH` 下，默认值是 `/opskeeper`，也可以设置为根路径 `/`。以下示例使用默认值：
 
-当前已实现健康检查、身份、组织、授权、资源、凭据、关系、拓扑和 Kubernetes 发现 API。后续 API 按任务逐步增加：
+当前已实现健康检查、身份、组织、授权、资源、资源连接密文、关系、拓扑和 Kubernetes 发现 API。后续 API 按任务逐步增加：
 
 | 路径示例 | 状态 |
 |---|---|

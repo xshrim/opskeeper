@@ -165,7 +165,7 @@ INSERT INTO resource_schemas (kind, version, schema, display_name, description, 
 VALUES
 ('LLMProvider', 2,
  '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["provider_type","base_url","models"],"properties":{"provider_type":{"title":"提供方类型","type":"string","enum":["openai_compatible","openai"]},"base_url":{"title":"服务 URL","type":"string","format":"uri"},"models":{"title":"模型列表","type":"array","items":{"type":"object","required":["name","context_window"],"properties":{"name":{"type":"string"},"context_window":{"type":"integer"},"input_price_per_million":{"type":"number"},"output_price_per_million":{"type":"number"},"capabilities":{"type":"array","items":{"type":"string"}}}}},"token":{"title":"API Token","type":"string","sensitive":true},"timeout_seconds":{"title":"超时秒数","type":"integer"}}}'::jsonb,
- '大模型服务', 'OpenAI-compatible 或 OpenAI Responses API 模型提供方；访问 Token 使用独立加密凭据。', 'llm'),
+ '大模型服务', 'OpenAI-compatible 或 OpenAI Responses API 模型提供方；访问 Token 加密后保存在 AIProvider 资源。', 'llm'),
 ('Skill', 2,
  '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"properties":{"summary":{"title":"用途说明","type":"string"},"owner":{"title":"维护者","type":"string"}}}'::jsonb,
  '诊断技能', '声明式、版本化并由受控 ADK Runner 执行的技能。', 'skill'),

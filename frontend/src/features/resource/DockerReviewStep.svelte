@@ -1,8 +1,6 @@
 <script lang="ts">
   import { dockerAccessModeLabel, type DockerAccessMode } from './resourceWorkflow';
 
-  export let resourceName = '';
-  export let resourceStatus = 'active';
   export let accessMode: DockerAccessMode = 'direct';
   export let connectionOverride = false;
   export let host = '';
@@ -24,11 +22,6 @@
 
 <form id="docker-review-form" class="provider-summary docker-summary" on:submit|preventDefault={onSubmit}>
   <div>
-    <span>Docker 资源</span>
-    <strong>{resourceName}</strong>
-    <small>{resourceStatus === 'active' ? '已启用' : '已停用'} · {scopeSummary}</small>
-  </div>
-  <div>
     <span>接入方式</span>
     <strong>{dockerAccessModeLabel(accessMode)}</strong>
     {#if accessMode === 'direct'}
@@ -47,10 +40,6 @@
     <strong>{labelsConfigured ? '已配置标签' : '未配置标签'}</strong>
     <small>{scopeSummary}</small>
   </div>
-  <div class="docker-tool-summary">
-    <span>可用只读工具</span>
-    <div>{#each tools as tool}<code>{tool}</code>{/each}</div>
-  </div>
   <div class="provider-test-summary">
     <span>连接核验</span>
     {#if testBusy}
@@ -66,5 +55,9 @@
       <strong>尚未核验</strong>
       <small>进入此步骤后自动执行连接测试，结果仅供参考。</small>
     {/if}
+  </div>
+  <div class="docker-tool-summary">
+    <span>可用只读工具</span>
+    <div>{#each tools as tool}<code>{tool}</code>{/each}</div>
   </div>
 </form>

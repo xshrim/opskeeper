@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/secret"
 )
 
 type Store interface {
@@ -15,6 +16,7 @@ type Store interface {
 	UpsertImported(context.Context, ImportedInput) (Resource, error)
 	List(context.Context, Pagination, string, map[string]string) (Page[Resource], error)
 	Get(context.Context, string) (Resource, error)
+	Secret(context.Context, string) ([]byte, string, error)
 	Update(context.Context, string, UpdateInput) (Resource, error)
 	Delete(context.Context, string) error
 	GetSchema(context.Context, string, int) (Schema, error)
@@ -27,9 +29,14 @@ type Store interface {
 	ResolveDefault(context.Context, string, string) (Resource, error)
 }
 
-type Service struct{ store Store }
+type Service struct {
+	store     Store
+	encryptor secret.Encryptor
+}
 
-func NewService(store Store) *Service { return &Service{store: store} }
+func NewService(store Store, encryptor secret.Encryptor) *Service {
+	return &Service{store: store, encryptor: encryptor}
+}
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, error) {
 	input, err := s.prepareCreateInput(ctx, input, false)
@@ -40,6 +47,9 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Resource, erro
 		if err := validateWorkflowConfig(input.Config); err != nil {
 			return Resource{}, err
 		}
+	}
+	if err := s.prepareCredential(input.Credential); err != nil {
+		return Resource{}, err
 	}
 	return s.store.Create(ctx, input)
 }
@@ -130,44 +140,117 @@ func (s *Service) Get(ctx context.Context, id string) (Resource, error) {
 }
 
 func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Resource, error) {
+	_, input, err := s.prepareUpdate(ctx, id, input)
+	if err != nil {
+		return Resource{}, err
+	}
+	if err := s.prepareCredentialPatch(input.Credential); err != nil {
+		return Resource{}, err
+	}
+	return s.store.Update(ctx, id, input)
+}
+
+func (s *Service) RevealSecret(ctx context.Context, id string) ([]byte, error) {
+	ciphertext, keyVersion, err := s.store.Secret(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	decryptor, ok := s.encryptor.(secret.Decryptor)
+	if !ok {
+		return nil, fmt.Errorf("resource secret decryptor is unavailable")
+	}
+	return decryptor.Decrypt(ciphertext, keyVersion)
+}
+
+func (s *Service) prepareCredential(value *CredentialInput) error {
+	if value == nil {
+		return nil
+	}
+	value.Purpose = strings.TrimSpace(value.Purpose)
+	if strings.TrimSpace(value.Secret) == "" {
+		return invalid("credential secret must not be empty")
+	}
+	if len([]rune(value.Purpose)) > 500 {
+		return invalid("credential purpose must be at most 500 characters")
+	}
+	if s.encryptor == nil {
+		return fmt.Errorf("resource secret encryptor is unavailable")
+	}
+	ciphertext, keyVersion, err := s.encryptor.Encrypt([]byte(value.Secret))
+	if err != nil {
+		return err
+	}
+	value.Ciphertext, value.KeyVersion = ciphertext, keyVersion
+	return nil
+}
+
+func (s *Service) prepareCredentialPatch(value *CredentialPatch) error {
+	if value == nil {
+		return nil
+	}
+	if value.Purpose != nil {
+		purpose := strings.TrimSpace(*value.Purpose)
+		if len([]rune(purpose)) > 500 {
+			return invalid("credential purpose must be at most 500 characters")
+		}
+		value.Purpose = &purpose
+	}
+	if value.Secret == nil {
+		return nil
+	}
+	if strings.TrimSpace(*value.Secret) == "" {
+		return invalid("credential secret must not be empty")
+	}
+	if s.encryptor == nil {
+		return fmt.Errorf("resource secret encryptor is unavailable")
+	}
+	ciphertext, keyVersion, err := s.encryptor.Encrypt([]byte(*value.Secret))
+	if err != nil {
+		return err
+	}
+	value.Ciphertext, value.KeyVersion = ciphertext, keyVersion
+	return nil
+}
+
+func (s *Service) prepareUpdate(ctx context.Context, id string, input UpdateInput) (Resource, UpdateInput, error) {
 	if strings.TrimSpace(id) == "" {
-		return Resource{}, invalid("resource_id is required")
+		return Resource{}, UpdateInput{}, invalid("resource_id is required")
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return Resource{}, err
+		return Resource{}, UpdateInput{}, err
 	}
 	if input.ScopeID != nil {
 		value := strings.TrimSpace(*input.ScopeID)
 		if value == "" || !allowsExactScope(ctx, value) {
-			return Resource{}, authorization.ErrForbidden
+			return Resource{}, UpdateInput{}, authorization.ErrForbidden
 		}
 		input.ScopeID = &value
 	}
 	if input.Name != nil {
 		value := strings.TrimSpace(*input.Name)
 		if value == "" || len([]rune(value)) > 200 {
-			return Resource{}, invalid("name must contain 1 to 200 characters")
+			return Resource{}, UpdateInput{}, invalid("name must contain 1 to 200 characters")
 		}
 		input.Name = &value
 	}
 	if input.Status != nil {
 		value := strings.TrimSpace(*input.Status)
 		if err := validateStatus(value); err != nil {
-			return Resource{}, err
+			return Resource{}, UpdateInput{}, err
 		}
 		input.Status = &value
 	}
 	if input.Subtype != nil {
 		value := strings.TrimSpace(*input.Subtype)
 		if err := validateResourceSubtype(current.Kind, value); err != nil {
-			return Resource{}, err
+			return Resource{}, UpdateInput{}, err
 		}
 		input.Subtype = &value
 	}
 	if input.Labels != nil {
 		if err := validateLabels(*input.Labels); err != nil {
-			return Resource{}, err
+			return Resource{}, UpdateInput{}, err
 		}
 		if *input.Labels == nil {
 			value := map[string]string{}
@@ -181,19 +264,19 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 		}
 		schema, err := s.store.GetSchema(ctx, current.Kind, current.SchemaVersion)
 		if err != nil {
-			return Resource{}, err
+			return Resource{}, UpdateInput{}, err
 		}
 		if err := validateConfig(*input.Config, schema); err != nil {
-			return Resource{}, err
+			return Resource{}, UpdateInput{}, err
 		}
 		if current.Kind == "AIProvider" {
 			if err := validateAIProviderConfig(*input.Config); err != nil {
-				return Resource{}, err
+				return Resource{}, UpdateInput{}, err
 			}
 		}
 		if current.Kind == "Workflow" {
 			if err := validateWorkflowConfig(*input.Config); err != nil {
-				return Resource{}, err
+				return Resource{}, UpdateInput{}, err
 			}
 		}
 	}
@@ -209,13 +292,12 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 	}
 	accessMode, normalizedAgentRef, err := s.normalizeAccess(ctx, current.ID, current.Kind, subtypeInput, agentRef)
 	if err != nil {
-		return Resource{}, err
+		return Resource{}, UpdateInput{}, err
 	}
 	if current.Kind == "Docker" && accessMode == AccessModeAgent {
 		// Agent resources use the linked MCPServer transport and must never
 		// retain Direct TLS credentials.
-		var clearedCredential *string
-		input.CredentialID = &clearedCredential
+		input.ClearCredential = true
 	}
 	if input.Subtype != nil || input.AgentRef != nil {
 		if accessMode != "" {
@@ -224,10 +306,10 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Res
 		}
 		input.AgentRef = &normalizedAgentRef
 	}
-	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.CredentialID == nil && input.Subtype == nil && input.AgentRef == nil {
-		return Resource{}, invalid("at least one field must be provided")
+	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.Credential == nil && !input.ClearCredential && input.Subtype == nil && input.AgentRef == nil {
+		return Resource{}, UpdateInput{}, invalid("at least one field must be provided")
 	}
-	return s.store.Update(ctx, id, input)
+	return current, input, nil
 }
 
 func (s *Service) normalizeAccess(ctx context.Context, resourceID, kind, subtype string, agentRef *string) (string, *string, error) {

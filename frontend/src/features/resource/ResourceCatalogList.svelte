@@ -40,9 +40,17 @@
     return () => window.clearInterval(timer);
   });
 
-  function endpointLabel(resource: Resource) {
+  function endpointLabel(resource: Resource, resourceCheck: ConnectionCheck | null | undefined) {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') {
       return mcpServerEndpointFor(resource) || '关联 MCPServer';
+    }
+    if (resource.kind === 'Kubernetes') {
+      const mode = String(
+        resource.config?.connection_mode ?? (resource.config?.server ? 'endpoint' : 'kubeconfig')
+      ).toLowerCase();
+      if (mode === 'kubeconfig') {
+        return String(resourceCheck?.endpoint ?? '').trim() || '尚未获取 Kubernetes API Server';
+      }
     }
     return resourceEndpointFor(resource);
   }
@@ -74,7 +82,7 @@
       }}
     >
       <summary>
-        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}{#if resource.kind === 'AIProvider'}{#each providerBindingsFor(resource) as binding}<em class="provider-name-role-tag provider-role-{binding.tag}">{providerPurposeLabel(binding.tag)}</em>{/each}{/if}</strong><small>{endpointLabel(resource)}</small></span></span>
+        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}{#if resource.kind === 'AIProvider'}{#each providerBindingsFor(resource) as binding}<em class="provider-name-role-tag provider-role-{binding.tag}">{providerPurposeLabel(binding.tag)}</em>{/each}{/if}</strong><small>{endpointLabel(resource, resourceCheck)}</small></span></span>
         <span class="resource-cell resource-category-cell">
           {#if resource.kind === 'AIProvider'}
             {@const models = providerModelsForResource(resource)}

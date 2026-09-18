@@ -11,21 +11,21 @@ const (
 )
 
 type Resource struct {
-	ID               string            `json:"id"`
-	ScopeID          string            `json:"scope_id"`
-	Kind             string            `json:"kind"`
-	Subtype          string            `json:"subtype,omitempty"`
-	AgentRef         *string           `json:"agent_ref,omitempty"`
-	SchemaVersion    int               `json:"schema_version"`
-	Name             string            `json:"name"`
-	ExternalUID      string            `json:"external_uid,omitempty"`
-	SourceResourceID string            `json:"source_resource_id,omitempty"`
-	Labels           map[string]string `json:"labels"`
-	Config           map[string]any    `json:"config"`
-	Status           string            `json:"status"`
-	CredentialID     *string           `json:"credential_id,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	ID                   string            `json:"id"`
+	ScopeID              string            `json:"scope_id"`
+	Kind                 string            `json:"kind"`
+	Subtype              string            `json:"subtype,omitempty"`
+	AgentRef             *string           `json:"agent_ref,omitempty"`
+	SchemaVersion        int               `json:"schema_version"`
+	Name                 string            `json:"name"`
+	ExternalUID          string            `json:"external_uid,omitempty"`
+	SourceResourceID     string            `json:"source_resource_id,omitempty"`
+	Labels               map[string]string `json:"labels"`
+	Config               map[string]any    `json:"config"`
+	Status               string            `json:"status"`
+	CredentialConfigured bool              `json:"credential_configured"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
 type Schema struct {
@@ -84,7 +84,7 @@ type CreateInput struct {
 	Labels           map[string]string
 	Config           map[string]any
 	Status           string
-	CredentialID     *string
+	Credential       *CredentialInput
 }
 
 type ImportedInput = CreateInput
@@ -99,7 +99,22 @@ type UpdateInput struct {
 	Labels           *map[string]string
 	Config           *map[string]any
 	Status           *string
-	CredentialID     **string
+	Credential       *CredentialPatch
+	ClearCredential  bool
+}
+
+type CredentialInput struct {
+	Purpose    string
+	Secret     string
+	Ciphertext []byte
+	KeyVersion string
+}
+
+type CredentialPatch struct {
+	Purpose    *string
+	Secret     *string
+	Ciphertext []byte
+	KeyVersion string
 }
 
 type CreateRelationInput struct {

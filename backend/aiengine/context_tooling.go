@@ -89,5 +89,5 @@ func (r ResourceServiceReader) Get(ctx context.Context, id string) (ContextResou
 	if err != nil {
 		return ContextResource{}, err
 	}
-	return ContextResource{ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name, Status: item.Status, Subtype: item.Subtype, AgentRef: item.AgentRef, CredentialID: item.CredentialID, Config: item.Config}, nil
+	return ContextResource{ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name, Status: item.Status, Subtype: item.Subtype, AgentRef: item.AgentRef, Config: item.Config}, nil
 }

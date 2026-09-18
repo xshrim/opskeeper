@@ -257,15 +257,15 @@
       };
       const fieldMap = {
         Application: [['应用名称', 'checkout-api'], ['部署来源', 'Kubernetes / Docker / Docker MCP'], ['Kubernetes 集群', 'prod-kubernetes'], ['命名空间', 'payments-prod']],
-        Redis: [['资源名称', 'redis-session'], ['连接方式', 'Direct'], ['连接地址', 'redis://host:6379/0'], ['访问凭据', '选择已加密凭据']],
+        Redis: [['资源名称', 'redis-session'], ['连接方式', 'Direct'], ['连接地址', 'redis://host:6379/0'], ['访问凭据', '随资源加密保存']],
         PostgreSQL: [['资源名称', 'payments-postgres'], ['连接方式', 'Direct'], ['连接地址', 'postgresql://host:5432/db'], ['访问凭据', '选择只读凭据']],
-        Artifact: [['资源名称', 'harbor-prod'], ['仓库地址', 'https://harbor.example.com'], ['项目或命名空间', 'payments'], ['机器人账户', '选择已加密凭据']],
-        Repository: [['资源名称', 'gitlab-main'], ['仓库地址', 'https://gitlab.example.com/group'], ['默认分支', 'main'], ['访问令牌', '选择已加密凭据']],
-        'Docker': [['资源名称', 'edge-docker'], ['连接方式', '远程 Docker / Docker MCP'], ['Docker 地址', 'tcp://edge-01:2376'], ['TLS 或 Token', '选择已加密凭据']],
-        'Kubernetes': [['资源名称', 'prod-kubernetes'], ['连接方式', 'Direct'], ['API Server', 'https://cluster:6443'], ['凭据', '选择已加密凭据']],
+        Artifact: [['资源名称', 'harbor-prod'], ['仓库地址', 'https://harbor.example.com'], ['项目或命名空间', 'payments'], ['机器人账户', '随资源加密保存']],
+        Repository: [['资源名称', 'gitlab-main'], ['仓库地址', 'https://gitlab.example.com/group'], ['默认分支', 'main'], ['访问令牌', '随资源加密保存']],
+        'Docker': [['资源名称', 'edge-docker'], ['连接方式', '远程 Docker / Docker MCP'], ['Docker 地址', 'tcp://edge-01:2376'], ['TLS 或 Token', '随资源加密保存']],
+        'Kubernetes': [['资源名称', 'prod-kubernetes'], ['连接方式', 'Direct'], ['API Server', 'https://cluster:6443'], ['凭据', '随资源加密保存']],
         'Skill': [['资源名称', 'opskeeper-diagnosis'], ['适用资源类型', 'Kubernetes, PostgreSQL'], ['发布版本', 'v3'], ['允许工具', '从受控目录选择']],
-        '大模型': [['资源名称', 'primary-llm'], ['Provider 地址', 'https://llm.example.com/v1'], ['模型标识', 'provider/model'], ['API Token', '选择已加密凭据']],
-        '监控平台': [['资源名称', 'prometheus-platform'], ['平台类型', '指标 / 日志 / 链路 / 告警'], ['服务地址', 'https://monitoring.example.com'], ['访问凭据', '选择已加密凭据']]
+        '大模型': [['资源名称', 'primary-llm'], ['Provider 地址', 'https://llm.example.com/v1'], ['模型标识', 'provider/model'], ['API Token', '随资源加密保存']],
+        '监控平台': [['资源名称', 'prometheus-platform'], ['平台类型', '指标 / 日志 / 链路 / 告警'], ['服务地址', 'https://monitoring.example.com'], ['访问凭据', '随资源加密保存']]
       };
       let variant = 'a';
       let access = 'platform';

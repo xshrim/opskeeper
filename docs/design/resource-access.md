@@ -12,7 +12,7 @@
 
 ```text
 Direct
-  逻辑资源 + 连接配置/凭据
+  逻辑资源 + 连接配置/资源连接密文
   -> AIEngine 加载该资源类型的内置工具集
   -> 工具直接连接目标资源
 
@@ -38,7 +38,7 @@ Agent
 
 ### 3.2 MCPServer 资源
 
-`MCPServer` 是一个传输资源，保存 MCP endpoint、传输类型、请求凭据、工具白名单、超时和响应限制。它可以被一个或多个逻辑资源作为 Agent 传输入口关联。
+`MCPServer` 是一个传输资源，保存 MCP endpoint、传输类型、资源自身的请求密文、工具白名单、超时和响应限制。它可以被一个或多个逻辑资源作为 Agent 传输入口关联。
 
 MCPServer 不是 Docker、Kubernetes 或数据库资源的替代品，也不是全局插件。权限主体仍然是用户选中的逻辑资源；MCPServer 只记录实际传输路径。
 
@@ -95,9 +95,9 @@ AIEngine 内部可以保留 `resource_id`、适配器来源和调用审计字段
 
 ### 4.3 连接参数
 
-资源连接串、Docker TLS 文件、kubeconfig、数据库密码、API Token 等属于资源配置和凭据上下文。它们不能由模型自由指定。
+资源连接串、Docker TLS 文件、kubeconfig、数据库密码、API Token 等属于资源配置和资源自身的连接密文上下文。它们不能由模型自由指定。
 
-现有 MCP 工具如果为了独立运行而接受连接字段，公共调用仍可保留原字段和结果格式；MCP Server 从自身配置注入，Direct 适配器从逻辑资源配置和凭据注入，并覆盖模型提交的同名字段。后续如需改善模型可见 Schema，可以把连接字段标记为适配器内部字段，但不得让模型借此改变目标资源。
+现有 MCP 工具如果为了独立运行而接受连接字段，公共调用仍可保留原字段和结果格式；MCP Server 从自身配置注入，Direct 适配器从逻辑资源配置和资源自身连接密文注入，并覆盖模型提交的同名字段。后续如需改善模型可见 Schema，可以把连接字段标记为适配器内部字段，但不得让模型借此改变目标资源。
 
 ### 4.4 业务结果
 
@@ -135,7 +135,7 @@ backend/tool/
 公共实现不得负责：
 
 - 当前用户的 RBAC 和 Scope 判定；
-- 读取资源目录或凭据库；
+- 读取资源目录或资源连接密文；
 - MCP endpoint、JSON-RPC 或 HTTP 传输；
 - AIEngine Agent Loop、事件和审计持久化；
 - 把任意模型文本解释成命令。
@@ -152,7 +152,7 @@ Direct 适配器挂在资源类型上，执行顺序如下：
 AIEngine Context Resolver
   -> 读取逻辑资源
   -> 校验 active、Scope 和 resource:use
-  -> 读取 config 和关联凭据
+  -> 读取 config 和资源自身的连接密文
   -> 创建对应 tool 连接上下文
   -> 注册该资源类型的公共工具集
   -> Policy Gateway 授权、限流、超时和审计
@@ -207,7 +207,9 @@ Application 作为 AI 上下文时应采用混合设计：Application 是权限�
 subtype: Direct | Agent（或资源定义的其他子类型）
 agent_ref: UUID，可为空
 config: JSONB
-credential_id: UUID，可为空
+credential_ciphertext: 加密的资源连接密文，可为空
+credential_key_version: 密钥版本
+credential_purpose: 密文用途说明
 ```
 
 约束：
@@ -215,7 +217,7 @@ credential_id: UUID，可为空
 ```text
 direct:
   subtype = Direct
-  config/credential 满足对应资源工具集要求
+  config/resource secret 满足对应资源工具集要求
   agent_ref 为空
 
 agent:

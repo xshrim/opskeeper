@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"slices"
@@ -22,18 +23,15 @@ type ResourceReader interface {
 type ResourceLister interface {
 	List(context.Context, resource.Pagination, string, map[string]string) (resource.Page[resource.Resource], error)
 }
-type CredentialReader interface {
-	RevealLinked(context.Context, string) ([]byte, error)
-}
 type Service struct {
-	store       Store
-	resources   ResourceReader
-	credentials CredentialReader
+	store     Store
+	resources ResourceReader
 }
 
 type AvailableModel struct {
-	Name         string   `json:"name"`
-	Capabilities []string `json:"capabilities"`
+	Name                string   `json:"name"`
+	ContextWindowTokens int      `json:"context_window_tokens"`
+	Capabilities        []string `json:"capabilities"`
 }
 type AvailableProvider struct {
 	ResourceID string           `json:"provider_resource_id"`
@@ -64,7 +62,7 @@ func (s *Service) Available(ctx context.Context, scopeID string, purpose Purpose
 		models := make([]AvailableModel, 0)
 		for _, model := range provider.Config.Models {
 			if model.Enabled && len(missingCapabilities(model, requiredCapabilities(purpose))) == 0 {
-				models = append(models, AvailableModel{Name: model.Name, Capabilities: model.Capabilities})
+				models = append(models, AvailableModel{Name: model.Name, ContextWindowTokens: model.ContextWindowTokens, Capabilities: model.Capabilities})
 			}
 		}
 		if len(models) > 0 {
@@ -74,8 +72,8 @@ func (s *Service) Available(ctx context.Context, scopeID string, purpose Purpose
 	return items, nil
 }
 
-func NewService(store Store, resources ResourceReader, credentials CredentialReader) *Service {
-	return &Service{store: store, resources: resources, credentials: credentials}
+func NewService(store Store, resources ResourceReader) *Service {
+	return &Service{store: store, resources: resources}
 }
 
 func (s *Service) AIProvider(ctx context.Context, id string) (AIProvider, error) {
@@ -226,21 +224,24 @@ func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection
 }
 
 func (s *Service) attachCredential(ctx context.Context, result ResolvedProvider) (ResolvedProvider, error) {
-	if result.Provider.CredentialID == "" {
+	reader, ok := s.resources.(interface {
+		RevealSecret(context.Context, string) ([]byte, error)
+	})
+	if !ok {
 		return result, nil
 	}
-	if s.credentials == nil {
-		return ResolvedProvider{}, fmt.Errorf("credential service is unavailable")
-	}
-	secret, err := s.credentials.RevealLinked(ctx, result.Provider.CredentialID)
+	secret, err := reader.RevealSecret(ctx, result.Provider.ResourceID)
 	if err != nil {
-		return ResolvedProvider{}, fmt.Errorf("read AIProvider credential: %w", err)
+		if errors.Is(err, resource.ErrNotFound) {
+			return result, nil
+		}
+		return ResolvedProvider{}, fmt.Errorf("read AIProvider resource secret: %w", err)
 	}
-	result.APIKey = apiKeyFromCredential(secret)
+	result.APIKey = apiKeyFromResourceSecret(secret)
 	return result, nil
 }
 
-func apiKeyFromCredential(secret []byte) string {
+func apiKeyFromResourceSecret(secret []byte) string {
 	var fields map[string]string
 	if json.Unmarshal(secret, &fields) == nil {
 		return strings.TrimSpace(fields["token"])
@@ -302,11 +303,7 @@ func (s *Service) readAIProvider(ctx context.Context, id string, requireActive b
 	if requireActive && !config.Enabled {
 		return AIProvider{}, invalid("AIProvider is disabled")
 	}
-	credentialID := ""
-	if item.CredentialID != nil {
-		credentialID = *item.CredentialID
-	}
-	return AIProvider{ResourceID: item.ID, ScopeID: item.ScopeID, Name: item.Name, CredentialID: credentialID, Config: config}, nil
+	return AIProvider{ResourceID: item.ID, ScopeID: item.ScopeID, Name: item.Name, Config: config}, nil
 }
 
 func validateAIProviderConfig(config AIProviderConfig) error {

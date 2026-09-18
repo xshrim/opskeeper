@@ -82,15 +82,12 @@ func decodeNacos[T any](ctx context.Context, a map[string]any, out *T, fn func()
 }
 func (s *Service) nacosConnection(ctx context.Context, item aiengine.ContextResource) (nt.ConnectionInput, error) {
 	in := nt.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), Scheme: stringValue(item.Config, "scheme"), ContextPath: stringValue(item.Config, "context_path"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return in, nil
-	}
-	if s.credentials == nil {
-		return in, fmt.Errorf("credential service is unavailable")
-	}
-	secret, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {
 		return in, e
+	}
+	if !configured {
+		return in, nil
 	}
 	var values map[string]any
 	if e = json.Unmarshal(secret, &values); e != nil {

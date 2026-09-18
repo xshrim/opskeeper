@@ -7,6 +7,13 @@ import type {
   ResourceSchema
 } from '../../lib/api';
 
+export type ResourceSecret = { purpose: string; secret: string };
+
+function secretPayload(purpose: string, secret: string): ResourceSecret | null {
+  const value = secret.trim();
+  return value ? { purpose, secret: value } : null;
+}
+
 export function createResourceRelation(
   resourceId: string,
   targetResourceId: string,
@@ -37,60 +44,22 @@ export function removeResource(resourceId: string) {
   return api.deleteResource(resourceId);
 }
 
-export async function createSchemaCredential(
+export function schemaSecret(
   schema: ResourceSchema | null | undefined,
-  values: Record<string, string>,
-  scopeId: string,
-  displayName: string
+  values: Record<string, string>
 ) {
   const secret = Object.fromEntries(
     Object.entries(values).filter(([, value]) => value.trim() !== '')
   );
-  if (!scopeId || !schema || Object.keys(secret).length === 0) return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${displayName || schema.display_name} connection`,
-    purpose: `${schema.display_name} 敏感连接信息`,
-    secret: JSON.stringify(secret)
-  });
-  return credential.id;
+  if (!schema || Object.keys(secret).length === 0) return null;
+  return secretPayload(`${schema.display_name} 敏感连接信息`, JSON.stringify(secret));
 }
 
-export async function createProviderCredential(
-  scopeId: string,
-  name: string,
-  apiKey: string
-) {
-  if (!apiKey.trim() || !scopeId) return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${name || 'AI Provider'} API Key`,
-    purpose: 'AI Provider 访问凭据',
-    secret: apiKey.trim()
-  });
-  return credential.id;
+export function providerSecret(apiKey: string) {
+  return secretPayload('AI Provider 访问凭据', apiKey);
 }
 
-export async function saveProviderCredential(
-  provider: Resource,
-  scopeId: string,
-  name: string,
-  apiKey: string
-) {
-  if (!apiKey.trim()) return provider.credential_id ?? '';
-  if (!provider.credential_id)
-    return createProviderCredential(scopeId, name, apiKey);
-  await api.updateCredential(provider.credential_id, {
-    name: `${name.trim() || 'AI Provider'} API Key`,
-    purpose: 'AI Provider 访问凭据',
-    secret: apiKey.trim()
-  });
-  return provider.credential_id;
-}
-
-export async function createMCPCredential(
-  scopeId: string,
-  name: string,
+export function mcpSecret(
   token: string,
   headers: Record<string, string>,
   tls: Record<string, string | boolean> = {}
@@ -101,198 +70,33 @@ export async function createMCPCredential(
     )
   );
   const secret = { token: token.trim(), headers, ...tlsSecret };
-  if (
-    !scopeId ||
-    (!token.trim() &&
-      Object.keys(headers).length === 0 &&
-      Object.keys(tlsSecret).length === 0)
-  )
-    return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${name || 'MCP Server'} 访问凭据`,
-    purpose: 'MCP Server 访问与 TLS 凭据',
-    secret: JSON.stringify(secret)
-  });
-  return credential.id;
+  if (!token.trim() && Object.keys(headers).length === 0 && Object.keys(tlsSecret).length === 0)
+    return null;
+  return secretPayload('MCP Server 访问与 TLS 凭据', JSON.stringify(secret));
 }
 
-export async function saveMCPCredential(
-  existing: Resource,
-  scopeId: string,
-  name: string,
-  token: string,
-  headers: Record<string, string>,
-  tls: Record<string, string | boolean> = {}
-) {
-  const tlsSecret = Object.fromEntries(
-    Object.entries(tls).filter(([, value]) =>
-      typeof value === 'boolean' ? true : String(value).trim() !== ''
-    )
-  );
-  if (!existing.credential_id)
-    return createMCPCredential(scopeId, name, token, headers, tlsSecret);
-  let nextToken = token.trim();
-  let existingTLS: Record<string, string | boolean> = {};
-  {
-    try {
-      const current = await api.credentialSecret(existing.credential_id);
-      try {
-        const parsed = JSON.parse(current.secret) as {
-          token?: string;
-          tls_ca?: string;
-          tls_cert?: string;
-          tls_key?: string;
-          tls_skip_verify?: boolean;
-        };
-        if (!nextToken) nextToken = String(parsed.token ?? '').trim();
-        existingTLS = Object.fromEntries(
-          Object.entries({
-            tls_ca: parsed.tls_ca,
-            tls_cert: parsed.tls_cert,
-            tls_key: parsed.tls_key,
-            tls_skip_verify: parsed.tls_skip_verify
-          }).filter(([, value]) =>
-            typeof value === 'boolean'
-              ? true
-              : String(value ?? '').trim() !== ''
-          )
-        ) as Record<string, string | boolean>;
-      } catch {
-        nextToken = current.secret.trim();
-      }
-    } catch {
-      // Preserve legacy credentials when no replacement token is supplied.
-    }
-  }
-  const nextTLS = { ...existingTLS, ...tlsSecret };
-  if (
-    !nextToken &&
-    Object.keys(headers).length === 0 &&
-    Object.keys(nextTLS).length === 0
-  )
-    return existing.credential_id;
-  await api.updateCredential(existing.credential_id, {
-    name: `${name.trim() || 'MCP Server'} 访问凭据`,
-    purpose: 'MCP Server 访问与 TLS 凭据',
-    secret: JSON.stringify({ token: nextToken, headers, ...nextTLS })
-  });
-  return existing.credential_id;
-}
-
-export async function createDockerCredential(
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
+export function dockerSecret(values: Record<string, string>) {
   const secret = Object.fromEntries(
     Object.entries(values).filter(([, value]) => value.trim() !== '')
   );
-  if (!scopeId || Object.keys(secret).length === 0) return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${name || 'Docker'} TLS 凭据`,
-    purpose: 'Docker TLS Base64 凭据',
-    secret: JSON.stringify(secret)
-  });
-  return credential.id;
+  if (Object.keys(secret).length === 0) return null;
+  return secretPayload('Docker TLS Base64 凭据', JSON.stringify(secret));
 }
 
-export async function createKubernetesCredential(
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
+export function kubernetesSecret(values: Record<string, string>) {
   const secret = Object.fromEntries(
     Object.entries(values).filter(([, value]) => value.trim())
   );
-  if (!scopeId || !Object.keys(secret).length) return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${name || 'Kubernetes'} 连接凭据`,
-    purpose: 'Kubernetes kubeconfig 与 Token',
-    secret: JSON.stringify(secret)
-  });
-  return credential.id;
-}
-export async function saveKubernetesCredential(
-  existing: Resource,
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
-  const secret = Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value.trim())
-  );
-  if (!Object.keys(secret).length) return '';
-  if (!existing.credential_id)
-    return createKubernetesCredential(scopeId, name, values);
-  await api.updateCredential(existing.credential_id, {
-    name: `${name.trim() || 'Kubernetes'} 连接凭据`,
-    purpose: 'Kubernetes kubeconfig 与 Token',
-    secret: JSON.stringify(secret)
-  });
-  return existing.credential_id;
+  if (!Object.keys(secret).length) return null;
+  return secretPayload('Kubernetes kubeconfig 与 Token', JSON.stringify(secret));
 }
 
-export async function saveDockerCredential(
-  existing: Resource,
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
+export function hostSecret(values: Record<string, string>) {
   const secret = Object.fromEntries(
     Object.entries(values).filter(([, value]) => value.trim() !== '')
   );
-  // An empty Direct form means "keep the existing encrypted credential".
-  // Agent updates clear it explicitly at the resource workflow boundary.
-  if (!Object.keys(secret).length) return existing.credential_id ?? '';
-  if (!existing.credential_id)
-    return createDockerCredential(scopeId, name, values);
-  await api.updateCredential(existing.credential_id, {
-    name: `${name.trim() || 'Docker'} TLS 凭据`,
-    purpose: 'Docker TLS Base64 凭据',
-    secret: JSON.stringify(secret)
-  });
-  return existing.credential_id;
-}
-
-export async function createHostCredential(
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
-  const secret = Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value.trim() !== '')
-  );
-  if (!scopeId || Object.keys(secret).length === 0) return '';
-  const credential = await api.createCredential({
-    scope_id: scopeId,
-    name: `${name || 'Host'} SSH 凭据`,
-    purpose: 'Host SSH 密码、私钥与 known_hosts',
-    secret: JSON.stringify(secret)
-  });
-  return credential.id;
-}
-
-export async function saveHostCredential(
-  existing: Resource,
-  scopeId: string,
-  name: string,
-  values: Record<string, string>
-) {
-  const secret = Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value.trim() !== '')
-  );
-  if (!Object.keys(secret).length) return existing.credential_id ?? '';
-  if (!existing.credential_id)
-    return createHostCredential(scopeId, name, values);
-  await api.updateCredential(existing.credential_id, {
-    name: `${name.trim() || 'Host'} SSH 凭据`,
-    purpose: 'Host SSH 密码、私钥与 known_hosts',
-    secret: JSON.stringify(secret)
-  });
-  return existing.credential_id;
+  if (Object.keys(secret).length === 0) return null;
+  return secretPayload('Host SSH 密码、私钥与 known_hosts', JSON.stringify(secret));
 }
 
 export async function testResourceConnector(
@@ -416,10 +220,6 @@ export function testDraftAIProviderConnection(body: {
   return api.testDraftAIProvider(body);
 }
 
-export function loadResourceCredentialSecret(credentialId: string) {
-  return api.credentialSecret(credentialId);
-}
-
 export function loadMCPSnapshots(resourceId: string) {
   return api.mcpSnapshots(resourceId);
 }
@@ -440,6 +240,8 @@ export async function syncAIProviderBindings(
 }
 
 export function createResourceRecord(body: Record<string, unknown>) {
+  const { credential, ...resource } = body;
+  if (credential === undefined || credential === '') return api.createResource(resource);
   return api.createResource(body);
 }
 
@@ -447,5 +249,8 @@ export function updateResourceRecord(
   resourceId: string,
   body: Record<string, unknown>
 ) {
+  const { credential, ...resource } = body;
+  if (credential === undefined || credential === '')
+    return api.updateResource(resourceId, resource);
   return api.updateResource(resourceId, body);
 }

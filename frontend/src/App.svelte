@@ -119,6 +119,7 @@
   let resourceChildSurfaceActive = false;
   let busy = false;
   let view: View = 'overview';
+  let previousView: View = view;
   let preferences: UserPreferences = {
     theme: 'auto',
     sidebar_mode: 'fixed',
@@ -263,6 +264,11 @@
   $: activeMessageTone = errorMessage ? 'error' : 'success';
   $: messageInChildSurface = resourceChildSurfaceActive;
 
+  $: if (view !== previousView) {
+    previousView = view;
+    if (view === 'diagnosis') void refreshDiagnosisContextResources();
+  }
+
   function startHealthPolling() {
     if (healthInterval !== null) return;
     const controller = new AbortController();
@@ -358,6 +364,15 @@
       selectedScopeId = defaultTeam?.scope.id ?? platform.scope.id;
     } catch (error) {
       errorMessage = describeError(error, '工作区数据加载失败');
+    }
+  }
+
+  async function refreshDiagnosisContextResources() {
+    try {
+      const page = await api.contextResources();
+      contextResources = page.items;
+    } catch {
+      // Keep the last visible context when a background refresh is unavailable.
     }
   }
 
@@ -982,6 +997,7 @@
       {:else if view === 'diagnosis'}
         <DiagnosisPage
           scopeId={selectedScopeId}
+          projectId={selectedProjectId}
           applicationId={selectedApplicationId}
           runAction={action}
           {describeError}

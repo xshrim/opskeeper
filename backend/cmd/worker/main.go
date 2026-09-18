@@ -15,7 +15,6 @@ import (
 	"opskeeper/backend/aiengine"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
-	"opskeeper/backend/credential"
 	"opskeeper/backend/inspection"
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
@@ -23,6 +22,7 @@ import (
 	"opskeeper/backend/observability"
 	"opskeeper/backend/operation"
 	"opskeeper/backend/resource"
+	"opskeeper/backend/secret"
 	"opskeeper/backend/skill"
 	"opskeeper/backend/version"
 )
@@ -64,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
-	encryptor, err := credential.FromEnvironment(cfg.Environment)
+	encryptor, err := secret.FromEnvironment(cfg.Environment)
 	if err != nil {
 		logger.Error("configure credential encryption", "kind", "error", "error_type", "credential-encryption", "error", err)
 		os.Exit(1)
@@ -76,15 +76,14 @@ func main() {
 		logger.Error("configure connector registry", "kind", "error", "error_type", "connector-registry", "error", err)
 		os.Exit(1)
 	}
-	credentials := credential.NewService(credential.NewStore(pool), encryptor)
 	store := inspection.NewStore(pool)
-	resourceService := resource.NewService(resource.NewStore(pool))
-	connectors := connector.NewService(registry, resourceService, credentials, connector.NewStore(pool), limits)
+	resourceService := resource.NewService(resource.NewStore(pool), encryptor)
+	connectors := connector.NewService(registry, resourceService, connector.NewStore(pool), limits)
 	connectors.SetPostgresPool(pool)
-	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity, credentials)
+	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectors.AIEngineProvider()
 	mcpProvider := mcpService.AIEngineProvider()
-	llmService := llm.NewService(llm.NewStore(pool), resourceService, credentials)
+	llmService := llm.NewService(llm.NewStore(pool), resourceService)
 	skillService := skill.NewService(skill.NewStore(pool), resourceService)
 	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
 	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
@@ -110,7 +109,7 @@ func main() {
 			logger.Warn("operation reconciler unavailable", "kind", "error", "error_type", "operation-reconciler", "error", err)
 		}
 	}
-	notifier := inspection.NotificationWorker{Store: store, Credentials: credentials}
+	notifier := inspection.NotificationWorker{Store: store}
 	ticker := time.NewTicker(cfg.InspectionWorkerPollInterval)
 	defer ticker.Stop()
 	logger.Info("worker started", "kind", "service-start", "poll_interval", cfg.InspectionWorkerPollInterval)

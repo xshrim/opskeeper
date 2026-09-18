@@ -66,7 +66,25 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 		if err != nil {
 			return Session{}, err
 		}
-		input.TargetResourceIDs = append(associated, input.TargetResourceIDs...)
+		// An application may reference resources the caller cannot use. The
+		// application itself remains selectable, but only its visible, active
+		// resources become diagnosis targets; explicit target IDs are still
+		// validated strictly below.
+		visibleAssociated := make([]string, 0, len(associated))
+		for _, resourceID := range associated {
+			item, getErr := s.resources.Get(ctx, resourceID)
+			if getErr != nil {
+				if errors.Is(getErr, resource.ErrNotFound) || errors.Is(getErr, authorization.ErrForbidden) {
+					continue
+				}
+				return Session{}, getErr
+			}
+			if item.Status == resource.StatusDisabled || item.ScopeID != input.ScopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
+				continue
+			}
+			visibleAssociated = append(visibleAssociated, resourceID)
+		}
+		input.TargetResourceIDs = append(visibleAssociated, input.TargetResourceIDs...)
 	}
 	input.TargetResourceIDs = distinctIDs(input.TargetResourceIDs)
 	if len(input.TargetResourceIDs) > 20 {

@@ -111,10 +111,10 @@
         <ResourceBasicEditFields resource={selectedResource} bind:name={editResourceName} bind:status={editResourceStatus} bind:labels={editResourceLabels} {scopeName} />
         {#if selectedResource.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
-            <McpConnectionFields bind:url={mcpURL} bind:token={mcpToken} bind:requestHeaders={mcpRequestHeaders} bind:toolAllowlist={mcpToolAllowlist} bind:timeoutSeconds={mcpTimeoutSeconds} bind:maxResponseBytes={mcpMaxResponseBytes} bind:tlsCA={mcpTLSCA} bind:tlsCert={mcpTLSCert} bind:tlsKey={mcpTLSKey} bind:skipTLSVerify={mcpTLSSkipVerify} tokenPlaceholder="留空保持原凭据" />
+            <McpConnectionFields bind:url={mcpURL} bind:token={mcpToken} bind:requestHeaders={mcpRequestHeaders} bind:toolAllowlist={mcpToolAllowlist} bind:timeoutSeconds={mcpTimeoutSeconds} bind:maxResponseBytes={mcpMaxResponseBytes} bind:tlsCA={mcpTLSCA} bind:tlsCert={mcpTLSCert} bind:tlsKey={mcpTLSKey} bind:skipTLSVerify={mcpTLSSkipVerify} tokenPlaceholder="留空保持原资源密文" />
           </div>
         {:else}
-          <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} bind:timeoutSeconds={genericTimeoutSeconds} showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)} editMode credentialConfigured={Boolean(selectedResource.credential_id)} isRequired={resourceSchemaFieldRequired} />
+          <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} bind:timeoutSeconds={genericTimeoutSeconds} showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)} editMode credentialConfigured={Boolean(selectedResource.credential_configured)} isRequired={resourceSchemaFieldRequired} />
         {/if}
       {/if}
       <button class="secondary" disabled={busy || !selectedResourceCanUpdate} title={selectedResourceCanUpdate ? '保存资源修改' : '继承资源仅可查看'}>保存</button>

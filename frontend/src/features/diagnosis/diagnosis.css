@@ -1780,20 +1780,33 @@
   color: var(--diagnosis-ink);
   background: var(--diagnosis-teal-soft);
 }
-.diagnosis-context-note {
-  margin: 0 0 11px;
+.diagnosis-context-budget {
+  margin: 0 0 13px;
   padding: 9px 10px;
-  color: var(--diagnosis-muted);
-  background: var(--diagnosis-teal-soft);
-  border: 1px solid
-    color-mix(in srgb, var(--diagnosis-teal) 20%, var(--diagnosis-line));
+  background: var(--diagnosis-surface);
+  border: 1px solid var(--diagnosis-line);
   border-radius: 5px;
-  font-size: 10px;
-  line-height: 1.45;
 }
-.diagnosis-context-note strong {
-  color: var(--diagnosis-teal);
+.diagnosis-context-budget-head,
+.diagnosis-context-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+.diagnosis-context-budget-head { color: var(--diagnosis-ink); font-size: 10px; }
+.diagnosis-context-budget-head span,
+.diagnosis-context-section-title small { color: var(--diagnosis-subtle); font-size: 9px; }
+.diagnosis-context-budget-track {
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+  background: var(--diagnosis-surface-2);
+  border-radius: 99px;
+}
+.diagnosis-context-budget-track span { display: block; height: 100%; background: var(--diagnosis-teal); border-radius: inherit; transition: width 160ms ease; }
+.diagnosis-context-section { margin-bottom: 14px; }
+.diagnosis-context-section-title { margin-bottom: 6px; color: var(--diagnosis-muted); font-size: 10px; }
 .diagnosis-resource-list-f,
 .diagnosis-evidence-list-f {
   display: grid;

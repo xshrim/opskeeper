@@ -3,7 +3,8 @@
     DiagnosisCausalChain,
     DiagnosisEvidence,
     DiagnosisSnapshot,
-    Resource
+    Resource,
+    Application
   } from '../../lib/api';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
 
@@ -23,9 +24,13 @@
 
   export let diagnosisSnapshot: DiagnosisSnapshot | null = null;
   export let diagnosisTargets: Resource[] = [];
+  export let diagnosisApplications: Application[] = [];
+  export let diagnosisApplicationIds: string[] = [];
   export let diagnosisTargetIds: string[] = [];
   export let diagnosisContextTab: 'context' | 'evidence' = 'context';
   export let toggleDiagnosisContext: (resourceID: string) => void;
+  export let toggleDiagnosisApplication: (application: Application) => void;
+  export let contextUsage = { used: 0, total: 0 };
   export let resourceIcon: (kind: string) => string;
   export let resourceSchemaName: (kind: string) => string;
   export let scopeName: (id: string) => string;
@@ -38,13 +43,18 @@
   export let diagnosisEvidenceSummary: (evidence: DiagnosisEvidence) => string;
   export let diagnosisResourceName: (resourceID?: string) => string;
   export let formatDate: (value: string) => string;
+
+  function visibleResourceCount(application: Application) {
+    const ids = new Set([...application.instances, ...application.dependencies].map((item) => item.target_resource_id));
+    return diagnosisTargets.filter((resource) => ids.has(resource.id)).length;
+  }
 </script>
 
 <aside class="diagnosis-context-panel-f">
   <div class="diagnosis-panel-top">
     <div>
       <h2>诊断上下文</h2>
-      <small>{diagnosisTargetIds.length} / {diagnosisTargets.length} 已加载</small>
+      <small>{diagnosisApplicationIds.length} 个应用 · {diagnosisTargetIds.length} 个资源已选</small>
     </div>
   </div>
   <div class="diagnosis-context-tabs">
@@ -59,11 +69,24 @@
     >
   </div>
   {#if diagnosisContextTab === 'context'}
-    <p class="diagnosis-context-note">
-      <strong>上下文开关</strong><br />只把打开的资源提供给当前
-      Agent；关闭不会删除资源，也不会影响权限。
-    </p>
-    <div class="diagnosis-resource-list-f">
+    <div class="diagnosis-context-budget" aria-label="上下文窗口使用量">
+      <div class="diagnosis-context-budget-head"><strong>上下文窗口</strong><span>{contextUsage.used.toLocaleString()} / {contextUsage.total.toLocaleString()} Token</span></div>
+      <div class="diagnosis-context-budget-track"><span style={`width: ${contextUsage.total ? Math.min(100, contextUsage.used / contextUsage.total * 100) : 0}%`}></span></div>
+    </div>
+    <section class="diagnosis-context-section">
+      <div class="diagnosis-context-section-title"><strong>应用</strong><small>{diagnosisApplicationIds.length} 已选</small></div>
+      <div class="diagnosis-resource-list-f">
+        {#each diagnosisApplications as application}
+          <label class:selected={diagnosisApplicationIds.includes(application.id)}>
+            <span class="diagnosis-resource-icon">⌘</span><span><strong>{application.name}</strong><small>{visibleResourceCount(application)} 个可用关联资源</small></span>
+            <input type="checkbox" checked={diagnosisApplicationIds.includes(application.id)} on:change={() => toggleDiagnosisApplication(application)} />
+          </label>
+        {:else}<p class="diagnosis-empty">当前项目没有可用于诊断的应用。</p>{/each}
+      </div>
+    </section>
+    <section class="diagnosis-context-section">
+      <div class="diagnosis-context-section-title"><strong>资源</strong><small>{diagnosisTargetIds.length} 已选</small></div>
+      <div class="diagnosis-resource-list-f">
       {#each diagnosisTargets as resource}
         <label
           class:selected={diagnosisTargetIds.includes(resource.id)}
@@ -75,13 +98,18 @@
           ><input
             type="checkbox"
             checked={diagnosisTargetIds.includes(resource.id)}
+            disabled={diagnosisApplicationIds.some((applicationID) => {
+              const application = diagnosisApplications.find((item) => item.id === applicationID);
+              return [...(application?.instances ?? []), ...(application?.dependencies ?? [])].some((item) => item.target_resource_id === resource.id);
+            })}
             on:change={() => toggleDiagnosisContext(resource.id)}
           /></label
         >
       {:else}
         <p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>
       {/each}
-    </div>
+      </div>
+    </section>
   {:else}
     <div class="diagnosis-evidence-pane">
       <section class="diagnosis-causal-chain-panel" aria-label="精选因果证据链">

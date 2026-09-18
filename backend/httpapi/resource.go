@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
-	"opskeeper/backend/credential"
 	"opskeeper/backend/resource"
 )
 
@@ -31,64 +30,55 @@ type resourceService interface {
 	ResolveDefault(context.Context, string, string) (resource.Resource, error)
 }
 
-type credentialService interface {
-	Create(context.Context, string, credential.CreateInput) (credential.Credential, error)
-	List(context.Context, string) ([]credential.Credential, error)
-	Get(context.Context, string, string) (credential.Credential, error)
-	Reveal(context.Context, string, string) ([]byte, error)
-	Update(context.Context, string, string, credential.UpdateInput) (credential.Credential, error)
-	Delete(context.Context, string, string) error
-}
-
 type resourceHandler struct {
-	resources   resourceService
-	credentials credentialService
-	auditor     audit.Logger
+	resources resourceService
+	auditor   audit.Logger
 }
 
 type createResourceRequest struct {
-	ScopeID          string            `json:"scope_id"`
-	Kind             string            `json:"kind"`
-	Subtype          string            `json:"subtype,omitempty"`
-	AgentRef         *string           `json:"agent_ref,omitempty"`
-	SchemaVersion    int               `json:"schema_version,omitempty"`
-	Name             string            `json:"name"`
-	ExternalUID      string            `json:"external_uid,omitempty"`
-	SourceResourceID string            `json:"source_resource_id,omitempty"`
-	Labels           map[string]string `json:"labels"`
-	Config           map[string]any    `json:"config"`
-	Status           string            `json:"status,omitempty"`
-	CredentialID     *string           `json:"credential_id,omitempty"`
+	ScopeID          string                     `json:"scope_id"`
+	Kind             string                     `json:"kind"`
+	Subtype          string                     `json:"subtype,omitempty"`
+	AgentRef         *string                    `json:"agent_ref,omitempty"`
+	SchemaVersion    int                        `json:"schema_version,omitempty"`
+	Name             string                     `json:"name"`
+	ExternalUID      string                     `json:"external_uid,omitempty"`
+	SourceResourceID string                     `json:"source_resource_id,omitempty"`
+	Labels           map[string]string          `json:"labels"`
+	Config           map[string]any             `json:"config"`
+	Status           string                     `json:"status,omitempty"`
+	Credential       *resourceCredentialRequest `json:"credential,omitempty"`
 }
 
 type updateResourceRequest struct {
-	ScopeID          *string             `json:"scope_id"`
-	Subtype          *string             `json:"subtype"`
-	AgentRef         **string            `json:"agent_ref"`
-	Name             *string             `json:"name"`
-	ExternalUID      *string             `json:"external_uid"`
-	SourceResourceID *string             `json:"source_resource_id"`
-	Labels           *map[string]string  `json:"labels"`
-	Config           *map[string]any     `json:"config"`
-	Status           *string             `json:"status"`
-	CredentialID     nullableStringPatch `json:"credential_id"`
+	ScopeID          *string                 `json:"scope_id"`
+	Subtype          *string                 `json:"subtype"`
+	AgentRef         **string                `json:"agent_ref"`
+	Name             *string                 `json:"name"`
+	ExternalUID      *string                 `json:"external_uid"`
+	SourceResourceID *string                 `json:"source_resource_id"`
+	Labels           *map[string]string      `json:"labels"`
+	Config           *map[string]any         `json:"config"`
+	Status           *string                 `json:"status"`
+	Credential       nullableCredentialPatch `json:"credential"`
 }
 
-// nullableStringPatch preserves the distinction between an omitted field and
-// an explicit JSON null, which is required when clearing a resource
-// credential during an access-mode switch.
-type nullableStringPatch struct {
+type resourceCredentialRequest struct {
+	Purpose *string `json:"purpose,omitempty"`
+	Secret  string  `json:"secret"`
+}
+
+type nullableCredentialPatch struct {
 	Set   bool
-	Value *string
+	Value *resourceCredentialRequest
 }
 
-func (patch *nullableStringPatch) UnmarshalJSON(data []byte) error {
+func (patch *nullableCredentialPatch) UnmarshalJSON(data []byte) error {
 	patch.Set = true
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		patch.Value = nil
 		return nil
 	}
-	var value string
+	var value resourceCredentialRequest
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
@@ -105,27 +95,14 @@ type createRelationRequest struct {
 	Confirmed        *bool          `json:"confirmed"`
 }
 
-type createCredentialRequest struct {
-	ScopeID string `json:"scope_id"`
-	Name    string `json:"name"`
-	Purpose string `json:"purpose"`
-	Secret  string `json:"secret"`
-}
-
-type updateCredentialRequest struct {
-	Name    *string `json:"name"`
-	Purpose *string `json:"purpose"`
-	Secret  *string `json:"secret"`
-}
-
 type setDefaultRequest struct {
 	ScopeID    string `json:"scope_id"`
 	DefaultKey string `json:"default_key"`
 	ResourceID string `json:"resource_id"`
 }
 
-func registerResourceRoutes(router chi.Router, services resourceService, credentials credentialService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
-	handler := resourceHandler{resources: services, credentials: credentials, auditor: auditor}
+func registerResourceRoutes(router chi.Router, services resourceService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+	handler := resourceHandler{resources: services, auditor: auditor}
 	guard := func(permission authorization.Permission) func(http.Handler) http.Handler {
 		if requirePermission == nil {
 			return func(next http.Handler) http.Handler { return next }
@@ -148,16 +125,6 @@ func registerResourceRoutes(router chi.Router, services resourceService, credent
 			router.With(guard(authorization.RelationManage)).Post("/relations", handler.createRelation)
 			router.With(guard(authorization.RelationManage)).Delete("/relations/{relationID}", handler.deleteRelation)
 			router.With(guard(authorization.ResourceRead)).Get("/topology", handler.topology)
-		})
-	}
-	if credentials != nil {
-		router.With(guard(authorization.CredentialManage)).Get("/credentials", handler.listCredentials)
-		router.With(guard(authorization.CredentialManage)).Post("/credentials", handler.createCredential)
-		router.Route("/credentials/{credentialID}", func(router chi.Router) {
-			router.With(guard(authorization.CredentialManage)).Get("/", handler.getCredential)
-			router.With(guard(authorization.CredentialManage)).Get("/secret", handler.getCredentialSecret)
-			router.With(guard(authorization.CredentialManage)).Patch("/", handler.updateCredential)
-			router.With(guard(authorization.CredentialManage)).Delete("/", handler.deleteCredential)
 		})
 	}
 }
@@ -186,7 +153,11 @@ func (h resourceHandler) createResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	item, err := h.resources.Create(request.Context(), resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AgentRef: body.AgentRef, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: body.CredentialID})
+	input := resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AgentRef: body.AgentRef, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status}
+	if body.Credential != nil {
+		input.Credential = &resource.CredentialInput{Purpose: valueOrEmpty(body.Credential.Purpose), Secret: body.Credential.Secret}
+	}
+	item, err := h.resources.Create(request.Context(), input)
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
@@ -210,17 +181,32 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	var credentialID **string
-	if body.CredentialID.Set {
-		credentialID = &body.CredentialID.Value
+	input := resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AgentRef: body.AgentRef, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status}
+	if body.Credential.Set {
+		if body.Credential.Value == nil {
+			input.ClearCredential = true
+		} else {
+			input.Credential = &resource.CredentialPatch{Purpose: body.Credential.Value.Purpose}
+			if body.Credential.Value.Secret != "" {
+				secret := body.Credential.Value.Secret
+				input.Credential.Secret = &secret
+			}
+		}
 	}
-	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AgentRef: body.AgentRef, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status, CredentialID: credentialID})
+	item, err := h.resources.Update(request.Context(), chi.URLParam(request, "resourceID"), input)
 	if err != nil {
 		writeResourceError(writer, request, err)
 		return
 	}
 	h.record(request, "resource.update", "resource", item.ID, item.ScopeID)
 	writeJSON(writer, http.StatusOK, item)
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func (h resourceHandler) deleteResource(writer http.ResponseWriter, request *http.Request) {
@@ -320,74 +306,6 @@ func (h resourceHandler) topology(writer http.ResponseWriter, request *http.Requ
 	writeJSON(writer, http.StatusOK, map[string]any{"items": items, "depth": depth, "max_nodes": maxNodes})
 }
 
-func (h resourceHandler) listCredentials(writer http.ResponseWriter, request *http.Request) {
-	items, err := h.credentials.List(request.Context(), currentUser(request).ID)
-	if err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, items)
-}
-
-func (h resourceHandler) createCredential(writer http.ResponseWriter, request *http.Request) {
-	var body createCredentialRequest
-	if !decodeRequest(writer, request, &body) {
-		return
-	}
-	item, err := h.credentials.Create(request.Context(), currentUser(request).ID, credential.CreateInput{ScopeID: body.ScopeID, Name: body.Name, Purpose: body.Purpose, Secret: body.Secret})
-	if err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	h.record(request, "credential.create", "credential", item.ID, item.ScopeID)
-	writeJSON(writer, http.StatusCreated, item)
-}
-
-func (h resourceHandler) getCredential(writer http.ResponseWriter, request *http.Request) {
-	item, err := h.credentials.Get(request.Context(), currentUser(request).ID, chi.URLParam(request, "credentialID"))
-	if err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	writeJSON(writer, http.StatusOK, item)
-}
-
-func (h resourceHandler) getCredentialSecret(writer http.ResponseWriter, request *http.Request) {
-	secret, err := h.credentials.Reveal(request.Context(), currentUser(request).ID, chi.URLParam(request, "credentialID"))
-	if err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	// This endpoint is restricted to credential managers and returns only the
-	// decrypted value required by the Provider editor; it is never audited or
-	// included in a normal credential response.
-	writeJSON(writer, http.StatusOK, map[string]string{"secret": string(secret)})
-}
-
-func (h resourceHandler) updateCredential(writer http.ResponseWriter, request *http.Request) {
-	var body updateCredentialRequest
-	if !decodeRequest(writer, request, &body) {
-		return
-	}
-	item, err := h.credentials.Update(request.Context(), currentUser(request).ID, chi.URLParam(request, "credentialID"), credential.UpdateInput{Name: body.Name, Purpose: body.Purpose, Secret: body.Secret})
-	if err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	h.record(request, "credential.update", "credential", item.ID, item.ScopeID)
-	writeJSON(writer, http.StatusOK, item)
-}
-
-func (h resourceHandler) deleteCredential(writer http.ResponseWriter, request *http.Request) {
-	id := chi.URLParam(request, "credentialID")
-	if err := h.credentials.Delete(request.Context(), currentUser(request).ID, id); err != nil {
-		writeResourceError(writer, request, err)
-		return
-	}
-	h.record(request, "credential.delete", "credential", id, "")
-	writer.WriteHeader(http.StatusNoContent)
-}
-
 func (h resourceHandler) record(request *http.Request, action, targetType, targetID, scopeID string) {
 	if h.auditor == nil {
 		return
@@ -420,17 +338,14 @@ func parseQueryInt(request *http.Request, key string) (int, error) {
 
 func writeResourceError(writer http.ResponseWriter, request *http.Request, err error) {
 	var validationError *resource.ValidationError
-	var credentialValidation *credential.ValidationError
 	switch {
 	case errors.As(err, &validationError):
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", validationError.Message)
-	case errors.As(err, &credentialValidation):
-		writeError(writer, request, http.StatusBadRequest, "invalid_request", credentialValidation.Message)
 	case errors.Is(err, authorization.ErrForbidden):
 		writeError(writer, request, http.StatusForbidden, "forbidden", "You do not have permission for this operation")
-	case errors.Is(err, resource.ErrNotFound), errors.Is(err, credential.ErrNotFound):
+	case errors.Is(err, resource.ErrNotFound):
 		writeError(writer, request, http.StatusNotFound, "not_found", "Resource not found")
-	case errors.Is(err, resource.ErrConflict), errors.Is(err, credential.ErrConflict):
+	case errors.Is(err, resource.ErrConflict):
 		writeError(writer, request, http.StatusConflict, "conflict", "Resource conflicts with existing data")
 	case errors.Is(err, resource.ErrSchemaNotFound):
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Resource kind or schema is not registered")

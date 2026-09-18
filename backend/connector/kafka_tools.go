@@ -15,14 +15,11 @@ func (s *Service) resolveKafkaTools(ctx context.Context, item aiengine.ContextRe
 		return fmt.Errorf("Kafka agent resources must use the MCP provider")
 	}
 	in := kt.ConnectionInput{Brokers: brokerAddresses(item.Config["brokers"]), TLS: configBool(item.Config, "tls"), TLSServerName: stringValue(item.Config, "tls_server_name"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
-	if item.CredentialID != nil && strings.TrimSpace(*item.CredentialID) != "" {
-		if s.credentials == nil {
-			return fmt.Errorf("credential service is unavailable")
-		}
-		raw, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
-		if e != nil {
-			return e
-		}
+	raw, configured, e := s.resourceSecret(ctx, item.ID)
+	if e != nil {
+		return e
+	}
+	if configured {
 		var v map[string]any
 		if e = json.Unmarshal(raw, &v); e != nil {
 			return e

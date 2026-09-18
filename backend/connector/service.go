@@ -16,15 +16,13 @@ import (
 type ResourceReader interface {
 	Get(context.Context, string) (resource.Resource, error)
 }
-
-type CredentialReader interface {
-	RevealLinked(context.Context, string) ([]byte, error)
+type secretReader interface {
+	RevealSecret(context.Context, string) ([]byte, error)
 }
 
 type Service struct {
 	registry     *Registry
 	resources    ResourceReader
-	credentials  CredentialReader
 	checks       CheckStore
 	limits       Limits
 	slots        chan struct{}
@@ -32,12 +30,22 @@ type Service struct {
 	postgresPool *pgxpool.Pool
 }
 
-func NewService(registry *Registry, resources ResourceReader, credentials CredentialReader, checks CheckStore, limits Limits) *Service {
+func NewService(registry *Registry, resources ResourceReader, args ...any) *Service {
+	var checks CheckStore
+	var limits Limits
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case CheckStore:
+			checks = value
+		case Limits:
+			limits = value
+		}
+	}
 	if limits.Timeout <= 0 || limits.MaxConcurrent <= 0 || limits.MaxResponseBytes <= 0 {
 		limits = DefaultLimits()
 	}
 	return &Service{
-		registry: registry, resources: resources, credentials: credentials, checks: checks,
+		registry: registry, resources: resources, checks: checks,
 		limits: limits, slots: make(chan struct{}, limits.MaxConcurrent), now: time.Now,
 	}
 }
@@ -66,6 +74,9 @@ func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, 
 	adapter, err := s.prepare(ctx, item)
 	if err == nil {
 		check.Capabilities = adapter.Capabilities()
+		if endpoint, ok := adapter.(interface{ Endpoint() string }); ok {
+			check.Endpoint = endpoint.Endpoint()
+		}
 		err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return adapter.Test(runCtx) })
 	}
 	check.LatencyMS = max(s.now().Sub(started).Milliseconds(), 0)
@@ -272,20 +283,31 @@ func (s *Service) prepare(ctx context.Context, item resource.Resource) (Adapter,
 		return nil, connectorError(CategoryConfiguration, "prepare connector", false, errors.New("resource is not active"))
 	}
 	target := Target{Resource: item}
-	if item.CredentialID != nil && strings.TrimSpace(*item.CredentialID) != "" {
-		if s.credentials == nil {
-			return nil, connectorError(CategoryConfiguration, "read connector credential", false, errors.New("credential service is unavailable"))
-		}
-		secret, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
-		if err != nil {
-			return nil, connectorError(CategoryConfiguration, "read connector credential", false, err)
-		}
+	secret, configured, err := s.resourceSecret(ctx, item.ID)
+	if configured {
 		target.Secret = secret
+	} else if err != nil {
+		return nil, connectorError(CategoryConfiguration, "read connector credential", false, err)
 	}
 	if s.registry == nil {
 		return nil, connectorError(CategoryInternal, "resolve connector", false, errors.New("connector registry is unavailable"))
 	}
 	return s.registry.Resolve(target)
+}
+
+func (s *Service) resourceSecret(ctx context.Context, resourceID string) ([]byte, bool, error) {
+	if s.resources == nil {
+		return nil, false, nil
+	}
+	reader, ok := s.resources.(secretReader)
+	if !ok {
+		return nil, false, nil
+	}
+	secret, err := reader.RevealSecret(ctx, resourceID)
+	if errors.Is(err, resource.ErrNotFound) {
+		return nil, false, nil
+	}
+	return secret, err == nil, err
 }
 
 func (s *Service) collect(ctx context.Context, resourceID string, capability Capability, run func(context.Context) (Evidence, error)) (result Evidence, err error) {

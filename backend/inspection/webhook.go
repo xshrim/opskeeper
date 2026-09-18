@@ -46,17 +46,19 @@ func (s WebhookSender) Send(ctx context.Context, channel NotificationChannel, se
 		return 0, "", err
 	}
 	timestamp := fmt.Sprintf("%d", event.OccurredAt.Unix())
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(timestamp))
-	_, _ = mac.Write([]byte("."))
-	_, _ = mac.Write(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, channel.WebhookURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-OpsKeeper-Timestamp", timestamp)
-	req.Header.Set("X-OpsKeeper-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	if len(secret) > 0 {
+		mac := hmac.New(sha256.New, secret)
+		_, _ = mac.Write([]byte(timestamp))
+		_, _ = mac.Write([]byte("."))
+		_, _ = mac.Write(body)
+		req.Header.Set("X-OpsKeeper-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
 	resp, err := s.Client.Do(req)
 	if err != nil {
 		return 0, "", err

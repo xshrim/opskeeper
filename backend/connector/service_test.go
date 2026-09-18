@@ -17,21 +17,16 @@ import (
 )
 
 type stubResourceReader struct {
-	item resource.Resource
-	err  error
+	item   resource.Resource
+	err    error
+	secret []byte
 }
 
 func (r stubResourceReader) Get(context.Context, string) (resource.Resource, error) {
 	return r.item, r.err
 }
-
-type stubCredentialReader struct {
-	secret []byte
-	err    error
-}
-
-func (r stubCredentialReader) RevealLinked(context.Context, string) ([]byte, error) {
-	return append([]byte(nil), r.secret...), r.err
+func (r stubResourceReader) RevealSecret(context.Context, string) ([]byte, error) {
+	return append([]byte(nil), r.secret...), nil
 }
 
 type memoryCheckStore struct {
@@ -71,10 +66,9 @@ func TestServiceConnectionTestPersistsSuccess(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
-	credentialID := "credential-1"
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
-		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive, CredentialID: &credentialID,
-	}}, stubCredentialReader{secret: []byte(`{"token":"secret"}`)}, checks, DefaultLimits())
+		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
+	}, secret: []byte(`{"token":"secret"}`)}, checks, DefaultLimits())
 	service.now = func() time.Time { return time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC) }
 
 	check, err := service.Test(context.Background(), "actor-1", "resource-1")
@@ -109,7 +103,7 @@ func TestServiceConnectionTestPersistsSanitizedFailureAndRetriesTemporaryErrors(
 	limits.Retries = 1
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
 		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
-	}}, nil, checks, limits)
+	}}, checks, limits)
 
 	check, err := service.Test(context.Background(), "", "resource-1")
 	if err != nil {
@@ -139,7 +133,7 @@ func TestServiceDoesNotRetryPermanentFailure(t *testing.T) {
 	}
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
 		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
-	}}, nil, &memoryCheckStore{}, DefaultLimits())
+	}}, &memoryCheckStore{}, DefaultLimits())
 	if _, err := service.Test(context.Background(), "", "resource-1"); err != nil {
 		t.Fatalf("Test() error = %v", err)
 	}
@@ -151,7 +145,7 @@ func TestServiceDoesNotRetryPermanentFailure(t *testing.T) {
 func TestServiceRejectsConcurrentExecutionBeyondLimit(t *testing.T) {
 	limits := DefaultLimits()
 	limits.MaxConcurrent = 1
-	service := NewService(NewRegistry(), nil, nil, nil, limits)
+	service := NewService(NewRegistry(), nil, nil, limits)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan error, 1)
@@ -174,7 +168,7 @@ func TestServiceRejectsConcurrentExecutionBeyondLimit(t *testing.T) {
 }
 
 func TestServiceValidatesQueryLimitsBeforeResolvingResource(t *testing.T) {
-	service := NewService(NewRegistry(), stubResourceReader{err: errors.New("resource should not be read")}, nil, nil, DefaultLimits())
+	service := NewService(NewRegistry(), stubResourceReader{err: errors.New("resource should not be read")}, nil, DefaultLimits())
 	now := time.Now()
 	tests := []struct {
 		name string
@@ -231,7 +225,7 @@ func TestKubernetesReaderMarksLimitedPageAsPartial(t *testing.T) {
 }
 
 func TestServiceReportsMissingDependenciesInsteadOfPanicking(t *testing.T) {
-	service := NewService(nil, nil, nil, nil, DefaultLimits())
+	service := NewService(nil, nil, nil, DefaultLimits())
 	if _, err := service.Test(context.Background(), "", "resource-1"); err == nil {
 		t.Fatal("Test() error = nil")
 	}
@@ -243,7 +237,7 @@ func TestServiceReportsMissingDependenciesInsteadOfPanicking(t *testing.T) {
 func TestServiceRejectsOversizedEvidenceFromAnyAdapter(t *testing.T) {
 	limits := DefaultLimits()
 	limits.MaxResponseBytes = 4
-	service := NewService(NewRegistry(), nil, nil, nil, limits)
+	service := NewService(NewRegistry(), nil, nil, limits)
 	_, err := service.collect(context.Background(), "resource-1", CapabilityKubernetesRead, func(context.Context) (Evidence, error) {
 		return Evidence{Data: []byte("12345")}, nil
 	})

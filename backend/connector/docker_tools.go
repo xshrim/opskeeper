@@ -146,15 +146,12 @@ func dockerOutput[T any](value T, err error) (aiengine.ToolResult, error) {
 func (s *Service) dockerConnection(ctx context.Context, item aiengine.ContextResource) (client.ConnectionInput, error) {
 	connection := client.ConnectionInput{}
 	setDockerConnectionFromMap(&connection, item.Config)
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return connection, nil
-	}
-	if s.credentials == nil {
-		return client.ConnectionInput{}, connectorError(CategoryConfiguration, "read Docker credential", false, fmt.Errorf("credential service is unavailable"))
-	}
-	secret, err := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {
 		return client.ConnectionInput{}, connectorError(CategoryConfiguration, "read Docker credential", false, err)
+	}
+	if !configured {
+		return connection, nil
 	}
 	// Docker credentials may be supplied as a JSON object. Config values win,
 	// so a credential cannot silently redirect an explicitly configured resource.

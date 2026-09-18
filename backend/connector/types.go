@@ -61,6 +61,7 @@ type Evidence struct {
 type Check struct {
 	ID            string       `json:"id"`
 	ResourceID    string       `json:"resource_id"`
+	Endpoint      string       `json:"endpoint,omitempty"`
 	Status        string       `json:"status"`
 	ErrorCategory Category     `json:"error_category,omitempty"`
 	Message       string       `json:"message"`

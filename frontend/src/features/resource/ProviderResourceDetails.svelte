@@ -33,7 +33,7 @@
     <div><span>角色</span><strong>{roleText || '未设置'}</strong></div>
     <div><span>能力</span><strong>{capabilityText || '未声明'}</strong></div>
     <div><span>默认模型</span><strong>{String(config.default_model ?? models[0]?.name ?? '未设置')}</strong></div>
-    <div><span>连接凭据</span><strong>{resource.credential_id ? '已配置 API Key' : '未配置 API Key'}</strong></div>
+    <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置 API Key' : '未配置 API Key'}</strong></div>
     <div><span>传输凭据</span><strong>未配置</strong></div>
     <div class="provider-resource-labels" data-tooltip={labelText || undefined}><span>标签</span><strong>{labelText || '未设置标签'}</strong></div>
     <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus} ({enabledStatus})</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>

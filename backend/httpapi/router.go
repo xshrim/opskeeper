@@ -27,7 +27,6 @@ type Options struct {
 	Auditor            audit.Logger
 	AuditLog           auditQueryService
 	Resources          resourceService
-	Credentials        credentialService
 	Discovery          discoveryService
 	Connectors         connectorService
 	LLMs               llmService
@@ -110,13 +109,13 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				auditRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
 			}
-			if options.Identity != nil && (options.Resources != nil || options.Credentials != nil || options.Discovery != nil || options.Connectors != nil) {
+			if options.Identity != nil && (options.Resources != nil || options.Discovery != nil || options.Connectors != nil) {
 				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerResourceRoutes(resourceRouter, options.Resources, options.Credentials, options.Auditor, requirePermission)
+				registerResourceRoutes(resourceRouter, options.Resources, options.Auditor, requirePermission)
 				registerRepositoryRoutes(resourceRouter, options.RepositoryBundles, requirePermission)
 				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)

@@ -5,7 +5,7 @@ OpsKeeper 以当前平台、团队或项目 Scope 限定所有资源和操作。
 ## 标准流程
 
 1. 在团队中创建项目，或从 Kubernetes Namespace 发现预览中导入项目。
-2. 登记 Kubernetes、Prometheus、Loki 或中间件资源，将凭据作为独立密文关联。
+2. 登记 Kubernetes、Prometheus、Loki 或中间件资源，敏感连接信息会加密保存在对应资源中。
 3. 在资源详情中执行连接测试，再建立资源依赖关系。
 4. 在 AI 诊断中选择 1-20 个有权资源，检查计划、Evidence 和报告引用。无 Evidence 的结论只能作为待验证假设。
 5. 为确定性检查创建巡检策略，配置 Webhook 通知并复核 Finding 恢复状态。

@@ -79,15 +79,12 @@ func oracleColumnsSchema() json.RawMessage {
 
 func (s *Service) oracleConnection(ctx context.Context, item aiengine.ContextResource) (ot.ConnectionInput, error) {
 	in := ot.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), ServiceName: stringValue(item.Config, "service_name"), SID: stringValue(item.Config, "sid"), TimeoutSeconds: intValue(item.Config, "timeout_seconds"), TLS: configBool(item.Config, "tls")}
-	if item.CredentialID == nil || strings.TrimSpace(*item.CredentialID) == "" {
-		return in, fmt.Errorf("Oracle credential is required")
-	}
-	if s.credentials == nil {
-		return in, fmt.Errorf("credential service is unavailable")
-	}
-	secret, e := s.credentials.RevealLinked(ctx, *item.CredentialID)
+	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {
 		return in, e
+	}
+	if !configured {
+		return in, fmt.Errorf("Oracle credential is required")
 	}
 	var values map[string]any
 	if e = json.Unmarshal(secret, &values); e != nil {

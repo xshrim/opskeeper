@@ -30,7 +30,7 @@ Permission = Subject + Role + Scope + Conditions
 
 | 角色 | 绑定范围 | 主要权限 |
 |---|---|---|
-| PlatformAdmin | 平台 | 全局组织、资源、权限、凭据和策略管理 |
+| PlatformAdmin | 平台 | 全局组织、资源连接密文、权限和策略管理 |
 | PlatformOperator | 平台 | 全局查看、诊断、巡检和审批，不管理平台权限 |
 | PlatformViewer | 平台 | 全局只读和审计查看 |
 | TeamAdmin | 团队 | 团队成员、团队资源、项目及团队策略管理 |
@@ -66,8 +66,6 @@ resource:create
 resource:update
 resource:delete
 resource:use
-credential:manage
-credential:test
 relation:manage
 discovery:run
 discovery:import
@@ -92,8 +90,6 @@ audit:read
 | `resource:update` | 编辑资源配置 |
 | `resource:delete` | 删除或停用资源 |
 | `resource:use` | 使用资源执行连接测试或业务调用 |
-| `credential:manage` | 管理凭据及其关联配置 |
-| `credential:test` | 测试凭据连接 |
 | `relation:manage` | 管理资源之间的关联关系 |
 | `discovery:run` | 启动集群或资源发现 |
 | `discovery:import` | 导入发现结果 |
@@ -157,11 +153,11 @@ resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 
 ## 7. 凭据与敏感信息
 
-- 凭据独立保存，使用 KMS/Vault；最低要求为 AES-GCM 信封加密。
-- 用户只能绑定和使用凭据，不通过 API 读取明文。
-- 平台级凭据不能被团队管理员导出，团队级凭据不能被项目管理员导出。
+- 资源连接密文直接保存在所属 `resources` 行，使用 AES-GCM 加密；登录用户密码仍保存在身份认证 `credentials` 表中。
+- 用户只能通过资源权限使用连接密文，API 不返回资源密文或明文。
+- 资源连接密文不能跨资源共享或独立导出；资源更新与密文更新使用同一事务。
 - 日志、模型上下文和工具响应进入持久化前执行 Token、密码、连接串等脱敏。
-- 凭据读取、测试、轮换和使用都写入审计日志。
+- 资源连接测试、轮换和使用都写入审计日志。
 
 ## 8. AI 与工具权限
 

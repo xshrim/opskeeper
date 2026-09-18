@@ -93,14 +93,13 @@ type Run struct {
 }
 
 type NotificationChannel struct {
-	ID                 string  `json:"id"`
-	ScopeID            string  `json:"scope_id"`
-	Name               string  `json:"name"`
-	Kind               string  `json:"kind"`
-	WebhookURL         string  `json:"webhook_url"`
-	Status             string  `json:"status"`
-	CredentialID       *string `json:"credential_id,omitempty"`
-	RateLimitPerMinute int     `json:"rate_limit_per_minute"`
+	ID                 string `json:"id"`
+	ScopeID            string `json:"scope_id"`
+	Name               string `json:"name"`
+	Kind               string `json:"kind"`
+	WebhookURL         string `json:"webhook_url"`
+	Status             string `json:"status"`
+	RateLimitPerMinute int    `json:"rate_limit_per_minute"`
 }
 
 type Delivery struct {

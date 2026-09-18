@@ -1,4 +1,4 @@
-package credential
+package secret
 
 import (
 	"crypto/aes"
@@ -11,28 +11,31 @@ import (
 	"os"
 )
 
-type localEncryptor struct {
-	aead cipher.AEAD
+type Encryptor interface {
+	Encrypt([]byte) ([]byte, string, error)
 }
+
+type Decryptor interface {
+	Decrypt([]byte, string) ([]byte, error)
+}
+
+type localEncryptor struct{ aead cipher.AEAD }
 
 func NewLocalEncryptor(key []byte) (Encryptor, error) {
 	if len(key) != 32 {
-		return nil, fmt.Errorf("credential encryption key must be exactly 32 bytes")
+		return nil, fmt.Errorf("secret encryption key must be exactly 32 bytes")
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("create credential cipher: %w", err)
+		return nil, fmt.Errorf("create secret cipher: %w", err)
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("create credential AEAD: %w", err)
+		return nil, fmt.Errorf("create secret AEAD: %w", err)
 	}
 	return &localEncryptor{aead: aead}, nil
 }
 
-// FromEnvironment uses OPSK_CREDENTIAL_KEY in base64 or as a 32-byte value.
-// Development has a deterministic local key so the compose setup remains simple;
-// production must always provide an explicit key.
 func FromEnvironment(environment string) (Encryptor, error) {
 	value := os.Getenv("OPSK_CREDENTIAL_KEY")
 	if value == "" {
@@ -52,7 +55,7 @@ func FromEnvironment(environment string) (Encryptor, error) {
 func (e *localEncryptor) Encrypt(plaintext []byte) ([]byte, string, error) {
 	nonce := make([]byte, e.aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, "", fmt.Errorf("generate credential nonce: %w", err)
+		return nil, "", fmt.Errorf("generate secret nonce: %w", err)
 	}
 	return e.aead.Seal(nonce, nonce, plaintext, nil), "local-v1", nil
 }
@@ -60,12 +63,11 @@ func (e *localEncryptor) Encrypt(plaintext []byte) ([]byte, string, error) {
 func (e *localEncryptor) Decrypt(ciphertext []byte, _ string) ([]byte, error) {
 	nonceSize := e.aead.NonceSize()
 	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("credential ciphertext is truncated")
+		return nil, fmt.Errorf("secret ciphertext is truncated")
 	}
-	nonce, encrypted := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := e.aead.Open(nil, nonce, encrypted, nil)
+	plaintext, err := e.aead.Open(nil, ciphertext[:nonceSize], ciphertext[nonceSize:], nil)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt credential: %w", err)
+		return nil, fmt.Errorf("decrypt secret: %w", err)
 	}
 	return plaintext, nil
 }

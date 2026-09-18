@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 type kubernetesAdapter struct {
 	target        Target
+	endpoint      string
 	dynamicClient dynamic.Interface
 	serverVersion func(context.Context) (json.RawMessage, error)
 }
@@ -60,7 +62,7 @@ func newKubernetesAdapter(target Target, limits Limits) (Adapter, error) {
 		return nil, connectorError(CategoryConfiguration, "create Kubernetes discovery client", false, err)
 	}
 	return &kubernetesAdapter{
-		target: target, dynamicClient: dynamicClient,
+		target: target, endpoint: config.Host, dynamicClient: dynamicClient,
 		serverVersion: func(ctx context.Context) (json.RawMessage, error) {
 			body, err := discoveryClient.RESTClient().Get().AbsPath("/version").Do(ctx).Raw()
 			if err != nil {
@@ -70,6 +72,8 @@ func newKubernetesAdapter(target Target, limits Limits) (Adapter, error) {
 		},
 	}, nil
 }
+
+func (a *kubernetesAdapter) Endpoint() string { return a.endpoint }
 
 func (a *kubernetesAdapter) Kind() string { return "Kubernetes" }
 
@@ -148,6 +152,18 @@ func kubeconfigSecret(secret []byte) (string, error) {
 	}
 	if value == "" {
 		return "", connectorError(CategoryConfiguration, "read kubeconfig", false, errors.New("credential does not contain kubeconfig"))
+	}
+	// The resource form stores file contents as Base64, while imported resource
+	// secrets may contain the YAML directly. Normalize
+	// both representations before handing the data to client-go.
+	if _, err := clientcmd.Load([]byte(value)); err == nil {
+		return value, nil
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
+		candidate := strings.TrimSpace(string(decoded))
+		if _, err := clientcmd.Load([]byte(candidate)); err == nil {
+			return candidate, nil
+		}
 	}
 	return value, nil
 }

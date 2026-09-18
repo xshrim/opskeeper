@@ -299,8 +299,6 @@ WITH role_permissions_seed(role_name, permission) AS (
         ('PlatformAdmin', 'resource:update'),
         ('PlatformAdmin', 'resource:delete'),
         ('PlatformAdmin', 'resource:use'),
-        ('PlatformAdmin', 'credential:manage'),
-        ('PlatformAdmin', 'credential:test'),
         ('PlatformAdmin', 'relation:manage'),
         ('PlatformAdmin', 'discovery:run'),
         ('PlatformAdmin', 'discovery:import'),
@@ -330,8 +328,6 @@ WITH role_permissions_seed(role_name, permission) AS (
         ('TeamAdmin', 'resource:update'),
         ('TeamAdmin', 'resource:delete'),
         ('TeamAdmin', 'resource:use'),
-        ('TeamAdmin', 'credential:manage'),
-        ('TeamAdmin', 'credential:test'),
         ('TeamAdmin', 'relation:manage'),
         ('TeamAdmin', 'discovery:run'),
         ('TeamAdmin', 'discovery:import'),
@@ -352,8 +348,6 @@ WITH role_permissions_seed(role_name, permission) AS (
         ('ProjectAdmin', 'resource:update'),
         ('ProjectAdmin', 'resource:delete'),
         ('ProjectAdmin', 'resource:use'),
-        ('ProjectAdmin', 'credential:manage'),
-        ('ProjectAdmin', 'credential:test'),
         ('ProjectAdmin', 'relation:manage'),
         ('ProjectOperator', 'organization:read'),
         ('ProjectOperator', 'resource:read'),
@@ -512,44 +506,6 @@ CREATE TABLE resource_schemas (
 
 CREATE INDEX resource_schemas_kind_idx ON resource_schemas(kind, version DESC) WHERE status = 'active';
 
-CREATE TABLE resource_credentials (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    scope_id uuid NOT NULL REFERENCES scopes(id),
-    name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
-    purpose text NOT NULL DEFAULT '' CHECK (length(purpose) <= 500),
-    ciphertext bytea NOT NULL CHECK (octet_length(ciphertext) > 0),
-    encryption_algorithm text NOT NULL DEFAULT 'AES-256-GCM',
-    key_version text NOT NULL DEFAULT 'local-v1',
-    created_by uuid REFERENCES users(id) ON DELETE SET NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    deleted_at timestamptz
-);
-
-CREATE UNIQUE INDEX resource_credentials_scope_name_unique
-    ON resource_credentials(scope_id, lower(name)) WHERE deleted_at IS NULL;
-CREATE INDEX resource_credentials_scope_idx
-    ON resource_credentials(scope_id) WHERE deleted_at IS NULL;
-
-CREATE OR REPLACE FUNCTION validate_resource_credential_record_scope()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    scope_status text;
-BEGIN
-    SELECT status INTO scope_status FROM scopes WHERE id = NEW.scope_id AND deleted_at IS NULL;
-    IF scope_status IS DISTINCT FROM 'active' THEN
-        RAISE EXCEPTION 'credential scope is inactive or missing' USING ERRCODE = '23514';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER resource_credentials_validate_scope
-BEFORE INSERT OR UPDATE OF scope_id ON resource_credentials
-FOR EACH ROW EXECUTE FUNCTION validate_resource_credential_record_scope();
-
 CREATE TABLE resources (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id text NOT NULL DEFAULT 'default',
@@ -562,7 +518,6 @@ CREATE TABLE resources (
     labels jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(labels) = 'object'),
     config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(config) = 'object'),
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled', 'unknown')),
-    credential_id uuid REFERENCES resource_credentials(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz
@@ -628,35 +583,6 @@ AS $$
     )
     SELECT EXISTS (SELECT 1 FROM chain WHERE id = ancestor_id);
 $$;
-
-CREATE OR REPLACE FUNCTION validate_resource_credential_scope()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    credential_scope uuid;
-    scope_status text;
-BEGIN
-    SELECT status INTO scope_status FROM scopes WHERE id = NEW.scope_id AND deleted_at IS NULL;
-    IF scope_status IS DISTINCT FROM 'active' THEN
-        RAISE EXCEPTION 'resource scope is inactive or missing' USING ERRCODE = '23514';
-    END IF;
-    IF NEW.credential_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-    SELECT scope_id INTO credential_scope
-      FROM resource_credentials
-     WHERE id = NEW.credential_id AND deleted_at IS NULL;
-    IF credential_scope IS NULL OR NOT resource_scope_contains(credential_scope, NEW.scope_id) THEN
-        RAISE EXCEPTION 'resource credential is outside resource scope' USING ERRCODE = '23514';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER resources_validate_credential_scope
-BEFORE INSERT OR UPDATE OF scope_id, credential_id ON resources
-FOR EACH ROW EXECUTE FUNCTION validate_resource_credential_scope();
 
 CREATE OR REPLACE FUNCTION validate_resource_relation()
 RETURNS trigger
@@ -761,16 +687,12 @@ SELECT kind, 1, '{"$schema":"https://json-schema.org/draft/2020-12/schema","type
       'BusinessApplication', 'Endpoint', 'CronApplication', 'PostgreSQL', 'Redis', 'Kafka',
       'Elasticsearch', 'GenericMiddleware', 'LLMProvider', 'Model', 'MCPServer', 'Skill',
       'Prometheus', 'Loki', 'Tempo', 'Jaeger', 'Elastic', 'Datadog', 'GenericAPI',
-      'Credential', 'NotificationChannel', 'Runbook', 'ArtifactStore'
+      'NotificationChannel', 'Runbook', 'ArtifactStore'
   ]) AS kinds(kind)
 ON CONFLICT (kind, version) DO NOTHING;
 
 CREATE TRIGGER resources_authorization_revision
 AFTER INSERT OR UPDATE OR DELETE ON resources
-FOR EACH ROW EXECUTE FUNCTION bump_authorization_revision();
-
-CREATE TRIGGER resource_credentials_authorization_revision
-AFTER INSERT OR UPDATE OR DELETE ON resource_credentials
 FOR EACH ROW EXECUTE FUNCTION bump_authorization_revision();
 
 CREATE TRIGGER resource_relations_authorization_revision
@@ -813,8 +735,7 @@ UPDATE resource_schemas
     ('GenericAPI', '通用 API', '可通过 HTTP 访问的外部 API。', 'api'),
     ('NotificationChannel', '通知渠道', 'Webhook、邮件或其他通知目标。', 'notification'),
     ('Runbook', '运行手册', '可供运维流程引用的运行手册。', 'runbook'),
-    ('ArtifactStore', '制品存储', '保存诊断报告和其他制品的存储服务。', 'storage'),
-    ('Credential', '连接凭据', '已由独立凭据模型管理，不应作为资源登记。', 'credential')
+    ('ArtifactStore', '制品存储', '保存诊断报告和其他制品的存储服务。', 'storage')
   ) AS metadata(kind, display_name, description, icon)
  WHERE resource_schemas.kind = metadata.kind;
 
@@ -831,7 +752,7 @@ UPDATE resource_schemas
 
 UPDATE resource_schemas
    SET status = 'disabled'
- WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model', 'Credential');
+ WHERE kind IN ('Namespace', 'Node', 'Workload', 'Pod', 'Service', 'Ingress', 'Model');
 
 
 -- >>> 0008_organization_icons.sql
@@ -1247,7 +1168,7 @@ INSERT INTO resource_schemas (kind, version, schema, display_name, description, 
 VALUES
 ('LLMProvider', 2,
  '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["provider_type","base_url","models"],"properties":{"provider_type":{"title":"提供方类型","type":"string","enum":["openai_compatible","openai"]},"base_url":{"title":"服务 URL","type":"string","format":"uri"},"models":{"title":"模型列表","type":"array","items":{"type":"object","required":["name","context_window"],"properties":{"name":{"type":"string"},"context_window":{"type":"integer"},"input_price_per_million":{"type":"number"},"output_price_per_million":{"type":"number"},"capabilities":{"type":"array","items":{"type":"string"}}}}},"token":{"title":"API Token","type":"string","sensitive":true},"timeout_seconds":{"title":"超时秒数","type":"integer"}}}'::jsonb,
- '大模型服务', 'OpenAI-compatible 或 OpenAI Responses API 模型提供方；访问 Token 使用独立加密凭据。', 'llm'),
+ '大模型服务', 'OpenAI-compatible 或 OpenAI Responses API 模型提供方；访问 Token 加密后保存在 AIProvider 资源。', 'llm'),
 ('Skill', 2,
  '{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"properties":{"summary":{"title":"用途说明","type":"string"},"owner":{"title":"维护者","type":"string"}}}'::jsonb,
  '诊断技能', '声明式、版本化并由受控 ADK Runner 执行的技能。', 'skill'),
@@ -1562,7 +1483,6 @@ CREATE TABLE notification_channels (
     name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 120),
     kind text NOT NULL CHECK (kind = 'webhook'),
     webhook_url text NOT NULL CHECK (length(btrim(webhook_url)) BETWEEN 1 AND 2000),
-    credential_id uuid REFERENCES resource_credentials(id) ON DELETE SET NULL,
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     rate_limit_per_minute integer NOT NULL DEFAULT 30 CHECK (rate_limit_per_minute BETWEEN 1 AND 600),
     created_at timestamptz NOT NULL DEFAULT now(),
