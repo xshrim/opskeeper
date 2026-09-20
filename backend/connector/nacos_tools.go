@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	nt "opskeeper/backend/tool/nacos"
 )
 
-func (s *Service) resolveNacosTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveNacosTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Nacos agent resources must use the MCP provider")
 	}
@@ -19,12 +19,12 @@ func (s *Service) resolveNacosTools(ctx context.Context, item aiengine.ContextRe
 		return err
 	}
 	register := func(name, description string, schema json.RawMessage, fn func(context.Context, map[string]any) (any, error)) {
-		add(name, description, schema, func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+		add(name, description, schema, func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 			out, e := fn(runCtx, args)
 			if e != nil {
-				return aiengine.ToolResult{}, fmt.Errorf("%s: %w", name, e)
+				return engine.ToolResult{}, fmt.Errorf("%s: %w", name, e)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	for _, tool := range nt.ListTools() {
@@ -80,7 +80,7 @@ func decodeNacos[T any](ctx context.Context, a map[string]any, out *T, fn func()
 	}
 	return fn()
 }
-func (s *Service) nacosConnection(ctx context.Context, item aiengine.ContextResource) (nt.ConnectionInput, error) {
+func (s *Service) nacosConnection(ctx context.Context, item engine.ContextResource) (nt.ConnectionInput, error) {
 	in := nt.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), Scheme: stringValue(item.Config, "scheme"), ContextPath: stringValue(item.Config, "context_path"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
 	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {

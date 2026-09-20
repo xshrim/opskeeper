@@ -10,20 +10,20 @@ import (
 	"opskeeper/backend/llm"
 )
 
-type aiProviderBindingService interface {
+type providerBindingService interface {
 	ListBindings(context.Context, string) ([]llm.ScopeProviderBinding, error)
 	SetBinding(context.Context, string, string, llm.Purpose, string) (llm.ScopeProviderBinding, error)
 	RemoveBinding(context.Context, string, llm.Purpose) error
 }
-type aiProviderAvailabilityService interface {
+type providerAvailabilityService interface {
 	Available(context.Context, string, llm.Purpose) ([]llm.AvailableProvider, error)
 }
 
-type aiProviderBindingRequest struct {
-	ProviderResourceID string `json:"provider_resource_id"`
+type providerBindingRequest struct {
+	ProviderID string `json:"provider_id"`
 }
 
-func registerAIProviderBindingRoutes(router chi.Router, service aiProviderBindingService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+func registerProviderBindingRoutes(router chi.Router, service providerBindingService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
 	if service == nil {
 		return
 	}
@@ -33,13 +33,13 @@ func registerAIProviderBindingRoutes(router chi.Router, service aiProviderBindin
 		}
 		return requirePermission(permission)
 	}
-	h := aiProviderBindingHandler{service: service}
-	router.With(guard(authorization.ResourceRead)).Get("/scopes/{scopeID}/ai-provider-bindings", h.list)
-	router.With(guard(authorization.ResourceUpdate)).Put("/scopes/{scopeID}/ai-provider-bindings/{tag}", h.set)
-	router.With(guard(authorization.ResourceUpdate)).Delete("/scopes/{scopeID}/ai-provider-bindings/{tag}", h.remove)
+	h := providerBindingHandler{service: service}
+	router.With(guard(authorization.ProviderRead)).Get("/scopes/{scopeID}/provider-bindings", h.list)
+	router.With(guard(authorization.ProviderManage)).Put("/scopes/{scopeID}/provider-bindings/{tag}", h.set)
+	router.With(guard(authorization.ProviderManage)).Delete("/scopes/{scopeID}/provider-bindings/{tag}", h.remove)
 }
 
-func registerAIProviderAvailabilityRoute(router chi.Router, service aiProviderAvailabilityService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+func registerProviderAvailabilityRoute(router chi.Router, service providerAvailabilityService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
 	if service == nil {
 		return
 	}
@@ -47,9 +47,9 @@ func registerAIProviderAvailabilityRoute(router chi.Router, service aiProviderAv
 		if requirePermission == nil {
 			return next
 		}
-		return requirePermission(authorization.ResourceUse)(next)
+		return requirePermission(authorization.ProviderUse)(next)
 	}
-	router.With(guard).Get("/ai-providers/available", func(w http.ResponseWriter, r *http.Request) {
+	router.With(guard).Get("/providers/available", func(w http.ResponseWriter, r *http.Request) {
 		purpose, ok := parseProviderPurpose(r.URL.Query().Get("purpose"))
 		if !ok {
 			purpose = llm.PurposeGeneral
@@ -63,9 +63,9 @@ func registerAIProviderAvailabilityRoute(router chi.Router, service aiProviderAv
 	})
 }
 
-type aiProviderBindingHandler struct{ service aiProviderBindingService }
+type providerBindingHandler struct{ service providerBindingService }
 
-func (h aiProviderBindingHandler) list(w http.ResponseWriter, r *http.Request) {
+func (h providerBindingHandler) list(w http.ResponseWriter, r *http.Request) {
 	items, err := h.service.ListBindings(r.Context(), chi.URLParam(r, "scopeID"))
 	if err != nil {
 		writeAIError(w, r, err)
@@ -84,17 +84,17 @@ func parseProviderPurpose(raw string) (llm.Purpose, bool) {
 	}
 }
 
-func (h aiProviderBindingHandler) set(w http.ResponseWriter, r *http.Request) {
+func (h providerBindingHandler) set(w http.ResponseWriter, r *http.Request) {
 	purpose, ok := parseProviderPurpose(chi.URLParam(r, "tag"))
 	if !ok {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "unsupported provider binding purpose")
 		return
 	}
-	var body aiProviderBindingRequest
+	var body providerBindingRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.SetBinding(r.Context(), currentUser(r).ID, chi.URLParam(r, "scopeID"), purpose, body.ProviderResourceID)
+	item, err := h.service.SetBinding(r.Context(), currentUser(r).ID, chi.URLParam(r, "scopeID"), purpose, body.ProviderID)
 	if err != nil {
 		writeAIError(w, r, err)
 		return
@@ -102,7 +102,7 @@ func (h aiProviderBindingHandler) set(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (h aiProviderBindingHandler) remove(w http.ResponseWriter, r *http.Request) {
+func (h providerBindingHandler) remove(w http.ResponseWriter, r *http.Request) {
 	purpose, ok := parseProviderPurpose(chi.URLParam(r, "tag"))
 	if !ok {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "unsupported provider binding purpose")

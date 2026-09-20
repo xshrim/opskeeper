@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/resource"
 )
 
@@ -25,7 +25,7 @@ func (r dockerResourceReader) RevealSecret(context.Context, string) ([]byte, err
 func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 	item := resource.Resource{ID: "docker-1", Kind: "Docker", Status: resource.StatusActive, SchemaVersion: 1, Config: map[string]any{"host": "tcp://configured:2375"}}
 	service := NewService(nil, dockerResourceReader{item: item}, nil, nil, DefaultLimits())
-	tools, facts, err := service.AIEngineProvider().Resolve(context.Background(), aiengine.ContextResource{ID: item.ID, Kind: item.Kind, Subtype: "Direct", Status: item.Status, Config: item.Config})
+	tools, facts, err := service.EngineProvider().Resolve(context.Background(), engine.ContextResource{ID: item.ID, Kind: item.Kind, Subtype: "Direct", Status: item.Status, Config: item.Config})
 	if err != nil {
 		t.Fatalf("resolve Docker tools: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
 
 func TestDockerConnectionConfigWinsOverCredential(t *testing.T) {
 	service := &Service{}
-	item := aiengine.ContextResource{ID: "docker-1", Config: map[string]any{"host": "tcp://configured:2375", "skip_tls_verify": true}}
+	item := engine.ContextResource{ID: "docker-1", Config: map[string]any{"host": "tcp://configured:2375", "skip_tls_verify": true}}
 	service.resources = dockerResourceReader{secret: []byte(`{"host":"tcp://credential:2375","tls_ca":"credential-ca"}`)}
 	connection, err := service.dockerConnection(context.Background(), item)
 	if err != nil {

@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	es "opskeeper/backend/tool/elasticsearch"
 	"strings"
 )
 
-func (s *Service) resolveElasticsearchTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveElasticsearchTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(item.Subtype, "agent") {
 		return fmt.Errorf("Elasticsearch agent resources must use the MCP provider")
 	}
@@ -30,7 +30,7 @@ func (s *Service) resolveElasticsearchTools(ctx context.Context, item aiengine.C
 	}
 	for _, t := range es.ListTools() {
 		name := t.Name
-		add(name, t.Description, esSchema(name), func(rc context.Context, a map[string]any) (aiengine.ToolResult, error) {
+		add(name, t.Description, esSchema(name), func(rc context.Context, a map[string]any) (engine.ToolResult, error) {
 			var out any
 			var er error
 			switch name {
@@ -50,9 +50,9 @@ func (s *Service) resolveElasticsearchTools(ctx context.Context, item aiengine.C
 				out, er = c.IndexMapping(rc, stringArg(a, "index"))
 			}
 			if er != nil {
-				return aiengine.ToolResult{}, fmt.Errorf("%s: %w", name, er)
+				return engine.ToolResult{}, fmt.Errorf("%s: %w", name, er)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	return nil

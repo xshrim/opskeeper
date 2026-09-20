@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
+  import PasswordInput from '../../components/PasswordInput.svelte';
   import { api, ApiError, type User, type UserPreferences } from '../../lib/api';
 
   export let currentUser: User | null = null;
@@ -18,6 +19,7 @@
   let avatarBusy = false;
   let busy = false;
   let profileUserID = '';
+  let themeSaveQueue: Promise<void> = Promise.resolve();
 
   $: if (currentUser?.id !== profileUserID) {
     profileUserID = currentUser?.id ?? '';
@@ -60,6 +62,30 @@
     } finally {
       busy = false;
     }
+  }
+
+  function selectTheme(theme: UserPreferences['theme']) {
+    preferences = { ...preferences, theme };
+    onApplyTheme();
+    onError('');
+
+    const selectedTheme = theme;
+    themeSaveQueue = themeSaveQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const saved = await api.updatePreferences({
+            theme: selectedTheme,
+            sidebar_mode: preferences.sidebar_mode,
+            sidebar_collapsed: preferences.sidebar_collapsed
+          });
+          if (preferences.theme === selectedTheme) preferences = saved;
+        } catch (error) {
+          if (preferences.theme === selectedTheme) {
+            onError(describeError(error, '主题设置保存失败'));
+          }
+        }
+      });
   }
 
   async function changePassword() {
@@ -134,9 +160,9 @@
     </form>
     <form class="profile-password-form" on:submit|preventDefault={changePassword}>
       <div class="profile-password-row">
-        <label><span class="visually-hidden">当前密码</span><input type="password" bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" aria-label="当前密码" /></label>
-        <label><span class="visually-hidden">新密码</span><input type="password" bind:value={profileNewPassword} required minlength="8" autocomplete="new-password" placeholder="新密码" aria-label="新密码" /></label>
-        <label><span class="visually-hidden">确认新密码</span><input type="password" bind:value={profileConfirmPassword} required minlength="8" autocomplete="new-password" placeholder="确认新密码" aria-label="确认新密码" /></label>
+        <label><span class="visually-hidden">当前密码</span><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></label>
+        <label><span class="visually-hidden">新密码</span><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></label>
+        <label><span class="visually-hidden">确认新密码</span><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></label>
         <button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在更新' : '更新密码'}</button>
       </div>
     </form>
@@ -145,9 +171,9 @@
     <section class="panel profile-panel">
       <div class="panel-heading"><div><p class="eyebrow">PREFERENCES</p><h2>界面偏好</h2></div></div>
       <fieldset class="preference-group"><legend>系统主题</legend><div class="segmented-control" role="radiogroup" aria-label="系统主题">
-        <button type="button" class:active={preferences.theme === 'auto'} role="radio" aria-checked={preferences.theme === 'auto'} on:click={() => { preferences = { ...preferences, theme: 'auto' }; onApplyTheme(); }}><Monitor size={16} strokeWidth={1.8} aria-hidden="true" />自动</button>
-        <button type="button" class:active={preferences.theme === 'light'} role="radio" aria-checked={preferences.theme === 'light'} on:click={() => { preferences = { ...preferences, theme: 'light' }; onApplyTheme(); }}><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button>
-        <button type="button" class:active={preferences.theme === 'dark'} role="radio" aria-checked={preferences.theme === 'dark'} on:click={() => { preferences = { ...preferences, theme: 'dark' }; onApplyTheme(); }}><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button>
+        <button type="button" class:active={preferences.theme === 'auto'} role="radio" aria-checked={preferences.theme === 'auto'} on:click={() => selectTheme('auto')}><Monitor size={16} strokeWidth={1.8} aria-hidden="true" />自动</button>
+        <button type="button" class:active={preferences.theme === 'light'} role="radio" aria-checked={preferences.theme === 'light'} on:click={() => selectTheme('light')}><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button>
+        <button type="button" class:active={preferences.theme === 'dark'} role="radio" aria-checked={preferences.theme === 'dark'} on:click={() => selectTheme('dark')}><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button>
       </div></fieldset>
       <fieldset class="preference-group"><legend>侧边导航栏</legend><div class="segmented-control" role="radiogroup" aria-label="侧边导航栏模式">
         <button type="button" class:active={preferences.sidebar_mode === 'fixed'} role="radio" aria-checked={preferences.sidebar_mode === 'fixed'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'fixed' })}>固定模式</button>

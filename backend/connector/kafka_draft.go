@@ -8,15 +8,17 @@ import (
 )
 
 type KafkaDraftInput struct {
-	Brokers            []string `json:"brokers"`
-	Username, Password string   `json:"username,omitempty"`
-	TLS                bool     `json:"tls,omitempty"`
-	TLSServerName      string   `json:"tls_server_name,omitempty"`
-	TimeoutSeconds     int      `json:"timeout_seconds,omitempty"`
+	Brokers        []string `json:"brokers"`
+	Username       string   `json:"username,omitempty"`
+	Password       string   `json:"password,omitempty"`
+	TLS            bool     `json:"tls,omitempty"`
+	TLSServerName  string   `json:"tls_server_name,omitempty"`
+	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
 }
 type KafkaDraftCheck struct {
-	Status, Message string `json:"status"`
-	LatencyMS       int64  `json:"latency_ms"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	LatencyMS int64  `json:"latency_ms"`
 }
 
 func (s *Service) TestKafkaDraft(ctx context.Context, input KafkaDraftInput) (KafkaDraftCheck, error) {

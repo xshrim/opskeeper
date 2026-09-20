@@ -67,13 +67,22 @@ resource:update
 resource:delete
 resource:use
 relation:manage
-discovery:run
-discovery:import
+engine:read
+engine:manage
+engine:use
+provider:read
+provider:manage
+provider:use
+skill:read
+skill:manage
+skill:execute
+persona:read
+persona:manage
+persona:use
 diagnosis:start
 diagnosis:read
 inspection:manage
 inspection:execute
-operation:approve
 audit:read
 ```
 
@@ -91,16 +100,17 @@ audit:read
 | `resource:delete` | 删除或停用资源 |
 | `resource:use` | 使用资源执行连接测试或业务调用 |
 | `relation:manage` | 管理资源之间的关联关系 |
-| `discovery:run` | 启动集群或资源发现 |
-| `discovery:import` | 导入发现结果 |
-| `diagnosis:start` | 启动 AI 诊断 |
+| `engine:read` / `engine:manage` / `engine:use` | 查看、管理和使用独立 Engine |
+| `provider:read` / `provider:manage` / `provider:use` | 查看、管理和使用独立 Provider 及其模型 |
+| `skill:read` / `skill:manage` / `skill:execute` | 查看、管理和执行独立 Skill |
+| `persona:read` / `persona:manage` / `persona:use` | 查看、管理和使用独立 Persona |
+| `diagnosis:start` | 启动 诊断 |
 | `diagnosis:read` | 查看诊断记录和结果 |
-| `inspection:manage` | 管理自动巡检策略 |
-| `inspection:execute` | 执行自动巡检 |
-| `operation:approve` | 审批受控操作 |
+| `inspection:manage` | 管理巡检策略 |
+| `inspection:execute` | 执行巡检 |
 | `audit:read` | 查看审计日志 |
 
-`resource:use` 与 `resource:read` 分离。AIEngine 执行时直接使用有权限的 AIProvider 和模型；Provider 的地址和凭据仍不向业务请求暴露。
+`resource:use` 与 `resource:read` 分离。Engine 执行时直接使用有权限的 Provider 和模型；Provider 的地址和凭据仍不向业务请求暴露。
 
 ## 5. 授权数据模型
 
@@ -170,7 +180,7 @@ Skill 声明所需能力和风险级别：
 | Medium | 重启 Pod、调整副本 | 必须人工审批 |
 | High | 删除资源、执行写 SQL | 默认禁止，需特权审批策略 |
 
-LLM 本身无权直接访问基础设施。Skill 是统一资源目录中的一种资源，读取、执行、版本发布和管理分别使用 `resource:read`、`resource:use`、`resource:update` 和 `resource:delete` 等通用权限；SkillVersion 从属于 Skill，不单独作为授权主体。Agent、Skill Tool 调用和 Runner 执行内核统一使用 ADK Go v2；所有调用仍必须经过 OpsKeeper Policy Enforcement Point，模型提出的操作参数需要结构化校验。ADK 负责通用编排，不替代 Scope、资源权限、预算、审批和审计。
+LLM 本身无权直接访问基础设施。Skill 是独立领域对象，读取、执行、版本发布和管理分别使用 `skill:read`、`skill:execute`、`skill:manage`；SkillVersion 从属于 Skill，不单独作为授权主体。Persona、Skill Tool 调用和 Runner 执行内核统一经过 Engine；所有调用仍必须经过 OpsKeeper Policy Enforcement Point，模型提出的操作参数需要结构化校验。Engine 负责通用编排，不替代 Scope、资源权限、预算、审批和审计。
 
 ## 9. 审计要求
 

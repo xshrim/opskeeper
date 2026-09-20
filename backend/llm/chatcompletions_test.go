@@ -149,11 +149,11 @@ func TestUpstreamErrorMessage(t *testing.T) {
 	}
 }
 
-func TestAPIKeyFromResourceSecret(t *testing.T) {
-	if got := apiKeyFromResourceSecret([]byte(`{"token":" structured-secret "}`)); got != "structured-secret" {
+func TestAPIKeyFromSecret(t *testing.T) {
+	if got := apiKeyFromSecret([]byte(`{"token":" structured-secret "}`)); got != "structured-secret" {
 		t.Fatalf("structured API key = %q", got)
 	}
-	if got := apiKeyFromResourceSecret([]byte("raw-secret")); got != "raw-secret" {
+	if got := apiKeyFromSecret([]byte("raw-secret")); got != "raw-secret" {
 		t.Fatalf("raw API key = %q", got)
 	}
 }

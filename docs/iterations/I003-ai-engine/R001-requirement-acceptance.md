@@ -1,19 +1,21 @@
-# I003-R001 AIEngine 执行框架需求验收报告
+# I003-R001 Engine 执行框架需求验收报告
 
-**迭代：** I003-ai-engine  
-**需求：** R001 AIEngine 执行框架设计与实现  
+> 历史验收说明：本报告记录 I003 实施期间的验证证据。当前实现已将运行时迁移到 `backend/engine`，Provider、Skill、Persona 已是独立领域对象；文中保留的历史迁移名仅用于追溯，不代表当前数据库或 API 仍使用旧 Resource 方案。
+
+**迭代：** I003-ai-engine
+**需求：** R001 Engine 执行框架设计与实现
 **状态：** 已完成（T01-T06 已完成）
 
-## T06 AI 诊断页面接入 AIEngine
+## T06 AI 诊断页面接入 Engine
 
 **状态：** 已完成（2026-08-29）
 
 当前已完成：
 
-- 诊断页面按当前 Scope 调用 `GET /api/v1/ai-providers/available?purpose=diagnosis`，只展示具备诊断所需能力的 AIProvider 和模型；接口失败时明确显示错误，不绕过能力筛选读取资源目录。
-- 选择的 `ai_provider_resource_id` 和 `model_name` 会随诊断会话创建请求提交；后端诊断编排固定使用该 Provider/模型。
-- 未指定持久化 Skill 时，诊断编排使用内置“故障诊断 Agent”配置，直接提交给 `aiengine.Engine`；通用 Agent Loop、模型调用、工具和证据采集均由 `backend/aiengine.AgentRunner` 执行。
-- 自动巡检不再要求 Skill 资源；巡检策略可选绑定 AgentProfile，未绑定时使用内置“巡检解释 Agent”配置，确定性检查和 AI 解释均通过 `aiengine.Engine` 执行。
+- 诊断页面按当前 Scope 调用 `GET /api/v1/providers/available?purpose=diagnosis`，只展示具备诊断所需能力的 Provider 和模型；接口失败时明确显示错误，不绕过能力筛选读取资源目录。
+- 选择的 `provider_id` 和 `model_name` 会随诊断会话创建请求提交；后端诊断编排固定使用该 Provider/模型。
+- 未指定持久化 Skill 时，诊断编排使用内置“故障诊断 Agent”配置，直接提交给 `engine.Engine`；通用 Agent Loop、模型调用、工具和证据采集均由 `backend/engine.AgentRunner` 执行。
+- 自动巡检不再要求 Skill 资源；巡检策略可选绑定 Persona，未绑定时使用内置“巡检解释 Agent”配置，确定性检查和 AI 解释均通过 `engine.Engine` 执行。
 - 诊断会话继续通过既有 SSE 事件、证据链和错误字段展示执行过程，不改变权限、审计和脱敏边界。
 
 验收结论：通过。
@@ -21,17 +23,17 @@
 真实端到端验收记录：
 
 - 使用 `.env` 中的 `admin/admin123` 登录当前分支 API，`/auth/login`、`/platform` 和 Provider 可用性查询均返回 HTTP 200。
-- 诊断页面对应的 Provider 查询返回 `T06 GLM Provider` 及模型 `GLM-4-Flash`；创建请求提交了 `ai_provider_resource_id=5343a4d6-a619-49f4-b666-d27f5c65ce2e` 和 `model_name=GLM-4-Flash`。
+- 诊断页面对应的 Provider 查询返回 `T06 GLM Provider` 及模型 `GLM-4-Flash`；创建请求提交了 `provider_id=5343a4d6-a619-49f4-b666-d27f5c65ce2e` 和 `model_name=GLM-4-Flash`。
 - 真实创建的诊断会话为 `b95c4b0d-f4c8-4088-ab9c-900fd7348f79`，目标资源为 `T06 Diagnosis Target`。会话状态从 `queued` 进入 `planning`、`collecting`，最终为 `succeeded`，Provider、模型和管理员 Actor 均在会话快照中保留。
 - 真实 GLM-4-Flash 调用返回并持久化 Assistant 消息；执行事件按 `session.created`、`phase.changed(planning)`、`plan.created`、`phase.changed(collecting)`、`phase.changed(analyzing)`、`report.ready` 顺序记录，SSE 可从 `after=0` 读取并在事件结束后关闭。
 - 本次目标是无 Connector 配置的 Application 资源，因此没有可调用的资源工具和 Evidence；系统没有伪造证据，正确生成 `warning` 报告并说明“证据不足”。Connector/MCP Tool Calling、工具审计和脱敏能力已在 T02/T04 的真实验收记录中覆盖。
-- 修复 `ClaimRun` 返回字段缺失问题，并增加数据库集成回归：领取队列后仍保留 Provider、模型和 Actor；未选择 Provider 的会话也能安全领取并保留空值，随后由 AIEngine 返回明确的 Provider 解析错误。
-- 执行架构已重构：`backend/aiengine.AgentRunner` 是唯一 Agent Loop；Diagnosis 直接依赖 `aiengine.Engine`。Skill 只通过 `PlanResolver` 提供不可变指令、工具声明和输入/输出契约，所有实际执行均由 AIEngine 完成。
+- 修复 `ClaimRun` 返回字段缺失问题，并增加数据库集成回归：领取队列后仍保留 Provider、模型和 Actor；未选择 Provider 的会话也能安全领取并保留空值，随后由 Engine 返回明确的 Provider 解析错误。
+- 执行架构已重构：`backend/engine.AgentRunner` 是唯一 Agent Loop；Diagnosis 直接依赖 `engine.Engine`。Skill 只通过 `PlanResolver` 提供不可变指令、工具声明和输入/输出契约，所有实际执行均由 Engine 完成。
 
 自动验证：
 
 - `cd backend && go test -count=1 ./...`：通过。
-- `cd backend && go test -race ./diagnosis ./skill ./aiengine && go vet ./...`：通过。
+- `cd backend && go test -race ./diagnosis ./skill ./engine && go vet ./...`：通过。
 - `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -tags=integration -count=1 ./diagnosis -run TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference`：通过，验证 Provider/模型持久化和 Evidence 关联约束。
 - `cd frontend && npm run check`：通过（0 错误、0 警告）。
 - `cd frontend && npm test -- --run`：通过（2 个文件、7 个测试）。
@@ -41,11 +43,11 @@
 
 **状态：** 已完成（2026-08-30）
 
-本轮对 AIEngine 之外的核心模块也进行了架构审视，按当前设计删除了不再需要的旧执行路径，未保留为了兼容而存在的生产代码：
+本轮对 Engine 之外的核心模块也进行了架构审视，按当前设计删除了不再需要的旧执行路径，未保留为了兼容而存在的生产代码：
 
-- Diagnosis、Inspection、Workflow 和交互执行统一进入 `backend/aiengine.AgentRunner`；Skill 仅作为可选的 Prompt、工具声明和输入/输出契约来源。
+- Diagnosis、Inspection、Workflow 和交互执行统一进入 `backend/engine.AgentRunner`；Skill 仅作为可选的 Prompt、工具声明和输入/输出契约来源。
 - 删除独立 Skill Runner、Skill 执行存储和 `/skill-executions` API；新增迁移 `0028_remove_skill_execution_store` 删除废弃执行表。
-- 巡检策略移除强制 Skill 依赖，改为可选 AgentProfile；未指定时使用内置巡检解释 Agent；新增迁移 `0029_inspection_agent_profile`。
+- 巡检策略移除强制 Skill 依赖，改为可选 Persona；未指定时使用内置巡检解释 Agent；新增迁移 `0029_inspection_agent_profile`。
 - Resource 配置改用完整 JSON Schema 校验，覆盖嵌套对象、数组、`required`、长度、枚举、正则和额外属性约束。
 - MCP 调用统一使用规范化 Endpoint，并在每次调用前重新发现并校验工具；服务依赖缺失时返回明确错误，不执行潜在的空依赖路径。
 - 删除前端组织图标旧值映射，所有新建组织使用当前 Lucide 图标名称；活动代码、前端源码和 E2E 夹具不再引用已废弃的 AI/Endpoint/Skill Runner 概念。
@@ -66,19 +68,19 @@ I003 的 T01-T06 任务均已完成。工作流 HTTP 登录态验收遗留已单
 I003 封板前已记录以下验收证据：
 
 - 每个任务的提交基线和实际变更文件；
-- AIEngine、AIProvider、Tool Gateway、Skill、Agent、知识库和工作流的集成验证；
+- Engine、Provider、Tool Gateway、Skill、Agent、知识库和工作流的集成验证；
 - PostgreSQL、Connector、远程 MCP Server 的工具调用验证；
 - 流式输出、取消、超时、断线续读和断点恢复验证；
 - 入参出参脱敏、权限校验、审计和错误原因验证；
 - 后端测试、API 测试、前端交互测试和遗留问题。
 
-## T01 AIEngine 统一执行内核
+## T01 Engine 统一执行内核
 
 **状态：** 已完成
 
 **验收结论：** 通过（2026-08-28）
 
-本任务已建立 `backend/aiengine` 统一执行契约和运行时，并将 Skill 作为纯执行计划来源接入统一执行路径。
+本任务已建立 `backend/engine` 统一执行契约和运行时，并将 Skill 作为纯执行计划来源接入统一执行路径。
 
 实现范围：
 
@@ -87,13 +89,13 @@ I003 封板前已记录以下验收证据：
 - 默认循环、Tool Call、Token、输出大小和执行时长预算，并限制最大超时时间；
 - 同步执行、流式事件、执行 ID、生命周期事件、事件时间戳和单调序号；
 - 执行取消、超时、重复执行 ID、Runner 不可用和错误状态映射；
-- `skill.Service.ResolvePlan` 计划解析；新请求通过 `AIProviderResourceID` 和 `ModelName` 解析，并在执行开始固定 Provider 和最终模型。
+- `skill.Service.ResolvePlan` 计划解析；新请求通过 `ProviderID` 和 `ModelName` 解析，并在执行开始固定 Provider 和最终模型。
 
 验证记录：
 
 - `cd backend && go test ./...`：通过；
-- `cd backend && go test -race ./aiengine`：通过；
-- `cd backend && go vet ./aiengine`：通过；
+- `cd backend && go test -race ./engine`：通过；
+- `cd backend && go vet ./engine`：通过；
 - `cd frontend && npm run check`：通过；
 - `cd frontend && npm run build`：通过。
 
@@ -101,7 +103,7 @@ I003 封板前已记录以下验收证据：
 
 ### T01 补强：执行循环预算
 
-2026-08-28 根据验收后的技术复核，补充落实 `MaxIterations` 的实际执行限制：AIEngine AgentRunner 按 ADK 非 partial 模型回合计数，超过预算时返回 `iteration_budget`。该补强不改变 T01 已验收边界，也不引入 T02 的模型解析或工具层职责。
+2026-08-28 根据验收后的技术复核，补充落实 `MaxIterations` 的实际执行限制：Engine AgentRunner 按 ADK 非 partial 模型回合计数，超过预算时返回 `iteration_budget`。该补强不改变 T01 已验收边界，也不引入 T02 的模型解析或工具层职责。
 
 ## T02 上下文工具层
 
@@ -113,14 +115,14 @@ I003 封板前已记录以下验收证据：
 - `PolicyGateway`：统一执行授权回调、并发限制、超时、响应大小限制和工具状态事件；
 - `AuthorizeResourceUse`：复用现有 `ResourceFilter`/`ScopeFilter` 完成上下文资源使用授权；
 - `ResourceContextResolver`：去重解析上下文资源、校验活动状态和授权，并将 Provider 产生的工具注册到 Registry；
-- AIEngine Runtime wiring：执行开始后、Runner 调用前解析 Request.Context，传递 ResolvedContext/ToolGateway，并发出 `context.loaded` 或 `context_resolution` 错误；
-- Skill Plan Resolver：新请求使用 `AIProviderResourceID` 与 `ModelName`，由 AIProvider Resolver 解析最终模型；
+- Engine Runtime wiring：执行开始后、Runner 调用前解析 Request.Context，传递 ResolvedContext/ToolGateway，并发出 `context.loaded` 或 `context_resolution` 错误；
+- Skill Plan Resolver：新请求使用 `ProviderID` 与 `ModelName`，由 Provider Resolver 解析最终模型；
 - Connector Provider：为 Kubernetes、Prometheus、Loki、PostgreSQL、Redis 和 Kafka 复用既有受限 Connector 能力；
 - MCP Provider：执行资源发现，转换白名单工具定义并通过既有 MCP Service 调用；MCP 工具默认不标记为只读，是否执行由策略层决定；
 - 工具输入输出和外部资源结果均按不可信数据处理；共享 Runtime 重复解析资源时按资源和工具名幂等刷新注册。
-- 应用接入：API 和 Worker 通过统一的 AIEngine Runtime 构造 Connector/MCP ContextTooling；巡检解释、诊断、工作流和交互请求均直接进入 AIEngine，不存在 Skill Runner 回退。
-- HTTP Handler：新增受认证和 `DiagnosisStart` 权限保护的 `POST /api/v1/ai-executions` 与 `POST /api/v1/ai-executions/{executionID}/cancel`，分别进入统一执行和取消流程；结构化输入、AIProvider、模型、上下文和预算均可由请求传递。
-- 执行持久化：`ai_execution_events`、`ai_execution_tool_calls` 是唯一执行和工具审计存储；Runtime 生命周期事件和统一 Tool Gateway 调用写入 Store，工具参数与结果递归脱敏。
+- 应用接入：API 和 Worker 通过统一的 Engine Runtime 构造 Connector/MCP ContextTooling；巡检解释、诊断、工作流和交互请求均直接进入 Engine，不存在 Skill Runner 回退。
+- HTTP Handler：新增受认证和 `DiagnosisStart` 权限保护的 `POST /api/v1/ai-executions` 与 `POST /api/v1/ai-executions/{executionID}/cancel`，分别进入统一执行和取消流程；结构化输入、Provider、模型、上下文和预算均可由请求传递。
+- 执行持久化：`engine_execution_events`、`engine_execution_tool_calls` 是唯一执行和工具审计存储；Runtime 生命周期事件和统一 Tool Gateway 调用写入 Store，工具参数与结果递归脱敏。
 - SSE 续读：新增 `GET /api/v1/ai-executions/{executionID}/events`，支持 `Last-Event-ID`/`after` 游标并在断线后继续读取已持久化事件。
 - Tool Call 审计查询：新增 `GET /api/v1/ai-executions/{executionID}/tool-calls`，仅返回递归脱敏后的参数、结果、状态和错误；查询受 `DiagnosisRead` 权限保护。
 
@@ -131,11 +133,11 @@ T02 的上下文解析、Connector/MCP 工具接入、权限策略和第一阶�
 - 使用管理员 `admin` 登录 API 成功（`/auth/login`、`/auth/me` 均为 HTTP 200）。
 - 真实 Docker MCP Server `http://127.0.0.1:3100/mcp` 发现成功，返回 4 个工具：`docker:list_containers`、`docker:inspect_container`、`docker:container_logs`、`docker:container_stats`。
 - 真实 MCP 工具调用成功，返回容器清单数据；MCP 工具名称带 `:` 的命名空间格式已验证可用。
-- 真实 AIEngine 执行请求成功进入上下文解析：持久化 `context.loaded` 事件显示 1 个 MCP 资源、4 个工具和 1 个上下文事实。随后 AIProvider 上游因当前测试凭证无效返回 401，Runtime 保留实际错误原因并记录 `execution.failed`。
+- 真实 Engine 执行请求成功进入上下文解析：持久化 `context.loaded` 事件显示 1 个 MCP 资源、4 个工具和 1 个上下文事实。随后 Provider 上游因当前测试凭证无效返回 401，Runtime 保留实际错误原因并记录 `execution.failed`。
 - 已确认 `ResolvedContext.Tools` 通过统一 `ToolGateway` 注册为模型可调用的函数工具，并复用资源授权、并发/超时/响应限制、事件和审计路径。使用 `.env` 测试模型重试时，上游明确返回 `Function call is not supported for this model`，证明 MCP 函数声明已进入模型请求；该测试模型自身不支持函数调用，因此未执行实际 Tool Call。
 - SSE 在完整 HTTP 中间件链下已验证可用；`after=0`、`after=2` 以及 `Last-Event-ID: 2` 均只返回游标之后的事件。此前的 `stream_unsupported` 是包装后的 `ResponseWriter` 未直接实现 `http.Flusher`，现已改用 `http.ResponseController` 兼容中间件包装。
-- 未登录调用 AIEngine 返回 HTTP 401；跨 Scope 上下文资源不会泄露，返回资源不可见错误。
-- `ai_execution_events` 已有真实生命周期记录；`ai_execution_tool_calls` 结构和查询 API 已验证，但当前测试模型不支持函数调用，尚未产生真实 Tool Call 审计行。待配置支持 Tool Calling 的 AIProvider 后补做该项，并核对参数/结果递归脱敏为 `[REDACTED]`。
+- 未登录调用 Engine 返回 HTTP 401；跨 Scope 上下文资源不会泄露，返回资源不可见错误。
+- `engine_execution_events` 已有真实生命周期记录；`engine_execution_tool_calls` 结构和查询 API 已验证，但当前测试模型不支持函数调用，尚未产生真实 Tool Call 审计行。待配置支持 Tool Calling 的 Provider 后补做该项，并核对参数/结果递归脱敏为 `[REDACTED]`。
 - 失败结果事件类型已修正：Runner 返回失败结果时写入 `execution.failed`，而不是错误地写入 `execution.completed`；已补充单元回归测试。
 
 本轮自动验证：`go test ./...`、目标包 `go test -race`、`go vet`、`git diff --check` 均通过。`make lint` 的唯一遗留是本机未安装 `helm`，与本任务代码无关。
@@ -143,13 +145,13 @@ T02 的上下文解析、Connector/MCP 工具接入、权限策略和第一阶�
 ### T01/T02 自动复验（2026-08-29）
 
 - 后端全量 `go test -count=1 ./...`：通过。
-- T01/T02 目标包 `go test -count=1` 和 `go test -race`（`aiengine`、`skill`、`httpapi`、`llm`、`mcp`、`connector`）：通过。
+- T01/T02 目标包 `go test -count=1` 和 `go test -race`（`engine`、`skill`、`httpapi`、`llm`、`mcp`、`connector`）：通过。
 - 后端 `go vet ./...`：通过。
 - I003 集成套件（迁移、组织、身份、授权、资源、发现、连接器、诊断、巡检、受控操作、E2E），使用 `-count=1` 强制重跑：全部通过。
 - SiliconFlow 外部模型测试 `make llm-provider-test`：通过，普通和 SSE 两种模式均成功。
 - 前端 `npm run test`、`npm run check`、`npm run build`：全部通过，Svelte 检查 0 错误、0 警告。
 - 前端 Playwright `npm run test:e2e`：14 个场景全部通过，包含 AI 引擎菜单隐藏、Skill 页面和诊断工作台恢复场景。
-- 全局旧概念扫描：活动后端 Go 代码、前端源码和 E2E 夹具无 `AIEndpoint`、`LLMEndpoint`、`LLMProvider`、`endpoint:manage` 或 `model:manage` 引用；迁移历史中的名称仅用于历史回滚和连续性。
+- 全局旧概念扫描：活动后端 Go 代码、前端源码和 E2E 夹具不再引用已废弃的模型端点、旧 Provider 资源类型、端点权限或模型权限；迁移历史保持不可变。
 - `make lint` 的 Helm 校验未执行成功，原因是测试环境未安装 `helm`（`helm: 未找到命令`）；其余 Go、前端和 shell 校验通过。
 
 ## T03 Skill 与 Agent Profile
@@ -158,31 +160,31 @@ T02 的上下文解析、Connector/MCP 工具接入、权限策略和第一阶�
 
 本任务已完成第一版 Skill/Agent 组合执行链：
 
-- 新增 `AgentProfile` Resource 类型及迁移 `0024_agent_profiles`；配置包含版本、专家指令、适用资源类型、模型能力要求、工具白名单和输入/输出 Schema；
-- AgentProfile 复用 `resource:read`、`resource:use` 和 Scope 过滤，不新增绕过现有 RBAC 的权限路径；
-- AIEngine Runtime 根据 `agent_profile_id` 在执行前解析并授权 Profile，发出 `agent_profile.resolved` 事件；Profile 不可用、未授权、禁用或契约非法时在模型调用前失败；
-- 支持只使用 Skill、只使用 AgentProfile、以及 Skill + AgentProfile 组合；组合时专家指令和 Skill 指令按固定顺序编排，输入和输出 Schema 均校验；
+- 新增独立 Persona 领域对象及版本表；配置包含版本、专家指令、模型能力要求、工具白名单和输入/输出 Schema；历史迁移 `0024_agent_profiles` 仅作为链路证据保留；
+- Persona 使用独立的 `persona:read`、`persona:use` 和 `persona:manage` 权限，并复用平台 Scope 过滤；
+- Engine Runtime 根据 `persona_id` 在执行前解析并授权 Persona，发出 `persona.resolved` 事件；Persona 不可用、未授权、禁用或契约非法时在模型调用前失败；
+- 支持只使用 Skill、只使用 Persona、以及 Skill + Persona 组合；组合时专家指令和 Skill 指令按固定顺序编排，输入和输出 Schema 均校验；
 - Profile 声明的模型能力与 Purpose 能力要求取并集，模型能力不足时返回缺失能力；Profile 工具白名单作为最终工具限制；
-- Agent-only 执行不伪造 Skill 版本或 Skill 执行外键记录，但继续使用 AIEngine 的模型解析、上下文工具策略、生命周期事件和审计链路；
+- Agent-only 执行不伪造 Skill 版本或 Skill 执行外键记录，但继续使用 Engine 的模型解析、上下文工具策略、生命周期事件和审计链路；
 - Skill 执行不再暴露独立 `/skill-executions` API；需要执行 Skill 的请求统一使用 `/ai-executions` 并由 Runtime 解析计划。
 
 验证记录：
 
 - `cd backend && go test -count=1 ./...`：通过；
-- AgentProfile 解析器测试：通过，覆盖有效配置、资源权限、禁用状态和工具契约校验；
-- AIEngine Profile 注入测试：通过，确认 Profile 在 Runner 前解析并产生生命周期事件；
-- Agent-only AIEngine 测试：通过，确认无 Skill Resource 时可完成模型执行并返回结果；
-- `0024_agent_profiles` 迁移加载及校验测试：通过。
+- Persona 解析器测试：通过，覆盖有效配置、资源权限、禁用状态和工具契约校验；
+- Engine Profile 注入测试：通过，确认 Profile 在 Runner 前解析并产生生命周期事件；
+- Agent-only Engine 测试：通过，确认无 Skill 时可完成模型执行并返回结果；
+- 历史 `0024_agent_profiles` 迁移加载及校验测试：通过；当前独立 Persona 迁移由 0060 及后续迁移维护。
 - `0025_agent_profile_versions` 迁移加载、版本发布表结构和 Resolver 读取已发布版本测试：通过。
-- AgentProfile 管理 API（创建/查询/发布/停用版本）已接入 Resource 权限边界；前端 Agent 专家管理页面 E2E：通过。
+- Persona 管理 API（创建/查询/发布/停用版本）已接入 Resource 权限边界；前端 Agent 专家管理页面 E2E：通过。
 
-T03 增强项已完成：新增 AgentProfile 版本表、版本发布/停用 API、运行时优先读取已发布版本，并在前端增加 Agent 专家独立管理页面。Resource 元数据仍通过统一 Resource API 管理。
+T03 增强项已完成：新增 Persona 版本表、版本发布/停用 API、运行时优先读取已发布版本，并在前端增加 Agent 专家独立管理页面。Resource 元数据仍通过统一 Resource API 管理。
 
 ## T04 流式事件与工具调用审计
 
 **状态：** 已完成（2026-08-29）
 
-本任务已完成：Tool Call 审计记录实际 Provider、模型、开始/结束时间、耗时和错误码；审计入参、出参递归脱敏；SSE 在发送 `execution.completed`、`execution.failed` 或 `execution.cancelled` 后主动关闭连接，客户端可使用最后事件序号续读。所有场景均复用 AIEngine AgentRunner，Skill 只负责计划解析。
+本任务已完成：Tool Call 审计记录实际 Provider、模型、开始/结束时间、耗时和错误码；审计入参、出参递归脱敏；SSE 在发送 `execution.completed`、`execution.failed` 或 `execution.cancelled` 后主动关闭连接，客户端可使用最后事件序号续读。所有场景均复用 Engine AgentRunner，Skill 只负责计划解析。
 
 本轮自动验证：`go test -count=1 ./...`、目标包 `go test -race`、`go vet ./...`、迁移集成测试、前端 `npm run check/test/build` 均通过。
 
@@ -197,33 +199,33 @@ T03 增强项已完成：新增 AgentProfile 版本表、版本发布/停用 API
 - 新增迁移 `0027_knowledge_workflow`：注册 KnowledgeBase 与 Workflow Resource Schema，并创建 `ai_workflow_runs` 持久化运行快照表及索引、更新时间触发器。
 - Workflow Resource 写入时即执行 DAG 基础校验；WorkflowRun 创建、查询、列表、状态迁移、暂停恢复和取消 API 复用 Scope/Resource 权限边界。
 - 新增知识库检索 API：`POST /api/v1/knowledge-bases/{id}/search`。
-- 新增 `WorkflowService`：Agent/Skill 节点统一构造 `aiengine.Request`，Tool 节点经过
+- 新增 `WorkflowService`：Agent/Skill 节点统一构造 `engine.Request`，Tool 节点经过
   `PolicyGateway`，Retrieval 节点经过 `KnowledgeRetriever`；`start` 和审批后的 `resume`
   现在会真正执行节点并返回最新运行状态。
 - 支持并行节点的受控分支执行（最多 32 个声明式分支），节点超时、有限重试和取消会传播到
-  分支；工作流事件写入 AIEngine 事件存储，包含开始、节点开始/完成/失败、审批等待、终态。
-- 新增 `GET /api/v1/workflow-runs/{id}/events`，按运行 ID 直接提供与 AIEngine 执行事件一致的
+  分支；工作流事件写入 Engine 事件存储，包含开始、节点开始/完成/失败、审批等待、终态。
+- 新增 `GET /api/v1/workflow-runs/{id}/events`，按运行 ID 直接提供与 Engine 执行事件一致的
   SSE 续读能力，支持 `after` 和 `Last-Event-ID`。
 
 验证记录：
 
 - `cd backend && go test -count=1 ./...`：通过；
-- `go test -count=1 -tags=integration ./aiengine ./migrations`：通过，真实 PostgreSQL 已验证工作流运行记录创建、输入/状态快照、状态迁移、终态完成时间和终态恢复保护；
+- `go test -count=1 -tags=integration ./engine ./migrations`：通过，真实 PostgreSQL 已验证工作流运行记录创建、输入/状态快照、状态迁移、终态完成时间和终态恢复保护；
 - `make migrate`：迁移 0027 成功应用；
 - `go vet ./...`、`git diff --check`：通过。
 
-实现范围已完成。HTTP API 的真实登录态验收和向量检索增强属于后续验证/演进事项，不阻塞本任务完成；当前节点执行器已经接入统一 AIEngine、Tool Gateway 和知识检索契约。
+实现范围已完成。HTTP API 的真实登录态验收和向量检索增强属于后续验证/演进事项，不阻塞本任务完成；当前节点执行器已经接入统一 Engine、Tool Gateway 和知识检索契约。
 
 ### T05 自动验收记录（2026-08-29）
 
 - `go test -count=1 ./...`：通过。
-- `go test -race ./aiengine ./httpapi ./resource ./migrations`：通过。
+- `go test -race ./engine ./httpapi ./resource ./migrations`：通过。
 - `go vet ./...`：通过。
-- `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -count=1 -tags=integration ./aiengine ./migrations`：通过，真实 PostgreSQL 验证 WorkflowRun 创建、`created_by`、输入/状态快照、状态迁移、终态保护。
+- `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -count=1 -tags=integration ./engine ./migrations`：通过，真实 PostgreSQL 验证 WorkflowRun 创建、`created_by`、输入/状态快照、状态迁移、终态保护。
 - `OPSK_TEST_DATABASE_URL=$OPSK_DATABASE_URL go test -count=1 -tags=integration ./e2e`：通过，真实临时 schema 验证资源导入、诊断和巡检端到端链路。
 - 工作流节点执行器单元测试通过，覆盖 Agent、Retrieval、Tool、Parallel 分支和节点输出快照。
 
-补充验证：`go test -count=1 -tags=integration ./...` 中 AIEngine、e2e、资源、诊断、巡检、
+补充验证：`go test -count=1 -tags=integration ./...` 中 Engine、e2e、资源、诊断、巡检、
 Connector、LLM 和权限相关测试通过；迁移包中的项目成员历史迁移断言，以及组织包的回滚
 断言在当前共享数据库上失败，单独串行重跑仍可复现，属于既有迁移测试/数据库状态问题，
 与本次 T05 工作流代码无直接调用关系。
@@ -237,8 +239,8 @@ Connector、LLM 和权限相关测试通过；迁移包中的项目成员历史�
 - `make llm-provider-test` 使用 `.env` 中的 GLM-4-Flash 通过普通和 SSE 两种模式完成真实文本生成，均返回有效输出和 token 用量。
 - 直接向同一 Provider 发送函数声明，模型返回 `finish_reason=tool_calls` 和有效函数参数，确认模型支持 Tool Calling。
 - 通过 API 登录管理员 `admin`，登记真实 MCP 资源 `http://127.0.0.1:3100/mcp`，发现并调用 `docker:list_containers` 成功，返回当前 Docker 容器清单。
-- 真实 AIEngine 请求使用 `ai_provider_resource_id`、`model_name`、AgentProfile 和 MCP 上下文执行；事件顺序包含 `execution.started`、`agent_profile.resolved`、`context.loaded`、`tool.requested`、`tool.started`、`tool.completed` 及终态事件，工具完成事件包含实际 `duration_ms`。
+- 真实 Engine 请求使用 `provider_id`、`model_name`、Persona 和 MCP 上下文执行；事件顺序包含 `execution.started`、`persona.resolved`、`context.loaded`、`tool.requested`、`tool.started`、`tool.completed` 及终态事件，工具完成事件包含实际 `duration_ms`。
 - `GET /api/v1/ai-executions/{id}/tool-calls` 返回审计记录，包含 Provider ID、`GLM-4-Flash`、MCP Resource ID、工具名、`started_at`、`completed_at`、`duration_ms`、脱敏后的参数和出参；未出现 API Key 或其他凭证。
 - `GET /api/v1/ai-executions/{id}/events?after=3` 只返回序号 4 之后的事件并在终态后关闭；`Last-Event-ID: 5` 只返回序号 6、7，确认断线续读不重复发送历史事件。
-- 一次真实执行的模型输出未满足 AgentProfile JSON Schema，Runtime 正确记录 `execution.failed` / `output_schema`；工具调用本身仍成功并完整入审计，说明工具失败与最终输出校验失败可区分追踪。
+- 一次真实执行的模型输出未满足 Persona JSON Schema，Runtime 正确记录 `execution.failed` / `output_schema`；工具调用本身仍成功并完整入审计，说明工具失败与最终输出校验失败可区分追踪。
 - 增加回归测试，确保上下文 Tool 的 `BeforeToolCallback` 返回 `nil` 继续执行 ADK 函数工具；此前返回参数会短路真实 MCP 调用。

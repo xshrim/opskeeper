@@ -21,7 +21,7 @@
   let projectTeamId = '';
   let projectName = '';
   let projectCode = '';
-  let projectIcon = 'FolderKanban';
+  let projectIcon = 'lucide:FolderKanban';
   let creatingProject = false;
   let workspace: ProjectWorkspace | null = null;
   let loadingWorkspace = false;
@@ -30,12 +30,12 @@
   let applicationName = '';
   let applicationCode = '';
   let applicationDescription = '';
-  let applicationIcon = 'AppWindow';
+  let applicationIcon = 'lucide:AppWindow';
   let creatingApplication = false;
   let editingAppId = '';
   let editName = '';
   let editDescription = '';
-  let editIcon = 'AppWindow';
+  let editIcon = 'lucide:AppWindow';
   let relationAppId = '';
   let relationMode: 'instance' | 'dependency' = 'instance';
   let relationName = '';
@@ -62,13 +62,13 @@
   async function createProject() {
     if (!projectTeamId) return;
     creatingProject = true; onError('');
-    try { const created = await api.createProject(projectTeamId, { name: projectName, code: projectCode, icon: projectIcon, labels: {} }); onProjectCreated(created); onSelectProject(created); projectName = ''; projectCode = ''; projectIcon = 'FolderKanban'; onNotice(`项目“${created.name}”已创建`); }
+    try { const created = await api.createProject(projectTeamId, { name: projectName, code: projectCode, icon: projectIcon, labels: {} }); onProjectCreated(created); onSelectProject(created); projectName = ''; projectCode = ''; projectIcon = 'lucide:FolderKanban'; onNotice(`项目“${created.name}”已创建`); }
     catch (error) { onError(describeError(error, '创建项目失败')); } finally { creatingProject = false; }
   }
   async function createApplication() {
     if (!selectedProject) return;
     creatingApplication = true; onError('');
-    try { await api.createApplication(selectedProject.id, { name: applicationName, code: applicationCode, description: applicationDescription, icon: applicationIcon, labels: {} }); showApplicationForm = false; applicationName = ''; applicationCode = ''; applicationDescription = ''; applicationIcon = 'AppWindow'; await loadWorkspace(selectedProject.id); onNotice('应用已添加'); }
+    try { await api.createApplication(selectedProject.id, { name: applicationName, code: applicationCode, description: applicationDescription, icon: applicationIcon, labels: {} }); showApplicationForm = false; applicationName = ''; applicationCode = ''; applicationDescription = ''; applicationIcon = 'lucide:AppWindow'; await loadWorkspace(selectedProject.id); onNotice('应用已添加'); }
     catch (error) { onError(describeError(error, '添加应用失败')); } finally { creatingApplication = false; }
   }
   function toggle(app: Application) { const next = new Set(expanded); next.has(app.id) ? next.delete(app.id) : next.add(app.id); expanded = next; }

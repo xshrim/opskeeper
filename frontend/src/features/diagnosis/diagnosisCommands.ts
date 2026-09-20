@@ -23,7 +23,7 @@ type DiagnosisSessionActions = {
     application_id?: string;
     question: string;
     target_resource_ids: string[];
-    ai_provider_resource_id?: string;
+     provider_id?: string;
     model_name?: string;
   }) => Promise<DiagnosisSession>;
   refresh: (sessionID?: string) => Promise<void>;
@@ -98,7 +98,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
             application_id: state.applicationID || undefined,
             question: content,
             target_resource_ids: state.targetIDs,
-            ai_provider_resource_id: state.providerID || undefined,
+             provider_id: state.providerID || undefined,
             model_name: state.modelName || undefined
           })
       );

@@ -57,7 +57,7 @@ func (h authorizationHandler) requirePermission(permission authorization.Permiss
 func resourceScopedPermission(permission authorization.Permission) bool {
 	switch permission {
 	case authorization.ResourceRead, authorization.ResourceUpdate, authorization.ResourceDelete,
-		authorization.ResourceUse, authorization.RelationManage, authorization.DiscoveryRun,
+		authorization.ResourceUse, authorization.RelationManage,
 		authorization.DiagnosisStart, authorization.DiagnosisRead,
 		authorization.InspectionManage, authorization.InspectionExecute:
 		return true

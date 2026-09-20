@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/engine"
 )
 
 type knowledgeHandler struct{ resources resourceService }
@@ -33,7 +33,7 @@ func registerKnowledgeRoutes(router chi.Router, resources resourceService, requi
 func (h knowledgeHandler) search(w http.ResponseWriter, r *http.Request) {
 	item, err := h.resources.Get(r.Context(), chi.URLParam(r, "knowledgeBaseID"))
 	if err != nil {
-		writeAIEngineError(w, r, err)
+		writeEngineError(w, r, err)
 		return
 	}
 	if item.Kind != "KnowledgeBase" || !resourceAllowed(r.Context(), item) {
@@ -44,13 +44,13 @@ func (h knowledgeHandler) search(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	var base aiengine.KnowledgeBase
+	var base engine.KnowledgeBase
 	raw, marshalErr := json.Marshal(item.Config)
 	if marshalErr != nil || json.Unmarshal(raw, &base) != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "KnowledgeBase config is invalid")
 		return
 	}
-	result, err := aiengine.SearchDocuments(aiengine.KnowledgeQuery{ScopeID: item.ScopeID, KnowledgeBaseID: item.ID, Query: strings.TrimSpace(body.Query), TopK: body.TopK}, base)
+	result, err := engine.SearchDocuments(engine.KnowledgeQuery{ScopeID: item.ScopeID, KnowledgeBaseID: item.ID, Query: strings.TrimSpace(body.Query), TopK: body.TopK}, base)
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 		return

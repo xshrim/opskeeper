@@ -14,19 +14,15 @@ import (
 	"google.golang.org/adk/v2/model/openaimodel"
 	"google.golang.org/genai"
 	"opskeeper/backend/authorization"
-	"opskeeper/backend/resource"
 )
 
-type ResourceReader interface {
-	Get(context.Context, string) (resource.Resource, error)
-}
-type ResourceLister interface {
-	List(context.Context, resource.Pagination, string, map[string]string) (resource.Page[resource.Resource], error)
-}
 type Service struct {
 	store     Store
-	resources ResourceReader
+	providers ProviderReader
 }
+
+var ProviderTags = []Purpose{PurposeGeneral, PurposeDiagnosis, PurposeInspection, PurposeWorkflow}
+var ModelTags = []string{"text", "stream", "tool_calling", "structured_output", "reasoning", "embedding", "audio", "vision", "image_generation"}
 
 type AvailableModel struct {
 	Name                string   `json:"name"`
@@ -34,50 +30,142 @@ type AvailableModel struct {
 	Capabilities        []string `json:"capabilities"`
 }
 type AvailableProvider struct {
-	ResourceID string           `json:"provider_resource_id"`
-	Name       string           `json:"name"`
-	Models     []AvailableModel `json:"models"`
-	Default    bool             `json:"default"`
+	ID      string           `json:"provider_id"`
+	Name    string           `json:"name"`
+	Models  []AvailableModel `json:"models"`
+	Default bool             `json:"default"`
 }
 
 func (s *Service) Available(ctx context.Context, scopeID string, purpose Purpose) ([]AvailableProvider, error) {
-	lister, ok := s.resources.(ResourceLister)
-	if !ok {
-		return nil, fmt.Errorf("resource listing is unavailable")
-	}
-	page, err := lister.List(ctx, resource.Pagination{Page: 1, PageSize: 100}, AIProviderKind, nil)
-	if err != nil {
-		return nil, err
-	}
-	binding, _ := s.store.ResolveBinding(ctx, scopeID, purpose)
-	items := make([]AvailableProvider, 0, len(page.Items))
-	for _, item := range page.Items {
-		if item.Status != resource.StatusActive || !allowsProviderResource(ctx, item) {
-			continue
-		}
-		provider, err := s.readAIProvider(ctx, item.ID, true)
+	if s.providers != nil {
+		providers, err := s.providers.ListProviders(ctx, scopeID)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		models := make([]AvailableModel, 0)
-		for _, model := range provider.Config.Models {
-			if model.Enabled && len(missingCapabilities(model, requiredCapabilities(purpose))) == 0 {
-				models = append(models, AvailableModel{Name: model.Name, ContextWindowTokens: model.ContextWindowTokens, Capabilities: model.Capabilities})
+		binding, _ := s.store.ResolveBinding(ctx, scopeID, purpose)
+		items := make([]AvailableProvider, 0, len(providers))
+		for _, provider := range providers {
+			if !allowsScope(ctx, provider.ScopeID) || !provider.Config.Enabled {
+				continue
+			}
+			models := make([]AvailableModel, 0)
+			for _, model := range provider.Config.Models {
+				if model.Enabled && len(missingCapabilities(model, requiredCapabilities(purpose))) == 0 {
+					models = append(models, AvailableModel{Name: model.Name, ContextWindowTokens: model.ContextWindowTokens, Capabilities: model.Capabilities})
+				}
+			}
+			if len(models) > 0 {
+				items = append(items, AvailableProvider{ID: provider.ID, Name: provider.Name, Models: models, Default: binding.ProviderID == provider.ID})
 			}
 		}
-		if len(models) > 0 {
-			items = append(items, AvailableProvider{ResourceID: item.ID, Name: item.Name, Models: models, Default: binding.ProviderID == item.ID})
+		return items, nil
+	}
+	return nil, fmt.Errorf("provider catalog is unavailable")
+}
+
+func NewService(store Store, providers ProviderReader) *Service {
+	return &Service{store: store, providers: providers}
+}
+
+func (s *Service) ListProviders(ctx context.Context, scopeID string) ([]Provider, error) {
+	if s.providers == nil {
+		return nil, fmt.Errorf("provider catalog is unavailable")
+	}
+	if !allowsScope(ctx, strings.TrimSpace(scopeID)) {
+		return nil, authorization.ErrForbidden
+	}
+	return s.providers.ListProviders(ctx, strings.TrimSpace(scopeID))
+}
+
+func (s *Service) CreateProvider(ctx context.Context, input ProviderInput) (Provider, error) {
+	writer, ok := s.providers.(ProviderCatalogWriter)
+	if !ok {
+		return Provider{}, fmt.Errorf("provider catalog is read-only")
+	}
+	input.ScopeID, input.Name, input.Status = strings.TrimSpace(input.ScopeID), strings.TrimSpace(input.Name), strings.TrimSpace(input.Status)
+	if input.Status == "" {
+		input.Status = "active"
+	}
+	if input.Name == "" || !allowsExactScope(ctx, input.ScopeID) {
+		return Provider{}, authorization.ErrForbidden
+	}
+	normalizeProviderInput(&input.Config)
+	if err := validateProviderConfig(input.Config); err != nil {
+		return Provider{}, err
+	}
+	return writer.CreateProvider(ctx, input)
+}
+
+func (s *Service) UpdateProvider(ctx context.Context, id string, patch ProviderPatch) (Provider, error) {
+	writer, ok := s.providers.(ProviderCatalogWriter)
+	if !ok {
+		return Provider{}, fmt.Errorf("provider catalog is read-only")
+	}
+	current, err := s.readProvider(ctx, strings.TrimSpace(id), false)
+	if err != nil {
+		return Provider{}, err
+	}
+	if !allowsExactScope(ctx, current.ScopeID) {
+		return Provider{}, authorization.ErrForbidden
+	}
+	if patch.Name != nil {
+		value := strings.TrimSpace(*patch.Name)
+		if value == "" {
+			return Provider{}, invalid("name is required")
+		}
+		patch.Name = &value
+	}
+	if patch.Config != nil {
+		normalizeProviderInput(patch.Config)
+		if err := validateProviderConfig(*patch.Config); err != nil {
+			return Provider{}, err
 		}
 	}
-	return items, nil
+	return writer.UpdateProvider(ctx, id, patch)
 }
 
-func NewService(store Store, resources ResourceReader) *Service {
-	return &Service{store: store, resources: resources}
+func (s *Service) DeleteProvider(ctx context.Context, id string) error {
+	writer, ok := s.providers.(ProviderCatalogWriter)
+	if !ok {
+		return fmt.Errorf("provider catalog is read-only")
+	}
+	current, err := s.readProvider(ctx, strings.TrimSpace(id), false)
+	if err != nil {
+		return err
+	}
+	if !allowsExactScope(ctx, current.ScopeID) {
+		return authorization.ErrForbidden
+	}
+	return writer.DeleteProvider(ctx, current.ID)
 }
 
-func (s *Service) AIProvider(ctx context.Context, id string) (AIProvider, error) {
-	return s.readAIProvider(ctx, strings.TrimSpace(id), false)
+func normalizeProviderInput(config *ProviderConfig) {
+	if config.Icon == "" {
+		config.Icon = "lucide:Bot"
+	}
+	for index := range config.Models {
+		model := &config.Models[index]
+		model.Tags = normalizeModelTags(model.Tags)
+		model.Capabilities = normalizeModelTags(model.Capabilities)
+		if len(model.Tags) == 0 {
+			model.Tags = append([]string(nil), model.Capabilities...)
+		}
+		if len(model.Capabilities) == 0 {
+			model.Capabilities = append([]string(nil), model.Tags...)
+		}
+	}
+}
+
+func (s *Service) Provider(ctx context.Context, id string) (Provider, error) {
+	return s.readProvider(ctx, strings.TrimSpace(id), false)
+}
+
+func (s *Service) RecordConnectionTest(ctx context.Context, providerID, status, message string, latencyMS int64, checkedAt time.Time) error {
+	recorder, ok := s.providers.(ProviderConnectionTestWriter)
+	if !ok {
+		return fmt.Errorf("provider connection test writer is unavailable")
+	}
+	return recorder.RecordConnectionTest(ctx, providerID, status, message, latencyMS, checkedAt)
 }
 
 func (s *Service) ListBindings(ctx context.Context, scopeID string) ([]ScopeProviderBinding, error) {
@@ -90,18 +178,25 @@ func (s *Service) ListBindings(ctx context.Context, scopeID string) ([]ScopeProv
 func (s *Service) SetBinding(ctx context.Context, actorID, scopeID string, purpose Purpose, providerID string) (ScopeProviderBinding, error) {
 	scopeID, providerID = strings.TrimSpace(scopeID), strings.TrimSpace(providerID)
 	if scopeID == "" || providerID == "" || !validPurpose(purpose) {
-		return ScopeProviderBinding{}, invalid("scope_id, purpose and provider_resource_id are required")
+		return ScopeProviderBinding{}, invalid("scope_id, purpose and provider_id are required")
 	}
 	if !allowsExactScope(ctx, scopeID) {
 		return ScopeProviderBinding{}, authorization.ErrForbidden
 	}
-	provider, err := s.readAIProvider(ctx, providerID, true)
+	provider, err := s.providers.GetProvider(ctx, providerID)
 	if err != nil {
+		return ScopeProviderBinding{}, err
+	}
+	if provider.Status != "active" || !provider.Config.Enabled {
+		return ScopeProviderBinding{}, invalid("Provider is disabled")
+	}
+	normalizeProviderConfig(&provider.Config)
+	if err := validateProviderConfig(provider.Config); err != nil {
 		return ScopeProviderBinding{}, err
 	}
 	model, ok := selectedDefaultModel(provider.Config)
 	if !ok {
-		return ScopeProviderBinding{}, invalid("AIProvider default_model must reference an enabled model")
+		return ScopeProviderBinding{}, invalid("Provider default_model must reference an enabled model")
 	}
 	if missing := missingCapabilities(model, requiredCapabilities(purpose)); len(missing) > 0 {
 		return ScopeProviderBinding{}, invalid("default model lacks capabilities: " + strings.Join(missing, ", "))
@@ -135,11 +230,11 @@ func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName st
 		}
 		binding, err := s.store.ResolveBinding(ctx, scopeID, purpose)
 		if err != nil {
-			return ResolvedProvider{}, invalid("no AIProvider is configured for role " + string(purpose))
+			return ResolvedProvider{}, invalid("no Provider is configured for role " + string(purpose))
 		}
 		providerID, definedAt, reason = binding.ProviderID, binding.ScopeID, "scope_purpose_"+string(binding.Tag)
 	}
-	provider, err := s.readAIProvider(ctx, providerID, true)
+	provider, err := s.readProvider(ctx, providerID, true)
 	if err != nil {
 		return ResolvedProvider{}, err
 	}
@@ -156,12 +251,12 @@ func (s *Service) Resolve(ctx context.Context, scopeID, providerID, modelName st
 	}
 	selected, ok := findEnabledModel(provider.Config.Models, modelName)
 	if !ok {
-		return ResolvedProvider{}, invalid("model_name is not an enabled model of the AIProvider")
+		return ResolvedProvider{}, invalid("model_name is not an enabled model of the Provider")
 	}
 	if missing := missingCapabilities(selected, requiredCapabilities(purpose)); len(missing) > 0 {
 		return ResolvedProvider{}, invalid("selected model lacks capabilities: " + strings.Join(missing, ", "))
 	}
-	result := ResolvedProvider{ProviderResourceID: provider.ResourceID, ProviderName: provider.Name, Provider: provider, Model: selected, DefinedAtScopeID: definedAt, SelectionReason: reason}
+	result := ResolvedProvider{ProviderID: provider.ID, ProviderName: provider.Name, Provider: provider, Model: selected, DefinedAtScopeID: definedAt, SelectionReason: reason}
 	return s.attachCredential(ctx, result)
 }
 
@@ -189,9 +284,9 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 		return ConnectionResult{}, err
 	}
 	if strings.TrimSpace(text) == "" {
-		return ConnectionResult{}, fmt.Errorf("AIProvider connection returned no text")
+		return ConnectionResult{}, fmt.Errorf("Provider connection returned no text")
 	}
-	return ConnectionResult{ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
+	return ConnectionResult{ProviderID: resolved.Provider.ID, ModelName: resolved.Model.Name, Status: "succeeded", LatencyMS: time.Since(started).Milliseconds(), Message: "模型连接测试通过"}, nil
 }
 
 func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection, stream bool) (ConnectionResult, error) {
@@ -203,8 +298,8 @@ func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection
 	if draft.ScopeID == "" || !allowsScope(ctx, draft.ScopeID) {
 		return ConnectionResult{}, authorization.ErrForbidden
 	}
-	config := AIProviderConfig{ProviderType: draft.ProviderType, BaseURL: draft.BaseURL, Enabled: true, Models: []ProviderModel{{Name: draft.ModelName, ContextWindowTokens: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities, Enabled: true}}, DefaultModel: draft.ModelName, TimeoutSeconds: int(timeout / time.Second)}
-	if err := validateAIProviderConfig(config); err != nil {
+	config := ProviderConfig{ProviderType: draft.ProviderType, BaseURL: draft.BaseURL, Enabled: true, Models: []ProviderModel{{Name: draft.ModelName, ContextWindowTokens: draft.ContextWindow, Temperature: draft.Temperature, Capabilities: draft.Capabilities, Enabled: true}}, DefaultModel: draft.ModelName, TimeoutSeconds: int(timeout / time.Second)}
+	if err := validateProviderConfig(config); err != nil {
 		return ConnectionResult{}, err
 	}
 	var client model.LLM
@@ -224,24 +319,18 @@ func (s *Service) TestDraftConnection(ctx context.Context, draft DraftConnection
 }
 
 func (s *Service) attachCredential(ctx context.Context, result ResolvedProvider) (ResolvedProvider, error) {
-	reader, ok := s.resources.(interface {
-		RevealSecret(context.Context, string) ([]byte, error)
-	})
-	if !ok {
-		return result, nil
-	}
-	secret, err := reader.RevealSecret(ctx, result.Provider.ResourceID)
+	secret, err := s.providers.RevealProviderSecret(ctx, result.Provider.ID)
 	if err != nil {
-		if errors.Is(err, resource.ErrNotFound) {
+		if errors.Is(err, ErrNotFound) {
 			return result, nil
 		}
-		return ResolvedProvider{}, fmt.Errorf("read AIProvider resource secret: %w", err)
+		return ResolvedProvider{}, fmt.Errorf("read provider secret: %w", err)
 	}
-	result.APIKey = apiKeyFromResourceSecret(secret)
+	result.APIKey = apiKeyFromSecret(secret)
 	return result, nil
 }
 
-func apiKeyFromResourceSecret(secret []byte) string {
+func apiKeyFromSecret(secret []byte) string {
 	var fields map[string]string
 	if json.Unmarshal(secret, &fields) == nil {
 		return strings.TrimSpace(fields["token"])
@@ -267,46 +356,27 @@ func runProbe(ctx context.Context, client model.LLM, modelName string, stream bo
 	return out.String(), nil
 }
 
-func (s *Service) readAIProvider(ctx context.Context, id string, requireActive bool) (AIProvider, error) {
-	if id == "" || s.resources == nil {
-		return AIProvider{}, invalid("ai_provider_resource_id is required")
+func (s *Service) readProvider(ctx context.Context, id string, requireActive bool) (Provider, error) {
+	if s.providers == nil || id == "" {
+		return Provider{}, invalid("provider_id is required")
 	}
-	item, err := s.resources.Get(ctx, id)
+	item, err := s.providers.GetProvider(ctx, id)
 	if err != nil {
-		return AIProvider{}, err
+		return Provider{}, err
 	}
-	if item.Kind != AIProviderKind {
-		return AIProvider{}, invalid("resource is not an AIProvider")
+	if !allowsScope(ctx, item.ScopeID) {
+		return Provider{}, authorization.ErrForbidden
 	}
-	if !allowsProviderResource(ctx, item) {
-		return AIProvider{}, authorization.ErrForbidden
+	if err := validateProviderConfig(item.Config); err != nil {
+		return Provider{}, err
 	}
-	if requireActive && (item.Status != resource.StatusActive) {
-		return AIProvider{}, invalid("AIProvider is not active")
+	if requireActive && (item.Status != "active" || !item.Config.Enabled) {
+		return Provider{}, invalid("Provider is disabled")
 	}
-	encoded, err := json.Marshal(item.Config)
-	if err != nil {
-		return AIProvider{}, fmt.Errorf("encode AIProvider config: %w", err)
-	}
-	var config AIProviderConfig
-	if err := json.Unmarshal(encoded, &config); err != nil {
-		return AIProvider{}, invalid("AIProvider config is invalid")
-	}
-	for index := range config.Models {
-		if config.Models[index].MaxOutputTokens <= 0 {
-			config.Models[index].MaxOutputTokens = 128000
-		}
-	}
-	if err := validateAIProviderConfig(config); err != nil {
-		return AIProvider{}, err
-	}
-	if requireActive && !config.Enabled {
-		return AIProvider{}, invalid("AIProvider is disabled")
-	}
-	return AIProvider{ResourceID: item.ID, ScopeID: item.ScopeID, Name: item.Name, Config: config}, nil
+	return item, nil
 }
 
-func validateAIProviderConfig(config AIProviderConfig) error {
+func validateProviderConfig(config ProviderConfig) error {
 	if !supportedProviderType(config.ProviderType) {
 		return invalid("provider_type is not supported")
 	}
@@ -321,6 +391,11 @@ func validateAIProviderConfig(config AIProviderConfig) error {
 	for _, item := range config.Models {
 		if strings.TrimSpace(item.Name) == "" || item.ContextWindowTokens <= 0 || item.Temperature < 0 || item.Temperature > 2 {
 			return invalid("every provider model requires a name and positive context_window_tokens")
+		}
+		for _, tag := range item.Tags {
+			if !slices.Contains(ModelTags, tag) {
+				return invalid("unsupported provider model tag: " + tag)
+			}
 		}
 		if item.MaxOutputTokens <= 0 {
 			item.MaxOutputTokens = 128000
@@ -370,7 +445,7 @@ func findEnabledModel(models []ProviderModel, name string) (ProviderModel, bool)
 	}
 	return ProviderModel{}, false
 }
-func selectedDefaultModel(config AIProviderConfig) (ProviderModel, bool) {
+func selectedDefaultModel(config ProviderConfig) (ProviderModel, bool) {
 	return findEnabledModel(config.Models, config.DefaultModel)
 }
 func validPurpose(purpose Purpose) bool {
@@ -405,9 +480,3 @@ func allowsScope(ctx context.Context, scopeID string) bool {
 	return !ok || filter.Allows(scopeID)
 }
 func allowsExactScope(ctx context.Context, scopeID string) bool { return allowsScope(ctx, scopeID) }
-func allowsProviderResource(ctx context.Context, item resource.Resource) bool {
-	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
-		return filter.Allows(item.ScopeID, item.ID)
-	}
-	return allowsScope(ctx, item.ScopeID)
-}

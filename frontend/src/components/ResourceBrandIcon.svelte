@@ -1,16 +1,15 @@
 <script lang="ts">
   import {
     Activity,
-    BrainCircuit,
     Database,
     FolderGit2,
     Globe2,
     Network,
     Package,
     Server,
-    Sparkles,
     Waypoints
   } from 'lucide-svelte';
+  import IconValue from './IconValue.svelte';
   import { brandNameFor } from '../lib/resources';
   import BrandIcon from '../lib/BrandIcon.svelte';
 
@@ -32,10 +31,7 @@ $: kindIcon = {
   Oracle: Database,
   OceanBase: Database,
   TongRDS: Database,
-  LLM: BrainCircuit,
-  AIProvider: BrainCircuit,
   MCPServer: Waypoints,
-  Skill: Sparkles,
   Monitor: Activity,
   Loki: Activity,
   Tempo: Activity,
@@ -47,10 +43,10 @@ $: kindIcon = {
   <svelte:component this={kindIcon} size={size} strokeWidth={1.8} aria-hidden="true" />
 {:else if resource.kind === 'Host'}
   <Server size={size} strokeWidth={1.8} aria-hidden="true" />
-{:else if brand === 'OpenAI'}
-  <span class="resource-brand-monogram" aria-label="OpenAI">AI</span>
 {:else if brand}
   <BrandIcon name={brand} {size} />
+{:else if fallback.startsWith('lucide:') || fallback.startsWith('iconify:') || fallback.startsWith('data:image/')}
+  <IconValue value={fallback} {size} />
 {:else}
   <span class="brand-icon-fallback" aria-hidden="true">{fallback}</span>
 {/if}

@@ -2,7 +2,7 @@ package llm
 
 import "time"
 
-const AIProviderKind = "AIProvider"
+const ProviderKind = "Provider"
 
 // Purpose identifies the execution scenario whose routed provider is used.
 type Purpose string
@@ -22,12 +22,15 @@ type ProviderModel struct {
 	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
 	Temperature         float64  `json:"temperature,omitempty"`
 	TemperatureMutable  bool     `json:"temperature_mutable,omitempty"`
-	Capabilities        []string `json:"capabilities"`
-	Enabled             bool     `json:"enabled"`
-	Priority            int      `json:"priority,omitempty"`
+	Tags                []string `json:"tags,omitempty"`
+	// Capabilities is retained for old configurations and execution callers.
+	// New catalog payloads use Tags, which is the user-facing fixed capability list.
+	Capabilities []string `json:"capabilities,omitempty"`
+	Enabled      bool     `json:"enabled"`
+	Priority     int      `json:"priority,omitempty"`
 }
 
-type AIProviderConfig struct {
+type ProviderConfig struct {
 	ProviderType       string          `json:"provider_type"`
 	Protocol           string          `json:"protocol,omitempty"`
 	BaseURL            string          `json:"base_url"`
@@ -36,40 +39,66 @@ type AIProviderConfig struct {
 	RateLimitPerMinute int             `json:"rate_limit_per_minute,omitempty"`
 	Enabled            bool            `json:"enabled"`
 	DefaultModel       string          `json:"default_model,omitempty"`
+	Icon               string          `json:"icon,omitempty"`
 	Models             []ProviderModel `json:"models"`
 }
 
-type AIProvider struct {
-	ResourceID string           `json:"resource_id"`
-	ScopeID    string           `json:"scope_id"`
-	Name       string           `json:"name"`
-	Config     AIProviderConfig `json:"config"`
+type Provider struct {
+	ID                 string                  `json:"id"`
+	ScopeID            string                  `json:"scope_id"`
+	Name               string                  `json:"name"`
+	Status             string                  `json:"status"`
+	Tags               []Purpose               `json:"tags,omitempty"`
+	Config             ProviderConfig          `json:"config"`
+	LastConnectionTest *ProviderConnectionTest `json:"last_connection_test,omitempty"`
+}
+
+type ProviderConnectionTest struct {
+	Status    string    `json:"status"`
+	Message   string    `json:"message"`
+	LatencyMS int64     `json:"latency_ms"`
+	CheckedAt time.Time `json:"checked_at"`
+}
+
+type ProviderInput struct {
+	ScopeID string
+	Name    string
+	Status  string
+	Config  ProviderConfig
+	APIKey  *string
+}
+
+type ProviderPatch struct {
+	Name   *string
+	Status *string
+	Config *ProviderConfig
+	APIKey *string
 }
 
 type ScopeProviderBinding struct {
 	ScopeID    string    `json:"scope_id"`
-	ProviderID string    `json:"provider_resource_id"`
+	ProviderID string    `json:"provider_id"`
 	Tag        Purpose   `json:"tag"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type ResolvedProvider struct {
-	ProviderResourceID string        `json:"provider_resource_id"`
-	ProviderName       string        `json:"provider_name"`
-	Provider           AIProvider    `json:"provider"`
-	Model              ProviderModel `json:"model"`
-	DefinedAtScopeID   string        `json:"defined_at_scope_id"`
-	SelectionReason    string        `json:"selection_reason,omitempty"`
-	APIKey             string        `json:"-"`
+	ProviderID       string        `json:"provider_id"`
+	ProviderName     string        `json:"provider_name"`
+	Provider         Provider      `json:"provider"`
+	Model            ProviderModel `json:"model"`
+	DefinedAtScopeID string        `json:"defined_at_scope_id"`
+	SelectionReason  string        `json:"selection_reason,omitempty"`
+	APIKey           string        `json:"-"`
 }
 
 type ConnectionResult struct {
-	ProviderResourceID string `json:"provider_resource_id,omitempty"`
-	ModelName          string `json:"model_name"`
-	Status             string `json:"status"`
-	LatencyMS          int64  `json:"latency_ms"`
-	Message            string `json:"message"`
+	ProviderID string `json:"provider_id,omitempty"`
+	ModelName  string `json:"model_name"`
+	Status     string `json:"status"`
+	LatencyMS  int64  `json:"latency_ms"`
+	Message    string `json:"message"`
 }
 
 type DraftConnection struct {

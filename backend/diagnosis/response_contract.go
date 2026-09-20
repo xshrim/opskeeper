@@ -4,7 +4,7 @@ import "strings"
 
 // responseContract is the baseline presentation contract for every diagnosis
 // execution. It is injected by the diagnosis adapter so the format remains
-// active even when the user has not selected a resource-specific Skill.
+// active even when the user has not selected a Skill.
 const responseContract = `你必须遵循以下诊断回答规范。它约束回答的组织方式，不要求暴露模型的隐藏思维链。
 
 执行过程：

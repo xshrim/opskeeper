@@ -33,10 +33,7 @@ export function removeResourceRelation(resourceId: string, relation: Relation) {
 
 export function setResourceEnabled(resource: Resource, enabled: boolean) {
   return api.updateResource(resource.id, {
-    status: enabled ? 'active' : 'disabled',
-    ...(resource.kind === 'AIProvider'
-      ? { config: { ...(resource.config ?? {}), enabled } }
-      : {})
+    status: enabled ? 'active' : 'disabled'
   });
 }
 
@@ -53,10 +50,6 @@ export function schemaSecret(
   );
   if (!schema || Object.keys(secret).length === 0) return null;
   return secretPayload(`${schema.display_name} 敏感连接信息`, JSON.stringify(secret));
-}
-
-export function providerSecret(apiKey: string) {
-  return secretPayload('AI Provider 访问凭据', apiKey);
 }
 
 export function mcpSecret(
@@ -103,39 +96,6 @@ export async function testResourceConnector(
   resource: Resource,
   scopeId: string
 ): Promise<{ check: ConnectionCheck; snapshot?: MCPSnapshot }> {
-  if (resource.kind === 'AIProvider') {
-    const config = resource.config ?? {};
-    const models = Array.isArray(config.models)
-      ? (config.models as Array<Record<string, unknown>>)
-      : [];
-    const configuredDefault = String(config.default_model ?? '').trim();
-    const defaultModel =
-      models.find(
-        (model) => String(model.name ?? '').trim() === configuredDefault
-      ) ?? models.find((model) => Boolean(model.enabled ?? true));
-    const modelName = String(defaultModel?.name ?? '').trim();
-    if (!modelName)
-      throw new Error('该 AI Provider 尚未配置可用的默认 Model。');
-    const result = await api.testAIProvider(resource.id, {
-      scope_id: scopeId || resource.scope_id,
-      model_name: modelName,
-      stream:
-        Array.isArray(defaultModel?.capabilities) &&
-        (defaultModel?.capabilities as unknown[]).includes('stream')
-    });
-    return {
-      check: {
-        id: `ai-provider-${resource.id}`,
-        resource_id: resource.id,
-        status: result.status === 'succeeded' ? 'succeeded' : 'failed',
-        message: result.message,
-        latency_ms: result.latency_ms,
-        capabilities: [],
-        checked_at: new Date().toISOString()
-      }
-    };
-  }
-
   if (resource.kind === 'MCPServer') {
     const snapshot = await api.discoverMCP(resource.id);
     return {
@@ -205,38 +165,8 @@ export function testDraftElasticsearch(body: { url: string; username?: string; p
 export function testDraftRedis(body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) { return api.testDraftRedis(body); }
 export function testDraftNacos(body: { host: string; port: number; scheme?: string; context_path?: string; username?: string; password?: string; access_token?: string; timeout_seconds?: number }) { return api.testDraftNacos(body); }
 
-export function testDraftAIProviderConnection(body: {
-  scope_id: string;
-  provider_type: string;
-  base_url: string;
-  model_name: string;
-  api_key: string;
-  timeout_seconds: number;
-  context_window: number;
-  temperature: number;
-  capabilities: string[];
-  stream: boolean;
-}) {
-  return api.testDraftAIProvider(body);
-}
-
 export function loadMCPSnapshots(resourceId: string) {
   return api.mcpSnapshots(resourceId);
-}
-
-export async function syncAIProviderBindings(
-  scopeId: string,
-  providerId: string,
-  existingTags: string[],
-  nextTags: string[]
-) {
-  await Promise.all([
-    ...existingTags
-      .filter((tag) => !nextTags.includes(tag))
-      .map((tag) => api.removeAIProviderBinding(scopeId, tag)),
-    ...nextTags.map((tag) => api.setAIProviderBinding(scopeId, tag, providerId))
-  ]);
-  return api.aiProviderBindings(scopeId);
 }
 
 export function createResourceRecord(body: Record<string, unknown>) {

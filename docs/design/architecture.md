@@ -10,14 +10,14 @@
 
 ## 1. 建设目标
 
-OpsKeeper 以业务项目为最终运维对象，以团队为基础设施和共享中间件的管理边界，以平台为公共能力和治理边界，为线上服务提供资源管理、自动发现、智能诊断、自动巡检和运维审计能力。
+OpsKeeper 以业务项目为最终运维对象，以团队为基础设施和共享中间件的管理边界，以平台为公共能力和治理边界，为线上服务提供资源管理、智能诊断、自动巡检和运维审计能力。
 
 平台重点管理：
 
 - 部署在 Kubernetes 上的业务应用和工作负载。
 - 可接入部署在任意环境中的 PostgreSQL、Redis、Kafka 等外部中间件资源。
 - Prometheus、Loki、Tempo、Elastic 等外部可观测平台。
-- AIProvider、MCP Server、Skill 等 AI 运维能力。
+- Provider、MCP Server、Skill、Persona 等大模型运维能力。
 - 平台、团队和项目三级用户、角色及授权关系。
 
 首版按单平台部署设计，数据模型预留 `tenant_id`，但不在首版暴露多租户能力。
@@ -33,7 +33,7 @@ Platform
     └── Project B1
 ```
 
-- 平台：全局治理边界，承载公共 Skill、模型、监控平台和平台管理员。
+- 平台：全局治理边界，承载公共 Provider、Engine、Skill、Persona、监控平台和平台管理员。
 - 团队：人员及基础设施共享边界，通常拥有独立 Kubernetes 集群、共享中间件和监控数据源。
 - 项目：业务系统边界，承载业务应用、服务、工作负载及其依赖关系。
 - 一个项目只能直属一个团队。资源归属层级由资源实例的共享范围决定，而不是由资源类型硬编码决定。
@@ -47,19 +47,18 @@ flowchart LR
     UI[Browser] <--> API[Go API Server + Embedded Svelte Web]
     API --> Auth[Scope RBAC]
     API --> Catalog[Resource Catalog]
-    API --> AI[AIEngine Runtime]
+    API --> AI[Engine Runtime]
     API --> PG[(PostgreSQL)]
     API --> Cache[Cache: Memory / PostgreSQL]
     Scheduler[Inspection Scheduler] --> Jobs[PostgreSQL Job Queue]
     Jobs --> Worker[Worker Pool]
-    Worker --> Discovery[Kubernetes Discovery]
-    Worker --> Profiles[AgentProfile Resolver]
-    AI --> Gateway[AIEngine Tool Gateway]
+    Worker --> Profiles[Persona Resolver]
+    AI --> Gateway[Engine Tool Gateway]
     Gateway --> K8S[Kubernetes APIs]
     Gateway --> Middleware[Middleware APIs]
     Gateway --> Observability[Metrics Logs Traces]
     Gateway --> MCP[MCP Servers]
-    AI --> LLM[AIEngine / AIProvider]
+    AI --> LLM[Engine / Provider]
     AI --> Skills[Optional Skill Plan Resolver]
     AI --> Profiles
     Worker --> PG
@@ -100,12 +99,13 @@ flowchart LR
 | Identity | 用户、凭据、登录、会话和用户管理 | 已实现，T03-T05 |
 | Authorization | 三级 Scope RBAC、资源角色、权限继承和数据范围校验 | 已实现，T04-T05；T08 增加具体资源授权 |
 | Resource Catalog | 资源、连接密文、关系、标签、状态和拓扑查询 | 已实现，T06-T08 |
-| Discovery | Kubernetes 发现、项目映射、Application 导入和失联标记 | 已实现，T08；周期调度后续实现 |
-| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件和 AIProvider 在后续目标设计中扩展 |
-| Skill Registry | Skill 定义、不可变版本、Schema、工具白名单和风险级别 | 已实现，T10-T14；Markdown Skill 编辑体验见 OI-006 |
-| AIEngine Runtime | Scope 默认解析、唯一 Agent Loop、受控 Tool Calling、预算、执行事件和高风险审批 | 已实现，T10-T14 |
+| Provider Catalog | Provider、Model、连接凭据、场景默认绑定和连接测试 | 已实现，I003/I005 独立领域拆分 |
+| Persona Registry | Persona、版本和 Scope 可见性 | 已实现，I005 独立领域拆分 |
+| Connector | Kubernetes、Prometheus、Loki 能力适配和连接检查 | 已实现并验收，T09；中间件 Connector 保持资源边界 |
+| Skill Registry | Skill 定义、Scope、不可变版本、Schema、工具白名单和风险级别 | 基础对象和管理页已实现；标准正文、依赖执行和智能巡检暂缓，见 I005 |
+| Engine Runtime | Scope 默认解析、唯一 Agent Loop、受控 Tool Calling、预算、执行事件和高风险审批 | 已实现，T10-T14 |
 | Diagnosis | 对话会话、消息、工具调用、证据和诊断报告 | 已实现，T11-T12 |
-| Inspection | 巡检策略、调度、确定性执行、评分和可选 AIEngine 解释 | 已实现，T13 |
+| Inspection | 巡检策略、调度、确定性执行、评分和可选 Engine 解释 | 基础巡检能力保留；Skill 驱动智能巡检暂缓，见 I005 |
 | Notification | HTTPS Webhook、签名、限流、重试和投递记录 | 已实现，T13；邮件等渠道后续扩展 |
 | Audit | 管理操作、模型调用、工具调用、审批和保留记录 | 已实现，T05-T15；敏感字段脱敏，普通角色不能修改或删除，清理要求先导出并记录批次 |
 
@@ -117,7 +117,7 @@ flowchart LR
 
 ## 6. 目标前端信息架构
 
-当前前端已实现登录、三级 Scope 导航、组织、资源、成员与角色、资源关系、拓扑、Kubernetes 集群导入、AI 诊断、Skill、巡检、审批和审计页面。
+当前前端已实现登录、三级 Scope 导航、组织、资源、模型（Provider/Engine）、技能、专家、成员与角色、资源关系、AI 诊断、巡检和审计页面。集群导入、受控操作及其独立入口已移除。
 
 | 页面 | 主要能力 |
 |---|---|
@@ -125,7 +125,9 @@ flowchart LR
 | 团队工作台 | 团队资源、集群、中间件、项目及共享关系 |
 | 项目工作台 | 应用拓扑、依赖、诊断入口、巡检结果和负责人 |
 | 资源中心 | 按平台/团队/项目范围浏览、创建、测试和同步资源 |
-| 集群导入 | Namespace 扫描、项目映射、资源预览和确认导入 |
+| 模型中心 | Engine 目录、Provider 渠道、Model 能力、场景默认绑定和连接测试 |
+| 技能中心 | Skill 元数据、正文、版本和工具契约（智能巡检扩展暂缓） |
+| 专家中心 | Persona 配置、版本和模型能力契约 |
 | AI 诊断 | 流式对话、资源选择、执行时间线、证据和审批 |
 | Skill 中心 | Skill 版本、适用目标、工具权限和测试记录 |
 | 巡检中心 | 策略、执行历史、异常、健康评分和通知 |
@@ -147,13 +149,15 @@ flowchart LR
 | `/opskeeper/api/v1/auth/login`、`/opskeeper/api/v1/auth/refresh`、`/opskeeper/api/v1/auth/logout`、`/opskeeper/api/v1/auth/me` | 已实现，T03 |
 | `/opskeeper/api/v1/users`、`/opskeeper/api/v1/groups`、`/opskeeper/api/v1/roles`、`/opskeeper/api/v1/role-bindings`、`/opskeeper/api/v1/audit-logs` | 已实现基础管理能力，T05 |
 | `/opskeeper/api/v1/resources`、`/opskeeper/api/v1/resources/{resourceId}/relations`、`/opskeeper/api/v1/resources/{resourceId}/topology` | 已实现，T06 |
-| `/opskeeper/api/v1/resources/{id}/discoveries`、`/opskeeper/api/v1/discoveries/{id}/imports` | 已实现，T08 |
 | `/opskeeper/api/v1/resource-roles`、`/opskeeper/api/v1/resource-role-bindings` | 已实现，T08 |
 | `/opskeeper/api/v1/resources/{id}/connection-tests`、`/opskeeper/api/v1/resources/{id}/connection-tests/latest` | 已实现并验收，T09 |
 | `/opskeeper/api/v1/diagnosis-sessions`、`/opskeeper/api/v1/diagnosis-sessions/{id}/events` | 已实现，T11 |
 | `/opskeeper/api/v1/inspection-policies`、`/opskeeper/api/v1/inspection-runs` | 已实现，T13 |
-| `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults` | 已实现，Skill 仅作为 AIEngine 执行计划来源 |
-| `/opskeeper/api/v1/ai-providers/{id}/test` | AIProvider 与指定模型的连接测试 |
+| `/opskeeper/api/v1/engines`、`/opskeeper/api/v1/engine-bindings` | 已实现，Engine 独立管理和场景绑定 |
+| `/opskeeper/api/v1/providers`、`/opskeeper/api/v1/providers/{id}/test` | 已实现，Provider 渠道和模型配置、异步连接测试 |
+| `/opskeeper/api/v1/skills/{id}/versions`、`/opskeeper/api/v1/skill-defaults` | 基础接口保留；标准 Skill 执行和智能巡检扩展暂缓 |
+| `/opskeeper/api/v1/personas`、`/opskeeper/api/v1/personas/{id}/versions` | 已实现，Persona 独立管理和版本接口 |
+| `/opskeeper/api/v1/providers/{id}/test` | Provider 与指定模型的连接测试 |
 
 资源 ID 不代表访问权限。每个读取和写入请求都必须根据资源的实际作用域重新执行授权判断，禁止仅依赖前端或 URL 中的团队、项目参数。
 

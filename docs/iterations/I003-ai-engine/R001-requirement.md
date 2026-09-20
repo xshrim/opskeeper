@@ -1,30 +1,32 @@
-# I003-R001 AIEngine（AI引擎）执行框架设计与实现
+# I003-R001 Engine（引擎）执行框架设计与实现
 
-**迭代：** I003-ai-engine  
+> 历史说明：本文件记录 I003 的历史需求。当前代码和领域模型以 `Engine`、`Persona`、`Provider` 和 `Skill` 的独立实现为准；历史迁移名、旧包名和验收证据只用于追溯，不代表当前 API 或数据模型。
+
+**迭代：** I003-ai-engine
 **需求状态：** 已完成
-**设计文档：** [AIEngine（AI引擎）设计](../../design/ai-engine.md)  
+**设计文档：** [Engine（AI引擎）设计](../../design/ai-engine.md)
 **验收报告：** [R001-requirement-acceptance.md](R001-requirement-acceptance.md)
 
 ## 1. 背景与目标
 
-当前 AI 对话、故障诊断、Skill 执行和自动巡检存在不同的执行入口。需要建立统一的 AIEngine（AI引擎），让所有需要模型能力的业务都通过同一套执行框架完成 Agent 执行、Tool Calling、推理循环、Prompt 编排、流式响应、上下文加载、知识检索和工作流编排。
+当前 AI 对话、故障诊断、Skill 执行和自动巡检存在不同的执行入口。需要建立统一的 Engine（AI引擎），让所有需要模型能力的业务都通过同一套执行框架完成 Agent 执行、Tool Calling、推理循环、Prompt 编排、流式响应、上下文加载、知识检索和工作流编排。
 
-业务调用方只选择 AIProvider 和模型，不直接访问 Provider 地址或凭据。AIEngine 必须支持前端交互式诊断，也支持后台自动巡检和可恢复的长任务。
+业务调用方只选择 Provider 和模型，不直接访问 Provider 地址或凭据。Engine 必须支持前端交互式诊断，也支持后台自动巡检和可恢复的长任务。
 
-详细架构、接口和生命周期见 [AIEngine 设计文档](../../design/ai-engine.md)，本文只维护本迭代的需求和验收边界。
+详细架构、接口和生命周期见 [Engine 设计文档](../../design/ai-engine.md)，本文只维护本迭代的需求和验收边界。
 
 ## 2. 范围
 
 本需求包含：
 
-- 统一 AIEngine 执行入口和执行 Profile；
+- 统一 Engine 执行入口和执行 Profile；
 - Agent 执行、推理循环、Tool Calling、同步和流式响应；
 - 上下文资源工具化，并接入 Connector 和远程 MCP Server；
 - 指定 Skill、专家 Agent、知识库和工作流；
 - 工具调用过程、输入输出、错误和证据的可追溯记录；
 - 权限、预算、取消、超时、失败恢复和敏感信息保护；
-- 将 Skill 作为可选的 Prompt/工具/契约适配器接入 AIEngine；Diagnosis、Inspection 和 Workflow 直接使用统一 Agent Runtime。巡检策略不强制绑定 Skill，可选绑定 AgentProfile。
-- AI 诊断页面可选择具备诊断能力的 AIProvider 和模型，并通过 AIEngine 完成实际故障诊断。
+- 将 Skill 作为可选的 Prompt/工具/契约适配器接入 Engine；Diagnosis、Inspection 和 Workflow 直接使用统一 Agent Runtime。巡检策略不强制绑定 Skill，可选绑定 Persona。
+- AI 诊断页面可选择具备诊断能力的 Provider 和模型，并通过 Engine 完成实际故障诊断。
 - 诊断页面展示执行状态、受控工具动作、证据链、模型错误原因和中断状态。
 
 ## 3. 非目标
@@ -40,16 +42,16 @@
 
 ### 4.1 统一执行
 
-- 提供统一 AIEngine 入口，支持同步执行、流式执行和主动取消；
+- 提供统一 Engine 入口，支持同步执行、流式执行和主动取消；
 - 支持交互式对话、故障诊断、Skill、自动巡检和工作流执行 Profile；
-- 请求能够指定 Scope、AIProvider、模型、任务、消息、上下文、Skill、Agent、工作流和执行预算；
+- 请求能够指定 Scope、Provider、模型、任务、消息、上下文、Skill、Agent、工作流和执行预算；
 - 返回统一执行 ID、结果、状态、Token 用量、Tool Call 数量和实际错误原因；
 - 支持执行幂等标识，拒绝同一执行 ID 的并发重复运行。
 
 ### 4.2 上下文和工具
 
 - 用户选择的资源必须经过 Scope 和资源使用权限校验；
-- AIEngine 能够为 PostgreSQL、Kubernetes、监控资源和远程 MCP Server 建立受控工具集合；
+- Engine 能够为 PostgreSQL、Kubernetes、监控资源和远程 MCP Server 建立受控工具集合；
 - 模型开始分析前自动采集必要的基础上下文；
 - Agent 后续工具调用必须经过统一 Tool Gateway、白名单、Schema、策略和超时控制；
 - 默认工具只读，高风险写操作必须进入既有审批流程。
@@ -74,7 +76,7 @@
 
 ### 5.1 安全与权限
 
-- 每次执行重新校验 Actor、Scope、AIProvider、模型、上下文资源和工具权限；
+- 每次执行重新校验 Actor、Scope、Provider、模型、上下文资源和工具权限；
 - 外部资源内容视为不可信数据，不能覆盖系统安全规则；
 - 凭据、Token、密码和 Authorization Header 不得进入模型上下文、普通日志或前端响应；
 - 普通用户只能查看符合权限范围的脱敏执行记录。
@@ -92,29 +94,29 @@
 - 执行、模型、工具、工作流和错误均可按执行 ID 关联追踪；
 - 事件和审计记录具有稳定结构，便于 API、前端和后台任务复用；
 - 新增 Runner、Model Adapter 或 Tool 实现不应修改统一执行契约；
-- 旧模型资源和调用入口不保留；相关业务统一使用 AIProvider + AIEngine。
+- 旧模型资源和调用入口不保留；相关业务统一使用 Provider + Engine。
 
 ## 6. 任务清单
 
 | 任务 | 名称 | 交付目标 | 依赖 | 状态 |
 |---|---|---|---|---|
-| T01 | AIEngine 统一执行内核 | Request、Result、Event、Profile、预算、取消和统一 Runtime | 无 | 已完成 |
+| T01 | Engine 统一执行内核 | Request、Result、Event、Profile、预算、取消和统一 Runtime | 无 | 已完成 |
 | T02 | 上下文工具层 | Context Resolver、Tool Registry、Policy Gateway、Connector/MCP 工具 | T01 | 已完成 |
-| T03 | Skill 与 Agent Profile | Skill 版本、专家 Agent、组合 Prompt 和契约校验 | T01-T02 | 已完成 |
+| T03 | Skill 与 Persona | Skill 版本、专家 Persona、组合 Prompt 和契约校验 | T01-T02 | 已完成 |
 | T04 | 流式事件与工具调用审计 | 事件持久化、SSE 续读、Tool Call 脱敏审计 | T01-T03 | 已完成 |
 | T05 | 知识库与工作流编排 | 知识检索、引用、持久化 DAG、审批和恢复 | T01-T04 | 已完成 |
-| T06 | AI 诊断页面接入 AIEngine | Provider/模型选择、真实诊断执行、流式状态和证据展示 | T01-T04 | 已完成 |
+| T06 | AI 诊断页面接入 Engine | Provider/模型选择、真实诊断执行、流式状态和证据展示 | T01-T04 | 已完成 |
 
 ## 7. 依赖与风险
 
-- 依赖现有 AIProvider、Resource、Authorization、Connector、MCP、Skill、Diagnosis、Inspection 和 Audit 边界；
+- 依赖现有 Provider、Resource、Authorization、Connector、MCP、Skill、Diagnosis、Inspection 和 Audit 边界；
 - 外部模型和 MCP 服务的协议差异、延迟和错误格式需要通过 Adapter/Tool Gateway 隔离；
 - 长时间执行、工具副作用和流式断线可能造成重复调用，必须依赖幂等键、快照和审计；
 - 数据库表、HTTP API 和独立 Worker 的新增应在对应 T02-T05 任务中分别评审，不在 T01 提前扩张。
 
 ## 8. 需求验收标准
 
-- 对话、诊断、Skill 和巡检能够使用同一个 AIEngine 入口；
+- 对话、诊断、Skill 和巡检能够使用同一个 Engine 入口；
 - 统一入口支持同步、流式、取消、超时、重复执行保护和明确错误原因；
 - 上下文资源能够在权限约束下自动形成工具并执行基础采集；
 - 指定 Skill、Agent、知识库和工作流时能够执行对应能力并保留关联信息；

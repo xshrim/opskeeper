@@ -7,16 +7,16 @@
 
 ## 1. 需求背景
 
-当前资源工具存在两套实现：Connector 为 Direct 资源定义 AIEngine 工具，Docker 和 Kubernetes MCP Server 又分别实现 MCP 工具。两套实现的工具名称、参数、结果和错误处理不一致，新增资源需要重复编写业务逻辑，AIEngine 也无法只根据资源接入方式稳定选择工具来源。
+当前资源工具存在两套实现：Connector 为 Direct 资源定义 Engine 工具，Docker 和 Kubernetes MCP Server 又分别实现 MCP 工具。两套实现的工具名称、参数、结果和错误处理不一致，新增资源需要重复编写业务逻辑，Engine 也无法只根据资源接入方式稳定选择工具来源。
 
-统一资源接入要求把资源业务工具从协议适配器中抽离。同一套工具实现既能由本项目的 MCP Server 暴露，也能由 AIEngine 作为 Direct 内置工具集调用。用户勾选资源后，Direct 使用资源配置和凭据连接目标，Agent 使用关联 MCPServer 发现并调用远端工具。
+统一资源接入要求把资源业务工具从协议适配器中抽离。同一套工具实现既能由本项目的 MCP Server 暴露，也能由 Engine 作为 Direct 内置工具集调用。用户勾选资源后，Direct 使用资源配置和凭据连接目标，Agent 使用关联 MCPServer 发现并调用远端工具。
 
 ## 2. 目标
 
 - 建立协议无关的公共资源工具层；
 - 保持工具名称、业务入参、业务出参和错误语义一致；
 - 让 Host、Docker、Kubernetes、Application、PostgreSQL、Redis、Repository 完成 Direct/Agent 闭环；
-- 让项目提供的 Docker、Kubernetes MCP Server 与外部 MCP Server 使用同一 AIEngine MCP 路径；
+- 让项目提供的 Docker、Kubernetes MCP Server 与外部 MCP Server 使用同一 Engine MCP 路径；
 - 保持逻辑资源权限为唯一授权主体，隔离 MCP 传输资源和凭据；
 - 删除重复 Connector/MCP 资源业务实现，减少后续资源接入成本。
 
@@ -37,13 +37,13 @@
 - P1：Kafka、Prometheus、Loki；
 - P2：Elasticsearch、MySQL、Oracle、OceanBase、TongRDS；
 - 可观测平台的 Tempo、Jaeger、Elastic、Datadog、Alertmanager 按同一模式接入；
-- AIProvider、MCPServer、Skill、AgentProfile、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06，Repository 作为 T10 的代码上下文资源实现。
+- Provider、MCPServer、Skill、Persona、Artifact 不在本需求中作为直连诊断工具集实现；Application 作为项目级聚合资源纳入 T06，Repository 作为 T10 的代码上下文资源实现。
 
 ## 4. 非目标
 
 - 不把工具的业务输入改成携带 resource kind、工具版本、能力或只读标识；
 - 不要求远端 MCP 工具通过本项目的自定义契约校验；
-- 不区分 managed MCP Server 和 external MCP Server 的 AIEngine 调用路径；
+- 不区分 managed MCP Server 和 external MCP Server 的 Engine 调用路径；
 - 不允许模型指定 Direct 连接地址、证书、Token、密码或 kubeconfig；
 - 不开放任意 Shell、SQL、Redis 命令、Docker 写操作或 Kubernetes 变更；
 - 不保留为旧架构服务的长期双轨工具实现。
@@ -75,7 +75,7 @@
 
 #### 目标
 
-建立不依赖 MCP SDK、AIEngine 和 HTTP API 的公共资源工具包，统一工具名称、业务参数、结果、错误和资源客户端边界。
+建立不依赖 MCP SDK、Engine 和 HTTP API 的公共资源工具包，统一工具名称、业务参数、结果、错误和资源客户端边界。
 
 #### 实施范围
 
@@ -87,7 +87,7 @@
 
 #### 验收标准
 
-- 公共工具不依赖 MCP SDK、AIEngine 或资源 HTTP 服务；
+- 公共工具不依赖 MCP SDK、Engine 或资源 HTTP 服务；
 - 工具定义不包含 resource kind、contract version、capabilities、read-only 等强制字段；
 - 同一个工具可以由两个不同适配器调用并得到等价业务结果；
 - 参数非法、资源不可用、响应超限和取消均有稳定错误分类。
@@ -100,7 +100,7 @@
 
 #### 目标
 
-让 AIEngine 根据逻辑资源的 Direct/Agent 接入方式选择唯一工具来源，并把 MCPServer 关联纳入资源权限边界。
+让 Engine 根据逻辑资源的 Direct/Agent 接入方式选择唯一工具来源，并把 MCPServer 关联纳入资源权限边界。
 
 #### 实施范围
 
@@ -145,7 +145,7 @@
 
 #### 风险和回滚
 
-Docker SDK、MCP SDK 和 AIEngine 当前类型不同。采用公共业务调用加两个薄适配器，先保留旧入口直到一致性测试通过，再删除重复实现。
+Docker SDK、MCP SDK 和 Engine 当前类型不同。采用公共业务调用加两个薄适配器，先保留旧入口直到一致性测试通过，再删除重复实现。
 
 ### T04 Host 工具集接入
 
@@ -296,11 +296,11 @@ Redis 版本和权限会影响诊断能力。工具仅调用固定 INFO、PING�
 - 公共只读工具包括健康状态、全局状态计数器、性能与配置、用户表信息、指定表结构与索引、指定表列信息和数据库概要。
 - Direct Connector 与 MySQL MCP Server 共用 `backend/tool/mysql`，Agent 调用时由 MCP Provider 注入资源连接参数，模型不能覆盖连接配置。
 
-### T10 AIEngine 与证据链收敛
+### T10 Engine 与证据链收敛
 
 #### 目标
 
-让统一工具集完整进入 AIEngine 的上下文、工具调用、证据、事件和审计链路。
+让统一工具集完整进入 Engine 的上下文、工具调用、证据、事件和审计链路。
 
 #### 实施范围
 
@@ -422,7 +422,7 @@ Redis 版本和权限会影响诊断能力。工具仅调用固定 INFO、PING�
 - 用户可以为 Host、Docker、Kubernetes、PostgreSQL 和 Redis 选择 Direct 或 Agent 接入；
 - Direct 资源自动加载对应内置工具集，Agent 资源自动发现关联 MCPServer 工具；
 - 两种路径不需要改变公共工具的业务入参和出参；
-- 项目提供的 Docker/Kubernetes MCP Server 和任意外部 MCP Server 在 AIEngine 中使用同一 MCP 调用流程；
+- 项目提供的 Docker/Kubernetes MCP Server 和任意外部 MCP Server 在 Engine 中使用同一 MCP 调用流程；
 - 远端工具无需通过本项目的自定义契约元数据校验，但仍受资源权限、工具白名单、超时、响应限制和审计保护；
 - 工具实现、结果、错误和限制在 Direct/MCP 之间保持一致；
 - 未完成资源、驱动限制和外部服务依赖均在验收报告或 backlog 中明确记录；

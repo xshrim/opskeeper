@@ -167,8 +167,6 @@ make scheduler-run
 | `OPSK_INSPECTION_SCHEDULE_INTERVAL`    | `15s`                                    | Scheduler 检查到期策略的轮询间隔                                         |
 | `OPSK_INSPECTION_WORKER_POLL_INTERVAL` | `2s`                                     | Worker 在无任务时的轮询间隔                                              |
 | `OPSK_INSPECTION_LEASE_DURATION`       | `45s`                                    | 巡检任务租约与心跳续约期限                                               |
-| `OPSK_OPERATION_SUBMITTER_ENABLED`     | `false`                                  | 是否启用受控操作提交器；启用前必须配置集群权限                           |
-| `OPSK_OPERATION_RUNNER_IMAGE`          | `opskeeper:local`                        | 受控操作提交器使用的 Runner 镜像                                         |
 | `OPSK_BOOTSTRAP_USERNAME`              | `admin`                                  | 首次创建管理员的用户名                                                       |
 | `OPSK_BOOTSTRAP_PASSWORD`              | 空                                       | 本地首次初始化管理员密码；生产环境应优先使用 `OPSK_BOOTSTRAP_PASSWORD_FILE` |
 | `OPSK_BOOTSTRAP_EMAIL`                 | 空                                       | 可选邮箱；非空值只能绑定一个用户名                                           |
@@ -251,7 +249,7 @@ make llm-provider-test
 
 该入口通过项目内 OpenAI-compatible Adapter、ADK `llmagent` 和 ADK Runner 分别执行非流式与 SSE 请求，并验证响应非空及 Token usage。它会访问外部服务并可能产生费用，因此不并入默认 `make test` 或 `make quality`。测试只输出模式、字符数和 Token 数，不输出 Token 或模型正文。
 
-应用中登记 AIProvider 时，连接地址、资源连接密文和模型目录保存在 Provider 资源；模型条目只保留上游名称、参数和能力。业务调用方通过 AIEngine 选择 Provider/Model，未显式选择时按 Scope 场景标签解析并固定最终模型。API Token 必须加密保存在 Provider 资源行，不能出现在资源配置或审计响应中。AIProvider 不划分单模态或多模态子类；`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段。
+应用中登记 Provider 时，连接地址、连接密文和模型目录保存在独立的 Provider 对象；模型条目只保留上游名称、参数和能力。业务调用方通过 Engine 选择 Provider/Model，未显式选择时按 Scope 场景标签解析并固定最终模型。API Token 必须加密保存在 `providers` 表中，不能出现在资源配置或审计响应中。Provider 不划分单模态或多模态子类；`tool_calling`、`vision`、音频、结构化输出和长上下文等属于可叠加能力字段。
 
 ## 5. PostgreSQL、缓存与 Bundle 存储
 

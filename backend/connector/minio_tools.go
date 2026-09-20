@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	mt "opskeeper/backend/tool/minio"
 )
 
-func (s *Service) resolveMinIOTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveMinIOTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("MinIO agent resources must use the MCP provider")
 	}
@@ -28,12 +28,12 @@ func (s *Service) resolveMinIOTools(ctx context.Context, item aiengine.ContextRe
 	}
 	schema := func(extra map[string]any) json.RawMessage { return minioSchema(extra) }
 	register := func(name, desc string, extra map[string]any, fn func(context.Context, map[string]any) (any, error)) {
-		add(name, desc, schema(extra), func(c context.Context, args map[string]any) (aiengine.ToolResult, error) {
+		add(name, desc, schema(extra), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
 			out, err := fn(c, args)
 			if err != nil {
-				return aiengine.ToolResult{}, mt.Error(name, err)
+				return engine.ToolResult{}, mt.Error(name, err)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	for _, tool := range mt.ListTools() {

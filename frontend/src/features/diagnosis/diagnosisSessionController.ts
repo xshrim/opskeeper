@@ -23,7 +23,7 @@ type DiagnosisSessionAPI = {
     title?: string;
     question: string;
     target_resource_ids: string[];
-    ai_provider_resource_id?: string;
+     provider_id?: string;
     model_name?: string;
   }) => Promise<DiagnosisSession>;
   askDiagnosis: (id: string, content: string) => Promise<DiagnosisMessage>;

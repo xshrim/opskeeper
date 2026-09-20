@@ -49,10 +49,10 @@ func ResolveConnection(input ConnectionInput) (ConnectionConfig, error) {
 // where the result must reflect exactly the connection supplied by the user.
 func resolveConnection(input ConnectionInput, inheritEnvironment bool) (ConnectionConfig, error) {
 	env := ConnectionInput{
-		DockerHost:       firstEnv("DOCKER_MCP_DOCKER_HOST", "DOCKER_HOST"),
-		DockerCA:         firstEnv("DOCKER_MCP_DOCKER_CA"),
-		DockerCert:       firstEnv("DOCKER_MCP_DOCKER_CERT"),
-		DockerKey:        firstEnv("DOCKER_MCP_DOCKER_KEY"),
+		DockerHost: firstEnv("DOCKER_MCP_DOCKER_HOST", "DOCKER_HOST"),
+		DockerCA:   firstEnv("DOCKER_MCP_DOCKER_CA"),
+		DockerCert: firstEnv("DOCKER_MCP_DOCKER_CERT"),
+		DockerKey:  firstEnv("DOCKER_MCP_DOCKER_KEY"),
 	}
 	if inheritEnvironment {
 		resolveEnvironmentTLS(&env)

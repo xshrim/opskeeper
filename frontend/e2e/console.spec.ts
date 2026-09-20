@@ -4,8 +4,8 @@ const ids = {
   platform: 'scope-platform',
   team: 'scope-team',
   project: 'scope-project',
-  provider: 'resource-provider',
-  skill: 'resource-skill',
+  provider: 'provider-1',
+  skill: 'skill-1',
   session: 'diagnosis-session'
 };
 
@@ -103,7 +103,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
             },
             name: '平台工程',
             code: 'platform',
-            icon: 'team',
+            icon: 'lucide:UsersRound',
             labels: {},
             status: 'active',
             created_at: user.created_at,
@@ -136,7 +136,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
             },
             name: '支付服务',
             code: 'payments',
-            icon: 'project',
+            icon: 'lucide:FolderKanban',
             labels: {},
             source: 'manual',
             source_config: {},
@@ -150,53 +150,80 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         total: 1
       });
     if (path.endsWith('/resources/schemas')) return json([]);
+    if (path.includes('/connection-tests/latest')) return json({ code: 'not_found' }, 404);
     if (path.endsWith('/resources'))
+      return json({ items: [], page: 1, page_size: 100, total: 0 });
+    if (path.endsWith('/providers'))
       return json({
         items: [
           {
             id: ids.provider,
             scope_id: ids.platform,
-            kind: 'AIProvider',
-            schema_version: 1,
             name: 'Test Provider',
-            labels: {},
+            status: 'active',
             config: {
               provider_type: 'openai_compatible',
               base_url: 'https://llm.test',
               models: [{ name: 'test-model', context_window: 8192 }]
-            },
-            status: 'active',
-            created_at: user.created_at,
-            updated_at: user.updated_at
-          },
+            }
+          }
+        ]
+      });
+    if (path.endsWith('/providers/available')) return json([]);
+    if (path.endsWith('/skills'))
+      return json({
+        items: [
           {
             id: ids.skill,
             scope_id: ids.platform,
-            kind: 'Skill',
-            schema_version: 1,
             name: 'Default Diagnostic',
-            labels: {},
-            config: {},
-            status: 'active',
-            created_at: user.created_at,
-            updated_at: user.updated_at
+            identifier: 'default-diagnostic',
+            category: 'diagnosis',
+            tags: [],
+            maintainer: 'OpsKeeper',
+            status: 'active'
           }
-        ],
-        page: 1,
-        page_size: 100,
-        total: 2
+        ]
       });
+    if (path.endsWith('/personas'))
+      return json({
+        items: [
+          {
+            id: 'persona-1',
+            scope_id: ids.platform,
+            name: 'Default Diagnostic',
+            description: 'test',
+            config: {},
+            status: 'active'
+          }
+        ]
+      });
+    if (path.includes('/personas/') && path.endsWith('/versions'))
+      return json([
+        {
+          id: 'persona-version-1',
+          persona_id: 'persona-1',
+          version: 1,
+          config: {
+            version: 1,
+            instruction: 'return JSON',
+            enabled: true
+          },
+          status: 'published',
+          created_at: user.created_at
+        }
+      ]);
+    if (path.includes('/provider-bindings')) return json([]);
     if (path.includes('/skills/') && path.endsWith('/versions'))
       return json([
         {
           id: 'skill-version-1',
-          skill_resource_id: ids.skill,
+          skill_id: ids.skill,
           version: 1,
           manifest: {
             name: 'Default Diagnostic',
             description: 'test',
             instruction: 'return JSON',
-            target_kinds: ['Application']
           },
           input_schema: { type: 'object' },
           output_schema: { type: 'object' },
@@ -350,7 +377,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           status: 'active',
           target_resource_ids: [],
           target_labels: { env: 'prod' },
-          agent_profile_resource_id: '',
+          persona_id: '',
           timeout: 120000000000,
           retries: 1,
           max_concurrent: 2,
@@ -379,7 +406,6 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
       path.includes('/notification-channels')
     )
       return json([]);
-    if (path.includes('/operation-requests')) return json([]);
     return json({}, 200);
   });
 }
@@ -448,24 +474,10 @@ test.describe('T07 console', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: '添加资源' }).click();
     await expect(
-      page.getByRole('heading', { name: '类型选择' })
+      page.getByRole('heading', { name: '基础配置' })
     ).toBeVisible();
     await expect(page.locator('.resource-list-panel')).toBeHidden();
-    const resourceAddWorkflow = page.locator('.resource-add-workflow');
-    const resourceCategory = resourceAddWorkflow.getByLabel('资源类型');
-    const resourceSubtype = resourceAddWorkflow.getByLabel('资源子类型');
-    await resourceCategory.selectOption('LLM');
-    await expect(resourceSubtype).toHaveValue('');
-    await expect(
-      resourceSubtype.locator('option', { hasText: 'Provider' })
-    ).toHaveCount(1);
-    await resourceSubtype.selectOption('Provider');
-    await resourceAddWorkflow.getByRole('button', { name: '下一步' }).click();
-    await expect(
-      page.getByRole('heading', { name: 'Provider 配置' })
-    ).toBeVisible();
-    await resourceAddWorkflow.getByRole('button', { name: '上一步' }).click();
-    await resourceAddWorkflow.getByRole('button', { name: '取消' }).click();
+    await page.getByRole('button', { name: '取消' }).click();
     await expect(page.locator('.resource-list-panel')).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
@@ -478,102 +490,12 @@ test.describe('T07 console', () => {
     ).toBeTruthy();
   });
 
-  test('tests a draft Provider connection from the summary step', async ({
-    page
-  }) => {
-    await pageData(page, false, true);
-    let releaseConnectionTest: (() => void) | undefined;
-    const connectionTestPending = new Promise<void>((resolve) => {
-      releaseConnectionTest = resolve;
-    });
-    // The app is served below /opskeeper/ in both the preview server and the
-    // embedded production UI, so include the deployment prefix in the route.
-    await page.route('**/opskeeper/api/v1/ai-providers/test-draft', async (route) => {
-      await connectionTestPending;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          model_name: 'test-model',
-          status: 'succeeded',
-          latency_ms: 42,
-          message: '模型连接测试通过'
-        })
-      });
-    });
-
-    await page.goto('/');
-    await page.getByRole('button', { name: '资源', exact: true }).click();
-    await page.getByRole('button', { name: '添加资源' }).click();
-    const workflow = page.locator('.resource-add-workflow');
-    await workflow.getByLabel('资源类型').selectOption('LLM');
-    await workflow.getByLabel('资源子类型').selectOption('Provider');
-    await workflow.getByLabel('资源名称').fill('draft-provider');
-    await workflow.getByRole('button', { name: '下一步' }).click();
-    await workflow.getByLabel('服务地址').fill('https://llm.test/v1');
-    await workflow.getByRole('button', { name: '下一步' }).click();
-    await workflow.getByLabel('Model 名称').fill('test-model');
-    await workflow.getByRole('button', { name: '添加模型' }).click();
-    await workflow.getByLabel('Model 名称').fill('second-model');
-    await workflow.getByRole('button', { name: '添加模型' }).click();
-    const secondModelRow = workflow.locator('.provider-model-row').filter({
-      hasText: 'second-model'
-    });
-    await secondModelRow.getByRole('button', { name: '编辑 second-model' }).click();
-    await expect(workflow.getByLabel('Model 名称')).toHaveValue('second-model');
-    await workflow.getByLabel('上下文窗口').fill('64000');
-    await workflow.getByRole('button', { name: '保存修改' }).click();
-    await expect(secondModelRow).toContainText('64,000 Token');
-    await workflow.getByRole('button', { name: '下一步' }).click();
-
-    await expect(
-      workflow.getByRole('heading', { name: '总结核验' })
-    ).toBeVisible();
-    await workflow.getByRole('button', { name: '连接测试' }).click();
-    await expect(workflow.getByText('正在测试默认 Model...')).toBeVisible();
-    await expect(
-      workflow.getByRole('button', { name: '测试中' })
-    ).toBeDisabled();
-
-    releaseConnectionTest?.();
-    await expect(workflow.getByText('连接正常 · 42 ms')).toBeVisible();
-    await expect(workflow.getByText('模型连接测试通过')).toBeVisible();
-  });
-
-  test('edits and tests an existing Provider from the resource list', async ({
-    page
-  }) => {
-    await pageData(page, false, true);
-    await page.route(`**/opskeeper/api/v1/ai-providers/${ids.provider}/test`, async (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          provider_resource_id: ids.provider,
-          model_name: 'test-model',
-          status: 'succeeded',
-          latency_ms: 18,
-          message: '模型连接测试通过'
-        })
-      })
-    );
-    await page.goto('/');
-    await page.getByRole('button', { name: '资源', exact: true }).click();
-    const row = page.locator('.resource-catalog-row').filter({
-      hasText: 'Test Provider'
-    });
-    await row.getByRole('button', { name: '编辑资源' }).click();
-    await expect(page.getByRole('heading', { name: 'Test Provider' })).toBeVisible();
-    await row.getByRole('button', { name: '连接测试' }).click();
-    await expect(row.getByText('正常·18ms')).toBeVisible();
-  });
-
   test('shows team members, projects, user roles and permissions', async ({
     page
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '展开权限菜单' }).click();
     await page.getByRole('button', { name: '团队管理' }).click();
     await expect(
       page.getByRole('heading', { name: '团队管理', level: 1 })
@@ -585,7 +507,9 @@ test.describe('T07 console', () => {
     await expect(
       page.getByText('支付负责人', { exact: true }).first()
     ).toBeVisible();
-    await expect(page.getByText('支付服务', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('article').getByText('支付服务', { exact: true })
+    ).toBeVisible();
     await page.getByRole('button', { name: '用户管理' }).click();
     await expect(
       page.getByText('TeamOwner', { exact: true }).first()
@@ -659,9 +583,20 @@ test.describe('T07 console', () => {
     await page.goto('/');
     await page.getByLabel('打开用户菜单').click();
     await page.getByRole('menuitem', { name: '个人中心' }).click();
+    const preferenceUpdate = page.waitForRequest(
+      (request) =>
+        request.url().includes('/auth/me/preferences') &&
+        request.method() === 'PUT'
+    );
     await page.getByRole('radio', { name: '深色' }).click();
-    await page.getByRole('button', { name: '保存配置' }).click();
+    await preferenceUpdate;
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '平台总览' })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await page.getByLabel('打开用户菜单').click();
+    await page.getByRole('menuitem', { name: '个人中心' }).click();
 
     await expect(page.getByRole('radio', { name: '深色' })).toHaveCSS(
       'background-color',
@@ -676,7 +611,7 @@ test.describe('T07 console', () => {
   test('creates a team with a searchable icon picker', async ({ page }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '展开权限菜单' }).click();
     await page.getByRole('button', { name: '团队管理' }).click();
     await page.getByRole('button', { name: '添加团队' }).click();
 
@@ -684,15 +619,15 @@ test.describe('T07 console', () => {
     await expect(dialog.getByLabel('名称')).toBeVisible();
     await expect(dialog.getByLabel('团队名称')).toHaveCount(0);
     await dialog.getByLabel('选择团队图标').click();
-    const picker = page.getByRole('dialog').filter({ hasText: '选择图标' });
-    await picker.getByLabel('搜索图标').fill('PostgreSQL');
-    await picker.getByRole('button', { name: '选择图标 PostgreSQL' }).click();
-    await dialog.getByLabel('选择团队图标').click();
+    const picker = page.getByRole('dialog', { name: '选择图标' });
     await picker.getByLabel('搜索图标').fill('Activity');
-    await expect(
-      picker.getByRole('button', { name: '选择图标 Activity' })
-    ).toBeVisible();
     await picker.getByRole('button', { name: '选择图标 Activity' }).click();
+    await dialog.getByLabel('选择团队图标').click();
+    await picker.getByLabel('搜索图标').fill('Bot');
+    await expect(
+      picker.getByRole('button', { name: '选择图标 Bot', exact: true })
+    ).toBeVisible();
+    await picker.getByRole('button', { name: '选择图标 Bot', exact: true }).click();
     await dialog.getByLabel('名称').fill('数据库平台');
     await dialog.getByLabel('团队编码').fill('database');
     await dialog.getByRole('button', { name: '创建团队' }).click();
@@ -704,7 +639,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '展开权限菜单' }).click();
     await page.getByRole('button', { name: '用户管理' }).click();
     await page.getByRole('button', { name: '添加用户' }).click();
 
@@ -738,7 +673,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '展开权限菜单' }).click();
     await page.getByRole('button', { name: '用户管理' }).click();
     await page.getByRole('button', { name: '添加用户' }).click();
 
@@ -758,7 +693,7 @@ test.describe('T07 console', () => {
   }) => {
     await pageData(page, false, true);
     await page.goto('/');
-    await page.getByRole('button', { name: '展开成员菜单' }).click();
+    await page.getByRole('button', { name: '展开权限菜单' }).click();
     await page.getByRole('button', { name: '用户管理' }).click();
     await page.getByLabel('编辑用户 支付负责人').click();
 
@@ -788,27 +723,27 @@ test.describe('T10 and T11 workbenches', () => {
   test('shows provider and Skill versions', async ({ page }) => {
     await pageData(page);
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'AI 引擎' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await expect(page.getByRole('button', { name: '大模型' })).toBeVisible();
+    await page.getByRole('button', { name: '技能', exact: true }).click();
     await expect(
-      page.getByRole('heading', { name: 'Skill', exact: true })
+      page.getByRole('heading', { name: '技能版本', exact: true })
     ).toBeVisible();
     await expect(
       page.locator('option').filter({ hasText: 'Default Diagnostic' })
     ).toHaveCount(1);
   });
 
-  test('opens the independent Agent profile management page', async ({
+  test('opens the independent Persona management page', async ({
     page
   }) => {
     await pageData(page);
     await page.goto('/');
-    await page.getByRole('button', { name: 'Agent 专家' }).click();
+    await page.getByRole('button', { name: '专家' }).click();
     await expect(
-      page.getByRole('heading', { name: 'Agent 专家配置', exact: true })
+      page.getByRole('heading', { name: '专家配置', exact: true })
     ).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: '创建 AgentProfile', exact: true })
+      page.getByRole('heading', { name: '创建专家版本', exact: true })
     ).toBeVisible();
   });
 
@@ -817,9 +752,9 @@ test.describe('T10 and T11 workbenches', () => {
   }) => {
     await pageData(page);
     await page.goto('/');
-    await page.getByRole('button', { name: 'AI 诊断' }).click();
+    await page.getByRole('button', { name: '诊断' }).click();
     await expect(
-      page.getByRole('heading', { name: 'AI 诊断工作台' })
+      page.getByRole('heading', { name: '诊断工作台' })
     ).toBeVisible();
     await expect(
       page.getByRole('heading', { name: '支付服务诊断' })
@@ -832,14 +767,18 @@ test.describe('T13 inspection console', () => {
   test('creates a label policy and Webhook channel', async ({ page }) => {
     await pageData(page);
     await page.goto('/');
-    await page.getByRole('button', { name: '自动巡检' }).click();
+    await page.getByRole('button', { name: '巡检' }).click();
     const policyForm = page.locator('form').filter({ hasText: '标签选择器' });
     await policyForm.getByLabel('名称').fill('Hourly health');
     await policyForm.getByLabel('时区').fill('UTC');
     await policyForm
       .getByLabel('标签选择器（JSON 对象）')
       .fill('{"env":"prod"}');
-    await policyForm.getByLabel('Default Diagnostic').check();
+    const personaSelect = policyForm.getByLabel('解释 Persona（可选）');
+    await expect(
+      personaSelect.locator('option', { hasText: 'Default Diagnostic' })
+    ).toHaveCount(1);
+    await personaSelect.selectOption('persona-1');
     await policyForm.getByRole('button', { name: '创建策略' }).click();
     await expect(page.getByText('Hourly health')).toBeVisible();
 

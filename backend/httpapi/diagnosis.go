@@ -43,13 +43,13 @@ type diagnosisHandler struct {
 }
 
 type startDiagnosisRequest struct {
-	ScopeID            string   `json:"scope_id"`
-	ApplicationID      string   `json:"application_id,omitempty"`
-	Title              string   `json:"title"`
-	Question           string   `json:"question"`
-	TargetResourceIDs  []string `json:"target_resource_ids"`
-	ProviderResourceID string   `json:"ai_provider_resource_id,omitempty"`
-	ModelName          string   `json:"model_name,omitempty"`
+	ScopeID           string   `json:"scope_id"`
+	ApplicationID     string   `json:"application_id,omitempty"`
+	Title             string   `json:"title"`
+	Question          string   `json:"question"`
+	TargetResourceIDs []string `json:"target_resource_ids"`
+	ProviderID        string   `json:"provider_id,omitempty"`
+	ModelName         string   `json:"model_name,omitempty"`
 }
 
 type addDiagnosisTargetRequest struct {
@@ -113,7 +113,7 @@ func (h diagnosisHandler) start(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderResourceID: body.ProviderResourceID, ModelName: body.ModelName})
+	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName})
 	if err != nil {
 		writeDiagnosisError(w, r, err)
 		return

@@ -59,7 +59,6 @@ export default defineConfig(({ command }) => {
         output: {
           manualChunks(id) {
             if (!id.includes('/node_modules/')) return undefined;
-            if (id.includes('/node_modules/svelte/')) return 'vendor-svelte';
             if (id.includes('/node_modules/lucide-svelte/')) return 'vendor-icons';
             if (id.includes('/node_modules/simple-icons/')) return 'vendor-brands';
             return 'vendor';

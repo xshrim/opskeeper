@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	rmq "opskeeper/backend/tool/rabbitmq"
 	"strings"
 )
 
-func (s *Service) resolveRabbitMQTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveRabbitMQTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("RabbitMQ agent resources must use the MCP provider")
 	}
@@ -27,7 +27,7 @@ func (s *Service) resolveRabbitMQTools(ctx context.Context, item aiengine.Contex
 	}
 	for _, t := range rmq.ListTools() {
 		name := t.Name
-		add(name, t.Description, rmqSchema(), func(c context.Context, _ map[string]any) (aiengine.ToolResult, error) {
+		add(name, t.Description, rmqSchema(), func(c context.Context, _ map[string]any) (engine.ToolResult, error) {
 			var out any
 			var e error
 			switch name {
@@ -51,9 +51,9 @@ func (s *Service) resolveRabbitMQTools(ctx context.Context, item aiengine.Contex
 				out, e = rmq.Vhosts(c, in)
 			}
 			if e != nil {
-				return aiengine.ToolResult{}, rabbitMQError(name, e)
+				return engine.ToolResult{}, rabbitMQError(name, e)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	return nil

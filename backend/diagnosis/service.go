@@ -40,7 +40,7 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	input.Title = strings.TrimSpace(input.Title)
 	input.Question = strings.TrimSpace(input.Question)
 	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
-	input.ProviderResourceID = strings.TrimSpace(input.ProviderResourceID)
+	input.ProviderID = strings.TrimSpace(input.ProviderID)
 	input.ModelName = strings.TrimSpace(input.ModelName)
 	if input.ScopeID == "" || input.ActorUserID == "" || input.Question == "" {
 		return Session{}, invalid("scope_id, actor_user_id and question are required")

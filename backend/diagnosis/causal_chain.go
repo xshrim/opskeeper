@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 )
 
 const (
@@ -54,16 +54,16 @@ func (o *Orchestrator) compileCausalChain(ctx context.Context, session Session, 
 	if err != nil {
 		return CausalChain{}, fmt.Errorf("encode causal chain input: %w", err)
 	}
-	result, err := o.engine.Execute(ctx, aiengine.Request{
+	result, err := o.engine.Execute(ctx, engine.Request{
 		ExecutionID: diagnosisExecutionID(session.ID) + "-chain-" + run.ID,
 		ActorID:     dereference(session.ActorUserID), ScopeID: session.ScopeID,
-		AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName,
-		Purpose: aiengine.PurposeDiagnosis, Profile: aiengine.ProfileInteractive,
+		ProviderID: session.ProviderID, ModelName: session.ModelName,
+		Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive,
 		Task:          "编排本轮诊断的精选因果证据链",
 		Instruction:   causalChainInstruction,
-		Messages:      []aiengine.Message{{Role: "user", Content: string(encoded)}},
+		Messages:      []engine.Message{{Role: "user", Content: string(encoded)}},
 		OutputSchema:  causalChainSchema,
-		Budget:        aiengine.Budget{MaxIterations: 1, MaxToolCalls: 0, MaxTokens: causalChainMaxTokens, MaxOutputTokens: causalChainMaxOutputTokens, MaxOutputBytes: 8 << 10, Timeout: causalChainTimeout},
+		Budget:        engine.Budget{MaxIterations: 1, MaxToolCalls: 0, MaxTokens: causalChainMaxTokens, MaxOutputTokens: causalChainMaxOutputTokens, MaxOutputBytes: 8 << 10, Timeout: causalChainTimeout},
 		RestrictTools: true,
 	})
 	if err == nil {

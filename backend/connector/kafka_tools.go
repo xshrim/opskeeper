@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	kt "opskeeper/backend/tool/kafka"
 )
 
-func (s *Service) resolveKafkaTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveKafkaTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Kafka agent resources must use the MCP provider")
 	}
@@ -28,7 +28,7 @@ func (s *Service) resolveKafkaTools(ctx context.Context, item aiengine.ContextRe
 	}
 	for _, t := range kt.ListTools() {
 		name, desc := t.Name, t.Description
-		add(name, desc, kafkaSchema(name), func(rc context.Context, args map[string]any) (aiengine.ToolResult, error) {
+		add(name, desc, kafkaSchema(name), func(rc context.Context, args map[string]any) (engine.ToolResult, error) {
 			var out any
 			var e error
 			switch name {
@@ -54,9 +54,9 @@ func (s *Service) resolveKafkaTools(ctx context.Context, item aiengine.ContextRe
 				out, e = kt.TopicPartitions(rc, in, a)
 			}
 			if e != nil {
-				return aiengine.ToolResult{}, fmt.Errorf("%s: %w", name, e)
+				return engine.ToolResult{}, fmt.Errorf("%s: %w", name, e)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	return nil

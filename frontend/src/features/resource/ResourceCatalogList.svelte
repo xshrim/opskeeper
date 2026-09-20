@@ -18,11 +18,6 @@
   export let scopeType: (id: string) => string;
   export let resourceScopeLabel: (resource: Resource) => string;
   export let resourceIcon: (kind: string) => string;
-  export let providerModelsForResource: (resource: Resource) => Array<Record<string, unknown>>;
-  export let providerDefaultModelForResource: (resource: Resource) => Record<string, unknown> | undefined;
-  export let providerModelCapabilities: (model: Record<string, unknown> | undefined) => string[];
-  export let providerBindingsFor: (resource: Resource) => Array<{ tag: string }>;
-  export let providerPurposeLabel: (tag: string) => string;
   export let mcpServerEndpointFor: (resource: Resource) => string = () => '';
   export let onSelect: (resource: Resource) => void = () => {};
   export let onLoadSnapshot: (resourceId: string) => void = () => {};
@@ -72,7 +67,6 @@
         : resourceHasConnector(resource) ? '未测试' : '不支持'}
     <details
       class:selected={selectedResourceId === resource.id}
-      class:provider-resource-row={resource.kind === 'AIProvider'}
       class:mcp-resource-row={resource.kind === 'MCPServer'}
       class:docker-resource-row={resource.kind === 'Docker'}
       class="resource-catalog-row"
@@ -82,13 +76,9 @@
       }}
     >
       <summary>
-        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}{#if resource.kind === 'AIProvider'}{#each providerBindingsFor(resource) as binding}<em class="provider-name-role-tag provider-role-{binding.tag}">{providerPurposeLabel(binding.tag)}</em>{/each}{/if}</strong><small>{endpointLabel(resource, resourceCheck)}</small></span></span>
+        <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{endpointLabel(resource, resourceCheck)}</small></span></span>
         <span class="resource-cell resource-category-cell">
-          {#if resource.kind === 'AIProvider'}
-            {@const models = providerModelsForResource(resource)}
-            {@const currentModel = providerDefaultModelForResource(resource)}
-            <strong>LLM</strong><small class="provider-model-summary"><span class="provider-model-name">{String(currentModel?.name ?? '未设置')}</span>{#if models.length > 1}<em class="provider-model-count">+{models.length - 1}</em>{/if}</small>
-          {:else if resource.kind === 'MCPServer'}
+          {#if resource.kind === 'MCPServer'}
             <strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>
           {:else}
             <strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>
@@ -96,19 +86,9 @@
         </span>
         <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>
         <span class="resource-tags-group">
-          {#if resource.kind === 'AIProvider'}
-            {@const labels = Object.entries(resource.labels ?? {})}
-            {@const capabilities = providerModelCapabilities(providerDefaultModelForResource(resource))}
-            <span class:resource-tags-empty-state={labels.length === 0 && capabilities.length === 0} class="resource-tags" aria-label="标签和模型能力">
-              {#each labels as [key, value]}<span class="resource-tag">{key}{value ? `=${value}` : ''}</span>{/each}
-              {#each capabilities as capability}<span class="resource-tag provider-capability-tag">{capability}</span>{/each}
-              {#if labels.length === 0 && capabilities.length === 0}<small class="resource-tags-empty">未设置标签</small>{/if}
-            </span>
-          {:else}
-            <span class:resource-tags-empty-state={Object.keys(resource.labels ?? {}).length === 0} class="resource-tags" aria-label="资源标签">
-              {#each Object.entries(resource.labels ?? {}) as [key, value]}<span class="resource-tag">{key}{value ? `=${value}` : ''}</span>{:else}<small class="resource-tags-empty">未设置标签</small>{/each}
-            </span>
-          {/if}
+          <span class:resource-tags-empty-state={Object.keys(resource.labels ?? {}).length === 0} class="resource-tags" aria-label="资源标签">
+            {#each Object.entries(resource.labels ?? {}) as [key, value]}<span class="resource-tag">{key}{value ? `=${value}` : ''}</span>{:else}<small class="resource-tags-empty">未设置标签</small>{/each}
+          </span>
         </span>
         <span class="resource-cell resource-connection-cell">
           <button

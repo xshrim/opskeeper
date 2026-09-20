@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>大模型页面 · 十二种设计方案预览</title>
+    <style>
+      :root {
+        --ink: #2f2926;
+        --muted: #776e68;
+        --faint: #a59b94;
+        --accent: #e7601b;
+        --accent-soft: #fff0e8;
+        --surface: #fffefd;
+        --surface-2: #faf6f3;
+        --wash: #eee9e6;
+        --line: #ded6d1;
+        --line-strong: #cbbfb7;
+        --sidebar: #171b21;
+        --sidebar-muted: #aeb6c0;
+        --success: #2f7956;
+        --success-bg: #eaf4ed;
+        --warning: #a56411;
+        --warning-bg: #fff5dc;
+        --danger: #b3472c;
+        --danger-bg: #fcebe7;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--wash);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; background: var(--wash); }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(231,96,27,.24); outline-offset: 2px; }
+      .app { min-height: 100vh; display: grid; grid-template-columns: 218px minmax(0, 1fr); }
+      .sidebar { display: flex; flex-direction: column; min-height: 100vh; padding: 22px 14px 18px; color: #f6f8f9; background: var(--sidebar); border-right: 1px solid #2d343c; }
+      .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+      .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; color: white; background: var(--accent); font-weight: 900; }
+      .brand strong { display: block; font-size: 15px; }
+      .brand small { display: block; margin-top: 2px; color: #7e8995; font-size: 10px; }
+      .nav-label { margin: 28px 8px 9px; color: #7e8995; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+      .nav { display: grid; gap: 4px; }
+      .nav button { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 11px; color: var(--sidebar-muted); background: transparent; border: 0; border-radius: 6px; text-align: left; font-size: 13px; }
+      .nav button:hover, .nav button.active { color: #fff; background: #2a3038; }
+      .nav button.active::before { width: 3px; height: 18px; margin-left: -11px; margin-right: 5px; border-radius: 0 3px 3px 0; background: var(--accent); content: ''; }
+      .nav-symbol { width: 18px; color: currentColor; font-size: 15px; text-align: center; }
+      .sidebar-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; padding: 14px 8px 0; color: #8d97a3; border-top: 1px solid #30363e; font-size: 11px; }
+      .avatar { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: var(--ink); background: #f1c4a9; font-size: 11px; font-weight: 800; }
+      .page { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 73px; padding: 16px clamp(18px, 4vw, 54px); background: var(--surface); border-bottom: 1px solid var(--line); }
+      .topbar small { display: block; color: var(--muted); font-size: 11px; }
+      .topbar strong { display: block; margin-top: 3px; font-size: 17px; }
+      .actor { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
+      .actor .avatar { width: 30px; height: 30px; color: white; background: var(--ink); }
+      main { width: min(1360px, calc(100% - 36px)); margin: 0 auto; padding: 30px 0 64px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 22px; margin-bottom: 19px; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 850; letter-spacing: .12em; }
+      h1, h2, h3, p { letter-spacing: 0; }
+      h1 { margin: 0; font-size: 30px; line-height: 1.18; }
+      h2 { margin: 0; font-size: 18px; }
+      h3 { margin: 0; font-size: 13px; }
+      .intro p:last-child { max-width: 760px; margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+      .scope-control { display: flex; align-items: center; gap: 8px; min-height: 35px; padding: 0 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; font-size: 11px; white-space: nowrap; }
+      select { color: var(--ink); background: transparent; border: 0; outline: 0; font-weight: 700; }
+      .design-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; margin-bottom: 14px; }
+      .design-tab { min-height: 67px; padding: 10px 11px; color: var(--muted); background: rgba(255,255,255,.62); border: 1px solid transparent; border-radius: 7px; text-align: left; }
+      .design-tab:hover { border-color: #d9b39e; }
+      .design-tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--accent); box-shadow: 0 2px 8px rgba(47,41,38,.06); }
+      .design-tab b, .design-tab strong, .design-tab span { display: block; }
+      .design-tab b { color: var(--accent); font-size: 11px; }
+      .design-tab strong { margin-top: 4px; font-size: 12px; }
+      .design-tab span { margin-top: 4px; font-size: 10px; line-height: 1.25; }
+      .review-note { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 20px; align-items: center; margin-bottom: 14px; padding: 15px 18px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 7px; }
+      .review-note p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+      .decision { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+      .decision span { display: flex; align-items: center; gap: 7px; }
+      .decision i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+      .stage { min-width: 0; }
+      .stage-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
+      .stage-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+      .mode-tabs { display: flex; gap: 3px; padding: 3px; background: #e5ded9; border-radius: 7px; }
+      .mode-tabs button { min-height: 30px; padding: 0 11px; color: var(--muted); background: transparent; border: 0; border-radius: 5px; font-size: 11px; font-weight: 750; }
+      .mode-tabs button[aria-selected="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(47,41,38,.12); }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 0 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 11px; font-weight: 750; }
+      .btn:hover { color: var(--accent); border-color: var(--accent); }
+      .btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+      .btn.primary:hover { background: #c95013; }
+      .btn.subtle { color: var(--muted); background: var(--surface-2); }
+      .btn.icon { width: 33px; padding: 0; font-size: 15px; }
+      .status { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+      .status::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ''; }
+      .status.success { color: var(--success); background: var(--success-bg); }
+      .status.warning { color: var(--warning); background: var(--warning-bg); }
+      .status.neutral { color: var(--muted); background: var(--wash); }
+      .tag { display: inline-flex; align-items: center; min-height: 21px; padding: 0 7px; color: #6e4e40; background: #f8eee9; border-radius: 5px; font-size: 10px; font-weight: 750; }
+      .tag.green { color: #315d52; background: #edf5f0; }
+      .tag.gray { color: var(--muted); background: #f2efed; }
+      .tag.blue { color: #3c5c84; background: #e9f0f8; }
+      .surface { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 3px rgba(47,41,38,.035); }
+      .surface-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid var(--line); }
+      .surface-head p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+      .surface-body { padding: 14px 17px; }
+      .engine-card { display: grid; gap: 11px; min-height: 148px; padding: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; text-align: left; }
+      .engine-card:hover, .engine-card.selected { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent), 0 2px 8px rgba(47,41,38,.06); }
+      .engine-card.selected { background: #fffaf7; }
+      .engine-top { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+      .engine-mark { display: grid; place-items: center; width: 30px; height: 30px; color: var(--accent); background: var(--accent-soft); border-radius: 7px; font-size: 16px; font-weight: 900; }
+      .engine-card strong { display: block; font-size: 13px; }
+      .engine-card small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+      .engine-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+      .provider-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .provider-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 auto; color: #8b390f; background: var(--accent-soft); border-radius: 8px; font-weight: 900; }
+      .provider-title strong { display: block; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+      .provider-title small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+      .provider-list { display: grid; gap: 8px; }
+      .provider-row { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, .7fr) auto; align-items: center; gap: 13px; min-height: 78px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+      .provider-row:hover, .provider-row.selected { border-color: #d9b39e; background: #fffaf7; }
+      .provider-cell small { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+      .provider-cell strong { display: block; margin-top: 5px; font-size: 11px; }
+      .provider-cell .tag { margin-top: 5px; }
+      .row-actions { display: flex; justify-content: end; gap: 5px; }
+      .models { display: flex; flex-wrap: wrap; gap: 5px; }
+      .model { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 0 7px; color: #315d52; background: #edf5f0; border-radius: 5px; font-size: 10px; font-weight: 750; }
+      .model em { color: var(--muted); font-style: normal; font-weight: 500; }
+      .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+      .metric { padding: 11px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
+      .metric span, .metric small { display: block; color: var(--muted); font-size: 9px; }
+      .metric strong { display: block; margin-top: 4px; font-size: 18px; }
+      .metric small { margin-top: 2px; }
+      .engine-rail { display: grid; gap: 8px; align-content: start; padding: 12px; background: var(--surface-2); border-right: 1px solid var(--line); }
+      .engine-rail h3 { padding: 3px 5px 5px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+      .engine-rail .engine-card { min-height: auto; padding: 11px; }
+      .engine-rail .engine-card small { display: none; }
+      .engine-rail .engine-top { align-items: center; }
+      .engine-rail .engine-meta { display: none; }
+      .engine-rail .engine-mark { width: 26px; height: 26px; font-size: 13px; }
+      .split { display: grid; grid-template-columns: 278px minmax(0, 1fr); overflow: hidden; }
+      .split-main { min-width: 0; padding: 16px; }
+      .split-main > .surface + .surface { margin-top: 11px; }
+      .engine-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      .overview-grid { display: grid; grid-template-columns: minmax(330px, .74fr) minmax(0, 1.26fr); gap: 11px; }
+      .overview-grid .surface { min-width: 0; }
+      .compact-list { display: grid; gap: 8px; }
+      .compact-provider { display: grid; gap: 9px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; }
+      .compact-provider:hover, .compact-provider.selected { border-color: var(--accent); background: #fffaf7; }
+      .compact-provider .provider-line { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+      .compact-provider .models { padding-top: 8px; border-top: 1px solid var(--line); }
+      .matrix { overflow: auto; }
+      .matrix table { width: 100%; min-width: 740px; border-collapse: collapse; font-size: 10px; }
+      .matrix th, .matrix td { padding: 11px 9px; border-bottom: 1px solid var(--line); text-align: left; }
+      .matrix th { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+      .matrix td strong { font-size: 11px; }
+      .check { color: var(--success); font-size: 15px; font-weight: 900; }
+      .drawer-layout { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr); gap: 11px; }
+      .drawer-list { display: grid; gap: 7px; align-content: start; }
+      .drawer-list .compact-provider { cursor: pointer; }
+      .drawer-detail { position: relative; min-height: 470px; padding: 19px; }
+      .drawer-detail::before { position: absolute; top: 0; bottom: 0; left: -6px; width: 2px; background: var(--accent); content: ''; }
+      .drawer-detail h2 { font-size: 21px; }
+      .detail-header { display: flex; align-items: start; justify-content: space-between; gap: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--line); }
+      .detail-header p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+      .detail-section { padding: 15px 0; border-bottom: 1px solid var(--line); }
+      .detail-section:last-child { border-bottom: 0; }
+      .detail-section h3 { margin-bottom: 9px; }
+      .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .detail-grid div { padding: 9px 10px; background: var(--surface-2); border-radius: 6px; }
+      .detail-grid span { display: block; color: var(--muted); font-size: 9px; }
+      .detail-grid strong { display: block; margin-top: 4px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .board { display: grid; gap: 11px; }
+      .board-top { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(240px, .85fr); gap: 11px; }
+      .hero-engine { display: grid; gap: 13px; min-height: 192px; padding: 20px; color: #fff; background: #252b32; border-radius: 8px; }
+      .hero-engine .eyebrow { color: #f0a985; }
+      .hero-engine h2 { font-size: 24px; }
+      .hero-engine p { max-width: 490px; margin: 6px 0 0; color: #b8c0c8; font-size: 11px; line-height: 1.5; }
+      .hero-engine .engine-meta .tag { color: #d3e8dd; background: #33463f; }
+      .health-panel { display: grid; gap: 9px; padding: 16px; }
+      .health-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+      .health-row:last-child { border-bottom: 0; }
+      .health-row span { color: var(--muted); }
+      .provider-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .provider-card { display: grid; gap: 12px; min-height: 180px; padding: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+      .provider-card:hover, .provider-card.selected { border-color: var(--accent); box-shadow: 0 2px 8px rgba(47,41,38,.06); }
+      .provider-card .provider-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+      .provider-card .provider-head > div:first-child { min-width: 0; }
+      .provider-card .provider-foot { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-top: auto; }
+      .provider-card .endpoint { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      .provider-card .action-links { display: flex; gap: 6px; }
+      .provider-card .models { min-height: 22px; }
+      .timeline { position: relative; display: grid; gap: 9px; padding: 4px 0 4px 25px; }
+      .timeline::before { position: absolute; top: 8px; bottom: 8px; left: 8px; width: 1px; background: var(--line-strong); content: ''; }
+      .timeline-item { position: relative; display: grid; grid-template-columns: minmax(160px, .6fr) minmax(0, 1.4fr) auto; align-items: center; gap: 13px; min-height: 61px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+      .timeline-item::before { position: absolute; left: -21px; width: 9px; height: 9px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); content: ''; }
+      .timeline-item strong { display: block; font-size: 11px; }
+      .timeline-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+      .timeline-item .models { justify-content: start; }
+      .edit-layout { display: grid; grid-template-columns: 226px minmax(0, 1fr) minmax(250px, .65fr); gap: 11px; align-items: start; }
+      .edit-sidebar { display: grid; gap: 8px; padding: 13px; }
+      .edit-sidebar h3 { padding: 4px 2px 7px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+      .edit-nav { display: flex; align-items: center; gap: 8px; min-height: 37px; padding: 0 9px; color: var(--muted); background: transparent; border: 0; border-radius: 5px; text-align: left; font-size: 11px; }
+      .edit-nav:hover, .edit-nav.active { color: var(--ink); background: var(--accent-soft); }
+      .edit-nav.active { font-weight: 800; }
+      .edit-nav i { width: 17px; color: var(--accent); font-style: normal; text-align: center; }
+      .form-panel { padding: 17px; }
+      .form-panel > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
+      .form-panel > header p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+      .form-section { padding: 14px 0; border-bottom: 1px solid var(--line); }
+      .form-section:last-of-type { border-bottom: 0; }
+      .form-section h3 { margin-bottom: 11px; }
+      .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+      .field { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+      .field.full { grid-column: 1 / -1; }
+      .field b { color: var(--ink); font-size: 11px; }
+      .field input, .field select, .field textarea { width: 100%; min-height: 34px; padding: 7px 9px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; outline: 0; font-size: 11px; }
+      .field textarea { min-height: 67px; resize: vertical; }
+      .input-with-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; }
+      .models-editor { display: grid; gap: 7px; }
+      .model-edit-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 94px 78px auto; align-items: center; gap: 6px; padding: 7px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; }
+      .model-edit-row input { min-height: 29px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font-size: 10px; }
+      .form-foot { display: flex; justify-content: end; gap: 7px; padding-top: 14px; }
+      .preview-card { position: sticky; top: 15px; overflow: hidden; }
+      .preview-card .preview-screen { padding: 15px; background: #252b32; }
+      .preview-screen .mini-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #bec8cf; font-size: 9px; }
+      .preview-screen .mini-title { display: grid; gap: 5px; margin: 24px 0 17px; color: white; }
+      .preview-screen .mini-title strong { font-size: 19px; }
+      .preview-screen .mini-title span { color: #a7b2ba; font-size: 10px; }
+      .preview-screen .mini-provider { display: grid; gap: 9px; padding: 12px; background: #313941; border: 1px solid #45505b; border-radius: 6px; }
+      .preview-screen .mini-provider strong { color: white; font-size: 12px; }
+      .preview-screen .mini-provider small { color: #a7b2ba; font-size: 9px; }
+      .preview-screen .mini-row { display: flex; justify-content: space-between; gap: 8px; color: #c2ccd2; font-size: 9px; }
+      .preview-screen .mini-row b { color: #f2a37f; font-weight: 700; }
+      .preview-card > footer { padding: 12px 14px; color: var(--muted); background: var(--surface); font-size: 10px; line-height: 1.5; }
+      .variant-b .surface-head, .variant-f .surface-head { background: #fffaf7; }
+      .variant-c .split { grid-template-columns: 240px minmax(0, 1fr); }
+      .variant-c .engine-rail { background: #252b32; border-right: 0; }
+      .variant-c .engine-rail h3 { color: #9faab3; }
+      .variant-c .engine-rail .engine-card { color: #f5f8fa; background: transparent; border-color: transparent; }
+      .variant-c .engine-rail .engine-card.selected { color: #fff; background: #313941; border-color: #45505b; box-shadow: inset 3px 0 0 var(--accent); }
+      .variant-c .engine-rail .engine-card small { color: #a7b2ba; }
+      .variant-c .split-main { padding: 19px; }
+      .variant-d .engine-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .variant-d .engine-card { min-height: 118px; }
+      .variant-e .overview-grid { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); }
+      .variant-e .provider-row { grid-template-columns: minmax(0, 1.2fr) minmax(0, .7fr) minmax(0, 1fr) auto; }
+      .variant-g .drawer-detail { border-left: 0; }
+      .variant-h .split { grid-template-columns: 210px minmax(0, 1fr); }
+      .variant-h .engine-rail { background: #252b32; border-right: 0; }
+      .variant-h .engine-rail h3 { color: #a7b2ba; }
+      .variant-h .engine-rail .engine-card { color: white; background: transparent; border-color: transparent; }
+      .variant-h .engine-rail .engine-card.selected { background: #313941; box-shadow: none; }
+      .variant-h .provider-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .variant-h .provider-row { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; min-height: 145px; }
+      .variant-h .row-actions { justify-content: start; }
+      .variant-i .engine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .variant-i .engine-card { min-height: 132px; }
+      .variant-j .provider-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .variant-j .provider-card { min-height: 205px; }
+      .variant-k .edit-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, .72fr); }
+      .variant-k .edit-sidebar { display: none; }
+      .variant-k .form-panel { padding: 21px; }
+      .variant-l .edit-layout { grid-template-columns: 250px minmax(0, 1fr); }
+      .variant-l .preview-card { display: none; }
+      @media (max-width: 1120px) { .design-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); } .overview-grid, .board-top, .edit-layout, .drawer-layout { grid-template-columns: 1fr; } .preview-card { position: static; } .engine-grid, .variant-d .engine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .provider-board, .variant-j .provider-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } .variant-h .provider-list { grid-template-columns: 1fr; } }
+      @media (max-width: 820px) { .app { grid-template-columns: 64px minmax(0, 1fr); } .sidebar { padding: 18px 10px; } .brand { justify-content: center; padding: 0; } .brand > div:last-child, .nav-label, .nav button span, .sidebar-foot span { display: none; } .nav button { justify-content: center; padding: 0; } .nav button.active::before { display: none; } main { width: min(100% - 24px, 1360px); padding-top: 24px; } .intro, .review-note, .stage-header { display: grid; grid-template-columns: 1fr; align-items: start; } .scope-control { justify-self: start; } .design-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } .split { grid-template-columns: 1fr; } .engine-rail { grid-template-columns: repeat(3, minmax(0, 1fr)); border-right: 0; border-bottom: 1px solid var(--line); } .engine-rail h3 { grid-column: 1 / -1; } .engine-rail .engine-card { min-height: 90px; } .provider-row { grid-template-columns: minmax(160px, 1fr) minmax(95px, .7fr) auto; } .provider-row .provider-cell:nth-child(3), .provider-row .provider-cell:nth-child(4) { display: none; } .provider-board, .variant-j .provider-board, .engine-grid, .variant-d .engine-grid, .variant-i .engine-grid { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .matrix { overflow-x: auto; } }
+      @media (max-width: 520px) { .topbar { align-items: start; } .actor span { display: none; } .design-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mode-tabs { width: 100%; } .mode-tabs button { flex: 1; } .split-main, .surface-body, .form-panel, .drawer-detail { padding: 13px; } .engine-rail { grid-template-columns: 1fr; } .engine-rail h3 { grid-column: auto; } .provider-row { grid-template-columns: minmax(0, 1fr) auto; } .provider-row .provider-cell:nth-child(2) { display: none; } .row-actions { flex-direction: column; } .form-grid { grid-template-columns: 1fr; } .field.full { grid-column: auto; } .model-edit-row { grid-template-columns: minmax(0, 1fr) 65px auto; } .model-edit-row input:nth-child(2) { display: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">O</div><div><strong>OpsKeeper</strong><small>智能值守平台</small></div></div>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="nav" aria-label="主导航">
+          <button type="button"><span class="nav-symbol">⌂</span><span>总览</span></button>
+          <button type="button"><span class="nav-symbol">◇</span><span>项目</span></button>
+          <button type="button"><span class="nav-symbol">□</span><span>资源</span></button>
+          <button type="button" class="active"><span class="nav-symbol">✦</span><span>大模型</span></button>
+          <button type="button"><span class="nav-symbol">⌁</span><span>技能</span></button>
+          <button type="button"><span class="nav-symbol">◈</span><span>专家</span></button>
+          <button type="button"><span class="nav-symbol">⌕</span><span>诊断</span></button>
+          <button type="button"><span class="nav-symbol">◌</span><span>巡检</span></button>
+        </nav>
+        <div class="sidebar-foot"><div class="avatar">林</div><span>林晓 · 平台管理员</span></div>
+      </aside>
+      <div class="page">
+        <header class="topbar"><div><small>平台 / 大模型</small><strong>厂商与引擎</strong></div><div class="actor"><span>静态预览 · 不接入 API</span><div class="avatar">林</div></div></header>
+        <main>
+          <section class="intro"><div><p class="eyebrow">DESIGN REVIEW / LLM</p><h1>大模型</h1><p>AI 引擎负责统一执行能力，AI 厂商负责模型接入与路由。以下 12 种信息架构都保留现有 Provider 的协议、凭据、模型、能力、并发与作用域属性，但采用更现代的管理体验。</p></div><label class="scope-control">作用域<select id="scope-select"><option>平台 · 验收平台</option><option>团队 · 平台工程</option><option>项目 · 支付服务</option></select></label></section>
+          <nav class="design-tabs" role="tablist" aria-label="大模型页面设计方案">
+            <button class="design-tab" type="button" role="tab" aria-selected="true" data-variant="a"><b>A</b><strong>双面板总览</strong><span>引擎与厂商并列</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="b"><b>B</b><strong>控制塔</strong><span>运行状态优先</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="c"><b>C</b><strong>深色引擎台</strong><span>引擎选择沉浸式</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="d"><b>D</b><strong>引擎分层目录</strong><span>能力矩阵清晰</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="e"><b>E</b><strong>模型矩阵</strong><span>横向比较厂商</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="f"><b>F</b><strong>版本时间线</strong><span>发布与变更追踪</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="g"><b>G</b><strong>详情抽屉</strong><span>列表加上下文详情</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="h"><b>H</b><strong>运维桌面</strong><span>高密度工作台</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="i"><b>I</b><strong>引擎选择器</strong><span>先选运行时能力</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="j"><b>J</b><strong>厂商画廊</strong><span>现代卡片浏览</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="k"><b>K</b><strong>双窗格编辑</strong><span>编辑与即时预览</span></button>
+            <button class="design-tab" type="button" role="tab" aria-selected="false" data-variant="l"><b>L</b><strong>极简清单</strong><span>快速录入与维护</span></button>
+          </nav>
+          <section id="review-note" class="review-note" aria-live="polite"></section>
+          <section id="stage" class="stage" aria-label="大模型设计方案预览"></section>
+        </main>
+      </div>
+    </div>
+    <script>
+      const engines = [
+        { id: 'engine-core', mark: 'E', name: 'OpsKeeper Engine', sub: '统一执行引擎', desc: '负责诊断、技能和工作流的计划、工具调用、证据与审计。', tags: ['诊断', '技能', '工作流'], state: '运行中' },
+        { id: 'engine-stream', mark: '↯', name: 'Streaming Runner', sub: '流式执行引擎', desc: '面向 SSE 会话与长任务的增量输出和恢复。', tags: ['SSE', '恢复'], state: '可用' },
+        { id: 'engine-batch', mark: 'B', name: 'Batch Inspector', sub: '批量巡检引擎', desc: '面向批量目标的并发控制、预算和结果聚合。', tags: ['并发', '预算'], state: '预览' }
+      ];
+      const providers = [
+        { id: 'openai', mark: 'O', name: 'OpenAI Compatible', type: 'OpenAI Compatible', scope: '平台 · 验收平台', endpoint: 'https://api.example.com/v1', status: '正常', latency: '182 ms', models: ['gpt-4o', 'gpt-4o-mini'], caps: ['文本', '流式', '工具'], defaultModel: 'gpt-4o', purpose: ['诊断', '通用'], timeout: '60 秒', concurrency: '5', rate: '120 / 分钟', secret: 'sk-pro••••••81' },
+        { id: 'deepseek', mark: 'D', name: 'DeepSeek China', type: 'OpenAI Compatible', scope: '团队 · 平台工程', endpoint: 'https://api.deepseek.com/v1', status: '正常', latency: '426 ms', models: ['deepseek-chat', 'deepseek-reasoner'], caps: ['文本', '推理'], defaultModel: 'deepseek-reasoner', purpose: ['诊断'], timeout: '90 秒', concurrency: '3', rate: '60 / 分钟', secret: 'sk-ds••••••24' },
+        { id: 'local', mark: 'L', name: 'Local Gateway', type: 'Ollama Gateway', scope: '项目 · 支付服务', endpoint: 'http://ollama.internal:11434', status: '需要核验', latency: '—', models: ['qwen2.5:32b'], caps: ['文本', '工具'], defaultModel: 'qwen2.5:32b', purpose: ['巡检'], timeout: '120 秒', concurrency: '2', rate: '不限', secret: '未配置' },
+        { id: 'anthropic', mark: 'A', name: 'Anthropic', type: '原生 Messages API', scope: '平台 · 验收平台', endpoint: 'https://api.anthropic.com', status: '停用', latency: '—', models: ['claude-3-7-sonnet'], caps: ['文本', '视觉', '工具'], defaultModel: 'claude-3-7-sonnet', purpose: ['工作流'], timeout: '60 秒', concurrency: '4', rate: '80 / 分钟', secret: 'sk-ant••••••19' }
+      ];
+      const notes = {
+        a: ['双面板总览', '适合平台管理员快速理解“运行时引擎”和“模型接入”的边界。左侧引擎选择，右侧厂商维护，进入编辑后仍能保留上下文。', ['引擎与厂商职责分区', '首屏看到当前可用能力', '编辑入口明确']],
+        b: ['控制塔', '把引擎运行状态、Provider 健康和默认路由放在同一个控制面，适合日常值守和故障排查。', ['健康状态一眼可见', '路由关系更突出', '适合运维值班']],
+        c: ['深色引擎台', '用深色引擎侧栏强化“执行运行时”的产品心智，厂商内容保持浅色、可读、可编辑。', ['AI 引擎成为一级对象', '视觉层级更有记忆点', '适合强调平台能力']],
+        d: ['引擎分层目录', '先按引擎能力选定运行时，再用厂商表格管理接入，适合后续扩展多种 AI Engine。', ['扩展新引擎成本低', '能力矩阵可比较', '厂商管理稳定']],
+        e: ['模型矩阵', '把 Provider 与模型能力横向放在一张矩阵里，适合选择默认模型、检查工具和流式能力覆盖。', ['模型能力对比强', '路由决策效率高', '适合高级用户']],
+        f: ['版本时间线', '把 Provider 配置和模型变更按时间组织，适合审计、发布窗口和回滚前确认。', ['变更可追溯', '发布节奏清晰', '适合治理场景']],
+        g: ['详情抽屉', '列表负责扫描，抽屉负责上下文详情和连接核验，减少页面跳转并保留当前筛选。', ['扫描与详情分离', '上下文不丢失', '适合中等规模目录']],
+        h: ['运维桌面', '高密度三栏工作区，适合同时观察引擎、Provider 健康和模型能力，操作距离短。', ['信息密度最高', '适合宽屏值守', '快速编辑与测试']],
+        i: ['引擎选择器', '把引擎选择作为首个决策，厂商列表随能力上下文变化，适合多引擎并存后的产品形态。', ['先选能力再选接入', '未来扩展自然', '适合复杂平台']],
+        j: ['厂商画廊', '用现代卡片承载 Provider 的品牌、协议、模型和状态，适合厂商数量较少、强调可读性的场景。', ['视觉识别清晰', '卡片信息完整', '适合发现式浏览']],
+        k: ['双窗格编辑', '编辑 Provider 时右侧同步显示接入预览和生效范围，降低凭据、模型和路由配置的认知负担。', ['编辑反馈即时', '现代表单体验', '适合新建与维护']],
+        l: ['极简清单', '将高频维护压缩成清单和内联编辑，适合 Provider 数量多、管理员持续录入的后台。', ['操作路径最短', '批量维护友好', '适合高频管理']]
+      };
+      const stage = document.getElementById('stage');
+      const note = document.getElementById('review-note');
+      let variant = 'a';
+      let mode = 'overview';
+      let selectedEngine = 'engine-core';
+      let selectedProvider = 'openai';
+      let editName = providers[0].name;
+      let saved = false;
+
+      function engineCard(engine, compact = false) {
+        return `<button type="button" class="engine-card ${engine.id === selectedEngine ? 'selected' : ''}" data-engine="${engine.id}">
+          <span class="engine-top"><span class="engine-mark">${engine.mark}</span><span class="status ${engine.state === '运行中' || engine.state === '可用' ? 'success' : 'neutral'}">${engine.state}</span></span>
+          <span><strong>${engine.name}</strong><small>${engine.sub}</small></span>
+          ${compact ? '' : `<small>${engine.desc}</small><span class="engine-meta">${engine.tags.map((tag) => `<span class="tag green">${tag}</span>`).join('')}</span>`}
+        </button>`;
+      }
+      function providerTitle(provider) { return `<span class="provider-title"><span class="provider-mark">${provider.mark}</span><span><strong>${provider.name}</strong><small>${provider.type}</small></span></span>`; }
+      function providerRow(provider) {
+        return `<article class="provider-row ${provider.id === selectedProvider ? 'selected' : ''}" data-provider="${provider.id}">
+          ${providerTitle(provider)}
+          <span class="provider-cell"><small>状态 / 延迟</small><span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${provider.status}</span><small>${provider.latency}</small></span>
+          <span class="provider-cell"><small>默认模型</small><strong>${provider.defaultModel}</strong><span class="models">${provider.caps.map((cap) => `<span class="tag green">${cap}</span>`).join('')}</span></span>
+          <span class="provider-cell"><small>作用域 / 路由</small><strong>${provider.scope}</strong><span class="models">${provider.purpose.map((tag) => `<span class="tag">${tag}</span>`).join('')}</span></span>
+          <span class="row-actions"><button type="button" class="btn icon" data-edit="${provider.id}" title="编辑厂商">✎</button><button type="button" class="btn icon" data-test="${provider.id}" title="测试连接">↯</button></span>
+        </article>`;
+      }
+      function compactProvider(provider) {
+        return `<article class="compact-provider ${provider.id === selectedProvider ? 'selected' : ''}" data-provider="${provider.id}">${providerTitle(provider)}<span class="provider-line"><span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${provider.status}</span><small>${provider.models.length} 个模型</small></span><span class="models">${provider.models.map((model) => `<span class="model">${model}<em>${model === provider.defaultModel ? '默认' : ''}</em></span>`).join('')}</span></article>`;
+      }
+      function providerCard(provider) {
+        return `<article class="provider-card ${provider.id === selectedProvider ? 'selected' : ''}" data-provider="${provider.id}"><span class="provider-head">${providerTitle(provider)}<span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${provider.status}</span></span><span class="endpoint">${provider.endpoint}</span><span class="models">${provider.models.map((model) => `<span class="model">${model}<em>${model === provider.defaultModel ? '默认' : ''}</em></span>`).join('')}</span><span class="provider-foot"><span class="models">${provider.caps.map((cap) => `<span class="tag green">${cap}</span>`).join('')}</span><span class="action-links"><button type="button" class="btn subtle" data-test="${provider.id}">测试</button><button type="button" class="btn" data-edit="${provider.id}">编辑</button></span></span></article>`;
+      }
+      function engineRail() { return `<aside class="engine-rail"><h3>AI ENGINE / 可选引擎</h3>${engines.map((engine) => engineCard(engine, true)).join('')}</aside>`; }
+      function header(title, copy, action = '') { return `<div class="surface-head"><div><h2>${title}</h2><p>${copy}</p></div>${action}</div>`; }
+      function overviewA() { return `<div class="overview-grid"><section class="surface">${header('AI 引擎', '选择当前用于诊断、技能和工作流的执行运行时。', '<span class="status success">1 个已启用</span>')}<div class="surface-body engine-grid">${engines.map((engine) => engineCard(engine)).join('')}</div></section><section class="surface">${header('AI 厂商', '管理协议、凭据、模型、能力和作用域路由。', '<button class="btn primary" data-new="true">＋ 添加厂商</button>')}<div class="surface-body provider-list">${providers.slice(0, 3).map(providerRow).join('')}</div></section></div>`; }
+      function overviewB() { return `<div class="board"><div class="metrics"><div class="metric"><span>当前引擎</span><strong>1</strong><small>OpsKeeper Engine</small></div><div class="metric"><span>可用厂商</span><strong>2</strong><small>平台与团队范围</small></div><div class="metric"><span>可用模型</span><strong>6</strong><small>含 1 个推理模型</small></div><div class="metric"><span>最近测试</span><strong>182ms</strong><small>2 分钟前</small></div></div><div class="board-top"><section class="surface">${header('运行引擎', '当前执行面和可切换的候选引擎。')}<div class="surface-body compact-list">${engines.map((engine) => engineCard(engine)).join('')}</div></section><section class="surface health-panel">${header('连接健康', '来自最近一次 Provider 连接测试。')}<div class="health-row"><span>OpenAI Compatible</span><span class="status success">正常 · 182ms</span></div><div class="health-row"><span>DeepSeek China</span><span class="status success">正常 · 426ms</span></div><div class="health-row"><span>Local Gateway</span><span class="status warning">需要核验</span></div><button class="btn primary" data-new="true">＋ 管理 AI 厂商</button></section></div></div>`; }
+      function overviewC() { return `<div class="split surface">${engineRail()}<div class="split-main"><div class="stage-header"><div><h2>AI 厂商</h2><p>已选择 OpsKeeper Engine · 统一执行与审计</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><div class="metrics"><div class="metric"><span>路由能力</span><strong>3</strong><small>诊断 / 巡检 / 工作流</small></div><div class="metric"><span>厂商</span><strong>4</strong><small>2 个正在使用</small></div><div class="metric"><span>工具模型</span><strong>3</strong><small>支持 function calling</small></div><div class="metric"><span>预算</span><strong>OK</strong><small>当前月度额度正常</small></div></div><div class="provider-list" style="margin-top:12px">${providers.map(providerRow).join('')}</div></div></div>`; }
+      function overviewD() { return `<div class="surface"><div class="surface-body"><div class="stage-header"><div><h2>选择 AI 引擎</h2><p>引擎定义可用的执行和治理能力，Provider 是其下的模型接入。</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><div class="engine-grid">${engines.map((engine) => engineCard(engine)).join('')}</div></div><div class="surface-head"><div><h2>厂商目录 · ${engines.find((engine) => engine.id === selectedEngine).name}</h2><p>当前作用域可见的独立 Provider，不再混入通用资源目录。</p></div><span class="tag">4 个厂商</span></div><div class="surface-body provider-list">${providers.map(providerRow).join('')}</div></div>`; }
+      function overviewE() { return `<div class="surface matrix"><div class="surface-head"><div><h2>模型能力矩阵</h2><p>按 Provider 与模型横向比较文本、流式、工具、视觉和推理覆盖。</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><table><thead><tr><th>厂商 / 模型</th><th>引擎</th><th>作用域</th><th>文本</th><th>流式</th><th>工具</th><th>推理</th><th>状态</th><th></th></tr></thead><tbody>${providers.flatMap((provider) => provider.models.map((model, index) => `<tr><td><strong>${provider.name}</strong><small style="display:block;color:var(--muted);margin-top:3px">${model}${index === 0 ? ' · 默认' : ''}</small></td><td>OpsKeeper</td><td>${provider.scope.split(' · ')[0]}</td><td class="check">✓</td><td class="${provider.caps.includes('流式') ? 'check' : 'dash'}">${provider.caps.includes('流式') ? '✓' : '—'}</td><td class="${provider.caps.includes('工具') ? 'check' : 'dash'}">${provider.caps.includes('工具') ? '✓' : '—'}</td><td class="${provider.caps.includes('推理') ? 'check' : 'dash'}">${provider.caps.includes('推理') ? '✓' : '—'}</td><td><span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${provider.status}</span></td><td><button class="btn icon" type="button" data-edit="${provider.id}">✎</button></td></tr>`)).join('')}</tbody></table></div>`; }
+      function overviewF() { return `<div class="surface"><div class="surface-head"><div><h2>Provider 生命周期</h2><p>连接测试、模型发布与路由变更按时间聚合。</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><div class="surface-body"><div class="timeline"><div class="timeline-item"><span><strong>OpenAI Compatible</strong><small>今天 10:42 · 连接测试</small></span><span><span class="status success">正常</span><small>默认模型 gpt-4o</small></span><span class="models"><span class="tag green">工具</span><span class="tag green">流式</span></span></div><div class="timeline-item"><span><strong>DeepSeek China</strong><small>昨天 16:08 · 发布模型</small></span><span><span class="status success">已发布</span><small>deepseek-reasoner</small></span><span class="models"><span class="tag">诊断路由</span></span></div><div class="timeline-item"><span><strong>Local Gateway</strong><small>2026-01-18 · 创建厂商</small></span><span><span class="status warning">待核验</span><small>凭据尚未配置</small></span><span class="models"><span class="tag gray">项目级</span></span></div></div></div></div>`; }
+      function overviewG() { return `<div class="drawer-layout"><section class="surface"><div class="surface-head"><div><h2>AI 厂商</h2><p>选择厂商查看上下文详情</p></div><button class="btn primary" data-new="true">＋ 添加</button></div><div class="surface-body drawer-list">${providers.map(compactProvider).join('')}</div></section><section class="surface drawer-detail">${providerDetail(providers.find((provider) => provider.id === selectedProvider))}</section></div>`; }
+      function overviewH() { return `<div class="split surface">${engineRail()}<div class="split-main"><div class="stage-header"><div><h2>运维桌面</h2><p>OpsKeeper Engine · 当前作用域平台</p></div><div><button class="btn" data-test="${selectedProvider}">↯ 测试全部</button> <button class="btn primary" data-new="true">＋ 添加</button></div></div><div class="provider-list">${providers.map(providerRow).join('')}</div></div></div>`; }
+      function overviewI() { return `<div class="surface"><div class="surface-head"><div><h2>先选一个 AI 引擎</h2><p>选择引擎后，平台将展示与其能力兼容的厂商和模型。</p></div><span class="tag green">已选择 · ${engines.find((engine) => engine.id === selectedEngine).name}</span></div><div class="surface-body engine-grid">${engines.map((engine) => engineCard(engine)).join('')}</div><div class="surface-head"><div><h2>兼容的 AI 厂商</h2><p>支持文本、工具和流式能力的独立 Provider。</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><div class="surface-body provider-board">${providers.slice(0, 3).map(providerCard).join('')}</div></div>`; }
+      function overviewJ() { return `<div class="board"><div class="stage-header"><div><h2>AI 厂商画廊</h2><p>以品牌标识、协议和模型能力快速认识接入。</p></div><button class="btn primary" data-new="true">＋ 添加厂商</button></div><section class="surface"><div class="surface-head"><div><h2>使用中的引擎</h2><p>点击卡片切换后续厂商的能力上下文。</p></div></div><div class="surface-body engine-grid">${engines.map((engine) => engineCard(engine)).join('')}</div></section><div class="provider-board">${providers.map(providerCard).join('')}</div></div>`; }
+      function overviewK() { return `<div class="drawer-layout"><section class="surface"><div class="surface-head"><div><h2>厂商列表</h2><p>选择 Provider 进入现代化配置工作区。</p></div><button class="btn primary" data-new="true">＋ 新建</button></div><div class="surface-body drawer-list">${providers.map(compactProvider).join('')}</div></section><section class="surface drawer-detail">${providerDetail(providers.find((provider) => provider.id === selectedProvider))}<div style="margin-top:13px"><button class="btn primary" data-edit="${selectedProvider}">打开完整编辑</button></div></section></div>`; }
+      function overviewL() { return `<div class="surface"><div class="surface-head"><div><h2>厂商清单</h2><p>高频维护：状态、默认模型、路由和连接测试集中在一行。</p></div><button class="btn primary" data-new="true">＋ 新建厂商</button></div><div class="surface-body provider-list">${providers.map((provider) => `<article class="provider-row" data-provider="${provider.id}">${providerTitle(provider)}<span class="provider-cell"><small>默认模型</small><strong>${provider.defaultModel}</strong></span><span class="provider-cell"><small>作用域</small><strong>${provider.scope}</strong></span><span class="row-actions"><span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${provider.status}</span><button type="button" class="btn" data-edit="${provider.id}">编辑</button></span></article>`).join('')}</div></div><section class="surface" style="margin-top:11px">${header('AI 引擎', '将执行运行时与厂商目录分离，避免把引擎误解为一个 Provider。')}<div class="surface-body engine-grid">${engines.map((engine) => engineCard(engine)).join('')}</div></section>`; }
+      function providerDetail(provider) { return `<div class="detail-header"><div>${providerTitle(provider)}<p>${provider.endpoint}</p></div><button class="btn primary" data-edit="${provider.id}">编辑厂商</button></div><div class="detail-section"><h3>模型与能力</h3><div class="models">${provider.models.map((model) => `<span class="model">${model}<em>${model === provider.defaultModel ? '默认' : ''}</em></span>`).join('')}</div><div class="models" style="margin-top:8px">${provider.caps.map((cap) => `<span class="tag green">${cap}</span>`).join('')}</div></div><div class="detail-section"><h3>路由与权限</h3><div class="detail-grid"><div><span>作用域</span><strong>${provider.scope}</strong></div><div><span>用途标签</span><strong>${provider.purpose.join(' / ')}</strong></div><div><span>超时</span><strong>${provider.timeout}</strong></div><div><span>并发</span><strong>${provider.concurrency}</strong></div></div></div><div class="detail-section"><h3>连接凭据</h3><div class="detail-grid"><div><span>API Key</span><strong>${provider.secret}</strong></div><div><span>最近延迟</span><strong>${provider.latency}</strong></div></div></div>`; }
+      function editView() { const provider = providers.find((item) => item.id === selectedProvider); return `<div class="edit-layout variant-${variant}"><aside class="surface edit-sidebar"><h3>厂商配置</h3><button class="edit-nav active" type="button"><i>◈</i>基本信息</button><button class="edit-nav" type="button"><i>⌁</i>连接与凭据</button><button class="edit-nav" type="button"><i>◎</i>模型与能力</button><button class="edit-nav" type="button"><i>↔</i>路由与预算</button><div style="margin-top:10px;padding:10px;color:var(--muted);background:var(--surface-2);border-radius:6px;font-size:10px;line-height:1.45"><b style="color:var(--ink)">当前引擎</b><br>${engines.find((engine) => engine.id === selectedEngine).name}<br><span style="color:var(--accent)">平台 · 验收平台</span></div></aside><section class="surface form-panel"><header><div><h2>${provider.name} · 编辑厂商</h2><p>凭据只在服务端保存，模型配置变更后需要重新测试连接。</p></div><span class="status ${provider.status === '正常' ? 'success' : provider.status === '需要核验' ? 'warning' : 'neutral'}">${saved ? '已保存' : provider.status}</span></header><div class="form-section"><h3>基本信息</h3><div class="form-grid"><label class="field"><b>厂商名称</b><input id="edit-name" value="${editName}" /></label><label class="field"><b>Provider 类型</b><select><option>${provider.type}</option><option>OpenAI Compatible</option><option>Ollama Gateway</option><option>原生 Messages API</option></select></label><label class="field full"><b>作用域</b><select><option>${provider.scope}</option><option>平台 · 验收平台</option><option>团队 · 平台工程</option><option>项目 · 支付服务</option></select></label></div></div><div class="form-section"><h3>连接与凭据</h3><div class="form-grid"><label class="field full"><b>Base URL</b><input value="${provider.endpoint}" /></label><label class="field"><b>API Key</b><span class="input-with-action"><input value="${provider.secret}" type="password" /><button class="btn icon" type="button" title="显示凭据">◉</button></span></label><label class="field"><b>协议</b><select><option>Chat Completions</option><option>Messages API</option></select></label></div></div><div class="form-section"><h3>模型与能力</h3><div class="models-editor">${provider.models.map((model, index) => `<div class="model-edit-row"><input value="${model}" aria-label="模型 ${index + 1}" /><input value="${index === 0 ? '默认' : '优先级 ' + (index + 1)}" aria-label="模型状态" /><span class="tag green">${provider.caps[index % provider.caps.length]}</span><button class="btn icon" type="button" title="删除模型">×</button></div>`).join('')}<button class="btn subtle" type="button">＋ 添加模型</button></div></div><div class="form-section"><h3>运行参数</h3><div class="form-grid"><label class="field"><b>超时（秒）</b><input value="${provider.timeout.replace(' 秒', '')}" type="number" /></label><label class="field"><b>最大并发</b><input value="${provider.concurrency}" type="number" /></label><label class="field"><b>限流（请求 / 分钟）</b><input value="${provider.rate.replace(' / 分钟', '')}" /></label><label class="field"><b>用途标签</b><input value="${provider.purpose.join(', ')}" /></label></div></div><div class="form-foot"><button class="btn" type="button" data-cancel="true">取消</button><button class="btn" type="button" data-test="${provider.id}">↯ 测试连接</button><button class="btn primary" type="button" data-save="${provider.id}">保存厂商</button></div></section><aside class="surface preview-card"><div class="preview-screen"><div class="mini-top"><span>OPSKEEPER ENGINE</span><span>● LIVE</span></div><div class="mini-title"><strong>${editName || provider.name}</strong><span>${provider.type} · ${provider.scope}</span></div><div class="mini-provider"><strong>${provider.defaultModel}</strong><small>${provider.endpoint}</small><div class="mini-row"><span>模型</span><b>${provider.models.length} 个</b></div><div class="mini-row"><span>工具调用</span><b>${provider.caps.includes('工具') ? '已启用' : '未启用'}</b></div><div class="mini-row"><span>默认路由</span><b>${provider.purpose.join(' / ')}</b></div></div></div><footer>右侧预览展示保存后在引擎目录中的呈现方式。敏感凭据永远不会出现在列表或审计详情中。</footer></aside></div>`; }
+      function renderNote() { const item = notes[variant]; note.innerHTML = `<div><p class="eyebrow">方案 ${variant.toUpperCase()} · ${item[0]}</p><p>${item[1]}</p></div><div class="decision">${item[2].map((text) => `<span><i></i>${text}</span>`).join('')}</div>`; }
+      function render() { renderNote(); stage.className = `stage variant-${variant}`; const body = mode === 'edit' ? editView() : ({ a: overviewA, b: overviewB, c: overviewC, d: overviewD, e: overviewE, f: overviewF, g: overviewG, h: overviewH, i: overviewI, j: overviewJ, k: overviewK, l: overviewL }[variant])(); const stageCopy = mode === 'edit' ? '现代化 Provider 编辑体验 · 连接、模型、能力和路由集中管理' : `方案 ${variant.toUpperCase()} · ${notes[variant][0]}`; stage.innerHTML = `<div class="stage-header"><div><p class="eyebrow">${mode === 'edit' ? 'PROVIDER EDITOR' : 'AI MODEL CONTROL PLANE'}</p><h2>${mode === 'edit' ? '编辑 AI 厂商' : '引擎与厂商工作区'}</h2><p>${stageCopy}</p></div><div class="mode-tabs" role="tablist" aria-label="预览模式"><button type="button" role="tab" aria-selected="${mode === 'overview'}" data-mode="overview">总览</button><button type="button" role="tab" aria-selected="${mode === 'edit'}" data-mode="edit">编辑厂商</button></div></div>${body}`; bind(); }
+      function bind() {
+        stage.querySelectorAll('[data-engine]').forEach((button) => button.addEventListener('click', () => { selectedEngine = button.dataset.engine; render(); }));
+        stage.querySelectorAll('[data-provider]').forEach((button) => button.addEventListener('click', (event) => { if (event.target.closest('button')) return; selectedProvider = button.dataset.provider; render(); }));
+        stage.querySelectorAll('[data-edit]').forEach((button) => button.addEventListener('click', () => { selectedProvider = button.dataset.edit; editName = providers.find((item) => item.id === selectedProvider).name; mode = 'edit'; saved = false; render(); }));
+        stage.querySelectorAll('[data-new]').forEach((button) => button.addEventListener('click', () => { mode = 'edit'; selectedProvider = 'openai'; editName = '新建 AI 厂商'; saved = false; render(); }));
+        stage.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => { mode = button.dataset.mode; render(); }));
+        stage.querySelectorAll('[data-cancel]').forEach((button) => button.addEventListener('click', () => { mode = 'overview'; saved = false; render(); }));
+        stage.querySelectorAll('[data-save]').forEach((button) => button.addEventListener('click', () => { editName = document.getElementById('edit-name').value; saved = true; render(); }));
+        stage.querySelectorAll('[data-test]').forEach((button) => button.addEventListener('click', () => { button.textContent = '测试中…'; button.disabled = true; setTimeout(() => { button.textContent = '✓ 已通过'; button.disabled = false; }, 700); }));
+      }
+      document.querySelectorAll('.design-tab').forEach((button) => button.addEventListener('click', () => { variant = button.dataset.variant; mode = 'overview'; document.querySelectorAll('.design-tab').forEach((tab) => tab.setAttribute('aria-selected', String(tab === button))); render(); }));
+      render();
+    </script>
+  </body>
+</html>

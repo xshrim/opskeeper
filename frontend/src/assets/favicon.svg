@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 5 48 48" role="img" aria-labelledby="title desc">
   <title id="title">OpsKeeper</title>
   <desc id="desc">OpsKeeper orange O mark with a lime status dot</desc>
   <path d="M32 13c-11.046 0-20 8.507-20 19s8.954 19 20 19 20-8.507 20-19-8.954-19-20-19Zm0 9c5.523 0 10 4.477 10 10s-4.477 10-10 10-10-4.477-10-10 4.477-10 10-10Z" fill="#e7601b" fill-rule="evenodd"/>

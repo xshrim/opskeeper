@@ -18,8 +18,8 @@ T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按�
 
 | 任务 | 名称 | 结果 | 证据 |
 |---|---|---|---|
-| T01 | 公共工具契约与执行基础 | 已通过 | `cd backend && go test ./tool`；公共包不依赖 MCP、AIEngine 或 HTTP API |
-| T02 | 资源接入模型与上下文解析 | 已通过 | `cd backend && go test ./resource ./aiengine ./mcp ./connector ./httpapi ./migrations`；`go test -race ./resource ./aiengine ./mcp`；`subtype`/`agent_ref` 关联和 Direct/Agent Provider 路由测试通过 |
+| T01 | 公共工具契约与执行基础 | 已通过 | `cd backend && go test ./tool`；公共包不依赖 MCP、Engine 或 HTTP API |
+ | T02 | 资源接入模型与上下文解析 | 已通过 | `cd backend && go test ./resource ./engine ./mcp ./connector ./httpapi ./migrations`；`go test -race ./resource ./engine ./mcp`；`subtype`/`agent_ref` 关联和 Direct/Agent Provider 路由测试通过 |
 | T03 | Docker 工具集统一 | 已通过 | `cd backend && go test ./connector ./tool/... ./mcpserver/docker/...`；公共 Docker 实现由 MCP 薄适配器和 Direct Provider 共用，Direct 注册 6 个工具并隐藏连接字段；MCP Schema 与日志过滤回归通过 |
 | T04 | Host 工具集接入 | 已通过 | `make host-mcp-test`、`cd backend && go test ./...`、`cd frontend && npm run check`；Host Direct 与 Host MCP Agent 共用五个 Linux 只读工具，SSH 支持密码/私钥和 known_hosts，连接目标遵循工具参数 > HOST_MCP_* 环境变量 > 本机，文件日志支持 tail/since/until/keyword，资源前端支持 Direct/Agent 配置和连接测试 |
 | T05 | Kubernetes 工具集统一 | 已通过 | `cd backend && go test ./...`、`cd frontend && npm run check && npm test -- --run`；14 个只读 Kubernetes 工具由公共实现同时提供 Direct 与 MCP/Agent 路径，连接参数遵循工具入参 > 环境变量 > 默认 kubeconfig，MCP HTTP 支持可选 Bearer Token；Kubernetes 资源前端添加、编辑、总结核验和详情展示已接入 |
@@ -68,7 +68,7 @@ T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按�
 - `tool.Definition` 只包含名称、描述和输入 Schema，不包含资源类型、工具版本、能力、只读标记或 MCP 管理类型字段。
 - `tool.Invocation` 将业务参数与适配器拥有的 opaque connection context 分离；注册表调用前复制参数，避免工具修改调用方 map。
 - 注册表支持注册、重复检测、Schema 校验、排序枚举、覆盖注册和按名称调用；调用不存在工具返回 `tool_unavailable` 分类。
-- `tool` 源码仅使用 Go 标准库，不依赖 MCP SDK、AIEngine、HTTP API 或资源目录。
+- `tool` 源码仅使用 Go 标准库，不依赖 MCP SDK、Engine、HTTP API 或资源目录。
 
 ### 遗留问题
 
@@ -98,7 +98,7 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 
 ### 实施内容
 
-- Docker DTO、连接输入、六个只读工具和日志过滤逻辑迁移到 `backend/tool/docker`，不依赖 MCP SDK 或 AIEngine。
+- Docker DTO、连接输入、六个只读工具和日志过滤逻辑迁移到 `backend/tool/docker`，不依赖 MCP SDK 或 Engine。
 - Docker MCP Server 仅保留 MCP Tool 注册、输入解码和结果编码，通过公共 Docker 函数执行。
 - Connector 增加 Docker Direct Provider，按逻辑资源配置和已授权凭据绑定连接，注册六个稳定工具。
 - Direct Schema 隐藏连接字段并在调用前覆盖模型参数；MCP 独立运行 Schema 与既有参数保持不变。

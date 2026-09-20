@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/diagnosis"
+	"opskeeper/backend/llm"
 	"opskeeper/backend/migrations"
 	"opskeeper/backend/resource"
 )
@@ -23,17 +24,17 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 	if err := pool.QueryRow(ctx, "SELECT scope_id::text FROM platforms LIMIT 1").Scan(&scopeID); err != nil {
 		t.Fatalf("read platform scope: %v", err)
 	}
-	resources := resource.NewService(resource.NewStore(pool), nil)
-	provider, err := resources.Create(ctx, resource.CreateInput{ScopeID: scopeID, Kind: "AIProvider", Name: "diagnosis-provider", Config: map[string]any{
-		"provider_type": "openai-compatible",
-		"base_url":      "https://example.com/v1",
-		"enabled":       true,
-		"default_model": "diagnostic-model",
-		"models": []any{map[string]any{
-			"name":                  "diagnostic-model",
-			"context_window_tokens": 128000,
-			"capabilities":          []any{"text", "tool_calling"},
-			"enabled":               true,
+	providers := llm.NewProviderStore(pool)
+	provider, err := providers.CreateProvider(ctx, llm.ProviderInput{ScopeID: scopeID, Name: "diagnosis-provider", Status: "active", Config: llm.ProviderConfig{
+		ProviderType: "openai-compatible",
+		BaseURL:      "https://example.com/v1",
+		Enabled:      true,
+		DefaultModel: "diagnostic-model",
+		Models: []llm.ProviderModel{{
+			Name:                "diagnostic-model",
+			ContextWindowTokens: 128000,
+			Capabilities:        []string{"text", "tool_calling"},
+			Enabled:             true,
 		}},
 	}})
 	if err != nil {
@@ -44,7 +45,7 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 		t.Fatalf("create target resource: %v", err)
 	}
 	store := diagnosis.NewStore(pool)
-	first, err := store.Start(ctx, diagnosis.StartInput{ScopeID: scopeID, Question: "why", ProviderResourceID: provider.ID, ModelName: "diagnostic-model", TargetResourceIDs: []string{target.ID}})
+	first, err := store.Start(ctx, diagnosis.StartInput{ScopeID: scopeID, Question: "why", ProviderID: provider.ID, ModelName: "diagnostic-model", TargetResourceIDs: []string{target.ID}})
 	if err != nil {
 		t.Fatalf("Start(first): %v", err)
 	}
@@ -52,8 +53,8 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 	if err != nil || !claimed {
 		t.Fatalf("ClaimRun() claimed=%v err=%v", claimed, err)
 	}
-	if claimedSession.ProviderResourceID != provider.ID || claimedSession.ModelName != "diagnostic-model" {
-		t.Fatalf("ClaimRun() session provider/model = %q/%q, want %q/%q", claimedSession.ProviderResourceID, claimedSession.ModelName, provider.ID, "diagnostic-model")
+	if claimedSession.ProviderID != provider.ID || claimedSession.ModelName != "diagnostic-model" {
+		t.Fatalf("ClaimRun() session provider/model = %q/%q, want %q/%q", claimedSession.ProviderID, claimedSession.ModelName, provider.ID, "diagnostic-model")
 	}
 	evidence, err := store.SaveEvidence(ctx, first.ID, diagnosis.CreateEvidenceInput{TargetResourceID: target.ID, SourceResourceID: target.ID, Capability: "query_metrics", CollectedAt: time.Now(), Summary: json.RawMessage(`{"series":1}`), Content: json.RawMessage(`{"error_rate":0.12}`), Untrusted: true})
 	if err != nil || len(evidence.ContentHash) != 64 || !evidence.Untrusted {
@@ -71,8 +72,8 @@ func TestStorePersistsTraceableEvidenceAndRejectsCrossSessionReference(t *testin
 	if err != nil || !claimed {
 		t.Fatalf("ClaimRun(second) claimed=%v err=%v", claimed, err)
 	}
-	if claimedWithoutProvider.ProviderResourceID != "" || claimedWithoutProvider.ModelName != "" {
-		t.Fatalf("ClaimRun(second) provider/model = %q/%q, want empty values", claimedWithoutProvider.ProviderResourceID, claimedWithoutProvider.ModelName)
+	if claimedWithoutProvider.ProviderID != "" || claimedWithoutProvider.ModelName != "" {
+		t.Fatalf("ClaimRun(second) provider/model = %q/%q, want empty values", claimedWithoutProvider.ProviderID, claimedWithoutProvider.ModelName)
 	}
 	if _, err := store.SaveReport(ctx, diagnosis.Report{SessionID: second.ID, Status: "warning", Conclusion: "unverified", Recommendations: json.RawMessage(`[]`), EvidenceIDs: []string{evidence.ID}}); !diagnosis.IsInvalid(err) {
 		t.Fatalf("cross-session evidence reference error = %v, want invalid", err)

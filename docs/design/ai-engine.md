@@ -1,31 +1,33 @@
-# AIProvider + AIEngine 设计
+# 历史：Provider 与 Engine 设计
 
-**状态：** I003 实施版本  
-**适用范围：** I003 后续 AIEngine 改造  
-**最后更新：** 2026-09-02
+> 本文保留 I003 的运行契约说明。当前实现以[大模型领域对象](llm-domains.md)为准：Provider、Skill、Persona 均为独立领域对象，运行时统一称为 Engine。
+
+**状态：** I003 实施版本
+**适用范围：** I003 后续 Engine 改造
+**最后更新：** 2026-09-19
 
 ## 1. 设计结论
 
 第一版只保留两个核心概念：
 
 ```text
-AIProvider（模型服务商与模型目录）
+Provider（渠道与模型目录）
         |
-AIEngine（统一执行、工具、上下文、流式响应和审计）
+Engine（统一执行、工具、上下文、流式响应和审计）
 ```
 
-不再保留 `AIEndpoint`。业务调用方可以直接选择一个 AIProvider 和其中的模型；未显式选择时，AIEngine 根据当前 Scope 和执行场景的默认标签解析 Provider，并负责校验标签对应的能力要求和执行预算。
+不再保留 `AIEndpoint`。业务调用方可以直接选择一个 Provider 和其中的模型；未显式选择时，Engine 根据当前 Scope 和执行场景的默认标签解析 Provider，并负责校验标签对应的能力要求和执行预算。
 
-`AIProvider` 的中文名为**模型服务商**，`AIEngine` 的中文名为**AI 引擎**。Provider 下的单个模型没有独立资源 ID，不维护 `id`、`display_name` 或 `version` 属性；模型的唯一标识就是发送给上游服务的 `name`。
+`Provider` 的中文名为**渠道**，`Engine` 的中文名为**引擎**。Provider 下的单个模型没有独立资源 ID，不维护 `id`、`display_name` 或 `version` 属性；模型的唯一标识就是发送给上游服务的 `name`。
 
 ## 2. 目标与边界
 
 ### 2.1 目标
 
-- 前端 AI 诊断可以按“模型服务商 -> 模型”直接选择模型。
+- 前端 AI 诊断可以按“渠道 -> 模型”直接选择模型。
 - 默认、诊断、巡检和工作流是 Scope 级 Provider 默认标签，不是模型或 Provider 的用途许可。
-- 所有模型调用、上下文加载、Connector/MCP 工具调用和 Skill/Agent 执行均经过 AIEngine。
-- AIEngine 固定本次执行的 Provider 和模型，避免执行过程中出现不可解释的模型漂移。
+- 所有模型调用、上下文加载、Connector/MCP 工具调用和 Skill/Agent 执行均经过 Engine。
+- Engine 固定本次执行的 Provider 和模型，避免执行过程中出现不可解释的模型漂移。
 - 支持同步结果、流式响应、取消、超时、预算、断线续读和完整审计。
 - 模型能力显式声明，并在执行前校验，而不是依赖上游错误后才发现能力不足。
 
@@ -33,12 +35,12 @@ AIEngine（统一执行、工具、上下文、流式响应和审计）
 
 - 第一版不把每个模型建成独立 Resource。
 - 第一版不做跨 Provider 的自动模型聚合和隐式路由。
-- 第一版不允许业务绕过 AIEngine 直接访问 Provider 地址或凭据。
+- 第一版不允许业务绕过 Engine 直接访问 Provider 地址或凭据。
 - 第一版不把任意 Provider 请求参数原样透传给上游。
 
-### 2.3 AIEngine 强制执行能力
+### 2.3 Engine 强制执行能力
 
-以下能力是 AIEngine 的必选契约，而不是某个诊断页面或特定模型的可选增强。任何
+以下能力是 Engine 的必选契约，而不是某个诊断页面或特定模型的可选增强。任何
 新的业务适配器（对话、诊断、巡检或工作流）都必须复用同一套语义；适配器不得把
 执行降级为“单次模型请求 -> 单次工具调用 -> 最终回答”。
 
@@ -73,17 +75,17 @@ AIEngine（统一执行、工具、上下文、流式响应和审计）
 
 ## 3. 核心概念
 
-### 3.1 AIProvider
+### 3.1 Provider
 
-AIProvider 是一个可连接的模型服务配置，包含服务地址、协议、资源自身的连接密文、服务级限制和模型目录。Provider 本身不生成回答，具体回答由其目录中的某个模型完成。
+Provider 是一个可连接的模型服务配置，包含服务地址、协议、独立领域对象自身的连接密文、服务级限制和模型目录。Provider 本身不生成回答，具体回答由其目录中的某个模型完成。
 
 ### 3.2 Model
 
-Model 是 AIProvider 配置中的一个目录条目，不是独立资源。`name` 是上游 API 使用的模型名称，也是该 Provider 内的唯一键。
+Model 是 Provider 配置中的一个目录条目，不是独立资源。`name` 是上游 API 使用的模型名称，也是该 Provider 内的唯一键。
 
-### 3.3 AIEngine
+### 3.3 Engine
 
-AIEngine 是唯一的业务调用入口，负责：
+Engine 是唯一的业务调用入口，负责：
 
 - 解析 Scope、用途、Provider 和模型；
 - 组装 Prompt、Skill、Agent、知识和上下文；
@@ -94,66 +96,66 @@ AIEngine 是唯一的业务调用入口，负责：
 
 ### 3.4 执行运行时与场景适配器
 
-AIEngine 内部只有一个通用 Agent 执行运行时，负责模型调用、推理循环、上下文工具、预算、取消、流式事件和输出契约。业务场景通过适配器把自己的输入转换为 `aiengine.Request`：
+Engine 内部只有一个通用 Agent 执行运行时，负责模型调用、推理循环、上下文工具、预算、取消、流式事件和输出契约。业务场景通过适配器把自己的输入转换为 `engine.Request`：
 
 ```text
 Diagnosis Adapter     Inspection Adapter     Workflow Adapter
        \                    |                    /
-                    AIEngine Runtime
+                    Engine Runtime
              (Agent Loop + Tool Gateway + Audit)
                               |
-                         AIProvider + Model
+                         Provider + Model
 ```
 
-Skill 不是执行运行时。Skill 只提供可选的专家指令、工具声明、输入/输出 Schema 和目标资源约束；`SkillService.ResolvePlan` 将已发布版本解析为只读 `ExecutionPlan`，由 Runtime 注入请求。Skill 不持有模型客户端、Connector、ADK Runner 或执行 Store。未指定 Skill 的诊断、对话和巡检仍直接使用 AgentProfile 或内置指令进入 AIEngine。这样所有场景共享同一套模型固定、推理循环、Tool Calling、预算、取消、流式事件和审计行为，不会因为是否使用 Skill 产生两套执行语义。
+Skill 不是执行运行时。Skill 只提供可选的专家指令、工具声明、输入/输出 Schema 和目标资源约束；`SkillService.ResolvePlan` 将已发布版本解析为只读 `ExecutionPlan`，由 Runtime 注入请求。Skill 不持有模型客户端、Connector、ADK Runner 或执行 Store。未指定 Skill 的诊断、对话和巡检仍直接使用 Persona 或内置指令进入 Engine。这样所有场景共享同一套模型固定、推理循环、Tool Calling、预算、取消、流式事件和审计行为，不会因为是否使用 Skill 产生两套执行语义。
 
 代码分层约束：
 
-- `backend/aiengine` 持有唯一的通用 `AgentRunner` 和 `Runtime`；它不依赖 Skill、Diagnosis 或具体 Connector。
-- `backend/skill` 只实现 Skill 资源/版本解析，并输出 `aiengine.ExecutionPlan`；不得依赖模型、Connector、执行 Store，也不得定义 Runner 或执行入口。
-- `backend/diagnosis` 只负责会话、诊断计划、Evidence 和报告，并直接依赖 `aiengine.Engine`。
-- `backend/inspection` 和 `backend/aiengine/workflow_service.go` 同样通过 `aiengine.Engine` 执行 Agent，不直接访问模型客户端。巡检策略可以选择一个 AgentProfile；未选择时使用内置巡检解释契约，不再把 Skill 作为必选执行依赖。
+- `backend/engine` 持有唯一的通用 `AgentRunner` 和 `Runtime`；它不依赖 Skill、Diagnosis 或具体 Connector。
+- `backend/skill` 只实现独立 Skill/版本解析，并输出 `engine.ExecutionPlan`；不得依赖模型、Connector、执行 Store，也不得定义 Runner 或执行入口。
+- `backend/diagnosis` 只负责会话、诊断计划、Evidence 和报告，并直接依赖 `engine.Engine`。
+- `backend/inspection` 和 `backend/engine/workflow_service.go` 同样通过 `engine.Engine` 执行 Agent，不直接访问模型客户端。巡检策略可以选择一个 Persona；未选择时使用内置巡检解释契约，不再把 Skill 作为必选执行依赖。
 
-当前实现由 `aiengine.Runtime` 统一管理生命周期、上下文、取消和计划解析：无 Skill 的请求直接进入 `aiengine.AgentRunner`；带 `skill_resource_id` 或 `skill_version_id` 的请求先经 `PlanResolver` 注入执行计划，然后仍进入同一个 `aiengine.AgentRunner`。Diagnosis、Inspection 和 Workflow 都直接使用该路径；巡检未配置 AgentProfile 时使用内置契约。不存在 Skill Runner 回退路径或第二套 Agent Loop。
+当前实现由 `engine.Runtime` 统一管理生命周期、上下文、取消和计划解析：无 Skill 的请求直接进入 Agent Runner；带 `skill_id` 或 `skill_version_id` 的请求先经 `PlanResolver` 注入执行计划，然后仍进入同一个 Runner。Diagnosis、Inspection 和 Workflow 都直接使用该路径；巡检未配置 Persona 时使用内置契约。不存在 Skill Runner 回退路径或第二套 Agent Loop。
 
 ### 3.5 统一对话与可选资源上下文
 
-AI 诊断工作台不再根据用户文本把会话拆分为“普通对话”与“诊断模式”，也不维护第二个 Runner 或通用聊天 Agent。每一条消息都由同一个 AIEngine Runtime 执行；工作台请求使用 `PurposeDiagnosis` 仅用于按当前 Scope 解析该场景的默认 Provider，而不强制模型输出诊断报告。
+AI 诊断工作台不再根据用户文本把会话拆分为“普通对话”与“诊断模式”，也不维护第二个 Runner 或通用聊天 Agent。每一条消息都由同一个 Engine Runtime 执行；工作台请求使用 `PurposeDiagnosis` 仅用于按当前 Scope 解析该场景的默认 Provider，而不强制模型输出诊断报告。
 
-资源上下文完全由用户在会话中显式选择：未选择资源时，AIEngine 直接完成普通问答；选择资源时，只有当前用户具备 `resource:use` 权限且资源处于活动状态的资源会出现在选择列表，并被解析为受控只读工具。模型根据问题自主决定是否调用工具。后端在会话创建、上下文解析和每次工具调用时都再次执行 `resource:use` 授权校验，以应对绕过界面、权限在会话期间撤销或历史会话保留资源 ID 的情形。
+资源上下文完全由用户在会话中显式选择：未选择资源时，Engine 直接完成普通问答；选择资源时，只有当前用户具备 `provider:use` 权限且资源处于活动状态的资源会出现在选择列表，并被解析为受控只读工具。模型根据问题自主决定是否调用工具。后端在会话创建、上下文解析和每次工具调用时都再次执行 `provider:use` 授权校验，以应对绕过界面、权限在会话期间撤销或历史会话保留资源 ID 的情形。
 
 无资源上下文的回答不需要 Evidence 或诊断假设；已选择资源但模型未调用工具时，回答会保留原文，同时标注资源相关结论尚待核验。只有产生工具证据时，系统才持久化 Evidence、受支持假设和相应的可追溯建议。
 
-### 3.6 AgentProfile
+### 3.6 Persona
 
-AgentProfile 是资源目录中的可复用专家智能体配置，不是模型资源，也不直接保存
+Persona 是独立领域中的可复用专家智能体配置，不是通用 Resource，也不直接保存
 Provider 地址或凭据。它包含版本、专家指令、适用资源类型、所需模型能力、工具白名单
-以及可选的输入/输出 JSON Schema，并沿用 `resource:read` 与 `resource:use` 权限。
+以及可选的输入/输出 JSON Schema，并使用独立的 `persona:read` 与 `persona:use` 权限。
 
-一次执行可以选择只使用 Skill、只使用 AgentProfile，或同时使用 Skill 和 AgentProfile。
-组合执行时，AgentProfile 指令作为专家约束放在 Skill 指令之前，二者都必须满足输入和
-输出契约；AgentProfile 的工具白名单是最终限制，模型能力要求与执行场景要求取并集。
-只使用 AgentProfile 时，AIEngine 使用其指令和契约创建临时执行，不伪造 Skill 版本记录，
+一次执行可以选择只使用 Skill、只使用 Persona，或同时使用 Skill 和 Persona。
+组合执行时，Persona 指令作为专家约束放在 Skill 指令之前，二者都必须满足输入和
+输出契约；Persona 的工具白名单是最终限制，模型能力要求与执行场景要求取并集。
+只使用 Persona 时，Engine 使用其指令和契约创建临时执行，不伪造 Skill 版本记录，
 但仍经过统一的模型解析、上下文工具策略、生命周期事件和审计链路。
 
-AgentProfile 的创建、更新、启用和停用复用统一 Resource API（`kind=AgentProfile`），
-因此沿用现有资源目录的 Scope、RBAC 和审计行为；执行请求只传递
-`agent_profile_id`，不会把提示词或工具白名单直接从客户端注入运行时。
+Persona 的创建、更新、启用和停用使用独立 Persona API，
+但复用平台统一的 Scope、RBAC 和审计机制；执行请求只传递
+`persona_id`，不会把提示词或工具白名单直接从客户端注入运行时。
 
-AgentProfile 的契约快照通过以下版本 API 管理：
+Persona 的契约快照通过以下版本 API 管理：
 
-- `POST/GET /api/v1/agent-profiles/{profileID}/versions`：创建或查询版本；
-- `POST /api/v1/agent-profiles/{profileID}/versions/{versionID}/publish`：发布版本；
-- `POST /api/v1/agent-profiles/{profileID}/versions/{versionID}/disable`：停用版本。
+- `POST/GET /api/v1/personas/{profileID}/versions`：创建或查询版本；
+- `POST /api/v1/personas/{profileID}/versions/{versionID}/publish`：发布版本；
+- `POST /api/v1/personas/{profileID}/versions/{versionID}/disable`：停用版本。
 
-执行时优先使用该 Profile 的最新已发布版本；没有已发布版本时才使用 Resource 初始配置。
+执行时优先使用该 Persona 的最新已发布版本；没有已发布版本时才使用 Persona 主表中的初始配置。
 版本发布后不可修改，新的变更必须创建新版本。
 
-## 4. AIProvider 数据模型
+## 4. Provider 数据模型
 
-### 4.1 Resource 配置
+### 4.1 Provider 配置
 
-AIProvider 仍然作为统一 Resource 保存。连接密文直接保存在资源的加密字段中，API 响应不得返回密钥明文。
+Provider 作为独立领域对象保存在 `providers` 表中。连接密文保存在 Provider 的加密字段中，API 响应不得返回密钥明文；Provider 不登记到通用 Resource 目录。
 
 ```json
 {
@@ -249,14 +251,14 @@ Provider 本身不保存诊断、巡检或工作流标签。标签属于 Scope �
 
 | 参数 | 归属 | 原因 |
 |---|---|---|
-| 服务地址、协议、连接密文 | AIProvider | 同一资源连接使用 |
-| Provider 并发、限流和请求超时 | AIProvider | 账号或服务地址级限制 |
+| 服务地址、协议、连接密文 | Provider | 同一资源连接使用 |
+| Provider 并发、限流和请求超时 | Provider | 账号或服务地址级限制 |
 | 模型名称 | Model | 上游模型唯一标识 |
 | 上下文窗口 | Model | 不同模型通常不同 |
 | 最大输出长度 | Model | 不同模型限制不同 |
 | 默认温度 | Model | 不同模型的推荐值不同 |
 | 支持文本、视觉、音频、工具、流式和深度思考 | Model | 能力属于具体模型 |
-| 当前执行温度、输出预算 | AIEngine Request | 运行时参数，受模型和权限约束 |
+| 当前执行温度、输出预算 | Engine Request | 运行时参数，受模型和权限约束 |
 
 ## 5. Scope 场景默认标签
 
@@ -267,13 +269,13 @@ Provider 的 `default_model` 和模型能力保存在 Provider；`default`、`di
 建议新增表：
 
 ```sql
-CREATE TABLE scope_ai_provider_bindings (
+CREATE TABLE scope_provider_bindings (
     scope_id uuid NOT NULL REFERENCES scopes(id),
-    provider_resource_id uuid NOT NULL REFERENCES resources(id),
+    provider_id uuid NOT NULL REFERENCES providers(id),
     tag text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (scope_id, tag, provider_resource_id),
+    PRIMARY KEY (scope_id, tag, provider_id),
     CHECK (tag IN ('default', 'diagnosis', 'inspection', 'workflow'))
 );
 ```
@@ -281,8 +283,8 @@ CREATE TABLE scope_ai_provider_bindings (
 每个 Scope 的每个标签最多只能出现在一个 Provider 上。数据库使用唯一索引保证约束：
 
 ```sql
-CREATE UNIQUE INDEX scope_ai_provider_one_tagged_provider
-    ON scope_ai_provider_bindings(scope_id, tag);
+CREATE UNIQUE INDEX scope_provider_one_tagged_provider
+    ON scope_provider_bindings(scope_id, tag);
 ```
 
 同一个 Provider 可以拥有多个标签，例如：
@@ -293,7 +295,7 @@ CREATE UNIQUE INDEX scope_ai_provider_one_tagged_provider
 项目 A / Provider Z: workflow
 ```
 
-标签能力要求由 AIEngine 固定定义：
+标签能力要求由 Engine 固定定义：
 
 | 标签 | 默认模型必须具备的能力 |
 |---|---|
@@ -315,11 +317,11 @@ CREATE UNIQUE INDEX scope_ai_provider_one_tagged_provider
 
 显式 Provider 必须满足：
 
-- 当前 Actor 对该 Provider 具有 `resource:use`；
+- 当前 Actor 对该 Provider 具有 `provider:use`；
 - Provider 处于启用状态；
 - 目标模型存在、启用且满足当前执行的能力要求。
 
-## 6. AIEngine 请求契约
+## 6. Engine 请求契约
 
 ```go
 type Request struct {
@@ -327,13 +329,13 @@ type Request struct {
     ActorID              string
     ScopeID              string
     Purpose                Purpose
-    AIProviderResourceID string
+    ProviderID string
     ModelName            string
     ModelOverride        string
     Task                 string
     Messages             []Message
     Context              ContextRequest
-    SkillResourceID      string
+    SkillID      string
     AgentID              string
     KnowledgeBaseID      string
     WorkflowID           string
@@ -349,25 +351,25 @@ type GenerationParameters struct {
 }
 ```
 
-`Purpose` 表示本次执行场景（`default`、`diagnosis`、`inspection` 或 `workflow`），用于选择 Scope 默认 Provider 和确定能力要求。`AIProviderResourceID` 可以为空；为空时按“当前级别具体 purpose -> 当前级别 `default` -> 上级级别具体 purpose -> 上级级别 `default`”解析，不为空时只使用指定 Provider，不要求该 Provider 拥有当前场景 purpose。资源中的 `credential_purpose` 表示该资源密文用途说明，两者语义不同。
+`Purpose` 表示本次执行场景（`default`、`diagnosis`、`inspection` 或 `workflow`），用于选择 Scope 默认 Provider 和确定能力要求。`ProviderID` 可以为空；为空时按“当前级别具体 purpose -> 当前级别 `default` -> 上级级别具体 purpose -> 上级级别 `default`”解析，不为空时只使用指定 Provider，不要求该 Provider 拥有当前场景 purpose。资源中的 `credential_purpose` 表示该资源密文用途说明，两者语义不同。
 
 `ModelName` 是用户明确选择的模型；为空时按以下顺序解析：
 
 ```text
 请求中的 ModelName
-  -> AIProvider.default_model
-  -> AIProvider.models[] 中唯一启用模型
+  -> Provider.default_model
+  -> Provider.models[] 中唯一启用模型
 ```
 
 如果 `ModelOverride` 由受控内部流程传入，仍然必须经过同样的模型存在性和能力校验。模型一旦固定，本次执行不得因为普通错误或流式中断而静默切换。
 
 ## 7. 模型参数和能力校验
 
-AIEngine 在调用模型前生成一份不可变的选择快照：
+Engine 在调用模型前生成一份不可变的选择快照：
 
 ```json
 {
-  "provider_resource_id": "provider-id",
+  "provider_id": "provider-id",
   "provider_type": "openai_compatible",
   "protocol": "openai_chat_completions",
   "model_name": "deepseek-chat",
@@ -415,7 +417,7 @@ AIEngine 在调用模型前生成一份不可变的选择快照：
 ```text
 execution.started
 execution.plan.resolved (可选)
-agent_profile.resolved (可选)
+persona.resolved (可选)
 context.loaded (有上下文时)
 model.started
 assistant.delta
@@ -435,7 +437,7 @@ execution.cancelled
 
 ### 8.1 Agentic Loop 与 ReAct 执行契约
 
-AIEngine 的 AgentRunner 必须以可持续推进的 **Agentic Loop（多轮 Tool-Use Loop）** 为基本执行模型，而不是把一次模型请求和一次工具调用拼接成固定流程。每一轮都必须遵循以下状态转换：
+Engine 的 AgentRunner 必须以可持续推进的 **Agentic Loop（多轮 Tool-Use Loop）** 为基本执行模型，而不是把一次模型请求和一次工具调用拼接成固定流程。每一轮都必须遵循以下状态转换：
 
 ```text
 Reasoning summary（阶段性分析摘要）
@@ -448,24 +450,24 @@ Reasoning summary（阶段性分析摘要）
 
 运行时要求：
 
-1. **交替循环。** 模型每次产生工具调用后，AIEngine 必须先完成工具策略校验和执行，再把脱敏的工具结果作为下一轮模型输入；在收到工具结果之前不得生成最终完成状态。一次模型响应包含多个彼此独立的工具调用时，可以并行执行，不要求在每个工具之间插入额外模型回合；但每个调用都必须有独立的开始、完成或失败事件，并在该批调用全部返回后以一个批次级 Observation 边界进入下一轮模型决策。
+1. **交替循环。** 模型每次产生工具调用后，Engine 必须先完成工具策略校验和执行，再把脱敏的工具结果作为下一轮模型输入；在收到工具结果之前不得生成最终完成状态。一次模型响应包含多个彼此独立的工具调用时，可以并行执行，不要求在每个工具之间插入额外模型回合；但每个调用都必须有独立的开始、完成或失败事件，并在该批调用全部返回后以一个批次级 Observation 边界进入下一轮模型决策。
 2. **明确终止。** 循环只能在模型返回无待执行工具的最终回答、达到取消/超时/预算上限，或触发受控错误时结束。`execution.completed` 只能在最终回答已经产生并持久化之后发送。
 3. **动态规划与纠错。** 工具错误、部分结果、空结果、权限拒绝、超时和环境状态变化都必须作为 Observation 回传模型。模型可以据此更换工具、修正参数、缩小范围、重试或明确告知无法完成；运行时不得把失败结果静默吞掉，也不得无条件沿用原计划。
 4. **环境反馈优先。** 代码运行结果、编译器/测试输出、Git 状态、容器或集群状态、Connector/MCP 返回值等外部环境事实，是后续推理的主要输入。静态 Prompt 只定义角色、边界和目标，不得替代最新环境观察。Context Resolver 在资源解析阶段得到的初始快照会以脱敏、限长的 `environment_facts` 字段注入首轮输入；后续事实必须以工具 Observation 为准。
 5. **长程任务。** 循环必须支持数十乃至上百次连续的“分析-行动-观察”步骤。`MaxIterations`、`MaxToolCalls`、Token、输出大小、超时和取消是硬上限；达到上限时发送可解释的预算事件和终态，不得悄悄截断或继续调用工具。
 6. **可恢复性。** 每个阶段和工具步骤都要持久化事件，客户端可用事件游标续读；断线重连不得重复展示事件，也不得在没有幂等保护时重复产生工具副作用。
 
-这里的 Reasoning summary 是面向用户的、经过脱敏和长度限制的阶段性进展（例如“正在确认可用工具”“已获得容器清单，继续查询目标容器日志”），不是模型的私有 Chain-of-Thought。AIEngine 不得要求或展示隐藏思维链、逐 token 的内部推理或敏感 Prompt；模型未提供安全可展示摘要时，运行时应发送稳定的阶段状态文本。
+这里的 Reasoning summary 是面向用户的、经过脱敏和长度限制的阶段性进展（例如“正在确认可用工具”“已获得容器清单，继续查询目标容器日志”），不是模型的私有 Chain-of-Thought。Engine 不得要求或展示隐藏思维链、逐 token 的内部推理或敏感 Prompt；模型未提供安全可展示摘要时，运行时应发送稳定的阶段状态文本。
 
 ### 8.2 阶段性流式输出
 
-当 `Request.Stream=true` 时，AIEngine 必须在循环过程中实时发出可消费的中间事件，而不是等所有工具完成后一次性返回。事件至少覆盖：
+当 `Request.Stream=true` 时，Engine 必须在循环过程中实时发出可消费的中间事件，而不是等所有工具完成后一次性返回。事件至少覆盖：
 
 | 阶段 | 事件 | Payload 最低要求 |
 |---|---|---|
 | 执行启动 | `execution.started` | profile、执行时间 |
 | 执行计划 | `execution.plan.resolved`（可选） | 计划资源、版本、工具数量 |
-| Agent 配置 | `agent_profile.resolved`（可选） | 配置资源、版本、能力和工具数量 |
+| Persona 配置 | `persona.resolved`（可选） | 配置对象、版本、能力和工具数量 |
 | 上下文加载 | `context.loaded`（有上下文时） | 资源、工具和事实数量 |
 | 阶段变更 | `phase.changed` | `phase`、可选 `detail`、`elapsed_ms` |
 | 模型回合开始 | `model.started` | iteration、目标摘要、`elapsed_ms` |
@@ -547,10 +549,10 @@ assistant.progress  {kind:"analysis", text:"初步评估已完成……接下来
 
 ### 9.1 长程执行上下文治理
 
-长程诊断不能把所有历史消息和原始工具输出无限累积到下一次请求。AIEngine 对每次模型请求执行以下治理策略：
+长程诊断不能把所有历史消息和原始工具输出无限累积到下一次请求。Engine 对每次模型请求执行以下治理策略：
 
 1. **上下文窗口感知。** Provider Model 的 `context_window_tokens` 和 `max_output_tokens` 会随模型解析结果传入运行时；`BeforeModelCallback` 在每轮调用前按序列化请求大小估算输入 Token，动态压缩上下文并计算本轮可用输出上限。
-2. **滑动窗口与历史压缩。** 保留系统约束、初始任务和最近的完整回合；较早普通文本和工具响应被替换为压缩标记。模型调用与函数响应按成对消息保留，避免裁剪出非法的 Tool Calling 历史。每次实际裁掉历史时，AIEngine 发送 `context.compacted`，让诊断过程显示“压缩执行上下文”及裁掉的消息/Observation 数量。
+2. **滑动窗口与历史压缩。** 保留系统约束、初始任务和最近的完整回合；较早普通文本和工具响应被替换为压缩标记。模型调用与函数响应按成对消息保留，避免裁剪出非法的 Tool Calling 历史。每次实际裁掉历史时，Engine 发送 `context.compacted`，让诊断过程显示“压缩执行上下文”及裁掉的消息/Observation 数量。
 3. **Observation 压缩。** 工具结果先递归脱敏，再限制文本字段和整体字节数；错误、状态、统计等结构化字段优先保留，超大日志不会原样复制到每一轮 Prompt。
 4. **结构化诊断状态。** 执行级状态维护 `confirmed_facts`、`hypotheses`、`eliminated_causes`、`open_questions` 和 `next_actions`，以短状态快照注入下一轮系统指令，减少模型反复阅读旧历史。被裁掉回合中已有的工具 Observation 会追加为受限的证据账本条目（工具名、状态、脱敏摘要和 `observation_id`）；这些条目不是模型生成的结论，精确内容仍需通过 `read_observation` 按需读取。
 5. **Observation 按需回读。** 完整脱敏结果保存在执行级 Observation Store；模型只收到 `observation_id` 与摘要。具备长上下文窗口的模型可通过受控 `read_observation(observation_id, offset, limit)` 分页读取精确内容，读取动作同样计入工具预算和审计事件。
@@ -558,19 +560,19 @@ assistant.progress  {kind:"analysis", text:"初步评估已完成……接下来
 
 这些限制用于保护 Provider 上下文容量、避免单次异常日志耗尽预算、控制成本并保证 SSE 事件和审计记录可持续写入；它们不会把长程任务降级成单轮执行，因为历史压缩与 Observation 回读为后续推理保留了可追溯路径。
 
-AIEngine 不直接读取数据库、容器或 MCP Server。所有外部信息必须通过 Context Resolver 和 Tool Gateway：
+Engine 不直接读取数据库、容器或 MCP Server。所有外部信息必须通过 Context Resolver 和 Tool Gateway：
 
 当一次执行选择了多个资源，而这些资源暴露了同名工具时，Context Resolver 保留每个资源自己的工具实现；AgentRunner 只在模型声明侧为冲突名称生成稳定的资源限定别名（例如 `query_logs__resource_2`）。网关、审计记录、Observation 和前端时间线继续使用规范工具名及 `resource_id`，因此别名不会改变权限边界或隐藏实际调用目标。
 
 - PostgreSQL、Redis、Kafka、Kubernetes、Prometheus、Loki 等 Connector 提供受限工具；
 - 远程 MCP Server 先发现工具，再通过 MCP Service 调用；
-- 工具执行前校验 Actor、Scope、资源 `resource:use`、工具白名单和策略；
+- 工具执行前校验 Actor、Scope、资源 `provider:use`、工具白名单和策略；
 - 工具执行受并发、超时和响应大小预算约束；
 - Connector/MCP 返回内容被视为不可信数据，不能改变系统权限或 Prompt 规则；
-- 指定 Skill 或 Agent 只负责 Prompt 和工具契约，实际模型调用仍由 AIEngine 完成；
+- 指定 Skill 或 Agent 只负责 Prompt 和工具契约，实际模型调用仍由 Engine 完成；
 - 知识库检索和工作流节点以受控工具形式接入，不允许绕过审计。
 
-T05 的基础契约已经在 `backend/aiengine` 建立：`KnowledgeQuery` 强制携带
+T05 的基础契约已经在 `backend/engine` 建立：`KnowledgeQuery` 强制携带
 Scope 和检索词，`KnowledgeRetriever` 返回不可信知识片段及可追溯引用；`Workflow`
 以版本化节点和有向边表示，写入或执行前进行节点类型、引用、重试/超时边界和 DAG
 无环校验。`WorkflowRun` 使用显式的 pending/running/waiting_approval/succeeded/
@@ -594,11 +596,11 @@ KnowledgeBase 和 Workflow 本体使用 Resource API 管理；`0027_knowledge_wo
 增加对应 Schema，并为 WorkflowRun 保存工作流版本、执行 ID、当前节点、尝试次数、
 输入和状态快照。运行 API 在每次操作前重新读取 Workflow Resource 并检查资源权限，
 因此不能通过猜测运行 ID 跨 Scope 访问数据。`WorkflowService` 将 Agent/Skill 节点转换为
-统一 `aiengine.Request`，Tool 节点强制经过 `PolicyGateway`，Retrieval 节点强制经过
+统一 `engine.Request`，Tool 节点强制经过 `PolicyGateway`，Retrieval 节点强制经过
 `KnowledgeRetriever`。`start` 和 `resume` 会执行节点并写入节点输出快照；节点失败按有限
 重试策略终止运行，审批节点进入 `waiting_approval`，恢复后从未完成节点继续。并行节点使用
 配置中的 `branches` 声明式分支，每次最多 32 个分支，并传播取消。所有工作流生命周期和
-节点状态事件会写入 AIEngine 事件存储。
+节点状态事件会写入 Engine 事件存储。
 
 节点配置只允许引用 Provider/模型、资源 ID、Skill/Agent ID 或检索参数，禁止注入 Provider
 地址、凭据或任意代码。Condition 节点只支持受限的 `state` 键与 `equals` 值比较。
@@ -612,7 +614,7 @@ KnowledgeBase 和 Workflow 本体使用 Resource API 管理；`0027_knowledge_wo
   "name": "诊断摘要",
   "config": {
     "purpose": "diagnosis",
-    "agent_profile_id": "profile-resource-id",
+    "persona_id": "profile-resource-id",
     "task": "根据前置节点证据生成诊断摘要",
     "context": {"resource_ids": ["postgres-resource-id"]},
     "stream": false
@@ -627,7 +629,7 @@ WorkflowRun 的脱敏 `state.node_outputs` 快照。
 
 ## 10. 流式响应和断线续读
 
-AIEngine 提供：
+Engine 提供：
 
 ```text
 POST /api/v1/ai-executions
@@ -652,7 +654,7 @@ SSE 使用事件 `id` 作为游标，支持：
 ```text
 execution_id
 sequence
-provider_resource_id
+provider_id
 model_name
 resource_id
 tool_name
@@ -682,27 +684,27 @@ SSE 在发送终态事件后关闭连接；客户端通过 `Last-Event-ID` 或 `
 
 | 权限 | 作用 |
 |---|---|
-| `resource:read` | 查看 Provider 非敏感配置和模型目录 |
-| `resource:use` | 使用 Provider 和其启用模型进行测试或 AIEngine 执行 |
-| `resource:create` | 创建 AIProvider |
-| `resource:update` | 修改 Provider 配置和模型目录 |
-| `resource:delete` | 删除或停用 Provider |
+| `provider:read` | 查看 Provider 非敏感配置和模型目录 |
+| `provider:use` | 使用 Provider 和其启用模型进行测试或 Engine 执行 |
+| `provider:manage` | 创建 Provider |
+| `provider:manage` | 修改 Provider 配置和模型目录 |
+| `provider:manage` | 删除或停用 Provider |
 | `diagnosis:start` | 启动诊断执行 |
 | `diagnosis:read` | 查看诊断事件和审计 |
 | `inspection:manage` | 配置巡检场景标签和 Scope 默认 Provider |
 
-Scope 默认 Provider 的修改必须同时满足对应 Scope 的管理权限和 `resource:use`；下级管理员不能修改上级 Scope 的默认绑定。
+Scope 默认 Provider 的修改必须同时满足对应 Scope 的管理权限和 `provider:use`；下级管理员不能修改上级 Scope 的默认绑定。
 
 ## 13. HTTP API
 
 ### Provider 管理
 
-资源 API 继续使用统一资源接口，`kind` 为 `AIProvider`。增加或明确以下接口：
+Provider 使用独立目录接口。增加或明确以下接口：
 
 ```text
-POST /api/v1/ai-providers/{id}/test
-POST /api/v1/ai-providers/test-draft
-GET  /api/v1/ai-providers/available?purpose=diagnosis&scope_id=...
+POST /api/v1/providers/{id}/test
+POST /api/v1/providers/test-draft
+GET  /api/v1/providers/available?purpose=diagnosis&scope_id=...
 ```
 
 `available` 只返回当前用户可使用、且模型能力满足该场景要求的 Provider 和已启用模型摘要；不返回地址、凭据或敏感配置。`purpose` 仅用于能力筛选和标记当前 Scope 的默认 Provider，不作为 Provider 的用途许可字段。
@@ -710,12 +712,12 @@ GET  /api/v1/ai-providers/available?purpose=diagnosis&scope_id=...
 ### Scope 默认绑定
 
 ```text
-GET   /api/v1/scopes/{scopeID}/ai-provider-bindings
-PUT   /api/v1/scopes/{scopeID}/ai-provider-bindings/{tag}
-DELETE /api/v1/scopes/{scopeID}/ai-provider-bindings/{tag}
+GET   /api/v1/scopes/{scopeID}/provider-bindings
+PUT   /api/v1/scopes/{scopeID}/provider-bindings/{tag}
+DELETE /api/v1/scopes/{scopeID}/provider-bindings/{tag}
 ```
 
-### AIEngine 执行
+### Engine 执行
 
 ```text
 POST /api/v1/ai-executions
@@ -728,16 +730,16 @@ GET  /api/v1/ai-executions/{executionID}/tool-calls
 
 ## 14. 前端页面
 
-### AI 引擎页面
+### 引擎页面
 
-当前版本暂时隐藏独立的“AI 引擎”菜单和页面。AIProvider 通过资源目录管理，AIEngine 能力由后端统一执行入口提供；AI 诊断和 Skill 页面只展示可用的 Provider/模型选择器。后续恢复独立页面时，页面应包含：
+当前版本通过独立的“模型”页面管理 Provider（渠道）和 Engine（引擎）。Engine 能力由后端统一执行入口提供；AI 诊断和 Skill 页面只展示可用的 Provider/模型选择器。页面包含：
 
-1. **模型服务商列表**：展示 Provider、服务地址摘要、场景默认标签、模型数量和健康状态。
+1. **渠道列表**：展示 Provider、服务地址摘要、场景默认标签、模型数量和健康状态。
 2. **模型目录详情**：每个模型单行展示名称、温度、上下文窗口、能力标签和状态。
-3. **AI 引擎能力**：展示 Agent 执行、Tool Calling、推理循环、Prompt 编排、流式响应、知识库、工作流和审计能力。
+3. **引擎能力**：展示 Agent 执行、Tool Calling、推理循环、Prompt 编排、流式响应、知识库、工作流和审计能力。
 4. **Scope 默认绑定**：按 `default`、`diagnosis`、`inspection` 和 `workflow` 标签设置 Provider；同一 Scope 每个标签最多绑定一个 Provider。
 
-### 创建模型服务商
+### 创建渠道
 
 创建流程：
 
@@ -749,7 +751,7 @@ GET  /api/v1/ai-executions/{executionID}/tool-calls
 AI 诊断对话框使用级联选择器：
 
 ```text
-模型服务商 -> 模型
+渠道 -> 模型
 ```
 
 巡检任务使用相同的 Provider/Model 选择器，并优先选中当前 Scope 的 `inspection` 标签 Provider；用户显式选择其他有权限且能力满足的 Provider 时仍然允许执行。
@@ -770,12 +772,12 @@ AI 诊断对话框使用级联选择器：
 
 ## 16. 数据库契约
 
-当前数据库只保留 AIProvider、Scope 场景绑定、Skill/AgentProfile 版本和
-AIEngine 统一事件/工具审计表。Skill 不拥有执行表；历史版本中的旧 AI 资源和
+当前数据库只保留 Provider、Scope 场景绑定、Skill/Persona 版本和
+Engine 统一事件/工具审计表。Skill 不拥有执行表；历史版本中的旧 AI 资源和
 Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这些结构。
 
-一次 AIEngine 执行的生命周期事件写入 `ai_execution_events`，每次工具调用写入
-`ai_execution_tool_calls`。事件和工具审计都保存最终 Provider、模型、状态、耗时和
+一次 Engine 执行的生命周期事件写入 `engine_execution_events`，每次工具调用写入
+`engine_execution_tool_calls`。事件和工具审计都保存最终 Provider、模型、状态、耗时和
 错误信息，并对入参/出参递归脱敏。
 
 ## 17. 非功能要求
@@ -791,14 +793,14 @@ Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这�
 
 ## 18. 第一版验收标准
 
-1. 可以创建一个带多个模型的 AIProvider，每个模型具有独立温度、上下文窗口和能力集合。
-2. AIEngine 可以按显式 Provider/Model 或 Scope 默认绑定执行。
+1. 可以创建一个带多个模型的 Provider，每个模型具有独立温度、上下文窗口和能力集合。
+2. Engine 可以按显式 Provider/Model 或 Scope 默认绑定执行。
 3. AI 诊断和自动巡检未显式选择 Provider 时使用对应场景标签的默认 Provider；显式选择时只要求有权限且模型具备所需能力。
-4. AIEngine 可以自动加载授权的数据库、Connector 和 MCP 上下文，并通过 Tool Gateway 调用工具。
+4. Engine 可以自动加载授权的数据库、Connector 和 MCP 上下文，并通过 Tool Gateway 调用工具。
 5. 工具调用全过程记录入参、出参、状态、耗时和错误，审计结果完成递归脱敏。
 6. 同步、SSE、取消、超时、预算、失败原因和断线续读测试通过。
 7. 执行记录能够明确回答“使用了哪个 Provider 的哪个模型”。
-8. 业务 API、前端和后台 Worker 均只依赖 AIProvider、模型名称和 AIEngine 统一执行契约。
+8. 业务 API、前端和后台 Worker 均只依赖 Provider、模型名称和 Engine 统一执行契约。
 9. 真实或模拟模型执行能够完成至少两轮“Reasoning summary -> Action -> Observation -> 下一轮 Reasoning”，并证明工具结果进入了下一轮模型输入。
 10. 工具调用前后和每轮模型回合均能通过 SSE 实时收到有序阶段事件；前端按事件序列展示分析摘要、工具调用、工具结果和后续分析，不把工具过程延迟到最终回答之后。
 11. 工具返回错误、空结果、部分结果、权限拒绝或超时后，模型能够基于 Observation 修正工具或参数，或输出明确的不可完成原因；错误不得被静默忽略。
@@ -807,3 +809,245 @@ Skill 专属执行表由硬切迁移删除，运行时不再读取或写入这�
 14. 事件断线续读、取消和失败恢复测试通过；重连不重复展示事件，且不会在无幂等保护时重复产生工具副作用。
 15. 诊断流式事件能够呈现“阶段摘要 -> 工具动作 -> Observation -> 下一轮分析”的连续叙事；每个动作提供稳定的动作序号、完成耗时和执行总耗时，剩余动作未知时明确标记为待评估而不是猜测。
 16. 诊断前端能够按事件 `sequence` 实时展示阶段性文本、并行工具动作、成功/失败 Observation 和纠错后的下一步；示例中的“已完成 982ms、还有 N 个动作、总耗时”均来自服务端事件字段，不由客户端拼接或轮询推断。
+
+## 19. 多 Agent Runtime 候选方案
+
+### 19.1 评估背景
+
+当前项目已经具备统一的 `engine.Engine` 执行契约，但生产实现仍主要由 Google ADK Go
+驱动。Provider/Model 可以接入多个模型渠道，这与 Agent Runtime 可切换是两个不同的
+问题：前者决定“调用哪个模型服务”，后者决定“由哪个 Agent 框架驱动模型、工具和工作流”。
+
+项目希望同时保留当前实现和更完整的 Agent 框架实现，并允许在不改变诊断、巡检、技能和
+工作流业务代码的情况下自由切换。因此候选框架必须被视为 **Engine Runtime 的实现方案**，
+而不是新的 Provider、Skill 或 Resource 类型。框架选择不能改变以下平台边界：
+
+- Provider、模型凭据和模型能力由 OpsKeeper 的 Provider/Model 领域管理；
+- Scope、RBAC、工具白名单、审批、预算、取消和资源上下文由 OpsKeeper 管理；
+- Tool Gateway 是唯一的外部资源访问入口，框架不能直接连接 Connector、MCP Server 或资源凭据；
+- 执行事件、工具审计、脱敏和断线续读继续写入 OpsKeeper 的统一 Store；
+- 框架自带的 Skill、Session、Memory、多租户和持久化只有在完成边界映射后才能使用，不能自动成为平台第二套主数据。
+
+### 19.2 候选框架对比
+
+| 候选 | 定位 | 主要优势 | 主要风险 | 对 OpsKeeper 的建议 |
+|---|---|---|---|---|
+| **Google ADK Go** | 当前已使用的 Agent Runtime | 与现有 AgentRunner、模型适配、工具调用和流式事件已经打通；改造风险最低 | 当前 Runner 仍包含较多 ADK 细节，切换运行时前需要抽出框架无关边界 | 继续作为默认和兼容基线，先完成 Adapter 化 |
+| **CloudWeGo Eino** | Go 原生 Agent/Graph 框架 | 图编排、工具和多 Agent 组合灵活，Go 生态集成成本较低 | 需要由 OpsKeeper 自己补齐统一的权限、审计、预算、恢复和事件语义 | 作为第二个 Go 原生候选，适合验证图编排和流式能力 |
+| **Ingenimax/agent-sdk-go** | 功能完整的可嵌入 Agent SDK | 原生覆盖 Skills、Session、Memory、后台任务、取消、多 Agent、Graph、Hooks/Plugins、MCP、A2A 和 Evaluation；适合快速获得完整 Agent 能力 | `0.x` API 仍可能变化；功能面与 OpsKeeper 的 Skill、Session、Audit、Run、Memory 和多租户边界大量重叠；依赖面和社区规模需要持续审查 | 当版本和行为相对稳定后，优先作为功能型 Runtime 集成；必须禁用或映射其平台治理能力，不直接接管 OpsKeeper 数据模型 |
+| **Microsoft Agent Framework Go** | 面向生产工作流和治理的 Agent Framework | Workflow、Checkpoint、Restartability、Human-in-the-loop、Middleware、OpenTelemetry、MCP、A2A 和 AG-UI 方向与巡检、诊断编排较匹配 | Go SDK 仍是 public preview；与 Python/.NET 能力不同步，部分工作流、Foundry 和声明式能力尚未完成，版本变化较快 | 作为工作流、检查点和人工审批 PoC 候选；在 Go 版本稳定前不作为默认 Runtime |
+
+Ingenimax 的价值在于可以较快补足当前基于 ADK 拼装的 Skills、Session、后台运行和多 Agent
+能力；Microsoft Agent Framework Go 的价值在于工作流治理、检查点和人工介入。二者不是
+Provider 的替代品，也不能因为具备 MCP、A2A 或多租户能力就绕开 OpsKeeper 的策略边界。
+
+候选框架的版本、提交号和已验证能力必须在适配器注册表中固定。文档或 README 的能力
+宣称不等于 OpsKeeper 的可用能力；只有通过本项目的契约测试、权限测试和事件测试后，能力
+才可以出现在 Engine 页面并用于默认绑定。
+
+### 19.3 集成路线评估
+
+#### 方案 A：以当前 Engine 契约为核心，增加 Runtime Adapter（推荐）
+
+保留现有 `engine.Engine`、Request/Result/Event、Tool Gateway 和事件 Store，把当前 ADK
+Runner 重构为 `ADK Adapter`，再增加 `Ingenimax Adapter`。业务层只依赖统一 Engine；页面
+选择的是 Engine 实例或 Scope 场景标签，Engine 实例内部再绑定 `runtime_kind` 和固定版本。
+
+```text
+Diagnosis / Inspection / Skill / Workflow
+                    |
+             OpsKeeper Engine Contract
+                    |
+        Runtime Factory + Capability Check
+             /                       \
+       ADK Adapter              Ingenimax Adapter
+             \                       /
+       Provider/Model + Tool Gateway + EventSink
+```
+
+该方案的关键不是把两个 SDK 的 API 做一层同名包装，而是把执行职责拆成三层：
+
+1. **平台控制层。** 解析 Scope、Provider/Model、Persona/Skill、资源上下文、工具策略、预算、取消、审计和持久化事件；
+2. **统一 Engine 契约。** 定义模型回合、工具请求、Observation、最终输出、错误和终态事件的规范语义；
+3. **Runtime Adapter。** 负责把规范请求和受控工具转换成 ADK 或 Ingenimax 的调用，并把框架事件转换回规范事件。
+
+适配器不应从数据库读取权限或直接创建资源工具。它只能接收一次执行的不可变快照和依赖，
+例如已解析的模型描述、工具定义、`ToolInvoker`、`EventSink`、预算和取消信号。这样
+Ingenimax 的 Hooks/Plugins 可以映射到平台回调，但不能成为第二个 Policy Enforcement Point。
+
+#### 方案 B：以 Ingenimax 为核心，再把当前 ADK 包装成适配器
+
+该方案可以较快获得 Ingenimax 的完整能力，并让 ADK 作为另一种 Runtime。但它会把当前
+已验收的事件、工具和诊断语义迁移到一个仍处于 `0.x` 的 SDK 上，且需要决定如何映射
+Ingenimax 的 Session、Memory、Skill、后台任务和多租户模型。迁移期间容易同时维护两套
+执行状态和审计语义，回滚成本也高。
+
+只有在 Ingenimax 已通过完整的兼容性、性能、故障恢复和安全测试，并且项目明确决定以它的
+运行模型作为长期基础时，才考虑该方案。当前不建议作为第一步。
+
+#### 方案 C：两个框架使用独立 Worker 或 Sidecar
+
+将 ADK 和 Ingenimax 分别部署为独立进程，由 API/Worker 通过内部协议调用。该方案可以隔离
+依赖、崩溃和资源消耗，但增加部署、版本发布、网络超时、事件回传、取消和调试复杂度。两套
+运行时仍然需要共享 Provider 解析、工具授权、审计和执行状态，不能因为进程隔离而省略统一
+契约。
+
+只有当某个框架的依赖无法在同一 Go 进程共存，或需要独立的资源配额和故障隔离时，才使用
+Sidecar。作为当前阶段的默认实现成本过高。
+
+**结论：** 采用方案 A；方案 C 作为运行时隔离的后备部署方式；不直接采用方案 B 进行整体
+迁移。这样可以同时保留 ADK 的稳定链路和 Ingenimax 的能力增量，也不会把项目绑定到某个
+框架的 Session、Skill 或多租户实现。
+
+### 19.4 推荐的双引擎架构
+
+建议把 Engine 目录中的每个引擎实例分成“业务可见配置”和“运行时绑定”两部分：
+
+```json
+{
+  "id": "engine-id",
+  "name": "Ingenimax Agent",
+  "runtime": {
+    "kind": "ingenimax",
+    "version": "v0.x.y",
+    "experimental": true
+  },
+  "capabilities": [
+    "智能体循环",
+    "上下文编排",
+    "工具调用",
+    "技能编排",
+    "流式事件"
+  ]
+}
+```
+
+`runtime.kind` 是适配器注册表中的稳定标识，不应包含 Scope、团队、项目或权限信息；
+`runtime.version` 用于锁定经过验证的 SDK 版本。Engine 的场景标签仍然遵循同一 Scope
+内互斥和向上继承规则，因此可以配置：
+
+```text
+平台 / diagnosis  -> ADK Engine
+团队 A / diagnosis -> Ingenimax Engine
+项目 B / diagnosis -> ADK Engine
+```
+
+在同一个 Scope 内，同一个场景标签只能解析到一个默认 Engine；业务请求仍允许在具有
+`engine:use` 权限且能力兼容时显式选择其他 Engine。切换的是 Engine Runtime，不是 Provider
+凭据，也不会改变本次执行已经固定的 Provider/Model。
+
+建议新增或稳定以下适配器边界（名称可按代码风格调整）：
+
+```go
+type EngineAdapter interface {
+    ID() string
+    Version() string
+    Capabilities() CapabilitySet
+    Execute(context.Context, AdapterRequest, AdapterDeps) (AdapterResult, error)
+    Stream(context.Context, AdapterRequest, AdapterDeps, EventSink) (AdapterResult, error)
+}
+```
+
+其中 `AdapterRequest` 只包含已经完成授权和解析的任务、模型、上下文、工具和预算；
+`AdapterDeps` 至少包含 `ToolInvoker`、`EventSink`、取消信号和审计回调。适配器不得接收
+原始 API Key、未授权的资源 ID 或可改变 Scope 的配置。
+
+当前 `ModelBuildResult` 仍包含 ADK 的 `model.LLM` 句柄。为了支持 Ingenimax，模型解析层
+需要逐步抽象为框架无关的模型描述或 `ModelInvoker`：Provider/Model、协议、能力、限制和
+一次性内存凭据由 OpsKeeper 解析，ADK Adapter 可以构造 ADK 模型句柄，Ingenimax Adapter
+可以构造其模型客户端，但凭据不能落入适配器持久化状态。这个改造应先以兼容字段实现，
+待两个适配器的契约测试通过后再删除 ADK 专属字段。
+
+### 19.5 能力、事件和状态的统一规则
+
+#### 能力归一化
+
+框架自己的能力名称不直接写入 Engine 页面。适配器需要把原生能力映射到项目的中文能力
+词条和内部能力键，例如：
+
+| 统一能力 | ADK | Ingenimax | 不满足时 |
+|---|---|---|---|
+| 智能体循环 | Agent/Runner Loop | Agent Loop | 拒绝选择该 Engine |
+| 工具调用 | Function Tool Calling | Tool Registry/Execution | 拒绝需要工具的请求 |
+| 技能编排 | 由 OpsKeeper Skill Plan 注入 | SDK Skill 可作为内部实现 | 必须经过 OpsKeeper Skill 解析 |
+| 流式事件 | Runner Events/SSE | SDK Stream/Hook | 同步降级不能伪造流式能力 |
+| 检查点恢复 | 由 OpsKeeper Workflow Store | SDK Checkpoint 可适配 | 未验证前不宣称支持 |
+| 人工审批 | OpsKeeper Approval | Hook/Workflow 能力 | 必须由平台审批链决定 |
+
+只有在适配器能保证同等语义时才标记能力为可用。比如 Ingenimax 的 Session 或
+Checkpoint 即使存在，也不能自动替代 OpsKeeper 的执行事件和工作流快照。
+
+#### 事件归一化
+
+ADK 和 Ingenimax 的内部事件名称、粒度和顺序可能不同，适配器必须转换为当前统一事件：
+
+```text
+execution.started
+model.started
+assistant.progress / assistant.delta
+tool.requested
+tool.started
+tool.completed / tool.failed
+model.resumed
+assistant.completed
+execution.completed / execution.failed / execution.cancelled
+```
+
+工具调用必须先产生 `tool.requested`，经过 OpsKeeper 策略后才能进入框架执行；框架内部
+的工具结果、重试或并行信息不能绕过 `engine_execution_tool_calls`。不能因为切换 Runtime
+而让同一诊断在页面上出现两种时间线语义。
+
+#### 状态和持久化归属
+
+OpsKeeper 是执行状态和治理数据的唯一事实来源。Ingenimax 的 Session、Memory、后台运行
+和 Checkpoint 可以作为适配器内部的临时优化，但必须满足以下之一：
+
+- 映射到 OpsKeeper 已有的执行、工作流、Observation 和审计记录；或
+- 明确标记为非权威缓存，并可在丢失后由 OpsKeeper 状态恢复。
+
+不得同时让 SDK 和 OpsKeeper 都决定执行终态、工具是否允许、租户是否可见或凭据是否有效。
+
+### 19.6 分阶段实施与切换策略
+
+推荐按以下顺序落地，先保证双引擎可共存，再考虑默认引擎迁移：
+
+1. **契约冻结。** 为 `Request`、`Result`、规范事件、工具调用、取消、预算和能力矩阵补充接口文档及表格化测试；将当前 ADK 行为作为基线快照。
+2. **ADK Adapter 化。** 把 `backend/engine/runner.go` 中的 ADK 创建、回调和事件转换提取到 ADK Adapter，平台层保留上下文、策略、审计和生命周期控制。此阶段用户行为不变。
+3. **框架无关模型入口。** 将 Provider 解析结果从 ADK 专属模型句柄扩展为统一模型描述/调用端口，保留兼容路径，避免一次性重写已验证的 Provider 适配器。
+4. **Ingenimax PoC。** 以实验性 Engine 注册，只允许测试 Scope 或显式 Engine 选择；优先验证 Tool Gateway、流式事件、取消、预算、结构化输出、Skill 注入和审计，不先接管其 Memory、多租户和持久化。
+5. **一致性和故障测试。** 使用相同的 Mock Model、工具和 Request，对两个 Adapter 验证事件顺序、权限拒绝、工具错误后的重新规划、超时、取消、上下文压缩和终态幂等性。真实 Provider 测试另行验证协议差异。
+6. **按 Scope 灰度。** 只有通过契约测试的 Runtime 才能被设置为场景标签默认引擎；先在团队或项目 Scope 灰度，保留上级 ADK 默认作为回退配置。
+7. **逐步扩大能力。** Ingenimax 在某项能力通过验证后才点亮对应能力词条；发生不兼容时切回 ADK Engine，而不是在同一次执行中静默切换。
+
+运行时切换的规则如下：
+
+- 执行开始前可以按显式 Engine、当前 Scope 场景标签或上级 Scope 继承结果选择 Runtime；
+- 一旦模型输出或工具副作用已经发生，本次执行不得自动切换 Runtime；
+- 允许的故障回退只能发生在模型调用开始前，且必须记录选择失败和回退原因；默认关闭自动回退；
+- Provider/Model 的故障切换与 Runtime 切换是两个独立策略，不能混为一个“自动换引擎”；
+- Engine 升级、SDK 版本变更和能力变化必须记录在执行选择快照中，保证历史执行可追溯。
+
+### 19.7 最终建议
+
+**当前决策：** 采用“OpsKeeper Engine 契约 + Runtime Adapter”作为多引擎长期架构。保留
+当前 ADK Engine 作为生产默认和回滚基线；待 `Ingenimax/agent-sdk-go` 的版本、API 和运行
+行为相对稳定后，以第二个 Runtime Adapter 方式接入。Eino 和 Microsoft Agent Framework Go
+继续保留为候选适配器，分别用于图编排和工作流治理方向的后续 PoC。
+
+**实施状态：** 本方案当前仅完成设计确认，暂缓实现。当前不新增 Runtime Adapter，不引入
+Ingenimax、Eino 或 Microsoft Agent Framework Go 依赖，不修改执行数据库结构，也不改变现有
+ADK 诊断、巡检、技能和工作流链路。后续启动时必须先完成契约冻结和 ADK Adapter 化，再
+进行 Ingenimax PoC，不允许直接把 SDK 接入业务层或替换现有默认运行时。
+
+对于当前项目，最稳妥且能满足“多引擎、自由切换、保留现有能力”的实现是：
+
+1. 保留当前 ADK Engine 作为生产默认和回滚基线；
+2. 把 ADK 现有实现改造成第一个 Runtime Adapter，而不是继续让 ADK 细节扩散到业务层；
+3. 在 Ingenimax/agent-sdk-go 版本和行为相对稳定后，按同一契约增加第二个 Adapter；
+4. 让 Engine 目录、Scope 场景标签和 `engine:use` 权限决定可见和默认的运行时；
+5. 由 OpsKeeper 继续统一 Provider、资源上下文、工具策略、审计、预算、取消和执行状态；
+6. 将 Eino 和 Microsoft Agent Framework Go 保留为候选适配器，分别在图编排和工作流治理场景完成 PoC 后再决定是否进入生产目录。
+
+这条路线既不否定 Ingenimax 可能比当前 ADK 拼装实现更完整的判断，也不需要在它成熟前
+牺牲现有诊断链路。最终用户看到的是多个能力明确、可按 Scope 配置的 Engine，而不是被迫
+理解不同 SDK 的内部差异。

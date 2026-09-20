@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	kserver "opskeeper/backend/mcpserver/kubernetes/server"
 )
 
 func TestKubernetesDirectToolsMatchMCPToolCatalog(t *testing.T) {
 	var direct map[string]string = map[string]string{}
-	err := (&Service{}).resolveKubernetesTools(context.Background(), aiengine.ContextResource{}, func(name, description string, _ json.RawMessage, _ func(context.Context, map[string]any) (aiengine.ToolResult, error)) {
+	err := (&Service{}).resolveKubernetesTools(context.Background(), engine.ContextResource{}, func(name, description string, _ json.RawMessage, _ func(context.Context, map[string]any) (engine.ToolResult, error)) {
 		direct[name] = description
 	})
 	if err != nil {

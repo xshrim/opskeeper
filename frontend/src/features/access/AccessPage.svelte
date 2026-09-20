@@ -4,6 +4,8 @@
   import MessageBanner from '../../components/MessageBanner.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import IconValue from '../../components/IconValue.svelte';
+  import PasswordInput from '../../components/PasswordInput.svelte';
+  import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import { api, ApiError, type Group, type Project, type Resource, type ResourceRoleBinding, type ResourceRoleDefinition, type RoleBinding, type RoleDefinition, type Team, type User } from '../../lib/api';
   import {
     actorPermissionsAtScope as getActorPermissionsAtScope,
@@ -49,7 +51,7 @@
   export let teamDialogOpen = false;
   export let teamName = '';
   export let teamCode = '';
-  export let teamIcon = 'UsersRound';
+  export let teamIcon = 'lucide:UsersRound';
   export let userDialogOpen = false;
   export let editingTeam: Team | null = null;
   export let editTeamName = '';
@@ -167,7 +169,7 @@
   function resourceGrantViewerRole(type: string) { return ({ platform: 'PlatformViewer', team: 'TeamViewer', project: 'ProjectViewer' } as Record<string, string>)[type] ?? ''; }
   function roleScopeLabel(type: string) { return ({ platform: '平台级', team: '团队级', project: '项目级', resource: '资源级' } as Record<string, string>)[type] ?? type; }
   function userPermissions(userID: string) { const roleIDs = new Set(userRoleBindings(userID).map((binding) => binding.role_id)); return [...new Set(roles.filter((role) => roleIDs.has(role.id)).flatMap((role) => role.permissions.map(String)))]; }
-  function permissionDescription(permission: string) { const descriptions: Record<string, string> = { 'organization:read': '查看组织、平台和级别信息', 'team:manage': '创建、编辑和停用团队', 'project:manage': '创建、编辑和停用项目', 'member:grant': '管理用户、用户组和角色授权', 'resource:read': '查看资源列表、配置和详情', 'resource:create': '创建资源', 'resource:update': '编辑资源配置', 'resource:delete': '删除或停用资源', 'resource:use': '使用资源执行连接测试或业务调用', 'engine:manage': '管理 AI 引擎及其级别内的默认 AIProvider', 'relation:manage': '管理资源之间的关联关系', 'discovery:run': '启动集群或资源发现', 'discovery:import': '导入发现结果', 'diagnosis:start': '启动 AI 诊断', 'diagnosis:read': '查看诊断记录和结果', 'inspection:manage': '管理自动巡检策略', 'inspection:execute': '执行自动巡检', 'operation:approve': '审批受控操作', 'audit:read': '查看审计日志' }; return descriptions[permission] ?? '暂无权限说明'; }
+  function permissionDescription(permission: string) { const descriptions: Record<string, string> = { 'organization:read': '查看组织、平台和级别信息', 'team:manage': '创建、编辑和停用团队', 'project:manage': '创建、编辑和停用项目', 'member:grant': '管理用户、用户组和角色授权', 'resource:read': '查看资源列表、配置和详情', 'resource:create': '创建资源', 'resource:update': '编辑资源配置', 'resource:delete': '删除或停用资源', 'resource:use': '使用资源执行连接测试或业务调用', 'engine:manage': '管理 AI 引擎及其级别内的默认 Provider', 'relation:manage': '管理资源之间的关联关系', 'diagnosis:start': '启动 AI 诊断', 'diagnosis:read': '查看诊断记录和结果', 'inspection:manage': '管理自动巡检策略', 'inspection:execute': '执行自动巡检', 'audit:read': '查看审计日志' }; return descriptions[permission] ?? '暂无权限说明'; }
   function actorPermissionsAtScope(scopeID: string) { return getActorPermissionsAtScope(scopeID, currentUser?.id, isPlatformAdmin, roles, groups, groupMembers, bindings, scopeChoices); }
   function grantableRolesForScope(scopeID: string) { if (!scopeID) return []; const permissions = new Set(actorPermissionsAtScope(scopeID)); return roles.filter((role) => role.scope_type === scopeType(scopeID) && role.permissions.every((permission) => permissions.has(permission))); }
   function canManageTeam(_team: Team) { return isPlatformAdmin; }
@@ -213,7 +215,7 @@
   function updateNewUserResourceGrant(gi: number, ri: number, updates: Partial<NewUserResourceGrant>) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.map((item, i) => i === ri ? { ...item, ...updates } : item) }); }
   function removeNewUserResourceGrant(gi: number, ri: number) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.filter((_, i) => i !== ri) }); }
   function updateNewUserUsername(value: string) { if (!newUserDisplayName || newUserDisplayName === newUserUsername) newUserDisplayName = value; newUserUsername = value; }
-  function openTeamDialog() { teamName = ''; teamCode = ''; teamIcon = 'UsersRound'; teamDialogOpen = true; }
+  function openTeamDialog() { teamName = ''; teamCode = ''; teamIcon = 'lucide:UsersRound'; teamDialogOpen = true; }
   function openEditTeam(team: Team) { editingTeam = team; editTeamName = team.name; editTeamIcon = team.icon; editTeamStatus = team.status; }
   function openEditUser(user: User) { editingUser = user; editUserDisplayName = user.display_name || user.username; passwordResetCredentials = null; const direct = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === user.id); editUserScopeId = direct.find((binding) => manageableScopeChoices.some((scope) => scope.id === binding.scope_id))?.scope_id ?? manageableScopeChoices[0]?.id ?? ''; editUserRoleIds = direct.filter((binding) => binding.scope_id === editUserScopeId).map((binding) => binding.role_id); }
   function chooseEditUserScope(scopeID: string) { editUserScopeId = scopeID; editUserRoleIds = editingUser ? bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === scopeID).map((binding) => binding.role_id) : []; editUserResourceRoleId = ''; editUserResourceId = ''; }
@@ -229,6 +231,46 @@
 </script>
 
         <section class="access-page">
+          <AccessManagementWorkbench
+            bind:accessSearch
+            bind:selectedAccessUserIds
+            {visibleAccessTeams}
+            {visibleAccessUsers}
+            {projects}
+            {roles}
+            {accessTeamUsers}
+            {teamAccessExpanded}
+            {accessLoading}
+            {accessLoadError}
+            {accessCanCreateTeam}
+            {accessCanCreateUser}
+            {busy}
+            {currentUser}
+            onAddTeam={openTeamDialog}
+            onAddUser={() => {
+              resetUserDialog();
+              userDialogOpen = true;
+            }}
+            onEditTeam={openEditTeam}
+            onEditUser={openEditUser}
+            onDisable={requestDisable}
+            onToggleTeam={toggleTeamAccess}
+            onReload={loadAccess}
+            {canManageTeam}
+            {canManageUser}
+            {userRoles}
+            {userScopeNames}
+            {userPermissions}
+            {roleLabel}
+            {roleScopeLabel}
+            {permissionDescription}
+          />
+          <!-- legacy tabbed management surface retained below for reference; the unified workbench above owns this page. {#if false}
+          <nav class="access-view-switcher" aria-label="权限管理视图">
+            <button type="button" class:active={accessTab === 'teams'} on:click={() => (accessTab = 'teams')}>团队</button>
+            <button type="button" class:active={accessTab === 'users'} on:click={() => (accessTab = 'users')}>用户</button>
+            <button type="button" class:active={accessTab === 'roles'} on:click={() => (accessTab = 'roles')}>角色</button>
+          </nav>
           <section class="panel access-workbench">
             {#if accessTab !== 'roles'}
               <div class="access-filterbar">
@@ -599,7 +641,9 @@
                   </div>{/each}
               </div>
             {/if}
-          </section>
+          <!-- </section>
+        </section>
+          {/if} -->
         </section>
         {#if teamDialogOpen}
           <div
@@ -728,13 +772,13 @@
                   </div>
                   {#if newUserPasswordMode === 'manual'}
                     <label
-                      >一次性密码<input
-                        type="password"
+                      >一次性密码<PasswordInput
                         bind:value={newUserPassword}
                         required
-                        minlength="8"
+                        minlength={8}
                         autocomplete="new-password"
                         placeholder="至少 8 位"
+                        ariaLabel="一次性密码"
                       /></label
                     >
                   {:else}

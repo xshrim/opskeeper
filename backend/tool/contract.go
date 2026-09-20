@@ -1,6 +1,6 @@
 // Package tool contains protocol-neutral resource tools.
 //
-// It deliberately does not depend on AIEngine, MCP, HTTP handlers, or the
+// It deliberately does not depend on Engine, MCP, HTTP handlers, or the
 // resource catalog. Adapters provide connection context and translate the
 // result to their own protocol.
 package tool
