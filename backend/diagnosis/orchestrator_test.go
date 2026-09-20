@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 )
 
 func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 	store := newRecordingStore()
-	engine := fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		request.ObservationSink(aiengine.ToolObservation{ToolName: "connector_metrics_query", ResourceID: "target-1", Result: aiengine.ToolResult{Output: map[string]any{"rate": 0.12}, Untrusted: true}})
-		return aiengine.Result{Output: "错误率在采样窗口内升高。"}, nil
+	engine := fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		request.ObservationSink(engine.ToolObservation{ToolName: "connector_metrics_query", ResourceID: "target-1", Result: engine.ToolResult{Output: map[string]any{"rate": 0.12}, Untrusted: true}})
+		return engine.Result{Output: "错误率在采样窗口内升高。"}, nil
 	}}
 	orchestrator := NewOrchestrator(&Service{store: store}, engine, time.Second)
 	orchestrator.run(context.Background(), "session-1")
@@ -54,11 +54,11 @@ func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
 func TestOrchestratorMarksResourceAnswerWithoutEvidenceAsNeedsVerification(t *testing.T) {
 	store := newRecordingStore()
 	causalCalls := 0
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
-		return aiengine.Result{Output: "可能是上游依赖变慢。"}, nil
-	}, causal: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{Output: "可能是上游依赖变慢。"}, nil
+	}, causal: func(context.Context, engine.Request) (engine.Result, error) {
 		causalCalls++
-		return aiengine.Result{}, nil
+		return engine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -74,10 +74,10 @@ func TestOrchestratorMarksResourceAnswerWithoutEvidenceAsNeedsVerification(t *te
 }
 
 func TestCompileCausalChainUsesOnlyCurrentEvidenceAndBoundedBudget(t *testing.T) {
-	var request aiengine.Request
-	orchestrator := NewOrchestrator(&Service{store: newRecordingStore()}, fakeEngine{causal: func(_ context.Context, input aiengine.Request) (aiengine.Result, error) {
+	var request engine.Request
+	orchestrator := NewOrchestrator(&Service{store: newRecordingStore()}, fakeEngine{causal: func(_ context.Context, input engine.Request) (engine.Result, error) {
 		request = input
-		return aiengine.Result{Output: `{"summary":"已确认","nodes":[{"id":"n1","kind":"effect","statement":"错误率升高","status":"likely","confidence":0.4,"evidence_ids":["current"]}],"links":[]}`}, nil
+		return engine.Result{Output: `{"summary":"已确认","nodes":[{"id":"n1","kind":"effect","statement":"错误率升高","status":"likely","confidence":0.4,"evidence_ids":["current"]}],"links":[]}`}, nil
 	}}, time.Minute)
 	chain, err := orchestrator.compileCausalChain(context.Background(), Session{ID: "session-1", ScopeID: "scope-1"}, Run{ID: "run-current", Sequence: 1}, "错误率升高", []Evidence{{ID: "old", RunID: "run-old"}, {ID: "current", RunID: "run-current"}})
 	if err != nil || len(chain.Nodes) != 1 || len(request.Messages) != 1 {
@@ -94,14 +94,14 @@ func TestCompileCausalChainUsesOnlyCurrentEvidenceAndBoundedBudget(t *testing.T)
 func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T) {
 	store := newRecordingStore()
 	store.targets = nil
-	var captured aiengine.Request
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
+	var captured engine.Request
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
 		captured = request
-		return aiengine.Result{Output: "Go 的 defer 会在函数返回前执行。"}, nil
+		return engine.Result{Output: "Go 的 defer 会在函数返回前执行。"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
-	if captured.Profile != aiengine.ProfileInteractive || captured.Purpose != aiengine.PurposeDiagnosis || len(captured.Context.ResourceIDs) != 0 {
+	if captured.Profile != engine.ProfileInteractive || captured.Purpose != engine.PurposeDiagnosis || len(captured.Context.ResourceIDs) != 0 {
 		t.Fatalf("request = %#v, want interactive diagnosis purpose without context resources", captured)
 	}
 	if store.session.Status != StatusSucceeded || store.report.Status != "succeeded" || store.report.Conclusion != "Go 的 defer 会在函数返回前执行。" {
@@ -114,14 +114,14 @@ func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T
 
 func TestOrchestratorPersistsAssistantBeforeCompletionEvents(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "已完成回答。"}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "已完成回答。"}}); err != nil {
+			return engine.Result{}, err
 		}
-		if err := request.EventSink(aiengine.Event{Type: "execution.completed"}); err != nil {
-			return aiengine.Result{}, err
+		if err := request.EventSink(engine.Event{Type: "execution.completed"}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{Output: "已完成回答。"}, nil
+		return engine.Result{Output: "已完成回答。"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -143,14 +143,14 @@ func TestOrchestratorPersistsAssistantBeforeCompletionEvents(t *testing.T) {
 
 func TestOrchestratorDefersEmptyCompletionUntilResultIsPersisted(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": ""}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "assistant.completed", Payload: map[string]any{"text": ""}}); err != nil {
+			return engine.Result{}, err
 		}
-		if err := request.EventSink(aiengine.Event{Type: "execution.completed"}); err != nil {
-			return aiengine.Result{}, err
+		if err := request.EventSink(engine.Event{Type: "execution.completed"}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{Output: "由 Execute 返回的最终回答。"}, nil
+		return engine.Result{Output: "由 Execute 返回的最终回答。"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -182,11 +182,11 @@ func TestOrchestratorDefersEmptyCompletionUntilResultIsPersisted(t *testing.T) {
 func TestOrchestratorUsesPersistedAssistantWhenResultOutputIsEmpty(t *testing.T) {
 	store := newRecordingStore()
 	store.targets = nil
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "事件中的回答"}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "事件中的回答"}}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{}, nil
+		return engine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -200,8 +200,8 @@ func TestOrchestratorUsesPersistedAssistantWhenResultOutputIsEmpty(t *testing.T)
 
 func TestOrchestratorFailsClearlyWhenNoAssistantOutputExists(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
-		return aiengine.Result{}, nil
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -215,8 +215,8 @@ func TestOrchestratorFailsClearlyWhenNoAssistantOutputExists(t *testing.T) {
 
 func TestOrchestratorUsesRunnerErrorMessageForFailure(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
-		return aiengine.Result{Status: aiengine.StatusFailed, ErrorCode: "empty_output", ErrorMessage: "模型未返回可展示的最终回答，请重试。"}, errors.New("model returned an empty final response")
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{Status: engine.StatusFailed, ErrorCode: "empty_output", ErrorMessage: "模型未返回可展示的最终回答，请重试。"}, errors.New("model returned an empty final response")
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -227,8 +227,8 @@ func TestOrchestratorUsesRunnerErrorMessageForFailure(t *testing.T) {
 
 func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
-		return aiengine.Result{}, errors.New("provider unavailable")
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{}, errors.New("provider unavailable")
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 	if store.session.Status != StatusFailed || !store.hasEvent("diagnosis.failed") {
@@ -238,9 +238,9 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 	store = newRecordingStore()
 	store.claimed = true
 	calls := 0
-	orchestrator = NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, aiengine.Request) (aiengine.Result, error) {
+	orchestrator = NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
 		calls++
-		return aiengine.Result{}, nil
+		return engine.Result{}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 	if calls != 0 || store.session.Status != StatusQueued {
@@ -250,11 +250,11 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 
 func TestOrchestratorPreservesCancellationTerminalState(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "execution.cancelled", Status: aiengine.StatusCancelled, Payload: map[string]any{"error_code": "cancelled", "error": "context canceled"}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "execution.cancelled", Status: engine.StatusCancelled, Payload: map[string]any{"error_code": "cancelled", "error": "context canceled"}}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "cancelled", ErrorMessage: "context canceled"}, context.Canceled
+		return engine.Result{Status: engine.StatusCancelled, ErrorCode: "cancelled", ErrorMessage: "context canceled"}, context.Canceled
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -271,11 +271,11 @@ func TestOrchestratorPreservesCancellationTerminalState(t *testing.T) {
 
 func TestOrchestratorPreservesPartialAssistantOnTimeout(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "已完成初步检查，"}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "已完成初步检查，"}}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
+		return engine.Result{Status: engine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -298,11 +298,11 @@ func TestOrchestratorPreservesPartialAssistantOnTimeout(t *testing.T) {
 
 func TestOrchestratorUsesStreamedTextForCompletionPersistence(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		_ = request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "## 结论\n\n实时内容", "iteration": 1}})
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		_ = request.EventSink(engine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "## 结论\n\n实时内容", "iteration": 1}})
 		// Simulate an adapter whose final aggregate has different whitespace.
-		_ = request.EventSink(aiengine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "##结论当前内容", "iteration": 1}})
-		return aiengine.Result{Output: "##结论当前内容"}, nil
+		_ = request.EventSink(engine.Event{Type: "assistant.completed", Payload: map[string]any{"text": "##结论当前内容", "iteration": 1}})
+		return engine.Result{Output: "##结论当前内容"}, nil
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
@@ -330,14 +330,14 @@ func TestOrchestratorUsesStreamedTextForCompletionPersistence(t *testing.T) {
 
 func TestOrchestratorDoesNotPersistToolDecisionTextAsAnswerOnTimeout(t *testing.T) {
 	store := newRecordingStore()
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request aiengine.Request) (aiengine.Result, error) {
-		if err := request.EventSink(aiengine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1}}); err != nil {
-			return aiengine.Result{}, err
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if err := request.EventSink(engine.Event{Type: "assistant.delta", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1}}); err != nil {
+			return engine.Result{}, err
 		}
-		if err := request.EventSink(aiengine.Event{Type: "assistant.progress", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1, "kind": "tool_decision"}}); err != nil {
-			return aiengine.Result{}, err
+		if err := request.EventSink(engine.Event{Type: "assistant.progress", Payload: map[string]any{"text": "我先检查资源。", "iteration": 1, "kind": "tool_decision"}}); err != nil {
+			return engine.Result{}, err
 		}
-		return aiengine.Result{Status: aiengine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
+		return engine.Result{Status: engine.StatusCancelled, ErrorCode: "timeout", ErrorMessage: "context deadline exceeded"}, context.DeadlineExceeded
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 	for _, message := range store.messages {
@@ -359,12 +359,12 @@ func TestSafeTextRedactsBearerAndPreservesUTF8Boundaries(t *testing.T) {
 }
 
 type fakeEngine struct {
-	execute func(context.Context, aiengine.Request) (aiengine.Result, error)
-	causal  func(context.Context, aiengine.Request) (aiengine.Result, error)
+	execute func(context.Context, engine.Request) (engine.Result, error)
+	causal  func(context.Context, engine.Request) (engine.Result, error)
 }
 
 func (f fakeEngine) Name() string { return "fake" }
-func (f fakeEngine) Execute(ctx context.Context, input aiengine.Request) (aiengine.Result, error) {
+func (f fakeEngine) Execute(ctx context.Context, input engine.Request) (engine.Result, error) {
 	// Unit tests exercise the diagnosis run with a deliberately tiny fake. The
 	// follow-up causal compiler has its own tests and is allowed to fall back
 	// when this fake does not implement structured output.
@@ -372,11 +372,11 @@ func (f fakeEngine) Execute(ctx context.Context, input aiengine.Request) (aiengi
 		if f.causal != nil {
 			return f.causal(ctx, input)
 		}
-		return aiengine.Result{}, errors.New("structured output unavailable")
+		return engine.Result{}, errors.New("structured output unavailable")
 	}
 	return f.execute(ctx, input)
 }
-func (f fakeEngine) Stream(context.Context, aiengine.Request) (<-chan aiengine.Event, error) {
+func (f fakeEngine) Stream(context.Context, engine.Request) (<-chan engine.Event, error) {
 	return nil, errors.New("stream not implemented")
 }
 func (f fakeEngine) Cancel(context.Context, string) error { return nil }

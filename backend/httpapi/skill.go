@@ -15,6 +15,7 @@ import (
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/llm"
+	"opskeeper/backend/persona"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/skill"
 )
@@ -24,11 +25,27 @@ type llmService interface {
 	TestDraftConnection(context.Context, llm.DraftConnection, bool) (llm.ConnectionResult, error)
 }
 
+type providerCatalogService interface {
+	ListProviders(context.Context, string) ([]llm.Provider, error)
+}
+
+type providerCatalogWriterService interface {
+	providerCatalogService
+	CreateProvider(context.Context, llm.ProviderInput) (llm.Provider, error)
+	UpdateProvider(context.Context, string, llm.ProviderPatch) (llm.Provider, error)
+	DeleteProvider(context.Context, string) error
+}
+
 type connectionCheckRecorder interface {
 	RecordCheck(context.Context, connector.Check) (connector.Check, error)
 }
 
+type providerConnectionTestRecorder interface {
+	RecordConnectionTest(context.Context, string, string, string, int64, time.Time) error
+}
+
 type skillService interface {
+	ListSkills(context.Context, string) ([]skill.Skill, error)
 	CreateVersion(context.Context, string, skill.CreateVersionInput) (skill.Version, error)
 	ListVersions(context.Context, string) ([]skill.Version, error)
 	Publish(context.Context, string, string) (skill.Version, error)
@@ -37,11 +54,12 @@ type skillService interface {
 	Resolve(context.Context, string, string, string) (skill.Version, error)
 }
 
-type agentProfileService interface {
-	CreateVersion(context.Context, string, string, map[string]any) (skill.AgentProfileVersion, error)
-	ListVersions(context.Context, string) ([]skill.AgentProfileVersion, error)
-	PublishVersion(context.Context, string, string) (skill.AgentProfileVersion, error)
-	DisableVersion(context.Context, string, string) (skill.AgentProfileVersion, error)
+type personaService interface {
+	ListPersonas(context.Context, string) ([]persona.Persona, error)
+	CreateVersion(context.Context, string, string, map[string]any) (persona.PersonaVersion, error)
+	ListVersions(context.Context, string) ([]persona.PersonaVersion, error)
+	PublishVersion(context.Context, string, string) (persona.PersonaVersion, error)
+	DisableVersion(context.Context, string, string) (persona.PersonaVersion, error)
 }
 
 type aiHandler struct {
@@ -49,16 +67,16 @@ type aiHandler struct {
 	skills        skillService
 	authorization authorizationService
 	auditor       audit.Logger
-	agentProfiles agentProfileService
+	personas      personaService
 	checks        connectionCheckRecorder
 }
 
-type testAIProviderRequest struct {
+type testProviderRequest struct {
 	ScopeID   string `json:"scope_id"`
 	ModelName string `json:"model_name"`
 	Stream    bool   `json:"stream"`
 }
-type testDraftAIProviderRequest struct {
+type testDraftProviderRequest struct {
 	ScopeID        string   `json:"scope_id"`
 	ProviderType   string   `json:"provider_type"`
 	BaseURL        string   `json:"base_url"`
@@ -70,6 +88,19 @@ type testDraftAIProviderRequest struct {
 	Capabilities   []string `json:"capabilities"`
 	Stream         bool     `json:"stream"`
 }
+type createProviderRequest struct {
+	ScopeID string             `json:"scope_id"`
+	Name    string             `json:"name"`
+	Status  string             `json:"status"`
+	Config  llm.ProviderConfig `json:"config"`
+	APIKey  *string            `json:"api_key"`
+}
+type updateProviderRequest struct {
+	Name   *string             `json:"name"`
+	Status *string             `json:"status"`
+	Config *llm.ProviderConfig `json:"config"`
+	APIKey *string             `json:"api_key"`
+}
 type createSkillVersionRequest struct {
 	Manifest     skill.Manifest   `json:"manifest"`
 	InputSchema  json.RawMessage  `json:"input_schema"`
@@ -78,21 +109,21 @@ type createSkillVersionRequest struct {
 	RiskLevel    string           `json:"risk_level"`
 }
 type setSkillDefaultRequest struct {
-	ScopeID         string `json:"scope_id"`
-	SkillResourceID string `json:"skill_resource_id"`
-	SkillVersionID  string `json:"skill_version_id"`
+	ScopeID        string `json:"scope_id"`
+	SkillID        string `json:"skill_id"`
+	SkillVersionID string `json:"skill_version_id"`
 }
-type createAgentProfileVersionRequest struct {
+type createPersonaVersionRequest struct {
 	Config map[string]any `json:"config"`
 }
 
-func registerAIRoutes(router chi.Router, llms llmService, skills skillService, agentProfiles agentProfileService, authorizer authorizationService, auditor audit.Logger, checks connectionCheckRecorder, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
-	h := aiHandler{llms: llms, skills: skills, agentProfiles: agentProfiles, authorization: authorizer, auditor: auditor, checks: checks}
-	if bindings, ok := llms.(aiProviderBindingService); ok {
-		registerAIProviderBindingRoutes(router, bindings, requirePermission)
+func registerAIRoutes(router chi.Router, llms llmService, skills skillService, personas personaService, authorizer authorizationService, auditor audit.Logger, checks connectionCheckRecorder, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+	h := aiHandler{llms: llms, skills: skills, personas: personas, authorization: authorizer, auditor: auditor, checks: checks}
+	if bindings, ok := llms.(providerBindingService); ok {
+		registerProviderBindingRoutes(router, bindings, requirePermission)
 	}
-	if availability, ok := llms.(aiProviderAvailabilityService); ok {
-		registerAIProviderAvailabilityRoute(router, availability, requirePermission)
+	if availability, ok := llms.(providerAvailabilityService); ok {
+		registerProviderAvailabilityRoute(router, availability, requirePermission)
 	}
 	guard := func(permission authorization.Permission) func(http.Handler) http.Handler {
 		if requirePermission == nil {
@@ -100,42 +131,105 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, a
 		}
 		return requirePermission(permission)
 	}
-	if llms != nil {
-		router.With(guard(authorization.ResourceUse)).Post("/ai-providers/{providerID}/test", h.testAIProvider)
-		router.With(guard(authorization.ResourceUpdate)).Post("/ai-providers/test-draft", h.testDraftAIProvider)
+	if catalog, ok := llms.(providerCatalogService); ok {
+		router.With(guard(authorization.ProviderRead)).Get("/providers", func(w http.ResponseWriter, r *http.Request) {
+			items, err := catalog.ListProviders(r.Context(), r.URL.Query().Get("scope_id"))
+			if err != nil {
+				writeAIError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
+		if writer, ok := llms.(providerCatalogWriterService); ok {
+			router.With(guard(authorization.ProviderManage)).Post("/providers", func(w http.ResponseWriter, r *http.Request) {
+				var body createProviderRequest
+				if !decodeRequest(w, r, &body) {
+					return
+				}
+				item, err := writer.CreateProvider(r.Context(), llm.ProviderInput{ScopeID: body.ScopeID, Name: body.Name, Status: body.Status, Config: body.Config, APIKey: body.APIKey})
+				if err != nil {
+					writeAIError(w, r, err)
+					return
+				}
+				writeJSON(w, http.StatusCreated, item)
+			})
+			router.With(guard(authorization.ProviderManage)).Patch("/providers/{providerID}", func(w http.ResponseWriter, r *http.Request) {
+				var body updateProviderRequest
+				if !decodeRequest(w, r, &body) {
+					return
+				}
+				item, err := writer.UpdateProvider(r.Context(), chi.URLParam(r, "providerID"), llm.ProviderPatch{Name: body.Name, Status: body.Status, Config: body.Config, APIKey: body.APIKey})
+				if err != nil {
+					writeAIError(w, r, err)
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+			})
+			router.With(guard(authorization.ProviderManage)).Delete("/providers/{providerID}", func(w http.ResponseWriter, r *http.Request) {
+				if err := writer.DeleteProvider(r.Context(), chi.URLParam(r, "providerID")); err != nil {
+					writeAIError(w, r, err)
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+		}
 	}
 	if skills != nil {
-		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions", h.createVersion)
-		router.With(guard(authorization.ResourceRead)).Get("/skills/{skillID}/versions", h.listVersions)
-		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions/{versionID}/publish", h.publishVersion)
-		router.With(guard(authorization.ResourceUpdate)).Post("/skills/{skillID}/versions/{versionID}/disable", h.disableVersion)
-		router.With(guard(authorization.ResourceUpdate)).Put("/skill-defaults", h.setSkillDefault)
-		router.With(guard(authorization.ResourceRead)).Get("/skill-defaults", h.resolveSkillDefault)
+		router.With(guard(authorization.SkillRead)).Get("/skills", func(w http.ResponseWriter, r *http.Request) {
+			items, err := skills.ListSkills(r.Context(), r.URL.Query().Get("scope_id"))
+			if err != nil {
+				writeAIError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
 	}
-	if agentProfiles != nil {
-		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions", h.createAgentProfileVersion)
-		router.With(guard(authorization.ResourceRead)).Get("/agent-profiles/{profileID}/versions", h.listAgentProfileVersions)
-		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions/{versionID}/publish", h.publishAgentProfileVersion)
-		router.With(guard(authorization.ResourceUpdate)).Post("/agent-profiles/{profileID}/versions/{versionID}/disable", h.disableAgentProfileVersion)
+	if personas != nil {
+		router.With(guard(authorization.PersonaRead)).Get("/personas", func(w http.ResponseWriter, r *http.Request) {
+			items, err := personas.ListPersonas(r.Context(), r.URL.Query().Get("scope_id"))
+			if err != nil {
+				writeAIError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
+	}
+	if llms != nil {
+		router.With(guard(authorization.ProviderUse)).Post("/providers/{providerID}/test", h.testProvider)
+		router.With(guard(authorization.ProviderManage)).Post("/providers/test-draft", h.testDraftProvider)
+	}
+	if skills != nil {
+		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions", h.createVersion)
+		router.With(guard(authorization.SkillRead)).Get("/skills/{skillID}/versions", h.listVersions)
+		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions/{versionID}/publish", h.publishVersion)
+		router.With(guard(authorization.SkillManage)).Post("/skills/{skillID}/versions/{versionID}/disable", h.disableVersion)
+		router.With(guard(authorization.SkillManage)).Put("/skill-defaults", h.setSkillDefault)
+		router.With(guard(authorization.SkillRead)).Get("/skill-defaults", h.resolveSkillDefault)
+	}
+	if personas != nil {
+		router.With(guard(authorization.PersonaManage)).Post("/personas/{personaID}/versions", h.createPersonaVersion)
+		router.With(guard(authorization.PersonaRead)).Get("/personas/{personaID}/versions", h.listPersonaVersions)
+		router.With(guard(authorization.PersonaManage)).Post("/personas/{personaID}/versions/{versionID}/publish", h.publishPersonaVersion)
+		router.With(guard(authorization.PersonaManage)).Post("/personas/{personaID}/versions/{versionID}/disable", h.disablePersonaVersion)
 	}
 }
 
-func (h aiHandler) createAgentProfileVersion(w http.ResponseWriter, r *http.Request) {
-	var body createAgentProfileVersionRequest
+func (h aiHandler) createPersonaVersion(w http.ResponseWriter, r *http.Request) {
+	var body createPersonaVersionRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.agentProfiles.CreateVersion(r.Context(), currentUser(r).ID, chi.URLParam(r, "profileID"), body.Config)
+	item, err := h.personas.CreateVersion(r.Context(), currentUser(r).ID, chi.URLParam(r, "personaID"), body.Config)
 	if err != nil {
 		writeAIError(w, r, err)
 		return
 	}
-	h.record(r, "agent_profile.version.create", "agent_profile_version", item.ID, chi.URLParam(r, "profileID"))
+	h.record(r, "persona.version.create", "persona_version", item.ID, chi.URLParam(r, "personaID"))
 	writeJSON(w, http.StatusCreated, item)
 }
 
-func (h aiHandler) listAgentProfileVersions(w http.ResponseWriter, r *http.Request) {
-	items, err := h.agentProfiles.ListVersions(r.Context(), chi.URLParam(r, "profileID"))
+func (h aiHandler) listPersonaVersions(w http.ResponseWriter, r *http.Request) {
+	items, err := h.personas.ListVersions(r.Context(), chi.URLParam(r, "personaID"))
 	if err != nil {
 		writeAIError(w, r, err)
 		return
@@ -143,40 +237,46 @@ func (h aiHandler) listAgentProfileVersions(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (h aiHandler) publishAgentProfileVersion(w http.ResponseWriter, r *http.Request) {
-	item, err := h.agentProfiles.PublishVersion(r.Context(), chi.URLParam(r, "profileID"), chi.URLParam(r, "versionID"))
+func (h aiHandler) publishPersonaVersion(w http.ResponseWriter, r *http.Request) {
+	item, err := h.personas.PublishVersion(r.Context(), chi.URLParam(r, "personaID"), chi.URLParam(r, "versionID"))
 	if err != nil {
 		writeAIError(w, r, err)
 		return
 	}
-	h.record(r, "agent_profile.version.publish", "agent_profile_version", item.ID, chi.URLParam(r, "profileID"))
+	h.record(r, "persona.version.publish", "persona_version", item.ID, chi.URLParam(r, "personaID"))
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (h aiHandler) disableAgentProfileVersion(w http.ResponseWriter, r *http.Request) {
-	item, err := h.agentProfiles.DisableVersion(r.Context(), chi.URLParam(r, "profileID"), chi.URLParam(r, "versionID"))
+func (h aiHandler) disablePersonaVersion(w http.ResponseWriter, r *http.Request) {
+	item, err := h.personas.DisableVersion(r.Context(), chi.URLParam(r, "personaID"), chi.URLParam(r, "versionID"))
 	if err != nil {
 		writeAIError(w, r, err)
 		return
 	}
-	h.record(r, "agent_profile.version.disable", "agent_profile_version", item.ID, chi.URLParam(r, "profileID"))
+	h.record(r, "persona.version.disable", "persona_version", item.ID, chi.URLParam(r, "personaID"))
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (h aiHandler) testAIProvider(w http.ResponseWriter, r *http.Request) {
-	var body testAIProviderRequest
+func (h aiHandler) testProvider(w http.ResponseWriter, r *http.Request) {
+	var body testProviderRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
 	started := time.Now()
 	item, err := h.llms.TestConnection(r.Context(), body.ScopeID, chi.URLParam(r, "providerID"), body.ModelName, body.Stream)
 	if err != nil {
+		if recorder, ok := h.llms.(providerConnectionTestRecorder); ok {
+			_ = recorder.RecordConnectionTest(r.Context(), chi.URLParam(r, "providerID"), "failed", safeAIConnectionError(err), time.Since(started).Milliseconds(), time.Now())
+		}
 		h.recordConnectionCheck(r, chi.URLParam(r, "providerID"), "failed", safeAIConnectionError(err), time.Since(started).Milliseconds(), nil)
 		writeAIError(w, r, err)
 		return
 	}
-	h.recordConnectionCheck(r, item.ProviderResourceID, item.Status, item.Message, item.LatencyMS, nil)
-	h.record(r, "ai_provider.connection.test", "resource", item.ProviderResourceID, body.ScopeID)
+	h.recordConnectionCheck(r, item.ProviderID, item.Status, item.Message, item.LatencyMS, nil)
+	if recorder, ok := h.llms.(providerConnectionTestRecorder); ok {
+		_ = recorder.RecordConnectionTest(r.Context(), item.ProviderID, item.Status, item.Message, item.LatencyMS, time.Now())
+	}
+	h.record(r, "provider.connection.test", "provider", item.ProviderID, body.ScopeID)
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -196,8 +296,8 @@ func (h aiHandler) recordConnectionCheck(r *http.Request, resourceID, status, me
 	})
 }
 
-func (h aiHandler) testDraftAIProvider(w http.ResponseWriter, r *http.Request) {
-	var body testDraftAIProviderRequest
+func (h aiHandler) testDraftProvider(w http.ResponseWriter, r *http.Request) {
+	var body testDraftProviderRequest
 	if !decodeRequest(w, r, &body) {
 		return
 	}
@@ -261,7 +361,7 @@ func (h aiHandler) createVersion(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.skills.CreateVersion(r.Context(), currentUser(r).ID, skill.CreateVersionInput{SkillResourceID: chi.URLParam(r, "skillID"), Manifest: body.Manifest, InputSchema: body.InputSchema, OutputSchema: body.OutputSchema, Tools: body.Tools, RiskLevel: body.RiskLevel})
+	item, err := h.skills.CreateVersion(r.Context(), currentUser(r).ID, skill.CreateVersionInput{SkillID: chi.URLParam(r, "skillID"), Manifest: body.Manifest, InputSchema: body.InputSchema, OutputSchema: body.OutputSchema, Tools: body.Tools, RiskLevel: body.RiskLevel})
 	if err != nil {
 		writeAIError(w, r, err)
 		return
@@ -300,7 +400,7 @@ func (h aiHandler) setSkillDefault(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.skills.SetDefault(r.Context(), currentUser(r).ID, body.ScopeID, body.SkillResourceID, body.SkillVersionID)
+	item, err := h.skills.SetDefault(r.Context(), currentUser(r).ID, body.ScopeID, body.SkillID, body.SkillVersionID)
 	if err != nil {
 		writeAIError(w, r, err)
 		return
@@ -309,7 +409,7 @@ func (h aiHandler) setSkillDefault(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, item)
 }
 func (h aiHandler) resolveSkillDefault(w http.ResponseWriter, r *http.Request) {
-	item, err := h.skills.Resolve(r.Context(), r.URL.Query().Get("scope_id"), r.URL.Query().Get("skill_resource_id"), r.URL.Query().Get("skill_version_id"))
+	item, err := h.skills.Resolve(r.Context(), r.URL.Query().Get("scope_id"), r.URL.Query().Get("skill_id"), r.URL.Query().Get("skill_version_id"))
 	if err != nil {
 		writeAIError(w, r, err)
 		return

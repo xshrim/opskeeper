@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/persona"
 	"opskeeper/backend/resource"
 )
 
@@ -13,9 +14,14 @@ type ResourceReader interface {
 	Get(context.Context, string) (resource.Resource, error)
 }
 
+type PersonaReader interface {
+	GetPersona(context.Context, string) (persona.Persona, error)
+}
+
 type Service struct {
 	store     policyStore
 	resources ResourceReader
+	personas  PersonaReader
 }
 
 type policyStore interface {
@@ -23,8 +29,12 @@ type policyStore interface {
 	ListPolicies(context.Context, string) ([]Policy, error)
 }
 
-func NewService(store policyStore, resources ResourceReader) *Service {
-	return &Service{store: store, resources: resources}
+func NewService(store policyStore, resources ResourceReader, personas ...PersonaReader) *Service {
+	service := &Service{store: store, resources: resources}
+	if len(personas) > 0 {
+		service.personas = personas[0]
+	}
+	return service
 }
 
 func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string) (Policy, error) {
@@ -40,8 +50,16 @@ func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string
 			return Policy{}, err
 		}
 	}
-	if policy.AgentProfileResourceID != "" {
-		if err := s.validateResource(ctx, policy.ScopeID, policy.AgentProfileResourceID, "AgentProfile"); err != nil {
+	if policy.PersonaID != "" {
+		if s.personas != nil {
+			item, readErr := s.personas.GetPersona(ctx, policy.PersonaID)
+			if readErr != nil {
+				return Policy{}, readErr
+			}
+			if item.Status != resource.StatusActive || !allowsScope(ctx, item.ScopeID) {
+				return Policy{}, authorization.ErrForbidden
+			}
+		} else if err := s.validateResource(ctx, policy.ScopeID, policy.PersonaID, "Persona"); err != nil {
 			return Policy{}, err
 		}
 	}
@@ -177,7 +195,7 @@ func (s *Service) validateResource(ctx context.Context, scopeID, id, kind string
 		return authorization.ErrForbidden
 	}
 	if kind != "" && item.Kind != kind {
-		return invalid("policy AgentProfile is not an AgentProfile resource")
+		return invalid("policy Persona is not an Persona resource")
 	}
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok && !filter.Allows(item.ScopeID, item.ID) {
 		return authorization.ErrForbidden

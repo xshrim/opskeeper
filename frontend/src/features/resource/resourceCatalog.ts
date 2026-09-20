@@ -44,9 +44,7 @@ export const resourceCategoryOptions: Record<string, string[]> = {
   RabbitMQ: ['Direct', 'Agent'],
   ElasticSearch: ['Direct', 'Agent'],
   MinIO: ['Direct', 'Agent'],
-  LLM: ['Provider'],
   MCPServer: ['StreamHTTP', 'SSE'],
-  Skill: ['诊断', '监控', '优化', '维护'],
   Monitor: ['指标', '日志', '链路', '告警']
 };
 
@@ -70,10 +68,7 @@ export const resourceCatalogTags: Record<string, string[]> = {
   ElasticSearch: ['检索'],
   Elasticsearch: ['检索'],
   MinIO: ['存储'],
-  LLM: ['AI'],
-  AIProvider: ['AI'],
   MCPServer: ['AI'],
-  Skill: ['AI'],
   Monitor: ['监控'],
   Prometheus: ['监控'],
   Loki: ['监控'],
@@ -123,7 +118,6 @@ export function connectorCapabilityName(capability: ConnectorCapability) {
 }
 
 export function resourceCategoryFor(resource: ResourceShape) {
-  if (resource.kind === 'AIProvider') return 'LLM';
   if (resource.kind === 'MCPServer') return 'MCPServer';
   if (['Artifact', 'Repository', 'Host'].includes(resource.kind))
     return resource.kind;
@@ -148,8 +142,7 @@ export function resourceCategoryFor(resource: ResourceShape) {
       'MySQL',
       'PostgreSQL',
       'Docker',
-      'Kubernetes',
-      'Skill'
+      'Kubernetes'
     ].includes(resource.kind)
   )
     return resource.kind === 'Elasticsearch' ? 'ElasticSearch' : resource.kind;
@@ -190,14 +183,12 @@ export function resourceSubtypeFor(resource: ResourceShape) {
     PostgreSQL: 'Direct',
     Repository: 'Git',
     MCPServer: 'StreamHTTP',
-    AIProvider: 'Provider',
     Prometheus: '指标',
     Loki: '日志',
     Tempo: '链路',
     Alertmanager: '告警'
   };
   const explicit = String(resource.subtype || resource.config?.subtype || '');
-  if (resource.kind === 'AIProvider') return 'Provider';
   if (
     [
       'Host',
@@ -236,28 +227,26 @@ export function resourceSubtypeOptionsFor(resource: Resource) {
 
 export function resourceCategoryIcon(category: string) {
   const icons: Record<string, string> = {
-    全部: '◇',
-    Artifact: '▤',
-    Repository: '⌘',
-    Host: '▣',
-    Docker: '◈',
-    Kubernetes: '⬡',
-    Redis: '◒',
-    TongRDS: '◒',
-    Kafka: '◒',
-    RabbitMQ: '◒',
-    Elasticsearch: '◒',
-    OceanBase: '◉',
-    Oracle: '◉',
-    MySQL: '◉',
-    PostgreSQL: '◉',
-    MinIO: '◈',
-    MCPServer: '⌁',
-    Skill: '✧',
-    LLM: '✦',
-    Monitor: '◌'
+    全部: 'lucide:Circle',
+    Artifact: 'lucide:Package',
+    Repository: 'lucide:FolderGit2',
+    Host: 'lucide:Server',
+    Docker: 'iconify:simple-icons:docker',
+    Kubernetes: 'iconify:simple-icons:kubernetes',
+    Redis: 'iconify:simple-icons:redis',
+    TongRDS: 'lucide:Database',
+    Kafka: 'iconify:simple-icons:apache-kafka',
+    RabbitMQ: 'iconify:simple-icons:rabbitmq',
+    Elasticsearch: 'iconify:simple-icons:elasticsearch',
+    OceanBase: 'lucide:Database',
+    Oracle: 'lucide:Database',
+    MySQL: 'lucide:Database',
+    PostgreSQL: 'iconify:simple-icons:postgresql',
+    MinIO: 'iconify:simple-icons:minio',
+    MCPServer: 'lucide:Waypoints',
+    Monitor: 'lucide:Activity'
   };
-  return icons[category] ?? '◇';
+  return icons[category] ?? 'lucide:Circle';
 }
 
 export function resourceSchemaForSelection(
@@ -278,8 +267,6 @@ export function resourceSchemaForSelection(
 }
 
 export function resourceEndpointFor(resource: ResourceShape) {
-  if (resource.kind === 'AIProvider')
-    return String(resource.config?.base_url ?? '未设置 Base URL');
   if (resource.kind === 'PostgreSQL') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();

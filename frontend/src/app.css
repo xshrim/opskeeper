@@ -257,11 +257,33 @@ body {
   --theme-success: #2f7956;
   --theme-warning: #a46719;
   --theme-danger: #bc4839;
+  --theme-required: #b84435;
   --theme-focus: rgba(231, 96, 27, 0.14);
   --theme-focus-strong: rgba(231, 96, 27, 0.24);
   --theme-overlay: rgb(47 41 38 / 48%);
   --theme-shadow: 0 8px 24px rgba(47, 41, 38, 0.08);
   --theme-shadow-soft: 0 8px 20px rgba(47, 41, 38, 0.12);
+  --theme-tag-general-bg: #e8f1fb;
+  --theme-tag-general-fg: #23558b;
+  --theme-tag-general-border: #b4cbe7;
+  --theme-tag-diagnosis-bg: #f8e9f0;
+  --theme-tag-diagnosis-fg: #893653;
+  --theme-tag-diagnosis-border: #e6b9ca;
+  --theme-tag-inspection-bg: #e7f4eb;
+  --theme-tag-inspection-fg: #276845;
+  --theme-tag-inspection-border: #b3d8bf;
+  --theme-tag-workflow-bg: #f7efdf;
+  --theme-tag-workflow-fg: #78551d;
+  --theme-tag-workflow-border: #dfca9d;
+  --theme-scope-platform-bg: #eef1f4;
+  --theme-scope-platform-fg: #4b5563;
+  --theme-scope-platform-border: #c9d0d8;
+  --theme-scope-team-bg: #e5f3f1;
+  --theme-scope-team-fg: #176b63;
+  --theme-scope-team-border: #a8d6d0;
+  --theme-scope-project-bg: #f0eafb;
+  --theme-scope-project-fg: #68449a;
+  --theme-scope-project-border: #d2c2ea;
   color-scheme: light;
 }
 :root[data-theme='dark'] {
@@ -297,11 +319,33 @@ body {
   --theme-success: #9fe4cf;
   --theme-warning: #f4d18a;
   --theme-danger: #ffb4a2;
+  --theme-required: #63d8b7;
   --theme-focus: rgba(24, 162, 125, 0.18);
   --theme-focus-strong: rgba(24, 162, 125, 0.3);
   --theme-overlay: rgb(10 8 7 / 62%);
   --theme-shadow: 0 8px 24px rgb(0 0 0 / 28%);
   --theme-shadow-soft: 0 8px 20px rgb(0 0 0 / 28%);
+  --theme-tag-general-bg: #1e3e61;
+  --theme-tag-general-fg: #c7e0ff;
+  --theme-tag-general-border: #39638f;
+  --theme-tag-diagnosis-bg: #5a2941;
+  --theme-tag-diagnosis-fg: #ffd1df;
+  --theme-tag-diagnosis-border: #914561;
+  --theme-tag-inspection-bg: #1f4a39;
+  --theme-tag-inspection-fg: #c8f3d8;
+  --theme-tag-inspection-border: #39785b;
+  --theme-tag-workflow-bg: #55431f;
+  --theme-tag-workflow-fg: #ffe8af;
+  --theme-tag-workflow-border: #92733a;
+  --theme-scope-platform-bg: #3a3f46;
+  --theme-scope-platform-fg: #d6dbe3;
+  --theme-scope-platform-border: #58616d;
+  --theme-scope-team-bg: #173e35;
+  --theme-scope-team-fg: #9fe4cf;
+  --theme-scope-team-border: #2c8d72;
+  --theme-scope-project-bg: #3d2d55;
+  --theme-scope-project-fg: #ddc7ff;
+  --theme-scope-project-border: #6a4a92;
   color-scheme: dark;
 }
 :root[data-theme='dark'] body {

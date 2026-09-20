@@ -19,9 +19,14 @@ type Decryptor interface {
 	Decrypt([]byte, string) ([]byte, error)
 }
 
+type Cipher interface {
+	Encryptor
+	Decryptor
+}
+
 type localEncryptor struct{ aead cipher.AEAD }
 
-func NewLocalEncryptor(key []byte) (Encryptor, error) {
+func NewLocalEncryptor(key []byte) (Cipher, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("secret encryption key must be exactly 32 bytes")
 	}
@@ -36,7 +41,7 @@ func NewLocalEncryptor(key []byte) (Encryptor, error) {
 	return &localEncryptor{aead: aead}, nil
 }
 
-func FromEnvironment(environment string) (Encryptor, error) {
+func FromEnvironment(environment string) (Cipher, error) {
 	value := os.Getenv("OPSK_CREDENTIAL_KEY")
 	if value == "" {
 		if environment == "production" {

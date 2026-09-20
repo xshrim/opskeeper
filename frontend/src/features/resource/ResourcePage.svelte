@@ -7,9 +7,6 @@
   import ResourceWorkflowPanel from './ResourceWorkflowPanel.svelte';
   import ResourceBasicConfigStep from './ResourceBasicConfigStep.svelte';
   import McpConnectionFields from './McpConnectionFields.svelte';
-  import ProviderConnectionStep from './ProviderConnectionStep.svelte';
-  import ProviderModelStep from './ProviderModelStep.svelte';
-  import ProviderReviewStep from './ProviderReviewStep.svelte';
   import McpReviewStep from './McpReviewStep.svelte';
   import DockerConnectionStep from './DockerConnectionStep.svelte';
   import DockerReviewStep from './DockerReviewStep.svelte';
@@ -50,12 +47,10 @@
     setResourceEnabled,
     testResourceConnector,
     schemaSecret,
-    providerSecret,
     mcpSecret,
     dockerSecret,
     kubernetesSecret,
     hostSecret,
-    testDraftAIProviderConnection,
     testDraftMCPConnection,
     testDraftPostgreSQL,
     testDraftMySQL,
@@ -67,7 +62,6 @@
     testDraftRabbitMQ,
     testDraftMinIO,
     loadMCPSnapshots as loadMCPSnapshotsAction,
-    syncAIProviderBindings,
     createResourceRecord,
     updateResourceRecord
   } from './resourceActions';
@@ -81,7 +75,6 @@
     resourceCategoryOptions,
     resourceCatalogTagsFor,
     resourceEndpointFor,
-    resourceLabelsText,
     resourceSchemaForSelection as findResourceSchemaForSelection,
     resourceSubtypeFor,
     connectorCapabilityName
@@ -93,18 +86,6 @@
     mcpTransportForSubtype,
     parseMCPHeaders,
     parseResourceLabels as parseLabels,
-    providerPurposeMissingCapabilities as missingProviderCapabilities,
-    providerTypeLabel as getProviderTypeLabel,
-    providerModelsForResource,
-    providerDefaultModelForResource,
-    providerModelCapabilities as getProviderModelCapabilities,
-    providerPurposeLabel,
-    providerBaseURLValid as isProviderBaseURLValid,
-    providerConfigForCreate as buildProviderConfigForCreate,
-    providerTypeOptions,
-    providerCapabilityOptions,
-    providerPurposeOptions,
-    emptyProviderModelDraft,
     dockerConfigForSave,
     dockerConnectionConfigurationValid,
     dockerCredentialForSave,
@@ -125,7 +106,6 @@
     kubernetesKubeconfigText,
     resourceAddStepTitle,
     resourceAddStepDescription,
-    type ProviderModel
   } from './resourceWorkflow';
   import { api, ApiError } from '../../lib/api';
   import type {
@@ -136,12 +116,6 @@
     ResourceSchema,
     TopologyNode
   } from '../../lib/api';
-
-  type AIProviderBindingSummary = {
-    scope_id: string;
-    provider_resource_id: string;
-    tag: string;
-  };
 
   type MCPServerReturnContext = {
     kind: 'Docker' | 'Kubernetes' | 'Host';
@@ -213,7 +187,6 @@
   export let selectedResourceCanDelete = false;
   export let selectedResourceHasConnector = false;
   export let selectedScopeId = '';
-  export let aiProviderBindings: AIProviderBindingSummary[] = [];
   export let selectedResourceCanUpdate = false;
   export let scopeName: (id: string) => string;
   export let onNotice: (message: string) => void = () => {};
@@ -243,25 +216,10 @@
   let editResourceConfig = '{}';
   let editResourceSensitiveValues: Record<string, string> = {};
   let genericTimeoutSeconds = 60;
-  let editingProviderResourceId = '';
   let editingResourceId = '';
   let editingDockerResourceId = '';
   let editingKubernetesResourceId = '';
   let editingHostResourceId = '';
-  let providerType = 'openai_compatible';
-  let providerProtocol = 'chat_completions';
-  let providerBaseURL = '';
-  let providerAPIKey = '';
-  let providerAPIKeyVisible = false;
-  let providerAPIKeyLoading = false;
-  let providerTimeoutSeconds = 60;
-  let providerMaxConcurrency = 5;
-  let providerRateLimitPerMinute = 0;
-  let providerModels: ProviderModel[] = [];
-  let providerModelDraft: ProviderModel = emptyProviderModelDraft();
-  let editingProviderModelName = '';
-  let providerDefaultModel = '';
-  let providerPurposeTags: string[] = [];
   let mcpTransport = 'streamable_http';
   let mcpURL = '';
   let mcpToken = '';
@@ -276,13 +234,6 @@
   let mcpDraftTest: any = null;
   let mcpDraftTestBusy = false;
   let mcpConfigurationAttempted = false;
-  let providerConfigurationAttempted = false;
-  let providerModelConfigurationAttempted = false;
-  let providerModelValidationMessage = '';
-  let providerDraftTest: any = null;
-  let providerDraftTestBusy = false;
-  let providerDraftTestPassedState = false;
-  let providerSummaryAttempted = false;
   let resourceTypeSelectionAttempted = false;
   let resourceBasicConfigurationAttempted = false;
   let dockerAccessMode: DockerAccessMode = 'direct';
@@ -371,12 +322,6 @@
   let resourceActionBusy = false;
 
   const capabilityName = connectorCapabilityName;
-  const providerTypeLabel = (type: unknown) =>
-    getProviderTypeLabel(type, providerTypeOptions);
-  const providerModelCapabilities = (
-    model: Record<string, unknown> | undefined
-  ) => getProviderModelCapabilities(model, providerCapabilityOptions);
-
   $: selectedSchema =
     schemas.find((schema) => schema.kind === selectedResource?.kind) ?? null;
   $: createSchema =
@@ -398,7 +343,6 @@
     !resourceAddMenuOpen ||
     !(
       (resourceKind === 'MCPServer' && resourceAddStep === 3) ||
-      (resourceKind === 'AIProvider' && resourceAddStep === 4) ||
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
       (resourceKind === 'Host' && resourceAddStep === 3) ||
@@ -417,7 +361,6 @@
   $: if (
     resourceAddMenuOpen && resourceKind !== 'MinIO' &&
     ((resourceKind === 'MCPServer' && resourceAddStep === 3) ||
-      (resourceKind === 'AIProvider' && resourceAddStep === 4) ||
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
       (resourceKind === 'Host' && resourceAddStep === 3) ||
@@ -434,9 +377,7 @@
     const key = `${resourceKind}:${resourceAddStep}:${
       resourceKind === 'MCPServer'
         ? mcpDraftSignature()
-        : resourceKind === 'AIProvider'
-          ? providerDraftSignature()
-          : resourceKind === 'Docker'
+        : resourceKind === 'Docker'
             ? JSON.stringify(dockerDraft())
             : resourceKind === 'Kubernetes'
               ? JSON.stringify(kubernetesDraft())
@@ -448,9 +389,7 @@
       autoSummaryTestKey = key;
       void (resourceKind === 'MCPServer'
         ? testMCPDraftConnection()
-        : resourceKind === 'AIProvider'
-          ? testProviderDraftConnection()
-          : resourceKind === 'Docker'
+        : resourceKind === 'Docker'
             ? testDockerDraftConnection()
         : resourceKind === 'Kubernetes'
           ? testKubernetesDraftConnection()
@@ -469,7 +408,6 @@
   });
 
   function resourceKindForSelection(category: string, subtype = '') {
-    if (category === 'LLM' && subtype === 'Provider') return 'AIProvider';
     const schema = resourceSchemaForSelection(category, subtype);
     return schema && resourceCategoryFor(schema) === category
       ? schema.kind
@@ -546,21 +484,6 @@
     return secret.trim() ? { purpose, secret } : null;
   }
 
-  function providerBindingsFor(resource: Resource) {
-    return aiProviderBindings
-      .filter((binding) => binding.provider_resource_id === resource.id)
-      .sort((left, right) => {
-        const scopeOrder = { platform: 0, team: 1, project: 2 } as Record<
-          string,
-          number
-        >;
-        const scopeDifference =
-          (scopeOrder[scopeType(left.scope_id)] ?? 9) -
-          (scopeOrder[scopeType(right.scope_id)] ?? 9);
-        return scopeDifference || left.tag.localeCompare(right.tag);
-      });
-  }
-
   function activeScopeSummary() {
     const labels: Record<string, string> = {
       platform: '平台级',
@@ -569,48 +492,6 @@
     };
     const type = scopeType(selectedScopeId);
     return `${labels[type] ?? '当前级别'} · ${scopeName(selectedScopeId) || '平台'}`;
-  }
-
-  function syncProviderEditor(resource: Resource) {
-    resourceName = resource.name;
-    resourceStatus = resource.status;
-    const serializedLabels = Object.entries(resource.labels ?? {})
-      .map(([key, value]) => `${key}=${value}`)
-      .join(', ');
-    resourceLabels = serializedLabels;
-    editResourceLabels = serializedLabels;
-    const config = resource.config ?? {};
-    providerType = String(config.provider_type ?? 'openai_compatible');
-    providerProtocol = String(config.protocol ?? 'chat_completions');
-    providerBaseURL = String(config.base_url ?? '');
-    providerAPIKey = '';
-    providerAPIKeyVisible = false;
-    providerTimeoutSeconds = Number(config.timeout_seconds ?? 60);
-    providerMaxConcurrency = Number(config.max_concurrency ?? 5);
-    providerRateLimitPerMinute = Number(config.rate_limit_per_minute ?? 0);
-    const models = Array.isArray(config.models) ? config.models : [];
-    providerModels = models.map((item) => {
-      const model = item as Record<string, unknown>;
-      return {
-        name: String(model.name ?? ''),
-        contextWindowTokens: Number(
-          model.context_window_tokens ?? model.context_window ?? 128000
-        ),
-        maxOutputTokens: Number(model.max_output_tokens ?? 128000),
-        temperature: Number(model.temperature ?? 0.7),
-        temperatureMutable: model.temperature_mutable !== false,
-        capabilities: Array.isArray(model.capabilities)
-          ? model.capabilities.map(String)
-          : ['text'],
-        enabled: model.enabled !== false,
-        priority: Number(model.priority ?? 0)
-      };
-    });
-    providerDefaultModel = String(
-      config.default_model ?? providerModels[0]?.name ?? ''
-    );
-    providerModelDraft = emptyProviderModelDraft();
-    editingProviderModelName = '';
   }
 
   function syncDockerEditor(resource: Resource) {
@@ -736,40 +617,6 @@
       mcpConfigurationAttempted = false;
       // Existing MCP secrets are write-only and are not revealed on edit.
     }
-    if (resource.kind === 'AIProvider') syncProviderEditor(resource);
-  }
-
-  function openProviderWorkflowForEdit(resource: Resource) {
-    onSelectResourceScope(resource.scope_id);
-    selectedScopeId = resource.scope_id;
-    selectedResourceId = resource.id;
-    resourceKind = 'AIProvider';
-    resourceAddCategory = 'LLM';
-    resourceAddSubtype = 'Provider';
-    editingProviderResourceId = resource.id;
-    editingResourceId = '';
-    editingDockerResourceId = '';
-    editingKubernetesResourceId = '';
-    editingHostResourceId = '';
-    editingRepositoryResourceId = '';
-    editingRedisResourceId = '';
-    editingHostResourceId = '';
-    syncProviderEditor(resource);
-    providerPurposeTags = aiProviderBindings
-      .filter(
-        (binding) =>
-          binding.scope_id === resource.scope_id &&
-          binding.provider_resource_id === resource.id
-      )
-      .map((binding) => binding.tag);
-    providerDraftTest = null;
-    resourceAddStep = 1;
-    resourceBasicConfigurationAttempted = false;
-    resourceEditorOpen = false;
-    resourceAddMenuOpen = true;
-    // Existing secrets are intentionally not revealed when editing a resource.
-    providerAPIKey = '';
-    providerAPIKeyLoading = false;
   }
 
   function openMCPWorkflowForEdit(resource: Resource) {
@@ -779,7 +626,6 @@
     resourceKind = 'MCPServer';
     resourceAddCategory = 'MCPServer';
     resourceAddSubtype = resourceSubtypeFor(resource);
-    editingProviderResourceId = '';
     editingResourceId = resource.id;
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
@@ -807,7 +653,6 @@
     resourceKind = 'Docker';
     resourceAddCategory = 'Docker';
     resourceAddSubtype = resourceSubtypeFor(resource);
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = resource.id;
     editingKubernetesResourceId = '';
@@ -834,10 +679,6 @@
     if (resource.kind === 'RabbitMQ') { openRabbitMQWorkflowForEdit(resource); return; }
     if (resource.kind === 'MinIO') { openMinIOWorkflowForEdit(resource); return; }
     if (resource.kind === 'Redis') { openRedisWorkflowForEdit(resource); return; }
-    if (resource.kind === 'AIProvider') {
-      openProviderWorkflowForEdit(resource);
-      return;
-    }
     if (resource.kind === 'MCPServer') {
       openMCPWorkflowForEdit(resource);
       return;
@@ -867,7 +708,6 @@
     resourceKind = 'Kubernetes';
     resourceAddCategory = 'Kubernetes';
     resourceAddSubtype = resourceSubtypeFor(resource);
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
     editingKubernetesResourceId = resource.id;
@@ -888,7 +728,6 @@
     resourceKind = 'Host';
     resourceAddCategory = 'Host';
     resourceAddSubtype = resourceSubtypeFor(resource);
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
@@ -1003,7 +842,6 @@
     resourceStatus = context.status;
     resourceLabels = context.labels;
     selectedResourceId = context.returnResourceId;
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
@@ -1072,7 +910,6 @@
     mcpServerReturnContext = null;
     resourceAddMenuOpen = false;
     resourceAddStep = 1;
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
@@ -1096,7 +933,6 @@
     mcpServerReturnContext = null;
     resourceAddMenuOpen = !resourceAddMenuOpen;
     resourceEditorOpen = false;
-    editingProviderResourceId = '';
     editingResourceId = '';
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
@@ -1105,7 +941,6 @@
     resourceBasicConfigurationAttempted = false;
     if (resourceAddMenuOpen) {
       resetResourceConfig();
-      resetProviderDraft();
       resetDockerDraft();
       resetKubernetesDraft();
       resetHostDraft();
@@ -1142,17 +977,13 @@
     const schema = resourceSchemaForSelection(category, subtype);
     resourceAddCategory = category;
     resourceAddSubtype = subtype;
-    resourceKind =
-      category === 'LLM' && subtype === 'Provider'
-        ? 'AIProvider'
-        : (schema?.kind ?? '');
+    resourceKind = schema?.kind ?? '';
     if (resourceKind === 'MCPServer')
       mcpTransport = mcpTransportForSubtype(subtype);
     resourceCategory = category;
     resourceSubtype = subtype;
     if (resetDraft) {
       resetResourceConfig();
-      resetProviderDraft();
       resetDockerDraft();
       resetKubernetesDraft();
       resetHostDraft();
@@ -1183,42 +1014,6 @@
     resourceBasicConfigurationAttempted = false;
     resourceAddMenuOpen = true;
     resourceEditorOpen = false;
-  }
-
-  function selectProviderType(type: string) {
-    providerType = type;
-    const preset = providerTypeOptions.find((item) => item.value === type) as
-      { value: string; label: string; baseURL?: string } | undefined;
-    if (preset?.baseURL) providerBaseURL = preset.baseURL;
-  }
-
-  function toggleProviderPurpose(purpose: string) {
-    providerPurposeTags = providerPurposeTags.includes(purpose)
-      ? providerPurposeTags.filter((item) => item !== purpose)
-      : [...providerPurposeTags, purpose];
-  }
-
-  function toggleProviderModelCapability(capability: string) {
-    providerModelDraft = {
-      ...providerModelDraft,
-      capabilities: providerModelDraft.capabilities.includes(capability)
-        ? providerModelDraft.capabilities.filter((item) => item !== capability)
-        : [...providerModelDraft.capabilities, capability]
-    };
-  }
-
-  function setProviderDefaultModel(name: string) {
-    providerDefaultModel = name;
-    providerModels = providerModels.map((model) =>
-      model.name === name ? { ...model, enabled: true } : model
-    );
-  }
-
-  function setProviderModelEnabled(name: string, enabled: boolean) {
-    if (name === providerDefaultModel && !enabled) return;
-    providerModels = providerModels.map((model) =>
-      model.name === name ? { ...model, enabled } : model
-    );
   }
 
   function resetResourceConfig() {
@@ -1302,149 +1097,8 @@
   function resetMinIODraft() { minIOAccessMode='direct'; minIOEndpoint=''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; minIORegion=''; minIOSecure=false; minIOTimeoutSeconds=10; minIOMCPServerResourceId=''; minIOConfigurationAttempted=false; minIODraftTest=null; editingMinIOResourceId=''; }
   function resetRepositoryDraft() { repositoryURL=''; repositoryDefaultBranch='main'; repositoryStorageBackend='postgres'; repositoryLocalRoot=''; repositoryS3Endpoint=''; repositoryS3Bucket=''; repositoryS3Prefix='repositories'; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; }
 
-  function resetProviderDraft() {
-    providerType = 'openai_compatible';
-    providerProtocol = 'chat_completions';
-    providerBaseURL = '';
-    providerAPIKey = '';
-    providerAPIKeyVisible = false;
-    providerAPIKeyLoading = false;
-    providerTimeoutSeconds = 60;
-    providerMaxConcurrency = 5;
-    providerRateLimitPerMinute = 0;
-    providerModels = [];
-    providerModelDraft = emptyProviderModelDraft();
-    editingProviderModelName = '';
-    providerDefaultModel = '';
-    providerPurposeTags = [];
-    editingProviderResourceId = '';
-    providerConfigurationAttempted = false;
-    providerModelConfigurationAttempted = false;
-    providerModelValidationMessage = '';
-    providerSummaryAttempted = false;
-    providerDraftTest = null;
-  }
-
-  function providerModelDraftComplete() {
-    return Boolean(
-      providerModelDraft.name.trim() &&
-      providerModelDraft.contextWindowTokens > 0 &&
-      providerModelDraft.capabilities.length > 0
-    );
-  }
-
-  function providerDraftSignature() {
-    const defaultModel = providerModels.find(
-      (model) => model.name === providerDefaultModel
-    );
-    return JSON.stringify({
-      scope: selectedScopeId,
-      providerType,
-      baseURL: providerBaseURL.trim(),
-      apiKey: providerAPIKey,
-      timeoutSeconds: providerTimeoutSeconds,
-      model: defaultModel
-        ? {
-            name: defaultModel.name,
-            contextWindowTokens: defaultModel.contextWindowTokens,
-            temperature: defaultModel.temperature,
-            capabilities: defaultModel.capabilities
-          }
-        : null
-    });
-  }
-
-  $: providerDraftTestPassedState = Boolean(
-    providerDraftTest?.signature === providerDraftSignature() &&
-    providerDraftTest.result?.status === 'succeeded'
-  );
-
   function mcpConfigurationValid() {
     return validateMCPConfiguration(mcpTransport, mcpURL, mcpRequestHeaders);
-  }
-
-  function providerBaseURLValid() {
-    return isProviderBaseURLValid(providerBaseURL);
-  }
-
-  function providerNameDuplicate() {
-    const name = resourceName.trim().toLocaleLowerCase();
-    if (!name) return false;
-    return resources.some(
-      (resource) =>
-        resource.kind === 'AIProvider' &&
-        resource.scope_id === selectedScopeId &&
-        resource.id !== editingProviderResourceId &&
-        resource.name.trim().toLocaleLowerCase() === name
-    );
-  }
-
-  function providerConfigurationComplete() {
-    return Boolean(
-      !providerNameDuplicate() && providerType && providerBaseURLValid()
-    );
-  }
-
-  function providerConfigurationIssues() {
-    const issues: string[] = [];
-    if (providerNameDuplicate()) issues.push('资源名称已存在');
-    if (!providerType) issues.push('Provider 类型');
-    if (!providerBaseURL.trim()) issues.push('Base URL');
-    else if (!providerBaseURLValid()) issues.push('Base URL 格式');
-    return issues;
-  }
-
-  function providerDefaultModelDraft() {
-    return providerModels.find((model) => model.name === providerDefaultModel);
-  }
-
-  function providerPurposeMissingCapabilities(purpose: string) {
-    const option = providerPurposeOptions.find(
-      (item) => item.value === purpose
-    );
-    const defaultModel = providerDefaultModelDraft();
-    const required = option?.requiredCapabilities ?? [];
-    return missingProviderCapabilities(required, defaultModel);
-  }
-
-  function providerPurposeAvailable(purpose: string) {
-    return (
-      Boolean(providerDefaultModelDraft()) &&
-      providerPurposeMissingCapabilities(purpose).length === 0
-    );
-  }
-
-  function providerPurposeConfigurationValid() {
-    return providerPurposeTags.every((purpose) =>
-      providerPurposeAvailable(purpose)
-    );
-  }
-
-  function providerSummaryValidationMessage() {
-    if (providerAPIKeyLoading)
-      return '正在读取 Provider API Key，请稍候后再保存。';
-    if (!providerPurposeConfigurationValid())
-      return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
-    return '';
-  }
-
-  function continueProviderAdd() {
-    if (resourceAddStep === 2) {
-      providerConfigurationAttempted = true;
-      if (providerConfigurationComplete()) {
-        providerConfigurationAttempted = false;
-        resourceAddStep = 3;
-      }
-      return;
-    }
-    if (resourceAddStep === 3) {
-      providerModelConfigurationAttempted = true;
-      if (providerModels.length > 0) {
-        providerModelConfigurationAttempted = false;
-        autoSummaryTestKey = '';
-        resourceAddStep = 4;
-      }
-    }
   }
 
   function resourceAddStepValidationMessage() {
@@ -1462,33 +1116,6 @@
       !mcpConfigurationValid()
     )
       return '请填写有效的 Server 地址和请求 Header。';
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 2 &&
-      providerConfigurationAttempted &&
-      !providerConfigurationComplete()
-    )
-      return `请检查：${providerConfigurationIssues().join('、')}。`;
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 3 &&
-      providerModelValidationMessage
-    )
-      return providerModelValidationMessage;
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 3 &&
-      providerModelConfigurationAttempted &&
-      providerModels.length === 0
-    )
-      return '请至少添加一个 Model 后继续。';
-    if (
-      resourceKind === 'AIProvider' &&
-      resourceAddStep === 4 &&
-      providerSummaryAttempted &&
-      !providerPurposeConfigurationValid()
-    )
-      return '当前选择的角色与默认 Model 的能力不匹配，请调整角色或 Model 能力。';
     if (
       resourceKind === 'Docker' &&
       resourceAddStep === 2 &&
@@ -1522,20 +1149,6 @@
     return '';
   }
 
-  function providerConfigForCreate(): Record<string, unknown> {
-    return buildProviderConfigForCreate({
-      type: providerType,
-      protocol: providerProtocol,
-      baseURL: providerBaseURL,
-      timeoutSeconds: providerTimeoutSeconds,
-      maxConcurrency: providerMaxConcurrency,
-      rateLimitPerMinute: providerRateLimitPerMinute,
-      enabled: resourceStatus === 'active',
-      defaultModel: providerDefaultModel,
-      models: providerModels
-    });
-  }
-
   function mcpConfigForSave(): Record<string, unknown> {
     return buildMCPConfig({
       transport: mcpTransport,
@@ -1544,14 +1157,6 @@
       timeoutSeconds: mcpTimeoutSeconds,
       maxResponseBytes: mcpMaxResponseBytes
     });
-  }
-
-  async function createProviderCredential(name = resourceName) {
-    return providerSecret(providerAPIKey);
-  }
-
-  async function saveProviderCredential(provider: Resource) {
-    return providerSecret(providerAPIKey);
   }
 
   async function createMCPCredential() {
@@ -1656,121 +1261,6 @@
       };
     } finally {
       mcpDraftTestBusy = false;
-    }
-  }
-
-  async function testProviderDraftConnection() {
-    providerDraftTestBusy = true;
-    const initialSignature = providerDraftSignature();
-    providerDraftTest = {
-      signature: initialSignature,
-      error: '正在测试默认 Model，请稍候…'
-    };
-    const defaultModel = providerModels.find(
-      (model) => model.name === providerDefaultModel
-    );
-    if (!selectedScopeId) {
-      providerDraftTest = {
-        signature: initialSignature,
-        error: '未选择资源归属级别，无法执行连接测试。'
-      };
-      providerDraftTestBusy = false;
-      return;
-    }
-    if (!defaultModel) {
-      providerDraftTest = {
-        signature: initialSignature,
-        error: '尚未选择默认 Model，请先在 Model 配置步骤中选择。'
-      };
-      providerDraftTestBusy = false;
-      return;
-    }
-    if (!providerBaseURLValid()) {
-      providerDraftTest = {
-        signature: initialSignature,
-        error: 'Base URL 无效，请返回 Provider 配置检查地址。'
-      };
-      providerDraftTestBusy = false;
-      return;
-    }
-    try {
-      const result = await testDraftAIProviderConnection({
-        scope_id: selectedScopeId,
-        provider_type: providerType,
-        base_url: providerBaseURL.trim(),
-        model_name: defaultModel.name,
-        api_key: providerAPIKey,
-        timeout_seconds: providerTimeoutSeconds,
-        context_window: defaultModel.contextWindowTokens,
-        temperature: defaultModel.temperature,
-        capabilities: defaultModel.capabilities,
-        stream: defaultModel.capabilities.includes('stream')
-      });
-      providerDraftTest = { signature: initialSignature, result };
-    } catch (error) {
-      providerDraftTest = {
-        signature: initialSignature,
-        error: describeError(error, 'Provider 连接测试失败')
-      };
-    } finally {
-      providerDraftTestBusy = false;
-    }
-  }
-
-  function addProviderModel() {
-    providerModelConfigurationAttempted = true;
-    if (!providerModelDraftComplete()) {
-      providerModelValidationMessage =
-        '请补全带 * 的 Model 字段，并至少选择一项能力。';
-      return;
-    }
-    const model = {
-      ...providerModelDraft,
-      name: providerModelDraft.name.trim(),
-      capabilities: [...providerModelDraft.capabilities]
-    };
-    if (
-      providerModels.some(
-        (item) =>
-          item.name === model.name && item.name !== editingProviderModelName
-      )
-    ) {
-      providerModelValidationMessage = `Model “${model.name}”已存在，请使用其他名称。`;
-      return;
-    }
-    if (editingProviderModelName) {
-      const previousName = editingProviderModelName;
-      providerModels = providerModels.map((item) =>
-        item.name === previousName ? model : item
-      );
-      if (providerDefaultModel === previousName)
-        providerDefaultModel = model.name;
-    } else {
-      providerModels = [...providerModels, model];
-      if (!providerDefaultModel) providerDefaultModel = model.name;
-    }
-    providerModelDraft = emptyProviderModelDraft();
-    editingProviderModelName = '';
-    providerModelConfigurationAttempted = false;
-    providerModelValidationMessage = '';
-  }
-
-  function editProviderModel(model: ProviderModel) {
-    editingProviderModelName = model.name;
-    providerModelDraft = { ...model, capabilities: [...model.capabilities] };
-    providerModelConfigurationAttempted = false;
-    providerModelValidationMessage = '';
-  }
-
-  function removeProviderModel(name: string) {
-    providerModels = providerModels.filter((model) => model.name !== name);
-    if (editingProviderModelName === name) {
-      providerModelDraft = emptyProviderModelDraft();
-      editingProviderModelName = '';
-    }
-    if (providerDefaultModel === name) {
-      providerDefaultModel = providerModels[0]?.name ?? '';
-      if (providerDefaultModel) setProviderDefaultModel(providerDefaultModel);
     }
   }
 
@@ -2222,7 +1712,6 @@
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
     const editingWorkflow = Boolean(
-      editingProviderResourceId ||
       editingResourceId ||
       editingDockerResourceId ||
       editingKubernetesResourceId ||
@@ -2272,10 +1761,6 @@
 
   async function updateSelectedResource() {
     if (!selectedResource) return;
-    if (selectedResource.kind === 'AIProvider') {
-      await updateProviderFromWorkflow();
-      return;
-    }
     if (selectedResource.kind === 'MCPServer') {
       await updateMCPFromWorkflow();
       return;
@@ -2311,10 +1796,6 @@
   }
 
   async function createResource() {
-    if (resourceKind === 'AIProvider') {
-      await createSpecialResource();
-      return;
-    }
     if (resourceKind === 'MCPServer') {
       await createSpecialResource();
       return;
@@ -2530,20 +2011,10 @@
       if (!resourceAddCategory || !resourceAddSubtype || !resourceName.trim()) {
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
       }
-      const isProvider = resourceKind === 'AIProvider';
-      if (isProvider && providerNameDuplicate()) {
-        throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
-      }
-      if (isProvider) {
-        const summaryError = providerSummaryValidationMessage();
-        if (summaryError) throw new Error(summaryError);
-      }
       if (resourceKind === 'MCPServer' && !mcpConfigurationValid()) {
         throw new Error('请填写有效的 MCP Server 地址和配置。');
       }
-      const config = isProvider
-        ? providerConfigForCreate()
-        : resourceKind === 'MCPServer'
+      const config = resourceKind === 'MCPServer'
           ? mcpConfigForSave()
           : buildSchemaConfig(
               createSchema,
@@ -2551,14 +2022,11 @@
               resourceConfig
             );
       if (
-        !isProvider &&
         resourceKind !== 'MCPServer' &&
         resourceSupportsEndpointTimeout(resourceKind)
       )
         config.timeout_seconds = genericTimeoutSeconds;
-      const credentialDraft = isProvider
-        ? await createProviderCredential()
-        : resourceKind === 'MCPServer'
+      const credentialDraft = resourceKind === 'MCPServer'
           ? await createMCPCredential()
           : await createResourceCredential(
               createSchema,
@@ -2576,20 +2044,6 @@
         config,
         ...(credentialDraft ? { credential: credentialDraft } : {})
       });
-      if (isProvider && providerPurposeTags.length > 0) {
-        const currentScopeBindings = await syncAIProviderBindings(
-          selectedScopeId,
-          created.id,
-          [],
-          providerPurposeTags
-        );
-        aiProviderBindings = [
-          ...aiProviderBindings.filter(
-            (binding) => binding.scope_id !== selectedScopeId
-          ),
-          ...currentScopeBindings
-        ];
-      }
       resources = [created, ...resources];
       selectedResourceId = created.id;
       if (returnToConnection) {
@@ -2611,59 +2065,6 @@
       onNotice(`资源“${created.name}”已创建`);
       void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
-    });
-  }
-
-  async function updateProviderFromWorkflow() {
-    const provider = resources.find(
-      (resource) => resource.id === editingProviderResourceId
-    );
-    if (!provider) return;
-    await runResourceAction(async () => {
-      if (providerNameDuplicate()) {
-        throw new Error('当前级别已存在同名 AI Provider，请更换名称。');
-      }
-      const summaryError = providerSummaryValidationMessage();
-      if (summaryError) throw new Error(summaryError);
-      const credentialDraft = await saveProviderCredential(provider);
-      const config = providerConfigForCreate();
-      const updated = await updateResourceRecord(provider.id, {
-        name: resourceName.trim(),
-        subtype: resourceSubtypeFor({ kind: 'AIProvider', config }),
-        status: resourceStatus,
-        labels: parseLabels(resourceLabels),
-        config,
-        ...(credentialDraft ? { credential: credentialDraft } : {})
-      });
-      const existingTags = aiProviderBindings
-        .filter(
-          (binding) =>
-            binding.scope_id === selectedScopeId &&
-            binding.provider_resource_id === provider.id
-        )
-        .map((binding) => binding.tag);
-      const currentScopeBindings = await syncAIProviderBindings(
-        selectedScopeId,
-        provider.id,
-        existingTags,
-        providerPurposeTags
-      );
-      aiProviderBindings = [
-        ...aiProviderBindings.filter(
-          (binding) => binding.scope_id !== selectedScopeId
-        ),
-        ...currentScopeBindings
-      ];
-      resources = resources.map((resource) =>
-        resource.id === updated.id ? updated : resource
-      );
-      selectedResourceId = updated.id;
-      editingProviderResourceId = '';
-      resourceAddMenuOpen = false;
-      resourceAddStep = 1;
-      onNotice(`Provider“${updated.name}”已更新`);
-      void testResourceConnection(updated, false);
-      await loadResourceDetails(updated.id);
     });
   }
 
@@ -2819,12 +2220,6 @@
     });
   }
 
-  function submitProviderCreate() {
-    providerSummaryAttempted = true;
-    void (editingProviderResourceId
-      ? updateProviderFromWorkflow()
-      : createSpecialResource());
-  }
   async function savePostgreSQLWorkflow() {
     if (!postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = true; throw new Error('请检查 PostgreSQL 配置。'); }
     const existing = resources.find((r) => r.id === editingPostgreSQLResourceId);
@@ -2927,7 +2322,7 @@
         ...resourceConnectionChecks,
         [resource.id]: check
       };
-      if (notify && resource.kind !== 'AIProvider')
+      if (notify)
         onNotice(
           check.status === 'succeeded'
             ? `资源“${resource.name}”连接测试通过`
@@ -3174,11 +2569,6 @@
         {scopeType}
         {resourceScopeLabel}
         {resourceIcon}
-        {providerModelsForResource}
-        {providerDefaultModelForResource}
-        {providerModelCapabilities}
-        {providerBindingsFor}
-        {providerPurposeLabel}
         {mcpServerEndpointFor}
         onSelect={(resource) => void loadResourceDetails(resource.id)}
         onLoadSnapshot={(resourceId) => void loadMCPSnapshots(resourceId)}
@@ -3199,11 +2589,6 @@
             {connectionCheck}
             {formatDate}
             {resourceCanManage}
-            {providerModelsForResource}
-            {providerModelCapabilities}
-            {providerTypeLabel}
-            {providerBindingsFor}
-            {providerPurposeLabel}
             {mcpServerEndpointFor}
           />
         </svelte:fragment>
@@ -3215,7 +2600,6 @@
         kind={resourceKind}
         category={resourceAddCategory}
         subtype={resourceAddSubtype}
-        editingProvider={Boolean(editingProviderResourceId)}
         editingResource={Boolean(editingResourceId)}
         editingDocker={Boolean(editingDockerResourceId)}
         editingKubernetes={Boolean(editingKubernetesResourceId)}
@@ -3245,7 +2629,6 @@
         rabbitMQConfigurationComplete={rabbitMQConfigurationComplete()}
         minIOConfigurationComplete={minIOConfigurationComplete()}
         repositoryConfigurationComplete={repositoryConfigurationComplete()}
-        providerModelCount={providerModels.length}
         {busy}
         scopeSelected={Boolean(selectedScopeId)}
         message={activeMessage}
@@ -3262,7 +2645,6 @@
           autoSummaryTestKey = '';
         }}
         onContinueBasic={continueResourceAdd}
-        onContinueProvider={continueProviderAdd}
         onContinueMcp={() => {
           mcpConfigurationAttempted = true;
           if (mcpConfigurationValid()) {
@@ -3320,7 +2702,6 @@
             typeSelectionAttempted={resourceTypeSelectionAttempted}
             basicConfigurationAttempted={resourceBasicConfigurationAttempted}
             editing={Boolean(
-              editingProviderResourceId ||
               editingResourceId ||
               editingDockerResourceId ||
               editingKubernetesResourceId ||
@@ -3393,71 +2774,6 @@
             testError={mcpDraftTest?.error ?? ''}
             toolCount={mcpDraftTest?.result?.tools.length ?? 0}
             latency={mcpDraftTest?.result?.latency_ms}
-          />
-        {:else if resourceKind === 'AIProvider' && resourceAddStep === 2}
-          <ProviderConnectionStep
-            bind:type={providerType}
-            bind:protocol={providerProtocol}
-            bind:baseURL={providerBaseURL}
-            bind:apiKey={providerAPIKey}
-            bind:apiKeyVisible={providerAPIKeyVisible}
-            bind:timeoutSeconds={providerTimeoutSeconds}
-            bind:maxConcurrency={providerMaxConcurrency}
-            bind:rateLimitPerMinute={providerRateLimitPerMinute}
-            bind:purposeTags={providerPurposeTags}
-            typeOptions={providerTypeOptions}
-            purposeOptions={providerPurposeOptions}
-            configurationAttempted={providerConfigurationAttempted}
-            baseURLValid={providerBaseURLValid()}
-            apiKeyLoading={providerAPIKeyLoading}
-            onSelectType={selectProviderType}
-            onTogglePurpose={toggleProviderPurpose}
-          />
-        {:else if resourceKind === 'AIProvider' && resourceAddStep === 3}
-          <ProviderModelStep
-            bind:draft={providerModelDraft}
-            models={providerModels}
-            bind:defaultModel={providerDefaultModel}
-            capabilityOptions={providerCapabilityOptions}
-            configurationAttempted={providerModelConfigurationAttempted}
-            editingModelName={editingProviderModelName}
-            onToggleCapability={toggleProviderModelCapability}
-            onAddModel={addProviderModel}
-            onSetDefault={setProviderDefaultModel}
-            onSetEnabled={setProviderModelEnabled}
-            onEditModel={editProviderModel}
-            onRemoveModel={removeProviderModel}
-          />
-        {:else if resourceKind === 'AIProvider' && resourceAddStep === 4}
-          <ProviderReviewStep
-            {resourceName}
-            providerTypeLabel={providerTypeOptions.find(
-              (item) => item.value === providerType
-            )?.label ?? providerType}
-            providerStatus={resourceStatus}
-            baseURL={providerBaseURL}
-            protocol={providerProtocol}
-            timeoutSeconds={providerTimeoutSeconds}
-            maxConcurrency={providerMaxConcurrency}
-            defaultModel={providerDefaultModel}
-            models={providerModels}
-            scopeSummary={activeScopeSummary()}
-            labelsConfigured={Boolean(
-              resourceLabelsText({
-                labels: parseLabels(resourceLabels)
-              } as Resource)
-            )}
-            purposeLabels={providerPurposeTags.map(providerPurposeLabel)}
-            testBusy={providerDraftTestBusy}
-            testPassed={providerDraftTestPassedState}
-            testLatency={providerDraftTest?.result?.latency_ms}
-            testMessage={providerDraftTest?.result?.message ?? ''}
-            testError={providerDraftTest?.error ?? ''}
-            capabilityLabel={(capability) =>
-              providerCapabilityOptions.find(
-                (item) => item.value === capability
-              )?.label ?? capability}
-            onSubmit={submitProviderCreate}
           />
         {:else if resourceKind === 'Docker' && resourceAddStep === 2}
           <DockerConnectionStep
@@ -3711,20 +3027,6 @@
       {resources}
       bind:relationTarget
       bind:relationType
-      bind:providerType
-      bind:providerProtocol
-      bind:providerBaseURL
-      bind:providerTimeoutSeconds
-      bind:providerMaxConcurrency
-      bind:providerRateLimitPerMinute
-      bind:providerPurposeTags
-      bind:providerModels
-      bind:providerModelDraft
-      bind:editingProviderModelName
-      bind:providerDefaultModel
-      {providerTypeOptions}
-      {providerPurposeOptions}
-      {providerCapabilityOptions}
       bind:mcpURL
       bind:mcpToken
       bind:mcpRequestHeaders
@@ -3751,12 +3053,6 @@
       onDelete={deleteSelectedResource}
       onTestConnection={testSelectedResourceConnection}
       onUpdate={updateSelectedResource}
-      onTogglePurpose={toggleProviderPurpose}
-      onToggleCapability={toggleProviderModelCapability}
-      onAddModel={addProviderModel}
-      onSetDefault={setProviderDefaultModel}
-      onEditModel={editProviderModel}
-      onRemoveModel={removeProviderModel}
       onCreateRelation={createRelation}
       onDeleteRelation={deleteRelation}
     />

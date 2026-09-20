@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文定义 OpsKeeper 对基础设施、数据库、中间件和可观测资源的统一接入方式。目标是让同一套资源工具既可以作为本项目提供的 MCP Server 工具，也可以作为 AIEngine 的 Direct 内置工具使用。
+本文定义 OpsKeeper 对基础设施、数据库、中间件和可观测资源的统一接入方式。目标是让同一套资源工具既可以作为本项目提供的 MCP Server 工具，也可以作为 Engine 的 Direct 内置工具使用。
 
 本文描述长期设计原则和运行时边界；具体实施顺序、任务状态和验收证据以 [I004 统一资源接入迭代](../iterations/I004-unified-resource-access/iteration.md) 及其需求文档为准。
 
@@ -13,12 +13,12 @@
 ```text
 Direct
   逻辑资源 + 连接配置/资源连接密文
-  -> AIEngine 加载该资源类型的内置工具集
+  -> Engine 加载该资源类型的内置工具集
   -> 工具直接连接目标资源
 
 Agent
   逻辑资源 + 关联 MCPServer 资源
-  -> AIEngine 通过 MCP tools/list 发现工具
+  -> Engine 通过 MCP tools/list 发现工具
   -> 通过 MCP tools/call 调用目标资源
 ```
 
@@ -26,8 +26,8 @@ Agent
 
 - 工具名称、业务入参、业务出参和错误语义保持一致；
 - Direct 和 MCP 不维护两套资源业务实现；
-- AIEngine 不读取或向模型暴露资源连接凭据；
-- MCP Server 是否由 OpsKeeper 提供，不改变 AIEngine 的调用协议；
+- Engine 不读取或向模型暴露资源连接凭据；
+- MCP Server 是否由 OpsKeeper 提供，不改变 Engine 的调用协议；
 - 权限、资源状态、超时、响应大小、审计和取消由外层运行时统一治理。
 
 ## 3. 术语与边界
@@ -89,9 +89,9 @@ kubernetes_resource_get
 - `read_only`；
 - `managed` 或 `external` MCP 标记。
 
-工具是否存在本身就表示对应能力。当前工具全部为只读工具，AIEngine 不需要根据工具声明的布尔值决定是否调用；未来的写操作必须进入受控操作和审批链，不能依赖远端声明的 `read_only`。
+工具是否存在本身就表示对应能力。当前工具全部为只读工具，Engine 不需要根据工具声明的布尔值决定是否调用；未来的写操作必须进入受控操作和审批链，不能依赖远端声明的 `read_only`。
 
-AIEngine 内部可以保留 `resource_id`、适配器来源和调用审计字段，但这些是运行时绑定信息，不是公共工具的业务参数。
+Engine 内部可以保留 `resource_id`、适配器来源和调用审计字段，但这些是运行时绑定信息，不是公共工具的业务参数。
 
 ### 4.3 连接参数
 
@@ -101,13 +101,13 @@ AIEngine 内部可以保留 `resource_id`、适配器来源和调用审计字段
 
 ### 4.4 业务结果
 
-公共工具返回稳定的结构化业务结果。MCP 适配器将其编码为 MCP structured content/text；Direct 适配器将其包装为 AIEngine ToolResult 和证据。适配器不得改变业务字段、成功条件或错误分类。
+公共工具返回稳定的结构化业务结果。MCP 适配器将其编码为 MCP structured content/text；Direct 适配器将其包装为 Engine ToolResult 和证据。适配器不得改变业务字段、成功条件或错误分类。
 
 结果中的资源正文、日志、对象描述和远端文本均视为不可信数据，不得覆盖系统提示、工具权限或资源授权。
 
 ## 5. 公共工具实现层
 
-公共实现层位于协议适配器之外，不依赖 MCP SDK、AIEngine、HTTP API Handler 或数据库资源服务。建议按资源类型组织：
+公共实现层位于协议适配器之外，不依赖 MCP SDK、Engine、HTTP API Handler 或数据库资源服务。建议按资源类型组织：
 
 ```text
 backend/tool/
@@ -137,7 +137,7 @@ backend/tool/
 - 当前用户的 RBAC 和 Scope 判定；
 - 读取资源目录或资源连接密文；
 - MCP endpoint、JSON-RPC 或 HTTP 传输；
-- AIEngine Agent Loop、事件和审计持久化；
+- Engine Agent Loop、事件和审计持久化；
 - 把任意模型文本解释成命令。
 
 公共实现可以使用连接上下文，例如 `DockerConnection` 或 `KubernetesConnection`，但连接上下文来自适配器，不是模型可以任意填写的业务参数。
@@ -149,7 +149,7 @@ backend/tool/
 Direct 适配器挂在资源类型上，执行顺序如下：
 
 ```text
-AIEngine Context Resolver
+Engine Context Resolver
   -> 读取逻辑资源
   -> 校验 active、Scope 和 resource:use
   -> 读取 config 和资源自身的连接密文
@@ -166,7 +166,7 @@ Direct 资源必须具备该工具集所需的连接配置。缺少配置或凭�
 Agent 适配器执行顺序如下：
 
 ```text
-AIEngine Context Resolver
+Engine Context Resolver
   -> 读取逻辑资源及其 agent_ref
   -> 校验逻辑资源和 MCPServer 的 Scope、状态及使用权限
   -> MCP tools/list
@@ -191,7 +191,7 @@ OpsKeeper 提供的 Docker、Kubernetes 等 MCP Server 仍是普通 MCP Server�
 - 将公共结果编码为 MCP 结果；
 - 映射公共错误。
 
-AIEngine 不为这些 Server 增加特殊分支，也不区分 `managed` 和 `external`。公共工具库的复用是代码实现层的复用，对 MCP 协议调用方透明。
+Engine 不为这些 Server 增加特殊分支，也不区分 `managed` 和 `external`。公共工具库的复用是代码实现层的复用，对 MCP 协议调用方透明。
 
 ## 7. 资源模型
 
@@ -230,7 +230,7 @@ agent:
 
 `subtype` 和 `agent_ref` 是唯一权威来源，不再保留 `access_mode` 或 `mcp_server_resource_id`。
 
-## 8. AIEngine 上下文解析
+## 8. Engine 上下文解析
 
 用户勾选资源后，Context Resolver 按资源的 `subtype` 选择唯一路径：
 
@@ -242,7 +242,7 @@ selected resource
 
 工具注册键必须至少包含 `(logical_resource_id, tool_name)`。多个同类型资源可以拥有同名工具；模型声明中的函数名冲突只在执行绑定时生成稳定别名，不改变公共工具名、审计名或调用结果。
 
-AIEngine 不因为资源类型没有内置工具就尝试把它转换成 MCPServer，也不因为 Agent 资源没有找到预期工具就调用 Direct 连接。工具不可用时，向模型和用户返回明确的资源工具不可用错误。
+Engine 不因为资源类型没有内置工具就尝试把它转换成 MCPServer，也不因为 Agent 资源没有找到预期工具就调用 Direct 连接。工具不可用时，向模型和用户返回明确的资源工具不可用错误。
 
 ## 9. 权限、安全和审计
 
@@ -293,7 +293,7 @@ Direct 失败不得自动切换到 Agent，Agent 失败也不得自动切换到 
 | 数据库 | PostgreSQL、MySQL、Oracle、OceanBase、TongRDS | 连接、会话、锁、慢查询、容量和复制等只读诊断 |
 | 中间件 | Redis、Kafka、RabbitMQ、Elasticsearch | 连接、节点、客户端、消费/队列、分片和健康等只读诊断 |
 | 可观测 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、Alertmanager | 指标、日志、告警和追踪查询 |
-| 平台管理 | AIProvider、MCPServer、Skill、AgentProfile | 不作为诊断目标工具集；由各自管理和执行模块处理 |
+| 平台管理 | Provider、MCPServer、Skill、Persona | 不作为诊断目标工具集；由各自管理和执行模块处理 |
 | 业务目录 | Application | 以项目级聚合资源进入上下文；通过固定的实例状态/日志工具复用 Host、Docker、Kubernetes 公共只读能力 |
 | 业务目录 | Repository、Artifact | 不在本迭代实现资源直连工具；通过关系、发现或各自模块使用 |
 
@@ -318,4 +318,4 @@ Direct 失败不得自动切换到 Agent，Agent 失败也不得自动切换到 
 - 仅为区分 managed/external MCP Server 而存在的运行时分支；
 - 没有调用方的旧工具名称和旧资源接入路径。
 
-允许保留的仅是 HTTP、MCP、AIEngine 和资源服务适配代码。旧设计不需要兼容；若迁移发现旧数据无法直接转换，应通过一次性迁移或明确失败报告处理，而不是长期保留双轨运行时。
+允许保留的仅是 HTTP、MCP、Engine 和资源服务适配代码。旧设计不需要兼容；若迁移发现旧数据无法直接转换，应通过一次性迁移或明确失败报告处理，而不是长期保留双轨运行时。

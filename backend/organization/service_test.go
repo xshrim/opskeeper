@@ -81,8 +81,8 @@ func TestCreateTeamNormalizesInput(t *testing.T) {
 	if store.createTeamInput.Labels == nil {
 		t.Fatal("CreateTeam() passed nil labels")
 	}
-	if store.createTeamInput.Icon != "UsersRound" {
-		t.Fatalf("CreateTeam() icon = %q, want UsersRound", store.createTeamInput.Icon)
+	if store.createTeamInput.Icon != "lucide:UsersRound" {
+		t.Fatalf("CreateTeam() icon = %q, want lucide:UsersRound", store.createTeamInput.Icon)
 	}
 }
 
@@ -94,12 +94,12 @@ func TestCreateProjectPreservesCustomIcon(t *testing.T) {
 		TeamID: testUUID,
 		Name:   "Checkout",
 		Code:   "checkout",
-		Icon:   "rocket",
+		Icon:   "lucide:Rocket",
 	}); err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
-	if store.createProjectInput.Icon != "rocket" {
-		t.Fatalf("CreateProject() icon = %q, want rocket", store.createProjectInput.Icon)
+	if store.createProjectInput.Icon != "lucide:Rocket" {
+		t.Fatalf("CreateProject() icon = %q, want lucide:Rocket", store.createProjectInput.Icon)
 	}
 }
 

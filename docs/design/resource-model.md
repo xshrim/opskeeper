@@ -2,13 +2,13 @@
 
 ## 文档状态
 
-资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询已实现；资源管理控制台、Kubernetes 发现、Project/Application 映射、具体资源授权、Kubernetes/Prometheus/Loki Connector、LLM Provider 模型配置、不可变 SkillVersion、作用域默认解析和受控执行记录已实现。I004 的 Application 资源接入在 T06 实施。
+资源目录、凭据密文边界、关系约束、默认解析和有限拓扑查询已实现；资源管理控制台、Project/Application 映射、具体资源授权、Kubernetes/Prometheus/Loki Connector 和受控执行记录已实现。Provider、Engine、Skill、Persona 已从通用资源目录中拆分为独立领域对象，边界见[大模型领域对象](llm-domains.md)。Kubernetes Discovery 和受控 Operation 已由 0068 迁移移除。
 
 ## 1. 设计原则
 
 资源的类型和作用域是两个独立维度。例如：
 
-- Skill 通常是平台级，但团队可以维护团队专属 Skill，项目也可拥有项目 Runbook Skill。
+- 独立领域对象通常是平台级，但团队可以维护团队专属 Provider、Engine、Skill 或 Persona，项目也可拥有项目级对象。
 - Kubernetes 集群通常是团队级，但公共基础设施集群可以是平台级，项目独占集群可以是项目级。
 - Redis 通常是团队共享资源，但也可以是平台公共服务或项目独享实例。
 - 可观测平台通常是平台级或团队级，也允许项目拥有独立监控平台。
@@ -44,7 +44,7 @@ platform scope
 
 ## 3. 统一资源模型
 
-所有资源必须使用同一套结构，不得因为 Direct、Agent 或其他子类型创建不同资源结构体。`subtype` 是接入方式的权威字段，Agent 关联通过统一的 `agent_ref` 字段表达；连接参数统一放入 `config`。`config` 为空对象或 null 表示未配置资源级连接覆盖；非空时其中的字段按该资源工具的公共参数传递。资源的 Direct/Agent 接入语义、MCPServer 关联、公共工具和 AIEngine 解析规则以[统一资源接入设计](resource-access.md)为准。
+所有资源必须使用同一套结构，不得因为 Direct、Agent 或其他子类型创建不同资源结构体。`subtype` 是接入方式的权威字段，Agent 关联通过统一的 `agent_ref` 字段表达；连接参数统一放入 `config`。`config` 为空对象或 null 表示未配置资源级连接覆盖；非空时其中的字段按该资源工具的公共参数传递。资源的 Direct/Agent 接入语义、MCPServer 关联、公共工具和 Engine 解析规则以[统一资源接入设计](resource-access.md)为准。
 
 ```text
 resources {
@@ -74,12 +74,12 @@ resources {
 | 基础设施 | Kubernetes |
 | 业务 | Application |
 | 中间件 | PostgreSQL、Redis、Kafka、Elasticsearch、GenericMiddleware |
-| AI | AIProvider、MCPServer、Skill |
+| AI 接入 | MCPServer |
 | 可观测平台 | Prometheus、Loki、Tempo、Jaeger、Elastic、Datadog、GenericAPI |
 | 开发交付 | Repository、Artifact |
 | 运维支撑 | NotificationChannel、Runbook |
 
-Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。LLM 的具体 Model 是 Provider 的配置字段，也不单独作为资源。资源连接密文直接保存在资源行中，不把 Credential 当作资源登记。
+Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSet、Job 和 CronJob 映射为 Application。Pod 副本映射为 Application 内的 Instance；Service、Ingress 和 Endpoint 信息也聚合在 Application 配置中。这些 Kubernetes 对象都不单独登记或维护为资源。Provider、Engine、Skill、Persona 和 LLM 的具体 Model 都不登记为资源；Model 是 Provider 的配置字段，Provider 的连接密文保存在独立 `providers` 表中。资源连接密文直接保存在资源行中，不把 Credential 当作资源登记。
 
 Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型。该字段描述来源工作负载，不改变资源类型，也不产生新的权限层级。
 
@@ -95,7 +95,6 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 | PostgreSQL | Host、Port、Database、Username | Password |
 | Redis | Host、Port、Database、Username | Password |
 | Kafka | Brokers、TLS | Username、Password |
-| AIProvider | 服务地址、模型目录、超时 | API Token 等资源连接密文 |
 | Repository | URL、Provider、默认分支 | Username、Token、SSH 私钥 |
 | Artifact | URL、Provider、Namespace | Username、Password、Token |
 | Prometheus | URL | Username、Password、Token |
@@ -158,11 +157,9 @@ resource_relations {
 | `depends_on` | 业务应用依赖 Redis、Kafka |
 | `observed_by` | 应用由 Prometheus、Loki 观测 |
 | `exposes` | Service/Ingress 暴露应用 |
-| `uses_ai_provider` | 诊断策略、Skill、AgentProfile 或巡检使用某个 AIProvider 和模型 |
-| `uses_skill` | 项目或资源使用某个 Skill |
 | `served_by_mcp` | Skill 通过 MCP Server 获取能力 |
 
-创建关系时必须验证目标资源是否处于源资源允许引用的可见链上。自动发现的推测关系保存为 `confirmed=false`，并记录来源和置信度。
+创建关系时必须验证目标资源是否处于源资源允许引用的可见链上。Provider、Engine、Skill、Persona 不进入资源关系图；它们通过独立 API、Scope 默认绑定和执行快照引用资源上下文。自动发现的推测关系保存为 `confirmed=false`，并记录来源和置信度。
 
 ## 6. 同名资源和覆盖规则
 
@@ -174,7 +171,7 @@ redis-shared [团队: 支付团队]
 prometheus-main [平台]
 ```
 
-模型与 Skill/AgentProfile 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 Scope + 场景标签对应的 AIProvider，执行时解析并固定模型；Skill 和 AgentProfile 只提供可选 Prompt、工具和契约来源。巡检策略未指定 AgentProfile 时使用内置巡检契约。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
+模型与 Skill/Persona 选择遵循显式指定优先，其次才是作用域默认配置：项目默认 > 团队默认 > 平台默认。AI 默认项固定 Scope + 场景标签对应的 Provider，执行时解析并固定模型；Skill 和 Persona 只提供可选 Prompt、工具和契约来源。巡检策略未指定 Persona 时使用内置巡检契约。每次执行再次把最终解析结果写入执行记录，后续默认配置变化不影响历史审计。
 
 ## 7. 主要数据表
 
@@ -187,20 +184,23 @@ resources
 resource_relations
 resource_schemas
 resource_sync_states
-discovery_runs
-discovery_items
+providers
+engines
+engine_scope_bindings
+skills
+personas
 skill_versions
-agent_profile_versions
-inspection_policies (可选 agent_profile_resource_id)
-scope_ai_provider_bindings
+persona_versions
+inspection_policies (可选 persona_id)
+provider_scope_bindings
 skill_scope_defaults
-scope_defaults
+scope_defaults（仅保留资源默认项）
 ```
 
-AIEngine 的统一执行事件与工具审计保存在 `ai_execution_events` 和
-`ai_execution_tool_calls`；Skill 不拥有独立执行表。
+Engine 的统一执行事件与工具审计保存在 `engine_execution_events` 和
+`engine_execution_tool_calls`；Skill 不拥有独立执行表。
 
-`external_uid + source_resource_id + scope` 建立唯一约束，保证 Kubernetes 和外部平台资源重复同步时执行更新而不是重复创建。
+`external_uid + source_resource_id + scope` 建立唯一约束，保证外部同步资源重复写入时执行更新而不是重复创建。独立大模型对象使用各自的 Scope 唯一约束；它们不共享资源目录的 `resource_schemas` 或资源关系。
 
 ## 8. 拓扑查询
 

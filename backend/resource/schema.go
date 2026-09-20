@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
@@ -32,7 +33,7 @@ func validateConfig(config map[string]any, schema Schema) error {
 	if err := compiled.Validate(config); err != nil {
 		message := strings.TrimSpace(err.Error())
 		message = strings.TrimPrefix(message, "jsonschema validation failed with ")
-		message = strings.ReplaceAll(message, "file:///home/xcadmin/git/opskeeper/backend/resource/resource-schema.json#", "")
+		message = regexp.MustCompile(`'file://[^']*resource-schema\.json#'`).ReplaceAllString(message, "")
 		return invalid(fmt.Sprintf("config does not match %s schema: %s", schema.Kind, message))
 	}
 	return nil

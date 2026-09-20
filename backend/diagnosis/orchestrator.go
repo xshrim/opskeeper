@@ -11,17 +11,17 @@ import (
 	"sync"
 	"time"
 
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/connector"
+	"opskeeper/backend/engine"
 )
 
 type Orchestrator struct {
 	*Service
-	engine  aiengine.Engine
+	engine  engine.Engine
 	timeout time.Duration
 }
 
-func NewOrchestrator(service *Service, engine aiengine.Engine, timeout time.Duration) *Orchestrator {
+func NewOrchestrator(service *Service, engine engine.Engine, timeout time.Duration) *Orchestrator {
 	if timeout <= 0 {
 		timeout = 30 * time.Minute
 	}
@@ -46,10 +46,10 @@ func (o *Orchestrator) Ask(ctx context.Context, sessionID, content string) (Mess
 	return message, nil
 }
 
-// Cancel stops the active AIEngine execution for a diagnosis session.
+// Cancel stops the active Engine execution for a diagnosis session.
 func (o *Orchestrator) Cancel(ctx context.Context, sessionID string) error {
 	if o.engine == nil {
-		return errors.New("AIEngine is unavailable")
+		return errors.New("Engine is unavailable")
 	}
 	return o.engine.Cancel(ctx, diagnosisExecutionID(strings.TrimSpace(sessionID)))
 }
@@ -101,11 +101,11 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		return
 	}
 	o.appendEvent(ctx, session.ID, CreateEventInput{Type: "phase.changed", Payload: map[string]any{"phase": StatusPlanning}})
-	plan, err := o.store.CreatePlan(ctx, session.ID, "由 AIEngine 统一处理对话；仅在用户选择并授权资源时加载上下文和调用工具。", []PlanStep{
+	plan, err := o.store.CreatePlan(ctx, session.ID, "由 Engine 统一处理对话；仅在用户选择并授权资源时加载上下文和调用工具。", []PlanStep{
 		{Phase: "plan", Status: "succeeded", Title: "确定执行范围", Detail: "已固定会话 Scope、模型以及用户提交的上下文选择。"},
 		{Phase: "collect", Status: "pending", Title: "按需加载上下文", Detail: "仅对已授权且已选择的资源注册只读工具；普通问题可不调用工具。"},
 		{Phase: "verify", Status: "pending", Title: "核验工具结果", Detail: "工具返回内容作为不可信输入，回答应区分事实与推断。"},
-		{Phase: "summarize", Status: "pending", Title: "生成回答", Detail: "由 AIEngine 按当前对话和可用上下文生成自然语言回答。"},
+		{Phase: "summarize", Status: "pending", Title: "生成回答", Detail: "由 Engine 按当前对话和可用上下文生成自然语言回答。"},
 	})
 	if err != nil {
 		o.fail(session.ID, "plan", err)
@@ -163,10 +163,10 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		targetIDs = append(targetIDs, target.ResourceID)
 	}
 	conversation := make([]map[string]string, 0, len(messages))
-	engineMessages := make([]aiengine.Message, 0, len(messages))
+	engineMessages := make([]engine.Message, 0, len(messages))
 	for _, message := range messages {
 		conversation = append(conversation, map[string]string{"role": message.Role, "content": message.Content})
-		engineMessages = append(engineMessages, aiengine.Message{Role: message.Role, Content: message.Content})
+		engineMessages = append(engineMessages, engine.Message{Role: message.Role, Content: message.Content})
 	}
 	instruction := "你是 OpsKeeper AI 助手。当前没有选择资源，请按用户意图进行自然、直接的普通对话，不要把问候或一般问题强行解释为故障诊断。"
 	if len(targetIDs) > 0 {
@@ -185,8 +185,8 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	// boundary lets timeout/error persistence preserve only actual answer text.
 	assistantTurnText := make(map[int]string)
 	toolDecisionTurns := make(map[int]bool)
-	var pendingAssistantCompleted *aiengine.Event
-	var pendingTerminalEvents []aiengine.Event
+	var pendingAssistantCompleted *engine.Event
+	var pendingTerminalEvents []engine.Event
 	partialAnswerText := func() string {
 		iterations := make([]int, 0, len(assistantTurnText))
 		for iteration := range assistantTurnText {
@@ -222,14 +222,14 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	flushPendingTerminalEvents := func() {
 		assistantMu.Lock()
-		pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
+		pendingTerminal := append([]engine.Event(nil), pendingTerminalEvents...)
 		pendingTerminalEvents = nil
 		assistantMu.Unlock()
 		for _, event := range pendingTerminal {
 			_ = o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
 		}
 	}
-	result, err := o.engine.Execute(ctx, aiengine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, AIProviderResourceID: session.ProviderResourceID, ModelName: session.ModelName, Purpose: aiengine.PurposeDiagnosis, Profile: aiengine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: aiengine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "application_id": session.ApplicationID, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: aiengine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event aiengine.Event) error {
+	result, err := o.engine.Execute(ctx, engine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, ProviderID: session.ProviderID, ModelName: session.ModelName, Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: engine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "application_id": session.ApplicationID, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: engine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event engine.Event) error {
 		if event.Type == "assistant.delta" {
 			if text, ok := event.Payload["text"].(string); ok && text != "" {
 				assistantMu.Lock()
@@ -321,13 +321,13 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			}
 		}
 		return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
-	}, ObservationSink: func(observed aiengine.ToolObservation) { o.captureObservation(session.ID, run.ID, observed) }})
+	}, ObservationSink: func(observed engine.ToolObservation) { o.captureObservation(session.ID, run.ID, observed) }})
 	if err != nil {
 		// Preserve a useful partial answer before writing the terminal event. A
 		// timeout can interrupt the model between streamed deltas and its final
 		// completion marker.
 		persistPartialAssistant()
-		// A terminal AIEngine event can arrive before Execute returns. Flush it
+		// A terminal Engine event can arrive before Execute returns. Flush it
 		// before closing the diagnosis session so cancellation and failure are
 		// visible to reconnecting clients even when no assistant answer exists.
 		flushPendingTerminalEvents()
@@ -339,7 +339,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		if message := strings.TrimSpace(result.ErrorMessage); message != "" {
 			cause = errors.New(message)
 		}
-		if result.Status == aiengine.StatusCancelled || code == "cancelled" || code == "timeout" {
+		if result.Status == engine.StatusCancelled || code == "cancelled" || code == "timeout" {
 			runStatus = "cancelled"
 			o.cancel(session.ID, code, cause)
 			finishRun("cancelled")
@@ -349,12 +349,12 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		}
 		return
 	}
-	if result.Status == aiengine.StatusFailed || result.Status == aiengine.StatusCancelled {
+	if result.Status == engine.StatusFailed || result.Status == engine.StatusCancelled {
 		persistPartialAssistant()
 		flushPendingTerminalEvents()
 		code := strings.TrimSpace(result.ErrorCode)
 		message := strings.TrimSpace(result.ErrorMessage)
-		if result.Status == aiengine.StatusCancelled {
+		if result.Status == engine.StatusCancelled {
 			if code == "" {
 				code = "cancelled"
 			}
@@ -363,7 +363,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			finishRun("cancelled")
 		} else {
 			if code == "" {
-				code = "ai_engine"
+				code = "engine"
 			}
 			o.fail(session.ID, code, errors.New(message))
 			finishRun("failed")
@@ -428,7 +428,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		}
 	}
 	assistantMu.Lock()
-	pendingTerminal := append([]aiengine.Event(nil), pendingTerminalEvents...)
+	pendingTerminal := append([]engine.Event(nil), pendingTerminalEvents...)
 	pendingTerminalEvents = nil
 	assistantMu.Unlock()
 	for _, event := range pendingTerminal {
@@ -508,7 +508,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	runStatus = "succeeded"
 	finishRun("succeeded")
 	o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "report.ready", Payload: map[string]any{"report_id": report.ID, "evidence_ids": evidenceIDs, "status": report.Status}})
-	// Causal-chain compilation is a supplemental, second AIEngine request. The
+	// Causal-chain compilation is a supplemental, second Engine request. The
 	// answer and report are already durable, so it must not delay the session's
 	// visible completion state.
 	chain, chainErr := o.compileCausalChain(ctx, session, run, output, evidence)
@@ -531,7 +531,7 @@ func (o *Orchestrator) captureEvidence(sessionID string, observed connector.Evid
 	}
 }
 
-func (o *Orchestrator) captureObservation(sessionID, runID string, observed aiengine.ToolObservation) {
+func (o *Orchestrator) captureObservation(sessionID, runID string, observed engine.ToolObservation) {
 	content := mustJSON(observed.Result.Output)
 	item, err := o.store.SaveEvidence(context.Background(), sessionID, CreateEvidenceInput{RunID: runID, TargetResourceID: observed.ResourceID, SourceResourceID: observed.ResourceID, Capability: observed.ToolName, CollectedAt: time.Now().UTC(), Summary: mustJSON(map[string]any{"tool": observed.ToolName, "iteration": observed.Iteration, "call_id": observed.CallID}), Content: content, Untrusted: observed.Result.Untrusted})
 	if err == nil {
@@ -542,7 +542,7 @@ func (o *Orchestrator) captureObservation(sessionID, runID string, observed aien
 func diagnosisExecutionID(sessionID string) string { return "diagnosis-" + sessionID }
 
 func (o *Orchestrator) fail(sessionID, code string, cause error) {
-	message := "AIEngine execution failed"
+	message := "Engine execution failed"
 	if cause != nil {
 		if value := safeText(cause.Error(), 1000); strings.TrimSpace(value) != "" {
 			message = value
@@ -553,7 +553,7 @@ func (o *Orchestrator) fail(sessionID, code string, cause error) {
 }
 
 func (o *Orchestrator) cancel(sessionID, code string, cause error) {
-	message := "AIEngine execution was cancelled"
+	message := "Engine execution was cancelled"
 	if code == "timeout" || errors.Is(cause, context.DeadlineExceeded) {
 		message = "诊断执行超时，已保留已生成内容。"
 	}
@@ -569,7 +569,7 @@ func (o *Orchestrator) cancel(sessionID, code string, cause error) {
 }
 
 // appendEvent is the single event persistence path for an orchestration run.
-// The AIEngine can invoke its EventSink and ObservationSink from different
+// The Engine can invoke its EventSink and ObservationSink from different
 // goroutines (for example when a model emits multiple tool calls in one
 // turn), so serializing writes keeps database sequence IDs and the SSE
 // timeline deterministic.
@@ -612,7 +612,7 @@ func runnerErrorCode(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "cancelled"
 	}
-	return "ai_engine"
+	return "engine"
 }
 
 var sensitiveText = regexp.MustCompile(`(?i)(\b(?:bearer|token|password|secret|credential|api[_-]?key|authorization|private[_-]?key|client[_-]?secret|access[_-]?key)\b\s*(?:[:=]\s*))(?:bearer\s+)?[^\s,;]+`)

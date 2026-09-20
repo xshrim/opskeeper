@@ -7,7 +7,6 @@ import {
   dockerHostValid,
   dockerAccessModeLabel,
   dockerTLSValueValid,
-  emptyProviderModelDraft,
   hostAccessSummary,
   kubernetesConfigForSave,
   kubernetesConfigurationValid,
@@ -16,7 +15,6 @@ import {
   mcpConfigForSave,
   mcpConfigurationValid,
   parseMCPHeaders,
-  providerPurposeMissingCapabilities
 } from './resourceWorkflow';
 
 describe('resource workflow helpers', () => {
@@ -30,7 +28,7 @@ describe('resource workflow helpers', () => {
           status: 'active',
           display_name: 'Example',
           description: 'Example schema',
-          icon: 'example',
+          icon: 'lucide:Circle',
           schema: {
             properties: { host: { type: 'string' }, password: { sensitive: true } }
           }
@@ -63,29 +61,6 @@ describe('resource workflow helpers', () => {
     ).toMatchObject({
       url: 'https://mcp.example.com/sse',
       tool_allowlist: ['docker:*', 'logs:read', 'deploy:*']
-    });
-  });
-
-  it('reports the provider capabilities missing from the default model', () => {
-    expect(
-      providerPurposeMissingCapabilities(['text', 'tool_calling', 'stream'], {
-        name: 'model',
-        contextWindowTokens: 128000,
-        maxOutputTokens: 4096,
-        temperature: 0.7,
-        temperatureMutable: true,
-        capabilities: ['text', 'stream'],
-        enabled: true,
-        priority: 0
-      })
-    ).toEqual(['tool_calling']);
-  });
-
-  it('provides stable defaults for a new provider model', () => {
-    expect(emptyProviderModelDraft()).toMatchObject({
-      contextWindowTokens: 128000,
-      capabilities: ['text', 'tool_calling', 'structured_output', 'stream'],
-      enabled: true
     });
   });
 

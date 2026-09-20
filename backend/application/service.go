@@ -46,7 +46,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Application, erro
 	in.ExternalUID = strings.TrimSpace(in.ExternalUID)
 	in.Icon = strings.TrimSpace(in.Icon)
 	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
-		in.Icon = "AppWindow"
+		in.Icon = "lucide:AppWindow"
 	}
 	if in.Source == "" {
 		in.Source = "manual"
@@ -74,7 +74,7 @@ func (s *Service) Import(ctx context.Context, in ImportInput) (Application, erro
 	in.ExternalUID = strings.TrimSpace(in.ExternalUID)
 	in.Icon = strings.TrimSpace(in.Icon)
 	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
-		in.Icon = "AppWindow"
+		in.Icon = "lucide:AppWindow"
 	}
 	if in.Source == "" {
 		in.Source = "kubernetes"
@@ -119,7 +119,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if in.Icon != nil {
 		value := strings.TrimSpace(*in.Icon)
 		if value == "" || len([]rune(value)) > maxIconLength {
-			value = "AppWindow"
+			value = "lucide:AppWindow"
 		}
 		in.Icon = &value
 	}

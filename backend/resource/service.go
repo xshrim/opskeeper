@@ -115,8 +115,8 @@ func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, req
 	if err := validateConfig(input.Config, schema); err != nil {
 		return CreateInput{}, err
 	}
-	if input.Kind == "AIProvider" {
-		if err := validateAIProviderConfig(input.Config); err != nil {
+	if input.Kind == "Provider" {
+		if err := validateProviderConfig(input.Config); err != nil {
 			return CreateInput{}, err
 		}
 	}
@@ -269,8 +269,8 @@ func (s *Service) prepareUpdate(ctx context.Context, id string, input UpdateInpu
 		if err := validateConfig(*input.Config, schema); err != nil {
 			return Resource{}, UpdateInput{}, err
 		}
-		if current.Kind == "AIProvider" {
-			if err := validateAIProviderConfig(*input.Config); err != nil {
+		if current.Kind == "Provider" {
+			if err := validateProviderConfig(*input.Config); err != nil {
 				return Resource{}, UpdateInput{}, err
 			}
 		}
@@ -349,62 +349,62 @@ func (s *Service) normalizeAccess(ctx context.Context, resourceID, kind, subtype
 	return mode, &linkedID, nil
 }
 
-func validateAIProviderConfig(config map[string]any) error {
+func validateProviderConfig(config map[string]any) error {
 	providerType, _ := config["provider_type"].(string)
 	baseURL, _ := config["base_url"].(string)
 	if strings.TrimSpace(providerType) == "" {
-		return invalid("AIProvider provider_type is required")
+		return invalid("Provider provider_type is required")
 	}
 	if strings.TrimSpace(baseURL) == "" {
-		return invalid("AIProvider base_url is required")
+		return invalid("Provider base_url is required")
 	}
 	parsed, err := url.ParseRequestURI(baseURL)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return invalid("AIProvider base_url must be an absolute HTTP URL")
+		return invalid("Provider base_url must be an absolute HTTP URL")
 	}
 	models, ok := config["models"].([]any)
 	if !ok || len(models) == 0 {
-		return invalid("AIProvider models must contain at least one model")
+		return invalid("Provider models must contain at least one model")
 	}
 	seen := map[string]bool{}
 	for index, raw := range models {
 		model, ok := raw.(map[string]any)
 		if !ok {
-			return invalid(fmt.Sprintf("AIProvider models[%d] must be an object", index))
+			return invalid(fmt.Sprintf("Provider models[%d] must be an object", index))
 		}
 		name, _ := model["name"].(string)
 		if strings.TrimSpace(name) == "" {
-			return invalid(fmt.Sprintf("AIProvider models[%d].name is required", index))
+			return invalid(fmt.Sprintf("Provider models[%d].name is required", index))
 		}
 		if seen[name] {
-			return invalid("AIProvider model names must be unique")
+			return invalid("Provider model names must be unique")
 		}
 		seen[name] = true
 		contextWindow, ok := configInt(model["context_window_tokens"])
 		if !ok || contextWindow <= 0 {
-			return invalid(fmt.Sprintf("AIProvider models[%d].context_window_tokens must be positive", index))
+			return invalid(fmt.Sprintf("Provider models[%d].context_window_tokens must be positive", index))
 		}
 		if temperature, exists := model["temperature"]; exists {
 			value, ok := configFloat(temperature)
 			if !ok || value < 0 || value > 2 {
-				return invalid(fmt.Sprintf("AIProvider models[%d].temperature must be between 0 and 2", index))
+				return invalid(fmt.Sprintf("Provider models[%d].temperature must be between 0 and 2", index))
 			}
 		}
 		if enabled, exists := model["enabled"]; exists {
 			if _, ok := enabled.(bool); !ok {
-				return invalid(fmt.Sprintf("AIProvider models[%d].enabled must be boolean", index))
+				return invalid(fmt.Sprintf("Provider models[%d].enabled must be boolean", index))
 			}
 		}
 		if capabilities, exists := model["capabilities"]; exists {
 			if _, ok := capabilities.([]any); !ok {
-				return invalid(fmt.Sprintf("AIProvider models[%d].capabilities must be an array", index))
+				return invalid(fmt.Sprintf("Provider models[%d].capabilities must be an array", index))
 			}
 		}
 	}
 	if defaultModel, exists := config["default_model"]; exists {
 		name, _ := defaultModel.(string)
 		if name != "" && !seen[name] {
-			return invalid("AIProvider default_model must be declared in models")
+			return invalid("Provider default_model must be declared in models")
 		}
 	}
 	return nil
@@ -443,7 +443,7 @@ func configFloat(value any) (float64, bool) {
 }
 
 // validateWorkflowConfig keeps resource writes independent from the
-// AIEngine package (which consumes resources for context tooling) while
+// Engine package (which consumes resources for context tooling) while
 // enforcing the same persisted DAG invariants at the catalog boundary.
 func validateWorkflowConfig(config map[string]any) error {
 	raw, err := json.Marshal(config)

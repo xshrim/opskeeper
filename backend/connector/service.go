@@ -115,7 +115,7 @@ func (s *Service) Latest(ctx context.Context, resourceID string) (Check, error) 
 }
 
 // RecordCheck persists a connection result produced by a resource-specific
-// connector, such as the AIProvider test endpoint.
+// connector, such as the Provider test endpoint.
 func (s *Service) RecordCheck(ctx context.Context, check Check) (Check, error) {
 	if s == nil || s.checks == nil {
 		return Check{}, connectorError(CategoryInternal, "save connection check", false, errors.New("connection check store is unavailable"))

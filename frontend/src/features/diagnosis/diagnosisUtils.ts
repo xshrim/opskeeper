@@ -90,7 +90,7 @@ export function diagnosisCausalEvidenceIDs(chain: DiagnosisCausalChain, nodeID: 
 
 export type DiagnosisAction = {
   id: string;
-  icon: 'tool';
+  icon: 'lucide:Wrench';
   title: string;
   status: string;
   duration: string;
@@ -158,9 +158,9 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
     const resourceID = String(payload.resource_id ?? '');
     const callID = String(payload.call_id ?? payload.call_sequence ?? '');
     // Evidence bookkeeping also emits tool.completed, but it is not an
-    // AIEngine invocation and therefore must not appear in this trace.
-    const isAIEngineToolEvent = Object.prototype.hasOwnProperty.call(payload, 'resource_id') || Boolean(callID);
-    if (!tool || !isAIEngineToolEvent) continue;
+    // Engine invocation and therefore must not appear in this trace.
+    const isEngineToolEvent = Object.prototype.hasOwnProperty.call(payload, 'resource_id') || Boolean(callID);
+    if (!tool || !isEngineToolEvent) continue;
     if (!currentGroup) {
       currentGroup = {
         id: `tool-group-${event.id}`,
@@ -178,7 +178,7 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
     if (!action) {
       action = {
         id: `tool-${event.id}`,
-        icon: 'tool',
+        icon: 'lucide:Wrench',
         title: titleForTool(tool),
         status: '进行中',
         duration: '—',

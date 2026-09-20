@@ -18,9 +18,9 @@ func TestRecordRedactsSensitiveDetails(t *testing.T) {
 	service := NewService(store)
 	longValue := strings.Repeat("x", 3000)
 	err := service.Record(context.Background(), Event{Action: "test", Details: map[string]any{
-		"token":         "visible",
+		"token":                "visible",
 		"credential_reference": "safe-id",
-		"nested":        map[string]any{"db_password": "visible", "message": longValue},
+		"nested":               map[string]any{"db_password": "visible", "message": longValue},
 	}})
 	if err != nil {
 		t.Fatalf("Record() error = %v", err)

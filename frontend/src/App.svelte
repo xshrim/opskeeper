@@ -3,10 +3,7 @@
   import {
     Boxes,
     Bot,
-    Building2,
-    ChevronDown,
     ClipboardCheck,
-    CloudDownload,
     Copy,
     Eye,
     EyeOff,
@@ -21,7 +18,6 @@
     RefreshCw,
     ScanSearch,
     Search,
-    ShieldCheck,
     Sparkles,
     Stethoscope,
     Trash2,
@@ -46,12 +42,11 @@
   import { formatDate } from './lib/format';
   import MessageBanner from './components/MessageBanner.svelte';
   import DiagnosisPage from './features/diagnosis/DiagnosisPage.svelte';
-  import AgentProfilesPage from './features/agent/AgentProfilesPage.svelte';
+  import LLMPage from './features/llm/LLMPage.svelte';
+  import PersonasPage from './features/persona/PersonasPage.svelte';
   import SkillRegistryPage from './features/skill/SkillRegistryPage.svelte';
   import ProfilePage from './features/profile/ProfilePage.svelte';
-  import OperationPage from './features/operation/OperationPage.svelte';
   import AuthGate from './features/auth/AuthGate.svelte';
-  import DiscoveryPage from './features/discovery/DiscoveryPage.svelte';
   import InspectionPage from './features/inspection/InspectionPage.svelte';
   import OverviewPage from './features/overview/OverviewPage.svelte';
   import ProjectPage from './features/project/ProjectPage.svelte';
@@ -64,9 +59,6 @@
     ApiError,
     type ConnectionCheck,
     type ConnectorCapability,
-    type DiscoveryItem,
-    type DiscoveryProjectMapping,
-    type DiscoveryRun,
     type Group,
     type Platform,
     type Project,
@@ -77,21 +69,22 @@
     type RoleBinding,
     type RoleDefinition,
     type Team,
-    type MCPSnapshot,
     type SkillVersion,
-    type AgentProfileVersion,
+    type PersonaVersion,
+    type SkillCatalogItem,
+    type PersonaCatalogItem,
     type User,
-    type UserPreferences
+    type UserPreferences,
+    type Provider
   } from './lib/api';
 
   type View =
     | 'overview'
     | 'project'
-    | 'discovery'
     | 'resource'
+    | 'llm'
     | 'skill'
-    | 'agent'
-    | 'operation'
+    | 'persona'
     | 'diagnosis'
     | 'inspection'
     | 'access'
@@ -99,20 +92,16 @@
   type Theme = UserPreferences['theme'];
   type SidebarMode = UserPreferences['sidebar_mode'];
   type AccessTab = 'teams' | 'users' | 'roles';
-  type ProjectMappingDraft = DiscoveryProjectMapping & {
-    mode: 'existing' | 'create' | 'ignore';
-  };
-  type AIProviderBindingSummary = {
-    scope_id: string;
-    provider_resource_id: string;
-    tag: string;
-  };
   let authState: 'loading' | 'login' | 'ready' = 'loading';
   let currentUser: User | null = null;
   let notice = '';
   let noticeTimer: number | null = null;
   let errorMessage = '';
   let errorTimer: number | null = null;
+  let providers: Provider[] = [];
+  let skills: SkillCatalogItem[] = [];
+  let personas: PersonaCatalogItem[] = [];
+  let catalogScopeID = '';
   let activeMessage = '';
   let activeMessageTone: 'success' | 'error' = 'success';
   let messageInChildSurface = false;
@@ -129,7 +118,6 @@
   let previousSidebarCompact = false;
   let userMenuOpen = false;
   let teamMenuOpen = false;
-  let accessMenuOpen = false;
   let isPlatformAdmin = false;
   let hasPlatformRole = false;
   let selectedTeamId = '';
@@ -142,7 +130,6 @@
   let projects: Project[] = [];
   let resources: Resource[] = [];
   let contextResources: Resource[] = [];
-  let aiProviderBindings: AIProviderBindingSummary[] = [];
   let schemas: ResourceSchema[] = [];
   let health: HealthReport | null = null;
   let healthController: AbortController | null = null;
@@ -158,8 +145,6 @@
   let bindings: RoleBinding[] = [];
   let resourceRoles: ResourceRoleDefinition[] = [];
   let resourceRoleBindings: ResourceRoleBinding[] = [];
-  let agentProfileResources: Resource[] = [];
-  let operationSnapshots: Record<string, MCPSnapshot[]> = {};
   let accessTab: AccessTab = 'teams';
   let openCreateTeamRequest = 0;
 
@@ -201,22 +186,12 @@
   $: selectedResourceHasConnector = Boolean(
     selectedResource && resourceHasConnector(selectedResource)
   );
-  $: kubernetesClusters = resources.filter(
-    (resource) => resource.kind === 'Kubernetes'
-  );
-  $: skillResources = resources.filter((item) => item.kind === 'Skill');
-  $: agentProfileResources = resources.filter(
-    (item) => item.kind === 'AgentProfile'
-  );
-  $: executableTargets = visibleResources.filter(
-    (item) => item.kind !== 'AIProvider' && item.kind !== 'Skill'
-  );
+  $: executableTargets = visibleResources;
   $: sidebarCompact =
     preferences.sidebar_mode === 'hover'
       ? !sidebarHovered
       : preferences.sidebar_collapsed;
   $: if (sidebarCompact && !previousSidebarCompact) {
-    accessMenuOpen = false;
   }
   $: previousSidebarCompact = sidebarCompact;
   $: avatarURL = preferences.avatar_updated_at
@@ -347,23 +322,42 @@
         teams.map((team) => api.projects(team.id))
       );
       projects = projectPages.flatMap((page) => page.items);
-      const scopeIDs = [
-        loadedPlatform.scope.id,
-        ...teams.map((team) => team.scope.id),
-        ...projects.map((project) => project.scope.id)
-      ];
-      const bindingPages = await Promise.allSettled(
-        [...new Set(scopeIDs)].map((scopeID) => api.aiProviderBindings(scopeID))
-      );
-      aiProviderBindings = bindingPages.flatMap((result) =>
-        result.status === 'fulfilled' ? result.value : []
-      );
       const defaultTeam = hasPlatformRole ? undefined : teams[0];
       selectedTeamId = defaultTeam?.id ?? '';
       selectedProjectId = '';
       selectedScopeId = defaultTeam?.scope.id ?? platform.scope.id;
+      const providerResult = await api.providers(selectedScopeId);
+      providers = providerResult.items;
+      const [skillResult, personaResult] = await Promise.all([
+        api.skills(selectedScopeId),
+        api.personas(selectedScopeId)
+      ]);
+      skills = skillResult.items;
+      personas = personaResult.items;
+      catalogScopeID = selectedScopeId;
     } catch (error) {
       errorMessage = describeError(error, '工作区数据加载失败');
+    }
+  }
+
+  $: if (currentUser && selectedScopeId && selectedScopeId !== catalogScopeID) {
+    void loadDomainCatalogs(selectedScopeId);
+  }
+
+  async function loadDomainCatalogs(scopeID: string) {
+    try {
+      const [providerResult, skillResult, personaResult] = await Promise.all([
+        api.providers(scopeID),
+        api.skills(scopeID),
+        api.personas(scopeID)
+      ]);
+      if (selectedScopeId !== scopeID) return;
+      providers = providerResult.items;
+      skills = skillResult.items;
+      personas = personaResult.items;
+      catalogScopeID = scopeID;
+    } catch (error) {
+      errorMessage = describeError(error, '大模型与技能目录加载失败');
     }
   }
 
@@ -406,7 +400,6 @@
 
   function chooseAccessTab(tab: AccessTab) {
     accessTab = tab;
-    accessMenuOpen = true;
     chooseView('access');
   }
 
@@ -483,7 +476,6 @@
     if (event.key === 'Escape') {
       userMenuOpen = false;
       teamMenuOpen = false;
-      accessMenuOpen = false;
     }
   }
 
@@ -495,9 +487,6 @@
     }
     if (teamMenuOpen && !target.closest('.workspace-team-wrap')) {
       teamMenuOpen = false;
-    }
-    if (accessMenuOpen && view !== 'access' && !target.closest('.nav-group')) {
-      accessMenuOpen = false;
     }
   }
 
@@ -621,6 +610,18 @@
     );
   }
 
+  $: providerManage = isPlatformAdmin || actorPermissionsAtScope(selectedScopeId).includes('provider:manage');
+  $: aiEngineManage = isPlatformAdmin || actorPermissionsAtScope(selectedScopeId).includes('engine:manage');
+
+  function providerPermissionLabel(provider: Provider) {
+    if (isPlatformAdmin) return '可管理';
+    const permissions = new Set(actorPermissionsAtScope(provider.scope_id));
+    if (permissions.has('provider:manage')) return '可管理';
+    if (permissions.has('provider:use')) return '可使用';
+    if (permissions.has('provider:read')) return '可查看';
+    return '无权限';
+  }
+
   function resourceSchemaName(kind: string) {
     return getResourceSchemaName(kind, schemas);
   }
@@ -692,118 +693,64 @@
           ></button
         >
         <button
-          aria-label="集群导入"
-          class:active={view === 'discovery'}
+          aria-label="模型"
+          class:active={view === 'llm'}
           class="nav-item"
-          on:click={() => chooseView('discovery')}
-          data-tooltip={sidebarCompact ? '集群导入' : undefined}
-          ><CloudDownload size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">集群导入</span
-          ></button
+          on:click={() => chooseView('llm')}
+          data-tooltip={sidebarCompact ? '模型' : undefined}
+          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">模型</span></button
         >
         <button
-          aria-label="Skill"
+          aria-label="技能"
           class:active={view === 'skill'}
           class="nav-item"
           on:click={() => chooseView('skill')}
-          data-tooltip={sidebarCompact ? 'Skill' : undefined}
+          data-tooltip={sidebarCompact ? '技能' : undefined}
           ><ClipboardCheck
             size={18}
             strokeWidth={1.8}
             aria-hidden="true"
-          /><span class="nav-item-label">Skill</span></button
+          /><span class="nav-item-label">技能</span></button
         >
         <button
-          aria-label="Agent 专家"
-          class:active={view === 'agent'}
+          aria-label="专家"
+          class:active={view === 'persona'}
           class="nav-item"
-          on:click={() => chooseView('agent')}
-          data-tooltip={sidebarCompact ? 'Agent 专家' : undefined}
+          on:click={() => chooseView('persona')}
+          data-tooltip={sidebarCompact ? '专家' : undefined}
           ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">Agent 专家</span
+            class="nav-item-label">专家</span
           ></button
         >
         <button
-          aria-label="AI 诊断"
+          aria-label="诊断"
           class:active={view === 'diagnosis'}
           class="nav-item"
           on:click={() => chooseView('diagnosis')}
-          data-tooltip={sidebarCompact ? 'AI 诊断' : undefined}
+          data-tooltip={sidebarCompact ? '诊断' : undefined}
           ><ScanSearch size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">AI 诊断</span
+            class="nav-item-label">诊断</span
           ></button
         >
         <button
-          aria-label="自动巡检"
+          aria-label="巡检"
           class:active={view === 'inspection'}
           class="nav-item"
           on:click={() => chooseView('inspection')}
-          data-tooltip={sidebarCompact ? '自动巡检' : undefined}
+          data-tooltip={sidebarCompact ? '巡检' : undefined}
           ><Stethoscope size={18} strokeWidth={1.8} aria-hidden="true" /><span
-            class="nav-item-label">自动巡检</span
+            class="nav-item-label">巡检</span
           ></button
         >
-        <button
-          aria-label="受控操作"
-          class:active={view === 'operation'}
-          class="nav-item"
-          on:click={() => chooseView('operation')}
-          data-tooltip={sidebarCompact ? '受控操作' : undefined}
-          ><ClipboardCheck
-            size={18}
-            strokeWidth={1.8}
-            aria-hidden="true"
-          /><span class="nav-item-label">受控操作</span></button
-        >
-        <div class="nav-group" class:open={accessMenuOpen}>
+        <div class="nav-group">
           <button
-            aria-label="展开权限菜单"
-            aria-expanded={accessMenuOpen}
+            aria-label="权限"
             class:active={view === 'access'}
-            class="nav-item nav-group-trigger"
-            on:click={() => (accessMenuOpen = !accessMenuOpen)}
-            data-tooltip={sidebarCompact ? '权限 / Access' : undefined}
+            class="nav-item"
+            on:click={() => chooseView('access')}
+            data-tooltip={sidebarCompact ? '权限' : undefined}
             ><UsersRound size={18} strokeWidth={1.8} aria-hidden="true" /><span
-              class="nav-item-label">权限</span
-            ><ChevronDown
-              class="nav-group-chevron"
-              size={14}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            /></button
-          >
-          {#if accessMenuOpen}
-            <div class="nav-submenu" aria-label="权限子菜单">
-              <button
-                type="button"
-                class:active={view === 'access' && accessTab === 'teams'}
-                on:click={() => chooseAccessTab('teams')}
-                ><Building2
-                  size={15}
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                /><span>团队管理</span></button
-              ><button
-                type="button"
-                class:active={view === 'access' && accessTab === 'users'}
-                on:click={() => chooseAccessTab('users')}
-                ><UserRound
-                  size={15}
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                /><span>用户管理</span></button
-              ><button
-                type="button"
-                class:active={view === 'access' && accessTab === 'roles'}
-                on:click={() => chooseAccessTab('roles')}
-                ><ShieldCheck
-                  size={15}
-                  strokeWidth={1.8}
-                  aria-hidden="true"
-                /><span>角色管理</span></button
-              >
-            </div>
-          {/if}
+              class="nav-item-label">权限</span></button>
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -924,26 +871,11 @@
           onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
           onOpenApplicationDiagnosis={(project, application) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = application.id; chooseView('diagnosis'); }}
         />
-      {:else if view === 'discovery'}
-        <DiscoveryPage
-          {kubernetesClusters}
-          {teams}
-          {projects}
-          scopeTypes={Object.fromEntries(
-            scopeChoices.map((scope) => [scope.id, scope.type])
-          )}
-          {scopeName}
-          {formatDate}
-          onWorkspaceReload={loadWorkspace}
-          onNotice={(message) => (notice = message)}
-          onError={(message) => (errorMessage = message)}
-        />
       {:else if view === 'resource'}
         <ResourcePage
           {visibleResources}
           bind:selectedResourceId
           bind:resourceConnectionChecks
-          bind:operationSnapshots
           bind:childSurfaceActive={resourceChildSurfaceActive}
           bind:busy
           bind:connectionBusy
@@ -964,7 +896,6 @@
           {selectedResourceCanDelete}
           {selectedResourceHasConnector}
           {selectedScopeId}
-          bind:aiProviderBindings
           {selectedResourceCanUpdate}
           {scopeName}
           onNotice={(message) => (notice = message)}
@@ -974,23 +905,26 @@
           {activeMessage}
           {activeMessageTone}
         />
+      {:else if view === 'llm'}
+        <LLMPage
+          {providers}
+          scopeId={selectedScopeId}
+          {scopeName}
+          {scopeType}
+          {scopeChoices}
+          canManageProvider={providerManage}
+          canManageEngine={aiEngineManage}
+          {providerPermissionLabel}
+          onProvidersChanged={(items) => (providers = items)}
+          onNotice={(message) => (notice = message)}
+          onError={(message) => (errorMessage = message)}
+        />
       {:else if view === 'inspection'}
         <InspectionPage
           scopeId={selectedScopeId}
           {executableTargets}
-          agentProfiles={agentProfileResources}
+          personas={personas}
           {scopeName}
-          {resourceInActiveWorkspace}
-          onNotice={(message) => (notice = message)}
-          onError={(message) => (errorMessage = message)}
-        />
-      {:else if view === 'operation'}
-        <OperationPage
-          {resources}
-          scopeId={selectedScopeId}
-          bind:operationSnapshots
-          {resourceSchemaName}
-          {formatDate}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
         />
@@ -1013,20 +947,17 @@
           {resourceSchemaName}
           {scopeName}
         />
-      {:else if view === 'agent'}
-        <AgentProfilesPage
-          profiles={agentProfileResources}
-          scopeId={selectedScopeId}
+      {:else if view === 'persona'}
+        <PersonasPage
+          profiles={personas}
           {scopeName}
           {formatDate}
-          onResourceCreated={(resource) =>
-            (resources = [resource, ...resources])}
-          onNotice={(message) => (notice = message)}
-          onError={(message) => (errorMessage = message)}
+          onNotice={(message: string) => (notice = message)}
+          onError={(message: string) => (errorMessage = message)}
         />
       {:else if view === 'skill'}
         <SkillRegistryPage
-          resources={skillResources}
+          skills={skills}
           scopeId={selectedScopeId}
           {scopeName}
           onNotice={(message) => (notice = message)}

@@ -34,7 +34,7 @@ describe('workspace helpers', () => {
 
   it('keeps a selected model when switching to a provider that offers it', () => {
     expect(providerModelSelection(
-      [{ provider_resource_id: 'provider-1', models: [{ name: 'gpt-4o' }] }],
+      [{ provider_id: 'provider-1', models: [{ name: 'gpt-4o' }] }],
       'provider-1',
       'gpt-4o'
     )).toEqual({ providerId: 'provider-1', modelName: 'gpt-4o' });
@@ -42,7 +42,7 @@ describe('workspace helpers', () => {
 
   it('falls back to the first model for a provider without the current selection', () => {
     expect(providerModelSelection(
-      [{ provider_resource_id: 'provider-1', models: [{ name: 'claude-3' }] }],
+      [{ provider_id: 'provider-1', models: [{ name: 'claude-3' }] }],
       'provider-1',
       'gpt-4o'
     )).toEqual({ providerId: 'provider-1', modelName: 'claude-3' });

@@ -82,8 +82,9 @@ make run
 - [总体架构设计](docs/design/architecture.md)
 - [三级权限与安全设计](docs/design/authorization.md)
 - [组织、资源与拓扑模型](docs/design/resource-model.md)
-- [AIProvider + AIEngine 设计](docs/design/ai-engine.md)
-- [Kubernetes 导入、AI 诊断与自动巡检](docs/design/operations-workflows.md)
+- [大模型领域对象：Provider、Skill、Persona 与 Engine](docs/design/llm-domains.md)
+- [统一资源接入设计](docs/design/resource-access.md)
+- [图标系统设计](docs/design/icon-system.md)
 
 ## 工程规范
 
@@ -100,7 +101,6 @@ make run
 - [自动化发布](docs/guides/delivery.md)
 - [内置诊断 Skill 与最小权限](docs/guides/builtin-skills.md)
 - [自动巡检、健康评分和通知](docs/guides/inspection.md)
-- [MCP、受控操作与自定义 Skill 沙箱](docs/guides/mcp-operations.md)
 - [Docker MCP Server](docs/guides/docker-mcp.md)
 - [生产环境 Helm 部署](docs/guides/production-deployment.md)
 - [管理员手册](docs/guides/administration.md)
@@ -113,6 +113,9 @@ make run
 - [I002 UI 与功能优化迭代](docs/iterations/I002-ui-function-optimization/iteration.md)
 - [I002-R001 需求文档](docs/iterations/I002-ui-function-optimization/R001-requirement.md)
 - [I002-R001 需求验收报告](docs/iterations/I002-ui-function-optimization/R001-requirement-acceptance.md)
+- [I005 Skill 与智能巡检迭代](docs/iterations/I005-skill-intelligent-inspection/iteration.md)
+- [I005-R001 需求文档](docs/iterations/I005-skill-intelligent-inspection/R001-requirement.md)
+- [I005-R001 需求验收报告](docs/iterations/I005-skill-intelligent-inspection/R001-requirement-acceptance.md)
 - [I001 迭代封板说明](docs/iterations/archived/I001-initial/iteration.md)
 - [I001-R001 需求文档](docs/iterations/archived/I001-initial/R001-requirement.md)
 - [I001-R001 需求验收报告](docs/iterations/archived/I001-initial/R001-requirement-acceptance.md)

@@ -5,7 +5,6 @@
   export let kind = '';
   export let category = '';
   export let subtype = '';
-  export let editingProvider = false;
   export let editingResource = false;
   export let editingDocker = false;
   export let editingKubernetes = false;
@@ -35,7 +34,6 @@
   export let kafkaConfigurationComplete = false;
   export let elasticsearchConfigurationComplete = false;
   export let repositoryConfigurationComplete = false;
-  export let providerModelCount = 0;
   export let busy = false;
   export let scopeSelected = false;
   export let message = '';
@@ -46,7 +44,6 @@
   export let onCancel: () => void = () => {};
   export let onSelectStep: (step: number) => void = () => {};
   export let onContinueBasic: () => void = () => {};
-  export let onContinueProvider: () => void = () => {};
   export let onContinueMcp: () => void = () => {};
   export let onContinueDocker: () => void = () => {};
   export let onContinueKubernetes: () => void = () => {};
@@ -83,8 +80,7 @@
   <header class="resource-add-main-heading">
     <div>
       <p class="eyebrow">
-        {editingProvider ||
-        editingResource ||
+        {editingResource ||
         editingDocker ||
         editingKubernetes ||
         editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRabbitMQ || editingMinIO || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
@@ -93,8 +89,7 @@
       </p>
       <h2 id="resource-add-title">
         <span
-          >{editingProvider ||
-          editingResource ||
+          >{editingResource ||
           editingDocker ||
           editingKubernetes ||
           editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRabbitMQ || editingMinIO || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
@@ -114,29 +109,7 @@
       type="button"
       on:click={() => onSelectStep(1)}><b>1</b><span>基础配置</span></button
     >
-    {#if kind === 'AIProvider'}
-      <button
-        class:active={step === 2}
-        class:done={step > 2}
-        disabled={!basicConfigurationComplete}
-        type="button"
-        on:click={() => basicConfigurationComplete && onSelectStep(2)}
-        ><b>2</b><span>Provider 配置</span></button
-      >
-      <button
-        class:active={step === 3}
-        class:done={step > 3}
-        type="button"
-        on:click={() => onSelectStep(3)}><b>3</b><span>Model 配置</span></button
-      >
-      <button
-        class:active={step === 4}
-        disabled={providerModelCount === 0}
-        type="button"
-        on:click={() => providerModelCount > 0 && onSelectStep(4)}
-        ><b>4</b><span>总结核验</span></button
-      >
-    {:else if kind === 'MCPServer'}
+    {#if kind === 'MCPServer'}
       <button
         class:active={step === 2}
         class:done={step > 2}
@@ -257,34 +230,6 @@
         {#if step === 1}
           <button class="primary" type="button" on:click={onContinueBasic}
             >下一步</button
-          >
-        {:else if kind === 'AIProvider' && step === 2}
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => onSelectStep(1)}>上一步</button
-          ><button class="primary" type="button" on:click={onContinueProvider}
-            >下一步</button
-          >
-        {:else if kind === 'AIProvider' && step === 3}
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => onSelectStep(2)}>上一步</button
-          ><button class="primary" type="button" on:click={onContinueProvider}
-            >下一步</button
-          >
-        {:else if kind === 'AIProvider' && step === 4}
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => onSelectStep(3)}>上一步</button
-          ><button
-            class="primary"
-            type="submit"
-            form="provider-create-form"
-            disabled={busy || !scopeSelected}
-            >{editingProvider ? '保存' : '创建'}</button
           >
         {:else if kind === 'MCPServer' && step === 2}
           <button

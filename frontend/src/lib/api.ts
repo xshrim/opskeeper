@@ -190,29 +190,99 @@ export interface TopologyNode {
 }
 
 export interface AIConnectionResult {
-  provider_resource_id?: string;
+  provider_id?: string;
   model_name: string;
   status: string;
   latency_ms: number;
   message: string;
 }
 
-export interface AIProviderAvailability {
-  provider_resource_id: string;
+export interface ProviderAvailability {
+  provider_id: string;
   name: string;
   models: Array<{ name: string; context_window_tokens?: number; capabilities: string[] }>;
   default: boolean;
 }
 
+export interface ProviderModel {
+  name: string;
+  context_window_tokens: number;
+  max_output_tokens?: number;
+  temperature?: number;
+  temperature_mutable?: boolean;
+  tags?: string[];
+  capabilities?: string[];
+  enabled: boolean;
+  priority?: number;
+}
+
+export interface ProviderConfig {
+  provider_type: string;
+  protocol?: string;
+  base_url: string;
+  timeout_seconds?: number;
+  max_concurrency?: number;
+  rate_limit_per_minute?: number;
+  enabled: boolean;
+  default_model?: string;
+  icon?: string;
+  models: ProviderModel[];
+}
+
+export interface Provider {
+  id: string;
+  scope_id: string;
+  name: string;
+  status: string;
+  tags?: string[];
+  config: ProviderConfig;
+  last_connection_test?: {
+    status: string;
+    message?: string;
+    latency_ms: number;
+    checked_at: string;
+  };
+}
+
+export interface EngineCatalogItem {
+  id: string;
+  scope_id: string;
+  name: string;
+  description: string;
+  icon: string;
+  config: Record<string, unknown>;
+  status: string;
+  tags?: string[];
+}
+
+export interface SkillCatalogItem {
+  id: string;
+  scope_id: string;
+  name: string;
+  identifier: string;
+  category: string;
+  tags: string[];
+  maintainer: string;
+  status: string;
+}
+
+export interface PersonaCatalogItem {
+  id: string;
+  scope_id: string;
+  name: string;
+  description: string;
+  config: Record<string, unknown>;
+  status: string;
+}
+
 export interface SkillVersion {
   id: string;
-  skill_resource_id: string;
+  skill_id: string;
   version: number;
   manifest: {
     name: string;
     description: string;
     instruction: string;
-    target_kinds: string[];
   };
   input_schema: Record<string, unknown>;
   output_schema: Record<string, unknown>;
@@ -227,9 +297,9 @@ export interface SkillVersion {
   published_at?: string;
 }
 
-export interface AgentProfileVersion {
+export interface PersonaVersion {
   id: string;
-  agent_profile_id: string;
+  persona_id: string;
   version: number;
   config: Record<string, unknown>;
   status: string;
@@ -246,7 +316,7 @@ export interface InspectionPolicy {
   status: string;
   target_resource_ids: string[];
   target_labels: Record<string, string>;
-  agent_profile_resource_id?: string;
+  persona_id?: string;
   timeout: number;
   timeout_seconds?: number;
   retries: number;
@@ -288,35 +358,6 @@ export interface NotificationChannel {
   status: string;
   rate_limit_per_minute: number;
 }
-export interface OperationRequest {
-  id: string;
-  scope_id: string;
-  target_resource_id: string;
-  requested_by: string;
-  source: string;
-  operation_name: string;
-  risk_level: 'read_only' | 'low' | 'medium' | 'high';
-  parameters: Record<string, unknown>;
-  parameters_hash: string;
-  impact_summary: string;
-  rollback_summary: string;
-  dry_run: Record<string, unknown>;
-  idempotency_key: string;
-  status: string;
-  expires_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-export interface OperationExecution {
-  id: string;
-  operation_request_id: string;
-  executor: string;
-  idempotency_key: string;
-  status: string;
-  result: Record<string, unknown>;
-  error_message?: string;
-  created_at: string;
-}
 export interface MCPSnapshot {
   id: string;
   server_resource_id: string;
@@ -349,7 +390,7 @@ export type DiagnosisStatus =
 export interface DiagnosisSession {
   id: string;
   scope_id: string;
-  ai_provider_resource_id?: string;
+   provider_id?: string;
   model_name?: string;
   application_id?: string;
   actor_user_id?: string;
@@ -500,51 +541,6 @@ export interface DiagnosisEvent {
   type: string;
   payload: Record<string, unknown>;
   created_at: string;
-}
-
-export interface DiscoveryRun {
-  id: string;
-  cluster_resource_id: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-  error_message?: string;
-  started_at?: string;
-  completed_at?: string;
-  item_count: number;
-  imported_count: number;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DiscoveryItem {
-  id: string;
-  run_id: string;
-  kind: string;
-  namespace?: string;
-  name: string;
-  external_uid: string;
-  resource_version?: string;
-  labels: Record<string, string>;
-  payload: Record<string, unknown>;
-  status: 'pending' | 'imported' | 'ignored' | 'missing';
-  imported_application_id?: string;
-  imported_project_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DiscoveryProjectMapping {
-  project_id?: string;
-  team_id?: string;
-  name?: string;
-  code?: string;
-  ignore?: boolean;
-}
-
-export interface DiscoveryImportResult {
-  run: DiscoveryRun;
-  imported: DiscoveryItem[];
-  ignored: DiscoveryItem[];
 }
 
 export interface Group {
@@ -827,37 +823,37 @@ export const api = {
     ),
   latestResourceConnectionCheck: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests/latest`),
-  testAIProvider: (
+  testProvider: (
     id: string,
     body: { scope_id: string; model_name: string; stream: boolean }
   ) =>
-    request<AIConnectionResult>(`api/v1/ai-providers/${id}/test`, json(body)),
-  availableAIProviders: (scopeId: string, purpose = 'general') =>
-    request<AIProviderAvailability[]>(
-      `api/v1/ai-providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
+    request<AIConnectionResult>(`api/v1/providers/${id}/test`, json(body)),
+  availableProviders: (scopeId: string, purpose = 'general') =>
+    request<ProviderAvailability[]>(
+      `api/v1/providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
     ),
-  aiProviderBindings: (scopeId: string) =>
+  providerBindings: (scopeId: string) =>
     request<
-      Array<{ scope_id: string; provider_resource_id: string; tag: string }>
-    >(`api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings`),
-  setAIProviderBinding: (
+      Array<{ scope_id: string; provider_id: string; tag: string }>
+    >(`api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings`),
+  setProviderBinding: (
     scopeId: string,
     purpose: string,
-    providerResourceId: string
+    providerId: string
   ) =>
     request(
-      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`,
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings/${encodeURIComponent(purpose)}`,
       {
         method: 'PUT',
-        body: JSON.stringify({ provider_resource_id: providerResourceId })
+        body: JSON.stringify({ provider_id: providerId })
       }
     ),
-  removeAIProviderBinding: (scopeId: string, purpose: string) =>
+  removeProviderBinding: (scopeId: string, purpose: string) =>
     request<void>(
-      `api/v1/scopes/${encodeURIComponent(scopeId)}/ai-provider-bindings/${encodeURIComponent(purpose)}`,
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings/${encodeURIComponent(purpose)}`,
       { method: 'DELETE' }
     ),
-  testDraftAIProvider: (body: {
+  testDraftProvider: (body: {
     scope_id: string;
     provider_type: string;
     base_url: string;
@@ -869,7 +865,7 @@ export const api = {
     capabilities: string[];
     stream: boolean;
   }) =>
-    request<AIConnectionResult>('api/v1/ai-providers/test-draft', json(body)),
+    request<AIConnectionResult>('api/v1/providers/test-draft', json(body)),
   skillVersions: (skillId: string) =>
     request<SkillVersion[]>(`api/v1/skills/${skillId}/versions`),
   createSkillVersion: (skillId: string, body: Record<string, unknown>) =>
@@ -879,31 +875,59 @@ export const api = {
       `api/v1/skills/${skillId}/versions/${versionId}/publish`,
       { method: 'POST' }
     ),
-  agentProfileVersions: (profileId: string) =>
-    request<AgentProfileVersion[]>(
-      `api/v1/agent-profiles/${profileId}/versions`
+  providers: (scopeId: string) =>
+    request<{ items: Provider[] }>(`api/v1/providers?scope_id=${encodeURIComponent(scopeId)}`),
+  createProvider: (body: { scope_id: string; name: string; status?: string; config: ProviderConfig; api_key?: string }) =>
+    request<Provider>('api/v1/providers', { method: 'POST', body: JSON.stringify(body) }),
+  updateProvider: (id: string, body: { name?: string; status?: string; config?: ProviderConfig; api_key?: string }) =>
+    request<Provider>(`api/v1/providers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteProvider: (id: string) =>
+    request<void>(`api/v1/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  engines: (scopeId: string) =>
+    request<{ items: EngineCatalogItem[] }>(`api/v1/engines?scope_id=${encodeURIComponent(scopeId)}`),
+  createEngine: (body: { scope_id: string; name: string; description?: string; icon?: string; config?: Record<string, unknown>; status?: string }) =>
+    request<EngineCatalogItem>('api/v1/engines', { method: 'POST', body: JSON.stringify(body) }),
+  updateEngine: (id: string, body: { name?: string; description?: string; icon?: string; config?: Record<string, unknown>; status?: string }) =>
+    request<EngineCatalogItem>(`api/v1/engines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  engineCapabilityTerms: () =>
+    request<{ items: string[] }>('api/v1/engine-capability-terms'),
+  createEngineCapabilityTerm: (term: string) =>
+    request<{ term: string }>('api/v1/engine-capability-terms', { method: 'POST', body: JSON.stringify({ term }) }),
+  engineBindings: (scopeId: string) =>
+    request<Array<{ scope_id: string; engine_id: string; tag: string }>>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings`),
+  setEngineBinding: (scopeId: string, tag: string, engineId: string) =>
+    request<{ scope_id: string; engine_id: string; tag: string }>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}`, { method: 'PUT', body: JSON.stringify({ engine_id: engineId }) }),
+  removeEngineBinding: (scopeId: string, tag: string, engineId: string) =>
+    request<void>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}/${encodeURIComponent(engineId)}`, { method: 'DELETE' }),
+  skills: (scopeId: string) =>
+    request<{ items: SkillCatalogItem[] }>(`api/v1/skills?scope_id=${encodeURIComponent(scopeId)}`),
+  personas: (scopeId: string) =>
+    request<{ items: PersonaCatalogItem[] }>(`api/v1/personas?scope_id=${encodeURIComponent(scopeId)}`),
+  personaVersions: (personaId: string) =>
+    request<PersonaVersion[]>(
+      `api/v1/personas/${personaId}/versions`
     ),
-  createAgentProfileVersion: (
-    profileId: string,
+  createPersonaVersion: (
+    personaId: string,
     config: Record<string, unknown>
   ) =>
-    request<AgentProfileVersion>(
-      `api/v1/agent-profiles/${profileId}/versions`,
+    request<PersonaVersion>(
+      `api/v1/personas/${personaId}/versions`,
       json({ config })
     ),
-  publishAgentProfileVersion: (profileId: string, versionId: string) =>
-    request<AgentProfileVersion>(
-      `api/v1/agent-profiles/${profileId}/versions/${versionId}/publish`,
+  publishPersonaVersion: (personaId: string, versionId: string) =>
+    request<PersonaVersion>(
+      `api/v1/personas/${personaId}/versions/${versionId}/publish`,
       { method: 'POST' }
     ),
-  disableAgentProfileVersion: (profileId: string, versionId: string) =>
-    request<AgentProfileVersion>(
-      `api/v1/agent-profiles/${profileId}/versions/${versionId}/disable`,
+  disablePersonaVersion: (personaId: string, versionId: string) =>
+    request<PersonaVersion>(
+      `api/v1/personas/${personaId}/versions/${versionId}/disable`,
       { method: 'POST' }
     ),
   setSkillDefault: (body: {
     scope_id: string;
-    skill_resource_id: string;
+    skill_id: string;
     skill_version_id: string;
   }) => request('api/v1/skill-defaults', { ...json(body), method: 'PUT' }),
   diagnosisSessions: (scopeId: string) =>
@@ -918,7 +942,7 @@ export const api = {
     title?: string;
     question: string;
     target_resource_ids: string[];
-    ai_provider_resource_id?: string;
+     provider_id?: string;
     model_name?: string;
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
   addDiagnosisTarget: (sessionId: string, resourceId: string) =>
@@ -977,25 +1001,6 @@ export const api = {
     request<InspectionPolicy>('api/v1/inspection-policies', json(body)),
   createNotificationChannel: (body: Record<string, unknown>) =>
     request<NotificationChannel>('api/v1/notification-channels', json(body)),
-  operationRequests: (scopeId: string) =>
-    request<OperationRequest[]>(
-      `api/v1/operation-requests?scope_id=${encodeURIComponent(scopeId)}&limit=50`
-    ),
-  createOperationRequest: (body: Record<string, unknown>) =>
-    request<OperationRequest>('api/v1/operation-requests', json(body)),
-  approveOperation: (
-    id: string,
-    body: { decision: string; parameters_hash: string; comment?: string }
-  ) =>
-    request<OperationRequest>(
-      `api/v1/operation-requests/${id}/approvals`,
-      json(body)
-    ),
-  startOperation: (id: string, idempotencyKey: string) =>
-    request<OperationExecution>(
-      `api/v1/operation-requests/${id}/execute`,
-      json({ idempotency_key: idempotencyKey })
-    ),
   discoverMCP: (resourceId: string) =>
     request<MCPSnapshot>(`api/v1/mcp-servers/${resourceId}/discover`, {
       method: 'POST'
@@ -1046,26 +1051,6 @@ export const api = {
   topology: (id: string) =>
     request<{ items: TopologyNode[] }>(
       `api/v1/resources/${id}/topology?depth=4&max_nodes=40`
-    ),
-  discoveryRuns: (clusterId: string) =>
-    request<DiscoveryRun[]>(`api/v1/resources/${clusterId}/discoveries`),
-  startDiscovery: (clusterId: string) =>
-    request<DiscoveryRun>(`api/v1/resources/${clusterId}/discoveries`, {
-      method: 'POST'
-    }),
-  discovery: (id: string) => request<DiscoveryRun>(`api/v1/discoveries/${id}/`),
-  discoveryItems: (id: string) =>
-    request<DiscoveryItem[]>(`api/v1/discoveries/${id}/items`),
-  importDiscovery: (
-    id: string,
-    body: {
-      item_ids: string[];
-      project_mappings: Record<string, DiscoveryProjectMapping>;
-    }
-  ) =>
-    request<DiscoveryImportResult>(
-      `api/v1/discoveries/${id}/imports`,
-      json(body)
     ),
   users: () => request<User[]>('api/v1/users/'),
   createUser: (body: {

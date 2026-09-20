@@ -1,0 +1,2 @@
+-- Retired discovery and controlled-operation tables are intentionally not
+-- recreated. Restoring them would reintroduce removed product domains.

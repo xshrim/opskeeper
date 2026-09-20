@@ -30,7 +30,6 @@ export function resourceHasConnector(resource: Resource) {
   if (String(resource.subtype ?? '').toLowerCase() === 'agent')
     return Boolean(resource.agent_ref);
   return [
-    'AIProvider',
     'Host',
     'Docker',
     'Kubernetes',
@@ -48,7 +47,6 @@ export function resourceHasConnector(resource: Resource) {
 }
 
 export function resourceSchemaName(kind: string, schemas: ResourceSchema[]) {
-  if (kind === 'AIProvider') return 'Provider';
   const schema = schemas.find((item) => item.kind === kind);
   return schema?.display_name || schema?.kind || kind;
 }
@@ -82,20 +80,6 @@ export function brandNameFor(resource: ResourceShape) {
     helm: 'Helm',
     prometheus: 'Prometheus',
     grafana: 'Grafana',
-    openai: 'OpenAI',
-    openaicompatible: 'OpenAI',
-    anthropic: 'Anthropic',
-    deepseek: 'DeepSeek',
-    qwen: 'Qwen',
-    ollama: 'Ollama',
-    gemini: 'Gemini',
-    googlegemini: 'Gemini',
-    kimi: 'Kimi',
-    minimax: 'MiniMax',
-    minimaxai: 'MiniMax',
-    openrouter: 'OpenRouter',
-    moonshot: 'Moonshot',
-    moonshotai: 'Moonshot',
     minio: 'MinIO',
     mongodb: 'MongoDB',
     gitea: 'Gitea',

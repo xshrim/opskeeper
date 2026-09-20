@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	kclient "opskeeper/backend/mcpserver/kubernetes/client"
 	kt "opskeeper/backend/tool/kubernetes"
 )
 
-func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Kubernetes agent resources must use the MCP provider")
 	}
@@ -20,12 +20,12 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item aiengine.Cont
 		return err
 	}
 	register := func(name, description string, extra map[string]any, fn func(context.Context, map[string]any) (any, error)) {
-		add(name, description, directKubernetesSchema(extra), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+		add(name, description, directKubernetesSchema(extra), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 			out, callErr := fn(runCtx, args)
 			if callErr != nil {
-				return aiengine.ToolResult{}, callErr
+				return engine.ToolResult{}, callErr
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	register("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.ClusterInfo(c, connection) })
@@ -75,7 +75,7 @@ func directKubernetesSchema(extra map[string]any) json.RawMessage {
 	return b
 }
 
-func (s *Service) kubernetesConnection(ctx context.Context, item aiengine.ContextResource) (kclient.ConnectionInput, error) {
+func (s *Service) kubernetesConnection(ctx context.Context, item engine.ContextResource) (kclient.ConnectionInput, error) {
 	c := kclient.ConnectionInput{}
 	setKubernetesConnection(&c, item.Config)
 	secret, configured, err := s.resourceSecret(ctx, item.ID)

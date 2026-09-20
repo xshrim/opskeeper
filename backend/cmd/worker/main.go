@@ -12,15 +12,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/inspection"
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/mcp"
 	"opskeeper/backend/observability"
-	"opskeeper/backend/operation"
+	"opskeeper/backend/persona"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/secret"
 	"opskeeper/backend/skill"
@@ -81,44 +81,31 @@ func main() {
 	connectors := connector.NewService(registry, resourceService, connector.NewStore(pool), limits)
 	connectors.SetPostgresPool(pool)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
-	connectorProvider := connectors.AIEngineProvider()
-	mcpProvider := mcpService.AIEngineProvider()
-	llmService := llm.NewService(llm.NewStore(pool), resourceService)
-	skillService := skill.NewService(skill.NewStore(pool), resourceService)
-	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
-	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
-	agentProfileResolver.Versions = agentProfileVersions
-	contextTooling := aiengine.NewContextTooling(aiengine.ResourceServiceReader{Reader: resourceService}, connectorProvider, mcpProvider)
-	aiStore := aiengine.NewPostgresStore(pool)
+	connectorProvider := connectors.EngineProvider()
+	mcpProvider := mcpService.EngineProvider()
+	llmService := llm.NewService(llm.NewStore(pool), llm.NewProviderStore(pool, encryptor))
+	skillService := skill.NewService(skill.NewStore(pool), skill.NewCatalog(pool), resourceService)
+	personaVersions := persona.NewVersionStore(pool)
+	personaResolver := persona.NewResolver(persona.NewPersonaCatalog(pool), personaVersions)
+	contextTooling := engine.NewContextTooling(engine.ResourceServiceReader{Reader: resourceService}, connectorProvider, mcpProvider)
+	aiStore := engine.NewPostgresStore(pool)
 	contextTooling.Gateway.AuditStore = aiStore
-	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose aiengine.Purpose) (aiengine.ModelBuildResult, error) {
+	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose engine.Purpose) (engine.ModelBuildResult, error) {
 		resolved, client, err := llmService.BuildModel(ctx, scopeID, providerID, modelName, llm.Purpose(purpose))
 		if err != nil {
-			return aiengine.ModelBuildResult{}, err
+			return engine.ModelBuildResult{}, err
 		}
-		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities, ContextWindowTokens: resolved.Model.ContextWindowTokens, MaxOutputTokens: resolved.Model.MaxOutputTokens, Temperature: resolved.Model.Temperature}, nil
+		return engine.ModelBuildResult{Client: client, ProviderID: resolved.Provider.ID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities, ContextWindowTokens: resolved.Model.ContextWindowTokens, MaxOutputTokens: resolved.Model.MaxOutputTokens, Temperature: resolved.Model.Temperature}, nil
 	}
-	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
-		WithAgentProfileResolver(agentProfileResolver).
+	engineRuntime := engine.NewWithContextAndStore(engine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
+		WithPersonaResolver(personaResolver).
 		WithPlanResolver(skillService)
-	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: aiEngine, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
-	var operationReconciler *operation.Reconciler
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
-		operationReconciler, err = operation.NewInClusterReconciler(operation.NewStore(pool))
-		if err != nil {
-			logger.Warn("operation reconciler unavailable", "kind", "error", "error_type", "operation-reconciler", "error", err)
-		}
-	}
+	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: engineRuntime, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
 	notifier := inspection.NotificationWorker{Store: store}
 	ticker := time.NewTicker(cfg.InspectionWorkerPollInterval)
 	defer ticker.Stop()
 	logger.Info("worker started", "kind", "service-start", "poll_interval", cfg.InspectionWorkerPollInterval)
 	for {
-		if operationReconciler != nil {
-			if _, reconcileErr := operationReconciler.RunOnce(ctx); reconcileErr != nil {
-				logger.Error("reconcile operation job", "kind", "job", "error_type", "operation-reconcile", "error", reconcileErr)
-			}
-		}
 		started := time.Now()
 		claimed, runErr := worker.RunOnce(ctx)
 		if runErr != nil {
@@ -246,7 +233,7 @@ func (c connectorChecker) connectivity(ctx context.Context, id string) ([]inspec
 }
 
 type inspectionExplainer struct {
-	engine aiengine.Engine
+	engine engine.Engine
 	store  interface {
 		RecordExplanation(context.Context, string, string) error
 	}
@@ -279,11 +266,11 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 		var toolCalls int
 		var totalTokens int64
 		var err error
-		result, executeErr := e.engine.Execute(ctx, aiengine.Request{
-			ScopeID: policy.ScopeID, Profile: aiengine.ProfileInspection, AgentProfileID: policy.AgentProfileResourceID,
-			ResolvedAgentProfile: inspectionProfile(policy),
-			Input:                map[string]any{"target_resource_id": targetID}, Context: aiengine.ContextRequest{ResourceIDs: []string{targetID}},
-			Budget: aiengine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
+		result, executeErr := e.engine.Execute(ctx, engine.Request{
+			ScopeID: policy.ScopeID, Profile: engine.ProfileInspection, PersonaID: policy.PersonaID,
+			ResolvedPersona: inspectionPersona(policy),
+			Input:           map[string]any{"target_resource_id": targetID}, Context: engine.ContextRequest{ResourceIDs: []string{targetID}},
+			Budget: engine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
 		})
 		output, toolCalls, totalTokens, status, err = result.Output, result.ToolCallCount, result.TotalTokens, string(result.Status), executeErr
 		if err != nil {
@@ -296,7 +283,7 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 		remainingTokens -= totalTokens
 		if status != "succeeded" {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("inspection AIEngine execution ended with status %s", status)
+				firstErr = fmt.Errorf("inspection Engine execution ended with status %s", status)
 			}
 			continue
 		}
@@ -311,12 +298,12 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 	return nil
 }
 
-func inspectionProfile(policy inspection.Policy) *aiengine.AgentProfile {
-	if policy.AgentProfileResourceID != "" {
+func inspectionPersona(policy inspection.Policy) *engine.Persona {
+	if policy.PersonaID != "" {
 		return nil
 	}
-	return &aiengine.AgentProfile{
-		ResourceID: "builtin:inspection-agent", ScopeID: policy.ScopeID, Name: "巡检解释 Agent", Version: 1, Enabled: true,
+	return &engine.Persona{
+		PersonaID: "builtin:inspection-persona", ScopeID: policy.ScopeID, Name: "巡检解释专家", Version: 1, Enabled: true,
 		Instruction:  "你是 OpsKeeper 巡检解释专家。仅基于确定性巡检结果和授权只读上下文解释异常，明确区分事实与推断，不执行写操作，不泄露凭据。输出简洁的原因分析与建议。",
 		Capabilities: []string{"text", "tool_calling", "stream"},
 	}

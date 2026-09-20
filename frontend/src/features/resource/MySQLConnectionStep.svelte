@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Resource } from '../../lib/api';
+  import PasswordInput from '../../components/PasswordInput.svelte';
   export let accessMode: 'direct' | 'agent' = 'direct';
   export let host = ''; export let port = 3306; export let database = ''; export let username = ''; export let password = ''; export let timeoutSeconds = 10; export let mcpServerResourceId = ''; export let mcpServers: Resource[] = []; export let configurationAttempted = false; export let onConfigurationChange: () => void = () => {};
 </script>
@@ -12,7 +13,7 @@
     <label><span>端口</span><input type="number" min="1" max="65535" bind:value={port} on:input={onConfigurationChange} /></label>
     <label class:invalid={configurationAttempted && !database.trim()}><span><i>*</i>数据库名</span><input bind:value={database} required on:input={onConfigurationChange} /></label>
     <label class:invalid={configurationAttempted && !username.trim()}><span><i>*</i>用户名</span><input bind:value={username} required on:input={onConfigurationChange} /></label>
-    <label class:invalid={configurationAttempted && !password.trim()}><span><i>*</i>密码</span><input type="password" bind:value={password} required on:input={onConfigurationChange} /></label>
+    <label class:invalid={configurationAttempted && !password.trim()}><span><i>*</i>密码</span><PasswordInput bind:value={password} required on:input={onConfigurationChange} ariaLabel="密码" /></label>
     <label><span>超时时间（秒）</span><input type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></label>
   </div>
 {/if}

@@ -76,7 +76,7 @@ func Load() (Config, error) {
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		// Diagnosis uses a long-lived SSE response. Keep the server-level write
-		// deadline above the AIEngine's 30-minute execution budget so an idle
+		// deadline above the Engine's 30-minute execution budget so an idle
 		// tool/model turn cannot terminate the stream prematurely.
 		WriteTimeout:             35 * time.Minute,
 		IdleTimeout:              60 * time.Second,

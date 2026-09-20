@@ -9,20 +9,20 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/resource"
 )
 
 type workflowRunHandler struct {
 	resources resourceService
-	runs      aiengine.WorkflowRunStore
+	runs      engine.WorkflowRunStore
 	executor  workflowExecutionService
-	events    aiengine.EventStore
+	events    engine.EventStore
 }
 
 type workflowExecutionService interface {
-	Execute(context.Context, aiengine.Workflow, string) (aiengine.WorkflowRun, error)
+	Execute(context.Context, engine.Workflow, string) (engine.WorkflowRun, error)
 }
 
 type createWorkflowRunRequest struct {
@@ -38,7 +38,7 @@ type updateWorkflowRunRequest struct {
 	ErrorMessage  string         `json:"error_message,omitempty"`
 }
 
-func registerWorkflowRoutes(router chi.Router, resources resourceService, runs aiengine.WorkflowRunStore, executor workflowExecutionService, events aiengine.EventStore, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
+func registerWorkflowRoutes(router chi.Router, resources resourceService, runs engine.WorkflowRunStore, executor workflowExecutionService, events engine.EventStore, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
 	if resources == nil || runs == nil {
 		return
 	}
@@ -78,18 +78,18 @@ func (h workflowRunHandler) eventsForRun(w http.ResponseWriter, r *http.Request)
 	ctx := chi.NewRouteContext()
 	ctx.URLParams.Add("executionID", run.ExecutionID)
 	request := r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, ctx))
-	aiEngineEventHandler{store: h.events}.events(w, request)
+	engineEventHandler{store: h.events}.events(w, request)
 }
 
-func (h workflowRunHandler) workflow(ctx context.Context, id string) (aiengine.Workflow, error) {
+func (h workflowRunHandler) workflow(ctx context.Context, id string) (engine.Workflow, error) {
 	item, err := h.resources.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
-		return aiengine.Workflow{}, err
+		return engine.Workflow{}, err
 	}
 	if item.Kind != "Workflow" || !resourceAllowed(ctx, item) {
-		return aiengine.Workflow{}, authorization.ErrForbidden
+		return engine.Workflow{}, authorization.ErrForbidden
 	}
-	return aiengine.WorkflowFromResource(item.ID, item.ScopeID, item.Name, item.Config)
+	return engine.WorkflowFromResource(item.ID, item.ScopeID, item.Name, item.Config)
 }
 
 func resourceAllowed(ctx context.Context, item resource.Resource) bool {
@@ -120,7 +120,7 @@ func (h workflowRunHandler) create(w http.ResponseWriter, r *http.Request) {
 	if executionID == "" {
 		executionID = "workflow-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
-	run, err := h.runs.CreateWorkflowRun(r.Context(), aiengine.WorkflowRunInput{WorkflowID: wf.ID, WorkflowVersion: wf.Version, ExecutionID: executionID, ScopeID: wf.ScopeID, CreatedBy: currentUser(r).ID, Input: body.Input})
+	run, err := h.runs.CreateWorkflowRun(r.Context(), engine.WorkflowRunInput{WorkflowID: wf.ID, WorkflowVersion: wf.Version, ExecutionID: executionID, ScopeID: wf.ScopeID, CreatedBy: currentUser(r).ID, Input: body.Input})
 	if err != nil {
 		writeWorkflowError(w, r, err)
 		return
@@ -155,7 +155,7 @@ func (h workflowRunHandler) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, run)
 }
 
-func (h workflowRunHandler) transition(w http.ResponseWriter, r *http.Request, status aiengine.WorkflowRunStatus) {
+func (h workflowRunHandler) transition(w http.ResponseWriter, r *http.Request, status engine.WorkflowRunStatus) {
 	run, err := h.runs.GetWorkflowRun(r.Context(), chi.URLParam(r, "runID"))
 	if err != nil {
 		writeWorkflowError(w, r, err)
@@ -165,7 +165,7 @@ func (h workflowRunHandler) transition(w http.ResponseWriter, r *http.Request, s
 		writeWorkflowError(w, r, err)
 		return
 	}
-	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, aiengine.WorkflowRunPatch{Status: status, Attempt: run.Attempt + 1})
+	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, engine.WorkflowRunPatch{Status: status, Attempt: run.Attempt + 1})
 	if err != nil {
 		writeWorkflowError(w, r, err)
 		return
@@ -186,7 +186,7 @@ func (h workflowRunHandler) resume(w http.ResponseWriter, r *http.Request) {
 		writeWorkflowError(w, r, err)
 		return
 	}
-	if run.Status != aiengine.WorkflowRunWaitingApproval {
+	if run.Status != engine.WorkflowRunWaitingApproval {
 		writeError(w, r, http.StatusConflict, "conflict", "Workflow run is not waiting for approval")
 		return
 	}
@@ -202,7 +202,7 @@ func (h workflowRunHandler) execute(w http.ResponseWriter, r *http.Request, _ bo
 	h.executeRun(w, r, run)
 }
 
-func (h workflowRunHandler) executeRun(w http.ResponseWriter, r *http.Request, run aiengine.WorkflowRun) {
+func (h workflowRunHandler) executeRun(w http.ResponseWriter, r *http.Request, run engine.WorkflowRun) {
 	wf, err := h.workflow(r.Context(), run.WorkflowID)
 	if err != nil {
 		writeWorkflowError(w, r, err)
@@ -220,11 +220,11 @@ func (h workflowRunHandler) executeRun(w http.ResponseWriter, r *http.Request, r
 	writeJSON(w, http.StatusOK, updated)
 }
 func (h workflowRunHandler) cancel(w http.ResponseWriter, r *http.Request) {
-	h.transition(w, r, aiengine.WorkflowRunCancelled)
+	h.transition(w, r, engine.WorkflowRunCancelled)
 }
 
-func (h workflowRunHandler) transitionRun(w http.ResponseWriter, r *http.Request, run aiengine.WorkflowRun, status aiengine.WorkflowRunStatus) {
-	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, aiengine.WorkflowRunPatch{Status: status, Attempt: run.Attempt + 1})
+func (h workflowRunHandler) transitionRun(w http.ResponseWriter, r *http.Request, run engine.WorkflowRun, status engine.WorkflowRunStatus) {
+	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, engine.WorkflowRunPatch{Status: status, Attempt: run.Attempt + 1})
 	if err != nil {
 		writeWorkflowError(w, r, err)
 		return
@@ -250,7 +250,7 @@ func (h workflowRunHandler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "attempt must not be negative")
 		return
 	}
-	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, aiengine.WorkflowRunPatch{Status: run.Status, CurrentNodeID: body.CurrentNodeID, Attempt: body.Attempt, State: body.State, ErrorCode: body.ErrorCode, ErrorMessage: body.ErrorMessage})
+	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, engine.WorkflowRunPatch{Status: run.Status, CurrentNodeID: body.CurrentNodeID, Attempt: body.Attempt, State: body.State, ErrorCode: body.ErrorCode, ErrorMessage: body.ErrorMessage})
 	if err != nil {
 		writeWorkflowError(w, r, err)
 		return
@@ -260,17 +260,17 @@ func (h workflowRunHandler) update(w http.ResponseWriter, r *http.Request) {
 
 func writeWorkflowError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, aiengine.ErrWorkflowRunNotFound):
+	case errors.Is(err, engine.ErrWorkflowRunNotFound):
 		writeError(w, r, http.StatusNotFound, "not_found", "Workflow run not found")
-	case errors.Is(err, aiengine.ErrWorkflowRunConflict):
+	case errors.Is(err, engine.ErrWorkflowRunConflict):
 		writeError(w, r, http.StatusConflict, "conflict", "Workflow run conflicts with existing data")
-	case errors.Is(err, aiengine.ErrWorkflowInvalid):
+	case errors.Is(err, engine.ErrWorkflowInvalid):
 		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
-	case errors.Is(err, aiengine.ErrWorkflowCycle):
+	case errors.Is(err, engine.ErrWorkflowCycle):
 		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.Is(err, authorization.ErrForbidden):
 		writeError(w, r, http.StatusForbidden, "forbidden", "You do not have permission for this workflow")
 	default:
-		writeAIEngineError(w, r, err)
+		writeEngineError(w, r, err)
 	}
 }

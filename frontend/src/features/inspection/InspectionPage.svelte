@@ -6,14 +6,14 @@
     type InspectionPolicy,
     type InspectionRun,
     type NotificationChannel,
+    type PersonaCatalogItem,
     type Resource
   } from '../../lib/api';
 
   export let scopeId = '';
   export let executableTargets: Resource[] = [];
-  export let agentProfiles: Resource[] = [];
+  export let personas: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
-  export let resourceInActiveWorkspace: (resource: Resource) => boolean;
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
 
@@ -25,7 +25,7 @@
   let cron = '0 * * * *';
   let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   let targetIds: string[] = [];
-  let agentProfileId = '';
+  let personaId = '';
   let targetLabels = '{}';
   let timeoutSeconds = 120;
   let retries = 1;
@@ -120,7 +120,7 @@
         timezone,
         target_resource_ids: targetIds,
         target_labels: JSON.parse(targetLabels),
-        agent_profile_resource_id: agentProfileId || undefined,
+        persona_id: personaId || undefined,
         timeout_seconds: timeoutSeconds,
         retries,
         max_concurrent: maxConcurrent,
@@ -177,7 +177,7 @@
       </div>
       <label>标签选择器（JSON 对象）<textarea rows="3" bind:value={targetLabels}></textarea></label>
       <fieldset><legend>目标资源</legend><div class="check-grid">{#each executableTargets as target}<label class="check-row"><input type="checkbox" checked={targetIds.includes(target.id)} on:change={() => (targetIds = toggleSelection(targetIds, target.id))} />{target.name} · {target.kind}</label>{/each}</div></fieldset>
-      <label>解释 AgentProfile（可选）<select bind:value={agentProfileId}><option value="">使用内置巡检解释 Agent</option>{#each agentProfiles.filter((item) => resourceInActiveWorkspace(item) && item.status === 'active') as profile}<option value={profile.id}>{profile.name} · {scopeName(profile.scope_id)}</option>{/each}</select></label>
+      <label>解释 Persona（可选）<select bind:value={personaId}><option value="">使用内置巡检解释 Persona</option>{#each personas.filter((item) => item.status === 'active') as profile}<option value={profile.id}>{profile.name} · {scopeName(profile.scope_id)}</option>{/each}</select></label>
       <button class="primary" disabled={busy || !policyName || (targetIds.length === 0 && targetLabels.trim() === '{}')}>创建策略</button>
     </form>
   </section>

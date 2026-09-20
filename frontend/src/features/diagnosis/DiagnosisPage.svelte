@@ -19,7 +19,7 @@
     Wrench
   } from 'lucide-svelte';
   import type {
-    AIProviderAvailability,
+    ProviderAvailability,
     DiagnosisEvidence,
     DiagnosisMessage,
     DiagnosisSession,
@@ -85,7 +85,7 @@
     output?: string;
     actions?: LiveTimelineItem[];
   };
-  type Provider = AIProviderAvailability;
+  type Provider = ProviderAvailability;
 
   let diagnosisHistoryCollapsed = false;
   let diagnosisContextCollapsed = false;
@@ -274,13 +274,13 @@
       diagnosisApplicationCandidates = [];
     }
     try {
-      diagnosisAvailableProviders = await api.availableAIProviders(scopeId, 'diagnosis');
+      diagnosisAvailableProviders = await api.availableProviders(scopeId, 'diagnosis');
       if (
         diagnosisAvailableProviders.length > 0 &&
         (!selectedProviderId ||
-          !diagnosisAvailableProviders.some((item) => item.provider_resource_id === selectedProviderId))
+          !diagnosisAvailableProviders.some((item) => item.provider_id === selectedProviderId))
       ) {
-        selectedProviderId = diagnosisAvailableProviders[0].provider_resource_id;
+        selectedProviderId = diagnosisAvailableProviders[0].provider_id;
         llmModelName = diagnosisAvailableProviders[0].models[0]?.name ?? '';
       }
     } catch (error) {
@@ -316,7 +316,7 @@
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length;
       diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
       diagnosisApplicationIds = diagnosisSnapshot.session.application_id ? [diagnosisSnapshot.session.application_id] : [];
-      if (diagnosisSnapshot.session.ai_provider_resource_id) selectedProviderId = diagnosisSnapshot.session.ai_provider_resource_id;
+      if (diagnosisSnapshot.session. provider_id) selectedProviderId = diagnosisSnapshot.session. provider_id;
       if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
       applicationId = diagnosisSnapshot.session.application_id ?? '';
       diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
@@ -410,9 +410,9 @@
   }
 
   function selectDiagnosisModel(modelName: string) {
-    const provider = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId) ?? diagnosisAvailableProviders[0];
+    const provider = diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId) ?? diagnosisAvailableProviders[0];
     if (!provider) return;
-    selectedProviderId = provider.provider_resource_id;
+    selectedProviderId = provider.provider_id;
     llmModelName = modelName;
   }
 
@@ -454,10 +454,8 @@
       .filter((id) => diagnosisTargets.some((resource) => resource.id === id));
   }
 
-  function isDiagnosisContextExcluded(resource: Resource) {
-    return ['skill', 'aiprovider', 'llm', 'llmprovider', 'agentprofile'].includes(
-      resource.kind.trim().toLowerCase()
-    );
+  function isDiagnosisContextExcluded(_resource: Resource) {
+    return false;
   }
 
   function clearDiagnosisHistory() {
@@ -512,11 +510,11 @@
     }
   }
   $: if (!llmModelName && selectedProviderId) {
-    const available = diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId);
+    const available = diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId);
     llmModelName = String(available?.models[0]?.name ?? '');
   }
   $: selectedDiagnosisModel = diagnosisAvailableProviders
-    .find((item) => item.provider_resource_id === selectedProviderId)
+    .find((item) => item.provider_id === selectedProviderId)
     ?.models.find((item) => item.name === llmModelName);
   $: diagnosisContextUsage = {
     used: Math.max(1, Math.ceil((
@@ -528,7 +526,7 @@
       }, 0)
       + diagnosisApplicationIds.length * 120
       + (diagnosisSnapshot?.events ?? [])
-        .filter((event) => /skill|agent_profile|agent/i.test(event.type))
+        .filter((event) => /skill|persona|agent/i.test(event.type))
         .reduce((sum, event) => sum + JSON.stringify(event.payload ?? {}).length + 320, 0)
     ) / 4)),
     total: Number(selectedDiagnosisModel?.context_window_tokens ?? 128000)
@@ -576,7 +574,7 @@
   function toggleDiagnosisModelMenu() {
     diagnosisModelMenuOpen = !diagnosisModelMenuOpen;
     if (diagnosisModelMenuOpen) {
-      diagnosisModelMenuProviderId = selectedProviderId || diagnosisAvailableProviders[0]?.provider_resource_id || '';
+      diagnosisModelMenuProviderId = selectedProviderId || diagnosisAvailableProviders[0]?.provider_id || '';
     }
   }
 
@@ -640,11 +638,11 @@
   $: diagnosisMenuProvider =
     diagnosisAvailableProviders.find(
       (item) =>
-        item.provider_resource_id ===
+        item.provider_id ===
         (diagnosisModelMenuProviderId || selectedProviderId)
     ) ??
     diagnosisAvailableProviders.find(
-      (item) => item.provider_resource_id === selectedProviderId
+      (item) => item.provider_id === selectedProviderId
     ) ??
     diagnosisAvailableProviders[0];
 </script>
@@ -854,8 +852,8 @@
               disabled={diagnosisAvailableProviders.length === 0}
               on:click={toggleDiagnosisModelMenu}
               ><span
-                >{#if diagnosisAvailableProviders.find((item) => item.provider_resource_id === selectedProviderId)}{diagnosisAvailableProviders.find(
-                    (item) => item.provider_resource_id === selectedProviderId
+                >{#if diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId)}{diagnosisAvailableProviders.find(
+                    (item) => item.provider_id === selectedProviderId
                   )?.name}{:else}暂无可用模型服务商{/if}{#if llmModelName}
                   · {llmModelName}{/if}</span
               ><ChevronDown size={13} aria-hidden="true" /></button
@@ -869,14 +867,14 @@
                   >{#each diagnosisAvailableProviders as provider}<button
                       type="button"
                       role="menuitem"
-                      class:active={provider.provider_resource_id ===
+                      class:active={provider.provider_id ===
                         (diagnosisModelMenuProviderId || selectedProviderId)}
                       aria-haspopup="menu"
-                      aria-expanded={provider.provider_resource_id ===
+                      aria-expanded={provider.provider_id ===
                         (diagnosisModelMenuProviderId || selectedProviderId)}
                       on:click={() =>
                         chooseDiagnosisModelProvider(
-                          provider.provider_resource_id
+                          provider.provider_id
                         )}
                       ><span>{provider.name}</span><ChevronRight
                         size={12}
@@ -895,10 +893,10 @@
                         type="button"
                         role="menuitemradio"
                         aria-checked={selectedProviderId ===
-                          diagnosisMenuProvider.provider_resource_id &&
+                          diagnosisMenuProvider.provider_id &&
                           llmModelName === name}
                         class:active={selectedProviderId ===
-                          diagnosisMenuProvider.provider_resource_id &&
+                          diagnosisMenuProvider.provider_id &&
                           llmModelName === name}
                         on:click={() => chooseDiagnosisModel(name)}
                         ><span>{name}</span></button

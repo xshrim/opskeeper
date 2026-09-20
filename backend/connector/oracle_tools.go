@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	ot "opskeeper/backend/tool/oracle"
 )
 
-func (s *Service) resolveOracleTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveOracleTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Oracle agent resources must use the MCP provider")
 	}
@@ -19,12 +19,12 @@ func (s *Service) resolveOracleTools(ctx context.Context, item aiengine.ContextR
 		return err
 	}
 	register := func(name, desc string, fn func(context.Context, ot.ConnectionInput) (any, error)) {
-		add(name, desc, oracleDirectSchema(), func(c context.Context, _ map[string]any) (aiengine.ToolResult, error) {
+		add(name, desc, oracleDirectSchema(), func(c context.Context, _ map[string]any) (engine.ToolResult, error) {
 			out, e := fn(c, connection)
 			if e != nil {
-				return aiengine.ToolResult{}, oracleError(name, e)
+				return engine.ToolResult{}, oracleError(name, e)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	for _, tool := range ot.ListTools() {
@@ -40,30 +40,30 @@ func (s *Service) resolveOracleTools(ctx context.Context, item aiengine.ContextR
 		case "oracle_tables":
 			register(tool.Name, tool.Description, func(c context.Context, i ot.ConnectionInput) (any, error) { return ot.Tables(c, i) })
 		case "oracle_table_columns":
-			add(tool.Name, tool.Description, oracleColumnsSchema(), func(c context.Context, args map[string]any) (aiengine.ToolResult, error) {
+			add(tool.Name, tool.Description, oracleColumnsSchema(), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
 				var in ot.TableColumnsInput
 				raw, _ := json.Marshal(args)
 				if e := json.Unmarshal(raw, &in); e != nil {
-					return aiengine.ToolResult{}, e
+					return engine.ToolResult{}, e
 				}
 				out, e := ot.TableColumns(c, connection, in)
 				if e != nil {
-					return aiengine.ToolResult{}, oracleError(tool.Name, e)
+					return engine.ToolResult{}, oracleError(tool.Name, e)
 				}
-				return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
 		case "oracle_table_structure":
-			add(tool.Name, tool.Description, oracleColumnsSchema(), func(c context.Context, args map[string]any) (aiengine.ToolResult, error) {
+			add(tool.Name, tool.Description, oracleColumnsSchema(), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
 				var in ot.TableColumnsInput
 				raw, _ := json.Marshal(args)
 				if e := json.Unmarshal(raw, &in); e != nil {
-					return aiengine.ToolResult{}, e
+					return engine.ToolResult{}, e
 				}
 				out, e := ot.TableStructure(c, connection, in)
 				if e != nil {
-					return aiengine.ToolResult{}, oracleError(tool.Name, e)
+					return engine.ToolResult{}, oracleError(tool.Name, e)
 				}
-				return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
 		}
 	}
@@ -77,7 +77,7 @@ func oracleColumnsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","required":["schema","table"],"properties":{"schema":{"type":"string","minLength":1,"maxLength":128},"table":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}`)
 }
 
-func (s *Service) oracleConnection(ctx context.Context, item aiengine.ContextResource) (ot.ConnectionInput, error) {
+func (s *Service) oracleConnection(ctx context.Context, item engine.ContextResource) (ot.ConnectionInput, error) {
 	in := ot.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), ServiceName: stringValue(item.Config, "service_name"), SID: stringValue(item.Config, "sid"), TimeoutSeconds: intValue(item.Config, "timeout_seconds"), TLS: configBool(item.Config, "tls")}
 	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {

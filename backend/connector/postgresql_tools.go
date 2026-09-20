@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	pt "opskeeper/backend/tool/postgresql"
 )
 
-func (s *Service) resolvePostgreSQLTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolvePostgreSQLTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("PostgreSQL agent resources must use the MCP provider")
 	}
@@ -19,12 +19,12 @@ func (s *Service) resolvePostgreSQLTools(ctx context.Context, item aiengine.Cont
 		return err
 	}
 	register := func(name, description string, fn func(context.Context, pt.ConnectionInput) (any, error)) {
-		add(name, description, postgreSQLDirectSchema(), func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
+		add(name, description, postgreSQLDirectSchema(), func(runCtx context.Context, _ map[string]any) (engine.ToolResult, error) {
 			out, callErr := fn(runCtx, connection)
 			if callErr != nil {
-				return aiengine.ToolResult{}, postgreSQLError(name, callErr)
+				return engine.ToolResult{}, postgreSQLError(name, callErr)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	for _, tool := range pt.ListTools() {
@@ -52,17 +52,17 @@ func (s *Service) resolvePostgreSQLTools(ctx context.Context, item aiengine.Cont
 		case "postgresql_database_info":
 			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.DatabaseInfo(c, i) })
 		case "postgresql_table_columns":
-			add(tool.Name, tool.Description, postgreSQLColumnsSchema(), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+			add(tool.Name, tool.Description, postgreSQLColumnsSchema(), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 				var input pt.TableColumnsInput
 				raw, _ := json.Marshal(args)
 				if err := json.Unmarshal(raw, &input); err != nil {
-					return aiengine.ToolResult{}, err
+					return engine.ToolResult{}, err
 				}
 				out, err := pt.TableColumns(runCtx, connection, input)
 				if err != nil {
-					return aiengine.ToolResult{}, postgreSQLError(tool.Name, err)
+					return engine.ToolResult{}, postgreSQLError(tool.Name, err)
 				}
-				return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
 		}
 	}
@@ -77,7 +77,7 @@ func postgreSQLDirectSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","additionalProperties":false}`)
 }
 
-func (s *Service) postgreSQLConnection(ctx context.Context, item aiengine.ContextResource) (pt.ConnectionInput, error) {
+func (s *Service) postgreSQLConnection(ctx context.Context, item engine.ContextResource) (pt.ConnectionInput, error) {
 	input := pt.ConnectionInput{Host: stringValue(item.Config, "host"), Database: stringValue(item.Config, "database"), Port: intValue(item.Config, "port"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
 	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {

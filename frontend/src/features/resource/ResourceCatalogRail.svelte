@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Resource } from '../../lib/api';
-  import { Filter } from 'lucide-svelte';
+  import { Filter, X } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import {
     resourceCategoryFor,
@@ -39,9 +39,12 @@
     if (categoryName === '全部') return false;
     const tags = resourceCatalogTagsFor(categoryName);
     const query = catalogQuery.trim().toLowerCase();
-    const matchesQuery = !query || [categoryName, ...tags].join(' ').toLowerCase().includes(query);
-    const matchesTags = selectedCatalogTags.length === 0 || selectedCatalogTags.some((tag) => tags.includes(tag));
-    return matchesQuery && matchesTags;
+    const hasQuery = Boolean(query);
+    const hasTags = selectedCatalogTags.length > 0;
+    const matchesQuery = [categoryName, ...tags].join(' ').toLowerCase().includes(query);
+    const matchesTags = selectedCatalogTags.some((tag) => tags.includes(tag));
+    if (!hasQuery && !hasTags) return true;
+    return (hasQuery && matchesQuery) || (hasTags && matchesTags);
   });
 
   function select(categoryName: string, subtypeName = '全部') {
@@ -61,15 +64,29 @@
     </button>
     <div class="resource-catalog-filter" bind:this={filterRoot}>
       <div class="resource-catalog-search-wrap">
+        {#each selectedCatalogTags as tag}
+          <button
+            class={`resource-catalog-selected-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}
+            type="button"
+            title={`移除筛选 ${tag}`}
+            aria-label={`移除筛选 ${tag}`}
+            on:click={() => onToggleCatalogTag(tag)}
+          >{tag}<X size={11} aria-hidden="true" /></button>
+        {/each}
         <input value={catalogQuery} on:input={(event) => onCatalogQuery((event.currentTarget as HTMLInputElement).value)} placeholder="搜索资源类型或标签" aria-label="搜索资源类型或标签" />
         <button class:active={filterOpen || selectedCatalogTags.length > 0} class="icon-button resource-catalog-filter-trigger" type="button" on:click={() => (filterOpen = !filterOpen)} title="按 Catalog 标签筛选" aria-label="按 Catalog 标签筛选" aria-expanded={filterOpen}>
-          <Filter size={15} aria-hidden="true" />{#if selectedCatalogTags.length}<em>{selectedCatalogTags.length}</em>{/if}
+          <Filter size={14} aria-hidden="true" />
         </button>
       </div>
       {#if filterOpen}
         <div class="resource-catalog-filter-popover" role="group" aria-label="Catalog 标签">
           {#each resourceCatalogTagOptions as tag}
-            <label><input type="checkbox" checked={selectedCatalogTags.includes(tag)} on:change={() => onToggleCatalogTag(tag)} /> <span class={`resource-catalog-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}>{tag}</span></label>
+            <button
+              class:selected={selectedCatalogTags.includes(tag)}
+              class="resource-catalog-filter-option"
+              type="button"
+              on:click={() => onToggleCatalogTag(tag)}
+            ><span class={`resource-catalog-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}>{tag}</span></button>
           {/each}
         </div>
       {/if}

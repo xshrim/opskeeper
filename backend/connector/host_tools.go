@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	host "opskeeper/backend/tool/host"
 )
 
-func (s *Service) resolveHostTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveHostTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Host agent resources must use the MCP provider")
 	}
@@ -18,42 +18,42 @@ func (s *Service) resolveHostTools(ctx context.Context, item aiengine.ContextRes
 	if err != nil {
 		return err
 	}
-	add("host_info", "Read Linux host identity and system information.", hostDirectSchema(nil), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_info", "Read Linux host identity and system information.", hostDirectSchema(nil), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeHost[host.InfoInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return hostOutput(host.Info(ctx, input))
 	})
-	add("host_metrics", "Read Linux host metrics as structured JSON.", hostDirectSchema(map[string]any{"sample_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": host.MaxSampleSeconds}}), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_metrics", "Read Linux host metrics as structured JSON.", hostDirectSchema(map[string]any{"sample_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": host.MaxSampleSeconds}}), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeHost[host.MetricsInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return hostOutput(host.Metrics(ctx, input))
 	})
-	add("host_processes", "Read information about selected Linux processes. A keyword supports case-insensitive substring terms joined by & for AND or | for OR; commas and spaces imply AND, and quoted terms are kept intact.", hostDirectSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string", "description": "Case-insensitive process filter. A&B means AND, A|B means OR, commas/spaces imply AND, and single/double quoted terms are not split."}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}}), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_processes", "Read information about selected Linux processes. A keyword supports case-insensitive substring terms joined by & for AND or | for OR; commas and spaces imply AND, and quoted terms are kept intact.", hostDirectSchema(map[string]any{"pid": map[string]any{"type": "integer", "minimum": 1}, "keyword": map[string]any{"type": "string", "description": "Case-insensitive process filter. A&B means AND, A|B means OR, commas/spaces imply AND, and single/double quoted terms are not split."}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": host.MaxProcessLimit}}), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeHost[host.ProcessesInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return hostOutput(host.Processes(ctx, input))
 	})
-	add("host_file_logs", "Read bounded logs from a Linux host file.", hostDirectSchema(map[string]any{"path": map[string]any{"type": "string"}, "tail": map[string]any{"type": "string"}, "since": map[string]any{"type": "string"}, "until": map[string]any{"type": "string"}, "keyword": map[string]any{"type": "string"}, "timestamps": map[string]any{"type": "boolean"}}), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_file_logs", "Read bounded logs from a Linux host file.", hostDirectSchema(map[string]any{"path": map[string]any{"type": "string"}, "tail": map[string]any{"type": "string"}, "since": map[string]any{"type": "string"}, "until": map[string]any{"type": "string"}, "keyword": map[string]any{"type": "string"}, "timestamps": map[string]any{"type": "boolean"}}), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeHost[host.FileLogsInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return hostOutput(host.FileLogs(ctx, input))
 	})
-	add("host_health", "Check Linux host health and availability.", hostDirectSchema(nil), func(ctx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("host_health", "Check Linux host health and availability.", hostDirectSchema(nil), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeHost[host.ConnectionInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input = connection
 		return hostOutput(host.Health(ctx, input))
@@ -82,13 +82,13 @@ func decodeHost[T any](args map[string]any) (T, error) {
 	}
 	return value, nil
 }
-func hostOutput[T any](value T, err error) (aiengine.ToolResult, error) {
+func hostOutput[T any](value T, err error) (engine.ToolResult, error) {
 	if err != nil {
-		return aiengine.ToolResult{}, err
+		return engine.ToolResult{}, err
 	}
-	return aiengine.ToolResult{Output: value, Untrusted: true}, nil
+	return engine.ToolResult{Output: value, Untrusted: true}, nil
 }
-func (s *Service) hostConnection(ctx context.Context, item aiengine.ContextResource) (host.ConnectionInput, error) {
+func (s *Service) hostConnection(ctx context.Context, item engine.ContextResource) (host.ConnectionInput, error) {
 	input := host.ConnectionInput{}
 	setHostInput(&input, item.Config)
 	secret, configured, err := s.resourceSecret(ctx, item.ID)

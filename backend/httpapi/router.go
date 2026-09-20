@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/health"
 	"opskeeper/backend/version"
 )
@@ -27,20 +27,19 @@ type Options struct {
 	Auditor            audit.Logger
 	AuditLog           auditQueryService
 	Resources          resourceService
-	Discovery          discoveryService
 	Connectors         connectorService
 	LLMs               llmService
 	Skills             skillService
-	AgentProfiles      agentProfileService
-	AIEngine           aiengine.Engine
-	AIEngineEvents     aiengine.EventStore
-	AIEngineToolCalls  aiengine.ToolCallStore
-	WorkflowRuns       aiengine.WorkflowRunStore
+	Personas           personaService
+	Engine             engine.Engine
+	EngineCatalog      engineCatalogService
+	EngineEvents       engine.EventStore
+	EngineToolCalls    engine.ToolCallStore
+	WorkflowRuns       engine.WorkflowRunStore
 	WorkflowExecutor   workflowExecutionService
 	Diagnosis          diagnosisService
 	Inspection         inspectionService
 	MCP                mcpService
-	Operations         operationService
 	RepositoryBundles  repositoryBundleService
 	Applications       applicationService
 	CookieSecure       bool
@@ -109,7 +108,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				auditRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
 			}
-			if options.Identity != nil && (options.Resources != nil || options.Discovery != nil || options.Connectors != nil) {
+			if options.Identity != nil && (options.Resources != nil || options.Connectors != nil) {
 				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
@@ -117,10 +116,9 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				}
 				registerResourceRoutes(resourceRouter, options.Resources, options.Auditor, requirePermission)
 				registerRepositoryRoutes(resourceRouter, options.RepositoryBundles, requirePermission)
-				registerDiscoveryRoutes(resourceRouter, options.Discovery, requirePermission)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
-			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.AIEngine != nil) {
+			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.Engine != nil || options.EngineCatalog != nil) {
 				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
@@ -130,11 +128,12 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				if recorder, ok := options.Connectors.(connectionCheckRecorder); ok {
 					connectionChecks = recorder
 				}
-				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.AgentProfiles, options.Authorization, options.Auditor, connectionChecks, requirePermission)
-				registerAIEngineRoutes(aiRouter, options.AIEngine, requirePermission)
-				registerAIEngineEventRoutes(aiRouter, options.AIEngineEvents, requirePermission)
-				registerAIEngineToolRoutes(aiRouter, options.AIEngineToolCalls, requirePermission)
-				registerWorkflowRoutes(aiRouter, options.Resources, options.WorkflowRuns, options.WorkflowExecutor, options.AIEngineEvents, requirePermission)
+				registerAIRoutes(aiRouter, options.LLMs, options.Skills, options.Personas, options.Authorization, options.Auditor, connectionChecks, requirePermission)
+				registerEngineCatalogRoutes(aiRouter, options.EngineCatalog, requirePermission)
+				registerEngineRoutes(aiRouter, options.Engine, requirePermission)
+				registerEngineEventRoutes(aiRouter, options.EngineEvents, requirePermission)
+				registerEngineToolRoutes(aiRouter, options.EngineToolCalls, requirePermission)
+				registerWorkflowRoutes(aiRouter, options.Resources, options.WorkflowRuns, options.WorkflowExecutor, options.EngineEvents, requirePermission)
 				registerKnowledgeRoutes(aiRouter, options.Resources, requirePermission)
 			}
 			if options.Identity != nil && options.Diagnosis != nil {
@@ -153,14 +152,13 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				}
 				registerInspectionRoutes(inspectionRouter, options.Inspection, requirePermission)
 			}
-			if options.Identity != nil && (options.MCP != nil || options.Operations != nil) {
+			if options.Identity != nil && options.MCP != nil {
 				operationRouter := router.With(authHandler{service: options.Identity}.requireAuth)
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
 				registerMCPRoutes(operationRouter, options.MCP, options.Auditor, requirePermission)
-				registerOperationRoutes(operationRouter, options.Operations, options.Auditor, requirePermission)
 			}
 		})
 	}

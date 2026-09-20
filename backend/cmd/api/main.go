@@ -16,14 +16,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/application"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
 	"opskeeper/backend/diagnosis"
-	"opskeeper/backend/discovery"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/health"
 	"opskeeper/backend/httpapi"
 	"opskeeper/backend/identity"
@@ -32,8 +31,8 @@ import (
 	"opskeeper/backend/logging"
 	"opskeeper/backend/mcp"
 	"opskeeper/backend/observability"
-	"opskeeper/backend/operation"
 	"opskeeper/backend/organization"
+	"opskeeper/backend/persona"
 	repositorysvc "opskeeper/backend/repository"
 	"opskeeper/backend/resource"
 	"opskeeper/backend/secret"
@@ -156,7 +155,6 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		logger.Warn("repository S3-compatible backend configured", "kind", "repository-storage", "provider", cfg.RepositoryS3Provider)
 	}
 	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, Provider: cfg.RepositoryS3Provider, UseSSL: cfg.RepositoryS3UseSSL, Postgres: pool}, cfg.RepositoryMaxBundleBytes, resourceService)
-	discoveryService := discovery.NewService(discovery.NewStore(pool), resourceService, organizationService, applicationService, discovery.NewKubernetesScanner())
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
 	connectorLimits.MaxConcurrent = cfg.ConnectorMaxConcurrency
@@ -167,62 +165,56 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, connector.NewStore(pool), connectorLimits)
 	connectorService.SetPostgresPool(pool)
-	llmService := llm.NewService(llm.NewStore(pool), resourceService)
+	llmService := llm.NewService(llm.NewStore(pool), llm.NewProviderStore(pool, credentialEncryptor))
 	skillStore := skill.NewStore(pool)
-	skillService := skill.NewService(skillStore, resourceService)
-	agentProfileVersions := skill.NewAgentProfileVersionStore(pool)
-	agentProfileService := skill.NewAgentProfileService(resourceService, agentProfileVersions)
-	agentProfileResolver := skill.NewAgentProfileResolver(resourceService)
-	agentProfileResolver.Versions = agentProfileVersions
-	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService)
+	skillService := skill.NewService(skillStore, skill.NewCatalog(pool), resourceService)
+	personaVersions := persona.NewVersionStore(pool)
+	personaCatalog := persona.NewPersonaCatalog(pool)
+	personaService := persona.NewService(personaVersions, personaCatalog)
+	personaResolver := persona.NewResolver(personaCatalog, personaVersions)
+	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService, personaCatalog)
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
-	connectorProvider := connectorService.AIEngineProvider()
-	mcpProvider := mcpService.AIEngineProvider()
-	contextTooling := aiengine.NewContextTooling(
-		aiengine.ResourceServiceReader{Reader: resourceService},
+	connectorProvider := connectorService.EngineProvider()
+	mcpProvider := mcpService.EngineProvider()
+	contextTooling := engine.NewContextTooling(
+		engine.ResourceServiceReader{Reader: resourceService},
 		connectorProvider,
 		mcpProvider,
 	)
-	aiStore := aiengine.NewPostgresStore(pool)
-	workflowRunStore := aiengine.NewPostgresWorkflowRunStore(pool)
-	workflowRetriever := aiengine.KnowledgeRetrieverFunc(func(queryCtx context.Context, query aiengine.KnowledgeQuery) (aiengine.RetrievalResult, error) {
+	aiStore := engine.NewPostgresStore(pool)
+	workflowRunStore := engine.NewPostgresWorkflowRunStore(pool)
+	workflowRetriever := engine.KnowledgeRetrieverFunc(func(queryCtx context.Context, query engine.KnowledgeQuery) (engine.RetrievalResult, error) {
 		item, getErr := resourceService.Get(queryCtx, query.KnowledgeBaseID)
 		if getErr != nil {
-			return aiengine.RetrievalResult{}, getErr
+			return engine.RetrievalResult{}, getErr
 		}
 		if item.Kind != "KnowledgeBase" || item.ScopeID != query.ScopeID || !resourceAllowedForContext(queryCtx, item.ScopeID, item.ID) {
-			return aiengine.RetrievalResult{}, authorization.ErrForbidden
+			return engine.RetrievalResult{}, authorization.ErrForbidden
 		}
 		encoded, marshalErr := json.Marshal(item.Config)
 		if marshalErr != nil {
-			return aiengine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", marshalErr)
+			return engine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", marshalErr)
 		}
-		var base aiengine.KnowledgeBase
+		var base engine.KnowledgeBase
 		if err := json.Unmarshal(encoded, &base); err != nil {
-			return aiengine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", err)
+			return engine.RetrievalResult{}, fmt.Errorf("knowledge base config is invalid: %w", err)
 		}
-		return aiengine.SearchDocuments(query, base)
+		return engine.SearchDocuments(query, base)
 	})
 	contextTooling.Gateway.AuditStore = aiStore
-	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose aiengine.Purpose) (aiengine.ModelBuildResult, error) {
+	modelBuilder := func(ctx context.Context, scopeID, providerID, modelName string, purpose engine.Purpose) (engine.ModelBuildResult, error) {
 		resolved, client, err := llmService.BuildModel(ctx, scopeID, providerID, modelName, llm.Purpose(purpose))
 		if err != nil {
-			return aiengine.ModelBuildResult{}, err
+			return engine.ModelBuildResult{}, err
 		}
-		return aiengine.ModelBuildResult{Client: client, ProviderResourceID: resolved.Provider.ResourceID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities, ContextWindowTokens: resolved.Model.ContextWindowTokens, MaxOutputTokens: resolved.Model.MaxOutputTokens, Temperature: resolved.Model.Temperature}, nil
+		return engine.ModelBuildResult{Client: client, ProviderID: resolved.Provider.ID, ModelName: resolved.Model.Name, Capabilities: resolved.Model.Capabilities, ContextWindowTokens: resolved.Model.ContextWindowTokens, MaxOutputTokens: resolved.Model.MaxOutputTokens, Temperature: resolved.Model.Temperature}, nil
 	}
-	aiEngine := aiengine.NewWithContextAndStore(aiengine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
-		WithAgentProfileResolver(agentProfileResolver).
+	engineRuntime := engine.NewWithContextAndStore(engine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
+		WithPersonaResolver(personaResolver).
 		WithPlanResolver(skillService)
-	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService, applicationService), aiEngine, 30*time.Minute)
-	workflowService := aiengine.NewWorkflowService(workflowRunStore, aiEngine, contextTooling.Gateway, workflowRetriever, aiStore)
-	operationStore := operation.NewStore(pool)
-	var operationService *operation.Service
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("OPSK_OPERATION_SUBMITTER_ENABLED")), "true") {
-		operationService = operation.NewServiceWithSubmitter(operationStore, resourceService, operation.NewInClusterSubmitter(resourceService, envOrDefault("OPSK_OPERATION_RUNNER_IMAGE", "opskeeper:local")))
-	} else {
-		operationService = operation.NewService(operationStore, resourceService)
-	}
+	engineCatalog := engine.NewCatalogService(engine.NewCatalogStore(pool))
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService, applicationService), engineRuntime, 30*time.Minute)
+	workflowService := engine.NewWorkflowService(workflowRunStore, engineRuntime, contextTooling.Gateway, workflowRetriever, aiStore)
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress,
@@ -236,20 +228,19 @@ func run(logger *slog.Logger, cfg config.Config) error {
 			Auditor:            auditService,
 			AuditLog:           auditService,
 			Resources:          resourceService,
-			Discovery:          discoveryService,
 			Connectors:         connectorService,
 			LLMs:               llmService,
 			Skills:             skillService,
-			AgentProfiles:      agentProfileService,
-			AIEngine:           aiEngine,
-			AIEngineEvents:     aiStore,
-			AIEngineToolCalls:  aiStore,
+			Personas:           personaService,
+			Engine:             engineRuntime,
+			EngineCatalog:      engineCatalog,
+			EngineEvents:       aiStore,
+			EngineToolCalls:    aiStore,
 			WorkflowRuns:       workflowRunStore,
 			WorkflowExecutor:   workflowService,
 			Diagnosis:          diagnosisService,
 			Inspection:         inspectionService,
 			MCP:                mcpService,
-			Operations:         operationService,
 			RepositoryBundles:  repositoryService,
 			Applications:       applicationService,
 			CookieSecure:       cfg.CookieSecure,

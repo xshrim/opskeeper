@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"opskeeper/backend/aiengine"
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/resource"
 )
 
@@ -18,30 +18,35 @@ type ResourceReader interface {
 type Service struct {
 	store     Store
 	resources ResourceReader
+	catalog   SkillReader
 }
 
-func NewService(store Store, resources ResourceReader) *Service {
-	return &Service{store: store, resources: resources}
+func NewService(store Store, catalog SkillReader, resources ResourceReader) *Service {
+	return &Service{store: store, catalog: catalog, resources: resources}
+}
+
+func (s *Service) ListSkills(ctx context.Context, scopeID string) ([]Skill, error) {
+	if s.catalog == nil || !allowsScope(ctx, strings.TrimSpace(scopeID)) {
+		return nil, authorization.ErrForbidden
+	}
+	return s.catalog.ListSkills(ctx, strings.TrimSpace(scopeID))
 }
 
 func (s *Service) CreateVersion(ctx context.Context, actorID string, input CreateVersionInput) (Version, error) {
-	input.SkillResourceID = strings.TrimSpace(input.SkillResourceID)
+	input.SkillID = strings.TrimSpace(input.SkillID)
 	input.CreatedBy = strings.TrimSpace(actorID)
 	input.Manifest.Name = strings.TrimSpace(input.Manifest.Name)
 	input.Manifest.Description = strings.TrimSpace(input.Manifest.Description)
 	input.Manifest.Instruction = strings.TrimSpace(input.Manifest.Instruction)
-	if input.SkillResourceID == "" || input.Manifest.Name == "" || input.Manifest.Instruction == "" {
-		return Version{}, invalid("skill_resource_id, manifest.name and manifest.instruction are required")
+	if input.SkillID == "" || input.Manifest.Name == "" || input.Manifest.Instruction == "" {
+		return Version{}, invalid("skill_id, manifest.name and manifest.instruction are required")
 	}
-	item, err := s.skillResource(ctx, input.SkillResourceID)
+	item, err := s.skill(ctx, input.SkillID)
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return Version{}, authorization.ErrForbidden
-	}
-	if len(input.Manifest.TargetKinds) == 0 || len(input.Manifest.TargetKinds) > 50 {
-		return Version{}, invalid("manifest.target_kinds must contain 1 to 50 resource kinds")
 	}
 	if len(input.Tools) > 20 {
 		return Version{}, invalid("a Skill version may declare at most 20 tools")
@@ -73,11 +78,11 @@ func (s *Service) CreateVersion(ctx context.Context, actorID string, input Creat
 }
 
 func (s *Service) ListVersions(ctx context.Context, skillID string) ([]Version, error) {
-	item, err := s.skillResource(ctx, strings.TrimSpace(skillID))
+	item, err := s.skill(ctx, strings.TrimSpace(skillID))
 	if err != nil {
 		return nil, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return nil, authorization.ErrForbidden
 	}
 	return s.store.ListVersions(ctx, item.ID)
@@ -88,33 +93,33 @@ func (s *Service) GetVersion(ctx context.Context, versionID string) (Version, er
 	if err != nil {
 		return Version{}, err
 	}
-	item, err := s.skillResource(ctx, version.SkillResourceID)
+	item, err := s.skill(ctx, version.SkillID)
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return version, nil
 }
 
 func (s *Service) Publish(ctx context.Context, skillID, versionID string) (Version, error) {
-	item, err := s.skillResource(ctx, strings.TrimSpace(skillID))
+	item, err := s.skill(ctx, strings.TrimSpace(skillID))
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return s.store.PublishVersion(ctx, item.ID, strings.TrimSpace(versionID))
 }
 
 func (s *Service) Disable(ctx context.Context, skillID, versionID string) (Version, error) {
-	item, err := s.skillResource(ctx, strings.TrimSpace(skillID))
+	item, err := s.skill(ctx, strings.TrimSpace(skillID))
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return s.store.DisableVersion(ctx, item.ID, strings.TrimSpace(versionID))
@@ -123,7 +128,7 @@ func (s *Service) Disable(ctx context.Context, skillID, versionID string) (Versi
 func (s *Service) SetDefault(ctx context.Context, actorID, scopeID, skillID, versionID string) (Default, error) {
 	scopeID, skillID, versionID = strings.TrimSpace(scopeID), strings.TrimSpace(skillID), strings.TrimSpace(versionID)
 	if scopeID == "" || skillID == "" || versionID == "" {
-		return Default{}, invalid("scope_id, skill_resource_id and skill_version_id are required")
+		return Default{}, invalid("scope_id, skill_id and skill_version_id are required")
 	}
 	if !allowsScope(ctx, scopeID) {
 		return Default{}, authorization.ErrForbidden
@@ -132,10 +137,10 @@ func (s *Service) SetDefault(ctx context.Context, actorID, scopeID, skillID, ver
 	if err != nil {
 		return Default{}, err
 	}
-	if version.SkillResourceID != skillID || version.Status != "published" {
+	if version.SkillID != skillID || version.Status != "published" {
 		return Default{}, invalid("default Skill version must be published and belong to the Skill")
 	}
-	return s.store.SetDefault(ctx, Default{ScopeID: scopeID, SkillResourceID: skillID, SkillVersionID: versionID}, strings.TrimSpace(actorID))
+	return s.store.SetDefault(ctx, Default{ScopeID: scopeID, SkillID: skillID, SkillVersionID: versionID}, strings.TrimSpace(actorID))
 }
 
 func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explicitVersionID string) (Version, error) {
@@ -149,7 +154,7 @@ func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explici
 		if err != nil {
 			return Version{}, err
 		}
-		if explicitSkillID != "" && binding.SkillResourceID != strings.TrimSpace(explicitSkillID) {
+		if explicitSkillID != "" && binding.SkillID != strings.TrimSpace(explicitSkillID) {
 			return Version{}, ErrNotFound
 		}
 		versionID = binding.SkillVersionID
@@ -158,47 +163,46 @@ func (s *Service) Resolve(ctx context.Context, scopeID, explicitSkillID, explici
 	if err != nil {
 		return Version{}, err
 	}
-	if strings.TrimSpace(explicitSkillID) != "" && version.SkillResourceID != strings.TrimSpace(explicitSkillID) {
+	if strings.TrimSpace(explicitSkillID) != "" && version.SkillID != strings.TrimSpace(explicitSkillID) {
 		return Version{}, ErrNotFound
 	}
 	if version.Status != "published" {
 		return Version{}, invalid("Skill version is not published")
 	}
-	item, err := s.skillResource(ctx, version.SkillResourceID)
+	item, err := s.skill(ctx, version.SkillID)
 	if err != nil {
 		return Version{}, err
 	}
-	if !allowsSkillResource(ctx, item) {
+	if !allowsScope(ctx, item.ScopeID) {
 		return Version{}, authorization.ErrForbidden
 	}
 	return version, nil
 }
 
-// ResolvePlan exposes a published Skill as a side-effect-free AIEngine plan.
+// ResolvePlan exposes a published Skill as a side-effect-free Engine plan.
 // It intentionally does not resolve a model, create an execution record or
-// invoke a tool; those responsibilities belong exclusively to AIEngine.
-func (s *Service) ResolvePlan(ctx context.Context, scopeID, skillID, versionID string) (aiengine.ExecutionPlan, error) {
+// invoke a tool; those responsibilities belong exclusively to Engine.
+func (s *Service) ResolvePlan(ctx context.Context, scopeID, skillID, versionID string) (engine.ExecutionPlan, error) {
 	version, err := s.Resolve(ctx, scopeID, skillID, versionID)
 	if err != nil {
-		return aiengine.ExecutionPlan{}, err
+		return engine.ExecutionPlan{}, err
 	}
-	declarations := make([]aiengine.ToolDeclaration, 0, len(version.Tools))
+	declarations := make([]engine.ToolDeclaration, 0, len(version.Tools))
 	allowed := make([]string, 0, len(version.Tools))
 	for _, item := range version.Tools {
-		declarations = append(declarations, aiengine.ToolDeclaration{Name: item.Name, Description: item.Description, InputSchema: item.InputSchema})
+		declarations = append(declarations, engine.ToolDeclaration{Name: item.Name, Description: item.Description, InputSchema: item.InputSchema})
 		allowed = append(allowed, item.Name)
 	}
-	return aiengine.ExecutionPlan{
-		SourceResourceID: version.SkillResourceID,
-		SourceVersionID:  version.ID,
-		Name:             version.Manifest.Name,
-		Description:      version.Manifest.Description,
-		Instruction:      version.Manifest.Instruction,
-		InputSchema:      version.InputSchema,
-		OutputSchema:     version.OutputSchema,
-		Tools:            declarations,
-		AllowedTools:     allowed,
-		TargetKinds:      version.Manifest.TargetKinds,
+	return engine.ExecutionPlan{
+		SourceSkillID:   version.SkillID,
+		SourceVersionID: version.ID,
+		Name:            version.Manifest.Name,
+		Description:     version.Manifest.Description,
+		Instruction:     version.Manifest.Instruction,
+		InputSchema:     version.InputSchema,
+		OutputSchema:    version.OutputSchema,
+		Tools:           declarations,
+		AllowedTools:    allowed,
 	}, nil
 }
 
@@ -211,25 +215,22 @@ func (s *Service) ValidateTarget(ctx context.Context, version Version, targetID 
 	if err != nil {
 		return resource.Resource{}, err
 	}
-	if !slices.Contains(version.Manifest.TargetKinds, item.Kind) {
-		return resource.Resource{}, invalid("Skill does not support the target resource kind")
-	}
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok && !filter.Allows(item.ScopeID, item.ID) {
 		return resource.Resource{}, authorization.ErrForbidden
 	}
 	return item, nil
 }
 
-func (s *Service) skillResource(ctx context.Context, id string) (resource.Resource, error) {
-	if id == "" || s.resources == nil {
-		return resource.Resource{}, invalid("skill_resource_id is required")
+func (s *Service) skill(ctx context.Context, id string) (Skill, error) {
+	if s.catalog == nil || strings.TrimSpace(id) == "" {
+		return Skill{}, invalid("skill_id is required")
 	}
-	item, err := s.resources.Get(ctx, id)
+	item, err := s.catalog.GetSkill(ctx, strings.TrimSpace(id))
 	if err != nil {
-		return resource.Resource{}, err
+		return Skill{}, err
 	}
-	if item.Kind != Kind {
-		return resource.Resource{}, invalid("resource is not a Skill")
+	if !allowsScope(ctx, item.ScopeID) {
+		return Skill{}, authorization.ErrForbidden
 	}
 	return item, nil
 }
@@ -260,11 +261,4 @@ func allowedToolName(name string) bool {
 func allowsScope(ctx context.Context, scopeID string) bool {
 	filter, ok := authorization.ScopeFilterFromContext(ctx)
 	return !ok || filter.Allows(scopeID)
-}
-
-func allowsSkillResource(ctx context.Context, item resource.Resource) bool {
-	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
-		return filter.Allows(item.ScopeID, item.ID)
-	}
-	return allowsScope(ctx, item.ScopeID)
 }

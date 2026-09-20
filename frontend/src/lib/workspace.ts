@@ -21,17 +21,17 @@ export function resourceInWorkspace(
 }
 
 export function providerModelSelection(
-  providers: Array<{ provider_resource_id: string; models: Array<{ name?: unknown }> }>,
+  providers: Array<{ provider_id: string; models: Array<{ name?: unknown }> }>,
   providerId: string,
   modelName: string
 ) {
-  const provider = providers.find((item) => item.provider_resource_id === providerId)
+  const provider = providers.find((item) => item.provider_id === providerId)
     ?? providers[0];
   if (!provider) return { providerId, modelName };
   const selectedModel = provider.models.some((model) => String(model.name ?? '') === modelName)
     ? modelName
     : String(provider.models[0]?.name ?? '');
-  return { providerId: provider.provider_resource_id, modelName: selectedModel };
+  return { providerId: provider.provider_id, modelName: selectedModel };
 }
 
 export function teamSelection(

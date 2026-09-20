@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/mcpserver/docker/client"
 	dockertool "opskeeper/backend/tool/docker"
 )
@@ -14,7 +14,7 @@ import (
 // resolveDockerTools binds the protocol-neutral Docker implementation to one
 // logical Direct resource. Connection fields are adapter-owned and overwrite
 // any same-named values supplied by the model.
-func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveDockerTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Docker agent resources must use the MCP provider")
 	}
@@ -23,10 +23,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 		return err
 	}
 
-	add("docker_info", "Read Docker Engine information.", directDockerSchema(nil), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	add("docker_info", "Read Docker Engine information.", directDockerSchema(nil), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.DockerInfoInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.Info(runCtx, input))
@@ -34,10 +34,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 	add("docker_images", "List Docker images.", directDockerSchema(map[string]any{
 		"all":     map[string]any{"type": "boolean", "description": "Include intermediate and dangling images."},
 		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value or key=value format."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ListImagesInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.Images(runCtx, input))
@@ -46,10 +46,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 		"all":     map[string]any{"type": "boolean", "description": "Include stopped containers."},
 		"limit":   map[string]any{"type": "integer", "description": "Maximum number of containers to return; 0 uses the Docker default and the maximum is 500."},
 		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value or key=value format."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ListContainersInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.Containers(runCtx, input))
@@ -63,10 +63,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 		"keyword":        map[string]any{"type": "string", "description": "Case-insensitive keyword filter. Separate terms with & to require all terms on the same line, or | to match any term; AND binds tighter than OR."},
 		"timestamps":     map[string]any{"type": "boolean", "description": "Include timestamps in log lines."},
 		"details":        map[string]any{"type": "boolean", "description": "Include extra Docker log attributes."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ContainerLogsInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.ContainerLogs(runCtx, input))
@@ -75,10 +75,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
 		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
 		"path":           map[string]any{"type": "string", "description": "Absolute path of a regular file inside the container."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ContainerFileInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.ContainerFile(runCtx, input))
@@ -86,10 +86,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 	add("docker_container_inspect", "Inspect a Docker container.", directDockerSchema(map[string]any{
 		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
 		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ContainerInspectInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.ContainerInspect(runCtx, input))
@@ -97,10 +97,10 @@ func (s *Service) resolveDockerTools(ctx context.Context, item aiengine.ContextR
 	add("docker_container_stats", "Read one snapshot of Docker container statistics.", directDockerSchema(map[string]any{
 		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
 		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
-	}), func(runCtx context.Context, args map[string]any) (aiengine.ToolResult, error) {
+	}), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
 		input, err := decodeDockerInput[dockertool.ContainerStatsInput](args)
 		if err != nil {
-			return aiengine.ToolResult{}, err
+			return engine.ToolResult{}, err
 		}
 		input.ConnectionInput = connection
 		return dockerOutput(dockertool.ContainerStats(runCtx, input))
@@ -136,14 +136,14 @@ func decodeDockerInput[T any](args map[string]any) (T, error) {
 	return input, nil
 }
 
-func dockerOutput[T any](value T, err error) (aiengine.ToolResult, error) {
+func dockerOutput[T any](value T, err error) (engine.ToolResult, error) {
 	if err != nil {
-		return aiengine.ToolResult{}, err
+		return engine.ToolResult{}, err
 	}
-	return aiengine.ToolResult{Output: value, Untrusted: true}, nil
+	return engine.ToolResult{Output: value, Untrusted: true}, nil
 }
 
-func (s *Service) dockerConnection(ctx context.Context, item aiengine.ContextResource) (client.ConnectionInput, error) {
+func (s *Service) dockerConnection(ctx context.Context, item engine.ContextResource) (client.ConnectionInput, error) {
 	connection := client.ConnectionInput{}
 	setDockerConnectionFromMap(&connection, item.Config)
 	secret, configured, err := s.resourceSecret(ctx, item.ID)

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"opskeeper/backend/aiengine"
+	"opskeeper/backend/engine"
 	rt "opskeeper/backend/tool/redis"
 )
 
-func (s *Service) resolveRedisTools(ctx context.Context, item aiengine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (aiengine.ToolResult, error))) error {
+func (s *Service) resolveRedisTools(ctx context.Context, item engine.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error))) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Redis agent resources must use the MCP provider")
 	}
@@ -19,12 +19,12 @@ func (s *Service) resolveRedisTools(ctx context.Context, item aiengine.ContextRe
 		return err
 	}
 	register := func(name, desc string, fn func(context.Context, rt.ConnectionInput) (any, error)) {
-		add(name, desc, redisDirectSchema(), func(runCtx context.Context, _ map[string]any) (aiengine.ToolResult, error) {
+		add(name, desc, redisDirectSchema(), func(runCtx context.Context, _ map[string]any) (engine.ToolResult, error) {
 			out, e := fn(runCtx, connection)
 			if e != nil {
-				return aiengine.ToolResult{}, redisToolError(name, e)
+				return engine.ToolResult{}, redisToolError(name, e)
 			}
-			return aiengine.ToolResult{Output: out, Untrusted: true}, nil
+			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
 	for _, tool := range rt.ListTools() {
@@ -54,7 +54,7 @@ func redisToolError(name string, err error) error {
 	}
 	return fmt.Errorf("%s: %w", name, err)
 }
-func (s *Service) redisConnection(ctx context.Context, item aiengine.ContextResource) (rt.ConnectionInput, error) {
+func (s *Service) redisConnection(ctx context.Context, item engine.ContextResource) (rt.ConnectionInput, error) {
 	in := rt.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), Database: intValue(item.Config, "database"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}
 	secret, configured, e := s.resourceSecret(ctx, item.ID)
 	if e != nil {
