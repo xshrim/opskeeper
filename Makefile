@@ -36,7 +36,7 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate migrate-down admin-create infra-up infra-down infra-clean infra-logs obs-up obs-down obs-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start deps migrate migrate-down admin-create sample-seed sample-clean infra-up infra-down infra-clean infra-logs obs-up obs-down obs-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -62,6 +62,12 @@ migrate-down: ## Roll back the latest PostgreSQL migration.
 
 admin-create: ## Create the first administrator through the controlled bootstrap flow.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
+
+sample-seed: ## Insert local sample teams, projects, users, and scoped role bindings.
+	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata seed
+
+sample-clean: ## Remove only the marked local sample teams, projects, users, and bindings.
+	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata clean
 
 infra-up: ## Start the PostgreSQL development dependency.
 	$(call compose,up -d --wait --wait-timeout 60)

@@ -39,6 +39,7 @@
     type DiagnosisCommandState
   } from './diagnosisCommands';
   import DiagnosisContextPanel from './DiagnosisContextPanel.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
   import DiagnosisConversationMessages from './DiagnosisConversationMessages.svelte';
   import {
     diagnosisActionLabel,
@@ -674,12 +675,7 @@
           >
         </div>
       </div>
-      <input
-        class="diagnosis-session-search"
-        bind:value={diagnosisSessionSearch}
-        placeholder="搜索会话"
-        aria-label="搜索会话"
-      />
+      <SearchInput className="diagnosis-session-search" bind:value={diagnosisSessionSearch} width="100%" height="31px" placeholder="搜索会话" ariaLabel="搜索会话" />
       <div class="diagnosis-session-list-f">
         {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '')
               .toLowerCase()

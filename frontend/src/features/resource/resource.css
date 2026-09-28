@@ -265,6 +265,8 @@
 .resource-catalog-filter { position: relative; margin: 0 2px 6px; }
 .resource-catalog-search-wrap { display: flex; align-items: center; min-height: 28px; height: 28px; gap: 3px; overflow: hidden; border: 1px solid var(--theme-border); border-radius: 5px; background: var(--theme-bg-input); }
 .resource-catalog-search-wrap:focus-within { border-color: var(--theme-border-strong); }
+.resource-catalog-search-wrap { padding: 0 3px; gap: 3px; }
+.resource-catalog-search-wrap input { min-width: 64px; font-size: 11px; }
 .resource-catalog-selected-tag { display: inline-flex; align-items: center; justify-content: flex-start; width: auto !important; flex: 0 0 auto; gap: 3px; max-width: 112px; min-height: 20px; padding: 0 5px; overflow: hidden; border: 1px solid; border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .resource-catalog-selected-tag svg { flex: 0 0 auto; }
 .resource-catalog-search-wrap > input { flex: 1 1 auto; width: 100%; min-width: 64px; height: 26px; padding: 0 5px; border: 0; outline: 0; background: transparent; color: var(--theme-fg); font-size: 11px; }

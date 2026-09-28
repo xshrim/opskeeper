@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Search, Upload, X } from 'lucide-svelte';
+  import { Upload, X } from 'lucide-svelte';
   import { icons as lucideIcons } from 'lucide-svelte';
   import IconValue from './IconValue.svelte';
+  import SearchInput from './SearchInput.svelte';
   import { iconifyIconEntries } from '../lib/iconifyIcons';
 
   type IconCategory = 'lucide' | 'iconify' | 'image';
@@ -94,11 +95,6 @@
     }
   }
 
-  function updateQuery(event: Event) {
-    query = (event.currentTarget as HTMLInputElement).value;
-    visibleCount = 160;
-  }
-
   function changeCategory(next: IconCategory) {
     category = next;
     query = '';
@@ -167,7 +163,7 @@
       </div>
       <div class="icon-picker-toolbar">
         {#if category !== 'image'}
-          <label><Search size={14} aria-hidden="true" /><input value={query} on:input={updateQuery} placeholder="搜索图标或品牌" aria-label="搜索图标或品牌" /></label>
+          <SearchInput value={query} on:value={(event) => { query = event.detail; visibleCount = 160; }} width="100%" height="30px" placeholder="搜索图标或品牌" ariaLabel="搜索图标或品牌" />
         {:else}
           <span class="icon-picker-toolbar-hint">选择本地图片作为图标</span>
         {/if}
@@ -218,8 +214,7 @@
   .icon-picker-tabs button { min-width: 0; height: 28px; padding: 0 5px; overflow: hidden; color: var(--theme-fg-muted); background: transparent; border: 0; border-radius: 4px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   .icon-picker-tabs button:hover, .icon-picker-tabs button.active { color: var(--theme-fg); background: var(--theme-bg-surface); }
   .icon-picker-toolbar { display: flex; gap: 5px; margin-bottom: 7px; min-height: 30px; }
-  .icon-picker-toolbar label { display: flex; align-items: center; flex: 1; gap: 6px; min-width: 0; padding: 0 7px; border: 1px solid var(--theme-border); border-radius: 4px; color: var(--theme-fg-muted); }
-  .icon-picker-toolbar input { min-width: 0; width: 100%; height: 28px; min-height: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--theme-fg); }
+  .icon-picker-toolbar :global(.search-input) { flex: 1 1 auto; min-width: 0; border-radius: 4px; }
   .icon-picker-toolbar-hint { display: flex; align-items: center; flex: 1; padding: 0 7px; color: var(--theme-fg-muted); font-size: 12px; }
   .icon-picker-toolbar button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; color: var(--theme-fg-muted); background: transparent; border: 1px solid var(--theme-border); border-radius: 4px; cursor: pointer; }
   .icon-picker-toolbar button:hover { color: var(--color-primary); border-color: var(--color-primary); }

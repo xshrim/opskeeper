@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BookOpen, Check, ChevronRight, Clipboard, Code2, Copy, Edit3, FileJson, Filter, Play, Plus, Search, ShieldCheck, Sparkles, Wrench, X } from 'lucide-svelte';
   import { api, ApiError, type SkillCatalogItem, type SkillVersion } from '../../lib/api';
+  import SearchInput from '../../components/SearchInput.svelte';
 
   type SkillToolOption = {
     name: string;
@@ -133,7 +134,7 @@
   </div>
 
   <div class="skill-filterbar">
-    <label class="skill-search"><Search size={16} aria-hidden="true" /><span class="sr-only">搜索 Skills</span><input bind:value={query} placeholder="搜索 name / 描述 / 标签..." /></label>
+    <SearchInput bind:value={query} className="skill-search" width="290px" height="40px" placeholder="搜索 name / 描述 / 标签..." ariaLabel="搜索 Skills" />
     <span class="skill-filter-label">类别</span>
     <div class="skill-category-filters"><button class:active={category === 'all'} on:click={() => (category = 'all')}>全部 {skills.length}</button>{#each Object.entries(categoryLabels) as [key, label]}<button class:active={category === key} on:click={() => (category = key as Category)}><svelte:component this={categoryIcons[key]} size={13} aria-hidden="true" />{label} {skills.filter((skill) => skill.category === key).length}</button>{/each}</div>
     <span class="skill-filter-result"><Filter size={14} aria-hidden="true" />{filteredSkills.length} 个技能</span>

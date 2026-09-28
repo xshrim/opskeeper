@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"errors"
+	"regexp"
 	"testing"
 )
 
@@ -115,6 +116,21 @@ func TestCreateProjectPreservesCustomIcon(t *testing.T) {
 	}
 	if store.createProjectInput.Icon != "lucide:Rocket" {
 		t.Fatalf("CreateProject() icon = %q, want lucide:Rocket", store.createProjectInput.Icon)
+	}
+}
+
+func TestCreateProjectGeneratesCodeWhenOmitted(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+
+	if _, err := service.CreateProject(context.Background(), CreateProjectInput{
+		TeamID: testUUID,
+		Name:   "Checkout",
+	}); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	if !regexp.MustCompile(`^[a-z]{3}[0-9]{4}$`).MatchString(store.createProjectInput.Code) {
+		t.Fatalf("CreateProject() generated code = %q, want three lowercase letters and four digits", store.createProjectInput.Code)
 	}
 }
 

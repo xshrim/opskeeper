@@ -11,6 +11,7 @@
     actorPermissionsAtScope as getActorPermissionsAtScope,
     resourceVisibleToScope as isResourceVisibleToScope,
     userRoleBindings as getUserRoleBindings,
+    usersAtScopes,
     viewerResourceRoleAllowed as isViewerResourceRoleAllowed
   } from './accessUtils';
 
@@ -131,23 +132,12 @@
   $: scopeViewerResourceBindings = editingUser ? resourceBindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === editUserScopeId) : [];
   $: accessProjectUsers = Object.fromEntries(projects.map((project) => [
     project.id,
-    usersAtScopes([teams.find((team) => team.id === project.team_id)?.scope.id, project.scope.id])
+    usersAtScopes([teams.find((team) => team.id === project.team_id)?.scope.id, project.scope.id], users, bindings, groups, groupMembers)
   ]));
   $: accessTeamUsers = Object.fromEntries(teams.map((team) => [
     team.id,
-    usersAtScopes([team.scope.id, ...projects.filter((project) => project.team_id === team.id).map((project) => project.scope.id)])
+    usersAtScopes([team.scope.id, ...projects.filter((project) => project.team_id === team.id).map((project) => project.scope.id)], users, bindings, groups, groupMembers)
   ]));
-
-  function usersAtScopes(scopeIDs: Array<string | undefined>) {
-    const scopes = new Set(scopeIDs.filter((id): id is string => Boolean(id)));
-    const memberIDs = groups.filter((group) => scopes.has(group.scope_id)).flatMap((group) => groupMembers[group.id] ?? []);
-    const groupIDs = new Set(groups.map((group) => group.id));
-    const boundIDs = bindings.filter((binding) => scopes.has(binding.scope_id)).flatMap((binding) =>
-      binding.subject_type === 'user' ? [binding.subject_id] : groupIDs.has(binding.subject_id) ? groupMembers[binding.subject_id] ?? [] : []
-    );
-    const visibleIDs = new Set([...memberIDs, ...boundIDs]);
-    return users.filter((user) => visibleIDs.has(user.id));
-  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {

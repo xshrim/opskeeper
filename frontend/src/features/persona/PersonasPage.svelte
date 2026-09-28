@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Bot, Check, ChevronRight, Copy, Edit3, Plus, RefreshCw, Search, Shield, ShieldCheck, Star, Wrench, X } from 'lucide-svelte';
+  import { Bot, Check, ChevronRight, Copy, Edit3, Plus, RefreshCw, Shield, ShieldCheck, Star, Wrench, X } from 'lucide-svelte';
   import { api, ApiError, type PersonaCatalogItem, type PersonaVersion } from '../../lib/api';
+  import SearchInput from '../../components/SearchInput.svelte';
 
   export let profiles: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
@@ -53,7 +54,7 @@
 
 <section class="persona-page">
   <header class="persona-page-header"><div><div class="persona-title"><Shield size={21} aria-hidden="true" /><h1>专家库</h1></div><p>专家库 · 共 {profiles.length} 个，已匹配 {filteredProfiles.length}。职能 Agent 负责拆解与汇总，资源 Agent 执行域内诊断。</p></div><div class="persona-header-actions"><button class="primary" type="button" on:click={startCreate} disabled={profiles.length === 0}><Plus size={16} />创建专家</button><button class="secondary" type="button" on:click={() => selectedProfile && loadVersions()}><RefreshCw size={15} />刷新</button></div></header>
-  <div class="persona-toolbar"><label class="persona-search"><Search size={15} /><span class="sr-only">搜索专家</span><input bind:value={query} placeholder="搜索名称 / 领域 / 提示词" /></label><span class="persona-toolbar-count">{favoriteIds.length} 个收藏 · {profiles.length} 个专家</span></div>
+  <div class="persona-toolbar"><SearchInput bind:value={query} className="persona-search" width="288px" height="40px" placeholder="搜索名称 / 领域 / 提示词" ariaLabel="搜索专家" /><span class="persona-toolbar-count">{favoriteIds.length} 个收藏 · {profiles.length} 个专家</span></div>
   {#if filteredProfiles.length === 0}<div class="persona-empty panel"><Bot size={28} /><strong>没有匹配的专家</strong><span>请调整搜索条件，或选择一个已有专家创建版本。</span></div>{/if}
   {#each groupedProfiles as group}
     {#if group.items.length > 0}<section class="persona-group"><div class="persona-group-heading"><div class="persona-group-title"><svelte:component this={group.icon} size={16} aria-hidden="true" /><strong>{group.title}</strong><span>{group.description}</span></div></div><div class="persona-card-grid">{#each group.items as profile}

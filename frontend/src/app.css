@@ -144,10 +144,13 @@ body {
 }
 
 .required-mark {
+  display: inline-block;
   margin-left: 3px;
   color: var(--theme-required);
   font-style: normal;
   font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 label:has(:required:user-invalid):not(:has(.field-error, .access-field-error))::after {
@@ -157,12 +160,6 @@ label:has(:required:user-invalid):not(:has(.field-error, .access-field-error))::
   font-size: 12px;
 }
 
-.login-field:has(:required:user-invalid)::after {
-  display: block;
-  color: var(--theme-danger);
-  content: '请填写此必填项';
-  font-size: 12px;
-}
 :root[data-theme='dark'] body {
   background: var(--theme-bg-page);
 }

@@ -3,7 +3,8 @@ import type {
   ResourceRoleDefinition,
   Resource,
   RoleBinding,
-  RoleDefinition
+  RoleDefinition,
+  User
 } from '../../lib/api';
 import { scopeContains, type ScopeChoice } from '../../lib/scope';
 
@@ -21,6 +22,31 @@ export function userRoleBindings(
       (binding.subject_type === 'user' && binding.subject_id === userId) ||
       (binding.subject_type === 'group' && groupIds.includes(binding.subject_id))
   );
+}
+
+export function usersAtScopes(
+  scopeIds: Array<string | undefined>,
+  users: User[],
+  bindings: RoleBinding[],
+  groups: Group[],
+  groupMembers: Record<string, string[]>
+) {
+  const scopes = new Set(scopeIds.filter((id): id is string => Boolean(id)));
+  const memberIds = groups
+    .filter((group) => scopes.has(group.scope_id))
+    .flatMap((group) => groupMembers[group.id] ?? []);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const boundIds = bindings
+    .filter((binding) => scopes.has(binding.scope_id))
+    .flatMap((binding) =>
+      binding.subject_type === 'user'
+        ? [binding.subject_id]
+        : groupIds.has(binding.subject_id)
+          ? groupMembers[binding.subject_id] ?? []
+          : []
+    );
+  const visibleIds = new Set([...memberIds, ...boundIds]);
+  return users.filter((user) => visibleIds.has(user.id));
 }
 
 export function actorPermissionsAtScope(

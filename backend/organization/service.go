@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -101,7 +102,13 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 		return Project{}, err
 	}
 	input.Icon = normalizeIcon(input.Icon, "lucide:FolderKanban")
-	if err := validateCode(input.Code); err != nil {
+	if input.Code == "" {
+		generatedCode, err := generateProjectCode()
+		if err != nil {
+			return Project{}, fmt.Errorf("generate project code: %w", err)
+		}
+		input.Code = generatedCode
+	} else if err := validateCode(input.Code); err != nil {
 		return Project{}, err
 	}
 	if err := validateLabels(input.Labels); err != nil {

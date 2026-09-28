@@ -3,6 +3,7 @@
   import type { Resource } from '../../lib/api';
   import { Filter, X } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
   import {
     resourceCategoryFor,
     resourceCategoryIcon,
@@ -63,21 +64,10 @@
       <span class="catalog-label">全部资源</span><span>{resources.length}</span>
     </button>
     <div class="resource-catalog-filter" bind:this={filterRoot}>
-      <div class="resource-catalog-search-wrap">
-        {#each selectedCatalogTags as tag}
-          <button
-            class={`resource-catalog-selected-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`}
-            type="button"
-            title={`移除筛选 ${tag}`}
-            aria-label={`移除筛选 ${tag}`}
-            on:click={() => onToggleCatalogTag(tag)}
-          >{tag}<X size={11} aria-hidden="true" /></button>
-        {/each}
-        <input value={catalogQuery} on:input={(event) => onCatalogQuery((event.currentTarget as HTMLInputElement).value)} placeholder="搜索资源类型或标签" aria-label="搜索资源类型或标签" />
-        <button class:active={filterOpen || selectedCatalogTags.length > 0} class="icon-button resource-catalog-filter-trigger" type="button" on:click={() => (filterOpen = !filterOpen)} title="按 Catalog 标签筛选" aria-label="按 Catalog 标签筛选" aria-expanded={filterOpen}>
-          <Filter size={14} aria-hidden="true" />
-        </button>
-      </div>
+      <SearchInput className="resource-catalog-search-wrap" value={catalogQuery} on:value={(event) => onCatalogQuery(event.detail)} width="100%" height="28px" placeholder="搜索资源类型或标签" ariaLabel="搜索资源类型或标签">
+        <svelte:fragment slot="prefix">{#each selectedCatalogTags as tag}<button class={`resource-catalog-selected-tag resource-catalog-tag-${resourceCatalogTagClass(tag)}`} type="button" title={`移除筛选 ${tag}`} aria-label={`移除筛选 ${tag}`} on:click={() => onToggleCatalogTag(tag)}>{tag}<X size={11} aria-hidden="true" /></button>{/each}</svelte:fragment>
+        <svelte:fragment slot="suffix"><button class:active={filterOpen || selectedCatalogTags.length > 0} class="icon-button resource-catalog-filter-trigger" type="button" on:click={() => (filterOpen = !filterOpen)} title="按 Catalog 标签筛选" aria-label="按 Catalog 标签筛选" aria-expanded={filterOpen}><Filter size={14} aria-hidden="true" /></button></svelte:fragment>
+      </SearchInput>
       {#if filterOpen}
         <div class="resource-catalog-filter-popover" role="group" aria-label="Catalog 标签">
           {#each resourceCatalogTagOptions as tag}

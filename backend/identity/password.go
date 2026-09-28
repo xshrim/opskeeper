@@ -28,6 +28,11 @@ func hashPassword(password string) (string, error) {
 		argonMemory, argonIterations, argonParallelism, encode(salt), encode(hash)), nil
 }
 
+// HashPassword creates a password hash for trusted administrative tooling.
+func HashPassword(password string) (string, error) {
+	return hashPassword(password)
+}
+
 func verifyPassword(encoded, password string) bool {
 	memory, iterations, parallelism, salt, want, ok := parsePasswordHash(encoded)
 	if !ok {

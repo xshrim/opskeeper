@@ -11,6 +11,7 @@
     Trash2
   } from 'lucide-svelte';
   import IconPicker from '../../components/IconPicker.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
   import IconValue from '../../components/IconValue.svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
@@ -1164,13 +1165,7 @@
       <section class="provider-list panel">
         <div class="list-toolbar">
           <strong>{filteredProviders.length} 个渠道</strong><span class="list-toolbar-actions"
-            ><input
-              class="provider-search"
-              type="search"
-              bind:value={providerSearch}
-              placeholder="搜索渠道、URL、模型或能力"
-              aria-label="搜索渠道"
-            /><button
+            ><SearchInput className="provider-search" bind:value={providerSearch} width="100%" height="30px" placeholder="搜索渠道、URL、模型或能力" ariaLabel="搜索渠道" /><button
               class="icon-button"
               type="button"
               on:click={reloadProviders}
@@ -2147,6 +2142,15 @@
   .provider-search:focus {
     border-color: var(--theme-border-focus);
     outline: none;
+  }
+  .provider-search {
+    min-height: 30px;
+    padding: 0 8px;
+    border: 0;
+    background: transparent;
+  }
+  .provider-search :global(input) {
+    font-size: 11px;
   }
   .list-toolbar strong {
     display: block;

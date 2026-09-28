@@ -487,7 +487,7 @@ SELECT id::text,name,kind,status,role FROM project_resources ORDER BY name,id`, 
 }
 
 func (s *store) workspaceAlerts(ctx context.Context, projectID string) ([]Alert, error) {
-	rows, err := s.pool.Query(ctx, `SELECT DISTINCT f.id::text,f.severity,f.message,f.status
+	rows, err := s.pool.Query(ctx, `SELECT f.id::text,f.severity,f.message,f.status
   FROM inspection_findings f
   JOIN inspection_policies policy ON policy.id=f.policy_id
   JOIN resources r ON r.id=f.target_resource_id

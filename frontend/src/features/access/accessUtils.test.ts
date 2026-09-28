@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actorPermissionsAtScope, canManageResource, resourceVisibleToScope, userRoleBindings } from './accessUtils';
+import { actorPermissionsAtScope, canManageResource, resourceVisibleToScope, userRoleBindings, usersAtScopes } from './accessUtils';
 
 const scopes = [
   { id: 'platform', type: 'platform', name: '平台' },
@@ -15,6 +15,19 @@ describe('access helpers', () => {
       { subject_type: 'group', subject_id: 'group-1', role_id: 'operator' }
     ] as never[];
     expect(userRoleBindings('user-1', groups, { 'group-1': ['user-1'] }, bindings)).toHaveLength(2);
+  });
+
+  it('lists direct and group members assigned within the selected scopes', () => {
+    const users = [{ id: 'direct' }, { id: 'group' }, { id: 'other' }] as never[];
+    const groups = [{ id: 'group-1', scope_id: 'team' }] as never[];
+    const bindings = [
+      { subject_type: 'user', subject_id: 'direct', scope_id: 'project' },
+      { subject_type: 'group', subject_id: 'group-1', scope_id: 'team' },
+      { subject_type: 'user', subject_id: 'other', scope_id: 'elsewhere' }
+    ] as never[];
+
+    expect(usersAtScopes(['team', 'project'], users, bindings, groups, { 'group-1': ['group'] }))
+      .toEqual(users.slice(0, 2));
   });
 
   it('inherits permissions from ancestor scopes', () => {

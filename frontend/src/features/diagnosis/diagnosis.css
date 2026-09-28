@@ -557,15 +557,10 @@
 }
 .diagnosis-session-search {
   width: 100%;
-  min-height: 31px;
   margin-bottom: 11px;
-  padding: 0 9px;
-  color: var(--diagnosis-ink);
-  background: var(--diagnosis-surface);
-  border: 1px solid var(--diagnosis-line);
   border-radius: 5px;
-  font-size: 11px;
 }
+.diagnosis-session-search :global(input) { color: var(--diagnosis-ink); font-size: 11px; }
 .diagnosis-session-list-f {
   display: grid;
   gap: 4px;
