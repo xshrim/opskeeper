@@ -20,7 +20,7 @@
 ```text
 scopes(id, tenant_id, scope_type, parent_scope_id, status)
 platforms(id, scope_id, name, code, icon)
-teams(id, scope_id, platform_id, name, code, icon, labels)
+teams(id, scope_id, platform_id, name, description, icon, labels)
 projects(id, scope_id, platform_id, team_id, name, code, icon, labels, source)
 ```
 
@@ -37,7 +37,7 @@ platform scope
 - 平台 Scope 没有父节点，团队 Scope 的父节点必须是平台，项目 Scope 的父节点必须是团队。
 - 团队必须属于当前平台。
 - 项目必须属于一个团队，并冗余 `platform_id` 方便过滤和完整性校验。
-- 项目编码在团队内唯一，团队编码在平台内唯一。
+- 项目编码在团队内唯一。
 - `scopes.status` 是组织启用状态的唯一持久化事实来源；组织 API 返回的 `status` 从对应 Scope 派生，不在组织表重复保存。
 - 停用父 Scope 后，其后代在授权和新建业务中视为无效，即使后代自身仍为 `active`；T04 实现完整的祖先状态判定。
 - 组织删除采用停用和软删除，不允许遗留无归属资源。

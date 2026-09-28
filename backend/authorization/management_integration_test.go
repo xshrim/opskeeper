@@ -46,7 +46,7 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}
-	team, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Managed Team", Code: "managed-team"})
+	team, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Managed Team"})
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
@@ -149,7 +149,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	pool := authorizationIntegrationPool(t)
 	ctx := context.Background()
 	organizations := organization.NewService(organization.NewStore(pool))
-	team, err := organizations.CreateTeam(ctx, organization.CreateTeamInput{Name: "Resource Team", Code: "resource-team"})
+	team, err := organizations.CreateTeam(ctx, organization.CreateTeamInput{Name: "Resource Team"})
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
@@ -298,7 +298,7 @@ func TestRoleGrantHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}
-	team, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Hierarchy Team", Code: "hierarchy-team"})
+	team, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Hierarchy Team"})
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
@@ -362,11 +362,11 @@ func TestReadableHierarchyIncludesAllRoleLevels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}
-	teamA, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team A", Code: "readable-team-a"})
+	teamA, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team A"})
 	if err != nil {
 		t.Fatalf("CreateTeam(A) error = %v", err)
 	}
-	teamB, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team B", Code: "readable-team-b"})
+	teamB, err := org.CreateTeam(ctx, organization.CreateTeamInput{Name: "Readable Team B"})
 	if err != nil {
 		t.Fatalf("CreateTeam(B) error = %v", err)
 	}

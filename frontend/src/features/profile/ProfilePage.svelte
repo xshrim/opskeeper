@@ -152,7 +152,7 @@
       </div>
       <div class="profile-fields">
         <label>用户名<input value={currentUser?.username ?? ''} disabled aria-label="用户名" /></label>
-        <label>显示名<input bind:value={profileDisplayName} required maxlength="120" placeholder="请输入显示名" aria-label="显示名" /></label>
+        <label>显示名<i class="required-mark" aria-hidden="true">*</i><input bind:value={profileDisplayName} required maxlength="120" placeholder="请输入显示名" aria-label="显示名" /></label>
         <label>邮箱<input type="email" bind:value={profileEmail} placeholder="例如：name@example.com" aria-label="邮箱" /></label>
         <label>电话<input type="tel" bind:value={profilePhone} placeholder="例如：13800138000" aria-label="电话" /></label>
       </div>
@@ -160,9 +160,9 @@
     </form>
     <form class="profile-password-form" on:submit|preventDefault={changePassword}>
       <div class="profile-password-row">
-        <label><span class="visually-hidden">当前密码</span><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></label>
-        <label><span class="visually-hidden">新密码</span><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></label>
-        <label><span class="visually-hidden">确认新密码</span><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></label>
+        <label>当前密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></label>
+        <label>新密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></label>
+        <label>确认新密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></label>
         <button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在更新' : '更新密码'}</button>
       </div>
     </form>

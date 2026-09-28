@@ -1038,7 +1038,7 @@
             />
           </div>
           <label class="engine-name-field" class:invalid={Boolean(engineErrors.name)}
-            ><span class="field-label"><i>*</i>引擎名称</span><input
+            ><span class="field-label">引擎名称<i class="required-mark" aria-hidden="true">*</i></span><input
               bind:value={engineDraft.name}
               aria-label="引擎名称"
               aria-invalid={Boolean(engineErrors.name)}
@@ -1348,7 +1348,7 @@
                     />
                   </div>
                   <label class="provider-name-field" class:invalid={Boolean(providerErrors.name)}
-                    ><span class="field-label"><i>*</i>名称</span><input
+                    ><span class="field-label">名称<i class="required-mark" aria-hidden="true">*</i></span><input
                       bind:value={providerDraft.name}
                       aria-invalid={Boolean(providerErrors.name)}
                       required
@@ -1443,7 +1443,7 @@
                 </div>
                 <div class="provider-connection-row">
                   <label class:invalid={Boolean(providerErrors.providerType)}
-                    ><span><i>*</i>类型</span>
+                    ><span>类型<i class="required-mark" aria-hidden="true">*</i></span>
                     <div class="provider-type-picker">
                       <button
                         class="provider-type-trigger"
@@ -1471,7 +1471,7 @@
                     </div>
                   </label
                   ><label class:invalid={Boolean(providerErrors.baseUrl)}
-                    ><span><i>*</i>Base URL</span><input
+                    ><span>Base URL<i class="required-mark" aria-hidden="true">*</i></span><input
                       bind:value={providerDraft.baseUrl}
                       aria-invalid={Boolean(providerErrors.baseUrl)}
                       required
@@ -1521,7 +1521,7 @@
                 </div>
                 <div class="model-editor-list">
                   <div class="model-columns-header" aria-hidden="true">
-                    <span><i>*</i>模型</span><span>能力</span><span><i>*</i>上下文</span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
+                    <span>模型<i class="required-mark" aria-hidden="true">*</i></span><span>能力</span><span>上下文<i class="required-mark" aria-hidden="true">*</i></span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
                   </div>
                   {#each providerDraft.models as model, index}<div
                       class="model-editor model-card"
@@ -1529,7 +1529,7 @@
                     >
                       <div class="model-primary-row">
                         <label class="model-name-field" class:invalid={Boolean(providerErrors[`models.${index}.name`])}
-                          ><span class="field-label"><i>*</i>模型</span><input
+                          ><span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><input
                             bind:value={model.name}
                             aria-invalid={Boolean(providerErrors[`models.${index}.name`])}
                             required
@@ -1547,7 +1547,7 @@
                           </div>
                         </div>
                         <label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.context`])}
-                          ><span class="field-label"><i>*</i>上下文</span><input
+                          ><span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><input
                             bind:value={model.context_window_tokens}
                             aria-invalid={Boolean(providerErrors[`models.${index}.context`])}
                             required
@@ -1626,7 +1626,7 @@
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label"><i>*</i>名称</span><strong
+                  <span class="field-label">名称<i class="required-mark" aria-hidden="true">*</i></span><strong
                     class="provider-preview-value"
                     >{selectedProvider.name}</strong
                   >
@@ -1704,7 +1704,7 @@
               </div>
               <div class="provider-connection-row">
                 <div class="provider-preview-field">
-                  <span class="field-label"><i>*</i>类型</span><strong
+                  <span class="field-label">类型<i class="required-mark" aria-hidden="true">*</i></span><strong
                     class="provider-preview-value provider-preview-type"
                     ><ProviderBrandIcon
                       providerType={selectedProvider.config.provider_type}
@@ -1714,7 +1714,7 @@
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label"><i>*</i>Base URL</span><strong
+                  <span class="field-label">Base URL<i class="required-mark" aria-hidden="true">*</i></span><strong
                     class="provider-preview-value mono"
                     >{selectedProvider.config.base_url}</strong
                   >
@@ -1741,7 +1741,7 @@
               </div>
               <div class="model-editor-list">
                 <div class="model-columns-header" aria-hidden="true">
-                  <span><i>*</i>模型</span><span>能力</span><span><i>*</i>上下文</span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
+                  <span>模型<i class="required-mark" aria-hidden="true">*</i></span><span>能力</span><span>上下文<i class="required-mark" aria-hidden="true">*</i></span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
                 </div>
                 {#each selectedProvider.config.models ?? [] as model}
                   {@const selectedModelTags = new Set(modelTagsOf(model))}
@@ -1751,7 +1751,7 @@
                   >
                     <div class="model-primary-row">
                       <div class="model-name-field provider-preview-field">
-                        <span class="field-label"><i>*</i>模型</span><strong
+                        <span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><strong
                           class="provider-preview-value"
                           >{model.name}</strong
                         >
@@ -1769,7 +1769,7 @@
                         </div>
                         </div>
                       <div class="model-runtime-field provider-preview-field">
-                        <span class="field-label"><i>*</i>上下文</span><strong
+                        <span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><strong
                           class="provider-preview-value"
                           >{model.context_window_tokens?.toLocaleString()}</strong
                         >
@@ -2565,7 +2565,7 @@
   }
   .field-label i,
   label > span > i {
-    margin-right: 2px;
+    margin-left: 3px;
     color: var(--theme-required);
     font-style: normal;
   }
@@ -3040,6 +3040,7 @@
     text-align: center;
   }
   .model-columns-header i {
+    margin-left: 3px;
     color: var(--theme-required);
     font-style: normal;
   }

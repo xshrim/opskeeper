@@ -25,11 +25,11 @@ func TestRoleInheritanceAndOrganizationFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPlatform() error = %v", err)
 	}
-	teamA, err := organizationService.CreateTeam(ctx, organization.CreateTeamInput{Name: "Team A", Code: "team-a"})
+	teamA, err := organizationService.CreateTeam(ctx, organization.CreateTeamInput{Name: "Team A"})
 	if err != nil {
 		t.Fatalf("CreateTeam(A) error = %v", err)
 	}
-	teamB, err := organizationService.CreateTeam(ctx, organization.CreateTeamInput{Name: "Team B", Code: "team-b"})
+	teamB, err := organizationService.CreateTeam(ctx, organization.CreateTeamInput{Name: "Team B"})
 	if err != nil {
 		t.Fatalf("CreateTeam(B) error = %v", err)
 	}

@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { ClipboardCheck, Copy, Pencil, Plus, Search, ShieldCheck, Trash2, ChevronDown } from 'lucide-svelte';
+  import { ClipboardCheck, Copy, Pencil, Plus, Search, ShieldCheck, Trash2, ChevronDown, RefreshCw } from 'lucide-svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import IconValue from '../../components/IconValue.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
-  import { api, ApiError, type Group, type Project, type Resource, type ResourceRoleBinding, type ResourceRoleDefinition, type RoleBinding, type RoleDefinition, type Team, type User } from '../../lib/api';
+  import { api, ApiError, type AuditEvent, type Group, type Project, type Resource, type ResourceRoleBinding, type ResourceRoleDefinition, type RoleBinding, type RoleDefinition, type Team, type User } from '../../lib/api';
   import {
     actorPermissionsAtScope as getActorPermissionsAtScope,
     resourceVisibleToScope as isResourceVisibleToScope,
@@ -36,6 +36,7 @@
   export let accessCanManageUsers = false;
   export let teams: Team[] = [];
   export let projects: Project[] = [];
+  export let platformName = '平台';
   export let users: User[] = [];
   export let roles: RoleDefinition[] = [];
   export let bindings: RoleBinding[] = [];
@@ -45,16 +46,18 @@
   export let resourceRoles: ResourceRoleDefinition[] = [];
   export let resourceBindings: ResourceRoleBinding[] = [];
   export let accessTeamUsers: Record<string, User[]> = {};
+  export let accessProjectUsers: Record<string, User[]> = {};
   export let teamAccessExpanded: Record<string, boolean> = {};
   export let selectedAccessTeamIds: string[] = [];
   export let selectedAccessUserIds: string[] = [];
   export let teamDialogOpen = false;
   export let teamName = '';
-  export let teamCode = '';
+  export let teamDescription = '';
   export let teamIcon = 'lucide:UsersRound';
   export let userDialogOpen = false;
   export let editingTeam: Team | null = null;
   export let editTeamName = '';
+  export let editTeamDescription = '';
   export let editTeamIcon = '';
   export let editTeamStatus = 'active';
   export let editingUser: User | null = null;
@@ -89,6 +92,18 @@
   export let activeMessageTone: 'success' | 'error' = 'success';
 
   let accessSearchQuery = '';
+  let expandedAccessSection: 'organization' | 'audit' | 'roles' | '' = 'organization';
+  let auditEvents: AuditEvent[] = [];
+  let auditTotal = 0;
+  let auditLoading = false;
+  let auditLoadError = '';
+  let auditLoaded = false;
+  let teamNameError = '';
+  let editTeamNameError = '';
+  let newUserUsernameError = '';
+  let newUserPasswordError = '';
+  let editUserDisplayNameError = '';
+  let editUserScopeError = '';
 
   $: manageableScopeChoices = isPlatformAdmin
     ? scopeChoices
@@ -102,7 +117,7 @@
   });
   $: visibleAccessTeams = teams.filter((team) => {
     if (!accessSearchQuery) return true;
-    return [team.name, team.code, team.status].some((value) =>
+    return [team.name, team.description, team.status].some((value) =>
       value.toLowerCase().includes(accessSearchQuery)
     );
   });
@@ -114,13 +129,25 @@
   $: scopeViewerResources = resources.filter((resource) => resourceVisibleToScope(editUserScopeId, resource.scope_id) && resource.status === 'active');
   $: availableScopeViewerResourceRoles = resourceRoles.filter((resourceRole) => viewerResourceRoleAllowed(resourceRole) && resourceRole.permissions.every((permission) => actorPermissionsAtScope(editUserScopeId).includes(String(permission))));
   $: scopeViewerResourceBindings = editingUser ? resourceBindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === editUserScopeId) : [];
-  $: accessTeamUsers = Object.fromEntries(teams.map((team) => {
-    const teamScopeIDs = new Set([team.scope.id, ...projects.filter((project) => project.team_id === team.id).map((project) => project.scope.id)]);
-    const memberIDs = groups.filter((group) => teamScopeIDs.has(group.scope_id)).flatMap((group) => groupMembers[group.id] ?? []);
-    const roleIDs = bindings.filter((binding) => teamScopeIDs.has(binding.scope_id) && binding.subject_type === 'user').map((binding) => binding.subject_id);
-    const visibleIDs = new Set([...memberIDs, ...roleIDs]);
-    return [team.id, users.filter((user) => visibleIDs.has(user.id))];
-  })) as Record<string, User[]>;
+  $: accessProjectUsers = Object.fromEntries(projects.map((project) => [
+    project.id,
+    usersAtScopes([teams.find((team) => team.id === project.team_id)?.scope.id, project.scope.id])
+  ]));
+  $: accessTeamUsers = Object.fromEntries(teams.map((team) => [
+    team.id,
+    usersAtScopes([team.scope.id, ...projects.filter((project) => project.team_id === team.id).map((project) => project.scope.id)])
+  ]));
+
+  function usersAtScopes(scopeIDs: Array<string | undefined>) {
+    const scopes = new Set(scopeIDs.filter((id): id is string => Boolean(id)));
+    const memberIDs = groups.filter((group) => scopes.has(group.scope_id)).flatMap((group) => groupMembers[group.id] ?? []);
+    const groupIDs = new Set(groups.map((group) => group.id));
+    const boundIDs = bindings.filter((binding) => scopes.has(binding.scope_id)).flatMap((binding) =>
+      binding.subject_type === 'user' ? [binding.subject_id] : groupIDs.has(binding.subject_id) ? groupMembers[binding.subject_id] ?? [] : []
+    );
+    const visibleIDs = new Set([...memberIDs, ...boundIDs]);
+    return users.filter((user) => visibleIDs.has(user.id));
+  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {
@@ -153,6 +180,35 @@
     finally { accessLoading = false; }
   }
   onMount(() => { void loadAccess(); });
+
+  function toggleAccessSection(section: 'organization' | 'audit' | 'roles') {
+    expandedAccessSection = expandedAccessSection === section ? '' : section;
+    if (section === 'audit' && expandedAccessSection === 'audit' && !auditLoaded) void loadAuditLogs();
+  }
+
+  async function loadAuditLogs() {
+    auditLoading = true;
+    auditLoadError = '';
+    try {
+      const result = await api.auditLogs();
+      auditEvents = result.items;
+      auditTotal = result.total;
+      auditLoaded = true;
+    } catch (error) {
+      auditLoadError = describeError(error, '审计记录加载失败');
+    } finally {
+      auditLoading = false;
+    }
+  }
+
+  function auditActorName(userID: string) {
+    const user = users.find((item) => item.id === userID);
+    return user?.display_name || user?.username || userID || '系统';
+  }
+
+  function auditTime(value: string) {
+    return value ? new Date(value).toLocaleString() : '—';
+  }
   let handledCreateTeamRequest = 0;
   $: if (openCreateTeamRequest > handledCreateTeamRequest) {
     handledCreateTeamRequest = openCreateTeamRequest;
@@ -199,6 +255,7 @@
   }
   function resetUserDialog() {
     newUserUsername = ''; newUserEmail = ''; newUserPhone = ''; newUserDisplayName = ''; newUserPassword = ''; newUserPasswordMode = 'generated'; createdUserCredentials = null;
+    newUserUsernameError = ''; newUserPasswordError = '';
     const preferred = scopeChoices.find((scope) => scope.id === preferredScopeId) ?? manageableScopeChoices[0];
     newUserGrants = preferred ? [{ scopeType: preferred.type as NewUserGrant['scopeType'], scopeID: preferred.id, roleID: '', resourceGrants: [] }] : [];
   }
@@ -214,15 +271,15 @@
   function addNewUserResourceGrant(index: number) { const grant = newUserGrants[index]; if (grant) updateNewUserGrant(index, { resourceGrants: [...grant.resourceGrants, { resourceID: '', roleID: '' }] }); }
   function updateNewUserResourceGrant(gi: number, ri: number, updates: Partial<NewUserResourceGrant>) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.map((item, i) => i === ri ? { ...item, ...updates } : item) }); }
   function removeNewUserResourceGrant(gi: number, ri: number) { const grant = newUserGrants[gi]; if (grant) updateNewUserGrant(gi, { resourceGrants: grant.resourceGrants.filter((_, i) => i !== ri) }); }
-  function updateNewUserUsername(value: string) { if (!newUserDisplayName || newUserDisplayName === newUserUsername) newUserDisplayName = value; newUserUsername = value; }
-  function openTeamDialog() { teamName = ''; teamCode = ''; teamIcon = 'lucide:UsersRound'; teamDialogOpen = true; }
-  function openEditTeam(team: Team) { editingTeam = team; editTeamName = team.name; editTeamIcon = team.icon; editTeamStatus = team.status; }
-  function openEditUser(user: User) { editingUser = user; editUserDisplayName = user.display_name || user.username; passwordResetCredentials = null; const direct = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === user.id); editUserScopeId = direct.find((binding) => manageableScopeChoices.some((scope) => scope.id === binding.scope_id))?.scope_id ?? manageableScopeChoices[0]?.id ?? ''; editUserRoleIds = direct.filter((binding) => binding.scope_id === editUserScopeId).map((binding) => binding.role_id); }
-  function chooseEditUserScope(scopeID: string) { editUserScopeId = scopeID; editUserRoleIds = editingUser ? bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === scopeID).map((binding) => binding.role_id) : []; editUserResourceRoleId = ''; editUserResourceId = ''; }
-  async function createTeam() { await action(async () => { const created = await api.createTeam({ name: teamName, code: teamCode, icon: teamIcon, labels: {} }); teams = [...teams, created]; teamDialogOpen = false; onNotice(`团队“${created.name}”已创建`); }); }
-  async function createUser() { await action(async () => { const result = await api.createUser({ username: newUserUsername, email: newUserEmail, phone: newUserPhone, display_name: newUserDisplayName, password: newUserPassword, password_mode: newUserPasswordMode, grants: newUserGrants.map((grant) => ({ scope_id: grant.scopeID, role_id: grant.roleID, resource_grants: grant.resourceGrants.map((item) => ({ resource_id: item.resourceID, role_id: item.roleID })) })) }); users = [...users, result.user]; bindings = [...bindings, ...result.bindings]; createdUserCredentials = { username: result.user.username, password: result.one_time_password }; onNotice(`用户“${result.user.display_name || result.user.username}”已创建并完成授权`); }); }
-  async function saveTeam() { if (!editingTeam) return; await action(async () => { const updated = await api.updateTeam(editingTeam!.id, { name: editTeamName, icon: editTeamIcon, status: editTeamStatus }); teams = teams.map((team) => team.id === updated.id ? updated : team); editingTeam = null; onNotice(`团队“${updated.name}”已更新`); }); }
-  async function saveUser() { if (!editingUser || !editUserScopeId) return; await action(async () => { const userID = editingUser!.id; const existing = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === userID && binding.scope_id === editUserScopeId); const desired = new Set(editUserRoleIds); const created: RoleBinding[] = []; for (const roleID of editUserRoleIds) if (!existing.some((binding) => binding.role_id === roleID)) created.push(await api.createBinding({ subject_type: 'user', subject_id: userID, role_id: roleID, scope_id: editUserScopeId })); for (const binding of existing) if (!desired.has(binding.role_id)) await api.deleteBinding(binding.id); bindings = [...bindings.filter((binding) => !existing.some((old) => old.id === binding.id && !desired.has(old.role_id))), ...created]; editingUser = null; onNotice('用户授权已更新'); }); }
+  function updateNewUserUsername(value: string) { if (!newUserDisplayName || newUserDisplayName === newUserUsername) newUserDisplayName = value; newUserUsername = value; if (value.trim()) newUserUsernameError = ''; }
+  function openTeamDialog() { teamName = ''; teamDescription = ''; teamIcon = 'lucide:UsersRound'; teamNameError = ''; teamDialogOpen = true; }
+  function openEditTeam(team: Team) { editingTeam = team; editTeamName = team.name; editTeamDescription = team.description; editTeamIcon = team.icon; editTeamStatus = team.status; editTeamNameError = ''; }
+  function openEditUser(user: User) { editingUser = user; editUserDisplayName = user.display_name || user.username; editUserDisplayNameError = ''; editUserScopeError = ''; passwordResetCredentials = null; const direct = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === user.id); editUserScopeId = direct.find((binding) => manageableScopeChoices.some((scope) => scope.id === binding.scope_id))?.scope_id ?? manageableScopeChoices[0]?.id ?? ''; editUserRoleIds = direct.filter((binding) => binding.scope_id === editUserScopeId).map((binding) => binding.role_id); }
+  function chooseEditUserScope(scopeID: string) { editUserScopeId = scopeID; editUserScopeError = ''; editUserRoleIds = editingUser ? bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === editingUser?.id && binding.scope_id === scopeID).map((binding) => binding.role_id) : []; editUserResourceRoleId = ''; editUserResourceId = ''; }
+  async function createTeam() { teamNameError = teamName.trim() ? '' : '请填写团队名称。'; if (teamNameError) return; await action(async () => { const created = await api.createTeam({ name: teamName, description: teamDescription, icon: teamIcon, labels: {} }); teams = [...teams, created]; teamDialogOpen = false; onNotice(`团队“${created.name}”已创建`); }); }
+  async function createUser() { newUserUsernameError = newUserUsername.trim() ? '' : '请填写用户名。'; newUserPasswordError = newUserPasswordMode === 'manual' ? newUserPassword.length >= 8 ? '' : newUserPassword ? '密码至少需要 8 位。' : '请填写一次性密码。' : ''; if (newUserUsernameError || newUserPasswordError) return; await action(async () => { const result = await api.createUser({ username: newUserUsername, email: newUserEmail, phone: newUserPhone, display_name: newUserDisplayName, password: newUserPassword, password_mode: newUserPasswordMode, grants: newUserGrants.map((grant) => ({ scope_id: grant.scopeID, role_id: grant.roleID, resource_grants: grant.resourceGrants.map((item) => ({ resource_id: item.resourceID, role_id: item.roleID })) })) }); users = [...users, result.user]; bindings = [...bindings, ...result.bindings]; createdUserCredentials = { username: result.user.username, password: result.one_time_password }; onNotice(`用户“${result.user.display_name || result.user.username}”已创建并完成授权`); }); }
+  async function saveTeam() { if (!editingTeam) return; editTeamNameError = editTeamName.trim() ? '' : '请填写团队名称。'; if (editTeamNameError) return; await action(async () => { const updated = await api.updateTeam(editingTeam!.id, { name: editTeamName, description: editTeamDescription, icon: editTeamIcon, status: editTeamStatus }); teams = teams.map((team) => team.id === updated.id ? updated : team); editingTeam = null; onNotice(`团队“${updated.name}”已更新`); }); }
+  async function saveUser() { editUserDisplayNameError = editUserDisplayName.trim() ? '' : '请填写显示名。'; editUserScopeError = editUserScopeId ? '' : '请选择授权范围。'; if (!editingUser || editUserDisplayNameError || editUserScopeError) return; await action(async () => { const userID = editingUser!.id; const existing = bindings.filter((binding) => binding.subject_type === 'user' && binding.subject_id === userID && binding.scope_id === editUserScopeId); const desired = new Set(editUserRoleIds); const created: RoleBinding[] = []; for (const roleID of editUserRoleIds) if (!existing.some((binding) => binding.role_id === roleID)) created.push(await api.createBinding({ subject_type: 'user', subject_id: userID, role_id: roleID, scope_id: editUserScopeId })); for (const binding of existing) if (!desired.has(binding.role_id)) await api.deleteBinding(binding.id); bindings = [...bindings.filter((binding) => !existing.some((old) => old.id === binding.id && !desired.has(old.role_id))), ...created]; editingUser = null; onNotice('用户授权已更新'); }); }
   async function resetManagedUserPassword() { if (!editingUser) return; await action(async () => { const result = await api.resetUserPassword(editingUser!.id); passwordResetCredentials = { username: editingUser!.username, password: result.one_time_password }; onNotice('已生成一次性密码'); }); }
   async function grantScopeViewerResource() { if (!editingUser || !editUserResourceRoleId || !editUserResourceId) return; await action(async () => { const binding = await api.createResourceBinding({ subject_type: 'user', subject_id: editingUser!.id, role_id: editUserResourceRoleId, resource_id: editUserResourceId }); resourceBindings = [...resourceBindings, binding]; editUserResourceRoleId = ''; editUserResourceId = ''; }); }
   async function revokeScopeViewerResource(binding: ResourceRoleBinding) { await action(async () => { await api.deleteResourceBinding(binding.id); resourceBindings = resourceBindings.filter((item) => item.id !== binding.id); }); }
@@ -231,40 +288,82 @@
 </script>
 
         <section class="access-page">
-          <AccessManagementWorkbench
-            bind:accessSearch
-            bind:selectedAccessUserIds
-            {visibleAccessTeams}
-            {visibleAccessUsers}
-            {projects}
-            {roles}
-            {accessTeamUsers}
-            {teamAccessExpanded}
-            {accessLoading}
-            {accessLoadError}
-            {accessCanCreateTeam}
-            {accessCanCreateUser}
-            {busy}
-            {currentUser}
-            onAddTeam={openTeamDialog}
-            onAddUser={() => {
-              resetUserDialog();
-              userDialogOpen = true;
-            }}
-            onEditTeam={openEditTeam}
-            onEditUser={openEditUser}
-            onDisable={requestDisable}
-            onToggleTeam={toggleTeamAccess}
-            onReload={loadAccess}
-            {canManageTeam}
-            {canManageUser}
-            {userRoles}
-            {userScopeNames}
-            {userPermissions}
-            {roleLabel}
-            {roleScopeLabel}
-            {permissionDescription}
-          />
+          <section class="access-accordion-panel panel">
+            <button class="access-accordion-heading" type="button" aria-expanded={expandedAccessSection === 'organization'} on:click={() => toggleAccessSection('organization')}>
+              <span><strong>组织 <small class="access-heading-code">ORGANIZATION</small></strong><small>团队、项目与成员管理</small></span>
+              <ChevronDown size={17} class={expandedAccessSection === 'organization' ? 'expanded' : ''} />
+            </button>
+            {#if expandedAccessSection === 'organization'}
+              <div class="access-accordion-content access-organization-content">
+                <AccessManagementWorkbench
+                  bind:selectedAccessUserIds
+                  {visibleAccessTeams}
+                  {visibleAccessUsers}
+                  {projects}
+                  {platformName}
+                  {accessTeamUsers}
+                  {accessProjectUsers}
+                  {teamAccessExpanded}
+                  {accessLoading}
+                  {accessLoadError}
+                  {accessCanCreateTeam}
+                  {accessCanCreateUser}
+                  {busy}
+                  {currentUser}
+                  onAddTeam={openTeamDialog}
+                  onAddUser={() => { resetUserDialog(); userDialogOpen = true; }}
+                  onEditTeam={openEditTeam}
+                  onEditUser={openEditUser}
+                  onDisable={requestDisable}
+                  onToggleTeam={toggleTeamAccess}
+                  onReload={loadAccess}
+                  {canManageTeam}
+                  {canManageUser}
+                  {userRoles}
+                  {userScopeNames}
+                  {userPermissions}
+                  {roleLabel}
+                  {permissionDescription}
+                />
+              </div>
+            {/if}
+          </section>
+
+          <section class="access-accordion-panel panel">
+            <button class="access-accordion-heading" type="button" aria-expanded={expandedAccessSection === 'audit'} on:click={() => toggleAccessSection('audit')}>
+              <span><strong>审计 <small class="access-heading-code">AUDIT</small></strong><small>查看最近的安全与管理操作记录</small></span>
+              <ChevronDown size={17} class={expandedAccessSection === 'audit' ? 'expanded' : ''} />
+            </button>
+            {#if expandedAccessSection === 'audit'}
+              <div class="access-accordion-content access-audit-content">
+                <div class="access-audit-toolbar"><span>{auditLoaded ? `共 ${auditTotal} 条记录 · 显示最近 ${auditEvents.length} 条` : '最近操作记录'}</span><button class="secondary" type="button" on:click={loadAuditLogs} disabled={auditLoading}><RefreshCw size={14} />刷新</button></div>
+                {#if auditLoading}<div class="access-state" aria-live="polite">正在加载审计记录...</div>
+                {:else if auditLoadError}<div class="access-state access-error">{auditLoadError}<button class="secondary" type="button" on:click={loadAuditLogs}>重试</button></div>
+                {:else}<div class="access-audit-list">
+                  <div class="access-audit-row access-audit-head"><span>时间</span><span>操作者</span><span>操作</span><span>对象</span><span>结果</span><span>详情</span></div>
+                  {#each auditEvents as event}
+                    <article class="access-audit-row"><time>{auditTime(event.created_at)}</time><span>{auditActorName(event.actor_user_id)}</span><span><strong>{event.action}</strong><small>{event.scope_id ? scopeName(event.scope_id) : '平台'}</small></span><span><strong>{event.target_type || '—'}</strong><small>{event.target_id || '—'}</small></span><span class="status-label {event.result === 'success' ? 'active' : 'disabled'}">{event.result || '—'}</span><span class="access-audit-details" title={JSON.stringify(event.details ?? {})}>{JSON.stringify(event.details ?? {}) || '—'}</span></article>
+                  {:else}<div class="access-state">暂无可查看的审计记录。</div>{/each}
+                </div>{/if}
+              </div>
+            {/if}
+          </section>
+
+          <section class="access-accordion-panel panel">
+            <button class="access-accordion-heading" type="button" aria-expanded={expandedAccessSection === 'roles'} on:click={() => toggleAccessSection('roles')}>
+              <span><strong>角色 <small class="access-heading-code">ROLE</small></strong><small>角色模板及其权限范围</small></span>
+              <ChevronDown size={17} class={expandedAccessSection === 'roles' ? 'expanded' : ''} />
+            </button>
+            {#if expandedAccessSection === 'roles'}
+              <div class="access-accordion-content">
+                <div class="access-role-cards">
+                  {#each roles as role}
+                    <article class="role-catalog-item"><div class="role-card-heading"><div><strong>{roleLabel(role.name)}</strong><small>{roleScopeLabel(role.scope_type)}{role.builtin ? ' · 内置' : ''}</small></div><span class="role-permission-count">{role.permissions.length} 项权限</span></div><div class="permission-list">{#each role.permissions as permission}<span data-tooltip={permissionDescription(String(permission))} title={permissionDescription(String(permission))}>{permission}</span>{/each}</div></article>
+                  {:else}<div class="access-state">当前账号没有角色目录查看权限。</div>{/each}
+                </div>
+              </div>
+            {/if}
+          </section>
           <!-- legacy tabbed management surface retained below for reference; the unified workbench above owns this page. {#if false}
           <nav class="access-view-switcher" aria-label="权限管理视图">
             <button type="button" class:active={accessTab === 'teams'} on:click={() => (accessTab = 'teams')}>团队</button>
@@ -402,7 +501,7 @@
                         <span class="entity-icon team-icon"
                           ><IconValue value={team.icon} size={17} /></span
                         ><span
-                          ><strong>{team.name}</strong><small>{team.code}</small
+                          ><strong>{team.name}</strong><small>{team.description || '团队'}</small
                           ></span
                         ><ChevronDown
                           size={16}
@@ -654,43 +753,32 @@
             }}
           >
             <dialog open class="dialog" aria-labelledby="team-dialog-title">
-              <div class="dialog-heading">
+              <div class="dialog-heading team-dialog-heading">
                 <div>
-                  <p class="eyebrow">TEAM</p>
                   <h2 id="team-dialog-title">新增团队</h2>
+                  <p class="team-dialog-description">设置团队的名称、图标和描述。</p>
                 </div>
-                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="关闭"
-                  on:click={() => (teamDialogOpen = false)}>×</button
-                >
+                <div class="team-dialog-actions">
+                  <button class="secondary" type="button" on:click={() => (teamDialogOpen = false)}>取消</button>
+                  <button class="primary" type="submit" form="create-team-form" disabled={busy}>创建团队</button>
+                </div>
               </div>
-              <form class="stack-form" on:submit|preventDefault={createTeam}>
+              <form id="create-team-form" class="stack-form" novalidate on:submit|preventDefault={createTeam}>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <div class="team-identity-field">
-                  <IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" />
-                  <label
-                    >名称<input
+                  <div class="team-icon-selection"><label>图标<IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label></div>
+                  <label class:invalid={Boolean(teamNameError)}
+                    ><span>名称<i class="required-mark" aria-hidden="true">*</i></span><input
                       bind:value={teamName}
                       required
+                      aria-invalid={Boolean(teamNameError)}
+                      aria-describedby={teamNameError ? 'create-team-name-error' : undefined}
+                      on:input={() => { if (teamName.trim()) teamNameError = ''; }}
                       maxlength="120"
                       placeholder="例如：支付平台"
-                    /></label>
+                  />{#if teamNameError}<small id="create-team-name-error" class="access-field-error" role="alert">{teamNameError}</small>{/if}</label>
                 </div>
-                <label
-                  >团队编码<input
-                    bind:value={teamCode}
-                    required
-                    placeholder="例如：payments"
-                  /></label>
-                <div class="form-actions">
-                  <button
-                    class="secondary"
-                    type="button"
-                    on:click={() => (teamDialogOpen = false)}>取消</button
-                  ><button class="primary" disabled={busy}>创建团队</button>
-                </div>
+                <label>描述<textarea bind:value={teamDescription} rows="3" maxlength="1000" placeholder="描述团队的职责或用途"></textarea></label>
               </form>
             </dialog>
           </div>
@@ -717,9 +805,9 @@
                   on:click={() => (userDialogOpen = false)}>×</button
                 >
               </div>
-              <form class="stack-form" on:submit|preventDefault={createUser}>
+              <form class="stack-form" novalidate on:submit|preventDefault={createUser}>
                 <div class="form-row">
-                  <label
+                  <label class:invalid={Boolean(newUserUsernameError)}
                     ><span
                       >用户名<span class="required-mark" aria-hidden="true"
                         >*</span
@@ -729,8 +817,10 @@
                       on:input={(event) =>
                         updateNewUserUsername(event.currentTarget.value)}
                       required
+                      aria-invalid={Boolean(newUserUsernameError)}
+                      aria-describedby={newUserUsernameError ? 'new-user-username-error' : undefined}
                       placeholder="登录用户名"
-                    /></label>
+                    />{#if newUserUsernameError}<small id="new-user-username-error" class="access-field-error" role="alert">{newUserUsernameError}</small>{/if}</label>
                   <label
                     >显示名<input
                       bind:value={newUserDisplayName}
@@ -771,16 +861,18 @@
                     >
                   </div>
                   {#if newUserPasswordMode === 'manual'}
-                    <label
-                      >一次性密码<PasswordInput
+                    <label class:invalid={Boolean(newUserPasswordError)}
+                      ><span>一次性密码<i class="required-mark" aria-hidden="true">*</i></span><PasswordInput
                         bind:value={newUserPassword}
                         required
                         minlength={8}
+                        ariaInvalid={Boolean(newUserPasswordError)}
+                        ariaDescribedby={newUserPasswordError ? 'new-user-password-error' : ''}
                         autocomplete="new-password"
                         placeholder="至少 8 位"
                         ariaLabel="一次性密码"
-                      /></label
-                    >
+                        on:input={() => { if (newUserPassword.length >= 8) newUserPasswordError = ''; }}
+                      />{#if newUserPasswordError}<small id="new-user-password-error" class="access-field-error" role="alert">{newUserPasswordError}</small>{/if}</label>
                   {:else}
                     <p class="form-help">
                       创建后显示一次性密码，仅可查看和复制一次。
@@ -1015,30 +1107,32 @@
               class="dialog"
               aria-labelledby="edit-team-dialog-title"
             >
-              <div class="dialog-heading">
+              <div class="dialog-heading team-dialog-heading">
                 <div>
-                  <p class="eyebrow">TEAM</p>
                   <h2 id="edit-team-dialog-title">编辑团队</h2>
+                  <p class="team-dialog-description">更新团队的名称、图标、描述和状态。</p>
                 </div>
-                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="关闭"
-                  on:click={() => (editingTeam = null)}>×</button
-                >
+                <div class="team-dialog-actions">
+                  <button class="secondary" type="button" on:click={() => (editingTeam = null)}>取消</button>
+                  <button class="primary" type="submit" form="edit-team-form" disabled={busy}>保存团队</button>
+                </div>
               </div>
-              <form class="stack-form" on:submit|preventDefault={saveTeam}>
+              <form id="edit-team-form" class="stack-form" novalidate on:submit|preventDefault={saveTeam}>
+                {#if activeMessage}<MessageBanner message={activeMessage} tone={activeMessageTone} />{/if}
                 <div class="team-identity-field">
-                  <IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
-                  <label
-                    >名称<input
+                  <div class="team-icon-selection"><label>图标<IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" /></label></div>
+                  <label class:invalid={Boolean(editTeamNameError)}
+                    ><span>名称<i class="required-mark" aria-hidden="true">*</i></span><input
                       bind:value={editTeamName}
                       required
+                      aria-invalid={Boolean(editTeamNameError)}
+                      aria-describedby={editTeamNameError ? 'edit-team-name-error' : undefined}
+                      on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }}
                       maxlength="120"
                       placeholder="例如：支付平台"
-                    /></label>
+                  />{#if editTeamNameError}<small id="edit-team-name-error" class="access-field-error" role="alert">{editTeamNameError}</small>{/if}</label>
                 </div>
+                <label>描述<textarea bind:value={editTeamDescription} rows="3" maxlength="1000" placeholder="描述团队的职责或用途"></textarea></label>
                 <label
                   >状态<select bind:value={editTeamStatus}
                     ><option value="active">启用</option><option
@@ -1046,13 +1140,6 @@
                     ></select
                   ></label
                 >
-                <div class="form-actions">
-                  <button
-                    class="secondary"
-                    type="button"
-                    on:click={() => (editingTeam = null)}>取消</button
-                  ><button class="primary" disabled={busy}>保存团队</button>
-                </div>
               </form>
             </dialog>
           </div>
@@ -1083,7 +1170,7 @@
                   on:click={() => (editingUser = null)}>×</button
                 >
               </div>
-              <form class="stack-form" on:submit|preventDefault={saveUser}>
+              <form class="stack-form" novalidate on:submit|preventDefault={saveUser}>
                 <div class="form-row">
                   <label
                     >用户名<input
@@ -1092,24 +1179,30 @@
                       aria-label="用户名不可修改"
                     /></label
                   >
-                  <label
-                    >显示名<input
+                  <label class:invalid={Boolean(editUserDisplayNameError)}
+                    ><span>显示名<i class="required-mark" aria-hidden="true">*</i></span><input
                       bind:value={editUserDisplayName}
                       required
+                      aria-invalid={Boolean(editUserDisplayNameError)}
+                      aria-describedby={editUserDisplayNameError ? 'edit-user-display-name-error' : undefined}
+                      on:input={() => { if (editUserDisplayName.trim()) editUserDisplayNameError = ''; }}
                       maxlength="120"
                       placeholder="默认使用用户名"
-                    /></label
-                  >
+                    />{#if editUserDisplayNameError}<small id="edit-user-display-name-error" class="access-field-error" role="alert">{editUserDisplayNameError}</small>{/if}</label>
                 </div>
                 <label
-                  >授权 Scope<select
+                  class:invalid={Boolean(editUserScopeError)}
+                  ><span>授权 Scope<i class="required-mark" aria-hidden="true">*</i></span><select
                     value={editUserScopeId}
+                    required
+                    aria-invalid={Boolean(editUserScopeError)}
+                    aria-describedby={editUserScopeError ? 'edit-user-scope-error' : undefined}
                     on:change={(event) =>
                       chooseEditUserScope(event.currentTarget.value)}
-                    >{#each manageableScopeChoices as scope}<option
+              >{#each manageableScopeChoices as scope}<option
                         value={scope.id}>{scope.name} · {scope.type}</option
                       >{/each}</select
-                  ></label
+                  >{#if editUserScopeError}<small id="edit-user-scope-error" class="access-field-error" role="alert">{editUserScopeError}</small>{/if}</label
                 >
                 <fieldset class="role-picker" disabled={!editUserScopeId}>
                   <legend>直接授权角色</legend>

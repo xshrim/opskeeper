@@ -7,6 +7,8 @@
   export let autocomplete: 'off' | 'current-password' | 'new-password' = 'off';
   export let required = false;
   export let minlength: number | undefined = undefined;
+  export let ariaInvalid = false;
+  export let ariaDescribedby = '';
   export let ariaLabel = '';
   export let secretLabel = '密码';
   export let disabled = false;
@@ -29,6 +31,8 @@
     {required}
     {minlength}
     {disabled}
+    aria-invalid={ariaInvalid || undefined}
+    aria-describedby={ariaDescribedby || undefined}
     aria-label={ariaLabel || undefined}
     type={visible ? 'text' : 'password'}
     on:input={handleInput}

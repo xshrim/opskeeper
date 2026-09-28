@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -29,6 +31,11 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 	if strings.TrimSpace(endpoint) == "" {
 		return noopShutdown(), nil
 	}
+	status := &exportStatus{seen: make(map[string]bool), successful: make(map[string]bool), logger: log.Default()}
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		signal, message := telemetryErrorFields(err)
+		status.report(signal, errors.New(message))
+	}))
 	res, err := resource.New(ctx, resource.WithAttributes(
 		attribute.String("service.name", serviceName),
 		attribute.String("service.version", build.Version),
@@ -47,10 +54,10 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 		_ = traceExporter.Shutdown(ctx)
 		return noopShutdown(), nil
 	}
-	traces := sdktrace.NewTracerProvider(sdktrace.WithBatcher(traceExporter), sdktrace.WithResource(res))
+	traces := sdktrace.NewTracerProvider(sdktrace.WithBatcher(&traceStatusExporter{SpanExporter: traceExporter, status: status}), sdktrace.WithResource(res))
 	metrics := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(30*time.Second))),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(&metricStatusExporter{Exporter: metricExporter, status: status}, sdkmetric.WithInterval(30*time.Second))),
 	)
 	otel.SetTracerProvider(traces)
 	otel.SetMeterProvider(metrics)
@@ -62,6 +69,69 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, build
 		_ = errors.Join(metrics.Shutdown(shutdownCtx), traces.Shutdown(shutdownCtx))
 		return nil
 	}, nil
+}
+
+type exportStatus struct {
+	mu         sync.Mutex
+	seen       map[string]bool
+	successful map[string]bool
+	logger     *log.Logger
+}
+
+func (s *exportStatus) report(signal string, err error) {
+	success := err == nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.seen[signal] && s.successful[signal] == success {
+		return
+	}
+	s.seen[signal] = true
+	s.successful[signal] = success
+	if err == nil {
+		s.logger.Printf("%s export: success", signal)
+		return
+	}
+	_, message := telemetryErrorFields(err)
+	s.logger.Printf("%s export: %s", signal, message)
+}
+
+type traceStatusExporter struct {
+	sdktrace.SpanExporter
+	status *exportStatus
+}
+
+func (e *traceStatusExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	err := e.SpanExporter.ExportSpans(ctx, spans)
+	if err == nil {
+		e.status.report("traces", nil)
+	}
+	return err
+}
+
+type metricStatusExporter struct {
+	sdkmetric.Exporter
+	status *exportStatus
+}
+
+func (e *metricStatusExporter) Export(ctx context.Context, metrics *metricdata.ResourceMetrics) error {
+	err := e.Exporter.Export(ctx, metrics)
+	if err == nil {
+		e.status.report("metrics", nil)
+	}
+	return err
+}
+
+func telemetryErrorFields(err error) (string, string) {
+	message := err.Error()
+	for _, item := range []struct{ prefix, signal string }{
+		{"traces export: ", "traces"},
+		{"failed to upload metrics: ", "metrics"},
+	} {
+		if strings.HasPrefix(message, item.prefix) {
+			return item.signal, strings.TrimPrefix(message, item.prefix)
+		}
+	}
+	return "unknown", message
 }
 
 // Telemetry is optional. A malformed or unavailable OTLP endpoint must never

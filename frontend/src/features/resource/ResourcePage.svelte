@@ -2959,7 +2959,7 @@
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">
               <label
-                ><span>资源名称</span><input
+                ><span>资源名称<i class="required-mark" aria-hidden="true">*</i></span><input
                   bind:value={editResourceName}
                   required
                 /></label

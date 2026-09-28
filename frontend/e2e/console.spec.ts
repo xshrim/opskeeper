@@ -79,7 +79,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
             status: 'active'
           },
           name: body.name,
-          code: body.code,
+          description: body.description,
           icon: body.icon,
           labels: body.labels ?? {},
           status: 'active',
@@ -102,7 +102,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
               status: 'active'
             },
             name: '平台工程',
-            code: 'platform',
+            description: '平台基础设施团队',
             icon: 'lucide:UsersRound',
             labels: {},
             status: 'active',
@@ -629,7 +629,7 @@ test.describe('T07 console', () => {
     ).toBeVisible();
     await picker.getByRole('button', { name: '选择图标 Bot', exact: true }).click();
     await dialog.getByLabel('名称').fill('数据库平台');
-    await dialog.getByLabel('团队编码').fill('database');
+    await dialog.getByLabel('描述').fill('数据库平台团队');
     await dialog.getByRole('button', { name: '创建团队' }).click();
     await expect(page.getByText('团队“数据库平台”已创建')).toBeVisible();
   });

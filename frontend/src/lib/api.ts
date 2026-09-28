@@ -25,6 +25,19 @@ export interface SessionContext {
   platform_role: boolean;
 }
 
+export interface AuditEvent {
+  actor_user_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  scope_id: string;
+  result: string;
+  request_id: string;
+  client_ip: string;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface Scope {
   id: string;
   type: string;
@@ -47,7 +60,7 @@ export interface Team {
   platform_id: string;
   scope: Scope;
   name: string;
-  code: string;
+  description: string;
   icon: string;
   labels: Record<string, string>;
   status: string;
@@ -729,7 +742,7 @@ export const api = {
   team: (id: string) => request<Team>(`api/v1/teams/${id}/`),
   createTeam: (body: {
     name: string;
-    code: string;
+    description: string;
     icon: string;
     labels: Record<string, string>;
   }) => request<Team>('api/v1/teams/', json(body)),
@@ -1100,6 +1113,8 @@ export const api = {
     request<ResourceRoleDefinition[]>('api/v1/resource-roles/'),
   resourceBindings: () =>
     request<ResourceRoleBinding[]>('api/v1/resource-role-bindings/'),
+  auditLogs: (limit = 100) =>
+    request<{ items: AuditEvent[]; total: number }>(`api/v1/audit-logs?limit=${limit}`),
   createResourceBinding: (body: Record<string, unknown>) =>
     request<ResourceRoleBinding>('api/v1/resource-role-bindings/', json(body)),
   deleteResourceBinding: (id: string) =>

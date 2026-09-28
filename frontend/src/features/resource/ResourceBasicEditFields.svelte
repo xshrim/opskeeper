@@ -17,7 +17,7 @@
     <label><span>资源子类型</span><select value={resourceSubtypeFor(resource)} disabled aria-label="资源子类型">{#each resourceSubtypeOptionsFor(resource) as subtype}<option value={subtype}>{subtype}</option>{/each}</select></label>
   </div>
   <div class="resource-basic-identity-row">
-    <label><span><i>*</i>资源名称</span><input bind:value={name} required /></label>
+    <label><span>资源名称<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={name} required /></label>
     <label><span>资源级别</span><input value={scopeName(resource.scope_id)} readonly /></label>
     <label class="resource-basic-enabled"><span>是否启用</span><span class="provider-toggle-control"><input type="checkbox" checked={status === 'active'} on:change={(event) => (status = (event.currentTarget as HTMLInputElement).checked ? 'active' : 'disabled')} aria-label="是否启用资源" /><i aria-hidden="true"></i></span></label>
   </div>

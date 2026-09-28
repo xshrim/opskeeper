@@ -79,7 +79,7 @@ export let mcpServerResourceId = '';
   <div class="docker-agent-form">
     <div class="docker-agent-connection-row">
       <label class:invalid={configurationAttempted && !mcpServerResourceId}>
-        <span><i>*</i>关联 MCPServer</span>
+        <span>关联 MCPServer<i class="required-mark" aria-hidden="true">*</i></span>
         <select bind:value={mcpServerResourceId} required on:change={selectMCPServer} aria-describedby="docker-agent-help">
           <option value="">请选择活动的 MCPServer</option>
           {#each mcpServers as server}
@@ -107,7 +107,7 @@ export let mcpServerResourceId = '';
   <form id="docker-create-form" class="docker-connection-form" on:submit|preventDefault>
     <div class="docker-form-grid">
       <label class:invalid={configurationAttempted && (!host.trim() || !dockerHostValid(host))} class="docker-host-field">
-        <span><i>*</i>Docker Host URL</span>
+        <span>Docker Host URL<i class="required-mark" aria-hidden="true">*</i></span>
         <input
           bind:value={host}
           on:input={onConfigurationChange}

@@ -28,7 +28,7 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Fatalf("GetPlatform() = %#v", platform)
 	}
 
-	team, err := service.CreateTeam(context.Background(), organization.CreateTeamInput{Name: "Payments", Code: "payments"})
+	team, err := service.CreateTeam(context.Background(), organization.CreateTeamInput{Name: "Payments", Description: "Billing team"})
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
@@ -66,36 +66,32 @@ func TestOrganizationLifecycle(t *testing.T) {
 	}
 }
 
-func TestConcurrentTeamCodeIsUnique(t *testing.T) {
+func TestConcurrentTeamCreation(t *testing.T) {
 	pool := integrationPool(t)
 	service := organization.NewService(organization.NewStore(pool))
 
 	var wait sync.WaitGroup
 	errorsByCall := make(chan error, 2)
-	for range 2 {
+	for index := range 2 {
 		wait.Add(1)
-		go func() {
+		go func(index int) {
 			defer wait.Done()
-			_, err := service.CreateTeam(context.Background(), organization.CreateTeamInput{Name: "Payments", Code: "payments"})
+			_, err := service.CreateTeam(context.Background(), organization.CreateTeamInput{Name: fmt.Sprintf("Team %d", index)})
 			errorsByCall <- err
-		}()
+		}(index)
 	}
 	wait.Wait()
 	close(errorsByCall)
 
-	var succeeded, conflicted int
+	var succeeded int
 	for err := range errorsByCall {
-		switch {
-		case err == nil:
-			succeeded++
-		case errors.Is(err, organization.ErrConflict):
-			conflicted++
-		default:
+		if err != nil {
 			t.Fatalf("CreateTeam() unexpected error = %v", err)
 		}
+		succeeded++
 	}
-	if succeeded != 1 || conflicted != 1 {
-		t.Fatalf("concurrent create results: succeeded=%d conflicted=%d", succeeded, conflicted)
+	if succeeded != 2 {
+		t.Fatalf("concurrent create results: succeeded=%d", succeeded)
 	}
 }
 

@@ -969,6 +969,7 @@
           {openCreateTeamRequest}
           bind:teams
           {projects}
+          platformName={platform?.name ?? '平台'}
           {resources}
           {scopeChoices}
           preferredScopeId={selectedScopeId}

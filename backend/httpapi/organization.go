@@ -34,10 +34,10 @@ type organizationHandler struct {
 }
 
 type createTeamRequest struct {
-	Name   string            `json:"name"`
-	Code   string            `json:"code"`
-	Icon   string            `json:"icon"`
-	Labels map[string]string `json:"labels"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Icon        string            `json:"icon"`
+	Labels      map[string]string `json:"labels"`
 }
 
 type createProjectRequest struct {
@@ -49,10 +49,11 @@ type createProjectRequest struct {
 }
 
 type updateOrganizationRequest struct {
-	Name   *string            `json:"name"`
-	Icon   *string            `json:"icon"`
-	Labels *map[string]string `json:"labels"`
-	Status *string            `json:"status"`
+	Name        *string            `json:"name"`
+	Description *string            `json:"description"`
+	Icon        *string            `json:"icon"`
+	Labels      *map[string]string `json:"labels"`
+	Status      *string            `json:"status"`
 }
 
 func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler, platformAdmins ...platformAdminService) {
@@ -133,10 +134,10 @@ func (h organizationHandler) createTeam(writer http.ResponseWriter, request *htt
 		return
 	}
 	team, err := h.service.CreateTeam(request.Context(), organization.CreateTeamInput{
-		Name:   body.Name,
-		Code:   body.Code,
-		Icon:   body.Icon,
-		Labels: body.Labels,
+		Name:        body.Name,
+		Description: body.Description,
+		Icon:        body.Icon,
+		Labels:      body.Labels,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)
@@ -174,10 +175,11 @@ func (h organizationHandler) updateTeam(writer http.ResponseWriter, request *htt
 		return
 	}
 	team, err := h.service.UpdateTeam(request.Context(), chi.URLParam(request, "teamID"), organization.UpdateTeamInput{
-		Name:   body.Name,
-		Icon:   body.Icon,
-		Labels: body.Labels,
-		Status: body.Status,
+		Name:        body.Name,
+		Description: body.Description,
+		Icon:        body.Icon,
+		Labels:      body.Labels,
+		Status:      body.Status,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)

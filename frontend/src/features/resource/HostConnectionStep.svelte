@@ -91,7 +91,7 @@
   <div class="docker-agent-form">
     <div class="docker-agent-connection-row">
       <label class:invalid={configurationAttempted && !mcpServerResourceId}
-        ><span><i>*</i>关联 MCPServer</span><select
+        ><span>关联 MCPServer<i class="required-mark" aria-hidden="true">*</i></span><select
           bind:value={mcpServerResourceId}
           required
           on:change={selectMCPServer}
@@ -140,7 +140,7 @@
         /></label
       >
       <label
-        ><span>{#if sshMode}<i>*</i>{/if}SSH 端口</span><input
+        ><span>SSH 端口{#if sshMode}<i class="required-mark" aria-hidden="true">*</i>{/if}</span><input
           bind:value={port}
           on:input={onConfigurationChange}
           min="1"
@@ -151,7 +151,7 @@
         /></label
       >
       <label
-        ><span>{#if sshMode}<i>*</i>{/if}SSH 用户</span><input
+        ><span>SSH 用户{#if sshMode}<i class="required-mark" aria-hidden="true">*</i>{/if}</span><input
           bind:value={username}
           on:input={onConfigurationChange}
           placeholder="例如 opskeeper"
@@ -173,7 +173,7 @@
     {#if sshMode}
       <div class="host-ssh-form-grid">
         <label class="host-auth-method">
-          <span><i>*</i>认证方式</span>
+          <span>认证方式<i class="required-mark" aria-hidden="true">*</i></span>
           <select bind:value={authMethod} on:change={onConfigurationChange} required>
             <option value="password">密码</option>
             <option value="key">私钥</option>
@@ -181,7 +181,7 @@
         </label>
         {#if authMethod === 'password'}
           <label class="host-password">
-            <span><i>*</i>SSH 密码</span>
+            <span>SSH 密码<i class="required-mark" aria-hidden="true">*</i></span>
             <span class="resource-secret-control"><input bind:value={password} on:input={onConfigurationChange} type={passwordVisible ? 'text' : 'password'} autocomplete="current-password" placeholder="不会回显" required /><button class="resource-secret-toggle" type="button" aria-label={passwordVisible ? '隐藏 SSH 密码' : '显示 SSH 密码'} aria-pressed={passwordVisible} data-tooltip={passwordVisible ? '隐藏 SSH 密码' : '显示 SSH 密码'} on:click={() => (passwordVisible = !passwordVisible)}>{#if passwordVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span>
           </label>
           <label class="host-known-hosts">
@@ -195,7 +195,7 @@
             <span class="resource-secret-control"><input bind:value={passphrase} on:input={onConfigurationChange} type={passphraseVisible ? 'text' : 'password'} autocomplete="off" placeholder="可选" /><button class="resource-secret-toggle" type="button" aria-label={passphraseVisible ? '隐藏私钥口令' : '显示私钥口令'} aria-pressed={passphraseVisible} data-tooltip={passphraseVisible ? '隐藏私钥口令' : '显示私钥口令'} on:click={() => (passphraseVisible = !passphraseVisible)}>{#if passphraseVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span>
           </label>
           <label class="host-private-key">
-            <span class="docker-credential-label"><span><i>*</i>私钥</span><span class="docker-file-picker">{#if selectedFileNames.privateKey}<small>{selectedFileNames.privateKey}</small>{/if}<input class="docker-file-input" bind:this={privateKeyFileInput} type="file" accept=".pem,.key,.crt,text/plain,application/x-pem-file" aria-label="选择 SSH 私钥文件" on:change={(event) => void importCredentialFile(event, 'privateKey')} /><button class="docker-file-import" type="button" aria-label="导入 SSH 私钥文件" on:click|stopPropagation|preventDefault={() => openFilePicker(privateKeyFileInput)}>导入</button></span></span>
+            <span class="docker-credential-label"><span>私钥<i class="required-mark" aria-hidden="true">*</i></span><span class="docker-file-picker">{#if selectedFileNames.privateKey}<small>{selectedFileNames.privateKey}</small>{/if}<input class="docker-file-input" bind:this={privateKeyFileInput} type="file" accept=".pem,.key,.crt,text/plain,application/x-pem-file" aria-label="选择 SSH 私钥文件" on:change={(event) => void importCredentialFile(event, 'privateKey')} /><button class="docker-file-import" type="button" aria-label="导入 SSH 私钥文件" on:click|stopPropagation|preventDefault={() => openFilePicker(privateKeyFileInput)}>导入</button></span></span>
             <textarea bind:value={privateKey} on:input={onConfigurationChange} rows="4" placeholder="粘贴 PEM 或 Base64 编码私钥" spellcheck="false" required></textarea>
             {#if fileErrors.privateKey}<small class="field-error">{fileErrors.privateKey}</small>{/if}
           </label>

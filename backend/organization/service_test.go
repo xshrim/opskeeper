@@ -23,7 +23,7 @@ func (r *stubStore) GetPlatform(context.Context) (Platform, error) {
 func (r *stubStore) CreateTeam(_ context.Context, input CreateTeamInput) (Team, error) {
 	r.called = true
 	r.createTeamInput = input
-	return Team{ID: testUUID, Name: input.Name, Code: input.Code, Labels: input.Labels}, nil
+	return Team{ID: testUUID, Name: input.Name, Description: input.Description, Labels: input.Labels}, nil
 }
 
 func (r *stubStore) ListTeams(_ context.Context, pagination Pagination) (Page[Team], error) {
@@ -66,8 +66,8 @@ func TestCreateTeamNormalizesInput(t *testing.T) {
 	service := NewService(store)
 
 	team, err := service.CreateTeam(context.Background(), CreateTeamInput{
-		Name: "  Payments  ",
-		Code: "payments",
+		Name:        "  Payments  ",
+		Description: "  Billing platform  ",
 		Labels: map[string]string{
 			"environment": "production",
 		},
@@ -78,11 +78,26 @@ func TestCreateTeamNormalizesInput(t *testing.T) {
 	if team.Name != "Payments" || store.createTeamInput.Name != "Payments" {
 		t.Fatalf("CreateTeam() did not trim name: %#v", store.createTeamInput)
 	}
+	if store.createTeamInput.Description != "Billing platform" {
+		t.Fatalf("CreateTeam() description = %q", store.createTeamInput.Description)
+	}
 	if store.createTeamInput.Labels == nil {
 		t.Fatal("CreateTeam() passed nil labels")
 	}
 	if store.createTeamInput.Icon != "lucide:UsersRound" {
 		t.Fatalf("CreateTeam() icon = %q, want lucide:UsersRound", store.createTeamInput.Icon)
+	}
+}
+
+func TestCreateTeamTrimsDescription(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+
+	if _, err := service.CreateTeam(context.Background(), CreateTeamInput{Name: "Payments", Description: "  Owns billing  "}); err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	if store.createTeamInput.Description != "Owns billing" {
+		t.Fatalf("CreateTeam() input = %#v", store.createTeamInput)
 	}
 }
 
@@ -100,20 +115,6 @@ func TestCreateProjectPreservesCustomIcon(t *testing.T) {
 	}
 	if store.createProjectInput.Icon != "lucide:Rocket" {
 		t.Fatalf("CreateProject() icon = %q, want lucide:Rocket", store.createProjectInput.Icon)
-	}
-}
-
-func TestCreateTeamRejectsInvalidCode(t *testing.T) {
-	store := &stubStore{}
-	service := NewService(store)
-
-	_, err := service.CreateTeam(context.Background(), CreateTeamInput{Name: "Payments", Code: "Payments API"})
-	var validationError *ValidationError
-	if !errors.As(err, &validationError) {
-		t.Fatalf("CreateTeam() error = %v, want ValidationError", err)
-	}
-	if store.called {
-		t.Fatal("CreateTeam() called store for invalid input")
 	}
 }
 

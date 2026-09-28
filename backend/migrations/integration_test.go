@@ -295,7 +295,7 @@ func TestProjectMemberMigrationPreservesProjectAccess(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO scopes (scope_type, parent_scope_id) VALUES ('team', $1::uuid) RETURNING id::text`, platformScopeID).Scan(&teamScopeID); err != nil {
 		t.Fatalf("create team scope: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO teams (platform_id, scope_id, name, code) VALUES ($1::uuid, $2::uuid, 'Migration Team', 'migration-team') RETURNING id::text`, platformID, teamScopeID).Scan(&teamID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (platform_id, scope_id, name) VALUES ($1::uuid, $2::uuid, 'Migration Team') RETURNING id::text`, platformID, teamScopeID).Scan(&teamID); err != nil {
 		t.Fatalf("create team: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO scopes (scope_type, parent_scope_id) VALUES ('project', $1::uuid) RETURNING id::text`, teamScopeID).Scan(&projectScopeID); err != nil {

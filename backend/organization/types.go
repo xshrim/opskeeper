@@ -26,16 +26,16 @@ type Platform struct {
 }
 
 type Team struct {
-	ID         string            `json:"id"`
-	PlatformID string            `json:"platform_id"`
-	Scope      Scope             `json:"scope"`
-	Name       string            `json:"name"`
-	Code       string            `json:"code"`
-	Icon       string            `json:"icon"`
-	Labels     map[string]string `json:"labels"`
-	Status     string            `json:"status"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID          string            `json:"id"`
+	PlatformID  string            `json:"platform_id"`
+	Scope       Scope             `json:"scope"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Icon        string            `json:"icon"`
+	Labels      map[string]string `json:"labels"`
+	Status      string            `json:"status"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 type Project struct {
@@ -74,17 +74,18 @@ func (p Pagination) Offset() int {
 }
 
 type CreateTeamInput struct {
-	Name   string
-	Code   string
-	Icon   string
-	Labels map[string]string
+	Name        string
+	Description string
+	Icon        string
+	Labels      map[string]string
 }
 
 type UpdateTeamInput struct {
-	Name   *string
-	Icon   *string
-	Labels *map[string]string
-	Status *string
+	Name        *string
+	Description *string
+	Icon        *string
+	Labels      *map[string]string
+	Status      *string
 }
 
 type CreateProjectInput struct {

@@ -22,7 +22,7 @@
 }
 .access-workbench-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1.2fr) auto;
+  grid-template-columns: auto minmax(260px, 1fr) auto;
   align-items: end;
   gap: 16px;
   padding: 16px 18px;
@@ -31,18 +31,7 @@
   border-radius: 7px;
   box-shadow: var(--theme-shadow-soft);
 }
-.access-workbench-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-.access-workbench-heading h2,
-.access-workbench-heading p { margin: 0; }
-.access-workbench-heading h2 { font-size: 21px; }
-.access-workbench-heading p:not(.eyebrow) { margin-top: 5px; color: var(--theme-fg-muted); font-size: 12px; }
-.access-workbench-heading .eyebrow { margin-bottom: 4px; }
+.access-workbench-summary { white-space: nowrap; }
 .access-workbench-toolbar .access-search { min-width: 0; }
 .access-workbench-toolbar .access-search input { min-height: 37px; }
 .access-management-columns {
@@ -118,6 +107,44 @@
 .access-user-roles .muted-chip { color: var(--theme-fg-muted); background: var(--theme-bg-subtle); border-color: var(--theme-border); }
 .access-management-roles { margin-top: 0; }
 .access-management-roles .access-panel-heading { align-items: flex-start; }
+.access-accordion-panel { min-width: 0; overflow: hidden; }
+.access-accordion-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 13px 17px;
+  color: var(--theme-fg);
+  background: var(--theme-bg-surface);
+  border: 0;
+  text-align: left;
+}
+.access-accordion-heading:hover { background: var(--theme-bg-hover); }
+.access-accordion-heading > span,
+.access-accordion-heading strong,
+.access-accordion-heading small { display: block; }
+.access-accordion-heading strong { font-size: 15px; }
+.access-accordion-heading small { margin-top: 4px; color: var(--theme-fg-muted); font-size: 11px; }
+.access-heading-code { color: var(--theme-fg-muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+.access-accordion-heading strong .access-heading-code { display: inline; margin: 0 0 0 5px; vertical-align: middle; }
+.access-accordion-heading > svg { flex: 0 0 auto; color: var(--theme-fg-muted); transition: transform 160ms ease; }
+.access-accordion-heading > svg.expanded { transform: rotate(180deg); }
+.access-accordion-content { padding: 0 16px 16px; border-top: 1px solid var(--theme-divider); }
+.access-organization-content { padding-top: 14px; }
+.access-audit-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; color: var(--theme-fg-muted); font-size: 11px; }
+.access-audit-toolbar button { display: inline-flex; align-items: center; gap: 5px; }
+.access-audit-list { overflow-x: auto; }
+.access-audit-row { display: grid; grid-template-columns: minmax(145px, .9fr) minmax(110px, .8fr) minmax(145px, 1fr) minmax(130px, .9fr) 72px minmax(140px, 1fr); align-items: center; gap: 12px; min-height: 54px; padding: 8px 10px; border-bottom: 1px solid var(--theme-divider); font-size: 11px; }
+.access-audit-row > span,
+.access-audit-row time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-audit-row strong,
+.access-audit-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-audit-row small { margin-top: 3px; color: var(--theme-fg-muted); font-size: 10px; }
+.access-audit-head { min-height: 36px; color: var(--theme-fg-muted); background: var(--theme-bg-subtle); font-size: 10px; font-weight: 700; }
+.access-audit-details { color: var(--theme-fg-muted); }
+.access-audit-content .access-state { min-height: 90px; }
 .access-role-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; padding: 14px 17px 17px; }
 .role-catalog-item { display: grid; gap: 10px; min-width: 0; padding: 13px; background: var(--theme-bg-surface); border: 1px solid var(--theme-border); border-radius: 6px; }
 .role-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -136,6 +163,7 @@
   .access-management-table-head,
   .access-management-row { min-width: 680px; }
   .access-role-boundary { display: none; }
+  .access-audit-row { min-width: 800px; }
 }
 
 /* Scheme A: scope tree on the left, deduplicated member management on the right. */
@@ -165,6 +193,8 @@
 .access-user-desk-head h3 { font-size: 15px; }
 .access-scope-tree-head p,
 .access-user-desk-head p { margin-top: 4px; color: var(--theme-fg-muted); font-size: 11px; }
+.access-user-desk-title-line { display: flex; align-items: baseline; gap: 8px; }
+.access-user-desk-title-line small { color: var(--theme-fg-muted); font-size: 11px; }
 .access-scope-root,
 .access-scope-team-row,
 .access-scope-project-row {
@@ -182,7 +212,7 @@
 .access-scope-root.active,
 .access-scope-team-row.active,
 .access-scope-project-row.active { color: var(--theme-accent-contrast); background: var(--theme-bg-selected); }
-.access-scope-root > span:last-child,
+.access-scope-root > span:last-of-type,
 .scope-tree-select > span,
 .access-scope-project-row > span { min-width: 0; }
 .access-scope-root strong,
@@ -191,10 +221,15 @@
 .scope-tree-select small,
 .access-scope-project-row strong,
 .access-scope-project-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-scope-root strong,
+.scope-tree-select strong,
+.access-scope-project-row strong { font-size: 12px; }
 .access-scope-root small,
 .scope-tree-select small,
 .access-scope-project-row small { margin-top: 3px; color: var(--theme-fg-muted); font-size: 10px; }
-.scope-tree-icon { display: grid; place-items: center; color: var(--theme-accent); }
+.scope-tree-label { flex: 1; }
+.scope-tree-count { margin: 3px 0 0; text-align: left; white-space: normal; }
+.scope-tree-icon { display: grid; place-items: center; }
 .access-scope-team-list { padding: 7px 8px 12px; }
 .access-scope-team-node { border-bottom: 1px solid var(--theme-divider); }
 .access-scope-team-node:last-child { border-bottom: 0; }
@@ -203,30 +238,26 @@
 .scope-tree-expander svg { transition: transform 160ms ease; }
 .scope-tree-expander svg.expanded { transform: rotate(180deg); }
 .scope-tree-select { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; padding: 7px 4px; color: inherit; background: transparent; border: 0; text-align: left; }
-.scope-tree-select > svg { flex: 0 0 auto; color: var(--theme-accent); }
+.scope-tree-select > svg { flex: 0 0 auto; }
 .scope-tree-actions { display: flex; gap: 1px; padding-right: 5px; }
 .scope-tree-actions .icon-button { width: 25px; height: 25px; }
 .access-scope-project-list { display: grid; gap: 2px; padding: 4px 0 8px 28px; }
 .access-scope-project-row { gap: 7px; min-height: 38px; padding: 6px 8px; border-radius: 4px; }
-.access-scope-project-row > svg { flex: 0 0 auto; color: var(--theme-fg-muted); }
+.access-scope-project-row > svg { flex: 0 0 auto; }
 .access-user-desk { display: flex; flex-direction: column; min-height: 620px; }
-.access-user-desk-head { align-items: flex-start; }
-.access-user-desk-head .eyebrow { margin: 0 0 4px; }
+.access-user-desk-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 260px) minmax(0, 1fr); align-items: start; }
 .access-user-desk-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .access-user-desk-actions button { display: inline-flex; align-items: center; gap: 5px; }
-.access-project-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-height: 67px; padding: 12px 16px; border-bottom: 1px solid var(--theme-divider); background: var(--theme-bg-subtle); }
-.access-section-label { display: inline-flex; align-items: center; gap: 5px; color: var(--theme-fg-muted); font-size: 11px; font-weight: 700; }
-.access-project-strip > .access-section-label { margin-right: 3px; }
+.access-project-strip { display: flex; align-items: center; flex-wrap: nowrap; overflow-x: auto; gap: 7px; min-height: 60px; padding: 10px 16px; border-bottom: 1px solid var(--theme-divider); background: var(--theme-bg-subtle); }
 .access-project-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: var(--theme-fg); background: var(--theme-bg-surface); border: 1px solid var(--theme-border); border-radius: 5px; }
+.access-project-chip { flex: 0 0 auto; }
 .access-project-chip:hover,
 .access-project-chip.active { color: var(--theme-accent-contrast); background: var(--theme-bg-selected); border-color: var(--theme-border-focus); }
 .access-project-chip strong { font-size: 11px; font-weight: 600; }
 .access-project-chip span { color: var(--theme-fg-muted); font-size: 10px; }
 .access-project-empty { color: var(--theme-fg-muted); font-size: 11px; }
 .access-member-section { min-width: 0; flex: 1; }
-.access-member-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; padding: 15px 16px 11px; }
-.access-member-heading > div > span { display: block; margin-top: 4px; color: var(--theme-fg-muted); font-size: 10px; }
-.access-member-search { display: flex; align-items: center; gap: 6px; width: 180px; padding: 6px 9px; color: var(--theme-fg-muted); background: var(--theme-bg-input); border: 1px solid var(--theme-border); border-radius: 5px; }
+.access-member-search { display: flex; align-items: center; justify-self: center; gap: 6px; width: min(100%, 260px); padding: 6px 9px; color: var(--theme-fg-muted); background: var(--theme-bg-input); border: 1px solid var(--theme-border); border-radius: 5px; }
 .access-member-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--theme-fg); font-size: 11px; }
 .access-member-table { overflow: auto; }
 .access-member-table-head,
@@ -238,7 +269,7 @@
 .access-member-row .access-row-actions { display: flex; justify-content: flex-end; gap: 1px; }
 .access-member-row .access-row-actions .icon-button { width: 26px; height: 26px; }
 @media (max-width: 1050px) { .access-scope-desk { grid-template-columns: 220px minmax(0, 1fr); } .access-member-table { overflow-x: auto; } .access-member-table-head, .access-member-row { min-width: 700px; } }
-@media (max-width: 760px) { .access-scope-desk { grid-template-columns: 1fr; } .access-scope-tree { min-height: 0; } .access-user-desk { min-height: 560px; } .access-user-desk-head { flex-direction: column; } .access-user-desk-actions { justify-content: flex-start; } .access-member-heading { align-items: stretch; flex-direction: column; } .access-member-search { width: 100%; } }
+@media (max-width: 760px) { .access-scope-desk { grid-template-columns: 1fr; } .access-scope-tree { min-height: 0; } .access-user-desk { min-height: 560px; } .access-user-desk-head { grid-template-columns: 1fr; } .access-member-search { justify-self: stretch; width: 100%; } .access-user-desk-actions { justify-content: flex-start; } }
 .access-view-switcher {
   display: inline-flex;
   width: fit-content;
@@ -1217,15 +1248,22 @@
 }
 .team-identity-field {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  align-items: end;
-  gap: 10px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
 }
-.required-mark {
-  margin-left: 3px;
-  color: var(--color-primary);
-  font-weight: 800;
+.team-icon-selection {
+  display: grid;
+  justify-items: start;
 }
+.team-icon-selection label {
+  justify-items: start;
+  text-align: left;
+}
+.team-dialog-heading { align-items: center; padding-top: 12px; padding-bottom: 10px; }
+.team-dialog-description { margin: 4px 0 0; color: var(--theme-fg-muted); font-size: 11px; line-height: 1.4; }
+.team-dialog-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.access-field-error { display: block; grid-column: 1 / -1; margin-top: -5px; color: var(--theme-danger); font-size: 12px; }
 .role-preview {
   display: grid;
   gap: 9px;
@@ -1273,9 +1311,6 @@
 }
 :root[data-theme='dark'] .created-credentials-inline strong {
   color: var(--theme-fg-strong);
-}
-:root[data-theme='dark'] .required-mark {
-  color: var(--color-primary);
 }
 :root[data-theme='dark'] .role-preview,
 :root[data-theme='dark'] .created-credentials-inline span {

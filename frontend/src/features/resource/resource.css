@@ -2825,10 +2825,11 @@ body:has(.resource-add-workflow) {
 .relation-form {
   padding: 0;
 }
-.relation-form select:first-child {
+.relation-form label:first-child {
   flex: 1;
   min-width: 0;
 }
+.relation-form label:first-child select { width: 100%; }
 .relation-form select {
   width: 145px;
 }
@@ -2894,7 +2895,7 @@ body:has(.resource-add-workflow) {
     flex-wrap: wrap;
   }
   .relation-form select,
-.relation-form select:first-child {
+  .relation-form label:first-child {
     width: 100%;
     flex: 1 1 100%;
   }

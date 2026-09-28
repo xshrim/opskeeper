@@ -31,7 +31,7 @@ func (s *stubOrganizationService) CreateTeam(_ context.Context, input organizati
 	if s.createTeamErr != nil {
 		return organization.Team{}, s.createTeamErr
 	}
-	return organization.Team{ID: handlerTestUUID, Name: input.Name, Code: input.Code}, nil
+	return organization.Team{ID: handlerTestUUID, Name: input.Name, Description: input.Description}, nil
 }
 
 func (s *stubOrganizationService) ListTeams(_ context.Context, pagination organization.Pagination) (organization.Page[organization.Team], error) {
@@ -74,7 +74,7 @@ func newOrganizationTestRouterAt(basePath string, service organizationService) h
 func TestCreateTeam(t *testing.T) {
 	service := &stubOrganizationService{}
 	router := newOrganizationTestRouter(service)
-	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","labels":{"tier":"critical"}}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","description":"Billing team","labels":{"tier":"critical"}}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -82,7 +82,7 @@ func TestCreateTeam(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("POST /api/v1/teams status = %d, body = %s", response.Code, response.Body.String())
 	}
-	if service.createTeamInput.Code != "payments" {
+	if service.createTeamInput.Description != "Billing team" {
 		t.Fatalf("CreateTeam() input = %#v", service.createTeamInput)
 	}
 	if response.Header().Get("Location") != handlerTestBasePath+"/api/v1/teams/"+handlerTestUUID {
@@ -93,7 +93,7 @@ func TestCreateTeam(t *testing.T) {
 func TestCreateTeamAtRootBasePath(t *testing.T) {
 	service := &stubOrganizationService{}
 	router := newOrganizationTestRouterAt("/", service)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Payments"}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -108,7 +108,7 @@ func TestCreateTeamAtRootBasePath(t *testing.T) {
 
 func TestCreateTeamRejectsUnknownField(t *testing.T) {
 	router := newOrganizationTestRouter(&stubOrganizationService{})
-	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments","owner":"ignored"}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","owner":"ignored"}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -133,7 +133,7 @@ func TestListTeamsRejectsInvalidPagination(t *testing.T) {
 func TestCreateTeamMapsConflict(t *testing.T) {
 	service := &stubOrganizationService{createTeamErr: organization.ErrConflict}
 	router := newOrganizationTestRouter(service)
-	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments","code":"payments"}`))
+	request := httptest.NewRequest(http.MethodPost, handlerTestBasePath+"/api/v1/teams", strings.NewReader(`{"name":"Payments"}`))
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)

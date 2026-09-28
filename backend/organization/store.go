@@ -23,7 +23,7 @@ const platformSelect = `
 
 const teamSelect = `
 	SELECT t.id::text, t.platform_id::text, t.scope_id::text, s.scope_type,
-	       s.parent_scope_id::text, s.status, t.name, t.code, t.icon, t.labels,
+	       s.parent_scope_id::text, s.status, t.name, t.description, t.icon, t.labels,
 	       t.created_at, t.updated_at
 	  FROM teams t
 	  JOIN scopes s ON s.id = t.scope_id
@@ -103,9 +103,9 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	var teamID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO teams (scope_id, platform_id, name, code, icon, labels)
+		INSERT INTO teams (scope_id, platform_id, name, description, icon, labels)
 		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
-		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Code, input.Icon, labels).Scan(&teamID); err != nil {
+		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Description, input.Icon, labels).Scan(&teamID); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -173,6 +173,9 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	if input.Name != nil {
 		current.Name = *input.Name
 	}
+	if input.Description != nil {
+		current.Description = *input.Description
+	}
 	if input.Labels != nil {
 		current.Labels = *input.Labels
 	}
@@ -197,8 +200,8 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE teams
-		   SET name = $2, icon = $3, labels = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, current.Icon, labels); err != nil {
+		   SET name = $2, description = $3, icon = $4, labels = $5, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, current.Description, current.Icon, labels); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -434,7 +437,7 @@ func scanTeam(row scanner) (Team, error) {
 		&parentID,
 		&team.Scope.Status,
 		&team.Name,
-		&team.Code,
+		&team.Description,
 		&team.Icon,
 		&labels,
 		&team.CreatedAt,

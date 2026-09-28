@@ -19,14 +19,14 @@ func (s *Service) GetPlatform(ctx context.Context) (Platform, error) {
 
 func (s *Service) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, error) {
 	input.Name = strings.TrimSpace(input.Name)
-	input.Code = strings.TrimSpace(input.Code)
+	input.Description = strings.TrimSpace(input.Description)
 	if err := validateName(input.Name); err != nil {
 		return Team{}, err
 	}
-	input.Icon = normalizeIcon(input.Icon, "lucide:UsersRound")
-	if err := validateCode(input.Code); err != nil {
-		return Team{}, err
+	if len([]rune(input.Description)) > 1000 {
+		return Team{}, invalid("description must be at most 1000 characters")
 	}
+	input.Icon = normalizeIcon(input.Icon, "lucide:UsersRound")
 	if err := validateLabels(input.Labels); err != nil {
 		return Team{}, err
 	}
@@ -53,7 +53,7 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 	if err := validateID(teamID, "team_id"); err != nil {
 		return Team{}, err
 	}
-	if input.Name == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
 		return Team{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -62,6 +62,13 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 			return Team{}, err
 		}
 		input.Name = &trimmed
+	}
+	if input.Description != nil {
+		description := strings.TrimSpace(*input.Description)
+		if len([]rune(description)) > 1000 {
+			return Team{}, invalid("description must be at most 1000 characters")
+		}
+		input.Description = &description
 	}
 	if input.Icon != nil {
 		icon := normalizeIcon(*input.Icon, "lucide:UsersRound")

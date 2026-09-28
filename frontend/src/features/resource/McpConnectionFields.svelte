@@ -45,7 +45,7 @@
 </script>
 
 <div class="mcp-resource-form">
-  <label class="mcp-url-field" class:invalid={configurationAttempted && !url.trim()}><span><i>*</i>Server 地址</span><input bind:value={url} type="url" required placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
+  <label class="mcp-url-field" class:invalid={configurationAttempted && !url.trim()}><span>Server 地址<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={url} type="url" required placeholder="https://mcp.example.com/mcp" autocomplete="off" /></label>
   <label><span>Token</span><span class="resource-secret-control"><input bind:value={token} type={tokenVisible ? 'text' : 'password'} placeholder={tokenPlaceholder} autocomplete="new-password" /><button class="resource-secret-toggle" type="button" aria-label={tokenVisible ? '隐藏 Token' : '显示 Token'} aria-pressed={tokenVisible} data-tooltip={tokenVisible ? '隐藏 Token' : '显示 Token'} on:click={() => (tokenVisible = !tokenVisible)}>{#if tokenVisible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span></label>
   <div class="mcp-number-grid">
     <label><span>超时时间（秒）</span><input bind:value={timeoutSeconds} type="number" min="1" max="600" /></label>
