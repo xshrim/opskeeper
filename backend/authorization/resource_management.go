@@ -50,6 +50,49 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 			return ResourceRoleBinding{}, ErrGrantNotAllowed
 		}
 	}
+	existingBindings, err := s.store.ListResourceRoleBindings(ctx, []string{scopeID})
+	if err != nil {
+		return ResourceRoleBinding{}, err
+	}
+	var dominantBinding *ResourceRoleBinding
+	var dominantRole ResourceRoleDefinition
+	for _, existing := range existingBindings {
+		if existing.SubjectType != input.SubjectType || existing.SubjectID != input.SubjectID || existing.ResourceID != input.ResourceID {
+			continue
+		}
+		existingRole, roleErr := s.store.GetResourceRole(ctx, existing.RoleID)
+		if roleErr != nil {
+			return ResourceRoleBinding{}, roleErr
+		}
+		if resourceRoleDominates(existingRole, role) {
+			if dominantBinding == nil || resourceRoleDominates(existingRole, dominantRole) {
+				binding := existing
+				dominantBinding = &binding
+				dominantRole = existingRole
+			}
+			continue
+		}
+		if !resourceRoleDominates(role, existingRole) {
+			return ResourceRoleBinding{}, ErrConflict
+		}
+	}
+	if dominantBinding != nil {
+		for _, existing := range existingBindings {
+			if existing.SubjectType == input.SubjectType && existing.SubjectID == input.SubjectID && existing.ResourceID == input.ResourceID && existing.ID != dominantBinding.ID {
+				if err := s.store.DeleteResourceRoleBinding(ctx, existing.ID); err != nil {
+					return ResourceRoleBinding{}, err
+				}
+			}
+		}
+		return *dominantBinding, nil
+	}
+	for _, existing := range existingBindings {
+		if existing.SubjectType == input.SubjectType && existing.SubjectID == input.SubjectID && existing.ResourceID == input.ResourceID {
+			if err := s.store.DeleteResourceRoleBinding(ctx, existing.ID); err != nil {
+				return ResourceRoleBinding{}, err
+			}
+		}
+	}
 	binding, err := s.store.CreateResourceRoleBinding(ctx, input, actorID)
 	if err != nil {
 		return ResourceRoleBinding{}, err
@@ -58,6 +101,19 @@ func (s *ManagementService) CreateResourceRoleBinding(ctx context.Context, actor
 		"role": binding.RoleName, "resource_id": binding.ResourceID,
 		"subject_type": binding.SubjectType, "subject_id": binding.SubjectID,
 	})
+}
+
+func resourceRoleDominates(stronger, weaker ResourceRoleDefinition) bool {
+	permissions := make(map[Permission]struct{}, len(stronger.Permissions))
+	for _, permission := range stronger.Permissions {
+		permissions[permission] = struct{}{}
+	}
+	for _, permission := range weaker.Permissions {
+		if _, ok := permissions[permission]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // ResourceGrantViewerRole returns the only scope role that may receive

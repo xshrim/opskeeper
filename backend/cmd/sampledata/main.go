@@ -18,7 +18,6 @@ import (
 const (
 	markerKey   = "opskeeper.dev-sample"
 	markerValue = "access-v1"
-	password    = "Sample123!"
 	emailDomain = "yunops.test"
 )
 
@@ -76,6 +75,15 @@ func main() {
 }
 
 func run(action string) error {
+	var samplePassword string
+	if action == "seed" {
+		var err error
+		samplePassword, err = samplePasswordFromEnv()
+		if err != nil {
+			return err
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
@@ -96,9 +104,17 @@ func run(action string) error {
 	}
 
 	if action == "seed" {
-		return seed(ctx, pool)
+		return seed(ctx, pool, samplePassword)
 	}
 	return clean(ctx, pool)
+}
+
+func samplePasswordFromEnv() (string, error) {
+	password := os.Getenv("OPSK_TEST_USER_PASWORD")
+	if strings.TrimSpace(password) == "" {
+		return "", errors.New("OPSK_TEST_USER_PASWORD is required for sample-seed; set it in .env")
+	}
+	return password, nil
 }
 
 func ensureLocalDatabase(environment, databaseURL string) error {
@@ -124,8 +140,8 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func seed(ctx context.Context, pool *pgxpool.Pool) error {
-	hash, err := identity.HashPassword(password)
+func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error {
+	hash, err := identity.HashPassword(samplePassword)
 	if err != nil {
 		return fmt.Errorf("hash sample password: %w", err)
 	}
@@ -195,7 +211,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool) error {
 				RETURNING id::text`, projectScopeID, platformID, teamID, projectItem.name, code, markerKey, markerValue).Scan(&projectID); err != nil {
 				return fmt.Errorf("create sample project %s: %w", code, err)
 			}
-			projects[item.key+fmt.Sprintf("-%02d", index)] = projectScopeID
+			projects[projectScopeKey(item.key, index)] = projectScopeID
 		}
 	}
 
@@ -251,11 +267,15 @@ func seed(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit sample seed: %w", err)
 	}
-	fmt.Printf("Seeded 3 teams, 16 projects, and 6 users. Sample login password: %s\n", password)
+	fmt.Printf("Seeded 3 teams, 16 projects, and 6 users. Sample login password: %s\n", samplePassword)
 	for _, item := range users {
 		fmt.Printf("  %-24s %s@%s\n", item.username, item.username, emailDomain)
 	}
 	return nil
+}
+
+func projectScopeKey(teamKey string, index int) string {
+	return fmt.Sprintf("%s-%02d", teamKey, index+1)
 }
 
 func clean(ctx context.Context, pool *pgxpool.Pool) error {

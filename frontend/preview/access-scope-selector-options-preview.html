@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>全局范围选择器 · 10 种方案</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202b29;
+      --muted: #687774;
+      --subtle: #8b9794;
+      --line: #dfe7e3;
+      --surface: #fff;
+      --canvas: #f3f6f4;
+      --green: #18775f;
+      --green-soft: #e8f4ef;
+      --coral: #c65d48;
+      --coral-soft: #fff0eb;
+      --gold: #c28b21;
+      --gold-soft: #fbf4df;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--canvas);
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--canvas); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 56px; padding: 0 30px; color: #eff7f3; background: #1d302b; }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 760; }
+    .brand-mark { display: grid; place-items: center; width: 25px; height: 25px; color: #183b31; background: #9ed7bd; border-radius: 6px; font-size: 12px; }
+    .top-nav { display: flex; align-items: center; gap: 20px; margin-right: auto; margin-left: 28px; color: #afc0ba; font-size: 11px; }
+    .top-nav .active { color: #fff; }
+    .scope-chip { display: flex; align-items: center; gap: 8px; max-width: 260px; padding: 6px 9px; color: #e6f0eb; background: #2d433c; border: 1px solid #456158; border-radius: 6px; font-size: 10px; white-space: nowrap; }
+    .scope-chip .path { overflow: hidden; text-overflow: ellipsis; }
+    .scope-chip .chev { color: #a5c1b4; }
+    .user-dot { display: grid; place-items: center; flex: 0 0 auto; width: 27px; height: 27px; border-radius: 50%; color: #28332e; background: #e8c28c; font-size: 10px; font-weight: 750; }
+    main { width: min(1440px, calc(100% - 44px)); margin: 0 auto; padding: 29px 0 48px; }
+    .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+    .eyebrow { margin: 0 0 6px; color: var(--green); font-size: 10px; font-weight: 800; }
+    h1, h2, h3, p { margin-top: 0; letter-spacing: 0; }
+    h1 { margin-bottom: 6px; font-size: 23px; line-height: 1.25; }
+    .intro p { margin-bottom: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .selection-note { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 7px 10px; color: #42524c; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 10px; }
+    .selection-note b { color: var(--green); }
+    .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; align-items: stretch; }
+    .scheme { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .scheme.selected { border-color: #8dbca8; box-shadow: 0 0 0 1px #8dbca8; }
+    .scheme-head { display: flex; align-items: center; gap: 9px; min-height: 51px; padding: 9px 12px; border-bottom: 1px solid #eaf0ed; }
+    .number { display: grid; place-items: center; flex: 0 0 auto; width: 25px; height: 25px; border-radius: 6px; color: #55625e; background: #edf1ef; font-size: 10px; font-weight: 800; }
+    .selected .number { color: #fff; background: var(--green); }
+    .scheme-title { min-width: 0; flex: 1; }
+    .scheme-title h2 { overflow: hidden; margin: 0; font-size: 12px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+    .scheme-title small { display: block; overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .badge { flex: 0 0 auto; padding: 3px 6px; color: #586762; background: #f0f4f2; border-radius: 4px; font-size: 9px; font-weight: 700; }
+    .selected .badge { color: #17654f; background: var(--green-soft); }
+    .mock { position: relative; min-height: 231px; padding: 10px; background: #f5f7f6; }
+    .mock-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 26px; margin: -1px -1px 8px; padding: 0 4px 7px; color: #7b8984; border-bottom: 1px solid #e2e9e5; font-size: 8px; }
+    .mock-top strong { color: #53615b; font-size: 9px; font-weight: 700; }
+    .mini-trigger { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 26px; padding: 0 8px; color: #34423d; background: #fff; border: 1px solid #ccd8d2; border-radius: 5px; font-size: 9px; white-space: nowrap; }
+    .mini-trigger .truncate { overflow: hidden; text-overflow: ellipsis; }
+    .mini-trigger .caret { color: #81918a; }
+    .panel { overflow: hidden; background: #fff; border: 1px solid #dce5e0; border-radius: 6px; box-shadow: 0 5px 14px rgba(36, 57, 47, .08); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 31px; padding: 0 9px; color: var(--muted); border-bottom: 1px solid #edf1ef; font-size: 9px; }
+    .panel-head strong { color: #34423d; font-size: 9px; }
+    .search { display: flex; align-items: center; gap: 6px; min-width: 0; height: 27px; margin: 7px 8px; padding: 0 7px; color: #778680; background: #fafcfb; border: 1px solid #e1e8e4; border-radius: 4px; font-size: 9px; }
+    .search input { width: 100%; min-width: 0; padding: 0; color: var(--ink); background: transparent; border: 0; outline: 0; font-size: 9px; }
+    .search input::placeholder { color: #98a39f; }
+    .hint { flex: 0 0 auto; color: #8b9792; font-size: 8px; }
+    .rows { max-height: 112px; overflow-y: auto; scrollbar-color: #c7d4ce transparent; scrollbar-width: thin; }
+    .row { display: flex; align-items: center; gap: 7px; min-height: 27px; padding: 4px 9px; color: #46534e; font-size: 9px; }
+    .row + .row { border-top: 1px solid #f1f4f2; }
+    .row:hover, .row.active { color: #17654f; background: #eff7f2; }
+    .row .name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .meta { flex: 0 0 auto; color: #87938e; font-size: 8px; }
+    .row .arrow { color: #9aa6a1; font-size: 10px; }
+    .row .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: #a9b9b1; }
+    .row.active .dot { background: var(--green); }
+    .crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 7px 9px; color: #74817b; font-size: 8px; }
+    .crumbs b { color: #286d56; font-weight: 700; }
+    .crumbs i { color: #adb8b2; font-style: normal; }
+    .columns { display: grid; grid-template-columns: minmax(0, .86fr) minmax(0, 1.14fr); min-height: 162px; }
+    .columns > div + div { border-left: 1px solid #edf1ef; }
+    .column-label { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 27px; padding: 0 8px; color: #79867f; font-size: 8px; }
+    .compact-rows { max-height: 126px; overflow-y: auto; scrollbar-width: thin; }
+    .compact-rows .row { min-height: 24px; padding: 3px 8px; font-size: 8px; }
+    .tree .row { min-height: 24px; }
+    .tree .nested { padding-left: 19px; }
+    .tree .leaf { padding-left: 31px; }
+    .tree .team-line { background: #fbfcfb; }
+    .count { padding: 2px 5px; color: #78857f; background: #f1f4f2; border-radius: 4px; font-size: 8px; }
+    .recent-list { padding: 3px 0; }
+    .recent-list .row { min-height: 30px; }
+    .recent-icon { display: grid; place-items: center; width: 19px; height: 19px; flex: 0 0 auto; color: #678076; background: #edf4f0; border-radius: 4px; font-size: 8px; }
+    .panel-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 29px; padding: 0 9px; color: #85918b; border-top: 1px solid #edf1ef; font-size: 8px; }
+    .link { color: #19745c; font-weight: 680; }
+    .underlay { padding: 10px; color: #a2ada8; background: repeating-linear-gradient(0deg, #fff 0 19px, #f3f6f4 20px 21px); border: 1px solid #e4ebe7; border-radius: 5px; font-size: 8px; }
+    .drawer { display: grid; grid-template-columns: minmax(0, 1fr) 245px; min-height: 198px; overflow: hidden; border: 1px solid #dce5e0; border-radius: 6px; background: #edf1ef; }
+    .drawer-content { position: relative; padding: 13px 10px; color: #a1aca7; font-size: 8px; }
+    .drawer-panel { min-width: 0; background: #fff; border-left: 1px solid #dce5e0; box-shadow: -4px 0 12px rgba(36, 57, 47, .06); }
+    .drawer-panel .rows { max-height: 143px; }
+    .palette-backdrop { display: grid; place-items: start center; min-height: 198px; padding: 21px 10px; background: #e9eeeb; border: 1px solid #e0e7e3; border-radius: 6px; }
+    .palette { width: min(100%, 325px); overflow: hidden; background: #fff; border: 1px solid #d5e0da; border-radius: 7px; box-shadow: 0 10px 25px rgba(30, 49, 40, .15); }
+    .palette .search { height: 35px; margin: 7px; font-size: 10px; }
+    .palette .search input { font-size: 10px; }
+    .group-label { padding: 7px 9px 3px; color: #929e98; font-size: 8px; font-weight: 700; }
+    .grouped .row { min-height: 25px; }
+    .tabs { display: flex; align-items: center; gap: 4px; padding: 6px 8px 2px; }
+    .tab { padding: 4px 7px; color: #75827c; background: transparent; border: 0; border-radius: 4px; font-size: 8px; }
+    .tab.active { color: #17654f; background: var(--green-soft); font-weight: 750; }
+    .steps { display: flex; align-items: center; gap: 5px; padding: 8px 9px 2px; }
+    .step { display: flex; align-items: center; gap: 5px; color: #87938d; font-size: 8px; }
+    .step b { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: #74827b; background: #edf1ef; font-size: 8px; }
+    .step.current { color: #17654f; font-weight: 700; }
+    .step.current b { color: #fff; background: var(--green); }
+    .step-line { width: 17px; height: 1px; background: #dce5e0; }
+    .step-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 9px; color: #66746e; font-size: 8px; }
+    .mobile-stage { display: flex; justify-content: center; min-height: 210px; padding: 4px 0 0; }
+    .phone { width: 180px; height: 213px; padding: 6px; overflow: hidden; background: #263630; border: 1px solid #18251f; border-radius: 16px; box-shadow: 0 4px 10px rgba(25, 42, 34, .14); }
+    .phone-screen { position: relative; height: 100%; overflow: hidden; background: #f5f7f6; border-radius: 11px; }
+    .phone-notch { width: 46px; height: 9px; margin: 0 auto; background: #263630; border-radius: 0 0 7px 7px; }
+    .phone-app { display: flex; justify-content: space-between; align-items: center; height: 32px; padding: 0 9px; color: #42514a; font-size: 8px; font-weight: 700; }
+    .sheet-dim { position: absolute; inset: 32px 0 0; background: rgba(35, 52, 44, .24); }
+    .sheet { position: absolute; right: 0; bottom: 0; left: 0; height: 166px; padding: 8px; background: #fff; border-radius: 10px 10px 0 0; box-shadow: 0 -3px 12px rgba(30, 49, 40, .12); }
+    .sheet-grab { width: 28px; height: 3px; margin: 0 auto 7px; background: #d6dfda; border-radius: 2px; }
+    .sheet-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 9px; font-weight: 750; }
+    .sheet .search { height: 23px; margin: 5px 0; padding: 0 6px; }
+    .sheet .rows { max-height: 80px; }
+    .sheet .row { min-height: 24px; padding: 3px 5px; font-size: 8px; }
+    .phone-status { color: #18775f; font-size: 7px; }
+    .muted { color: #8b9792; }
+    .scheme-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; color: #687774; border-top: 1px solid #eaf0ed; font-size: 9px; }
+    .scheme-footer b { color: #43524c; font-weight: 650; }
+    @media (max-width: 1080px) { .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) {
+      .topbar { min-height: 52px; padding: 0 14px; }
+      .top-nav { display: none; }
+      .scope-chip { max-width: 170px; }
+      main { width: calc(100% - 24px); padding-top: 21px; }
+      .intro { align-items: start; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+      h1 { font-size: 20px; }
+      .gallery { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .mock { min-height: 231px; }
+      .scheme-mobile .mock { min-height: 231px; }
+      .drawer { grid-template-columns: minmax(0, 1fr) 220px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">O</span><span>OpsKeeper</span></div>
+    <nav class="top-nav"><span>工作台</span><span class="active">资源</span><span>AI 诊断</span><span>权限</span></nav>
+    <button class="scope-chip" type="button" aria-label="当前范围：支付业务，结算服务"><span class="path">支付业务 <span class="chev">/</span> 结算服务</span><span class="chev">⌄</span></button>
+    <span class="user-dot">林</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">GLOBAL SCOPE CONTROL</p><h1>全局范围选择</h1><p>10 种团队与项目切换方案 · 优先考虑高密度目录中的搜索效率和空间占用</p></div>
+      <div class="selection-note"><b>采用</b><span>04 树形弹出菜单</span></div>
+    </section>
+    <section class="gallery" aria-label="10 种全局范围选择方案">
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">01</span><div class="scheme-title"><h2>全局搜索框</h2><small>输入即搜团队与项目，结果按层级显示</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>当前范围 · 支付业务 / 结算服务</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="width:min(100%,330px);margin-top:5px"><div class="search"><span>⌕</span><input aria-label="全局搜索" data-filter="global-results" value="结算" placeholder="搜索团队、项目" /><span class="hint">⌘ K</span></div><div class="rows grouped" id="global-results"><div class="group-label">项目 · 3 个匹配</div><div class="row active" data-search="结算服务 支付业务 项目"><span class="dot"></span><span class="name">结算服务</span><span class="meta">支付业务</span></div><div class="row" data-search="国际结算 财务平台 项目"><span class="dot"></span><span class="name">国际结算</span><span class="meta">财务平台</span></div><div class="row" data-search="结算工具 清算技术 项目"><span class="dot"></span><span class="name">结算工具</span><span class="meta">清算技术</span></div><div class="row" data-search="结算域 支付业务 团队"><span class="dot"></span><span class="name">支付业务</span><span class="meta">团队 · 24 个项目</span></div></div><div class="panel-foot"><span>搜索 128 个团队 · 436 个项目</span><span>↵ 选择</span></div></div>
+        </div><footer class="scheme-footer"><b>输入直达，列表不随数量增长</b><span>占用低</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">02</span><div class="scheme-title"><h2>级联面包屑</h2><small>沿团队 → 项目逐级切换，当前路径始终可见</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>范围路径</span></div><div class="mini-trigger"><span class="truncate">平台 <span class="muted">/</span> 支付业务 <span class="muted">/</span> 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="margin-top:5px"><div class="crumbs"><span>平台</span><i>›</i><b>支付业务</b><i>›</i><span>选择项目</span></div><div class="search" style="margin-top:0"><span>⌕</span><input aria-label="搜索当前团队项目" data-filter="cascade-projects" placeholder="在 24 个项目中搜索" /><span class="hint">24</span></div><div class="rows" id="cascade-projects"><div class="row active" data-search="结算服务"><span class="dot"></span><span class="name">结算服务</span><span class="meta">12 项资源</span></div><div class="row" data-search="支付网关"><span class="dot"></span><span class="name">支付网关</span><span class="meta">8 项资源</span></div><div class="row" data-search="账单中心"><span class="dot"></span><span class="name">账单中心</span><span class="meta">6 项资源</span></div><div class="row" data-search="退款工作台"><span class="dot"></span><span class="name">退款工作台</span><span class="meta">4 项资源</span></div><div class="row" data-search="对账服务"><span class="dot"></span><span class="name">对账服务</span><span class="meta">9 项资源</span></div></div><div class="panel-foot"><span>支付业务 · 24 个项目</span><span class="link">切换团队</span></div></div>
+        </div><footer class="scheme-footer"><b>路径清晰，逐层缩小候选范围</b><span>备选</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">03</span><div class="scheme-title"><h2>双栏快捷列表</h2><small>固定高度并行浏览团队和项目</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>支付业务 · 24 个项目</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="margin-top:5px"><div class="columns"><div><div class="column-label"><b>团队</b><span>128</span></div><div class="search" style="margin:0 6px 5px;height:22px"><span>⌕</span><input aria-label="搜索团队" data-filter="dual-teams" placeholder="搜索团队" /></div><div class="compact-rows" id="dual-teams"><div class="row active" data-search="支付业务"><span class="name">支付业务</span><span class="meta">24</span></div><div class="row" data-search="清算技术"><span class="name">清算技术</span><span class="meta">18</span></div><div class="row" data-search="数据平台"><span class="name">数据平台</span><span class="meta">36</span></div><div class="row" data-search="平台工程"><span class="name">平台工程</span><span class="meta">21</span></div><div class="row" data-search="客户成功"><span class="name">客户成功</span><span class="meta">9</span></div></div></div><div><div class="column-label"><b>项目</b><span>24</span></div><div class="search" style="margin:0 6px 5px;height:22px"><span>⌕</span><input aria-label="搜索项目" data-filter="dual-projects" placeholder="搜索项目" /></div><div class="compact-rows" id="dual-projects"><div class="row active" data-search="结算服务"><span class="name">结算服务</span></div><div class="row" data-search="支付网关"><span class="name">支付网关</span></div><div class="row" data-search="账单中心"><span class="name">账单中心</span></div><div class="row" data-search="退款工作台"><span class="name">退款工作台</span></div><div class="row" data-search="对账服务"><span class="name">对账服务</span></div></div></div></div><div class="panel-foot"><span>列表独立滚动 · 选择后立即切换</span><span>✓</span></div></div>
+        </div><footer class="scheme-footer"><b>高频切换快，双列空间固定</b><span>128 团队 · 436 项目</span></footer>
+      </article>
+
+      <article class="scheme selected">
+        <header class="scheme-head"><span class="number">04</span><div class="scheme-title"><h2>树形弹出菜单</h2><small>熟悉的层级结构，展开团队查看项目</small></div><span class="badge">采用</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>当前范围 · 项目级</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel tree" style="margin-top:5px"><div class="search"><span>⌕</span><input aria-label="搜索团队或项目" data-filter="tree-list" placeholder="搜索团队或项目" /><span class="hint">128 / 436</span></div><div class="rows" id="tree-list"><div class="row" data-search="全部团队 平台范围 全部项目"><span class="dot"></span><span class="name">全部团队</span><span class="meta">全部项目</span></div><div class="row team-line" data-search="支付业务 结算服务 支付网关 全部项目"><span class="arrow">⌄</span><span class="name">支付业务</span><span class="count">24</span></div><div class="row leaf" data-search="支付业务 全部项目"><span class="dot"></span><span class="name">全部项目</span><span class="meta">团队范围</span></div><div class="row leaf active" data-search="支付业务 结算服务"><span class="dot"></span><span class="name">结算服务</span><span class="meta">项目</span></div><div class="row leaf" data-search="支付业务 支付网关"><span class="dot"></span><span class="name">支付网关</span><span class="meta">项目</span></div><div class="row team-line" data-search="清算技术 对账平台 清算任务 全部项目"><span class="arrow">›</span><span class="name">清算技术</span><span class="count">18</span></div><div class="row team-line" data-search="数据平台 指标中心 数据仓库 全部项目"><span class="arrow">›</span><span class="name">数据平台</span><span class="count">36</span></div><div class="row team-line" data-search="平台工程 集群管理 发布平台 全部项目"><span class="arrow">›</span><span class="name">平台工程</span><span class="count">21</span></div></div><div class="panel-foot"><span>团队按名称排序</span><span>平台级 · 128 团队</span></div></div>
+        </div><footer class="scheme-footer"><b>层级清楚，支持全部团队或团队内全部项目</b><span>采用</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">05</span><div class="scheme-title"><h2>最近范围优先</h2><small>重复切换时先选最近项，也可展开完整目录</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>最近使用</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="width:min(100%,330px);margin-top:5px"><div class="panel-head"><strong>最近范围</strong><span>清除</span></div><div class="recent-list"><div class="row active"><span class="recent-icon">01</span><span class="name">支付业务 / 结算服务</span><span class="meta">刚才</span></div><div class="row"><span class="recent-icon">02</span><span class="name">平台工程 / 集群管理</span><span class="meta">今天</span></div><div class="row"><span class="recent-icon">03</span><span class="name">数据平台 / 指标中心</span><span class="meta">昨天</span></div></div><div class="panel-foot"><span>固定常用范围，最近 8 项</span><span class="link">浏览全部 128 个团队 →</span></div></div>
+        </div><footer class="scheme-footer"><b>重复操作一步直达，目录按需打开</b><span>常用优先</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">06</span><div class="scheme-title"><h2>侧边目录抽屉</h2><small>宽屏两栏检索，主页面只保留一个范围按钮</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>抽屉式范围浏览</span></div><div class="drawer"><div class="drawer-content">资源列表<br><br>当前范围内的服务与组件<br><br><span class="muted">选择范围时主内容保留在背景</span></div><aside class="drawer-panel"><div class="panel-head"><strong>选择范围</strong><span>×</span></div><div class="search"><span>⌕</span><input aria-label="抽屉搜索团队" data-filter="drawer-teams" placeholder="搜索 128 个团队" /></div><div class="rows" id="drawer-teams"><div class="row active" data-search="支付业务"><span class="dot"></span><span class="name">支付业务</span><span class="meta">24</span><span class="arrow">›</span></div><div class="row" data-search="清算技术"><span class="dot"></span><span class="name">清算技术</span><span class="meta">18</span><span class="arrow">›</span></div><div class="row" data-search="数据平台"><span class="dot"></span><span class="name">数据平台</span><span class="meta">36</span><span class="arrow">›</span></div><div class="row" data-search="平台工程"><span class="dot"></span><span class="name">平台工程</span><span class="meta">21</span><span class="arrow">›</span></div><div class="row" data-search="客户成功"><span class="dot"></span><span class="name">客户成功</span><span class="meta">9</span><span class="arrow">›</span></div><div class="row" data-search="产品研发"><span class="dot"></span><span class="name">产品研发</span><span class="meta">16</span><span class="arrow">›</span></div></div><div class="panel-foot"><span>第 1 / 13 页</span><span class="link">下一页 →</span></div></aside></div></div><footer class="scheme-footer"><b>目录有充足浏览空间，不挤占顶栏</b><span>宽屏适用</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">07</span><div class="scheme-title"><h2>快捷键命令面板</h2><small>键盘直达任意团队或项目，适合熟练用户</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>按 ⌘ K 切换范围</span></div><div class="palette-backdrop"><div class="palette"><div class="search"><span>⌕</span><input aria-label="命令面板搜索" data-filter="palette-results" value="支付" placeholder="搜索范围..." /><span class="hint">ESC</span></div><div class="group-label">匹配的团队与项目</div><div class="rows" id="palette-results"><div class="row active" data-search="支付业务 团队"><span class="recent-icon">团</span><span class="name">支付业务</span><span class="meta">团队 · 24 项目</span></div><div class="row" data-search="支付网关 支付业务 项目"><span class="recent-icon">项</span><span class="name">支付网关</span><span class="meta">支付业务</span></div><div class="row" data-search="支付清算 清算技术 项目"><span class="recent-icon">项</span><span class="name">支付清算</span><span class="meta">清算技术</span></div></div><div class="panel-foot"><span>↑↓ 浏览</span><span>↵ 选择</span><span>128 团队 · 436 项目</span></div></div></div></div><footer class="scheme-footer"><b>支持键盘导航，搜索规模无关</b><span>键盘优先</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">08</span><div class="scheme-title"><h2>分类搜索结果</h2><small>团队与项目分栏统计，结果类型一眼可辨</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>分类定位</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="width:min(100%,330px);margin-top:5px"><div class="search"><span>⌕</span><input aria-label="分类搜索" data-filter="category-results" value="平台" placeholder="搜索团队或项目" /><span class="hint">Enter</span></div><div class="tabs"><button class="tab active" type="button">全部 14</button><button class="tab" type="button">团队 5</button><button class="tab" type="button">项目 9</button></div><div class="rows grouped" id="category-results"><div class="group-label">团队 · 5</div><div class="row" data-search="平台工程 团队"><span class="name">平台工程</span><span class="meta">21 个项目</span></div><div class="row" data-search="平台服务 团队"><span class="name">平台服务</span><span class="meta">11 个项目</span></div><div class="group-label">项目 · 9</div><div class="row active" data-search="平台治理 平台工程 项目"><span class="name">平台治理</span><span class="meta">平台工程</span></div><div class="row" data-search="指标平台 数据平台 项目"><span class="name">指标平台</span><span class="meta">数据平台</span></div></div><div class="panel-foot"><span>共 14 个匹配结果</span><span>分组滚动</span></div></div>
+        </div><footer class="scheme-footer"><b>匹配多时按类型快速收窄</b><span>结果清楚</span></footer>
+      </article>
+
+      <article class="scheme">
+        <header class="scheme-head"><span class="number">09</span><div class="scheme-title"><h2>分步精简选择</h2><small>每步只呈现当前层级，长列表可独立搜索</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mock-top"><strong>资源目录</strong><span>逐级缩小范围</span></div><div class="mini-trigger"><span class="truncate">支付业务 / 结算服务</span><span class="caret">⌄</span></div>
+          <div class="panel" style="margin-top:5px"><div class="steps"><span class="step"><b>✓</b>团队</span><i class="step-line"></i><span class="step current"><b>2</b>项目</span></div><div class="step-summary"><span>支付业务</span><span class="link">← 更换团队</span></div><div class="search" style="margin-top:0"><span>⌕</span><input aria-label="分步搜索项目" data-filter="step-projects" placeholder="搜索 24 个项目" /><span class="hint">24</span></div><div class="rows" id="step-projects"><div class="row active" data-search="结算服务"><span class="dot"></span><span class="name">结算服务</span><span class="meta">12 项资源</span></div><div class="row" data-search="支付网关"><span class="dot"></span><span class="name">支付网关</span><span class="meta">8 项资源</span></div><div class="row" data-search="账单中心"><span class="dot"></span><span class="name">账单中心</span><span class="meta">6 项资源</span></div><div class="row" data-search="退款工作台"><span class="dot"></span><span class="name">退款工作台</span><span class="meta">4 项资源</span></div></div><div class="panel-foot"><span>第 1 / 24 个项目</span><span>选择后关闭</span></div></div>
+        </div><footer class="scheme-footer"><b>层级分明，单列表更省空间</b><span>分步选择</span></footer>
+      </article>
+
+      <article class="scheme scheme-mobile">
+        <header class="scheme-head"><span class="number">10</span><div class="scheme-title"><h2>移动端底部面板</h2><small>窄屏单手操作，搜索固定、结果区域滚动</small></div><span class="badge">备选</span></header>
+        <div class="mock"><div class="mobile-stage"><div class="phone"><div class="phone-screen"><div class="phone-notch"></div><div class="phone-app"><span>资源目录</span><span class="phone-status">在线</span></div><div class="sheet-dim"></div><section class="sheet"><div class="sheet-grab"></div><div class="sheet-title"><span>切换范围</span><span class="muted">取消</span></div><div class="crumbs" style="padding:0 0 3px"><span>平台</span><i>›</i><b>支付业务</b></div><div class="search"><span>⌕</span><input aria-label="移动端搜索项目" data-filter="mobile-projects" placeholder="搜索 24 个项目" /></div><div class="rows" id="mobile-projects"><div class="row active" data-search="结算服务"><span class="dot"></span><span class="name">结算服务</span><span class="meta">12</span></div><div class="row" data-search="支付网关"><span class="dot"></span><span class="name">支付网关</span><span class="meta">8</span></div><div class="row" data-search="账单中心"><span class="dot"></span><span class="name">账单中心</span><span class="meta">6</span></div></div></section></div></div></div></div><footer class="scheme-footer"><b>窄屏不挤压内容，保留完整选择空间</b><span>移动端</span></footer>
+      </article>
+    </section>
+  </main>
+  <script>
+    document.querySelectorAll('[data-filter]').forEach((input) => {
+      input.addEventListener('input', () => {
+        const query = input.value.trim().toLocaleLowerCase();
+        const list = document.getElementById(input.dataset.filter);
+        if (!list) return;
+        list.querySelectorAll('[data-search]').forEach((row) => {
+          row.hidden = !row.dataset.search.toLocaleLowerCase().includes(query);
+        });
+        list.querySelectorAll('.group-label').forEach((label) => {
+          let next = label.nextElementSibling;
+          let hasVisible = false;
+          while (next && !next.classList.contains('group-label')) {
+            hasVisible ||= !next.hidden;
+            next = next.nextElementSibling;
+          }
+          label.hidden = !hasVisible;
+        });
+      });
+      input.dispatchEvent(new Event('input'));
+    });
+  </script>
+</body>
+</html>

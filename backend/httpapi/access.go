@@ -61,6 +61,8 @@ type accessHandler struct {
 type updateUserRequest struct {
 	Status      *string `json:"status"`
 	DisplayName *string `json:"display_name"`
+	Email       *string `json:"email"`
+	Phone       *string `json:"phone"`
 }
 
 type createUserRequest struct {
@@ -247,7 +249,7 @@ func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Requ
 			writeAccessError(writer, request, bindingErr)
 			return
 		}
-		bindings = append(bindings, binding)
+		bindings = upsertRoleBinding(bindings, binding)
 		for _, resourceGrant := range grant.ResourceGrants {
 			requiredRole, validScope := authorization.ResourceGrantViewerRole(binding.ScopeType)
 			if !validScope || binding.RoleName != requiredRole {
@@ -283,6 +285,17 @@ func (h accessHandler) createUser(writer http.ResponseWriter, request *http.Requ
 	writeJSON(writer, http.StatusCreated, createUserResponse{User: user, Bindings: bindings, OneTimePassword: userResult.OneTimePassword})
 }
 
+func upsertRoleBinding(bindings []authorization.RoleBinding, binding authorization.RoleBinding) []authorization.RoleBinding {
+	filtered := bindings[:0]
+	for _, existing := range bindings {
+		if existing.SubjectType == binding.SubjectType && existing.SubjectID == binding.SubjectID && existing.ScopeID == binding.ScopeID {
+			continue
+		}
+		filtered = append(filtered, existing)
+	}
+	return append(filtered, binding)
+}
+
 func (h accessHandler) getUser(writer http.ResponseWriter, request *http.Request) {
 	userID := chi.URLParam(request, "userID")
 	if !h.requireManagedUser(writer, request, userID) {
@@ -309,7 +322,7 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusForbidden, "forbidden", "Administrators cannot manage their own account from this page")
 		return
 	}
-	if body.Status == nil && body.DisplayName == nil {
+	if body.Status == nil && body.DisplayName == nil && body.Email == nil && body.Phone == nil {
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", "At least one user field must be updated")
 		return
 	}
@@ -324,6 +337,8 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 	user, err := h.users.UpdateUser(request.Context(), userID, identity.UpdateUserInput{
 		Status:      body.Status,
 		DisplayName: body.DisplayName,
+		Email:       body.Email,
+		Phone:       body.Phone,
 	})
 	if err != nil {
 		writeAccessError(writer, request, err)
@@ -332,7 +347,7 @@ func (h accessHandler) updateUser(writer http.ResponseWriter, request *http.Requ
 	event := h.event(request)
 	event.TargetType = "user"
 	event.TargetID = userID
-	event.Details = map[string]any{"status": user.Status, "display_name_updated": body.DisplayName != nil}
+	event.Details = map[string]any{"status": user.Status, "display_name_updated": body.DisplayName != nil, "email_updated": body.Email != nil, "phone_updated": body.Phone != nil}
 	_ = h.record(request, event, "user.update")
 	writeJSON(writer, http.StatusOK, user)
 }

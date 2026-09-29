@@ -409,6 +409,49 @@ func (s *ManagementService) CreateRoleBinding(ctx context.Context, actorID strin
 	if err := s.ValidateRoleGrants(ctx, actorID, input.ScopeID, []string{input.RoleID}); err != nil {
 		return RoleBinding{}, err
 	}
+	existingBindings, err := s.store.ListRoleBindings(ctx, []string{input.ScopeID})
+	if err != nil {
+		return RoleBinding{}, err
+	}
+	var dominantBinding *RoleBinding
+	var dominantRole RoleDefinition
+	for _, existing := range existingBindings {
+		if existing.SubjectType != input.SubjectType || existing.SubjectID != input.SubjectID {
+			continue
+		}
+		existingRole, roleErr := s.store.GetRole(ctx, existing.RoleID)
+		if roleErr != nil {
+			return RoleBinding{}, roleErr
+		}
+		if roleDominates(existingRole, role) {
+			if dominantBinding == nil || roleDominates(existingRole, dominantRole) {
+				binding := existing
+				dominantBinding = &binding
+				dominantRole = existingRole
+			}
+			continue
+		}
+		if !roleDominates(role, existingRole) {
+			return RoleBinding{}, ErrConflict
+		}
+	}
+	if dominantBinding != nil {
+		for _, existing := range existingBindings {
+			if existing.SubjectType == input.SubjectType && existing.SubjectID == input.SubjectID && existing.ID != dominantBinding.ID {
+				if err := s.store.DeleteRoleBinding(ctx, existing.ID); err != nil {
+					return RoleBinding{}, err
+				}
+			}
+		}
+		return *dominantBinding, nil
+	}
+	for _, existing := range existingBindings {
+		if existing.SubjectType == input.SubjectType && existing.SubjectID == input.SubjectID {
+			if err := s.store.DeleteRoleBinding(ctx, existing.ID); err != nil {
+				return RoleBinding{}, err
+			}
+		}
+	}
 	binding, err := s.store.CreateRoleBinding(ctx, input)
 	if err != nil {
 		return RoleBinding{}, err
@@ -416,6 +459,22 @@ func (s *ManagementService) CreateRoleBinding(ctx context.Context, actorID strin
 	return binding, s.record(ctx, event, "role_binding.create", binding.ID, input.ScopeID, map[string]any{
 		"role": role.Name, "subject_type": input.SubjectType, "subject_id": input.SubjectID,
 	})
+}
+
+func roleDominates(stronger, weaker RoleDefinition) bool {
+	if stronger.ScopeType != weaker.ScopeType {
+		return false
+	}
+	permissions := make(map[Permission]struct{}, len(stronger.Permissions))
+	for _, permission := range stronger.Permissions {
+		permissions[permission] = struct{}{}
+	}
+	for _, permission := range weaker.Permissions {
+		if _, ok := permissions[permission]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *ManagementService) ListRoleBindings(ctx context.Context, actorID string) ([]RoleBinding, error) {

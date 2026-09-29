@@ -8,6 +8,16 @@ import type {
 } from '../../lib/api';
 import { scopeContains, type ScopeChoice } from '../../lib/scope';
 
+export function organizationScopeVisible(
+  scopeChoices: ScopeChoice[],
+  scopeID: string,
+  readableScopeIDs: string[]
+) {
+  return readableScopeIDs.some((readableScopeID) =>
+    scopeContains(scopeChoices, scopeID, readableScopeID)
+  );
+}
+
 export function userRoleBindings(
   userId: string,
   groups: Group[],

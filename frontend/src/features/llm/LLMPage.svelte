@@ -1165,7 +1165,7 @@
       <section class="provider-list panel">
         <div class="list-toolbar">
           <strong>{filteredProviders.length} 个渠道</strong><span class="list-toolbar-actions"
-            ><SearchInput className="provider-search" bind:value={providerSearch} width="100%" height="30px" placeholder="搜索渠道、URL、模型或能力" ariaLabel="搜索渠道" /><button
+            ><SearchInput className="provider-search" bind:value={providerSearch} width="100%" height="30px" placeholder="搜索渠道、模型或能力" ariaLabel="搜索渠道" /><button
               class="icon-button"
               type="button"
               on:click={reloadProviders}
@@ -1176,21 +1176,22 @@
                 on:click={openNewProvider}
                 title="添加渠道"
                 aria-label="添加渠道"><Plus size={14} /></button
-              >{/if}
+            >{/if}
             </span
           >
         </div>
-        {#each filteredProviders as provider}
-          {@const isTesting = Boolean(testingProviders[provider.id])}
-          {@const health = providerHealthLabel(provider)}
-          {@const modelSummary = providerModelSummary(provider)}
-          <button
-            class="provider-row"
-            class:selected={provider.id === selectedProviderId}
-            class:provider-disabled={provider.status !== 'active'}
-            type="button"
-            on:click={() => selectProvider(provider)}
-          >
+        <div class="provider-list-scroll">
+          {#each filteredProviders as provider}
+            {@const isTesting = Boolean(testingProviders[provider.id])}
+            {@const health = providerHealthLabel(provider)}
+            {@const modelSummary = providerModelSummary(provider)}
+            <button
+              class="provider-row"
+              class:selected={provider.id === selectedProviderId}
+              class:provider-disabled={provider.status !== 'active'}
+              type="button"
+              on:click={() => selectProvider(provider)}
+            >
             <span class="provider-row-head">
               <span class="provider-title">
                 <span class="entity-icon provider-icon">
@@ -1278,10 +1279,11 @@
                   ><Trash2 size={14} /></span
                 >{/if}
             </span>
-          </button
-          >{:else}<div class="empty-state">
-            {#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}
-          </div>{/each}
+            </button
+            >{:else}<div class="empty-state">
+              {#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}
+            </div>{/each}
+        </div>
       </section>
       {#if drawerOpen}
         <aside class="provider-drawer panel">
@@ -1327,8 +1329,9 @@
                   >{/if}
               </div>{/if}
           </header>
-          {#if editingProvider}
-            <form id="provider-editor" class="drawer-form" novalidate on:submit|preventDefault={saveProvider}>
+          <div class="provider-drawer-scroll">
+            {#if editingProvider}
+              <form id="provider-editor" class="drawer-form" novalidate on:submit|preventDefault={saveProvider}>
               <div class="drawer-section">
                 <div class="section-title">
                   <h3>基本信息</h3>
@@ -1510,10 +1513,13 @@
                   >
                 </div>
               </div>
-              <div class="drawer-section">
-                <div class="section-title">
-                  <h3>模型能力</h3>
-                </div>
+                <div class="drawer-section">
+                  <div class="section-title">
+                    <h3>模型能力</h3>
+                    <button class="primary section-title-action" type="button" on:click={addModel}>
+                      <Plus size={13} />添加模型
+                    </button>
+                  </div>
                 <div class="model-editor-list">
                   <div class="model-columns-header" aria-hidden="true">
                     <span>模型<i class="required-mark" aria-hidden="true">*</i></span><span>能力</span><span>上下文<i class="required-mark" aria-hidden="true">*</i></span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
@@ -1598,16 +1604,12 @@
                         disabled={providerDraft.models.length === 1}
                         ><X size={14} /></button
                       >
-                    </div>{/each}<button
-                    class="secondary add-model"
-                    type="button"
-                    on:click={addModel}><Plus size={14} />添加模型</button
-                  >
+                    </div>{/each}
                 </div>
               </div>
-            </form>
-          {:else if selectedProvider}
-            <div class="drawer-section provider-preview-section">
+              </form>
+            {:else if selectedProvider}
+              <div class="drawer-section provider-preview-section">
               <div class="section-title">
                 <h3>基本信息</h3>
               </div>
@@ -1807,8 +1809,9 @@
                     </div>
                   </div>{/each}
               </div>
-            </div>
-          {:else}<div class="empty-state">选择一个渠道查看详情。</div>{/if}
+              </div>
+            {:else}<div class="empty-state">选择一个渠道查看详情。</div>{/if}
+          </div>
         </aside>
       {:else}<div class="drawer-placeholder">
           <Cpu size={22} /><span>选择渠道打开详情抽屉</span>
@@ -2083,10 +2086,18 @@
     align-items: stretch;
   }
   .provider-list {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    height: 800px;
-    min-height: 800px;
-    overflow: auto;
+    height: min(600px, calc(100vh - 32px));
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+  .provider-list-scroll {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
     padding: 0 17px 14px;
   }
   .list-toolbar {
@@ -2095,7 +2106,7 @@
     min-height: 60px;
     overflow: hidden;
     padding: 10px 17px;
-    margin: 0 -17px;
+    margin: 0;
     color: var(--theme-fg-strong);
     border-bottom: 1px solid var(--theme-divider);
     font-size: 12px;
@@ -2173,7 +2184,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .provider-list > .provider-row {
+  .provider-list-scroll > .provider-row {
     width: 100%;
     margin-top: 7px;
   }
@@ -2473,11 +2484,17 @@
   .provider-drawer {
     position: sticky;
     top: 16px;
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    height: 800px;
-    min-height: 800px;
-    max-height: calc(100vh - 32px);
-    overflow: auto;
+    height: min(600px, calc(100vh - 32px));
+    min-height: 0;
+    overflow: hidden;
+  }
+  .provider-drawer-scroll {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
   }
   .drawer-heading {
     position: relative;
@@ -2534,6 +2551,13 @@
   .section-title h3 {
     color: var(--theme-fg-strong);
     font-size: 13px;
+  }
+  .section-title-action {
+    min-height: 29px !important;
+    height: 29px;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    line-height: 1;
   }
   .form-grid {
     display: grid;
@@ -2721,6 +2745,25 @@
     min-height: 35px;
     align-items: center;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+  .provider-preview-tags .tag-chip,
+  .provider-tag-editor .tag-chip {
+    flex: 0 0 auto;
+  }
+  .provider-preview-tags .tag-row::-webkit-scrollbar,
+  .provider-tag-editor .tag-row::-webkit-scrollbar,
+  .model-capability-editor .tag-row::-webkit-scrollbar {
+    height: 4px;
+  }
+  .provider-preview-tags .tag-row::-webkit-scrollbar-thumb,
+  .provider-tag-editor .tag-row::-webkit-scrollbar-thumb,
+  .model-capability-editor .tag-row::-webkit-scrollbar-thumb {
+    background: var(--theme-border-strong);
+    border-radius: 999px;
   }
   .preview-tag-hidden {
     visibility: hidden;
@@ -2742,6 +2785,10 @@
   .provider-status-switch {
     min-width: 0;
   }
+  .provider-icon-field :global(.icon-picker-trigger) {
+    width: 35px;
+    height: 35px;
+  }
   .provider-icon-field,
   .provider-tag-editor,
   .provider-level-field,
@@ -2755,6 +2802,10 @@
     min-height: 35px;
     align-items: center;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
   }
   .provider-tag-editor,
   .provider-level-field {
@@ -3090,7 +3141,9 @@
     align-items: center;
     justify-content: flex-start;
     flex-wrap: nowrap;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
   }
   .model-capability-editor {
     display: grid;
@@ -3487,19 +3540,6 @@
     border-color: transparent;
     font-size: 10px;
   }
-  button.secondary.add-model {
-    width: 100%;
-    height: 15px;
-    min-height: 15px;
-    max-height: 15px;
-    justify-content: center;
-    font-size: 11px;
-    line-height: 1;
-  }
-  .add-model :global(svg) {
-    width: 12px;
-    height: 12px;
-  }
   .model-remove {
     position: absolute;
     z-index: 2;
@@ -3561,10 +3601,17 @@
       height: auto;
       min-height: 0;
       max-height: none;
+      overflow: visible;
     }
     .provider-list {
       height: auto;
       min-height: 0;
+      overflow: visible;
+    }
+    .provider-list-scroll,
+    .provider-drawer-scroll {
+      flex: none;
+      overflow: visible;
     }
     .provider-row {
       grid-template-columns: 1fr;

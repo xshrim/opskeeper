@@ -235,9 +235,11 @@
 .access-scope-team-node:last-child { border-bottom: 0; }
 .access-scope-team-row { min-height: 49px; border-radius: 5px; }
 .scope-tree-expander { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 34px; color: var(--theme-fg-muted); background: transparent; border: 0; }
+.scope-tree-expander:disabled { opacity: 1; cursor: default; }
 .scope-tree-expander svg { transition: transform 160ms ease; }
 .scope-tree-expander svg.expanded { transform: rotate(180deg); }
 .scope-tree-select { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; padding: 7px 4px; color: inherit; background: transparent; border: 0; text-align: left; }
+.scope-tree-select:disabled { color: inherit; opacity: 1; cursor: default; }
 .scope-tree-select > svg { flex: 0 0 auto; }
 .scope-tree-actions { display: flex; gap: 1px; padding-right: 5px; }
 .scope-tree-actions .icon-button { width: 25px; height: 25px; }
@@ -1331,4 +1333,125 @@
 }
 :root[data-theme='dark'] .form-help {
   color: var(--theme-fg-muted);
+}
+
+/* Member permissions stay readable without making the table a nested scroll container. */
+.access-member-table {
+  overflow: visible;
+}
+.access-member-table-head,
+.access-member-row {
+  grid-template-columns:
+    24px minmax(85px, 0.7fr) minmax(130px, 0.9fr)
+    minmax(220px, 2fr) 65px 68px;
+}
+.access-user-contact {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
+.access-user-contact span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.access-user-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+.permission-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  color: var(--theme-fg);
+  background: var(--theme-bg-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 5px;
+  font-size: 10px;
+}
+.permission-card.permission-platform {
+  color: var(--theme-scope-platform-fg);
+  background: var(--theme-scope-platform-bg);
+  border-color: var(--theme-scope-platform-border);
+}
+.permission-card.permission-team {
+  color: var(--theme-scope-team-fg);
+  background: var(--theme-scope-team-bg);
+  border-color: var(--theme-scope-team-border);
+}
+.permission-card.permission-project {
+  color: var(--theme-scope-project-fg);
+  background: var(--theme-scope-project-bg);
+  border-color: var(--theme-scope-project-border);
+}
+.permission-card-object {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.permission-card-object small {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.78;
+}
+.permission-card-object strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+}
+.permission-card-role {
+  flex: 0 0 auto;
+  padding-left: 7px;
+  border-left: 1px solid currentColor;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.permission-card.permission-role-admin {
+  --permission-role-color: #b14d4d;
+}
+.permission-card.permission-role-operator {
+  --permission-role-color: #b56a1f;
+}
+.permission-card.permission-role-viewer {
+  --permission-role-color: #5b6c7c;
+}
+.permission-card[class*='permission-role-'] {
+  color: var(--permission-role-color);
+  background: color-mix(in srgb, var(--permission-role-color) 11%, var(--theme-bg-surface));
+  border-color: color-mix(in srgb, var(--permission-role-color) 42%, var(--theme-border));
+}
+.permission-card.permission-platform .permission-card-object small {
+  color: #3f62a1;
+}
+:root[data-theme='dark'] .permission-card.permission-role-admin {
+  --permission-role-color: #f09a9a;
+}
+:root[data-theme='dark'] .permission-card.permission-role-operator {
+  --permission-role-color: #f0b36d;
+}
+:root[data-theme='dark'] .permission-card.permission-role-viewer {
+  --permission-role-color: #a9c7df;
+}
+:root[data-theme='dark'] .permission-card.permission-platform .permission-card-object small {
+  color: #9fc4ef;
+}
+@media (max-width: 1050px) {
+  .access-member-table {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
 }

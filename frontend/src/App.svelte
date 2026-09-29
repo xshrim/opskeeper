@@ -117,7 +117,6 @@
   let sidebarHovered = false;
   let previousSidebarCompact = false;
   let userMenuOpen = false;
-  let teamMenuOpen = false;
   let isPlatformAdmin = false;
   let hasPlatformRole = false;
   let selectedTeamId = '';
@@ -159,11 +158,6 @@
   $: selectedProject =
     selectedTeamProjects.find((project) => project.id === selectedProjectId) ??
     null;
-  $: workspaceProjects = selectedTeamId
-    ? selectedTeamProjects
-    : hasPlatformRole
-      ? projects
-      : [];
   $: visibleProjects = selectedScopeId
     ? activeScope?.type === 'platform'
       ? projects
@@ -395,7 +389,6 @@
     notice = '';
     errorMessage = '';
     userMenuOpen = false;
-    teamMenuOpen = false;
   }
 
   function chooseAccessTab(tab: AccessTab) {
@@ -475,7 +468,6 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       userMenuOpen = false;
-      teamMenuOpen = false;
     }
   }
 
@@ -484,9 +476,6 @@
     if (!(target instanceof Element)) return;
     if (userMenuOpen && !target.closest('.sidebar-user-menu')) {
       userMenuOpen = false;
-    }
-    if (teamMenuOpen && !target.closest('.workspace-team-wrap')) {
-      teamMenuOpen = false;
     }
   }
 
@@ -497,7 +486,6 @@
     selectedProjectId = selection.projectId;
     selectedScopeId = selection.scopeId;
     selectedResourceId = '';
-    if (teamID || hasPlatformRole) teamMenuOpen = false;
   }
 
   function chooseProject(projectID: string) {
@@ -824,7 +812,7 @@
         {selectedTeamId}
         {selectedProjectId}
         {teams}
-        {workspaceProjects}
+        {projects}
         {chooseTeam}
         {chooseProject}
       />
@@ -973,6 +961,8 @@
           {resources}
           {scopeChoices}
           preferredScopeId={selectedScopeId}
+          {selectedTeamId}
+          {selectedProjectId}
           {currentUser}
           {isPlatformAdmin}
           {activeMessage}

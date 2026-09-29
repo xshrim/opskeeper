@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actorPermissionsAtScope, canManageResource, resourceVisibleToScope, userRoleBindings, usersAtScopes } from './accessUtils';
+import { actorPermissionsAtScope, canManageResource, organizationScopeVisible, resourceVisibleToScope, userRoleBindings, usersAtScopes } from './accessUtils';
 
 const scopes = [
   { id: 'platform', type: 'platform', name: '平台' },
@@ -42,6 +42,13 @@ describe('access helpers', () => {
     expect(resourceVisibleToScope(scopes, 'team', 'project')).toBe(true);
     expect(resourceVisibleToScope(scopes, 'project', 'platform')).toBe(true);
     expect(resourceVisibleToScope(scopes, 'project', 'other')).toBe(false);
+  });
+
+  it('shows organization ancestors of readable scopes, but not unrelated projects', () => {
+    expect(organizationScopeVisible(scopes, 'platform', ['project'])).toBe(true);
+    expect(organizationScopeVisible(scopes, 'team', ['project'])).toBe(true);
+    expect(organizationScopeVisible(scopes, 'project', ['project'])).toBe(true);
+    expect(organizationScopeVisible(scopes, 'other', ['project'])).toBe(false);
   });
 
   it('limits resource management to the selected scope and permission', () => {

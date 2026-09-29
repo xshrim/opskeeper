@@ -54,6 +54,19 @@ describe('workspace helpers', () => {
     });
   });
 
+  it('selects the platform-wide team and project scope only for platform roles', () => {
+    expect(teamSelection('', true, 'platform', [])).toEqual({
+      teamId: '', projectId: '', scopeId: 'platform'
+    });
+    expect(teamSelection('', false, 'platform', [])).toBeNull();
+  });
+
+  it('selects all projects while keeping the selected team scope', () => {
+    expect(projectSelection('', 'team-1', 'team-scope', 'platform', [])).toEqual({
+      teamId: 'team-1', projectId: '', scopeId: 'team-scope'
+    });
+  });
+
   it('moves to the project team when selecting a project from another team', () => {
     expect(projectSelection('project-1', 'team-1', 'team-scope', 'platform', [{ id: 'project-1', team_id: 'team-2', scope: { id: 'project-scope' } }] as never[])).toEqual({
       teamId: 'team-2', projectId: 'project-1', scopeId: 'project-scope'

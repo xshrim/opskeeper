@@ -88,24 +88,66 @@ export interface Project {
 }
 
 export interface ApplicationInstance {
-  id: string; application_id: string; name: string; runtime_kind: string;
-  target_resource_id: string; target_resource_name?: string; target_resource_kind?: string;
-  selector: Record<string, unknown>; log_binding: Record<string, unknown>; status: string;
+  id: string;
+  application_id: string;
+  name: string;
+  runtime_kind: string;
+  target_resource_id: string;
+  target_resource_name?: string;
+  target_resource_kind?: string;
+  selector: Record<string, unknown>;
+  log_binding: Record<string, unknown>;
+  status: string;
 }
 export interface ApplicationDependency {
-  id: string; application_id: string; target_resource_id: string; target_resource_name?: string;
-  target_resource_kind?: string; dependency_kind: string; binding: Record<string, unknown>;
-  required: boolean; status: string;
+  id: string;
+  application_id: string;
+  target_resource_id: string;
+  target_resource_name?: string;
+  target_resource_kind?: string;
+  dependency_kind: string;
+  binding: Record<string, unknown>;
+  required: boolean;
+  status: string;
 }
 export interface Application {
-  id: string; project_id: string; name: string; code: string; description: string; icon: string;
-  status: string; source: string; external_uid?: string; labels: Record<string, string>;
-  instances: ApplicationInstance[]; dependencies: ApplicationDependency[]; created_at: string; updated_at: string;
+  id: string;
+  project_id: string;
+  name: string;
+  code: string;
+  description: string;
+  icon: string;
+  status: string;
+  source: string;
+  external_uid?: string;
+  labels: Record<string, string>;
+  instances: ApplicationInstance[];
+  dependencies: ApplicationDependency[];
+  created_at: string;
+  updated_at: string;
 }
 export interface ProjectWorkspace {
-  summary: { project_id: string; applications: number; instances: number; resources: number; dependencies: number; alerts: number };
-  resources: Array<{ id: string; name: string; kind: string; status: string; role: string }>;
-  alerts: Array<{ id: string; severity: string; title: string; status: string }>;
+  summary: {
+    project_id: string;
+    applications: number;
+    instances: number;
+    resources: number;
+    dependencies: number;
+    alerts: number;
+  };
+  resources: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    status: string;
+    role: string;
+  }>;
+  alerts: Array<{
+    id: string;
+    severity: string;
+    title: string;
+    status: string;
+  }>;
   applications: Application[];
 }
 
@@ -184,7 +226,6 @@ export interface ConnectionCheck {
   checked_at: string;
 }
 
-
 export interface Relation {
   id: string;
   source_resource_id: string;
@@ -213,7 +254,11 @@ export interface AIConnectionResult {
 export interface ProviderAvailability {
   provider_id: string;
   name: string;
-  models: Array<{ name: string; context_window_tokens?: number; capabilities: string[] }>;
+  models: Array<{
+    name: string;
+    context_window_tokens?: number;
+    capabilities: string[];
+  }>;
   default: boolean;
 }
 
@@ -403,7 +448,7 @@ export type DiagnosisStatus =
 export interface DiagnosisSession {
   id: string;
   scope_id: string;
-   provider_id?: string;
+  provider_id?: string;
   model_name?: string;
   application_id?: string;
   actor_user_id?: string;
@@ -765,16 +810,71 @@ export const api = {
   ) => request<Project>(`api/v1/teams/${teamId}/projects`, json(body)),
   updateProject: (id: string, body: Record<string, unknown>) =>
     request<Project>(`api/v1/projects/${id}/`, patch(body)),
-  projectWorkspace: (id: string) => request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
-  applications: (projectId: string) => request<{ items: Application[] }>(`api/v1/projects/${projectId}/applications`),
-  createApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications`, json(body)),
-  importApplication: (projectId: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications/import`, json(body)),
-  updateApplication: (projectId: string, id: string, body: Record<string, unknown>) => request<Application>(`api/v1/projects/${projectId}/applications/${id}/`, patch(body)),
-  deleteApplication: (projectId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${id}/`, { method: 'DELETE' }),
-  createApplicationInstance: (projectId: string, applicationId: string, body: Record<string, unknown>) => request<ApplicationInstance>(`api/v1/projects/${projectId}/applications/${applicationId}/instances`, json(body)),
-  createApplicationDependency: (projectId: string, applicationId: string, body: Record<string, unknown>) => request<ApplicationDependency>(`api/v1/projects/${projectId}/applications/${applicationId}/dependencies`, json(body)),
-  deleteApplicationInstance: (projectId: string, applicationId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${applicationId}/instances/${id}/`, { method: 'DELETE' }),
-  deleteApplicationDependency: (projectId: string, applicationId: string, id: string) => request<void>(`api/v1/projects/${projectId}/applications/${applicationId}/dependencies/${id}/`, { method: 'DELETE' }),
+  projectWorkspace: (id: string) =>
+    request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
+  applications: (projectId: string) =>
+    request<{ items: Application[] }>(
+      `api/v1/projects/${projectId}/applications`
+    ),
+  createApplication: (projectId: string, body: Record<string, unknown>) =>
+    request<Application>(
+      `api/v1/projects/${projectId}/applications`,
+      json(body)
+    ),
+  importApplication: (projectId: string, body: Record<string, unknown>) =>
+    request<Application>(
+      `api/v1/projects/${projectId}/applications/import`,
+      json(body)
+    ),
+  updateApplication: (
+    projectId: string,
+    id: string,
+    body: Record<string, unknown>
+  ) =>
+    request<Application>(
+      `api/v1/projects/${projectId}/applications/${id}/`,
+      patch(body)
+    ),
+  deleteApplication: (projectId: string, id: string) =>
+    request<void>(`api/v1/projects/${projectId}/applications/${id}/`, {
+      method: 'DELETE'
+    }),
+  createApplicationInstance: (
+    projectId: string,
+    applicationId: string,
+    body: Record<string, unknown>
+  ) =>
+    request<ApplicationInstance>(
+      `api/v1/projects/${projectId}/applications/${applicationId}/instances`,
+      json(body)
+    ),
+  createApplicationDependency: (
+    projectId: string,
+    applicationId: string,
+    body: Record<string, unknown>
+  ) =>
+    request<ApplicationDependency>(
+      `api/v1/projects/${projectId}/applications/${applicationId}/dependencies`,
+      json(body)
+    ),
+  deleteApplicationInstance: (
+    projectId: string,
+    applicationId: string,
+    id: string
+  ) =>
+    request<void>(
+      `api/v1/projects/${projectId}/applications/${applicationId}/instances/${id}/`,
+      { method: 'DELETE' }
+    ),
+  deleteApplicationDependency: (
+    projectId: string,
+    applicationId: string,
+    id: string
+  ) =>
+    request<void>(
+      `api/v1/projects/${projectId}/applications/${applicationId}/dependencies/${id}/`,
+      { method: 'DELETE' }
+    ),
   resources: (kind = '') =>
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
@@ -839,21 +939,16 @@ export const api = {
   testProvider: (
     id: string,
     body: { scope_id: string; model_name: string; stream: boolean }
-  ) =>
-    request<AIConnectionResult>(`api/v1/providers/${id}/test`, json(body)),
+  ) => request<AIConnectionResult>(`api/v1/providers/${id}/test`, json(body)),
   availableProviders: (scopeId: string, purpose = 'general') =>
     request<ProviderAvailability[]>(
       `api/v1/providers/available?scope_id=${encodeURIComponent(scopeId)}&purpose=${encodeURIComponent(purpose)}`
     ),
   providerBindings: (scopeId: string) =>
-    request<
-      Array<{ scope_id: string; provider_id: string; tag: string }>
-    >(`api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings`),
-  setProviderBinding: (
-    scopeId: string,
-    purpose: string,
-    providerId: string
-  ) =>
+    request<Array<{ scope_id: string; provider_id: string; tag: string }>>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings`
+    ),
+  setProviderBinding: (scopeId: string, purpose: string, providerId: string) =>
     request(
       `api/v1/scopes/${encodeURIComponent(scopeId)}/provider-bindings/${encodeURIComponent(purpose)}`,
       {
@@ -877,8 +972,7 @@ export const api = {
     temperature: number;
     capabilities: string[];
     stream: boolean;
-  }) =>
-    request<AIConnectionResult>('api/v1/providers/test-draft', json(body)),
+  }) => request<AIConnectionResult>('api/v1/providers/test-draft', json(body)),
   skillVersions: (skillId: string) =>
     request<SkillVersion[]>(`api/v1/skills/${skillId}/versions`),
   createSkillVersion: (skillId: string, body: Record<string, unknown>) =>
@@ -889,41 +983,99 @@ export const api = {
       { method: 'POST' }
     ),
   providers: (scopeId: string) =>
-    request<{ items: Provider[] }>(`api/v1/providers?scope_id=${encodeURIComponent(scopeId)}`),
-  createProvider: (body: { scope_id: string; name: string; status?: string; config: ProviderConfig; api_key?: string }) =>
-    request<Provider>('api/v1/providers', { method: 'POST', body: JSON.stringify(body) }),
-  updateProvider: (id: string, body: { name?: string; status?: string; config?: ProviderConfig; api_key?: string }) =>
-    request<Provider>(`api/v1/providers/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<{ items: Provider[] }>(
+      `api/v1/providers?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  createProvider: (body: {
+    scope_id: string;
+    name: string;
+    status?: string;
+    config: ProviderConfig;
+    api_key?: string;
+  }) =>
+    request<Provider>('api/v1/providers', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+  updateProvider: (
+    id: string,
+    body: {
+      name?: string;
+      status?: string;
+      config?: ProviderConfig;
+      api_key?: string;
+    }
+  ) =>
+    request<Provider>(`api/v1/providers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    }),
   deleteProvider: (id: string) =>
-    request<void>(`api/v1/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    request<void>(`api/v1/providers/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    }),
   engines: (scopeId: string) =>
-    request<{ items: EngineCatalogItem[] }>(`api/v1/engines?scope_id=${encodeURIComponent(scopeId)}`),
-  createEngine: (body: { scope_id: string; name: string; description?: string; icon?: string; config?: Record<string, unknown>; status?: string }) =>
-    request<EngineCatalogItem>('api/v1/engines', { method: 'POST', body: JSON.stringify(body) }),
-  updateEngine: (id: string, body: { name?: string; description?: string; icon?: string; config?: Record<string, unknown>; status?: string }) =>
-    request<EngineCatalogItem>(`api/v1/engines/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<{ items: EngineCatalogItem[] }>(
+      `api/v1/engines?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  createEngine: (body: {
+    scope_id: string;
+    name: string;
+    description?: string;
+    icon?: string;
+    config?: Record<string, unknown>;
+    status?: string;
+  }) =>
+    request<EngineCatalogItem>('api/v1/engines', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+  updateEngine: (
+    id: string,
+    body: {
+      name?: string;
+      description?: string;
+      icon?: string;
+      config?: Record<string, unknown>;
+      status?: string;
+    }
+  ) =>
+    request<EngineCatalogItem>(`api/v1/engines/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    }),
   engineCapabilityTerms: () =>
     request<{ items: string[] }>('api/v1/engine-capability-terms'),
   createEngineCapabilityTerm: (term: string) =>
-    request<{ term: string }>('api/v1/engine-capability-terms', { method: 'POST', body: JSON.stringify({ term }) }),
+    request<{ term: string }>('api/v1/engine-capability-terms', {
+      method: 'POST',
+      body: JSON.stringify({ term })
+    }),
   engineBindings: (scopeId: string) =>
-    request<Array<{ scope_id: string; engine_id: string; tag: string }>>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings`),
-  setEngineBinding: (scopeId: string, tag: string, engineId: string) =>
-    request<{ scope_id: string; engine_id: string; tag: string }>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}`, { method: 'PUT', body: JSON.stringify({ engine_id: engineId }) }),
-  removeEngineBinding: (scopeId: string, tag: string, engineId: string) =>
-    request<void>(`api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}/${encodeURIComponent(engineId)}`, { method: 'DELETE' }),
-  skills: (scopeId: string) =>
-    request<{ items: SkillCatalogItem[] }>(`api/v1/skills?scope_id=${encodeURIComponent(scopeId)}`),
-  personas: (scopeId: string) =>
-    request<{ items: PersonaCatalogItem[] }>(`api/v1/personas?scope_id=${encodeURIComponent(scopeId)}`),
-  personaVersions: (personaId: string) =>
-    request<PersonaVersion[]>(
-      `api/v1/personas/${personaId}/versions`
+    request<Array<{ scope_id: string; engine_id: string; tag: string }>>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings`
     ),
-  createPersonaVersion: (
-    personaId: string,
-    config: Record<string, unknown>
-  ) =>
+  setEngineBinding: (scopeId: string, tag: string, engineId: string) =>
+    request<{ scope_id: string; engine_id: string; tag: string }>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}`,
+      { method: 'PUT', body: JSON.stringify({ engine_id: engineId }) }
+    ),
+  removeEngineBinding: (scopeId: string, tag: string, engineId: string) =>
+    request<void>(
+      `api/v1/scopes/${encodeURIComponent(scopeId)}/engine-bindings/${encodeURIComponent(tag)}/${encodeURIComponent(engineId)}`,
+      { method: 'DELETE' }
+    ),
+  skills: (scopeId: string) =>
+    request<{ items: SkillCatalogItem[] }>(
+      `api/v1/skills?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  personas: (scopeId: string) =>
+    request<{ items: PersonaCatalogItem[] }>(
+      `api/v1/personas?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  personaVersions: (personaId: string) =>
+    request<PersonaVersion[]>(`api/v1/personas/${personaId}/versions`),
+  createPersonaVersion: (personaId: string, config: Record<string, unknown>) =>
     request<PersonaVersion>(
       `api/v1/personas/${personaId}/versions`,
       json({ config })
@@ -955,7 +1107,7 @@ export const api = {
     title?: string;
     question: string;
     target_resource_ids: string[];
-     provider_id?: string;
+    provider_id?: string;
     model_name?: string;
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
   addDiagnosisTarget: (sessionId: string, resourceId: string) =>
@@ -1035,24 +1187,117 @@ export const api = {
     tls_key?: string;
     tls_skip_verify?: boolean;
   }) => request<MCPSnapshot>('api/v1/mcp-servers/test-draft', json(body)),
-  testDraftPostgreSQL: (body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/postgresql/connection-tests', json(body)),
-  testDraftRedis: (body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/redis/connection-tests', json(body)),
-  testDraftNacos: (body: { host: string; port: number; scheme?: string; context_path?: string; username?: string; password?: string; access_token?: string; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/nacos/connection-tests', json(body)),
-  testDraftMySQL: (body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/mysql/connection-tests', json(body)),
-  testDraftOracle: (body: { host: string; port: number; service_name?: string; sid?: string; username: string; password: string; timeout_seconds?: number; tls?: boolean }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/oracle/connection-tests', json(body)),
-  testDraftRabbitMQ: (body: { url: string; username?: string; password?: string; timeout_seconds?: number; tls_insecure?: boolean }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/rabbitmq/connection-tests', json(body)),
-  testDraftMinIO: (body: { endpoint: string; access_key?: string; secret_key?: string; session_token?: string; region?: string; secure?: boolean; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/minio/connection-tests', json(body)),
-  testDraftKafka: (body: { brokers: string[]; username?: string; password?: string; tls?: boolean; tls_server_name?: string; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/kafka/connection-tests', json(body)),
-  testDraftElasticsearch: (body: { url: string; username?: string; password?: string; tls_insecure?: boolean; timeout_seconds?: number }) =>
-    request<{ status: string; message: string; latency_ms: number }>('api/v1/elasticsearch/connection-tests', json(body)),
+  testDraftPostgreSQL: (body: {
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    password: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/postgresql/connection-tests',
+      json(body)
+    ),
+  testDraftRedis: (body: {
+    host: string;
+    port: number;
+    database: number;
+    username: string;
+    password: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/redis/connection-tests',
+      json(body)
+    ),
+  testDraftNacos: (body: {
+    host: string;
+    port: number;
+    scheme?: string;
+    context_path?: string;
+    username?: string;
+    password?: string;
+    access_token?: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/nacos/connection-tests',
+      json(body)
+    ),
+  testDraftMySQL: (body: {
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    password: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/mysql/connection-tests',
+      json(body)
+    ),
+  testDraftOracle: (body: {
+    host: string;
+    port: number;
+    service_name?: string;
+    sid?: string;
+    username: string;
+    password: string;
+    timeout_seconds?: number;
+    tls?: boolean;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/oracle/connection-tests',
+      json(body)
+    ),
+  testDraftRabbitMQ: (body: {
+    url: string;
+    username?: string;
+    password?: string;
+    timeout_seconds?: number;
+    tls_insecure?: boolean;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/rabbitmq/connection-tests',
+      json(body)
+    ),
+  testDraftMinIO: (body: {
+    endpoint: string;
+    access_key?: string;
+    secret_key?: string;
+    session_token?: string;
+    region?: string;
+    secure?: boolean;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/minio/connection-tests',
+      json(body)
+    ),
+  testDraftKafka: (body: {
+    brokers: string[];
+    username?: string;
+    password?: string;
+    tls?: boolean;
+    tls_server_name?: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/kafka/connection-tests',
+      json(body)
+    ),
+  testDraftElasticsearch: (body: {
+    url: string;
+    username?: string;
+    password?: string;
+    tls_insecure?: boolean;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/elasticsearch/connection-tests',
+      json(body)
+    ),
   relations: (id: string) =>
     request<Relation[]>(`api/v1/resources/${id}/relations`),
   createRelation: (id: string, body: Record<string, unknown>) =>
@@ -1094,6 +1339,8 @@ export const api = {
     body: {
       status?: string;
       display_name?: string;
+      email?: string;
+      phone?: string;
     }
   ) => request<User>(`api/v1/users/${id}`, patch(body)),
   groups: () => request<Group[]>('api/v1/groups/'),
@@ -1114,7 +1361,9 @@ export const api = {
   resourceBindings: () =>
     request<ResourceRoleBinding[]>('api/v1/resource-role-bindings/'),
   auditLogs: (limit = 100) =>
-    request<{ items: AuditEvent[]; total: number }>(`api/v1/audit-logs?limit=${limit}`),
+    request<{ items: AuditEvent[]; total: number }>(
+      `api/v1/audit-logs?limit=${limit}`
+    ),
   createResourceBinding: (body: Record<string, unknown>) =>
     request<ResourceRoleBinding>('api/v1/resource-role-bindings/', json(body)),
   deleteResourceBinding: (id: string) =>
