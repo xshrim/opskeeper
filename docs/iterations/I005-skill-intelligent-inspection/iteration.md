@@ -10,7 +10,7 @@
 
 把 Skill 从“数据库中的简短指令和工具白名单”收敛为可查看、可复制、可版本化、可执行的独立技能对象，并让巡检策略以 Skill、资源上下文和固定模型版本为输入执行可追溯的智能巡检。本分支先交付 Provider、Engine、Skill、Persona 的独立领域拆分、Scope/RBAC 和管理页面；标准 Skill 正文执行与 Skill 驱动智能巡检暂缓，待后续迭代单独实施。
 
-本迭代复用 Resource 作为目标上下文、Scope/RBAC、Engine、Connector/MCP、PostgreSQL Job Queue、Finding 和 Webhook 边界；Skill 自身通过独立目录和权限管理，不进入资源目录。
+本迭代复用 Resource 作为目标上下文、Scope/RBAC、Engine、Connector/MCP、PostgreSQL Job Queue 和 Finding；Skill 自身通过独立目录和权限管理，不进入资源目录。通知渠道、规则、模板、队列和投递的权威设计已拆分到 [I006 通知机制](../I006-notification-mechanism/iteration.md)，巡检策略与通知规则的关联也由 I006 负责，避免在本迭代重复定义通知领域。
 
 ## 2. 已确认的设计决策
 
@@ -49,7 +49,7 @@
 - 巡检对象、Skill 版本、Provider/Model、调度、预算、Finding 和通知路由；
 - 诊断、监控、优化、维护四类 Skill 的巡检约束；
 - 结构化 LLM 输出、Evidence 引用、确定性评分和 Finding 生命周期；
-- 通知模板、通知级别、渠道、幂等投递和恢复通知；
+- 巡检运行与 Finding 事件交由 I006 通知机制路由；
 - 技能页 Skill 管理和巡检中心配置体验。
 
 ## 5. 非目标
@@ -77,7 +77,7 @@
 | T04 | Tool Catalog 与资源上下文 | T01-T03 | 受控工具引用、关联资源角色、Direct/Agent 解析和权限边界 | 待批准 |
 | T05 | Skill 执行与 Engine 接入 | T02-T04 | 查看、执行、复制、Evidence、结构化输出和审计 | 待批准 |
 | T06 | Skill 驱动智能巡检 | T02-T05 | 巡检对象、四类 Skill 约束、Provider/Model 快照、调度和 Finding | 待批准 |
-| T07 | 通知模板、级别和渠道 | T06 | 通知路由、Webhook 投递、重试、幂等、恢复通知 | 待批准 |
+| T07 | 通知机制与巡检集成 | T06 | 已转由 [I006-R001](../I006-notification-mechanism/R001-requirement.md) 定义，I005 不再重复实现通知渠道、规则、模板和投递 | 转入 I006 |
 | T08 | 技能页和巡检中心 | T01-T07 | Skill 管理、版本正文、执行/复制和巡检配置页面 | 待批准 |
 
 ## 8. 进入条件
