@@ -1,9 +1,11 @@
 import type {
   Group,
+  Project,
   ResourceRoleDefinition,
   Resource,
   RoleBinding,
   RoleDefinition,
+  Team,
   User
 } from '../../lib/api';
 import { scopeContains, type ScopeChoice } from '../../lib/scope';
@@ -25,12 +27,46 @@ export function userRoleBindings(
   bindings: RoleBinding[]
 ) {
   const groupIds = groups
-    .filter((group) => groupMembers[group.id]?.includes(userId))
+    .filter(
+      (group) =>
+        group.status === 'active' && groupMembers[group.id]?.includes(userId)
+    )
     .map((group) => group.id);
   return bindings.filter(
     (binding) =>
       (binding.subject_type === 'user' && binding.subject_id === userId) ||
       (binding.subject_type === 'group' && groupIds.includes(binding.subject_id))
+  );
+}
+
+export function userRoleBindingsAtSelection(
+  userId: string,
+  selection: { kind: 'platform' | 'team' | 'project'; id: string },
+  teams: Team[],
+  projects: Project[],
+  scopeChoices: ScopeChoice[],
+  groups: Group[],
+  groupMembers: Record<string, string[]>,
+  bindings: RoleBinding[]
+) {
+  const scopeIDs = new Set<string>();
+  if (selection.kind === 'platform') {
+    scopeChoices.forEach((scope) => scopeIDs.add(scope.id));
+  } else if (selection.kind === 'team') {
+    const team = teams.find((item) => item.id === selection.id);
+    if (team) {
+      scopeIDs.add(team.scope.id);
+      projects
+        .filter((project) => project.team_id === team.id)
+        .forEach((project) => scopeIDs.add(project.scope.id));
+    }
+  } else {
+    const project = projects.find((item) => item.id === selection.id);
+    if (project) scopeIDs.add(project.scope.id);
+  }
+
+  return userRoleBindings(userId, groups, groupMembers, bindings).filter(
+    (binding) => scopeIDs.has(binding.scope_id)
   );
 }
 
@@ -42,10 +78,11 @@ export function usersAtScopes(
   groupMembers: Record<string, string[]>
 ) {
   const scopes = new Set(scopeIds.filter((id): id is string => Boolean(id)));
-  const memberIds = groups
+  const activeGroups = groups.filter((group) => group.status === 'active');
+  const memberIds = activeGroups
     .filter((group) => scopes.has(group.scope_id))
     .flatMap((group) => groupMembers[group.id] ?? []);
-  const groupIds = new Set(groups.map((group) => group.id));
+  const groupIds = new Set(activeGroups.map((group) => group.id));
   const boundIds = bindings
     .filter((binding) => scopes.has(binding.scope_id))
     .flatMap((binding) =>

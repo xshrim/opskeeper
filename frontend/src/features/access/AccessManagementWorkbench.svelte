@@ -9,7 +9,13 @@
   } from 'lucide-svelte';
   import IconValue from '../../components/IconValue.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
-  import type { Project, Team, User } from '../../lib/api';
+  import type {
+    Group,
+    Project,
+    ResourceRoleBinding,
+    Team,
+    User
+  } from '../../lib/api';
 
   type DisableKind = 'team' | 'user';
   type Selection = {
@@ -27,6 +33,15 @@
   export let visibleAccessTeams: Team[] = [];
   export let visibleAccessUsers: User[] = [];
   export let projects: Project[] = [];
+  export let scopeChoices: Array<{
+    id: string;
+    type: string;
+    name: string;
+    parentId?: string;
+  }> = [];
+  export let resourceBindings: ResourceRoleBinding[] = [];
+  export let groups: Group[] = [];
+  export let groupMembers: Record<string, string[]> = {};
   export let selectedTeamId = '';
   export let selectedProjectId = '';
   export let canViewPlatform = false;
@@ -135,10 +150,22 @@
         ? '已锁定'
         : '已禁用';
   }
+  function dateTimeLabel(value: string) {
+    return value ? new Date(value).toLocaleString() : '—';
+  }
+  function scopeTypeLabel(type: ScopeRoleEntry['scopeType']) {
+    return { platform: '平台', team: '团队', project: '项目' }[type];
+  }
   function roleTone(roleName: string) {
     if (roleName.includes('管理员')) return 'admin';
     if (roleName.includes('操作员')) return 'operator';
     return 'viewer';
+  }
+  function resourceRoleLabel(roleName: string) {
+    if (roleName.endsWith('Admin')) return '管理员';
+    if (roleName.endsWith('Operator')) return '操作员';
+    if (roleName.endsWith('Viewer')) return '观察员';
+    return roleName;
   }
   function initials(user: User) {
     return (user.display_name || user.username).slice(0, 1).toUpperCase();
@@ -178,6 +205,40 @@
   function memberCount(project: Project) {
     return dedupeUsers(accessProjectUsers[project.id] ?? []).length;
   }
+  function selectionScopeIDs(selection: Selection) {
+    if (selection.kind === 'platform') return new Set(scopeChoices.map((scope) => scope.id));
+    if (selection.kind === 'project') {
+      const project = projects.find((item) => item.id === selection.id);
+      return new Set(project ? [project.scope.id] : []);
+    }
+    const teamScope = visibleAccessTeams.find((item) => item.id === selection.id)?.scope.id;
+    return new Set([
+      ...(teamScope ? [teamScope] : []),
+      ...projects
+        .filter((project) => project.team_id === selection.id)
+        .map((project) => project.scope.id),
+    ]);
+  }
+  function userResourceRoleBindings(userID: string, selection: Selection) {
+    const groupIDs = new Set(
+      groups
+        .filter(
+          (group) =>
+            group.status === 'active' && groupMembers[group.id]?.includes(userID)
+        )
+        .map((group) => group.id)
+    );
+    const scopeIDs = selectionScopeIDs(selection);
+    const seen = new Set<string>();
+    return resourceBindings.filter(
+      (binding) =>
+        scopeIDs.has(binding.scope_id) &&
+        ((binding.subject_type === 'user' && binding.subject_id === userID) ||
+          (binding.subject_type === 'group' && groupIDs.has(binding.subject_id))) &&
+        !seen.has(`${binding.resource_id}:${binding.role_id}`) &&
+        Boolean(seen.add(`${binding.resource_id}:${binding.role_id}`))
+    );
+  }
 </script>
 
 <section class="access-management-workbench">
@@ -194,15 +255,14 @@
       <aside class="access-scope-tree panel">
         <div class="access-scope-tree-head">
           <div>
-            <h3>组织范围</h3>
-            <p>平台、团队与项目</p>
+            <h3>团队</h3>
+            <p>团队拓扑</p>
           </div>
           {#if accessCanCreateTeam}<button
-              class="icon-button"
+              class="primary"
               type="button"
               aria-label="添加团队"
-              data-tooltip="添加团队"
-              on:click={onAddTeam}><Plus size={15} /></button
+              on:click={onAddTeam}><Plus size={15} />添加团队</button
             >{/if}
         </div>
         {#if canViewPlatform && !selectedTeamId && !selectedProjectId}<button
@@ -342,9 +402,9 @@
                 checked={allUsersSelected}
                 on:change={(event) =>
                   toggleAllUsers(event.currentTarget.checked)}
-              /><span>用户</span><span>联系</span><span>权限</span><span
+              /><span>用户</span><span>联络</span><span>权限</span><span
                 >状态</span
-              ><span>操作</span>
+              ><span class="access-member-actions-heading">操作</span>
             </div>
             {#each visibleScopedUsers as user}{@const roleSelection =
                 activeProjectID
@@ -356,61 +416,132 @@
                   : selected}{@const scopeRoles = userScopeRoles(
                 user.id,
                 roleSelection
+              )}{@const resourceScopeRoles = userResourceRoleBindings(
+                user.id,
+                roleSelection
               )}
-              <article class="access-member-row">
-                <input
-                  type="checkbox"
-                  aria-label={`选择用户 ${user.display_name || user.username}`}
-                  disabled={!canManageUser(user) || user.status !== 'active'}
-                  bind:group={selectedAccessUserIds}
-                  value={user.id}
-                />
-                <div class="access-user-main">
-                  <span class="avatar access-avatar">{initials(user)}</span
-                  ><span
-                    ><strong>{user.display_name || user.username}</strong><small
-                      >@{user.username}</small
-                    ></span
-                  >
+              <details class="access-member-item">
+                <summary class="access-member-row">
+                  <input
+                    type="checkbox"
+                    aria-label={`选择用户 ${user.display_name || user.username}`}
+                    disabled={!canManageUser(user) || user.status !== 'active'}
+                    bind:group={selectedAccessUserIds}
+                    value={user.id}
+                    on:click|stopPropagation
+                  />
+                  <div class="access-user-main">
+                    <span class="avatar access-avatar">{initials(user)}</span
+                    ><span
+                      ><strong>{user.display_name || user.username}</strong><small
+                        >@{user.username}</small
+                      ></span
+                    >
+                  </div>
+                  <div class="access-user-contact">
+                    <span>{user.phone || '未填写电话'}</span>
+                    <span>{user.email || '未填写邮箱'}</span>
+                  </div>
+                  <div class="access-user-permissions">
+                    {#if scopeRoles.length > 0}
+                      {#each scopeRoles.slice(0, 2) as entry}
+                        <div
+                          class={`permission-card permission-${entry.scopeType} permission-role-${roleTone(entry.roleName)}`}
+                          title={`${entry.scopeName} · ${entry.roleName}`}
+                        >
+                          <span class="permission-card-object">
+                            <small>{scopeTypeLabel(entry.scopeType)}</small>
+                            <strong>{entry.scopeName}</strong>
+                          </span>
+                          <strong class="permission-card-role">{entry.roleName}</strong>
+                        </div>
+                      {/each}
+                      {#if scopeRoles.length > 2}
+                        <span
+                          class="permission-overflow"
+                          title={`还有 ${scopeRoles.length - 2} 项权限`}
+                          >+{scopeRoles.length - 2}</span
+                        >
+                      {/if}
+                    {:else}
+                      <span class="permission-empty">当前范围无角色</span>
+                    {/if}
+                  </div>
+                  <span class="status-label {user.status}">
+                    {statusLabel(user.status)}
+                  </span>
+                  <div class="access-row-actions">
+                    {#if canManageUser(user)}
+                      <button
+                        class="icon-button"
+                        type="button"
+                        aria-label={`编辑用户 ${user.display_name || user.username}`}
+                        data-tooltip="编辑用户与授权"
+                        on:click|stopPropagation={() => onEditUser(user)}
+                        ><Pencil size={15} /></button
+                      ><button
+                        class="icon-button danger-action"
+                        type="button"
+                        aria-label={`禁用用户 ${user.display_name || user.username}`}
+                        data-tooltip="禁用用户"
+                        disabled={user.status !== 'active' ||
+                          user.id === currentUser?.id}
+                        on:click|stopPropagation={() =>
+                          onDisable('user', [user.id])}
+                        ><Trash2 size={15} /></button
+                      >{:else}
+                      <span class="read-only-label">
+                        {user.id === currentUser?.id ? '当前账号' : '只读'}
+                      </span>
+                    {/if}
+                  </div>
+                </summary>
+                <div class="access-user-details">
+                  <div class="access-user-details-grid">
+                    <div><span>用户名</span><strong>{user.username}</strong></div>
+                    <div><span>姓名</span><strong>{user.display_name || '未填写'}</strong></div>
+                    <div><span>电话</span><strong>{user.phone || '未填写电话'}</strong></div>
+                    <div><span>邮箱</span><strong>{user.email || '未填写邮箱'}</strong></div>
+                    <div><span>密码状态</span><strong>{user.must_change_password ? '需要修改一次性密码' : '无需强制修改'}</strong></div>
+                    <div><span>创建时间</span><strong>{dateTimeLabel(user.created_at)}</strong></div>
+                    <div><span>更新时间</span><strong>{dateTimeLabel(user.updated_at)}</strong></div>
+                    <div><span>状态</span><strong>{statusLabel(user.status)}</strong></div>
+                  </div>
+                  <section class="access-user-details-section access-user-roles-section">
+                    <div class="access-user-role-table-wrap">
+                      <table class="access-user-role-table">
+                        <thead><tr><th>级别</th><th>授权对象</th><th>角色</th><th>额外授权</th></tr></thead>
+                        <tbody>
+                          {#each scopeRoles as entry}
+                            <tr>
+                              <td>{scopeTypeLabel(entry.scopeType)}</td>
+                              <td>{entry.scopeName}</td>
+                              <td class="permission-role-{roleTone(entry.roleName)}">{entry.roleName}</td>
+                              <td>—</td>
+                            </tr>
+                          {/each}
+                          {#each resourceScopeRoles as entry}
+                            <tr>
+                              <td>资源</td>
+                              <td title={entry.resource_name}>{entry.resource_kind} · {entry.resource_name}</td>
+                              <td>—</td>
+                              <td class="permission-role-{roleTone(resourceRoleLabel(entry.role_name))}">{resourceRoleLabel(entry.role_name)}</td>
+                            </tr>
+                          {/each}
+                          {#if scopeRoles.length === 0 && resourceScopeRoles.length === 0}
+                            <tr><td colspan="4" class="access-user-roles-empty">当前范围无角色</td></tr>
+                          {/if}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 </div>
-                <div class="access-user-contact">
-                  <span>{user.phone || '未填写电话'}</span>
-                  <span>{user.email || '未填写邮箱'}</span>
-                </div>
-                <div class="access-user-permissions">
-                  {#each scopeRoles as entry}<div
-                      class={`permission-card permission-${entry.scopeType} permission-role-${roleTone(entry.roleName)}`}
-                      title={`${entry.scopeName} · ${entry.roleName}`}
-                    ><span class="permission-card-object"><small>{entry.scopeType === 'platform' ? '平台' : entry.scopeType === 'team' ? '团队' : '项目'}</small><strong>{entry.scopeName}</strong></span><strong class="permission-card-role">{entry.roleName}</strong></div
-                    >{:else}<span class="permission-empty">当前范围无角色</span>{/each}
-                </div>
-                <span class="status-label {user.status}"
-                  >{statusLabel(user.status)}</span
-                >
-                <div class="access-row-actions">
-                  {#if canManageUser(user)}<button
-                      class="icon-button"
-                      type="button"
-                      aria-label={`编辑用户 ${user.display_name || user.username}`}
-                      data-tooltip="编辑用户与授权"
-                      on:click={() => onEditUser(user)}
-                      ><Pencil size={15} /></button
-                    ><button
-                      class="icon-button danger-action"
-                      type="button"
-                      aria-label={`禁用用户 ${user.display_name || user.username}`}
-                      data-tooltip="禁用用户"
-                      disabled={user.status !== 'active' ||
-                        user.id === currentUser?.id}
-                      on:click={() => onDisable('user', [user.id])}
-                      ><Trash2 size={15} /></button
-                    >{:else}<span class="read-only-label"
-                      >{user.id === currentUser?.id ? '当前账号' : '只读'}</span
-                    >{/if}
-                </div>
-              </article>{:else}<div class="access-state">
+              </details>
+            {:else}
+              <div class="access-state">
                 当前范围没有可见成员。
-              </div>{/each}
+              </div>
+            {/each}
           </div>
         </div>
       </section>

@@ -1,6 +1,8 @@
 .env
 .cache/
 .DS_Store
+/tmp/
+/.marscode/
 
 backend/bin/
 backend/coverage.out

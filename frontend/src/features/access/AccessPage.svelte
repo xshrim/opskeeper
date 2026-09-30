@@ -35,6 +35,7 @@
     organizationScopeVisible,
     resourceVisibleToScope as isResourceVisibleToScope,
     userRoleBindings as getUserRoleBindings,
+    userRoleBindingsAtSelection as getUserRoleBindingsAtSelection,
     usersAtScopes,
     viewerResourceRoleAllowed as isViewerResourceRoleAllowed
   } from './accessUtils';
@@ -399,6 +400,12 @@
     };
     return labels[name] ?? name;
   }
+  function memberPermissionRoleLabel(name: string) {
+    if (name.endsWith('Admin')) return '管理员';
+    if (name.endsWith('Operator')) return '操作员';
+    if (name.endsWith('Viewer')) return '观察员';
+    return roleLabel(name);
+  }
   function grantRoleLabel(name: string) {
     const labels: Record<string, string> = {
       PlatformAdmin: '管理员',
@@ -413,6 +420,24 @@
     };
     return labels[name] ?? roleLabel(name);
   }
+  function roleCatalogSortKey(role: RoleDefinition) {
+    const scopeOrder: Record<string, number> = {
+      platform: 0,
+      team: 1,
+      project: 2
+    };
+    const roleOrder = role.name.endsWith('Admin')
+      ? 0
+      : role.name.endsWith('Operator')
+        ? 1
+        : role.name.endsWith('Viewer')
+          ? 2
+          : 9;
+    return `${String(scopeOrder[role.scope_type] ?? 9).padStart(2, '0')}:${String(roleOrder).padStart(2, '0')}:${role.name}`;
+  }
+  $: orderedRoles = [...roles].sort((left, right) =>
+    roleCatalogSortKey(left).localeCompare(roleCatalogSortKey(right))
+  );
   function grantScopeLabel(type: NewUserGrant['scopeType']) {
     return { platform: '平台', team: '团队', project: '项目' }[type];
   }
@@ -556,25 +581,22 @@
     userID: string,
     selection: { kind: 'platform' | 'team' | 'project'; id: string }
   ): MemberScopeRole[] {
-    const allowedScopeIDs = new Set<string>();
-    if (selection.kind === 'project') {
-      allowedScopeIDs.add(selection.id);
-    } else if (selection.kind === 'team') {
-      allowedScopeIDs.add(selection.id);
-      projects
-        .filter((project) => project.team_id === selection.id)
-        .forEach((project) => allowedScopeIDs.add(project.scope.id));
-    } else {
-      scopeChoices.forEach((scope) => allowedScopeIDs.add(scope.id));
-    }
     const seen = new Set<string>();
     const typeOrder: Record<string, number> = {
       platform: 0,
       team: 1,
       project: 2
     };
-    return getUserRoleBindings(userID, groups, groupMembers, bindings)
-      .filter((binding) => allowedScopeIDs.has(binding.scope_id))
+    return getUserRoleBindingsAtSelection(
+      userID,
+      selection,
+      teams,
+      projects,
+      scopeChoices,
+      groups,
+      groupMembers,
+      bindings
+    )
       .filter((binding) => {
         const key = `${binding.scope_id}:${binding.role_id}`;
         if (seen.has(key)) return false;
@@ -585,7 +607,7 @@
         scopeID: binding.scope_id,
         scopeType: scopeType(binding.scope_id) as MemberScopeRole['scopeType'],
         scopeName: memberScopeName(binding.scope_id),
-        roleName: roleLabel(binding.role_name)
+        roleName: memberPermissionRoleLabel(binding.role_name)
       }))
       .sort((left, right) => {
         const leftType =
@@ -1172,6 +1194,10 @@
           {visibleAccessTeams}
           {visibleAccessUsers}
           projects={accessVisibleProjects}
+          {scopeChoices}
+          {resourceBindings}
+          {groups}
+          {groupMembers}
           {selectedTeamId}
           {selectedProjectId}
           canViewPlatform={accessCanViewPlatform}
@@ -1298,7 +1324,7 @@
     {#if expandedAccessSection === 'roles'}
       <div class="access-accordion-content">
         <div class="access-role-cards">
-          {#each roles as role}
+          {#each orderedRoles as role}
             <article class="role-catalog-item">
               <div class="role-card-heading">
                 <div>
@@ -1681,7 +1707,7 @@
                     />授权时只显示当前账号可完整授予的角色</span
                   >
                 </div>
-                {#each roles as role}<article class="role-catalog-item">
+                {#each orderedRoles as role}<article class="role-catalog-item">
                     <div>
                       <strong>{roleLabel(role.name)}</strong><small
                         >{roleScopeLabel(role.scope_type)}{role.builtin
@@ -1800,32 +1826,48 @@
     }}
   >
     <dialog open class="dialog wide-dialog" aria-labelledby="user-dialog-title">
-      <div class="dialog-heading">
+      <div class="dialog-heading team-dialog-heading">
         <div>
-          <p class="eyebrow">USER ACCESS</p>
           <h2 id="user-dialog-title">
             {editingUser ? '编辑用户' : '新增用户'}
           </h2>
         </div>
-        {#if activeMessage}<MessageBanner
-            message={activeMessage}
-            tone={activeMessageTone}
-          />{/if}
-        <button
-          class="icon-button"
-          type="button"
-          aria-label="关闭"
-          on:click={() => {
-            userDialogOpen = false;
-            editingUser = null;
-          }}>×</button
-        >
+        <div class="team-dialog-actions">
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => {
+              userDialogOpen = false;
+              editingUser = null;
+            }}>取消</button
+          ><button
+            class="primary"
+            type="submit"
+            form="user-dialog-form"
+            disabled={busy ||
+              newUserGrants.length === 0 ||
+              newUserGrants.some(
+                (grant) =>
+                  !grant.scopeID ||
+                  !grant.roleID ||
+                  grant.resourceGrants.some(
+                    (resourceGrant) =>
+                      !resourceGrant.resourceID || !resourceGrant.roleID
+                  )
+              )}>{editingUser ? '保存用户与授权' : '创建用户并授权'}</button
+          >
+        </div>
       </div>
       <form
+        id="user-dialog-form"
         class="stack-form"
         novalidate
         on:submit|preventDefault={editingUser ? saveUser : createUser}
       >
+        {#if activeMessage}<MessageBanner
+            message={activeMessage}
+            tone={activeMessageTone}
+          />{/if}
         <div class="form-row">
           <label class:invalid={Boolean(newUserUsernameError)}
             ><span
@@ -1883,85 +1925,107 @@
         <fieldset class="preference-group">
           <legend>{editingUser ? '重置密码' : '一次性密码'}</legend>
           {#if editingUser}
-            <p class="form-help">
-              点击重置密码后生成新的登录一次性密码，原密码立即失效。
-            </p>
-            <button
-              class="secondary"
-              type="button"
-              disabled={busy}
-              on:click={resetManagedUserPassword}>重置密码</button
-            >
-            {#if passwordResetCredentials}
-              <div class="created-credentials-inline" aria-live="polite">
-                <span
-                  >一次性密码：<strong
-                    >{passwordResetCredentials.password}</strong
-                  ></span
+            <div class="user-password-row">
+              <button
+                class="secondary"
+                type="button"
+                disabled={busy}
+                on:click={resetManagedUserPassword}>重置密码</button
+              >
+              {#if passwordResetCredentials}
+                <div class="created-credentials-inline" aria-live="polite">
+                  <span
+                    >一次性密码：<strong
+                      >{passwordResetCredentials.password}</strong
+                    ></span
+                  >
+                  <button
+                    class="icon-button"
+                    type="button"
+                    aria-label="复制一次性密码"
+                    data-tooltip="复制一次性密码"
+                    on:click={() => copyPasswordResetCredentials(true)}
+                  >
+                    {#if copiedControl === 'reset-credentials'}<ClipboardCheck
+                        size={15}
+                        aria-hidden="true"
+                      />{:else}<Copy size={15} aria-hidden="true" />{/if}
+                  </button>
+                </div>
+              {:else}
+                <span class="user-password-hint"
+                  >点击后生成新密码，原密码立即失效</span
+                >
+              {/if}
+            </div>
+          {:else}
+            <div class="user-password-row">
+              <div
+                class="segmented-control"
+                role="radiogroup"
+                aria-label="一次性密码方式"
+              >
+                <button
+                  type="button"
+                  class:active={newUserPasswordMode === 'generated'}
+                  on:click={() => (newUserPasswordMode = 'generated')}
+                  >自动生成</button
                 >
                 <button
-                  class="icon-button"
                   type="button"
-                  aria-label="复制一次性密码"
-                  data-tooltip="复制一次性密码"
-                  on:click={() => copyPasswordResetCredentials(true)}
+                  class:active={newUserPasswordMode === 'manual'}
+                  on:click={() => (newUserPasswordMode = 'manual')}
+                  >手动设置</button
                 >
-                  {#if copiedControl === 'reset-credentials'}<ClipboardCheck
-                      size={15}
-                      aria-hidden="true"
-                    />{:else}<Copy size={15} aria-hidden="true" />{/if}
-                </button>
               </div>
-            {/if}
-          {:else}
-            <div
-              class="segmented-control"
-              role="radiogroup"
-              aria-label="一次性密码方式"
-            >
-              <button
-                type="button"
-                class:active={newUserPasswordMode === 'generated'}
-                on:click={() => (newUserPasswordMode = 'generated')}
-                >自动生成</button
-              >
-              <button
-                type="button"
-                class:active={newUserPasswordMode === 'manual'}
-                on:click={() => (newUserPasswordMode = 'manual')}
-                >手动设置</button
-              >
+              {#if newUserPasswordMode === 'manual'}
+                <label
+                  class="user-password-input"
+                  class:invalid={Boolean(newUserPasswordError)}
+                  ><PasswordInput
+                    bind:value={newUserPassword}
+                    required
+                    minlength={8}
+                    ariaInvalid={Boolean(newUserPasswordError)}
+                    ariaDescribedby={newUserPasswordError
+                      ? 'new-user-password-error'
+                      : ''}
+                    autocomplete="new-password"
+                    placeholder="至少 8 位，建议包含字母、数字和特殊字符"
+                    ariaLabel="一次性密码"
+                    on:input={() => {
+                      if (newUserPassword.length >= 8) newUserPasswordError = '';
+                    }}
+                  />{#if newUserPasswordError}<small
+                      id="new-user-password-error"
+                      class="access-field-error"
+                      role="alert">{newUserPasswordError}</small
+                    >{/if}</label
+                >
+              {:else if createdUserCredentials}
+                <div class="created-credentials-inline" aria-live="polite">
+                  <span
+                    >一次性密码：<strong>{createdUserCredentials.password}</strong
+                    ></span
+                  >
+                  <button
+                    class="icon-button"
+                    type="button"
+                    aria-label="复制一次性密码"
+                    data-tooltip="复制一次性密码"
+                    on:click={copyOneTimePassword}
+                    >{#if copiedControl === 'created-password'}<ClipboardCheck
+                        size={15}
+                        aria-hidden="true"
+                      />{:else}<Copy size={15} aria-hidden="true" />{/if}</button
+                  >
+                </div>
+              {:else}
+                <span class="user-password-hint"
+                  >创建后显示一次性密码，仅可查看和复制一次</span
+                >
+              {/if}
             </div>
-            {#if newUserPasswordMode === 'manual'}
-              <label class:invalid={Boolean(newUserPasswordError)}
-                ><span
-                  >一次性密码<i class="required-mark" aria-hidden="true">*</i
-                  ></span
-                ><PasswordInput
-                  bind:value={newUserPassword}
-                  required
-                  minlength={8}
-                  ariaInvalid={Boolean(newUserPasswordError)}
-                  ariaDescribedby={newUserPasswordError
-                    ? 'new-user-password-error'
-                    : ''}
-                  autocomplete="new-password"
-                  placeholder="至少 8 位"
-                  ariaLabel="一次性密码"
-                  on:input={() => {
-                    if (newUserPassword.length >= 8) newUserPasswordError = '';
-                  }}
-                />{#if newUserPasswordError}<small
-                    id="new-user-password-error"
-                    class="access-field-error"
-                    role="alert">{newUserPasswordError}</small
-                  >{/if}</label
-              >
-            {:else}
-              <p class="form-help">
-                创建后显示一次性密码，仅可查看和复制一次。
-              </p>
-            {/if}
           {/if}
         </fieldset>
         <section class="new-user-grants" aria-label="用户授权">
@@ -2126,48 +2190,6 @@
             <p class="form-help">当前账号没有可授权的范围。</p>
           {/each}
         </section>
-        <div class="form-actions">
-          {#if createdUserCredentials}
-            <div class="created-credentials-inline" aria-live="polite">
-              <span
-                >一次性密码：<strong>{createdUserCredentials.password}</strong
-                ></span
-              >
-              <button
-                class="icon-button"
-                type="button"
-                aria-label="复制一次性密码"
-                data-tooltip="复制一次性密码"
-                on:click={copyOneTimePassword}
-                >{#if copiedControl === 'created-password'}<ClipboardCheck
-                    size={15}
-                    aria-hidden="true"
-                  />{:else}<Copy size={15} aria-hidden="true" />{/if}</button
-              >
-            </div>
-          {/if}
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => {
-              userDialogOpen = false;
-              editingUser = null;
-            }}>取消</button
-          ><button
-            class="primary"
-            disabled={busy ||
-              newUserGrants.length === 0 ||
-              newUserGrants.some(
-                (grant) =>
-                  !grant.scopeID ||
-                  !grant.roleID ||
-                  grant.resourceGrants.some(
-                    (resourceGrant) =>
-                      !resourceGrant.resourceID || !resourceGrant.roleID
-                  )
-              )}>{editingUser ? '保存用户与授权' : '创建用户并授权'}</button
-          >
-        </div>
       </form>
     </dialog>
   </div>
