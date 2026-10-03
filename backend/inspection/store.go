@@ -2,6 +2,8 @@ package inspection
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
+	"opskeeper/backend/notification"
 )
 
 type Store interface {
@@ -30,7 +33,6 @@ type Store interface {
 	ListChannels(context.Context, string) ([]NotificationChannel, error)
 	MarkLLMStatus(context.Context, string, string) error
 	RecordExplanation(context.Context, string, string) error
-	EnqueueDeliveries(context.Context, string, []Finding) error
 	ClaimDelivery(context.Context) (Delivery, NotificationChannel, bool, error)
 	FinishDelivery(context.Context, Delivery, int, string, error) error
 	GetFinding(context.Context, string) (Finding, error)
@@ -305,6 +307,19 @@ func (s *store) FinishJob(ctx context.Context, id, owner string, runErr error) e
 	if _, err = tx.Exec(ctx, `UPDATE inspection_runs SET status=$2,completed_at=now(),updated_at=now() WHERE id=$1::uuid`, runID, runStatus); err != nil {
 		return err
 	}
+	if runErr != nil {
+		var scopeID, policyID string
+		if err := tx.QueryRow(ctx, `SELECT scope_id::text,policy_id::text FROM inspection_runs WHERE id=$1::uuid`, runID).Scan(&scopeID, &policyID); err != nil {
+			return err
+		}
+		if err := s.recordNotificationEvent(ctx, tx, notificationEventInput{
+			ScopeID: scopeID, PolicyID: policyID, RunID: runID,
+			Type: notification.InspectionFailed, Key: "run:" + runID + ":inspection.failed",
+			Payload: map[string]any{"event_type": notification.InspectionFailed, "policy_id": policyID, "run_id": runID, "error_code": "worker"},
+		}); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -369,6 +384,9 @@ func (s *store) SaveResults(ctx context.Context, run Run, policy Policy, results
 		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('inspection-results:'||$1,0))`, policy.ID); err != nil {
+		return nil, nil, err
+	}
 	byTarget := make(map[string][]RuleResult)
 	for _, result := range results {
 		if result.TargetResourceID != "" {
@@ -383,19 +401,59 @@ func (s *store) SaveResults(ctx context.Context, run Run, policy Policy, results
 		}
 		identity := FindingIdentityKey(result.TargetResourceID, result.Rule)
 		fingerprint := FindingFingerprint(result.TargetResourceID, result.Rule, run.WindowStart)
+		var previous *notification.FindingState
+		var old Finding
+		err := tx.QueryRow(ctx, `SELECT status,severity FROM inspection_findings WHERE policy_id=$1::uuid AND identity_key=$2 FOR UPDATE`, policy.ID, identity).Scan(&old.Status, &old.Severity)
+		if err == nil {
+			previous = &notification.FindingState{Status: old.Status, Severity: old.Severity}
+		} else if err != pgx.ErrNoRows {
+			return nil, nil, mapError(err)
+		}
 		var finding Finding
-		err := tx.QueryRow(ctx, `INSERT INTO inspection_findings (policy_id,target_resource_id,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,last_run_id,resolved_at) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,'open',now(),now(),$8::uuid,NULL) ON CONFLICT (policy_id,identity_key) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,severity=EXCLUDED.severity,message=EXCLUDED.message,status='open',last_observed_at=now(),last_run_id=EXCLUDED.last_run_id,resolved_at=NULL RETURNING id::text,policy_id::text,target_resource_id::text,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,resolved_at`, policy.ID, result.TargetResourceID, result.Rule, identity, fingerprint, result.Severity, result.Message, run.ID).Scan(&finding.ID, &finding.PolicyID, &finding.TargetResourceID, &finding.Rule, &finding.IdentityKey, &finding.Fingerprint, &finding.Severity, &finding.Message, &finding.Status, &finding.FirstObservedAt, &finding.LastObservedAt, &finding.ResolvedAt)
+		if previous == nil {
+			err = tx.QueryRow(ctx, `INSERT INTO inspection_findings (policy_id,scope_id,target_resource_id,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,last_run_id,resolved_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,'open',now(),now(),$9::uuid,NULL) RETURNING id::text,policy_id::text,target_resource_id::text,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,resolved_at`, policy.ID, policy.ScopeID, result.TargetResourceID, result.Rule, identity, fingerprint, result.Severity, result.Message, run.ID).Scan(&finding.ID, &finding.PolicyID, &finding.TargetResourceID, &finding.Rule, &finding.IdentityKey, &finding.Fingerprint, &finding.Severity, &finding.Message, &finding.Status, &finding.FirstObservedAt, &finding.LastObservedAt, &finding.ResolvedAt)
+		} else {
+			err = tx.QueryRow(ctx, `UPDATE inspection_findings SET fingerprint=$3,severity=$4,message=$5,status='open',last_observed_at=now(),last_run_id=$6::uuid,resolved_at=NULL WHERE policy_id=$1::uuid AND identity_key=$2 RETURNING id::text,policy_id::text,target_resource_id::text,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,resolved_at`, policy.ID, identity, fingerprint, result.Severity, result.Message, run.ID).Scan(&finding.ID, &finding.PolicyID, &finding.TargetResourceID, &finding.Rule, &finding.IdentityKey, &finding.Fingerprint, &finding.Severity, &finding.Message, &finding.Status, &finding.FirstObservedAt, &finding.LastObservedAt, &finding.ResolvedAt)
+		}
 		if err != nil {
 			return nil, nil, mapError(err)
 		}
 		findings = append(findings, finding)
 		seen[identity] = true
+		if eventType := notification.FindingTransition(previous, notification.FindingState{Status: finding.Status, Severity: finding.Severity}); eventType != "" {
+			if err := s.recordFindingEvent(ctx, tx, run, policy, finding, eventType); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	// A successful deterministic observation that no longer returns a known
 	// rule is a recovery. Scope it to frozen targets, never to a changing policy.
 	for _, target := range policy.TargetResourceIDs {
-		if _, err := tx.Exec(ctx, `UPDATE inspection_findings SET status='resolved',resolved_at=now(),last_observed_at=now(),last_run_id=$3::uuid WHERE policy_id=$1::uuid AND target_resource_id=$2::uuid AND status='open' AND identity_key <> ALL($4::text[])`, policy.ID, target, run.ID, keys(seen)); err != nil {
+		rows, err := tx.Query(ctx, `SELECT id::text,policy_id::text,target_resource_id::text,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,resolved_at FROM inspection_findings WHERE policy_id=$1::uuid AND target_resource_id=$2::uuid AND status='open' AND identity_key <> ALL($3::text[]) FOR UPDATE`, policy.ID, target, keys(seen))
+		if err != nil {
 			return nil, nil, mapError(err)
+		}
+		resolved := []Finding{}
+		for rows.Next() {
+			var finding Finding
+			if err := rows.Scan(&finding.ID, &finding.PolicyID, &finding.TargetResourceID, &finding.Rule, &finding.IdentityKey, &finding.Fingerprint, &finding.Severity, &finding.Message, &finding.Status, &finding.FirstObservedAt, &finding.LastObservedAt, &finding.ResolvedAt); err != nil {
+				rows.Close()
+				return nil, nil, err
+			}
+			resolved = append(resolved, finding)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		rows.Close()
+		for _, finding := range resolved {
+			if _, err := tx.Exec(ctx, `UPDATE inspection_findings SET status='resolved',resolved_at=now(),last_observed_at=now(),last_run_id=$2::uuid WHERE id=$1::uuid`, finding.ID, run.ID); err != nil {
+				return nil, nil, mapError(err)
+			}
+			if err := s.recordFindingEvent(ctx, tx, run, policy, finding, notification.FindingResolved); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	snapshots := make([]HealthSnapshot, 0, len(policy.TargetResourceIDs))
@@ -423,10 +481,124 @@ func (s *store) SaveResults(ctx context.Context, run Run, policy Policy, results
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
-	if err := s.EnqueueDeliveries(ctx, run.ID, findings); err != nil {
-		return nil, nil, err
-	}
 	return findings, snapshots, nil
+}
+
+type notificationEventInput struct {
+	ScopeID, PolicyID, RunID                           string
+	Type                                               notification.EventType
+	Key                                                string
+	Payload                                            map[string]any
+	FindingID, IdentityKey, TargetResourceID, Severity string
+}
+
+func (s *store) recordFindingEvent(ctx context.Context, tx pgx.Tx, run Run, policy Policy, finding Finding, eventType notification.EventType) error {
+	key := fmt.Sprintf("run:%s:%s:%s", run.ID, eventType, finding.IdentityKey)
+	return s.recordNotificationEvent(ctx, tx, notificationEventInput{
+		ScopeID: policy.ScopeID, PolicyID: policy.ID, RunID: run.ID,
+		Type: eventType, Key: key, FindingID: finding.ID, IdentityKey: finding.IdentityKey,
+		TargetResourceID: finding.TargetResourceID, Severity: finding.Severity,
+		Payload: map[string]any{
+			"event_type": eventType, "policy_id": policy.ID, "run_id": run.ID,
+			"finding_id": finding.ID, "finding_identity": finding.IdentityKey,
+			"target_resource_id": finding.TargetResourceID, "rule": finding.Rule,
+			"severity": finding.Severity, "finding_summary": notification.SanitizeSummary(finding.Message),
+		},
+	})
+}
+
+func (s *store) recordNotificationEvent(ctx context.Context, tx pgx.Tx, input notificationEventInput) error {
+	payload, err := json.Marshal(input.Payload)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(payload)
+	var eventID string
+	err = tx.QueryRow(ctx, `INSERT INTO notification_events (scope_id,event_type,event_key,policy_id,run_id,finding_id,finding_identity,target_resource_id,severity,payload,content_hash) VALUES ($1::uuid,$2,$3,NULLIF($4,'')::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7,NULLIF($8,'')::uuid,NULLIF($9,''),$10::jsonb,$11) ON CONFLICT (event_key) DO NOTHING RETURNING id::text`, input.ScopeID, input.Type, input.Key, input.PolicyID, input.RunID, input.FindingID, input.IdentityKey, input.TargetResourceID, input.Severity, string(payload), hex.EncodeToString(hash[:])).Scan(&eventID)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return mapError(err)
+	}
+	return s.enqueueEventDeliveries(ctx, tx, eventID, input)
+}
+
+func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID string, event notificationEventInput) error {
+	rows, err := tx.Query(ctx, `
+		SELECT rule.id::text, route.id::text, channel.id::text, config.id::text,
+		       config.version, config.provider_config_hash, template.id::text,
+		       template.version, template.content_hash
+		  FROM notification_events event
+	  JOIN inspection_policy_notification_rules policy_rule
+		    ON policy_rule.policy_id=event.policy_id AND policy_rule.scope_id=event.scope_id
+		  JOIN notification_rules rule
+		    ON rule.id=policy_rule.rule_id AND rule.scope_id=event.scope_id
+		  JOIN notification_rule_routes route
+		    ON route.rule_id=rule.id AND route.scope_id=event.scope_id
+		  JOIN notification_channels channel
+		    ON channel.id=route.channel_id AND channel.scope_id=event.scope_id
+		  JOIN notification_channel_versions config
+		    ON config.id=route.channel_version_id AND config.scope_id=event.scope_id
+		  JOIN notification_template_versions template
+		    ON template.id=route.template_version_id AND template.scope_id=event.scope_id
+		 WHERE event.id=$1::uuid AND rule.status='active' AND rule.deleted_at IS NULL
+		   AND event.event_type=ANY(rule.event_types)
+		   AND channel.status='active' AND channel.deleted_at IS NULL
+		   AND template.status='published'
+		   AND CASE rule.minimum_severity WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END
+		       <= CASE COALESCE(event.severity,'critical') WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END
+		 ORDER BY rule.id, route.id`, eventID)
+	if err != nil {
+		return mapError(err)
+	}
+	type route struct {
+		RuleID, RouteID, ChannelID, ChannelVersionID string
+		ChannelVersion                               int
+		ChannelConfigHash                            string
+		TemplateVersionID                            string
+		TemplateVersion                              int
+		TemplateHash                                 string
+	}
+	routes := []route{}
+	for rows.Next() {
+		var item route
+		if err := rows.Scan(&item.RuleID, &item.RouteID, &item.ChannelID, &item.ChannelVersionID, &item.ChannelVersion, &item.ChannelConfigHash, &item.TemplateVersionID, &item.TemplateVersion, &item.TemplateHash); err != nil {
+			rows.Close()
+			return err
+		}
+		routes = append(routes, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, route := range routes {
+		snapshot, err := json.Marshal(map[string]any{
+			"scope_id": event.ScopeID, "event_id": eventID, "policy_id": event.PolicyID, "event_type": event.Type,
+			"rule_id": route.RuleID, "route_id": route.RouteID,
+			"channel_id": route.ChannelID, "channel_version_id": route.ChannelVersionID,
+			"channel_version": route.ChannelVersion, "channel_config_hash": route.ChannelConfigHash,
+			"template_version_id": route.TemplateVersionID, "template_version": route.TemplateVersion,
+			"template_hash": route.TemplateHash,
+		})
+		if err != nil {
+			return err
+		}
+		snapshotHash := sha256.Sum256(snapshot)
+		idempotencyKey := eventID + ":" + route.RouteID
+		result, err := tx.Exec(ctx, `INSERT INTO notification_deliveries (scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,$8::uuid,NULLIF($9,'')::uuid,NULLIF($10,'')::uuid,$11,$12::jsonb,$13) ON CONFLICT (idempotency_key) DO NOTHING`, event.ScopeID, eventID, event.PolicyID, route.RuleID, route.RouteID, route.ChannelID, route.ChannelVersionID, route.TemplateVersionID, event.FindingID, event.RunID, idempotencyKey, string(snapshot), hex.EncodeToString(snapshotHash[:]))
+		if err != nil {
+			return mapError(err)
+		}
+		if result.RowsAffected() == 1 {
+			if _, err := tx.Exec(ctx, `SELECT pg_notify('opskeeper_notification','')`); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func keys(set map[string]bool) []string {
@@ -500,8 +672,29 @@ func (s *store) MarkLLMStatus(ctx context.Context, runID, status string) error {
 	if status != "succeeded" && status != "degraded" && status != "failed" && status != "not_requested" {
 		return invalid("invalid LLM status")
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE inspection_runs SET llm_status=$2,updated_at=now() WHERE id=$1::uuid`, runID, status)
-	return mapError(err)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var scopeID, policyID string
+	var deterministicCompleted bool
+	if err := tx.QueryRow(ctx, `SELECT scope_id::text,policy_id::text,deterministic_completed FROM inspection_runs WHERE id=$1::uuid FOR UPDATE`, runID).Scan(&scopeID, &policyID, &deterministicCompleted); err != nil {
+		return mapError(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE inspection_runs SET llm_status=$2,updated_at=now() WHERE id=$1::uuid`, runID, status); err != nil {
+		return mapError(err)
+	}
+	if deterministicCompleted && (status == "degraded" || status == "failed") {
+		if err := s.recordNotificationEvent(ctx, tx, notificationEventInput{
+			ScopeID: scopeID, PolicyID: policyID, RunID: runID,
+			Type: notification.InspectionDegraded, Key: "run:" + runID + ":inspection.degraded",
+			Payload: map[string]any{"event_type": notification.InspectionDegraded, "policy_id": policyID, "run_id": runID, "llm_status": status},
+		}); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *store) RecordExplanation(ctx context.Context, runID, detail string) error {
@@ -509,18 +702,6 @@ func (s *store) RecordExplanation(ctx context.Context, runID, detail string) err
 		INSERT INTO inspection_run_steps(run_id,sequence,kind,status,detail,started_at,completed_at)
 		VALUES ($1::uuid,COALESCE((SELECT max(sequence)+1 FROM inspection_run_steps WHERE run_id=$1::uuid),1),'ai_explanation','succeeded',$2,now(),now())`, runID, detail)
 	return mapError(err)
-}
-
-func (s *store) EnqueueDeliveries(ctx context.Context, runID string, findings []Finding) error {
-	for _, finding := range findings {
-		// The observation fingerprint makes open/reopen notifications idempotent
-		// per channel and scheduling window.
-		_, err := s.pool.Exec(ctx, `INSERT INTO notification_deliveries(channel_id,finding_id,run_id,idempotency_key) SELECT id,$1::uuid,$2::uuid,id::text||':'||$3 FROM notification_channels WHERE scope_id=(SELECT scope_id FROM inspection_runs WHERE id=$2::uuid) AND status='active' AND deleted_at IS NULL ON CONFLICT (idempotency_key) DO NOTHING`, finding.ID, runID, finding.Fingerprint)
-		if err != nil {
-			return mapError(err)
-		}
-	}
-	return nil
 }
 
 func (s *store) ClaimDelivery(ctx context.Context) (Delivery, NotificationChannel, bool, error) {
@@ -531,7 +712,7 @@ func (s *store) ClaimDelivery(ctx context.Context) (Delivery, NotificationChanne
 	defer tx.Rollback(ctx)
 	var d Delivery
 	var c NotificationChannel
-	err = tx.QueryRow(ctx, `WITH next AS (SELECT id FROM notification_deliveries WHERE status='queued' AND available_at<=now() ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE notification_deliveries d SET status='delivering',attempt=attempt+1,updated_at=now() FROM next JOIN notification_channels c ON c.id=d.channel_id WHERE d.id=next.id AND (SELECT count(*) FROM notification_deliveries recent WHERE recent.channel_id=c.id AND recent.created_at>=date_trunc('minute',now()) AND recent.status='succeeded') < c.rate_limit_per_minute RETURNING d.id::text,d.channel_id::text,COALESCE(d.finding_id::text,''),COALESCE(d.run_id::text,''),d.idempotency_key,d.status,d.attempt,COALESCE(d.response_status,0),d.response_body,d.error_message,c.id::text,c.scope_id::text,c.name,c.kind,c.webhook_url,c.status,c.rate_limit_per_minute`).Scan(&d.ID, &d.ChannelID, &d.FindingID, &d.RunID, &d.IdempotencyKey, &d.Status, &d.Attempt, &d.ResponseStatus, &d.ResponseBody, &d.ErrorMessage, &c.ID, &c.ScopeID, &c.Name, &c.Kind, &c.WebhookURL, &c.Status, &c.RateLimitPerMinute)
+	err = tx.QueryRow(ctx, `WITH next AS (SELECT delivery.id,delivery.channel_id,COALESCE(event.event_type,'') AS event_type,event.payload AS event_payload FROM notification_deliveries delivery LEFT JOIN notification_events event ON event.id=delivery.event_id WHERE delivery.status='queued' AND delivery.available_at<=now() ORDER BY delivery.available_at,delivery.id FOR UPDATE OF delivery SKIP LOCKED LIMIT 1) UPDATE notification_deliveries d SET status='delivering',attempt=attempt+1,updated_at=now(),lease_owner='legacy-worker',lease_expires_at=now()+interval '30 seconds' FROM next JOIN notification_channels c ON c.id=next.channel_id WHERE d.id=next.id AND (SELECT count(*) FROM notification_deliveries recent WHERE recent.channel_id=c.id AND recent.created_at>=date_trunc('minute',now()) AND recent.status='succeeded') < c.rate_limit_per_minute RETURNING d.id::text,d.scope_id::text,d.channel_id::text,COALESCE(d.finding_id::text,''),COALESCE(d.run_id::text,''),next.event_type,next.event_payload,d.idempotency_key,d.status,d.attempt,d.max_attempts,COALESCE(d.response_status,0),d.response_body,d.error_message,now(),c.id::text,c.scope_id::text,c.name,c.kind,c.webhook_url,c.status,c.rate_limit_per_minute`).Scan(&d.ID, &d.ScopeID, &d.ChannelID, &d.FindingID, &d.RunID, &d.EventType, &d.EventPayload, &d.IdempotencyKey, &d.Status, &d.Attempt, &d.MaxAttempts, &d.ResponseStatus, &d.ResponseBody, &d.ErrorMessage, &d.StartedAt, &c.ID, &c.ScopeID, &c.Name, &c.Kind, &c.WebhookURL, &c.Status, &c.RateLimitPerMinute)
 	if err == pgx.ErrNoRows {
 		return Delivery{}, NotificationChannel{}, false, tx.Commit(ctx)
 	}
@@ -541,13 +722,39 @@ func (s *store) ClaimDelivery(ctx context.Context) (Delivery, NotificationChanne
 	return d, c, true, tx.Commit(ctx)
 }
 func (s *store) FinishDelivery(ctx context.Context, d Delivery, status int, body string, sendErr error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if d.StartedAt.IsZero() {
+		d.StartedAt = time.Now().UTC()
+	}
 	if sendErr == nil {
-		_, err := s.pool.Exec(ctx, `UPDATE notification_deliveries SET status='succeeded',response_status=$2,response_body=$3,completed_at=now(),updated_at=now() WHERE id=$1::uuid`, d.ID, status, body)
-		return mapError(err)
+		if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET status='succeeded',response_status=$2,response_body=$3,completed_at=now(),lease_owner='',lease_expires_at=NULL,updated_at=now() WHERE id=$1::uuid`, d.ID, status, body); err != nil {
+			return mapError(err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO notification_delivery_attempts (scope_id,delivery_id,attempt,status,response_status,response_body,started_at) VALUES ($1::uuid,$2::uuid,$3,'succeeded',$4,$5,$6)`, d.ScopeID, d.ID, d.Attempt, status, body, d.StartedAt); err != nil {
+			return mapError(err)
+		}
+		return tx.Commit(ctx)
 	}
 	delay := time.Duration(1<<min(d.Attempt, 6)) * time.Second
-	_, err := s.pool.Exec(ctx, `UPDATE notification_deliveries SET status='queued',response_status=$2,response_body=$3,error_message=$4,available_at=now()+$5::interval,updated_at=now() WHERE id=$1::uuid`, d.ID, status, body, errorText(sendErr), delay.String())
-	return mapError(err)
+	deliveryStatus, attemptStatus := "queued", "retrying"
+	maxAttempts := d.MaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 5
+	}
+	if d.Attempt >= maxAttempts {
+		deliveryStatus, attemptStatus = "dead_letter", "dead_letter"
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET status=$2,response_status=$3,response_body=$4,error_message=$5,available_at=now()+$6::interval,lease_owner='',lease_expires_at=NULL,completed_at=CASE WHEN $2='dead_letter' THEN now() ELSE NULL END,updated_at=now() WHERE id=$1::uuid`, d.ID, deliveryStatus, status, body, errorText(sendErr), delay.String()); err != nil {
+		return mapError(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO notification_delivery_attempts (scope_id,delivery_id,attempt,status,response_status,response_body,error_code,error_message,started_at) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,'delivery_failed',$7,$8)`, d.ScopeID, d.ID, d.Attempt, attemptStatus, status, body, errorText(sendErr), d.StartedAt); err != nil {
+		return mapError(err)
+	}
+	return tx.Commit(ctx)
 }
 func min(a, b int) int {
 	if a < b {

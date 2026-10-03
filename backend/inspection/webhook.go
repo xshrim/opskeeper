@@ -21,10 +21,11 @@ type WebhookSender struct {
 	Now    func() time.Time
 }
 type WebhookEvent struct {
-	Type       string    `json:"type"`
-	Finding    Finding   `json:"finding"`
-	RunID      string    `json:"run_id"`
-	OccurredAt time.Time `json:"occurred_at"`
+	Type       string          `json:"type"`
+	Finding    Finding         `json:"finding"`
+	RunID      string          `json:"run_id"`
+	Data       json.RawMessage `json:"data,omitempty"`
+	OccurredAt time.Time       `json:"occurred_at"`
 }
 
 func (s WebhookSender) Send(ctx context.Context, channel NotificationChannel, secret []byte, event WebhookEvent) (int, string, error) {

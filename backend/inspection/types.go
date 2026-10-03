@@ -103,7 +103,9 @@ type NotificationChannel struct {
 }
 
 type Delivery struct {
-	ID, ChannelID, FindingID, RunID, IdempotencyKey, Status string
-	Attempt, ResponseStatus                                 int
-	ResponseBody, ErrorMessage                              string
+	ID, ScopeID, ChannelID, FindingID, RunID, EventType, IdempotencyKey, Status string
+	Attempt, MaxAttempts, ResponseStatus                                        int
+	ResponseBody, ErrorMessage                                                  string
+	EventPayload                                                                []byte
+	StartedAt                                                                   time.Time
 }

@@ -249,6 +249,16 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if applied != len(items) {
 		t.Fatalf("applied migrations = %d, want %d", applied, len(items))
 	}
+	var scopeID, channelID, deliveryID string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM scopes WHERE scope_type='platform' ORDER BY created_at LIMIT 1`).Scan(&scopeID); err != nil {
+		t.Fatalf("find platform Scope: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url) VALUES($1::uuid,'rollback-dead-letter','webhook','https://example.test') RETURNING id::text`, scopeID).Scan(&channelID); err != nil {
+		t.Fatalf("create notification channel: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_deliveries(scope_id,channel_id,idempotency_key,status) VALUES($1::uuid,$2::uuid,'rollback-dead-letter','dead_letter') RETURNING id::text`, scopeID, channelID).Scan(&deliveryID); err != nil {
+		t.Fatalf("create dead-letter delivery: %v", err)
+	}
 	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("RollbackLast() error = %v", err)
 	}
@@ -257,6 +267,10 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	}
 	if applied != len(items)-1 {
 		t.Fatalf("migrations after rollback = %d, want %d", applied, len(items)-1)
+	}
+	var status string
+	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {
+		t.Fatalf("delivery status after rollback = %q, err %v; want failed", status, err)
 	}
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("reapply baseline error = %v", err)
