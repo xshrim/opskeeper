@@ -1,0 +1,2 @@
+DROP TRIGGER IF EXISTS notification_template_versions_immutable ON notification_template_versions;
+DROP FUNCTION IF EXISTS prevent_published_notification_template_changes();

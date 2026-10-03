@@ -275,13 +275,16 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 		t.Fatalf("rollback latest channel migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback channel test-limit migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback notification domain migration: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations after domain rollback: %v", err)
 	}
-	if applied != len(items)-2 {
-		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-2)
+	if applied != len(items)-3 {
+		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-3)
 	}
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {
@@ -295,6 +298,30 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	}
 	if applied != len(items) {
 		t.Fatalf("migrations after reapply = %d, want %d", applied, len(items))
+	}
+}
+
+func TestPublishedNotificationTemplateVersionIsImmutable(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	var scopeID, templateID, versionID string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM scopes WHERE scope_type='platform' ORDER BY created_at LIMIT 1`).Scan(&scopeID); err != nil {
+		t.Fatalf("find platform Scope: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_templates(scope_id,name) VALUES($1::uuid,'immutable-template-test') RETURNING id::text`, scopeID).Scan(&templateID); err != nil {
+		t.Fatalf("create notification template: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_template_versions(scope_id,template_id,version,format,body_template,variables,content_hash,status,published_at) VALUES($1::uuid,$2::uuid,1,'text','original','[]'::jsonb,repeat('a',64),'published',now()) RETURNING id::text`, scopeID, templateID).Scan(&versionID); err != nil {
+		t.Fatalf("create published template version: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_template_versions SET body_template='modified' WHERE id=$1::uuid`, versionID); err == nil {
+		t.Fatal("published template content update succeeded")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_template_versions SET status='disabled' WHERE id=$1::uuid`, versionID); err != nil {
+		t.Fatalf("disable published template version: %v", err)
 	}
 }
 

@@ -23,7 +23,7 @@
 |---|---|---|---|
 | T01 | 通知领域与事务事件 | 已完成 | `go test ./...`；`go vet ./...`；迁移与 inspection 集成测试，见下文 |
 | T02 | Provider 注册与通知渠道 | 已完成 | `go test ./...`；`go vet ./...`；PostgreSQL inspection channel 集成测试，provider catalog 单测 |
-| T03 | 模板版本与安全渲染 | 待批准 | 实施后记录版本、变量、预览和安全测试 |
+| T03 | 模板版本与安全渲染 | 已完成 | `go test ./...`、`go vet ./...`、`make backend-lint`、迁移 PostgreSQL 集成测试、模板安全渲染单测 |
 | T04 | 规则匹配与巡检关联 | 待批准 | 实施后记录匹配、冷却、聚合、静默和策略关联测试 |
 | T05 | PostgreSQL 队列与可靠投递 | 待批准 | 实施后记录 PostgreSQL、租约、重试、死信和非法配置测试 |
 | T06 | HTTP API、权限与审计 | 待批准 | 实施后记录 API、Scope/RBAC、脱敏和审计测试 |
@@ -62,10 +62,17 @@
 
 ### T03 模板版本与安全渲染
 
-**结果：** 待批准
-**验收目标：** 待实施后填写。
-**验证步骤和结果：** 待实施后记录版本、变量、预览和安全测试。
-**遗留问题：** 待实施后填写。
+**结果：** 已完成
+**验收目标：** 模板支持草稿版本、不可变发布、白名单变量和稳定哈希；预览与投递共用安全渲染器，并对 provider payload 和渲染大小进行限制。
+**验证步骤和结果：**
+
+1. `cd backend && go test ./...`：通过。
+2. `cd backend && go vet ./...`、仓库 `make backend-lint`：通过。
+3. `OPSK_TEST_DATABASE_URL="$OPSK_DATABASE_URL" go test -tags=integration ./migrations -count=1`：通过；验证 0073 迁移加载、应用、回滚/重放，已发布模板内容更新被数据库拒绝、停用允许。
+4. `backend/notification/templates_test.go`：通过；覆盖白名单/必填变量、未声明变量、控制语句与命名子模板注入拒绝、JSON 字符串转义、输出上限、provider 转换/不支持 provider 拒绝及稳定内容哈希。
+5. `make quality`：未通过前端 `npm run format:check`；报告仓库中 124 个既有文件格式不符，本任务没有格式化或改动这些无关文件。
+
+**遗留问题：** 数据库模板版本增删改 API、通知权限和审计属于 T06；本任务提供的 Preview 与发送共用 `RenderTemplate`，未接入页面。全仓格式检查需后续独立清理既有前端格式差异。
 
 ### T04 规则匹配与巡检关联
 
