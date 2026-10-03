@@ -141,14 +141,18 @@ func noopShutdown() func(context.Context) error {
 }
 
 var instruments struct {
-	once              sync.Once
-	tasks             metric.Int64Counter
-	taskDuration      metric.Float64Histogram
-	connectors        metric.Int64Counter
-	connectorDuration metric.Float64Histogram
-	llmExecutions     metric.Int64Counter
-	llmTokens         metric.Int64Counter
-	errors            metric.Int64Counter
+	once               sync.Once
+	tasks              metric.Int64Counter
+	taskDuration       metric.Float64Histogram
+	connectors         metric.Int64Counter
+	connectorDuration  metric.Float64Histogram
+	llmExecutions      metric.Int64Counter
+	llmTokens          metric.Int64Counter
+	errors             metric.Int64Counter
+	notificationQueued metric.Int64Gauge
+	notificationLeased metric.Int64Gauge
+	notificationDead   metric.Int64Gauge
+	notificationOldest metric.Float64Gauge
 }
 
 func initializeInstruments() {
@@ -161,6 +165,10 @@ func initializeInstruments() {
 		instruments.llmExecutions, _ = meter.Int64Counter("opskeeper.llm.executions")
 		instruments.llmTokens, _ = meter.Int64Counter("opskeeper.llm.tokens")
 		instruments.errors, _ = meter.Int64Counter("opskeeper.errors")
+		instruments.notificationQueued, _ = meter.Int64Gauge("opskeeper.notification.queue.queued")
+		instruments.notificationLeased, _ = meter.Int64Gauge("opskeeper.notification.queue.delivering")
+		instruments.notificationDead, _ = meter.Int64Gauge("opskeeper.notification.queue.dead_letter")
+		instruments.notificationOldest, _ = meter.Float64Gauge("opskeeper.notification.queue.oldest_age", metric.WithUnit("s"))
 	})
 }
 
@@ -189,4 +197,12 @@ func RecordLLM(ctx context.Context, result string, totalTokens int64) {
 func RecordError(ctx context.Context, component, category string) {
 	initializeInstruments()
 	instruments.errors.Add(ctx, 1, metric.WithAttributes(attribute.String("component", component), attribute.String("category", category)))
+}
+
+func RecordNotificationQueue(ctx context.Context, queued, delivering, deadLetter int64, oldestAge time.Duration) {
+	initializeInstruments()
+	instruments.notificationQueued.Record(ctx, queued)
+	instruments.notificationLeased.Record(ctx, delivering)
+	instruments.notificationDead.Record(ctx, deadLetter)
+	instruments.notificationOldest.Record(ctx, oldestAge.Seconds())
 }

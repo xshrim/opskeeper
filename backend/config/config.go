@@ -23,58 +23,61 @@ const (
 var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
 type Config struct {
-	BasePath                     string
-	Environment                  string
-	LogFormat                    string
-	LogHealthIgnore              bool
-	HTTPAddress                  string
-	TrustedProxies               []netip.Prefix
-	DatabaseURL                  string
-	RedisURL                     string
-	CacheBackend                 string
-	ShutdownTimeout              time.Duration
-	DependencyTimeout            time.Duration
-	ReadHeaderTimeout            time.Duration
-	ReadTimeout                  time.Duration
-	WriteTimeout                 time.Duration
-	IdleTimeout                  time.Duration
-	AllowedOrigins               []string
-	HTTPMaxBodyBytes             int64
-	HTTPRateLimitPerMinute       int
-	CookieSecure                 bool
-	OTLPExporterEndpoint         string
-	SessionAccessTTL             time.Duration
-	SessionRefreshTTL            time.Duration
-	ConnectorTimeout             time.Duration
-	ConnectorMaxConcurrency      int
-	ConnectorMaxResponseBytes    int64
-	InspectionScheduleInterval   time.Duration
-	InspectionWorkerPollInterval time.Duration
-	InspectionLeaseDuration      time.Duration
-	MCPEnhancedSecurity          bool
-	RepositoryStorageBackend     string
-	RepositoryLocalRoot          string
-	RepositoryS3Endpoint         string
-	RepositoryS3Bucket           string
-	RepositoryS3Prefix           string
-	RepositoryS3AccessKey        string
-	RepositoryS3SecretKey        string
-	RepositoryS3UseSSL           bool
-	RepositoryS3Provider         string
-	RepositoryMaxBundleBytes     int64
+	BasePath                      string
+	Environment                   string
+	LogFormat                     string
+	LogHealthIgnore               bool
+	HTTPAddress                   string
+	TrustedProxies                []netip.Prefix
+	DatabaseURL                   string
+	RedisURL                      string
+	CacheBackend                  string
+	ShutdownTimeout               time.Duration
+	DependencyTimeout             time.Duration
+	ReadHeaderTimeout             time.Duration
+	ReadTimeout                   time.Duration
+	WriteTimeout                  time.Duration
+	IdleTimeout                   time.Duration
+	AllowedOrigins                []string
+	HTTPMaxBodyBytes              int64
+	HTTPRateLimitPerMinute        int
+	CookieSecure                  bool
+	OTLPExporterEndpoint          string
+	SessionAccessTTL              time.Duration
+	SessionRefreshTTL             time.Duration
+	ConnectorTimeout              time.Duration
+	ConnectorMaxConcurrency       int
+	ConnectorMaxResponseBytes     int64
+	InspectionScheduleInterval    time.Duration
+	InspectionWorkerPollInterval  time.Duration
+	InspectionLeaseDuration       time.Duration
+	NotificationQueueBackend      string
+	NotificationQueuePollInterval time.Duration
+	MCPEnhancedSecurity           bool
+	RepositoryStorageBackend      string
+	RepositoryLocalRoot           string
+	RepositoryS3Endpoint          string
+	RepositoryS3Bucket            string
+	RepositoryS3Prefix            string
+	RepositoryS3AccessKey         string
+	RepositoryS3SecretKey         string
+	RepositoryS3UseSSL            bool
+	RepositoryS3Provider          string
+	RepositoryMaxBundleBytes      int64
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		BasePath:          envOrDefault("OPSK_BASE_PATH", defaultBasePath),
-		Environment:       envOrDefault("OPSK_ENVIRONMENT", "development"),
-		LogFormat:         envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
-		HTTPAddress:       envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
-		DatabaseURL:       envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:          strings.TrimSpace(os.Getenv("OPSK_REDIS_URL")),
-		CacheBackend:      envOrDefault("OPSK_CACHE_BACKEND", "postgres"),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
+		BasePath:                 envOrDefault("OPSK_BASE_PATH", defaultBasePath),
+		Environment:              envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:                envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
+		HTTPAddress:              envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
+		DatabaseURL:              envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
+		RedisURL:                 strings.TrimSpace(os.Getenv("OPSK_REDIS_URL")),
+		CacheBackend:             envOrDefault("OPSK_CACHE_BACKEND", "postgres"),
+		NotificationQueueBackend: envOrDefault("OPSK_MESSAGE_QUEUE_BACKEND", "postgres"),
+		ReadHeaderTimeout:        5 * time.Second,
+		ReadTimeout:              15 * time.Second,
 		// Diagnosis uses a long-lived SSE response. Keep the server-level write
 		// deadline above the Engine's 30-minute execution budget so an idle
 		// tool/model turn cannot terminate the stream prematurely.
@@ -140,6 +143,9 @@ func Load() (Config, error) {
 	if cfg.InspectionLeaseDuration, err = durationFromEnv("OPSK_INSPECTION_LEASE_DURATION", 45*time.Second); err != nil {
 		return Config{}, err
 	}
+	if cfg.NotificationQueuePollInterval, err = durationFromEnv("OPSK_NOTIFICATION_QUEUE_POLL_INTERVAL", 5*time.Second); err != nil {
+		return Config{}, err
+	}
 	if cfg.MCPEnhancedSecurity, err = boolFromEnv("OPSK_MCP_ENHANCED_SECURITY", false); err != nil {
 		return Config{}, err
 	}
@@ -148,6 +154,9 @@ func Load() (Config, error) {
 	}
 	if cfg.CacheBackend != "memory" && cfg.CacheBackend != "postgres" && cfg.CacheBackend != "redis" {
 		return Config{}, errors.New("OPSK_CACHE_BACKEND must be memory, postgres or redis")
+	}
+	if cfg.NotificationQueueBackend != "postgres" {
+		return Config{}, errors.New("OPSK_MESSAGE_QUEUE_BACKEND must be postgres")
 	}
 	if cfg.RepositoryStorageBackend != "local" && cfg.RepositoryStorageBackend != "postgres" && cfg.RepositoryStorageBackend != "s3" {
 		return Config{}, errors.New("OPSK_REPOSITORY_STORAGE_BACKEND must be local, postgres or s3")

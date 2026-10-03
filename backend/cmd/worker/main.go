@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"opskeeper/backend/config"
@@ -101,9 +103,14 @@ func main() {
 		WithPersonaResolver(personaResolver).
 		WithPlanResolver(skillService)
 	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: engineRuntime, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
-	notifier := inspection.NotificationWorker{Store: store}
-	ticker := time.NewTicker(cfg.InspectionWorkerPollInterval)
-	defer ticker.Stop()
+	notifier := inspection.NotificationWorker{Store: store, Cipher: encryptor, Owner: serviceName + ":notification:" + hostname(), LeaseDuration: cfg.InspectionLeaseDuration}
+	inspectionTicker := time.NewTicker(cfg.InspectionWorkerPollInterval)
+	notificationTicker := time.NewTicker(cfg.NotificationQueuePollInterval)
+	queueStatsTicker := time.NewTicker(30 * time.Second)
+	defer inspectionTicker.Stop()
+	defer notificationTicker.Stop()
+	defer queueStatsTicker.Stop()
+	notificationWake := listenForNotifications(ctx, cfg.DatabaseURL, logger)
 	logger.Info("worker started", "kind", "service-start", "poll_interval", cfg.InspectionWorkerPollInterval)
 	for {
 		started := time.Now()
@@ -131,8 +138,73 @@ func main() {
 		case <-ctx.Done():
 			logger.Info("worker stopped", "kind", "service-stop")
 			return
-		case <-ticker.C:
+		case <-inspectionTicker.C:
+		case <-notificationTicker.C:
+		case <-notificationWake:
+		case <-queueStatsTicker.C:
+			if stats, ok := store.(interface {
+				NotificationQueueStats(context.Context) (inspection.NotificationQueueStats, error)
+			}); ok {
+				queueStats, statsErr := stats.NotificationQueueStats(ctx)
+				if statsErr != nil {
+					logger.Warn("read notification queue stats", "kind", "dependency", "error_type", "notification-queue-stats", "error", statsErr)
+				} else {
+					observability.RecordNotificationQueue(ctx, queueStats.Queued, queueStats.Delivering, queueStats.DeadLetter, queueStats.OldestQueued)
+				}
+			}
 		}
+	}
+}
+
+func listenForNotifications(ctx context.Context, databaseURL string, logger *slog.Logger) <-chan struct{} {
+	wake := make(chan struct{}, 1)
+	go func() {
+		for ctx.Err() == nil {
+			connection, err := pgx.Connect(ctx, databaseURL)
+			if err != nil {
+				logger.Warn("connect notification listener", "kind", "dependency", "error_type", "notification-listener", "error", err)
+				if !waitForRetry(ctx) {
+					return
+				}
+				continue
+			}
+			if _, err := connection.Exec(ctx, `LISTEN opskeeper_notification`); err != nil {
+				_ = connection.Close(context.Background())
+				logger.Warn("listen for notification queue", "kind", "dependency", "error_type", "notification-listener", "error", err)
+				if !waitForRetry(ctx) {
+					return
+				}
+				continue
+			}
+			for ctx.Err() == nil {
+				if _, err := connection.WaitForNotification(ctx); err != nil {
+					if ctx.Err() == nil {
+						logger.Warn("notification listener disconnected", "kind", "dependency", "error_type", "notification-listener", "error", err)
+					}
+					break
+				}
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			}
+			_ = connection.Close(context.Background())
+			if ctx.Err() == nil && !waitForRetry(ctx) {
+				return
+			}
+		}
+	}()
+	return wake
+}
+
+func waitForRetry(ctx context.Context) bool {
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

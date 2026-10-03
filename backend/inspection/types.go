@@ -108,10 +108,18 @@ type NotificationChannel struct {
 
 type NotificationProvider = notification.ProviderDescriptor
 
-type Delivery struct {
-	ID, ScopeID, ChannelID, FindingID, RunID, EventType, IdempotencyKey, Status string
-	Attempt, MaxAttempts, ResponseStatus                                        int
-	ResponseBody, ErrorMessage                                                  string
-	EventPayload                                                                []byte
-	StartedAt                                                                   time.Time
+type NotificationDeliveryItem struct {
+	ID, EventID, EventType string
+	Attempt, MaxAttempts   int
+	Payload                map[string]any
+	StartedAt              time.Time
+}
+
+type NotificationDeliveryJob struct {
+	Owner, ID, ScopeID, ChannelID, ChannelKind string
+	ProviderConfigCiphertext                   []byte
+	KeyVersion                                 string
+	Template                                   notification.TemplateDraft
+	Items                                      []NotificationDeliveryItem
+	RateLimitPerMinute                         int
 }

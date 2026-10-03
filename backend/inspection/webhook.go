@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,9 +37,6 @@ func (s WebhookSender) Send(ctx context.Context, channel NotificationChannel, se
 	if !strings.HasPrefix(strings.ToLower(channel.WebhookURL), "https://") {
 		return 0, "", invalid("webhook URL must use HTTPS")
 	}
-	if s.Client == nil {
-		s.Client = &http.Client{Timeout: 10 * time.Second}
-	}
 	if s.Now == nil {
 		s.Now = time.Now
 	}
@@ -46,10 +45,28 @@ func (s WebhookSender) Send(ctx context.Context, channel NotificationChannel, se
 	if err != nil {
 		return 0, "", err
 	}
-	timestamp := fmt.Sprintf("%d", event.OccurredAt.Unix())
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, channel.WebhookURL, bytes.NewReader(body))
+	status, response, _, err := s.SendPayload(ctx, channel.WebhookURL, secret, body)
+	return status, response, err
+}
+
+func (s WebhookSender) SendPayload(ctx context.Context, target string, secret, body []byte) (int, string, time.Duration, error) {
+	parsed, err := url.ParseRequestURI(target)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil {
+		return 0, "", 0, invalid("webhook URL must be a valid HTTPS URL without embedded credentials")
+	}
+	if len(body) > 64<<10 {
+		return 0, "", 0, invalid("webhook payload exceeds 64 KiB")
+	}
+	if s.Client == nil {
+		s.Client = &http.Client{Timeout: 10 * time.Second}
+	}
+	if s.Now == nil {
+		s.Now = time.Now
+	}
+	timestamp := fmt.Sprintf("%d", s.Now().UTC().Unix())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		return 0, "", err
+		return 0, "", 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-OpsKeeper-Timestamp", timestamp)
@@ -62,12 +79,24 @@ func (s WebhookSender) Send(ctx context.Context, channel NotificationChannel, se
 	}
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return 0, "", err
+		return 0, "", 0, err
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"), s.Now())
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.StatusCode, string(raw), fmt.Errorf("webhook returned HTTP %d", resp.StatusCode)
+		return resp.StatusCode, string(raw), retryAfter, fmt.Errorf("webhook returned HTTP %d", resp.StatusCode)
 	}
-	return resp.StatusCode, string(raw), nil
+	return resp.StatusCode, string(raw), retryAfter, nil
+}
+
+func parseRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now)
+	}
+	return 0
 }

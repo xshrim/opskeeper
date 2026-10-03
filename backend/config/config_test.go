@@ -28,6 +28,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.CacheBackend != "postgres" || cfg.RepositoryStorageBackend != "postgres" {
 		t.Fatalf("Load() backend defaults = cache %q, storage %q", cfg.CacheBackend, cfg.RepositoryStorageBackend)
 	}
+	if cfg.NotificationQueueBackend != "postgres" || cfg.NotificationQueuePollInterval != 5*time.Second {
+		t.Fatalf("Load() notification queue config = %q, %s", cfg.NotificationQueueBackend, cfg.NotificationQueuePollInterval)
+	}
 	if cfg.RepositoryS3Provider != "minio" {
 		t.Fatalf("Load() S3 provider = %q, want minio", cfg.RepositoryS3Provider)
 	}
@@ -94,6 +97,7 @@ func TestLoadRejectsInvalidStorageBackends(t *testing.T) {
 	}{
 		{key: "OPSK_CACHE_BACKEND", value: "filesystem"},
 		{key: "OPSK_REPOSITORY_STORAGE_BACKEND", value: "redis"},
+		{key: "OPSK_MESSAGE_QUEUE_BACKEND", value: "redis"},
 	}
 	for _, test := range tests {
 		t.Run(test.key, func(t *testing.T) {

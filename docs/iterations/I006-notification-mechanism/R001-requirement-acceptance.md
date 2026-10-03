@@ -25,7 +25,7 @@
 | T02 | Provider 注册与通知渠道 | 已完成 | `go test ./...`；`go vet ./...`；PostgreSQL inspection channel 集成测试，provider catalog 单测 |
 | T03 | 模板版本与安全渲染 | 已完成 | `go test ./...`、`go vet ./...`、`make backend-lint`、迁移 PostgreSQL 集成测试、模板安全渲染单测 |
 | T04 | 规则匹配与巡检关联 | 已完成 | `go test ./...`、`go vet ./...`、迁移与巡检 PostgreSQL 集成测试、规则匹配与日历窗口单测 |
-| T05 | PostgreSQL 队列与可靠投递 | 待批准 | 实施后记录 PostgreSQL、租约、重试、死信和非法配置测试 |
+| T05 | PostgreSQL 队列与可靠投递 | 已完成 | `go test ./...`、`go vet ./...`、迁移与巡检 PostgreSQL 集成测试、TLS provider/聚合/租约/并发/重试/死信测试 |
 | T06 | HTTP API、权限与审计 | 待批准 | 实施后记录 API、Scope/RBAC、脱敏和审计测试 |
 | T07 | 通知页面与菜单 | 待批准 | 用户确认预览后记录页面检查、前端测试和 Playwright 证据 |
 | T08 | 集成验收与运维文档 | 待批准 | 实施后记录 `make quality`、迁移、配置和恢复验证 |
@@ -88,10 +88,16 @@
 
 ### T05 PostgreSQL 队列与可靠投递
 
-**结果：** 待批准
-**验收目标：** 待实施后填写。
-**验证步骤和结果：** 待实施后记录 PostgreSQL、租约、重试、死信和非法配置测试。
-**遗留问题：** 待实施后填写。
+**结果：** 已完成
+**验收目标：** Worker 通过 PostgreSQL `SKIP LOCKED` 领取版本化队列消息和聚合批次；网络调用不持有数据库锁；租约超时可恢复；渠道凭据按配置版本解密；发送结果追加尝试记录，支持退避、Retry-After、有限重试和死信。
+**验证步骤和结果：**
+
+1. `cd backend && go test ./...`、`cd backend && go vet ./...`、仓库 `make backend-lint`：通过。
+2. `OPSK_TEST_DATABASE_URL="$OPSK_DATABASE_URL" go test -tags=integration ./migrations ./inspection -count=1`：通过；包含迁移、临时 Schema 清理、通知队列流程验证。
+3. `TestFindingNotificationEventsAreTransactional`：通过真实本地 TLS webhook 验证签名与模板输出、相同路由聚合、尝试追加、租约过期后接管、HTTP 429/Retry-After 延迟重试、死信、队列指标和两个并发 worker 不重复领取。
+4. `backend/config/config_test.go`：默认 `postgres` 与非法后端拒绝验证通过；示例配置增加队列后端及轮询间隔。
+
+**遗留问题：** 当前只有 HTTPS Webhook provider 可投递；其他 provider 在 T02 支持矩阵中明确标记不支持。队列后端只支持 PostgreSQL，按需求不引入外部消息队列。发送超时后仍存在外部服务已接收但本地未确认的至少一次投递窗口，接收端应使用投递 ID/事件幂等键去重。
 
 ### T06 HTTP API、权限与审计
 

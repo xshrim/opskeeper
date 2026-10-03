@@ -35,9 +35,6 @@ type Store interface {
 	ListChannels(context.Context, string) ([]NotificationChannel, error)
 	MarkLLMStatus(context.Context, string, string) error
 	RecordExplanation(context.Context, string, string) error
-	ClaimDelivery(context.Context) (Delivery, NotificationChannel, bool, error)
-	FinishDelivery(context.Context, Delivery, int, string, error) error
-	GetFinding(context.Context, string) (Finding, error)
 	SetPolicyStatus(context.Context, string, string, string) error
 }
 
@@ -565,6 +562,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		RuleEvent                                    notification.RuleEvent
 		Silence                                      notification.SilenceWindow
 		AvailableAt                                  time.Time
+		AggregationUntil                             time.Time
 	}
 	routes := []route{}
 	for rows.Next() {
@@ -624,6 +622,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 			return err
 		}
 		aggregateUntil := now.Add(route.Rule.Aggregation)
+		route.AggregationUntil = aggregateUntil
 		if aggregateUntil.After(allowedAt) {
 			allowedAt = aggregateUntil
 		}
@@ -641,6 +640,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 			"template_version_id": route.TemplateVersionID, "template_version": route.TemplateVersion,
 			"template_hash": route.TemplateHash, "max_batch_size": route.Rule.MaxBatchSize,
 			"aggregation_seconds": int(route.Rule.Aggregation.Seconds()), "available_at": route.AvailableAt,
+			"aggregation_until": route.AggregationUntil,
 		})
 		if err != nil {
 			return err
@@ -868,72 +868,6 @@ func (s *store) RecordExplanation(ctx context.Context, runID, detail string) err
 	return mapError(err)
 }
 
-func (s *store) ClaimDelivery(ctx context.Context) (Delivery, NotificationChannel, bool, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Delivery{}, NotificationChannel{}, false, err
-	}
-	defer tx.Rollback(ctx)
-	var d Delivery
-	var c NotificationChannel
-	err = tx.QueryRow(ctx, `WITH next AS (SELECT delivery.id,delivery.channel_id,COALESCE(event.event_type,'') AS event_type,event.payload AS event_payload FROM notification_deliveries delivery LEFT JOIN notification_events event ON event.id=delivery.event_id WHERE delivery.status='queued' AND delivery.available_at<=now() ORDER BY delivery.available_at,delivery.id FOR UPDATE OF delivery SKIP LOCKED LIMIT 1) UPDATE notification_deliveries d SET status='delivering',attempt=attempt+1,updated_at=now(),lease_owner='legacy-worker',lease_expires_at=now()+interval '30 seconds' FROM next JOIN notification_channels c ON c.id=next.channel_id WHERE d.id=next.id AND (SELECT count(*) FROM notification_deliveries recent WHERE recent.channel_id=c.id AND recent.created_at>=date_trunc('minute',now()) AND recent.status='succeeded') < c.rate_limit_per_minute RETURNING d.id::text,d.scope_id::text,d.channel_id::text,COALESCE(d.finding_id::text,''),COALESCE(d.run_id::text,''),next.event_type,next.event_payload,d.idempotency_key,d.status,d.attempt,d.max_attempts,COALESCE(d.response_status,0),d.response_body,d.error_message,now(),c.id::text,c.scope_id::text,c.name,c.kind,c.webhook_url,c.status,c.rate_limit_per_minute`).Scan(&d.ID, &d.ScopeID, &d.ChannelID, &d.FindingID, &d.RunID, &d.EventType, &d.EventPayload, &d.IdempotencyKey, &d.Status, &d.Attempt, &d.MaxAttempts, &d.ResponseStatus, &d.ResponseBody, &d.ErrorMessage, &d.StartedAt, &c.ID, &c.ScopeID, &c.Name, &c.Kind, &c.WebhookURL, &c.Status, &c.RateLimitPerMinute)
-	if err == pgx.ErrNoRows {
-		return Delivery{}, NotificationChannel{}, false, tx.Commit(ctx)
-	}
-	if err != nil {
-		return Delivery{}, NotificationChannel{}, false, mapError(err)
-	}
-	return d, c, true, tx.Commit(ctx)
-}
-func (s *store) FinishDelivery(ctx context.Context, d Delivery, status int, body string, sendErr error) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if d.StartedAt.IsZero() {
-		d.StartedAt = time.Now().UTC()
-	}
-	if sendErr == nil {
-		if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET status='succeeded',response_status=$2,response_body=$3,completed_at=now(),lease_owner='',lease_expires_at=NULL,updated_at=now() WHERE id=$1::uuid`, d.ID, status, body); err != nil {
-			return mapError(err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO notification_delivery_attempts (scope_id,delivery_id,attempt,status,response_status,response_body,started_at) VALUES ($1::uuid,$2::uuid,$3,'succeeded',$4,$5,$6)`, d.ScopeID, d.ID, d.Attempt, status, body, d.StartedAt); err != nil {
-			return mapError(err)
-		}
-		return tx.Commit(ctx)
-	}
-	delay := time.Duration(1<<min(d.Attempt, 6)) * time.Second
-	deliveryStatus, attemptStatus := "queued", "retrying"
-	maxAttempts := d.MaxAttempts
-	if maxAttempts < 1 {
-		maxAttempts = 5
-	}
-	if d.Attempt >= maxAttempts {
-		deliveryStatus, attemptStatus = "dead_letter", "dead_letter"
-	}
-	if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET status=$2,response_status=$3,response_body=$4,error_message=$5,available_at=now()+$6::interval,lease_owner='',lease_expires_at=NULL,completed_at=CASE WHEN $2='dead_letter' THEN now() ELSE NULL END,updated_at=now() WHERE id=$1::uuid`, d.ID, deliveryStatus, status, body, errorText(sendErr), delay.String()); err != nil {
-		return mapError(err)
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO notification_delivery_attempts (scope_id,delivery_id,attempt,status,response_status,response_body,error_code,error_message,started_at) VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,'delivery_failed',$7,$8)`, d.ScopeID, d.ID, d.Attempt, attemptStatus, status, body, errorText(sendErr), d.StartedAt); err != nil {
-		return mapError(err)
-	}
-	return tx.Commit(ctx)
-}
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-func (s *store) GetFinding(ctx context.Context, id string) (Finding, error) {
-	var f Finding
-	err := s.pool.QueryRow(ctx, `SELECT id::text,policy_id::text,target_resource_id::text,rule,identity_key,fingerprint,severity,message,status,first_observed_at,last_observed_at,resolved_at FROM inspection_findings WHERE id=$1::uuid`, id).Scan(&f.ID, &f.PolicyID, &f.TargetResourceID, &f.Rule, &f.IdentityKey, &f.Fingerprint, &f.Severity, &f.Message, &f.Status, &f.FirstObservedAt, &f.LastObservedAt, &f.ResolvedAt)
-	if err == pgx.ErrNoRows {
-		return Finding{}, ErrNotFound
-	}
-	return f, mapError(err)
-}
 func (s *store) SetPolicyStatus(ctx context.Context, id, scopeID, status string) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE inspection_policies SET status=$3,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL`, id, scopeID, status)
 	if err != nil {

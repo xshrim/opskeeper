@@ -3,9 +3,16 @@
 package inspection
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -14,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/migrations"
 	"opskeeper/backend/notification"
+	"opskeeper/backend/secret"
 )
 
 // TestInspectionTablesExist verifies the deployed T13 schema directly. The
@@ -188,18 +196,43 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	channelHash := strings.Repeat("a", 64)
+	requests := make(chan []byte, 2)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-OpsKeeper-Signature") == "" {
+			t.Error("signed webhook request has no signature")
+		}
+		payload, _ := io.ReadAll(r.Body)
+		requests <- payload
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	cipher, err := secret.NewLocalEncryptor(bytes.Repeat([]byte{9}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configJSON, _ := json.Marshal(map[string]string{"url": server.URL, "signing_secret": "worker-secret"})
+	ciphertext, keyVersion, err := cipher.Encrypt(configJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configHash := sha256.Sum256(configJSON)
+	channelHash := hex.EncodeToString(configHash[:])
 	var channelVersion, template, templateVersion, rule string
-	if err = pool.QueryRow(ctx, `INSERT INTO notification_channel_versions(scope_id,channel_id,version,provider_config_hash) VALUES($1::uuid,$2::uuid,1,$3) RETURNING id::text`, scope, channel.ID, channelHash).Scan(&channelVersion); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO notification_channel_versions(scope_id,channel_id,version,provider_config_ciphertext,provider_config_hash,key_version) VALUES($1::uuid,$2::uuid,1,$3,$4,$5) RETURNING id::text`, scope, channel.ID, ciphertext, channelHash, keyVersion).Scan(&channelVersion); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO notification_templates(scope_id,name) VALUES($1::uuid,'transition-test') RETURNING id::text`, scope).Scan(&template); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO notification_template_versions(scope_id,template_id,version,format,body_template,content_hash,status,published_at) VALUES($1::uuid,$2::uuid,1,'text','{{finding_summary}}',$3,'published',now()) RETURNING id::text`, scope, template, strings.Repeat("b", 64)).Scan(&templateVersion); err != nil {
+	draft, contentHash, err := notification.ValidateTemplate(notification.TemplateDraft{Format: "text", BodyTemplate: "{{.finding_summary}}", Variables: []notification.TemplateVariable{{Name: "finding_summary", Required: true}}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO notification_rules(scope_id,name,event_types,filters) VALUES($1::uuid,'transition-test',ARRAY['finding.opened','finding.reopened','finding.severity_changed','finding.resolved']::text[],jsonb_build_object('resource_ids',jsonb_build_array($2::text),'finding_rules',jsonb_build_array('test.rule'))) RETURNING id::text`, scope, target).Scan(&rule); err != nil {
+	variablesJSON, _ := json.Marshal(draft.Variables)
+	if err = pool.QueryRow(ctx, `INSERT INTO notification_template_versions(scope_id,template_id,version,format,body_template,variables,content_hash,status,published_at) VALUES($1::uuid,$2::uuid,1,$3,$4,$5::jsonb,$6,'published',now()) RETURNING id::text`, scope, template, draft.Format, draft.BodyTemplate, variablesJSON, contentHash).Scan(&templateVersion); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO notification_rules(scope_id,name,event_types,filters,aggregation_seconds,max_batch_size) VALUES($1::uuid,'transition-test',ARRAY['finding.opened','finding.reopened','finding.severity_changed','finding.resolved']::text[],jsonb_build_object('resource_ids',jsonb_build_array($2::text),'finding_rules',jsonb_build_array('test.rule')),60,2) RETURNING id::text`, scope, target).Scan(&rule); err != nil {
 		t.Fatal(err)
 	}
 	ruleLinker := NewStore(pool).(interface {
@@ -316,19 +349,103 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE notification_deliveries SET route_snapshot='{"changed":true}'::jsonb WHERE id=$1::uuid`, deliveryID); err == nil {
 		t.Fatal("route snapshot update succeeded, want immutable snapshot rejection")
 	}
-	delivery, claimedChannel, claimed, err := s.ClaimDelivery(ctx)
+	var firstEvent, routeID, channelVersionID, templateVersionID string
+	var routeSnapshot []byte
+	if err := pool.QueryRow(ctx, `SELECT event.id::text,delivery.route_id::text,delivery.channel_version_id::text,delivery.template_version_id::text,delivery.route_snapshot FROM notification_deliveries delivery JOIN notification_events event ON event.id=delivery.event_id WHERE delivery.scope_id=$1::uuid AND event.event_type='finding.opened' ORDER BY delivery.created_at LIMIT 1`, scope).Scan(&firstEvent, &routeID, &channelVersionID, &templateVersionID, &routeSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	var batchEvent string
+	batchPayload, _ := json.Marshal(map[string]string{"event_type": "finding.opened", "severity": "warning", "finding_summary": "second-batch-event"})
+	batchHash := sha256.Sum256(batchPayload)
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_events(scope_id,event_type,event_key,policy_id,run_id,finding_id,finding_identity,target_resource_id,severity,payload,content_hash) SELECT scope_id,'finding.opened','integration-batch-'||gen_random_uuid()::text,policy_id,run_id,finding_id,'batch-second',target_resource_id,'warning',$2::jsonb,$3 FROM notification_events WHERE id=$1::uuid RETURNING id::text`, firstEvent, batchPayload, hex.EncodeToString(batchHash[:])).Scan(&batchEvent); err != nil {
+		t.Fatal(err)
+	}
+	batchSnapshotHash := sha256.Sum256(routeSnapshot)
+	if _, err := pool.Exec(ctx, `INSERT INTO notification_deliveries(scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) SELECT scope_id,$2::uuid,policy_id,rule_id,route_id,channel_id,$3::uuid,$4::uuid,finding_id,run_id,$2::text||':'||route_id::text,$5::jsonb,$6,now() FROM notification_deliveries WHERE event_id=$1::uuid`, firstEvent, batchEvent, channelVersionID, templateVersionID, routeSnapshot, hex.EncodeToString(batchSnapshotHash[:])); err != nil {
+		t.Fatal(err)
+	}
+	notifier := NotificationWorker{Store: s, Cipher: cipher, Owner: "integration-worker", LeaseDuration: time.Minute, Sender: WebhookSender{Client: server.Client()}}
+	claimed, err := notifier.RunOnce(ctx)
 	if err != nil || !claimed {
-		t.Fatalf("ClaimDelivery() = claimed %t, err %v", claimed, err)
+		t.Fatalf("NotificationWorker.RunOnce() = %t, %v", claimed, err)
 	}
-	if delivery.ScopeID != scope || delivery.EventType == "" || len(delivery.EventPayload) == 0 || delivery.MaxAttempts != 5 || claimedChannel.ID != channel.ID {
-		t.Fatalf("claimed delivery=%+v channel=%+v", delivery, claimedChannel)
+	var webhookPayload map[string]string
+	if err := json.Unmarshal(<-requests, &webhookPayload); err != nil || !strings.Contains(webhookPayload["body"], "second-batch-event") {
+		t.Fatalf("aggregated webhook payload = %v, %v", webhookPayload, err)
 	}
-	if err := s.FinishDelivery(ctx, delivery, 204, "accepted", nil); err != nil {
-		t.Fatalf("FinishDelivery(): %v", err)
+	var batchAttemptCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM notification_delivery_attempts attempt JOIN notification_deliveries delivery ON delivery.id=attempt.delivery_id WHERE delivery.event_id=ANY(ARRAY[$1::uuid,$2::uuid])`, firstEvent, batchEvent).Scan(&batchAttemptCount); err != nil || batchAttemptCount != 2 {
+		t.Fatalf("aggregated attempt count = %d, %v", batchAttemptCount, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_deliveries SET available_at=now() WHERE scope_id=$1::uuid AND status='queued'`, scope); err != nil {
+		t.Fatal(err)
+	}
+	queue := s.(notificationDeliveryQueue)
+	abandoned, ok, err := queue.ClaimNotificationDelivery(ctx, "abandoned-worker", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("first durable queue claim = %t, %v", ok, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_deliveries SET lease_expires_at=now()-interval '1 second' WHERE id=$1::uuid`, abandoned.ID); err != nil {
+		t.Fatal(err)
+	}
+	reclaimed, ok, err := queue.ClaimNotificationDelivery(ctx, "recovery-worker", time.Minute)
+	if err != nil || !ok || reclaimed.ID != abandoned.ID || reclaimed.Items[0].Attempt != 2 {
+		t.Fatalf("expired lease recovery = %+v, %t, %v", reclaimed, ok, err)
+	}
+	if err := queue.FinishNotificationDelivery(ctx, reclaimed, http.StatusTooManyRequests, "try later", 30*time.Second, errors.New("rate limited")); err != nil {
+		t.Fatalf("retry failed notification delivery: %v", err)
+	}
+	var retryStatus string
+	var retryAvailable time.Time
+	if err := pool.QueryRow(ctx, `SELECT status,available_at FROM notification_deliveries WHERE id=$1::uuid`, abandoned.ID).Scan(&retryStatus, &retryAvailable); err != nil || retryStatus != "queued" || !retryAvailable.After(time.Now()) {
+		t.Fatalf("retry queue state=%s at=%s err=%v", retryStatus, retryAvailable, err)
+	}
+	stats, err := s.(interface {
+		NotificationQueueStats(context.Context) (NotificationQueueStats, error)
+	}).NotificationQueueStats(ctx)
+	if err != nil || stats.Queued != 3 || stats.DeadLetter != 0 {
+		t.Fatalf("notification queue stats = %+v, %v", stats, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE notification_deliveries SET available_at=now() WHERE scope_id=$1::uuid AND status='queued'`, scope); err != nil {
+		t.Fatal(err)
+	}
+	startClaims := make(chan struct{})
+	claimedJobs := make(chan NotificationDeliveryJob, 2)
+	claimErrors := make(chan error, 2)
+	for _, owner := range []string{"parallel-one", "parallel-two"} {
+		go func(owner string) {
+			<-startClaims
+			job, ok, err := queue.ClaimNotificationDelivery(ctx, owner, time.Minute)
+			if err != nil || !ok {
+				claimErrors <- fmt.Errorf("%s claim: claimed=%t err=%w", owner, ok, err)
+				return
+			}
+			claimedJobs <- job
+		}(owner)
+	}
+	close(startClaims)
+	parallelA, parallelB := <-claimedJobs, <-claimedJobs
+	select {
+	case err := <-claimErrors:
+		t.Fatal(err)
+	default:
+	}
+	if parallelA.ID == parallelB.ID {
+		t.Fatalf("parallel workers claimed the same delivery %s", parallelA.ID)
+	}
+	for index := range parallelA.Items {
+		parallelA.Items[index].MaxAttempts = parallelA.Items[index].Attempt
+	}
+	if err := queue.FinishNotificationDelivery(ctx, parallelA, http.StatusBadGateway, "unavailable", 0, errors.New("upstream unavailable")); err != nil {
+		t.Fatalf("finish exhausted notification delivery: %v", err)
+	}
+	var deadLetterStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, parallelA.Items[0].ID).Scan(&deadLetterStatus); err != nil || deadLetterStatus != "dead_letter" {
+		t.Fatalf("exhausted delivery status = %q, %v", deadLetterStatus, err)
 	}
 	var attempts int
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM notification_delivery_attempts WHERE scope_id=$1::uuid`, scope).Scan(&attempts); err != nil || attempts != 1 {
-		t.Fatalf("delivery attempts=%d err=%v, want 1", attempts, err)
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM notification_delivery_attempts WHERE scope_id=$1::uuid`, scope).Scan(&attempts); err != nil || attempts != 4 {
+		t.Fatalf("delivery attempts=%d err=%v, want 4", attempts, err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE notification_delivery_attempts SET status='failed' WHERE scope_id=$1::uuid`, scope); err == nil {
 		t.Fatal("delivery attempt update succeeded, want append-only rejection")
@@ -351,8 +468,8 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM inspection_findings WHERE policy_id=$1::uuid AND rule='transaction.rollback'`, policy).Scan(&partial); err != nil || partial != 0 {
 		t.Fatalf("partially committed findings=%d err=%v", partial, err)
 	}
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM notification_events WHERE scope_id=$1::uuid`, scope).Scan(&events); err != nil || events != 4 {
-		t.Fatalf("events after rollback=%d err=%v, want 4", events, err)
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM notification_events WHERE scope_id=$1::uuid`, scope).Scan(&events); err != nil || events != 5 {
+		t.Fatalf("events after rollback=%d err=%v, want 5", events, err)
 	}
 	var failedRun, failedJob string
 	makeRun(&failedRun, 6*time.Minute)
