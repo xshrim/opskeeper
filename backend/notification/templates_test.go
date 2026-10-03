@@ -83,7 +83,7 @@ func TestRenderForProviderConvertsTextAndRejectsUnsupportedProvider(t *testing.T
 	if err := json.Unmarshal(payload, &message); err != nil || message["title"] != "Alert" || message["body"] != "example" {
 		t.Fatalf("provider payload = %s, %v", payload, err)
 	}
-	if _, err := RenderForProvider("slack", draft, map[string]string{"finding_summary": "example"}); err == nil {
+	if _, err := RenderForProvider("whatsapp", draft, map[string]string{"finding_summary": "example"}); err == nil {
 		t.Fatal("unsupported provider accepted a template")
 	}
 }

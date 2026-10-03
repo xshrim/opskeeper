@@ -58,7 +58,7 @@
 2. `OPSK_TEST_DATABASE_URL="$OPSK_DATABASE_URL" go test -tags=integration ./migrations ./inspection -count=1`：通过；验证 0072 迁移、两版本回滚/重放、通道配置加密、密钥不回传、版本递增、测试发送和渠道级限流。
 3. `backend/notification/providers_test.go`：通过；验证 HTTPS URL、嵌入凭据和未知配置拒绝，秘密字段脱敏，v1.6.0 provider 清单及不支持状态可枚举。
 
-**遗留问题：** Go-Notify v1.6.0 清单中除 HTTPS Webhook 外的 provider 在当前构建均显式标记不支持；不编译未使用的邮件、短信和平台 SDK。渠道测试发送的审计记录及细粒度 `notification:*` 权限由 T06 实施。渠道投递 Worker 对版本化密文的读取由 T05 实施。
+**遗留问题：** 已通过 Notify v1.6.0 接入 Webhook、Slack、Telegram、Discord、Teams、钉钉、Lark、SMTP、SendGrid、Mailgun、Mailtrap、Bark、Pushover、Pushbullet、PagerDuty、Twilio、Plivo、TextMagic、Matrix、WeChat、Viber、Rocket.Chat、Google Chat 和 FCM。Notify v1.6.0 中的 WhatsApp 是空实现，LINE Notify 已停服，Syslog/WebPush/Twitter/Reddit/Mattermost 及 AWS SES/SNS 当前没有纳入可配置发送矩阵，均显式标记不支持。渠道测试发送的审计记录及细粒度 `notification:*` 权限由 T06 实施。渠道投递 Worker 对版本化密文的读取由 T05 实施。
 
 ### T03 模板版本与安全渲染
 
@@ -97,7 +97,7 @@
 3. `TestFindingNotificationEventsAreTransactional`：通过真实本地 TLS webhook 验证签名与模板输出、相同路由聚合、尝试追加、租约过期后接管、HTTP 429/Retry-After 延迟重试、死信、队列指标和两个并发 worker 不重复领取。
 4. `backend/config/config_test.go`：默认 `postgres` 与非法后端拒绝验证通过；示例配置增加队列后端及轮询间隔。
 
-**遗留问题：** 当前只有 HTTPS Webhook provider 可投递；其他 provider 在 T02 支持矩阵中明确标记不支持。队列后端只支持 PostgreSQL，按需求不引入外部消息队列。发送超时后仍存在外部服务已接收但本地未确认的至少一次投递窗口，接收端应使用投递 ID/事件幂等键去重。
+**遗留问题：** 队列后端只支持 PostgreSQL，按需求不引入外部消息队列。发送超时后仍存在外部服务已接收但本地未确认的至少一次投递窗口，接收端应使用投递 ID/事件幂等键去重。FCM 凭据仅在发送期间写入权限为 `0600` 的临时文件，发送完成后立即删除。
 
 ### T06 HTTP API、权限与审计
 

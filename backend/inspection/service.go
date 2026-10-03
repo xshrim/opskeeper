@@ -34,7 +34,7 @@ type Service struct {
 }
 
 type NotificationTester interface {
-	Send(context.Context, NotificationChannel, []byte, WebhookEvent) (int, string, error)
+	Send(context.Context, string, map[string]string, string, string) (int, string, time.Duration, error)
 }
 
 type encryptedChannel struct {
@@ -58,7 +58,7 @@ type policyStore interface {
 }
 
 func NewService(store policyStore, resources ResourceReader, personas ...PersonaReader) *Service {
-	service := &Service{store: store, resources: resources, providers: notification.DefaultProviderRegistry(), tester: WebhookSender{}}
+	service := &Service{store: store, resources: resources, providers: notification.DefaultProviderRegistry(), tester: NotifySender{}}
 	if len(personas) > 0 {
 		service.personas = personas[0]
 	}
@@ -359,11 +359,10 @@ func (s *Service) TestConfiguredChannel(ctx context.Context, scopeID, id string)
 	if err := store.ReserveChannelTest(ctx, id); err != nil {
 		return err
 	}
-	item.Channel.WebhookURL = config["url"]
 	if s.tester == nil {
 		return invalid("notification test sender is unavailable")
 	}
-	_, _, err = s.tester.Send(ctx, item.Channel, []byte(config["signing_secret"]), WebhookEvent{Type: "notification.test"})
+	_, _, _, err = s.tester.Send(ctx, item.Channel.Kind, config, "OpsKeeper notification test", "This is a test notification from OpsKeeper.")
 	if err != nil {
 		return fmt.Errorf("notification channel test failed")
 	}

@@ -13,7 +13,7 @@ import (
 
 type NotificationWorker struct {
 	Store         Store
-	Sender        WebhookSender
+	Sender        NotificationTester
 	Cipher        secret.Decryptor
 	Owner         string
 	LeaseDuration time.Duration
@@ -53,8 +53,13 @@ func (w NotificationWorker) RunOnce(ctx context.Context) (bool, error) {
 					values := aggregateTemplateValues(job.Items)
 					payload, renderErr := notification.RenderForProvider(job.ChannelKind, job.Template, declaredTemplateValues(values, job.Template.Variables))
 					err = renderErr
-					if err == nil && job.ChannelKind == "webhook" {
-						status, body, retryAfter, err = w.Sender.SendPayload(ctx, config["url"], []byte(config["signing_secret"]), payload)
+					if err == nil {
+						subject, message := notifyMessage(payload)
+						sender := w.Sender
+						if sender == nil {
+							sender = NotifySender{}
+						}
+						status, body, retryAfter, err = sender.Send(ctx, job.ChannelKind, config, subject, message)
 					}
 				}
 			}

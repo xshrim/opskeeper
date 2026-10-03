@@ -412,9 +412,103 @@ export interface NotificationChannel {
   scope_id: string;
   name: string;
   kind: string;
-  webhook_url: string;
+  webhook_url?: string;
+  config?: Record<string, string>;
+  config_version?: number;
   status: string;
   rate_limit_per_minute: number;
+  share_with_children?: boolean;
+  inherited?: boolean;
+}
+export interface NotificationProviderField {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  secret: boolean;
+}
+export interface NotificationProvider {
+  kind: string;
+  name: string;
+  source_version: string;
+  supported: boolean;
+  fields: NotificationProviderField[];
+  max_payload_bytes: number;
+  rate_limiting: boolean;
+}
+export interface NotificationTemplateVariable {
+  name: string;
+  type?: string;
+  required?: boolean;
+}
+export interface NotificationTemplateDraft {
+  format: 'text' | 'markdown' | 'json';
+  title_template: string;
+  body_template: string;
+  payload_template?: unknown;
+  variables: NotificationTemplateVariable[];
+}
+export interface NotificationTemplateVersion {
+  id: string;
+  template_id: string;
+  scope_id: string;
+  version: number;
+  draft: NotificationTemplateDraft;
+  content_hash: string;
+  status: string;
+  created_at: string;
+  published_at?: string;
+}
+export interface NotificationTemplate {
+  id: string;
+  scope_id: string;
+  name: string;
+  share_with_children: boolean;
+  inherited?: boolean;
+  versions: NotificationTemplateVersion[];
+}
+export interface NotificationRuleRoute {
+  channel_id: string;
+  template_version_id: string;
+}
+export interface NotificationRule {
+  id: string;
+  scope_id: string;
+  name: string;
+  status: string;
+  event_types: string[];
+  minimum_severity: string;
+  filters: { resource_ids?: string[]; finding_rules?: string[] };
+  cooldown: number;
+  aggregation: number;
+  max_batch_size: number;
+  silence: { timezone?: string; start?: string; end?: string; weekdays?: number[] };
+  routes: NotificationRuleRoute[];
+  share_with_children: boolean;
+  inherited?: boolean;
+}
+export interface NotificationDeliveryAttempt {
+  attempt: number;
+  status: string;
+  response_status?: number;
+  error_code?: string;
+  error_message?: string;
+  started_at: string;
+  completed_at?: string;
+}
+export interface NotificationDelivery {
+  id: string;
+  scope_id: string;
+  event_type: string;
+  status: string;
+  channel_id: string;
+  rule_id: string;
+  attempt: number;
+  max_attempts: number;
+  available_at: string;
+  created_at: string;
+  payload: Record<string, unknown>;
+  attempts: NotificationDeliveryAttempt[];
 }
 export interface MCPSnapshot {
   id: string;
@@ -1162,10 +1256,130 @@ export const api = {
     request<NotificationChannel[]>(
       `api/v1/notification-channels?scope_id=${encodeURIComponent(scopeId)}`
     ),
+  notificationProviders: (scopeId: string) =>
+    request<NotificationProvider[]>(
+      `api/v1/notification-providers?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  createConfiguredNotificationChannel: (body: Record<string, unknown>) =>
+    request<NotificationChannel>('api/v1/notification-channels', json(body)),
+  updateConfiguredNotificationChannel: (
+    id: string,
+    body: Record<string, unknown>
+  ) =>
+    request<NotificationChannel>(
+      `api/v1/notification-channels/${encodeURIComponent(id)}`,
+      patch(body)
+    ),
+  deleteConfiguredNotificationChannel: (id: string, scopeId: string) =>
+    request<void>(
+      `api/v1/notification-channels/${encodeURIComponent(id)}?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'DELETE' }
+    ),
+  testConfiguredNotificationChannel: (id: string, scopeId: string) =>
+    request<{ status: string }>(
+      `api/v1/notification-channels/${encodeURIComponent(id)}/test?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'POST' }
+    ),
+  notificationTemplates: (scopeId: string) =>
+    request<NotificationTemplate[]>(
+      `api/v1/notification-templates?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  createNotificationTemplate: (body: Record<string, unknown>) =>
+    request<NotificationTemplate>('api/v1/notification-templates', json(body)),
+  createNotificationTemplateVersion: (
+    templateId: string,
+    body: Record<string, unknown>
+  ) =>
+    request<NotificationTemplateVersion>(
+      `api/v1/notification-templates/${encodeURIComponent(templateId)}/versions`,
+      json(body)
+    ),
+  previewNotificationTemplate: (
+    templateId: string,
+    versionId: string,
+    body: Record<string, unknown>
+  ) =>
+    request<{ title?: string; body?: string; payload?: unknown }>(
+      `api/v1/notification-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(versionId)}/preview`,
+      json(body)
+    ),
+  publishNotificationTemplate: (
+    templateId: string,
+    versionId: string,
+    scopeId: string
+  ) =>
+    request<NotificationTemplateVersion>(
+      `api/v1/notification-templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(versionId)}/publish`,
+      json({ scope_id: scopeId })
+    ),
+  deleteNotificationTemplate: (templateId: string, scopeId: string) =>
+    request<void>(
+      `api/v1/notification-templates/${encodeURIComponent(templateId)}?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'DELETE' }
+    ),
+  setNotificationTemplateSharing: (
+    templateId: string,
+    scopeId: string,
+    shareWithChildren: boolean
+  ) =>
+    request<void>(
+      `api/v1/notification-templates/${encodeURIComponent(templateId)}/sharing`,
+      patch({ scope_id: scopeId, share_with_children: shareWithChildren })
+    ),
+  notificationRules: (scopeId: string) =>
+    request<NotificationRule[]>(
+      `api/v1/notification-rules?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  createNotificationRule: (body: Record<string, unknown>) =>
+    request<NotificationRule>('api/v1/notification-rules', json(body)),
+  updateNotificationRule: (id: string, body: Record<string, unknown>) =>
+    request<NotificationRule>(
+      `api/v1/notification-rules/${encodeURIComponent(id)}`,
+      patch(body)
+    ),
+  deleteNotificationRule: (id: string, scopeId: string) =>
+    request<void>(
+      `api/v1/notification-rules/${encodeURIComponent(id)}?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'DELETE' }
+    ),
+  testNotificationRule: (id: string, scopeId: string) =>
+    request<{ routes_tested: number }>(
+      `api/v1/notification-rules/${encodeURIComponent(id)}/test?scope_id=${encodeURIComponent(scopeId)}`,
+      { method: 'POST' }
+    ),
+  notificationDeliveries: (
+    scopeId: string,
+    options: { status?: string; eventType?: string; limit?: number } = {}
+  ) => {
+    const query = new URLSearchParams({
+      scope_id: scopeId,
+      ...(options.status ? { status: options.status } : {}),
+      ...(options.eventType ? { event_type: options.eventType } : {}),
+      limit: String(options.limit ?? 50)
+    });
+    return request<NotificationDelivery[]>(
+      `api/v1/notification-deliveries?${query.toString()}`
+    );
+  },
+  retryNotificationDelivery: (id: string, scopeId: string) =>
+    request<void>(
+      `api/v1/notification-deliveries/${encodeURIComponent(id)}/retry`,
+      json({ scope_id: scopeId })
+    ),
+  inspectionPolicyNotificationRules: (policyId: string, scopeId: string) =>
+    request<{ rule_ids: string[] }>(
+      `api/v1/inspection-policies/${encodeURIComponent(policyId)}/notification-rules?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  setInspectionPolicyNotificationRules: (
+    policyId: string,
+    body: { scope_id: string; rule_ids: string[] }
+  ) =>
+    request<{ rule_ids: string[] }>(
+      `api/v1/inspection-policies/${encodeURIComponent(policyId)}/notification-rules`,
+      { method: 'PUT', body: JSON.stringify(body) }
+    ),
   createInspectionPolicy: (body: Record<string, unknown>) =>
     request<InspectionPolicy>('api/v1/inspection-policies', json(body)),
-  createNotificationChannel: (body: Record<string, unknown>) =>
-    request<NotificationChannel>('api/v1/notification-channels', json(body)),
   discoverMCP: (resourceId: string) =>
     request<MCPSnapshot>(`api/v1/mcp-servers/${resourceId}/discover`, {
       method: 'POST'

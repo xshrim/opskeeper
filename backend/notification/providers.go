@@ -16,7 +16,6 @@ type ProviderField struct {
 	Required bool   `json:"required"`
 	Secret   bool   `json:"secret"`
 }
-
 type ProviderDescriptor struct {
 	Kind          string          `json:"kind"`
 	Name          string          `json:"name"`
@@ -26,34 +25,45 @@ type ProviderDescriptor struct {
 	MaxPayload    int             `json:"max_payload_bytes"`
 	RateLimiting  bool            `json:"rate_limiting"`
 }
+type ProviderRegistry struct{ providers map[string]ProviderDescriptor }
 
-type ProviderRegistry struct {
-	providers map[string]ProviderDescriptor
+func field(name, label, typ string, required, secret bool) ProviderField {
+	return ProviderField{Name: name, Label: label, Type: typ, Required: required, Secret: secret}
 }
 
 func DefaultProviderRegistry() ProviderRegistry {
-	webhook := ProviderDescriptor{
-		Kind: "webhook", Name: "HTTPS Webhook", SourceVersion: NotifyProviderMatrixVersion, Supported: true, MaxPayload: 64 << 10, RateLimiting: true,
-		Fields: []ProviderField{
-			{Name: "url", Label: "Webhook URL", Type: "url", Required: true, Secret: true},
-			{Name: "signing_secret", Label: "Signing Secret", Type: "password", Secret: true},
-		},
+	available := func(kind, name string, fields []ProviderField) ProviderDescriptor {
+		return ProviderDescriptor{Kind: kind, Name: name, SourceVersion: NotifyProviderMatrixVersion, Supported: true, Fields: fields, MaxPayload: 64 << 10, RateLimiting: true}
 	}
-	providers := []ProviderDescriptor{webhook}
-	for _, item := range [][2]string{
-		{"amazonses", "Amazon SES"}, {"amazonsns", "Amazon SNS"}, {"bark", "Bark"},
-		{"dingding", "DingTalk"}, {"discord", "Discord"}, {"mail", "Email"},
-		{"fcm", "Firebase Cloud Messaging"}, {"googlechat", "Google Chat"}, {"lark", "Lark"},
-		{"line", "Line"}, {"line-notify", "Line Notify"}, {"mailgun", "Mailgun"},
-		{"mailtrap", "Mailtrap"}, {"matrix", "Matrix"}, {"mattermost", "Mattermost"},
-		{"msteams", "Microsoft Teams"}, {"pagerduty", "PagerDuty"}, {"plivo", "Plivo"},
-		{"pushover", "Pushover"}, {"pushbullet", "Pushbullet"}, {"reddit", "Reddit"},
-		{"rocketchat", "Rocket.Chat"}, {"sendgrid", "SendGrid"}, {"slack", "Slack"},
-		{"syslog", "Syslog"}, {"telegram", "Telegram"}, {"textmagic", "TextMagic"},
-		{"twilio", "Twilio"}, {"twitter", "Twitter"}, {"viber", "Viber"},
-		{"wechat", "WeChat"}, {"webpush", "Web Push"}, {"whatsapp", "WhatsApp"},
-	} {
-		providers = append(providers, ProviderDescriptor{Kind: item[0], Name: item[1], SourceVersion: NotifyProviderMatrixVersion, Supported: false})
+	unavailable := func(kind, name string) ProviderDescriptor {
+		return ProviderDescriptor{Kind: kind, Name: name, SourceVersion: NotifyProviderMatrixVersion, MaxPayload: 64 << 10, RateLimiting: true}
+	}
+	providers := []ProviderDescriptor{
+		available("webhook", "HTTPS Webhook", []ProviderField{field("url", "Webhook URL", "url", true, true), field("signing_secret", "Signing Secret", "password", false, true)}),
+		available("slack", "Slack", []ProviderField{field("api_token", "Bot Token", "password", true, true), field("channel_id", "Channel ID", "string", true, false)}),
+		available("telegram", "Telegram", []ProviderField{field("api_token", "Bot Token", "password", true, true), field("chat_id", "Chat ID", "string", true, false)}),
+		available("discord", "Discord", []ProviderField{field("bot_token", "Bot Token", "password", true, true), field("channel_id", "Channel ID", "string", true, false)}),
+		available("msteams", "Microsoft Teams", []ProviderField{field("webhook_url", "Incoming Webhook URL", "url", true, true)}),
+		available("dingding", "DingTalk", []ProviderField{field("token", "Access Token", "password", true, true), field("secret", "Signing Secret", "password", true, true)}),
+		available("lark", "Lark", []ProviderField{field("webhook_url", "Webhook URL", "url", true, true)}),
+		available("mail", "SMTP Email", []ProviderField{field("sender_address", "Sender Address", "email", true, false), field("smtp_host", "SMTP Host", "string", true, false), field("smtp_port", "SMTP Port", "number", false, false), field("receivers", "Recipients", "string", true, false), field("smtp_user", "SMTP User", "string", false, false), field("smtp_password", "SMTP Password", "password", false, true)}),
+		available("sendgrid", "SendGrid", []ProviderField{field("api_key", "API Key", "password", true, true), field("sender_address", "Sender Address", "email", true, false), field("sender_name", "Sender Name", "string", false, false), field("receivers", "Recipients", "string", true, false)}),
+		available("mailgun", "Mailgun", []ProviderField{field("domain", "Domain", "string", true, false), field("api_key", "API Key", "password", true, true), field("sender_address", "Sender Address", "email", true, false), field("receivers", "Recipients", "string", true, false)}),
+		available("mailtrap", "Mailtrap", []ProviderField{field("api_key", "API Key", "password", true, true), field("sender_address", "Sender Address", "email", true, false), field("receivers", "Recipients", "string", true, false)}),
+		available("bark", "Bark", []ProviderField{field("device_key", "Device Key", "password", true, true), field("server_url", "Server URL", "url", false, false)}),
+		available("pushover", "Pushover", []ProviderField{field("app_token", "App Token", "password", true, true), field("user_key", "User or Group Key", "string", true, false)}),
+		available("pushbullet", "Pushbullet", []ProviderField{field("api_token", "API Token", "password", true, true), field("device", "Device Nickname", "string", false, false)}),
+		available("pagerduty", "PagerDuty", []ProviderField{field("token", "Access Token", "password", true, true), field("from_address", "From Address", "email", true, false), field("service_id", "Service ID", "string", true, false)}),
+		available("twilio", "Twilio SMS", []ProviderField{field("account_sid", "Account SID", "password", true, true), field("auth_token", "Auth Token", "password", true, true), field("from", "From Number", "string", true, false), field("to", "Recipient Number", "string", true, false)}),
+		available("plivo", "Plivo SMS", []ProviderField{field("auth_id", "Auth ID", "password", true, true), field("auth_token", "Auth Token", "password", true, true), field("source", "Source Number", "string", true, false), field("to", "Recipient Number", "string", true, false)}),
+		available("textmagic", "TextMagic", []ProviderField{field("username", "Username", "string", true, false), field("api_key", "API Key", "password", true, true), field("to", "Recipient Number", "string", true, false)}),
+		available("matrix", "Matrix", []ProviderField{field("user_id", "User ID", "string", true, false), field("room_id", "Room ID", "string", true, false), field("home_server", "Home Server", "url", true, false), field("access_token", "Access Token", "password", true, true)}),
+		available("wechat", "WeChat Official Account", []ProviderField{field("app_id", "App ID", "password", true, true), field("app_secret", "App Secret", "password", true, true), field("token", "Token", "password", true, true), field("encoding_aes_key", "Encoding AES Key", "password", false, true), field("user_id", "User ID", "string", true, false)}),
+		available("viber", "Viber", []ProviderField{field("app_key", "App Key", "password", true, true), field("sender_name", "Sender Name", "string", true, false), field("sender_avatar", "Sender Avatar", "url", false, false), field("user_id", "User ID", "string", true, false)}),
+		available("rocketchat", "Rocket.Chat", []ProviderField{field("server_url", "Server URL", "url", true, false), field("user_id", "User ID", "string", true, false), field("token", "Personal Access Token", "password", true, true), field("channel", "Channel", "string", true, false)}),
+		available("googlechat", "Google Chat", []ProviderField{field("credentials_json", "Service Account JSON", "textarea", true, true), field("space", "Space", "string", true, false)}),
+		available("fcm", "Firebase Cloud Messaging", []ProviderField{field("credentials_json", "Service Account JSON", "textarea", true, true), field("project_id", "Project ID", "string", true, false), field("device_token", "Device Token", "string", true, false)}),
+		unavailable("amazonses", "Amazon SES"), unavailable("amazonsns", "Amazon SNS"), unavailable("line", "LINE Messaging"), unavailable("line-notify", "LINE Notify (service retired)"), unavailable("mattermost", "Mattermost"), unavailable("reddit", "Reddit"), unavailable("syslog", "Syslog"), unavailable("twitter", "Twitter"), unavailable("webpush", "Web Push"), unavailable("whatsapp", "WhatsApp (notify placeholder)"),
 	}
 	registry := ProviderRegistry{providers: make(map[string]ProviderDescriptor, len(providers))}
 	for _, provider := range providers {
@@ -70,7 +80,6 @@ func (r ProviderRegistry) List() []ProviderDescriptor {
 	sort.Slice(items, func(i, j int) bool { return items[i].Kind < items[j].Kind })
 	return items
 }
-
 func (r ProviderRegistry) Get(kind string) (ProviderDescriptor, bool) {
 	provider, ok := r.providers[strings.TrimSpace(kind)]
 	return provider, ok
@@ -86,10 +95,13 @@ func (r ProviderRegistry) Validate(kind string, config map[string]string) error 
 		if field.Required && value == "" {
 			return fmt.Errorf("provider field %q is required", field.Name)
 		}
-		if field.Name == "url" && value != "" {
+		if field.Type == "url" && value != "" {
 			parsed, err := url.ParseRequestURI(value)
-			if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil {
-				return fmt.Errorf("webhook URL must be a valid HTTPS URL without embedded credentials")
+			if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" || parsed.User != nil {
+				return fmt.Errorf("provider field %q must be a valid URL without embedded credentials", field.Name)
+			}
+			if kind == "webhook" && !strings.EqualFold(parsed.Scheme, "https") {
+				return fmt.Errorf("webhook URL must use HTTPS")
 			}
 		}
 	}
@@ -123,7 +135,6 @@ func (r ProviderRegistry) PublicConfig(kind string, config map[string]string) ma
 	}
 	return public
 }
-
 func (r ProviderRegistry) MergeConfig(kind string, current, patch map[string]string) map[string]string {
 	merged := make(map[string]string, len(current)+len(patch))
 	for key, value := range current {
@@ -134,8 +145,7 @@ func (r ProviderRegistry) MergeConfig(kind string, current, patch map[string]str
 		return merged
 	}
 	for _, field := range provider.Fields {
-		value, supplied := patch[field.Name]
-		if supplied && (!field.Secret || strings.TrimSpace(value) != "") {
+		if value, supplied := patch[field.Name]; supplied && (!field.Secret || strings.TrimSpace(value) != "") {
 			merged[field.Name] = strings.TrimSpace(value)
 		}
 	}

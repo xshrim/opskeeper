@@ -112,12 +112,9 @@ func TestNotificationCatalogScopeRoutesAndTemplateLifecycle(t *testing.T) {
 		t.Fatalf("active routes after rollback = %+v, %v", activeRules, err)
 	}
 	var testPayload []byte
-	service.tester = notificationSenderFunc(func(_ context.Context, _ NotificationChannel, _ []byte, event WebhookEvent) (int, string, error) {
-		if event.Type != "notification.test" {
-			t.Fatalf("rule test event type = %q", event.Type)
-		}
-		testPayload = append(testPayload[:0], event.Data...)
-		return 204, "", nil
+	service.tester = notificationSenderFunc(func(_ context.Context, _ string, _ map[string]string, _ string, message string) (int, string, time.Duration, error) {
+		testPayload = append(testPayload[:0], message...)
+		return 204, "", 0, nil
 	})
 	routesTested, err := service.TestNotificationRule(scopeContext, scopeID, rule.ID)
 	if err != nil || routesTested != 1 || !bytes.Contains(testPayload, []byte("Test notification route")) {

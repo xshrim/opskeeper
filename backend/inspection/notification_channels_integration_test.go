@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/migrations"
@@ -14,10 +15,10 @@ import (
 	"opskeeper/backend/secret"
 )
 
-type notificationSenderFunc func(context.Context, NotificationChannel, []byte, WebhookEvent) (int, string, error)
+type notificationSenderFunc func(context.Context, string, map[string]string, string, string) (int, string, time.Duration, error)
 
-func (f notificationSenderFunc) Send(ctx context.Context, channel NotificationChannel, key []byte, event WebhookEvent) (int, string, error) {
-	return f(ctx, channel, key, event)
+func (f notificationSenderFunc) Send(ctx context.Context, kind string, config map[string]string, subject, message string) (int, string, time.Duration, error) {
+	return f(ctx, kind, config, subject, message)
 }
 
 func TestNotificationChannelConfigIsEncryptedAndVersioned(t *testing.T) {
@@ -35,14 +36,14 @@ func TestNotificationChannelConfigIsEncryptedAndVersioned(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewService(NewStore(pool), nil).WithNotificationSecurity(cipher, notification.DefaultProviderRegistry())
-	service.tester = notificationSenderFunc(func(_ context.Context, channel NotificationChannel, signingSecret []byte, event WebhookEvent) (int, string, error) {
-		if channel.WebhookURL != "https://alerts.example.test/private-path" || event.Type != "notification.test" {
-			t.Fatalf("test send got channel=%+v event=%+v", channel, event)
+	service.tester = notificationSenderFunc(func(_ context.Context, kind string, config map[string]string, subject, _ string) (int, string, time.Duration, error) {
+		if kind != "webhook" || config["url"] != "https://alerts.example.test/private-path" || subject == "" {
+			t.Fatalf("test send got kind=%s config=%v subject=%q", kind, config, subject)
 		}
-		if string(signingSecret) != "private-signing-secret" {
-			t.Fatalf("test send signing secret=%q", signingSecret)
+		if config["signing_secret"] != "private-signing-secret" {
+			t.Fatalf("test send signing secret=%q", config["signing_secret"])
 		}
-		return 204, "", nil
+		return 204, "", 0, nil
 	})
 	scopeCtx := authorization.WithScopeFilter(ctx, authorization.ScopeFilter{ScopeIDs: []string{scopeID}})
 	secretURL := "https://alerts.example.test/private-path"

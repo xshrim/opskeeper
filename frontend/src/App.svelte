@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
+    Bell,
     Boxes,
     Bot,
     ClipboardCheck,
@@ -48,6 +49,7 @@
   import ProfilePage from './features/profile/ProfilePage.svelte';
   import AuthGate from './features/auth/AuthGate.svelte';
   import InspectionPage from './features/inspection/InspectionPage.svelte';
+  import NotificationPage from './features/notification/NotificationPage.svelte';
   import OverviewPage from './features/overview/OverviewPage.svelte';
   import ProjectPage from './features/project/ProjectPage.svelte';
   import ResourcePage from './features/resource/ResourcePage.svelte';
@@ -87,6 +89,7 @@
     | 'persona'
     | 'diagnosis'
     | 'inspection'
+    | 'notification'
     | 'access'
     | 'profile';
   type Theme = UserPreferences['theme'];
@@ -730,6 +733,16 @@
             class="nav-item-label">巡检</span
           ></button
         >
+        <button
+          aria-label="通知"
+          class:active={view === 'notification'}
+          class="nav-item"
+          on:click={() => chooseView('notification')}
+          data-tooltip={sidebarCompact ? '通知' : undefined}
+          ><Bell size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">通知</span
+          ></button
+        >
         <div class="nav-group">
           <button
             aria-label="权限"
@@ -913,6 +926,12 @@
           {executableTargets}
           personas={personas}
           {scopeName}
+          onNotice={(message) => (notice = message)}
+          onError={(message) => (errorMessage = message)}
+        />
+      {:else if view === 'notification'}
+        <NotificationPage
+          scopeId={selectedScopeId}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
         />

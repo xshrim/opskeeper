@@ -35,7 +35,7 @@ func TestProviderPublicConfigRedactsSecretAndMergeKeepsOmittedSecret(t *testing.
 	}
 }
 
-func TestRegistryClearlyMarksUnavailableNotifyProviders(t *testing.T) {
+func TestRegistryExposesNotifyProvidersAndUnavailableEntries(t *testing.T) {
 	registry := DefaultProviderRegistry()
 	providers := registry.List()
 	if len(providers) < 30 {
@@ -46,7 +46,8 @@ func TestRegistryClearlyMarksUnavailableNotifyProviders(t *testing.T) {
 		if !ok {
 			t.Fatalf("provider %q missing from registry", kind)
 		}
-		if provider.Supported != (kind == "webhook") {
+		wantSupported := kind != "whatsapp"
+		if provider.Supported != wantSupported {
 			t.Errorf("provider %q supported=%t", kind, provider.Supported)
 		}
 	}

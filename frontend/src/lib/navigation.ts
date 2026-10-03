@@ -7,6 +7,7 @@ export type NavigationView =
   | 'persona'
   | 'diagnosis'
   | 'inspection'
+  | 'notification'
   | 'access'
   | 'profile';
 
@@ -19,6 +20,7 @@ const titles: Record<NavigationView, string> = {
   persona: '专家',
   diagnosis: '诊断工作台',
   inspection: '巡检与健康',
+  notification: '通知中心',
   access: '权限',
   profile: '个人中心'
 };
@@ -32,6 +34,7 @@ const breadcrumbs: Record<NavigationView, string> = {
   persona: '专家',
   diagnosis: '诊断',
   inspection: '巡检',
+  notification: '通知',
   access: '权限',
   profile: '个人中心'
 };

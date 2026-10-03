@@ -364,7 +364,7 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO notification_deliveries(scope_id,rule_scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) SELECT scope_id,rule_scope_id,$2::uuid,policy_id,rule_id,route_id,channel_id,$3::uuid,$4::uuid,finding_id,run_id,$2::text||':'||route_id::text,$5::jsonb,$6,now() FROM notification_deliveries WHERE event_id=$1::uuid`, firstEvent, batchEvent, channelVersionID, templateVersionID, routeSnapshot, hex.EncodeToString(batchSnapshotHash[:])); err != nil {
 		t.Fatal(err)
 	}
-	notifier := NotificationWorker{Store: s, Cipher: cipher, Owner: "integration-worker", LeaseDuration: time.Minute, Sender: WebhookSender{Client: server.Client()}}
+	notifier := NotificationWorker{Store: s, Cipher: cipher, Owner: "integration-worker", LeaseDuration: time.Minute, Sender: NotifySender{Client: server.Client()}}
 	claimed, err := notifier.RunOnce(ctx)
 	if err != nil || !claimed {
 		t.Fatalf("NotificationWorker.RunOnce() = %t, %v", claimed, err)

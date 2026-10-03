@@ -9,6 +9,7 @@ import './features/project/project.css';
 import './features/profile/profile.css';
 import './features/skill/skill.css';
 import './features/persona/persona.css';
+import './features/notification/notification.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
 

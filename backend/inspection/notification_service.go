@@ -199,8 +199,8 @@ func (s *Service) testNotificationRoute(ctx context.Context, scopeID string, rou
 	if s.tester == nil {
 		return invalid("notification test sender is unavailable")
 	}
-	channel.Channel.WebhookURL = config["url"]
-	_, _, err = s.tester.Send(ctx, channel.Channel, []byte(config["signing_secret"]), WebhookEvent{Type: "notification.test", Data: payload})
+	subject, message := "OpsKeeper notification test", string(payload)
+	_, _, _, err = s.tester.Send(ctx, channel.Channel.Kind, config, subject, message)
 	if err != nil {
 		return fmt.Errorf("notification rule test failed")
 	}
