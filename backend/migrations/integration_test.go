@@ -275,6 +275,9 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 		t.Fatalf("rollback latest channel migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification template immutability migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback channel test-limit migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
@@ -283,8 +286,8 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations after domain rollback: %v", err)
 	}
-	if applied != len(items)-3 {
-		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-3)
+	if applied != len(items)-4 {
+		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-4)
 	}
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {

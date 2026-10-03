@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/migrations"
+	"opskeeper/backend/notification"
 )
 
 // TestInspectionTablesExist verifies the deployed T13 schema directly. The
@@ -198,11 +199,27 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO notification_template_versions(scope_id,template_id,version,format,body_template,content_hash,status,published_at) VALUES($1::uuid,$2::uuid,1,'text','{{finding_summary}}',$3,'published',now()) RETURNING id::text`, scope, template, strings.Repeat("b", 64)).Scan(&templateVersion); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO notification_rules(scope_id,name,event_types) VALUES($1::uuid,'transition-test',ARRAY['finding.opened','finding.reopened','finding.severity_changed','finding.resolved']::text[]) RETURNING id::text`, scope).Scan(&rule); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO notification_rules(scope_id,name,event_types,filters) VALUES($1::uuid,'transition-test',ARRAY['finding.opened','finding.reopened','finding.severity_changed','finding.resolved']::text[],jsonb_build_object('resource_ids',jsonb_build_array($2::text),'finding_rules',jsonb_build_array('test.rule'))) RETURNING id::text`, scope, target).Scan(&rule); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO inspection_policy_notification_rules(scope_id,policy_id,rule_id) VALUES($1::uuid,$2::uuid,$3::uuid)`, scope, policy, rule); err != nil {
-		t.Fatal(err)
+	ruleLinker := NewStore(pool).(interface {
+		SetPolicyNotificationRules(context.Context, string, string, []string) ([]string, error)
+		ListPolicyNotificationRules(context.Context, string, string) ([]string, error)
+	})
+	boundRules, err := ruleLinker.SetPolicyNotificationRules(ctx, scope, policy, []string{rule, rule})
+	if err != nil || len(boundRules) != 1 || boundRules[0] != rule {
+		t.Fatalf("set policy notification rules = %v, %v", boundRules, err)
+	}
+	listedRules, err := ruleLinker.ListPolicyNotificationRules(ctx, scope, policy)
+	if err != nil || len(listedRules) != 1 || listedRules[0] != rule {
+		t.Fatalf("list policy notification rules = %v, %v", listedRules, err)
+	}
+	if _, err := ruleLinker.SetPolicyNotificationRules(ctx, scope, policy, []string{"not-a-uuid"}); err == nil {
+		t.Fatal("invalid rule binding succeeded")
+	}
+	listedRules, err = ruleLinker.ListPolicyNotificationRules(ctx, scope, policy)
+	if err != nil || len(listedRules) != 1 || listedRules[0] != rule {
+		t.Fatalf("invalid binding partially changed rules = %v, %v", listedRules, err)
 	}
 	wrongScopeTx, err := pool.Begin(ctx)
 	if err != nil {
@@ -218,6 +235,22 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 		t.Fatal("cross-Scope policy rule binding succeeded, want foreign-key rejection")
 	}
 	_ = wrongScopeTx.Rollback(ctx)
+	cooldownTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cooldownEvent := notificationEventInput{ScopeID: scope, PolicyID: policy, Type: notification.FindingOpened, IdentityKey: "cooldown-integration", TargetResourceID: target}
+	if allowed, err := reserveNotificationRuleCooldown(ctx, cooldownTx, scope, rule, cooldownEvent, time.Hour); err != nil || !allowed {
+		_ = cooldownTx.Rollback(ctx)
+		t.Fatalf("first cooldown reservation = %t, %v", allowed, err)
+	}
+	if allowed, err := reserveNotificationRuleCooldown(ctx, cooldownTx, scope, rule, cooldownEvent, time.Hour); err != nil || allowed {
+		_ = cooldownTx.Rollback(ctx)
+		t.Fatalf("duplicate cooldown reservation = %t, %v; want suppressed", allowed, err)
+	}
+	if err := cooldownTx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `INSERT INTO notification_rule_routes(scope_id,rule_id,channel_id,channel_version_id,template_version_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid)`, scope, rule, channel.ID, channelVersion, templateVersion); err != nil {
 		t.Fatal(err)
 	}

@@ -7,8 +7,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load() error = %v", err)
 	}
-	if len(items) != 73 {
-		t.Fatalf("load() returned %d migrations, want seventy-three migrations", len(items))
+	if len(items) != 74 {
+		t.Fatalf("load() returned %d migrations, want seventy-four migrations", len(items))
 	}
 	if items[0].version != 1 || items[0].name != "initial" {
 		t.Fatalf("loaded migration = %#v, want version 1 initial", items[0])
@@ -115,8 +115,8 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	if items[34].version != 35 || items[34].name != "unified_resource_access" {
 		t.Fatalf("loaded migration = %#v, want version 35 unified_resource_access", items[34])
 	}
-	if items[len(items)-1].version != 73 || items[len(items)-1].name != "notification_template_immutability" {
-		t.Fatalf("loaded migration = %#v, want version 73 notification_template_immutability", items[len(items)-1])
+	if items[len(items)-1].version != 74 || items[len(items)-1].name != "notification_rule_cooldowns" {
+		t.Fatalf("loaded migration = %#v, want version 74 notification_rule_cooldowns", items[len(items)-1])
 	}
 	for _, item := range items {
 		if item.sql == "" || item.downSQL == "" || item.checksum == "" {

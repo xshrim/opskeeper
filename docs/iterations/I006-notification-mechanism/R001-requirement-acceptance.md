@@ -24,7 +24,7 @@
 | T01 | 通知领域与事务事件 | 已完成 | `go test ./...`；`go vet ./...`；迁移与 inspection 集成测试，见下文 |
 | T02 | Provider 注册与通知渠道 | 已完成 | `go test ./...`；`go vet ./...`；PostgreSQL inspection channel 集成测试，provider catalog 单测 |
 | T03 | 模板版本与安全渲染 | 已完成 | `go test ./...`、`go vet ./...`、`make backend-lint`、迁移 PostgreSQL 集成测试、模板安全渲染单测 |
-| T04 | 规则匹配与巡检关联 | 待批准 | 实施后记录匹配、冷却、聚合、静默和策略关联测试 |
+| T04 | 规则匹配与巡检关联 | 已完成 | `go test ./...`、`go vet ./...`、迁移与巡检 PostgreSQL 集成测试、规则匹配与日历窗口单测 |
 | T05 | PostgreSQL 队列与可靠投递 | 待批准 | 实施后记录 PostgreSQL、租约、重试、死信和非法配置测试 |
 | T06 | HTTP API、权限与审计 | 待批准 | 实施后记录 API、Scope/RBAC、脱敏和审计测试 |
 | T07 | 通知页面与菜单 | 待批准 | 用户确认预览后记录页面检查、前端测试和 Playwright 证据 |
@@ -76,10 +76,15 @@
 
 ### T04 规则匹配与巡检关联
 
-**结果：** 待批准
-**验收目标：** 待实施后填写。
-**验证步骤和结果：** 待实施后记录匹配、冷却、聚合、静默和策略关联测试。
-**遗留问题：** 待实施后填写。
+**结果：** 已完成
+**验收目标：** 事件路由按事件类型、最低级别和白名单资源/Finding 条件匹配；策略规则绑定原子校验 Scope；冷却、聚合等待和静默窗口在入队事务中生效，恢复和重新打开绕过冷却。
+**验证步骤和结果：**
+
+1. `cd backend && go test ./...`、`cd backend && go vet ./...`：通过。
+2. `OPSK_TEST_DATABASE_URL="$OPSK_DATABASE_URL" go test -tags=integration ./migrations ./inspection -count=1`：通过；验证迁移 up/down/replay、规则过滤、策略绑定去重与失败原子性、冷却窗口抑制、事件状态转换及入队事务。
+3. `backend/notification/rules_test.go`：通过；覆盖事件/严重级别/资源/Finding 条件匹配及跨午夜、时区、星期静默窗口计算。
+
+**遗留问题：** 多事件聚合投递的领取和渲染由 T05 Worker 实现；T04 已将聚合时间和最大批次写入不可变投递快照，并延后队列可领取时间。子 Scope 共享仍受当前同 Scope 外键约束，必须在 T06 做授权/API 范围设计时决定是否扩展数据关系，当前为显式拒绝跨 Scope 绑定。
 
 ### T05 PostgreSQL 队列与可靠投递
 

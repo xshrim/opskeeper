@@ -530,7 +530,10 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 	rows, err := tx.Query(ctx, `
 		SELECT rule.id::text, route.id::text, channel.id::text, config.id::text,
 		       config.version, config.provider_config_hash, template.id::text,
-		       template.version, template.content_hash
+		       template.version, template.content_hash, rule.event_types, rule.minimum_severity,
+		       rule.filters, rule.cooldown_seconds, rule.aggregation_seconds, rule.max_batch_size,
+		       rule.silence, COALESCE(event.severity,''), COALESCE(event.target_resource_id::text,''),
+		       COALESCE(event.payload->>'rule','')
 		  FROM notification_events event
 	  JOIN inspection_policy_notification_rules policy_rule
 		    ON policy_rule.policy_id=event.policy_id AND policy_rule.scope_id=event.scope_id
@@ -545,11 +548,8 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		  JOIN notification_template_versions template
 		    ON template.id=route.template_version_id AND template.scope_id=event.scope_id
 		 WHERE event.id=$1::uuid AND rule.status='active' AND rule.deleted_at IS NULL
-		   AND event.event_type=ANY(rule.event_types)
 		   AND channel.status='active' AND channel.deleted_at IS NULL
 		   AND template.status='published'
-		   AND CASE rule.minimum_severity WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END
-		       <= CASE COALESCE(event.severity,'critical') WHEN 'info' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END
 		 ORDER BY rule.id, route.id`, eventID)
 	if err != nil {
 		return mapError(err)
@@ -561,13 +561,40 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		TemplateVersionID                            string
 		TemplateVersion                              int
 		TemplateHash                                 string
+		Rule                                         notification.Rule
+		RuleEvent                                    notification.RuleEvent
+		Silence                                      notification.SilenceWindow
+		AvailableAt                                  time.Time
 	}
 	routes := []route{}
 	for rows.Next() {
 		var item route
-		if err := rows.Scan(&item.RuleID, &item.RouteID, &item.ChannelID, &item.ChannelVersionID, &item.ChannelVersion, &item.ChannelConfigHash, &item.TemplateVersionID, &item.TemplateVersion, &item.TemplateHash); err != nil {
+		var eventTypes []string
+		var filtersJSON, silenceJSON []byte
+		var minimumSeverity string
+		var cooldownSeconds, aggregationSeconds, maxBatchSize int
+		if err := rows.Scan(&item.RuleID, &item.RouteID, &item.ChannelID, &item.ChannelVersionID, &item.ChannelVersion, &item.ChannelConfigHash, &item.TemplateVersionID, &item.TemplateVersion, &item.TemplateHash, &eventTypes, &minimumSeverity, &filtersJSON, &cooldownSeconds, &aggregationSeconds, &maxBatchSize, &silenceJSON, &item.RuleEvent.Severity, &item.RuleEvent.ResourceID, &item.RuleEvent.FindingRule); err != nil {
 			rows.Close()
 			return err
+		}
+		item.RuleEvent.Type = event.Type
+		item.RuleEvent.FindingIdentity = event.IdentityKey
+		item.Rule = notification.Rule{Name: item.RuleID, Status: "active", MinimumSeverity: minimumSeverity, Cooldown: time.Duration(cooldownSeconds) * time.Second, Aggregation: time.Duration(aggregationSeconds) * time.Second, MaxBatchSize: maxBatchSize}
+		for _, eventType := range eventTypes {
+			item.Rule.EventTypes = append(item.Rule.EventTypes, notification.EventType(eventType))
+		}
+		filters, err := notification.DecodeRuleFilters(filtersJSON)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		item.Rule.Filters = filters
+		if err := json.Unmarshal(silenceJSON, &item.Silence); err != nil {
+			rows.Close()
+			return fmt.Errorf("decode notification silence window: %w", err)
+		}
+		if !notification.RuleMatches(item.Rule, item.RuleEvent) {
+			continue
 		}
 		routes = append(routes, item)
 	}
@@ -576,21 +603,51 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		return err
 	}
 	rows.Close()
+	allowedByRule := make(map[string]bool)
+	checkedRule := make(map[string]bool)
+	for i := range routes {
+		route := &routes[i]
+		if !checkedRule[route.RuleID] {
+			allowed, err := reserveNotificationRuleCooldown(ctx, tx, event.ScopeID, route.RuleID, event, route.Rule.Cooldown)
+			if err != nil {
+				return err
+			}
+			allowedByRule[route.RuleID] = allowed
+			checkedRule[route.RuleID] = true
+		}
+		if !allowedByRule[route.RuleID] {
+			continue
+		}
+		now := time.Now().UTC()
+		allowedAt, err := notification.NextAllowedAt(route.Silence, now)
+		if err != nil {
+			return err
+		}
+		aggregateUntil := now.Add(route.Rule.Aggregation)
+		if aggregateUntil.After(allowedAt) {
+			allowedAt = aggregateUntil
+		}
+		route.AvailableAt = allowedAt
+	}
 	for _, route := range routes {
+		if !allowedByRule[route.RuleID] {
+			continue
+		}
 		snapshot, err := json.Marshal(map[string]any{
 			"scope_id": event.ScopeID, "event_id": eventID, "policy_id": event.PolicyID, "event_type": event.Type,
 			"rule_id": route.RuleID, "route_id": route.RouteID,
 			"channel_id": route.ChannelID, "channel_version_id": route.ChannelVersionID,
 			"channel_version": route.ChannelVersion, "channel_config_hash": route.ChannelConfigHash,
 			"template_version_id": route.TemplateVersionID, "template_version": route.TemplateVersion,
-			"template_hash": route.TemplateHash,
+			"template_hash": route.TemplateHash, "max_batch_size": route.Rule.MaxBatchSize,
+			"aggregation_seconds": int(route.Rule.Aggregation.Seconds()), "available_at": route.AvailableAt,
 		})
 		if err != nil {
 			return err
 		}
 		snapshotHash := sha256.Sum256(snapshot)
 		idempotencyKey := eventID + ":" + route.RouteID
-		result, err := tx.Exec(ctx, `INSERT INTO notification_deliveries (scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,$8::uuid,NULLIF($9,'')::uuid,NULLIF($10,'')::uuid,$11,$12::jsonb,$13) ON CONFLICT (idempotency_key) DO NOTHING`, event.ScopeID, eventID, event.PolicyID, route.RuleID, route.RouteID, route.ChannelID, route.ChannelVersionID, route.TemplateVersionID, event.FindingID, event.RunID, idempotencyKey, string(snapshot), hex.EncodeToString(snapshotHash[:]))
+		result, err := tx.Exec(ctx, `INSERT INTO notification_deliveries (scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,$8::uuid,NULLIF($9,'')::uuid,NULLIF($10,'')::uuid,$11,$12::jsonb,$13,$14) ON CONFLICT (idempotency_key) DO NOTHING`, event.ScopeID, eventID, event.PolicyID, route.RuleID, route.RouteID, route.ChannelID, route.ChannelVersionID, route.TemplateVersionID, event.FindingID, event.RunID, idempotencyKey, string(snapshot), hex.EncodeToString(snapshotHash[:]), route.AvailableAt)
 		if err != nil {
 			return mapError(err)
 		}
