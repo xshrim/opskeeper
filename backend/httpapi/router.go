@@ -150,7 +150,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
-				registerInspectionRoutes(inspectionRouter, options.Inspection, requirePermission)
+				registerInspectionRoutes(inspectionRouter, options.Inspection, options.Auditor, requirePermission)
 			}
 			if options.Identity != nil && options.MCP != nil {
 				operationRouter := router.With(authHandler{service: options.Identity}.requireAuth)

@@ -525,7 +525,7 @@ func (s *store) recordNotificationEvent(ctx context.Context, tx pgx.Tx, input no
 
 func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID string, event notificationEventInput) error {
 	rows, err := tx.Query(ctx, `
-		SELECT rule.id::text, route.id::text, channel.id::text, config.id::text,
+		SELECT rule.id::text, rule.scope_id::text, route.id::text, channel.id::text, config.id::text,
 		       config.version, config.provider_config_hash, template.id::text,
 		       template.version, template.content_hash, rule.event_types, rule.minimum_severity,
 		       rule.filters, rule.cooldown_seconds, rule.aggregation_seconds, rule.max_batch_size,
@@ -534,35 +534,38 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		  FROM notification_events event
 	  JOIN inspection_policy_notification_rules policy_rule
 		    ON policy_rule.policy_id=event.policy_id AND policy_rule.scope_id=event.scope_id
-		  JOIN notification_rules rule
-		    ON rule.id=policy_rule.rule_id AND rule.scope_id=event.scope_id
+	  JOIN notification_rules rule
+		    ON rule.id=policy_rule.rule_id AND rule.scope_id=policy_rule.rule_scope_id
 		  JOIN notification_rule_routes route
-		    ON route.rule_id=rule.id AND route.scope_id=event.scope_id
+		    ON route.rule_id=rule.id AND route.scope_id=rule.scope_id AND route.retired_at IS NULL
 		  JOIN notification_channels channel
-		    ON channel.id=route.channel_id AND channel.scope_id=event.scope_id
+		    ON channel.id=route.channel_id AND channel.scope_id=route.scope_id
 		  JOIN notification_channel_versions config
-		    ON config.id=route.channel_version_id AND config.scope_id=event.scope_id
+		    ON config.id=route.channel_version_id AND config.scope_id=route.scope_id
 		  JOIN notification_template_versions template
-		    ON template.id=route.template_version_id AND template.scope_id=event.scope_id
+		    ON template.id=route.template_version_id AND template.scope_id=route.scope_id
+		  JOIN notification_templates template_record
+		    ON template_record.id=template.template_id AND template_record.scope_id=template.scope_id AND template_record.deleted_at IS NULL
 		 WHERE event.id=$1::uuid AND rule.status='active' AND rule.deleted_at IS NULL
 		   AND channel.status='active' AND channel.deleted_at IS NULL
 		   AND template.status='published'
+		   AND (event.scope_id=rule.scope_id OR (rule.share_with_children AND channel.share_with_children AND template_record.share_with_children AND resource_scope_contains(rule.scope_id,event.scope_id)))
 		 ORDER BY rule.id, route.id`, eventID)
 	if err != nil {
 		return mapError(err)
 	}
 	type route struct {
-		RuleID, RouteID, ChannelID, ChannelVersionID string
-		ChannelVersion                               int
-		ChannelConfigHash                            string
-		TemplateVersionID                            string
-		TemplateVersion                              int
-		TemplateHash                                 string
-		Rule                                         notification.Rule
-		RuleEvent                                    notification.RuleEvent
-		Silence                                      notification.SilenceWindow
-		AvailableAt                                  time.Time
-		AggregationUntil                             time.Time
+		RuleID, RuleScopeID, RouteID, ChannelID, ChannelVersionID string
+		ChannelVersion                                            int
+		ChannelConfigHash                                         string
+		TemplateVersionID                                         string
+		TemplateVersion                                           int
+		TemplateHash                                              string
+		Rule                                                      notification.Rule
+		RuleEvent                                                 notification.RuleEvent
+		Silence                                                   notification.SilenceWindow
+		AvailableAt                                               time.Time
+		AggregationUntil                                          time.Time
 	}
 	routes := []route{}
 	for rows.Next() {
@@ -571,7 +574,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		var filtersJSON, silenceJSON []byte
 		var minimumSeverity string
 		var cooldownSeconds, aggregationSeconds, maxBatchSize int
-		if err := rows.Scan(&item.RuleID, &item.RouteID, &item.ChannelID, &item.ChannelVersionID, &item.ChannelVersion, &item.ChannelConfigHash, &item.TemplateVersionID, &item.TemplateVersion, &item.TemplateHash, &eventTypes, &minimumSeverity, &filtersJSON, &cooldownSeconds, &aggregationSeconds, &maxBatchSize, &silenceJSON, &item.RuleEvent.Severity, &item.RuleEvent.ResourceID, &item.RuleEvent.FindingRule); err != nil {
+		if err := rows.Scan(&item.RuleID, &item.RuleScopeID, &item.RouteID, &item.ChannelID, &item.ChannelVersionID, &item.ChannelVersion, &item.ChannelConfigHash, &item.TemplateVersionID, &item.TemplateVersion, &item.TemplateHash, &eventTypes, &minimumSeverity, &filtersJSON, &cooldownSeconds, &aggregationSeconds, &maxBatchSize, &silenceJSON, &item.RuleEvent.Severity, &item.RuleEvent.ResourceID, &item.RuleEvent.FindingRule); err != nil {
 			rows.Close()
 			return err
 		}
@@ -606,7 +609,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 	for i := range routes {
 		route := &routes[i]
 		if !checkedRule[route.RuleID] {
-			allowed, err := reserveNotificationRuleCooldown(ctx, tx, event.ScopeID, route.RuleID, event, route.Rule.Cooldown)
+			allowed, err := reserveNotificationRuleCooldown(ctx, tx, route.RuleScopeID, route.RuleID, event, route.Rule.Cooldown)
 			if err != nil {
 				return err
 			}
@@ -634,7 +637,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		}
 		snapshot, err := json.Marshal(map[string]any{
 			"scope_id": event.ScopeID, "event_id": eventID, "policy_id": event.PolicyID, "event_type": event.Type,
-			"rule_id": route.RuleID, "route_id": route.RouteID,
+			"rule_id": route.RuleID, "rule_scope_id": route.RuleScopeID, "route_id": route.RouteID,
 			"channel_id": route.ChannelID, "channel_version_id": route.ChannelVersionID,
 			"channel_version": route.ChannelVersion, "channel_config_hash": route.ChannelConfigHash,
 			"template_version_id": route.TemplateVersionID, "template_version": route.TemplateVersion,
@@ -647,7 +650,7 @@ func (s *store) enqueueEventDeliveries(ctx context.Context, tx pgx.Tx, eventID s
 		}
 		snapshotHash := sha256.Sum256(snapshot)
 		idempotencyKey := eventID + ":" + route.RouteID
-		result, err := tx.Exec(ctx, `INSERT INTO notification_deliveries (scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,$8::uuid,NULLIF($9,'')::uuid,NULLIF($10,'')::uuid,$11,$12::jsonb,$13,$14) ON CONFLICT (idempotency_key) DO NOTHING`, event.ScopeID, eventID, event.PolicyID, route.RuleID, route.RouteID, route.ChannelID, route.ChannelVersionID, route.TemplateVersionID, event.FindingID, event.RunID, idempotencyKey, string(snapshot), hex.EncodeToString(snapshotHash[:]), route.AvailableAt)
+		result, err := tx.Exec(ctx, `INSERT INTO notification_deliveries (scope_id,rule_scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,$8::uuid,$9::uuid,NULLIF($10,'')::uuid,NULLIF($11,'')::uuid,$12,$13::jsonb,$14,$15) ON CONFLICT (idempotency_key) DO NOTHING`, event.ScopeID, route.RuleScopeID, eventID, event.PolicyID, route.RuleID, route.RouteID, route.ChannelID, route.ChannelVersionID, route.TemplateVersionID, event.FindingID, event.RunID, idempotencyKey, string(snapshot), hex.EncodeToString(snapshotHash[:]), route.AvailableAt)
 		if err != nil {
 			return mapError(err)
 		}
@@ -717,7 +720,7 @@ func (s *store) CreateConfiguredChannel(ctx context.Context, item NotificationCh
 		return NotificationChannel{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := tx.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,status,rate_limit_per_minute,config_version) VALUES($1::uuid,$2,$3,'https://encrypted.invalid/',$4,$5,1) RETURNING id::text`, item.ScopeID, item.Name, item.Kind, item.Status, item.RateLimitPerMinute).Scan(&item.ID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,status,rate_limit_per_minute,config_version,share_with_children) VALUES($1::uuid,$2,$3,'https://encrypted.invalid/',$4,$5,1,$6) RETURNING id::text`, item.ScopeID, item.Name, item.Kind, item.Status, item.RateLimitPerMinute, item.ShareWithChildren).Scan(&item.ID); err != nil {
 		return NotificationChannel{}, mapError(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO notification_channel_versions(scope_id,channel_id,version,provider_config_ciphertext,provider_config_hash,key_version) VALUES($1::uuid,$2::uuid,1,$3,$4,$5)`, item.ScopeID, item.ID, ciphertext, configHash, keyVersion); err != nil {
@@ -731,7 +734,7 @@ func (s *store) CreateConfiguredChannel(ctx context.Context, item NotificationCh
 }
 
 func (s *store) ListConfiguredChannels(ctx context.Context, scopeID string) ([]encryptedChannel, error) {
-	rows, err := s.pool.Query(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,'') FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.scope_id=$1::uuid AND channel.deleted_at IS NULL ORDER BY channel.created_at DESC`, scopeID)
+	rows, err := s.pool.Query(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,''),channel.share_with_children FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.deleted_at IS NULL AND (channel.scope_id=$1::uuid OR (channel.share_with_children AND resource_scope_contains(channel.scope_id,$1::uuid))) ORDER BY channel.created_at DESC`, scopeID)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -739,9 +742,10 @@ func (s *store) ListConfiguredChannels(ctx context.Context, scopeID string) ([]e
 	items := []encryptedChannel{}
 	for rows.Next() {
 		var item encryptedChannel
-		if err := rows.Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion); err != nil {
+		if err := rows.Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion, &item.Channel.ShareWithChildren); err != nil {
 			return nil, err
 		}
+		item.Channel.Inherited = item.Channel.ScopeID != scopeID
 		items = append(items, item)
 	}
 	return items, rows.Err()
@@ -749,10 +753,11 @@ func (s *store) ListConfiguredChannels(ctx context.Context, scopeID string) ([]e
 
 func (s *store) GetConfiguredChannel(ctx context.Context, id, scopeID string) (encryptedChannel, error) {
 	var item encryptedChannel
-	err := s.pool.QueryRow(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,'') FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.id=$1::uuid AND channel.scope_id=$2::uuid AND channel.deleted_at IS NULL`, id, scopeID).Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion)
+	err := s.pool.QueryRow(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,''),channel.share_with_children FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.id=$1::uuid AND channel.deleted_at IS NULL AND (channel.scope_id=$2::uuid OR (channel.share_with_children AND resource_scope_contains(channel.scope_id,$2::uuid)))`, id, scopeID).Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion, &item.Channel.ShareWithChildren)
 	if err == pgx.ErrNoRows {
 		return encryptedChannel{}, ErrNotFound
 	}
+	item.Channel.Inherited = item.Channel.ScopeID != scopeID
 	return item, mapError(err)
 }
 
@@ -763,7 +768,7 @@ func (s *store) UpdateConfiguredChannel(ctx context.Context, item NotificationCh
 	}
 	defer tx.Rollback(ctx)
 	var nextVersion int
-	err = tx.QueryRow(ctx, `UPDATE notification_channels SET name=$3,status=$4,rate_limit_per_minute=$5,config_version=config_version+1,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL RETURNING config_version`, item.ID, item.ScopeID, item.Name, item.Status, item.RateLimitPerMinute).Scan(&nextVersion)
+	err = tx.QueryRow(ctx, `UPDATE notification_channels SET name=$3,status=$4,rate_limit_per_minute=$5,share_with_children=CASE WHEN $6 THEN $7 ELSE share_with_children END,config_version=config_version+1,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL RETURNING config_version`, item.ID, item.ScopeID, item.Name, item.Status, item.RateLimitPerMinute, item.ShareWithChildrenSet, item.ShareWithChildren).Scan(&nextVersion)
 	if err == pgx.ErrNoRows {
 		return NotificationChannel{}, ErrNotFound
 	}
@@ -893,7 +898,7 @@ func mapError(err error) error {
 		return nil
 	}
 	var postgresError *pgconn.PgError
-	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
+	if errors.As(err, &postgresError) && (postgresError.Code == "23505" || postgresError.Code == "23514") {
 		return fmt.Errorf("inspection store: %w", ErrConflict)
 	}
 	return fmt.Errorf("inspection store: %w", err)

@@ -105,6 +105,10 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	if applied != len(items) {
 		t.Fatalf("applied migrations = %d, want %d", applied, len(items))
 	}
+	var grantedPermissions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions permission JOIN roles role ON role.id=permission.role_id WHERE role.name='PlatformAdmin' AND permission.permission=ANY(ARRAY['notification:read','notification:manage','notification:test','notification:retry'])`).Scan(&grantedPermissions); err != nil || grantedPermissions != 4 {
+		t.Fatalf("PlatformAdmin notification permissions = %d, %v", grantedPermissions, err)
+	}
 	var checksummed int
 	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations WHERE checksum IS NOT NULL").Scan(&checksummed); err != nil {
 		t.Fatalf("count checksummed migrations: %v", err)
@@ -242,7 +246,7 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	var applied int
+	var applied, grantedPermissions int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count applied migrations: %v", err)
 	}
@@ -256,7 +260,7 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url) VALUES($1::uuid,'rollback-dead-letter','webhook','https://example.test') RETURNING id::text`, scopeID).Scan(&channelID); err != nil {
 		t.Fatalf("create notification channel: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO notification_deliveries(scope_id,channel_id,idempotency_key,status) VALUES($1::uuid,$2::uuid,'rollback-dead-letter','dead_letter') RETURNING id::text`, scopeID, channelID).Scan(&deliveryID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO notification_deliveries(scope_id,rule_scope_id,channel_id,idempotency_key,status) VALUES($1::uuid,$1::uuid,$2::uuid,'rollback-dead-letter','dead_letter') RETURNING id::text`, scopeID, channelID).Scan(&deliveryID); err != nil {
 		t.Fatalf("create dead-letter delivery: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
@@ -268,17 +272,36 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if applied != len(items)-1 {
 		t.Fatalf("migrations after rollback = %d, want %d", applied, len(items)-1)
 	}
+	var ruleScopeColumn, retiredAtColumn, routeGuardTrigger bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='notification_deliveries' AND column_name='rule_scope_id'), EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='notification_rule_routes' AND column_name='retired_at'), EXISTS(SELECT 1 FROM pg_trigger trigger_row JOIN pg_class table_row ON table_row.oid=trigger_row.tgrelid JOIN pg_namespace schema_row ON schema_row.oid=table_row.relnamespace WHERE schema_row.nspname=current_schema() AND trigger_row.tgname='notification_rule_routes_validate_child_sharing_insert' AND NOT trigger_row.tgisinternal)`).Scan(&ruleScopeColumn, &retiredAtColumn, &routeGuardTrigger); err != nil || !ruleScopeColumn || !retiredAtColumn || routeGuardTrigger {
+		t.Fatalf("latest migration down = rule_scope:%t route_history:%t route_guard:%t, %v", ruleScopeColumn, retiredAtColumn, routeGuardTrigger, err)
+	}
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("reapply latest migration before testing domain rollback: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback latest channel migration: %v", err)
+		t.Fatalf("rollback notification route sharing migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification Scope inheritance migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification rule route history migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification permissions migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions WHERE permission LIKE 'notification:%'`).Scan(&grantedPermissions); err != nil || grantedPermissions != 0 {
+		t.Fatalf("notification permissions after permission migration down = %d, %v", grantedPermissions, err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification rule cooldown migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback notification template immutability migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback channel test-limit migration: %v", err)
+		t.Fatalf("rollback notification channel migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback notification domain migration: %v", err)
@@ -286,8 +309,8 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations after domain rollback: %v", err)
 	}
-	if applied != len(items)-4 {
-		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-4)
+	if applied != len(items)-8 {
+		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-8)
 	}
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {

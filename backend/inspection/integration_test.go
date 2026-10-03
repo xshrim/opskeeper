@@ -263,7 +263,7 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 		_ = wrongScopeTx.Rollback(ctx)
 		t.Fatal(err)
 	}
-	if _, err = wrongScopeTx.Exec(ctx, `INSERT INTO inspection_policy_notification_rules(scope_id,policy_id,rule_id) VALUES($1::uuid,$2::uuid,$3::uuid)`, wrongScope, policy, rule); err == nil {
+	if _, err = wrongScopeTx.Exec(ctx, `INSERT INTO inspection_policy_notification_rules(scope_id,policy_id,rule_id,rule_scope_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)`, wrongScope, policy, rule, scope); err == nil {
 		_ = wrongScopeTx.Rollback(ctx)
 		t.Fatal("cross-Scope policy rule binding succeeded, want foreign-key rejection")
 	}
@@ -361,7 +361,7 @@ func TestFindingNotificationEventsAreTransactional(t *testing.T) {
 		t.Fatal(err)
 	}
 	batchSnapshotHash := sha256.Sum256(routeSnapshot)
-	if _, err := pool.Exec(ctx, `INSERT INTO notification_deliveries(scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) SELECT scope_id,$2::uuid,policy_id,rule_id,route_id,channel_id,$3::uuid,$4::uuid,finding_id,run_id,$2::text||':'||route_id::text,$5::jsonb,$6,now() FROM notification_deliveries WHERE event_id=$1::uuid`, firstEvent, batchEvent, channelVersionID, templateVersionID, routeSnapshot, hex.EncodeToString(batchSnapshotHash[:])); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO notification_deliveries(scope_id,rule_scope_id,event_id,policy_id,rule_id,route_id,channel_id,channel_version_id,template_version_id,finding_id,run_id,idempotency_key,route_snapshot,snapshot_hash,available_at) SELECT scope_id,rule_scope_id,$2::uuid,policy_id,rule_id,route_id,channel_id,$3::uuid,$4::uuid,finding_id,run_id,$2::text||':'||route_id::text,$5::jsonb,$6,now() FROM notification_deliveries WHERE event_id=$1::uuid`, firstEvent, batchEvent, channelVersionID, templateVersionID, routeSnapshot, hex.EncodeToString(batchSnapshotHash[:])); err != nil {
 		t.Fatal(err)
 	}
 	notifier := NotificationWorker{Store: s, Cipher: cipher, Owner: "integration-worker", LeaseDuration: time.Minute, Sender: WebhookSender{Client: server.Client()}}

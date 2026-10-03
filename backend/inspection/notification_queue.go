@@ -73,9 +73,9 @@ func (s *store) ClaimNotificationDelivery(ctx context.Context, owner string, lea
 	       COALESCE((d.route_snapshot->>'aggregation_until')::timestamptz,d.available_at)
 		  FROM notification_deliveries d
 		  JOIN notification_events event ON event.id=d.event_id AND event.scope_id=d.scope_id
-		  JOIN notification_channels c ON c.id=d.channel_id AND c.scope_id=d.scope_id
-		  JOIN notification_channel_versions config ON config.id=d.channel_version_id AND config.scope_id=d.scope_id
-		  JOIN notification_template_versions template ON template.id=d.template_version_id AND template.scope_id=d.scope_id
+		  JOIN notification_channels c ON c.id=d.channel_id AND c.scope_id=d.rule_scope_id
+		  JOIN notification_channel_versions config ON config.id=d.channel_version_id AND config.scope_id=d.rule_scope_id
+		  JOIN notification_template_versions template ON template.id=d.template_version_id AND template.scope_id=d.rule_scope_id
 		 WHERE ((d.status='queued' AND d.available_at<=now()) OR (d.status='delivering' AND d.lease_expires_at<=now()))
 		   AND (SELECT count(*) FROM notification_delivery_attempts attempt
 		         JOIN notification_deliveries recent ON recent.id=attempt.delivery_id
@@ -121,10 +121,10 @@ func (s *store) ClaimNotificationDelivery(ctx context.Context, owner string, lea
 			SELECT d.id::text,event.id::text,event.event_type,event.payload,d.attempt,d.max_attempts,d.created_at
 			  FROM notification_deliveries d
 			  JOIN notification_events event ON event.id=d.event_id AND event.scope_id=d.scope_id
-			 WHERE d.route_id=$1::uuid AND d.status='queued' AND d.created_at<=$2
-			   AND event.event_type=$3
-			 ORDER BY d.created_at,d.id
-			 FOR UPDATE OF d SKIP LOCKED LIMIT $4`, route.RouteID, route.AggregationUntil, route.EventType, route.MaxBatchSize-1)
+				 WHERE d.route_id=$1::uuid AND d.scope_id=$5::uuid AND d.status='queued' AND d.created_at<=$2
+				   AND event.event_type=$3
+				 ORDER BY d.created_at,d.id
+				 FOR UPDATE OF d SKIP LOCKED LIMIT $4`, route.RouteID, route.AggregationUntil, route.EventType, route.MaxBatchSize-1, route.ScopeID)
 		if err != nil {
 			return NotificationDeliveryJob{}, false, mapError(err)
 		}

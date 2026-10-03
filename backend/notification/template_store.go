@@ -35,6 +35,10 @@ type TemplateStore struct{ pool *pgxpool.Pool }
 func NewTemplateStore(pool *pgxpool.Pool) *TemplateStore { return &TemplateStore{pool: pool} }
 
 func (s *TemplateStore) Create(ctx context.Context, scopeID, name, actorID string, draft TemplateDraft) (NotificationTemplate, TemplateVersion, error) {
+	return s.CreateWithSharing(ctx, scopeID, name, actorID, false, draft)
+}
+
+func (s *TemplateStore) CreateWithSharing(ctx context.Context, scopeID, name, actorID string, shareWithChildren bool, draft TemplateDraft) (NotificationTemplate, TemplateVersion, error) {
 	validated, hash, err := ValidateTemplate(draft)
 	if err != nil {
 		return NotificationTemplate{}, TemplateVersion{}, err
@@ -45,7 +49,7 @@ func (s *TemplateStore) Create(ctx context.Context, scopeID, name, actorID strin
 	}
 	defer tx.Rollback(ctx)
 	var item NotificationTemplate
-	err = tx.QueryRow(ctx, `INSERT INTO notification_templates (scope_id, name, created_by) VALUES ($1::uuid, $2, NULLIF($3, '')::uuid) RETURNING id::text, scope_id::text, name, created_at`, scopeID, name, actorID).
+	err = tx.QueryRow(ctx, `INSERT INTO notification_templates (scope_id, name, created_by, share_with_children) VALUES ($1::uuid, $2, NULLIF($3, '')::uuid, $4) RETURNING id::text, scope_id::text, name, created_at`, scopeID, name, actorID, shareWithChildren).
 		Scan(&item.ID, &item.ScopeID, &item.Name, &item.CreatedAt)
 	if err != nil {
 		return NotificationTemplate{}, TemplateVersion{}, fmt.Errorf("create notification template: %w", err)

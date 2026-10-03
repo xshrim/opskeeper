@@ -95,15 +95,18 @@ type Run struct {
 }
 
 type NotificationChannel struct {
-	ID                 string            `json:"id"`
-	ScopeID            string            `json:"scope_id"`
-	Name               string            `json:"name"`
-	Kind               string            `json:"kind"`
-	Config             map[string]string `json:"config"`
-	ConfigVersion      int               `json:"config_version"`
-	Status             string            `json:"status"`
-	RateLimitPerMinute int               `json:"rate_limit_per_minute"`
-	WebhookURL         string            `json:"-"`
+	ID                   string            `json:"id"`
+	ScopeID              string            `json:"scope_id"`
+	Name                 string            `json:"name"`
+	Kind                 string            `json:"kind"`
+	Config               map[string]string `json:"config"`
+	ConfigVersion        int               `json:"config_version"`
+	Status               string            `json:"status"`
+	RateLimitPerMinute   int               `json:"rate_limit_per_minute"`
+	ShareWithChildren    bool              `json:"share_with_children"`
+	Inherited            bool              `json:"inherited,omitempty"`
+	ShareWithChildrenSet bool              `json:"-"`
+	WebhookURL           string            `json:"-"`
 }
 
 type NotificationProvider = notification.ProviderDescriptor

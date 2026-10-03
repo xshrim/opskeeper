@@ -22,7 +22,7 @@ func reserveNotificationRuleCooldown(ctx context.Context, tx pgx.Tx, scopeID, ru
 	if group == "" {
 		group = event.PolicyID
 	}
-	key := sha256.Sum256([]byte(string(event.Type) + ":" + group))
+	key := sha256.Sum256([]byte(string(event.Type) + ":" + event.ScopeID + ":" + group))
 	var reserved string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO notification_rule_cooldowns(scope_id,rule_id,cooldown_key,last_queued_at)
@@ -63,18 +63,23 @@ func (s *store) SetPolicyNotificationRules(ctx context.Context, scopeID, policyI
 	if !policyExists {
 		return nil, ErrNotFound
 	}
-	var validCount int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM notification_rules WHERE scope_id=$1::uuid AND id=ANY($2::uuid[]) AND status='active' AND deleted_at IS NULL`, scopeID, ids).Scan(&validCount); err != nil {
-		return nil, mapError(err)
-	}
-	if validCount != len(ids) {
-		return nil, fmt.Errorf("notification rule is unavailable in the policy Scope")
+	ruleScopes := make(map[string]string, len(ids))
+	for _, id := range ids {
+		var ownerScope string
+		err := tx.QueryRow(ctx, `SELECT rule.scope_id::text FROM notification_rules rule WHERE rule.id=$2::uuid AND rule.status='active' AND rule.deleted_at IS NULL AND `+notificationRuleVisibleToScope, scopeID, id).Scan(&ownerScope)
+		if err == pgx.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, mapError(err)
+		}
+		ruleScopes[id] = ownerScope
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM inspection_policy_notification_rules WHERE policy_id=$1::uuid AND scope_id=$2::uuid`, policyID, scopeID); err != nil {
 		return nil, mapError(err)
 	}
-	if len(ids) > 0 {
-		if _, err := tx.Exec(ctx, `INSERT INTO inspection_policy_notification_rules(scope_id,policy_id,rule_id) SELECT $1::uuid,$2::uuid,rule_id FROM unnest($3::uuid[]) AS rule_id`, scopeID, policyID, ids); err != nil {
+	for _, id := range ids {
+		if _, err := tx.Exec(ctx, `INSERT INTO inspection_policy_notification_rules(scope_id,policy_id,rule_id,rule_scope_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)`, scopeID, policyID, id, ruleScopes[id]); err != nil {
 			return nil, mapError(err)
 		}
 	}
@@ -85,7 +90,7 @@ func (s *store) SetPolicyNotificationRules(ctx context.Context, scopeID, policyI
 }
 
 func (s *store) ListPolicyNotificationRules(ctx context.Context, scopeID, policyID string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT policy_rule.rule_id::text FROM inspection_policy_notification_rules policy_rule JOIN inspection_policies policy ON policy.id=policy_rule.policy_id AND policy.scope_id=policy_rule.scope_id JOIN notification_rules rule ON rule.id=policy_rule.rule_id AND rule.scope_id=policy_rule.scope_id WHERE policy_rule.policy_id=$1::uuid AND policy_rule.scope_id=$2::uuid AND policy.deleted_at IS NULL AND rule.deleted_at IS NULL ORDER BY rule.name`, policyID, scopeID)
+	rows, err := s.pool.Query(ctx, `SELECT policy_rule.rule_id::text FROM inspection_policy_notification_rules policy_rule JOIN inspection_policies policy ON policy.id=policy_rule.policy_id AND policy.scope_id=policy_rule.scope_id JOIN notification_rules rule ON rule.id=policy_rule.rule_id AND rule.scope_id=policy_rule.rule_scope_id WHERE policy_rule.policy_id=$1::uuid AND policy_rule.scope_id=$2::uuid AND policy.deleted_at IS NULL AND rule.deleted_at IS NULL ORDER BY rule.name`, policyID, scopeID)
 	if err != nil {
 		return nil, mapError(err)
 	}

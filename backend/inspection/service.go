@@ -170,8 +170,8 @@ func (s *Service) ListFindings(ctx context.Context, scopeID string, limit int) (
 	return store.ListFindings(ctx, scopeID, limit)
 }
 func (s *Service) CreateChannel(ctx context.Context, item NotificationChannel) (NotificationChannel, error) {
-	if !allowsScope(ctx, item.ScopeID) {
-		return NotificationChannel{}, authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, item.ScopeID); err != nil {
+		return NotificationChannel{}, err
 	}
 	if strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.WebhookURL) == "" {
 		return NotificationChannel{}, invalid("channel name and webhook URL are required")
@@ -192,8 +192,8 @@ func (s *Service) CreateChannel(ctx context.Context, item NotificationChannel) (
 	return store.CreateChannel(ctx, item)
 }
 func (s *Service) ListChannels(ctx context.Context, scopeID string) ([]NotificationChannel, error) {
-	if !allowsScope(ctx, scopeID) {
-		return nil, authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, scopeID); err != nil {
+		return nil, err
 	}
 	if s.cipher != nil {
 		store, err := s.channelStore()
@@ -223,8 +223,8 @@ func (s *Service) ListChannels(ctx context.Context, scopeID string) ([]Notificat
 }
 
 func (s *Service) ListNotificationProviders(ctx context.Context, scopeID string) ([]NotificationProvider, error) {
-	if !allowsScope(ctx, scopeID) {
-		return nil, authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, scopeID); err != nil {
+		return nil, err
 	}
 	return s.providers.List(), nil
 }
@@ -232,8 +232,8 @@ func (s *Service) ListNotificationProviders(ctx context.Context, scopeID string)
 func (s *Service) CreateConfiguredChannel(ctx context.Context, item NotificationChannel, config map[string]string) (NotificationChannel, error) {
 	item.ScopeID, item.Name = strings.TrimSpace(item.ScopeID), strings.TrimSpace(item.Name)
 	item.Kind = strings.TrimSpace(item.Kind)
-	if !allowsScope(ctx, item.ScopeID) {
-		return NotificationChannel{}, authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, item.ScopeID); err != nil {
+		return NotificationChannel{}, err
 	}
 	if item.Name == "" || len(item.Name) > 120 {
 		return NotificationChannel{}, invalid("channel name must contain 1 to 120 characters")
@@ -269,8 +269,8 @@ func (s *Service) CreateConfiguredChannel(ctx context.Context, item Notification
 }
 
 func (s *Service) UpdateConfiguredChannel(ctx context.Context, scopeID, id string, patch NotificationChannel, config map[string]string) (NotificationChannel, error) {
-	if !allowsScope(ctx, scopeID) {
-		return NotificationChannel{}, authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, scopeID); err != nil {
+		return NotificationChannel{}, err
 	}
 	store, err := s.channelStore()
 	if err != nil {
@@ -279,6 +279,9 @@ func (s *Service) UpdateConfiguredChannel(ctx context.Context, scopeID, id strin
 	current, err := store.GetConfiguredChannel(ctx, id, scopeID)
 	if err != nil {
 		return NotificationChannel{}, err
+	}
+	if current.Channel.ScopeID != scopeID {
+		return NotificationChannel{}, authorization.ErrForbidden
 	}
 	currentConfig, err := s.decryptConfig(current)
 	if err != nil {
@@ -307,6 +310,10 @@ func (s *Service) UpdateConfiguredChannel(ctx context.Context, scopeID, id strin
 		}
 		current.Channel.RateLimitPerMinute = patch.RateLimitPerMinute
 	}
+	if patch.ShareWithChildrenSet {
+		current.Channel.ShareWithChildren = patch.ShareWithChildren
+	}
+	current.Channel.ShareWithChildrenSet = patch.ShareWithChildrenSet
 	ciphertext, keyVersion, hash, err := s.encryptConfig(merged)
 	if err != nil {
 		return NotificationChannel{}, err
@@ -320,8 +327,8 @@ func (s *Service) UpdateConfiguredChannel(ctx context.Context, scopeID, id strin
 }
 
 func (s *Service) DeleteConfiguredChannel(ctx context.Context, scopeID, id string) error {
-	if !allowsScope(ctx, scopeID) {
-		return authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, scopeID); err != nil {
+		return err
 	}
 	store, err := s.channelStore()
 	if err != nil {
@@ -331,8 +338,8 @@ func (s *Service) DeleteConfiguredChannel(ctx context.Context, scopeID, id strin
 }
 
 func (s *Service) TestConfiguredChannel(ctx context.Context, scopeID, id string) error {
-	if !allowsScope(ctx, scopeID) {
-		return authorization.ErrForbidden
+	if err := validateNotificationScope(ctx, scopeID); err != nil {
+		return err
 	}
 	store, err := s.channelStore()
 	if err != nil {
