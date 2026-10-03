@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
 	"opskeeper/backend/notification"
@@ -651,6 +653,111 @@ func (s *store) CreateChannel(ctx context.Context, item NotificationChannel) (No
 	item.Kind = "webhook"
 	return item, nil
 }
+
+func (s *store) CreateConfiguredChannel(ctx context.Context, item NotificationChannel, ciphertext []byte, keyVersion, configHash string) (NotificationChannel, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := tx.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,status,rate_limit_per_minute,config_version) VALUES($1::uuid,$2,$3,'https://encrypted.invalid/',$4,$5,1) RETURNING id::text`, item.ScopeID, item.Name, item.Kind, item.Status, item.RateLimitPerMinute).Scan(&item.ID); err != nil {
+		return NotificationChannel{}, mapError(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO notification_channel_versions(scope_id,channel_id,version,provider_config_ciphertext,provider_config_hash,key_version) VALUES($1::uuid,$2::uuid,1,$3,$4,$5)`, item.ScopeID, item.ID, ciphertext, configHash, keyVersion); err != nil {
+		return NotificationChannel{}, mapError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return NotificationChannel{}, err
+	}
+	item.ConfigVersion = 1
+	return item, nil
+}
+
+func (s *store) ListConfiguredChannels(ctx context.Context, scopeID string) ([]encryptedChannel, error) {
+	rows, err := s.pool.Query(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,'') FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.scope_id=$1::uuid AND channel.deleted_at IS NULL ORDER BY channel.created_at DESC`, scopeID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	defer rows.Close()
+	items := []encryptedChannel{}
+	for rows.Next() {
+		var item encryptedChannel
+		if err := rows.Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) GetConfiguredChannel(ctx context.Context, id, scopeID string) (encryptedChannel, error) {
+	var item encryptedChannel
+	err := s.pool.QueryRow(ctx, `SELECT channel.id::text,channel.scope_id::text,channel.name,channel.kind,channel.status,channel.rate_limit_per_minute,channel.config_version,channel.webhook_url,COALESCE(version.provider_config_ciphertext,''::bytea),COALESCE(version.key_version,'') FROM notification_channels channel LEFT JOIN notification_channel_versions version ON version.channel_id=channel.id AND version.version=channel.config_version WHERE channel.id=$1::uuid AND channel.scope_id=$2::uuid AND channel.deleted_at IS NULL`, id, scopeID).Scan(&item.Channel.ID, &item.Channel.ScopeID, &item.Channel.Name, &item.Channel.Kind, &item.Channel.Status, &item.Channel.RateLimitPerMinute, &item.Channel.ConfigVersion, &item.Channel.WebhookURL, &item.Ciphertext, &item.KeyVersion)
+	if err == pgx.ErrNoRows {
+		return encryptedChannel{}, ErrNotFound
+	}
+	return item, mapError(err)
+}
+
+func (s *store) UpdateConfiguredChannel(ctx context.Context, item NotificationChannel, ciphertext []byte, keyVersion, configHash string) (NotificationChannel, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	defer tx.Rollback(ctx)
+	var nextVersion int
+	err = tx.QueryRow(ctx, `UPDATE notification_channels SET name=$3,status=$4,rate_limit_per_minute=$5,config_version=config_version+1,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL RETURNING config_version`, item.ID, item.ScopeID, item.Name, item.Status, item.RateLimitPerMinute).Scan(&nextVersion)
+	if err == pgx.ErrNoRows {
+		return NotificationChannel{}, ErrNotFound
+	}
+	if err != nil {
+		return NotificationChannel{}, mapError(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO notification_channel_versions(scope_id,channel_id,version,provider_config_ciphertext,provider_config_hash,key_version) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6)`, item.ScopeID, item.ID, nextVersion, ciphertext, configHash, keyVersion); err != nil {
+		return NotificationChannel{}, mapError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return NotificationChannel{}, err
+	}
+	item.ConfigVersion = nextVersion
+	return item, nil
+}
+
+func (s *store) DeleteConfiguredChannel(ctx context.Context, id, scopeID string) error {
+	result, err := s.pool.Exec(ctx, `UPDATE notification_channels SET status='disabled',deleted_at=now(),updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL`, id, scopeID)
+	if err != nil {
+		return mapError(err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *store) ReserveChannelTest(ctx context.Context, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var limit int
+	var scopeID string
+	if err := tx.QueryRow(ctx, `SELECT rate_limit_per_minute,scope_id::text FROM notification_channels WHERE id=$1::uuid AND status='active' AND deleted_at IS NULL FOR UPDATE`, id).Scan(&limit, &scopeID); err == pgx.ErrNoRows {
+		return ErrNotFound
+	} else if err != nil {
+		return mapError(err)
+	}
+	var count int
+	err = tx.QueryRow(ctx, `INSERT INTO notification_channel_test_limits(channel_id,scope_id,window_started_at,attempts) VALUES($1::uuid,$2::uuid,date_trunc('minute',now()),1) ON CONFLICT(channel_id) DO UPDATE SET window_started_at=CASE WHEN notification_channel_test_limits.window_started_at < now()-interval '1 minute' THEN date_trunc('minute',now()) ELSE notification_channel_test_limits.window_started_at END,attempts=CASE WHEN notification_channel_test_limits.window_started_at < now()-interval '1 minute' THEN 1 ELSE notification_channel_test_limits.attempts+1 END RETURNING attempts`, id, scopeID).Scan(&count)
+	if err != nil {
+		return mapError(err)
+	}
+	if count > limit {
+		return ErrConflict
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *store) ListChannels(ctx context.Context, scopeID string) ([]NotificationChannel, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id::text,scope_id::text,name,kind,webhook_url,status,rate_limit_per_minute FROM notification_channels WHERE scope_id=$1::uuid AND deleted_at IS NULL ORDER BY created_at DESC`, scopeID)
 	if err != nil {
@@ -793,6 +900,10 @@ func errorText(err error) string {
 func mapError(err error) error {
 	if err == nil {
 		return nil
+	}
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
+		return fmt.Errorf("inspection store: %w", ErrConflict)
 	}
 	return fmt.Errorf("inspection store: %w", err)
 }

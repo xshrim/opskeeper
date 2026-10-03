@@ -22,6 +22,14 @@ type inspectionService interface {
 	SetPolicyStatus(context.Context, string, string, string) error
 }
 
+type notificationAdminService interface {
+	ListNotificationProviders(context.Context, string) ([]inspection.NotificationProvider, error)
+	CreateConfiguredChannel(context.Context, inspection.NotificationChannel, map[string]string) (inspection.NotificationChannel, error)
+	UpdateConfiguredChannel(context.Context, string, string, inspection.NotificationChannel, map[string]string) (inspection.NotificationChannel, error)
+	DeleteConfiguredChannel(context.Context, string, string) error
+	TestConfiguredChannel(context.Context, string, string) error
+}
+
 type inspectionHandler struct{ service inspectionService }
 type policyRequest struct {
 	ScopeID           string                         `json:"scope_id"`
@@ -39,11 +47,13 @@ type policyRequest struct {
 	Maintenance       []inspection.MaintenanceWindow `json:"maintenance"`
 }
 type channelRequest struct {
-	ScopeID            string `json:"scope_id"`
-	Name               string `json:"name"`
-	WebhookURL         string `json:"webhook_url"`
-	Status             string `json:"status"`
-	RateLimitPerMinute int    `json:"rate_limit_per_minute"`
+	ScopeID            string            `json:"scope_id"`
+	Name               string            `json:"name"`
+	Kind               string            `json:"kind"`
+	Config             map[string]string `json:"config"`
+	WebhookURL         string            `json:"webhook_url"`
+	Status             string            `json:"status"`
+	RateLimitPerMinute int               `json:"rate_limit_per_minute"`
 }
 
 func registerInspectionRoutes(router chi.Router, service inspectionService, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -63,8 +73,17 @@ func registerInspectionRoutes(router chi.Router, service inspectionService, requ
 	router.With(guard(authorization.InspectionManage)).Patch("/inspection-policies/{policyID}/status", h.setPolicyStatus)
 	router.With(guard(authorization.InspectionManage)).Get("/inspection-runs", h.listRuns)
 	router.With(guard(authorization.InspectionManage)).Get("/inspection-findings", h.listFindings)
-	router.With(guard(authorization.InspectionManage)).Post("/notification-channels", h.createChannel)
-	router.With(guard(authorization.InspectionManage)).Get("/notification-channels", h.listChannels)
+	if _, ok := service.(notificationAdminService); ok {
+		router.With(guard(authorization.InspectionManage)).Get("/notification-providers", h.listNotificationProviders)
+		router.With(guard(authorization.InspectionManage)).Post("/notification-channels", h.createConfiguredChannel)
+		router.With(guard(authorization.InspectionManage)).Get("/notification-channels", h.listChannels)
+		router.With(guard(authorization.InspectionManage)).Patch("/notification-channels/{channelID}", h.updateConfiguredChannel)
+		router.With(guard(authorization.InspectionManage)).Delete("/notification-channels/{channelID}", h.deleteConfiguredChannel)
+		router.With(guard(authorization.InspectionManage)).Post("/notification-channels/{channelID}/test", h.testConfiguredChannel)
+	} else {
+		router.With(guard(authorization.InspectionManage)).Post("/notification-channels", h.createChannel)
+		router.With(guard(authorization.InspectionManage)).Get("/notification-channels", h.listChannels)
+	}
 }
 func (h inspectionHandler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	var body policyRequest
@@ -144,6 +163,62 @@ func (h inspectionHandler) listChannels(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (h inspectionHandler) listNotificationProviders(w http.ResponseWriter, r *http.Request) {
+	service := h.service.(notificationAdminService)
+	items, err := service.ListNotificationProviders(r.Context(), r.URL.Query().Get("scope_id"))
+	if err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h inspectionHandler) createConfiguredChannel(w http.ResponseWriter, r *http.Request) {
+	var body channelRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	if body.Kind == "" && body.WebhookURL != "" {
+		body.Kind = "webhook"
+		body.Config = map[string]string{"url": body.WebhookURL}
+	}
+	item, err := h.service.(notificationAdminService).CreateConfiguredChannel(r.Context(), inspection.NotificationChannel{ScopeID: body.ScopeID, Name: body.Name, Kind: body.Kind, Status: body.Status, RateLimitPerMinute: body.RateLimitPerMinute}, body.Config)
+	if err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (h inspectionHandler) updateConfiguredChannel(w http.ResponseWriter, r *http.Request) {
+	var body channelRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := h.service.(notificationAdminService).UpdateConfiguredChannel(r.Context(), body.ScopeID, chi.URLParam(r, "channelID"), inspection.NotificationChannel{Name: body.Name, Status: body.Status, RateLimitPerMinute: body.RateLimitPerMinute}, body.Config)
+	if err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (h inspectionHandler) deleteConfiguredChannel(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.(notificationAdminService).DeleteConfiguredChannel(r.Context(), r.URL.Query().Get("scope_id"), chi.URLParam(r, "channelID")); err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h inspectionHandler) testConfiguredChannel(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.(notificationAdminService).TestConfiguredChannel(r.Context(), r.URL.Query().Get("scope_id"), chi.URLParam(r, "channelID")); err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
 func writeInspectionError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {

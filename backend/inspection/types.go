@@ -4,6 +4,8 @@ package inspection
 
 import "time"
 
+import "opskeeper/backend/notification"
+
 const (
 	PolicyActive   = "active"
 	PolicyDisabled = "disabled"
@@ -93,14 +95,18 @@ type Run struct {
 }
 
 type NotificationChannel struct {
-	ID                 string `json:"id"`
-	ScopeID            string `json:"scope_id"`
-	Name               string `json:"name"`
-	Kind               string `json:"kind"`
-	WebhookURL         string `json:"webhook_url"`
-	Status             string `json:"status"`
-	RateLimitPerMinute int    `json:"rate_limit_per_minute"`
+	ID                 string            `json:"id"`
+	ScopeID            string            `json:"scope_id"`
+	Name               string            `json:"name"`
+	Kind               string            `json:"kind"`
+	Config             map[string]string `json:"config"`
+	ConfigVersion      int               `json:"config_version"`
+	Status             string            `json:"status"`
+	RateLimitPerMinute int               `json:"rate_limit_per_minute"`
+	WebhookURL         string            `json:"-"`
 }
+
+type NotificationProvider = notification.ProviderDescriptor
 
 type Delivery struct {
 	ID, ScopeID, ChannelID, FindingID, RunID, EventType, IdempotencyKey, Status string

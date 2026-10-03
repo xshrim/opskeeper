@@ -22,7 +22,7 @@
 | 任务 | 名称 | 结果 | 证据 |
 |---|---|---|---|
 | T01 | 通知领域与事务事件 | 已完成 | `go test ./...`；`go vet ./...`；迁移与 inspection 集成测试，见下文 |
-| T02 | Provider 注册与通知渠道 | 待批准 | 实施后记录 provider 契约、密文、测试发送和限流测试 |
+| T02 | Provider 注册与通知渠道 | 已完成 | `go test ./...`；`go vet ./...`；PostgreSQL inspection channel 集成测试，provider catalog 单测 |
 | T03 | 模板版本与安全渲染 | 待批准 | 实施后记录版本、变量、预览和安全测试 |
 | T04 | 规则匹配与巡检关联 | 待批准 | 实施后记录匹配、冷却、聚合、静默和策略关联测试 |
 | T05 | PostgreSQL 队列与可靠投递 | 待批准 | 实施后记录 PostgreSQL、租约、重试、死信和非法配置测试 |
@@ -49,10 +49,16 @@
 
 ### T02 Provider 注册与通知渠道
 
-**结果：** 待批准
-**验收目标：** 待实施后填写。
-**验证步骤和结果：** 待实施后记录 provider 契约、密文、测试发送和限流测试。
-**遗留问题：** 待实施后填写。
+**结果：** 已完成
+**验收目标：** 建立可审计 provider 描述和 HTTPS Webhook 适配；提供通知渠道创建、列表、更新、软删除、测试发送；凭据加密保存并按渠道限流。
+
+**验证步骤和结果：**
+
+1. `cd backend && go test ./...`、`cd backend && go vet ./...`：通过。
+2. `OPSK_TEST_DATABASE_URL="$OPSK_DATABASE_URL" go test -tags=integration ./migrations ./inspection -count=1`：通过；验证 0072 迁移、两版本回滚/重放、通道配置加密、密钥不回传、版本递增、测试发送和渠道级限流。
+3. `backend/notification/providers_test.go`：通过；验证 HTTPS URL、嵌入凭据和未知配置拒绝，秘密字段脱敏，v1.6.0 provider 清单及不支持状态可枚举。
+
+**遗留问题：** Go-Notify v1.6.0 清单中除 HTTPS Webhook 外的 provider 在当前构建均显式标记不支持；不编译未使用的邮件、短信和平台 SDK。渠道测试发送的审计记录及细粒度 `notification:*` 权限由 T06 实施。渠道投递 Worker 对版本化密文的读取由 T05 实施。
 
 ### T03 模板版本与安全渲染
 

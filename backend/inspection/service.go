@@ -2,12 +2,18 @@ package inspection
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	"opskeeper/backend/authorization"
+	"opskeeper/backend/notification"
 	"opskeeper/backend/persona"
 	"opskeeper/backend/resource"
+	"opskeeper/backend/secret"
 )
 
 type ResourceReader interface {
@@ -22,6 +28,28 @@ type Service struct {
 	store     policyStore
 	resources ResourceReader
 	personas  PersonaReader
+	cipher    secret.Cipher
+	providers notification.ProviderRegistry
+	tester    NotificationTester
+}
+
+type NotificationTester interface {
+	Send(context.Context, NotificationChannel, []byte, WebhookEvent) (int, string, error)
+}
+
+type encryptedChannel struct {
+	Channel    NotificationChannel
+	Ciphertext []byte
+	KeyVersion string
+}
+
+type notificationChannelStore interface {
+	CreateConfiguredChannel(context.Context, NotificationChannel, []byte, string, string) (NotificationChannel, error)
+	ListConfiguredChannels(context.Context, string) ([]encryptedChannel, error)
+	GetConfiguredChannel(context.Context, string, string) (encryptedChannel, error)
+	UpdateConfiguredChannel(context.Context, NotificationChannel, []byte, string, string) (NotificationChannel, error)
+	DeleteConfiguredChannel(context.Context, string, string) error
+	ReserveChannelTest(context.Context, string) error
 }
 
 type policyStore interface {
@@ -30,11 +58,17 @@ type policyStore interface {
 }
 
 func NewService(store policyStore, resources ResourceReader, personas ...PersonaReader) *Service {
-	service := &Service{store: store, resources: resources}
+	service := &Service{store: store, resources: resources, providers: notification.DefaultProviderRegistry(), tester: WebhookSender{}}
 	if len(personas) > 0 {
 		service.personas = personas[0]
 	}
 	return service
+}
+
+func (s *Service) WithNotificationSecurity(cipher secret.Cipher, providers notification.ProviderRegistry) *Service {
+	s.cipher = cipher
+	s.providers = providers
+	return s
 }
 
 func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string) (Policy, error) {
@@ -161,11 +195,211 @@ func (s *Service) ListChannels(ctx context.Context, scopeID string) ([]Notificat
 	if !allowsScope(ctx, scopeID) {
 		return nil, authorization.ErrForbidden
 	}
+	if s.cipher != nil {
+		store, err := s.channelStore()
+		if err != nil {
+			return nil, err
+		}
+		encrypted, err := store.ListConfiguredChannels(ctx, scopeID)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]NotificationChannel, 0, len(encrypted))
+		for _, item := range encrypted {
+			config, err := s.decryptConfig(item)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt notification channel configuration")
+			}
+			item.Channel.Config = s.providers.PublicConfig(item.Channel.Kind, config)
+			items = append(items, item.Channel)
+		}
+		return items, nil
+	}
 	store, ok := s.store.(operationalStore)
 	if !ok {
 		return nil, invalid("notification store is unavailable")
 	}
 	return store.ListChannels(ctx, scopeID)
+}
+
+func (s *Service) ListNotificationProviders(ctx context.Context, scopeID string) ([]NotificationProvider, error) {
+	if !allowsScope(ctx, scopeID) {
+		return nil, authorization.ErrForbidden
+	}
+	return s.providers.List(), nil
+}
+
+func (s *Service) CreateConfiguredChannel(ctx context.Context, item NotificationChannel, config map[string]string) (NotificationChannel, error) {
+	item.ScopeID, item.Name = strings.TrimSpace(item.ScopeID), strings.TrimSpace(item.Name)
+	item.Kind = strings.TrimSpace(item.Kind)
+	if !allowsScope(ctx, item.ScopeID) {
+		return NotificationChannel{}, authorization.ErrForbidden
+	}
+	if item.Name == "" || len(item.Name) > 120 {
+		return NotificationChannel{}, invalid("channel name must contain 1 to 120 characters")
+	}
+	if err := s.providers.Validate(item.Kind, config); err != nil {
+		return NotificationChannel{}, invalid(err.Error())
+	}
+	if item.Status == "" {
+		item.Status = "active"
+	}
+	if item.Status != "active" && item.Status != "disabled" {
+		return NotificationChannel{}, invalid("invalid channel status")
+	}
+	if item.RateLimitPerMinute == 0 {
+		item.RateLimitPerMinute = 30
+	}
+	if item.RateLimitPerMinute < 1 || item.RateLimitPerMinute > 600 {
+		return NotificationChannel{}, invalid("channel rate limit must be between 1 and 600 per minute")
+	}
+	store, err := s.channelStore()
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	ciphertext, keyVersion, hash, err := s.encryptConfig(config)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	created, err := store.CreateConfiguredChannel(ctx, item, ciphertext, keyVersion, hash)
+	if err == nil {
+		created.Config = s.providers.PublicConfig(created.Kind, config)
+	}
+	return created, err
+}
+
+func (s *Service) UpdateConfiguredChannel(ctx context.Context, scopeID, id string, patch NotificationChannel, config map[string]string) (NotificationChannel, error) {
+	if !allowsScope(ctx, scopeID) {
+		return NotificationChannel{}, authorization.ErrForbidden
+	}
+	store, err := s.channelStore()
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	current, err := store.GetConfiguredChannel(ctx, id, scopeID)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	currentConfig, err := s.decryptConfig(current)
+	if err != nil {
+		return NotificationChannel{}, fmt.Errorf("decrypt notification channel configuration")
+	}
+	merged := s.providers.MergeConfig(current.Channel.Kind, currentConfig, config)
+	if err := s.providers.Validate(current.Channel.Kind, merged); err != nil {
+		return NotificationChannel{}, invalid(err.Error())
+	}
+	if patch.Name != "" {
+		patch.Name = strings.TrimSpace(patch.Name)
+		if patch.Name == "" || len(patch.Name) > 120 {
+			return NotificationChannel{}, invalid("channel name must contain 1 to 120 characters")
+		}
+		current.Channel.Name = patch.Name
+	}
+	if patch.Status != "" {
+		if patch.Status != "active" && patch.Status != "disabled" {
+			return NotificationChannel{}, invalid("invalid channel status")
+		}
+		current.Channel.Status = patch.Status
+	}
+	if patch.RateLimitPerMinute != 0 {
+		if patch.RateLimitPerMinute < 1 || patch.RateLimitPerMinute > 600 {
+			return NotificationChannel{}, invalid("channel rate limit must be between 1 and 600 per minute")
+		}
+		current.Channel.RateLimitPerMinute = patch.RateLimitPerMinute
+	}
+	ciphertext, keyVersion, hash, err := s.encryptConfig(merged)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	updated, err := store.UpdateConfiguredChannel(ctx, current.Channel, ciphertext, keyVersion, hash)
+	if err != nil {
+		return NotificationChannel{}, err
+	}
+	updated.Config = s.providers.PublicConfig(updated.Kind, merged)
+	return updated, nil
+}
+
+func (s *Service) DeleteConfiguredChannel(ctx context.Context, scopeID, id string) error {
+	if !allowsScope(ctx, scopeID) {
+		return authorization.ErrForbidden
+	}
+	store, err := s.channelStore()
+	if err != nil {
+		return err
+	}
+	return store.DeleteConfiguredChannel(ctx, id, scopeID)
+}
+
+func (s *Service) TestConfiguredChannel(ctx context.Context, scopeID, id string) error {
+	if !allowsScope(ctx, scopeID) {
+		return authorization.ErrForbidden
+	}
+	store, err := s.channelStore()
+	if err != nil {
+		return err
+	}
+	item, err := store.GetConfiguredChannel(ctx, id, scopeID)
+	if err != nil {
+		return err
+	}
+	if item.Channel.Status != "active" {
+		return ErrConflict
+	}
+	config, err := s.decryptConfig(item)
+	if err != nil {
+		return fmt.Errorf("decrypt notification channel configuration")
+	}
+	if err := store.ReserveChannelTest(ctx, id); err != nil {
+		return err
+	}
+	item.Channel.WebhookURL = config["url"]
+	if s.tester == nil {
+		return invalid("notification test sender is unavailable")
+	}
+	_, _, err = s.tester.Send(ctx, item.Channel, []byte(config["signing_secret"]), WebhookEvent{Type: "notification.test"})
+	if err != nil {
+		return fmt.Errorf("notification channel test failed")
+	}
+	return nil
+}
+
+func (s *Service) channelStore() (notificationChannelStore, error) {
+	store, ok := s.store.(notificationChannelStore)
+	if !ok {
+		return nil, invalid("notification store is unavailable")
+	}
+	if s.cipher == nil {
+		return nil, invalid("notification configuration encryption is unavailable")
+	}
+	return store, nil
+}
+
+func (s *Service) encryptConfig(config map[string]string) ([]byte, string, string, error) {
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return nil, "", "", err
+	}
+	ciphertext, keyVersion, err := s.cipher.Encrypt(encoded)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("encrypt notification channel configuration")
+	}
+	hash := sha256.Sum256(encoded)
+	return ciphertext, keyVersion, hex.EncodeToString(hash[:]), nil
+}
+
+func (s *Service) decryptConfig(item encryptedChannel) (map[string]string, error) {
+	if len(item.Ciphertext) == 0 && item.Channel.WebhookURL != "" {
+		return map[string]string{"url": item.Channel.WebhookURL}, nil
+	}
+	encoded, err := s.cipher.Decrypt(item.Ciphertext, item.KeyVersion)
+	if err != nil {
+		return nil, err
+	}
+	config := map[string]string{}
+	if err := json.Unmarshal(encoded, &config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 func (s *Service) SetPolicyStatus(ctx context.Context, scopeID, policyID, status string) error {
 	if !allowsScope(ctx, scopeID) {

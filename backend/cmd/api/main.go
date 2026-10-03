@@ -30,6 +30,7 @@ import (
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/mcp"
+	"opskeeper/backend/notification"
 	"opskeeper/backend/observability"
 	"opskeeper/backend/organization"
 	"opskeeper/backend/persona"
@@ -172,7 +173,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	personaCatalog := persona.NewPersonaCatalog(pool)
 	personaService := persona.NewService(personaVersions, personaCatalog)
 	personaResolver := persona.NewResolver(personaCatalog, personaVersions)
-	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService, personaCatalog)
+	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService, personaCatalog).WithNotificationSecurity(credentialEncryptor, notification.DefaultProviderRegistry())
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectorService.EngineProvider()
 	mcpProvider := mcpService.EngineProvider()

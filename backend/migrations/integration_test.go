@@ -268,6 +268,21 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if applied != len(items)-1 {
 		t.Fatalf("migrations after rollback = %d, want %d", applied, len(items)-1)
 	}
+	if err := Apply(ctx, pool); err != nil {
+		t.Fatalf("reapply latest migration before testing domain rollback: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback latest channel migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback notification domain migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
+		t.Fatalf("count migrations after domain rollback: %v", err)
+	}
+	if applied != len(items)-2 {
+		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-2)
+	}
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {
 		t.Fatalf("delivery status after rollback = %q, err %v; want failed", status, err)
