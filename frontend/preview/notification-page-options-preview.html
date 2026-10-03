@@ -1,0 +1,1726 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>通知中心页面方案预览</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f4f6f7;
+        --surface: #fffdfa;
+        --raised: #ffffff;
+        --subtle: #f4f0ed;
+        --text: #3a3431;
+        --muted: #716761;
+        --border: #e7ddd7;
+        --border-strong: #d6c7be;
+        --accent: #e7601b;
+        --accent-soft: #fff0e8;
+        --green: #286f50;
+        --green-soft: #e9f4ed;
+        --amber: #94601d;
+        --amber-soft: #fff4dc;
+        --red: #a84036;
+        --red-soft: #f9eae7;
+        --blue: #315f87;
+        --blue-soft: #eaf1f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--text);
+        background: var(--page);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        font-size: 13px;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .gallery-bar {
+        position: sticky;
+        z-index: 5;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 12px max(20px, calc((100vw - 1480px) / 2));
+        background: #fffdfa;
+        border-bottom: 1px solid var(--border);
+      }
+      .gallery-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--raised);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .gallery-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .gallery-nav a {
+        padding: 7px 10px;
+        color: var(--muted);
+        border-radius: 4px;
+      }
+      .gallery-nav a:hover,
+      .gallery-nav a:focus-visible {
+        color: var(--text);
+        background: var(--subtle);
+        outline: none;
+      }
+      main {
+        width: min(1480px, calc(100% - 40px));
+        margin: 22px auto 48px;
+      }
+      .option {
+        margin: 0 0 30px;
+        scroll-margin-top: 76px;
+      }
+      .option-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 0 10px;
+      }
+      .option-head h2 {
+        margin: 0 0 4px;
+        font-size: 17px;
+      }
+      .option-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .option-no {
+        margin-right: 7px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .app-window {
+        display: grid;
+        grid-template-columns: 205px minmax(0, 1fr);
+        min-height: 725px;
+        overflow: hidden;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        box-shadow: 0 3px 12px rgb(50 42 36 / 5%);
+      }
+      .app-nav {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        padding: 18px 12px 14px;
+        background: #fffdfa;
+        border-right: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 2px 8px 18px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .brand-mark {
+        display: grid;
+        width: 27px;
+        height: 27px;
+        place-items: center;
+        color: #fff;
+        background: #3c6358;
+        border-radius: 5px;
+        font-size: 13px;
+      }
+      .brand small {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 500;
+      }
+      .nav-caption {
+        padding: 10px 9px 6px;
+        color: #978a83;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 35px;
+        margin: 1px 0;
+        padding: 0 10px;
+        color: var(--muted);
+        border-radius: 4px;
+      }
+      .nav-item.active {
+        color: #3a3431;
+        background: #f1ebe6;
+        font-weight: 650;
+      }
+      .nav-glyph {
+        width: 15px;
+        color: #887970;
+        text-align: center;
+        font-size: 12px;
+      }
+      .nav-footer {
+        margin-top: auto;
+        padding: 12px 9px 0;
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+        font-size: 11px;
+      }
+      .workspace {
+        min-width: 0;
+        padding: 0 25px 20px;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 57px;
+        border-bottom: 1px solid var(--border);
+      }
+      .breadcrumb {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .user-chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .avatar {
+        display: grid;
+        width: 25px;
+        height: 25px;
+        place-items: center;
+        color: #fff;
+        background: #507b70;
+        border-radius: 50%;
+        font-size: 10px;
+      }
+      .page-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 17px 0 14px;
+      }
+      .page-heading h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        line-height: 1.25;
+      }
+      .page-heading p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .heading-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .scope-select,
+      .field input,
+      .field select,
+      .search {
+        min-height: 33px;
+        padding: 6px 9px;
+        color: var(--text);
+        background: var(--raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+      }
+      .scope-select {
+        max-width: 210px;
+      }
+      .button {
+        min-height: 32px;
+        padding: 6px 11px;
+        color: var(--text);
+        background: var(--raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .button:hover {
+        background: var(--subtle);
+      }
+      .button.primary {
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .button.primary:hover {
+        background: #d95716;
+      }
+      .button.small {
+        min-height: 26px;
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      .button:disabled {
+        cursor: not-allowed;
+        opacity: 0.52;
+      }
+      .tabs {
+        display: flex;
+        gap: 20px;
+        min-height: 38px;
+        border-bottom: 1px solid var(--border);
+      }
+      .tabs span {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--muted);
+        border-bottom: 2px solid transparent;
+        font-size: 12px;
+      }
+      .tabs .selected {
+        color: var(--text);
+        border-color: var(--accent);
+        font-weight: 700;
+      }
+      .count {
+        color: #93867e;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      .panel {
+        min-width: 0;
+        padding: 13px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .panel-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .panel-heading h3 {
+        margin: 0;
+        font-size: 12px;
+      }
+      .panel-heading p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .channel-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.12fr) minmax(270px, 0.88fr);
+        gap: 12px;
+        padding-top: 13px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+      }
+      th {
+        padding: 7px 6px;
+        color: #877a72;
+        border-bottom: 1px solid var(--border);
+        font-size: 10px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      td {
+        padding: 8px 6px;
+        border-bottom: 1px solid #eee8e4;
+        font-size: 11px;
+        vertical-align: middle;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .primary-cell {
+        display: block;
+        font-size: 11px;
+        font-weight: 650;
+      }
+      .secondary-cell {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 20px;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .status.ok {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+      .status.pending {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .status.fail {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+      .status.info {
+        color: var(--blue);
+        background: var(--blue-soft);
+      }
+      .status.neutral {
+        color: #665b54;
+        background: #f0ece8;
+      }
+      .channel-row-selected {
+        background: #fff9f5;
+      }
+      .channel-form {
+        display: grid;
+        gap: 9px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+      .field {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+      .field label,
+      .field-label {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .required {
+        margin-left: 3px;
+        color: var(--red);
+        vertical-align: middle;
+      }
+      .field input,
+      .field select {
+        width: 100%;
+        min-width: 0;
+        min-height: 31px;
+        font-size: 11px;
+      }
+      .field input:focus,
+      .field select:focus,
+      .search:focus {
+        outline: 2px solid #f5c6ad;
+        outline-offset: 1px;
+        border-color: var(--accent);
+      }
+      .form-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding-top: 2px;
+      }
+      .form-buttons {
+        display: flex;
+        gap: 6px;
+      }
+      .switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .toggle {
+        width: 26px;
+        height: 15px;
+        padding: 2px;
+        background: #c6beb8;
+        border-radius: 9px;
+      }
+      .toggle::after {
+        display: block;
+        width: 11px;
+        height: 11px;
+        content: '';
+        background: #fff;
+        border-radius: 50%;
+      }
+      .toggle.on {
+        background: #348163;
+      }
+      .toggle.on::after {
+        margin-left: 11px;
+      }
+      .support-grid {
+        display: grid;
+        grid-template-columns: 0.92fr 1fr 1.25fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .route-line {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+        align-items: center;
+        gap: 4px;
+        margin: 8px 0;
+      }
+      .route-node {
+        min-width: 0;
+        padding: 7px;
+        background: #f7f4f1;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+      }
+      .route-node strong {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 10px;
+      }
+      .route-node small {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .route-arrow {
+        color: #988b82;
+        text-align: center;
+      }
+      .helper {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.45;
+      }
+      .preview-output {
+        padding: 8px 9px;
+        color: #455550;
+        background: #f2f6f4;
+        border-left: 2px solid #4b8a70;
+        font-size: 10px;
+        line-height: 1.5;
+      }
+      .preview-output strong {
+        display: block;
+        margin-bottom: 3px;
+        color: #2c5142;
+      }
+      .delivery-table td {
+        padding-top: 7px;
+        padding-bottom: 7px;
+      }
+      .delivery-table td:last-child {
+        text-align: right;
+      }
+      .state-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+      }
+      .state-item {
+        min-width: 0;
+        padding: 7px 9px;
+        border-left: 2px solid var(--border-strong);
+      }
+      .state-item strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 10px;
+      }
+      .state-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.4;
+      }
+      .state-item.error {
+        border-color: var(--red);
+      }
+      .state-item.denied {
+        border-color: #6b7180;
+      }
+      .state-item.empty {
+        border-color: #8c9994;
+      }
+      .error-inline {
+        color: var(--red);
+      }
+      .option-b .app-window {
+        grid-template-columns: 205px minmax(0, 1fr);
+      }
+      .b-layout {
+        display: grid;
+        grid-template-columns: 134px minmax(0, 1fr);
+        min-height: 630px;
+      }
+      .section-rail {
+        padding: 18px 9px;
+        border-right: 1px solid var(--border);
+      }
+      .section-rail h3 {
+        margin: 0 0 10px 7px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .section-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 5px;
+        min-height: 33px;
+        padding: 0 8px;
+        color: var(--muted);
+        border-radius: 4px;
+        font-size: 11px;
+      }
+      .section-item.active {
+        color: var(--text);
+        background: #f1ebe6;
+        font-weight: 700;
+      }
+      .b-main {
+        min-width: 0;
+        padding: 0 17px 16px;
+      }
+      .b-master-detail {
+        display: grid;
+        grid-template-columns: minmax(190px, 0.68fr) minmax(300px, 1.32fr);
+        gap: 12px;
+        padding-top: 12px;
+      }
+      .channel-select {
+        display: grid;
+        gap: 3px;
+      }
+      .channel-choice {
+        padding: 9px;
+        border-bottom: 1px solid #eee8e4;
+      }
+      .channel-choice.active {
+        background: #fff7f2;
+        border-left: 2px solid var(--accent);
+      }
+      .channel-choice strong {
+        display: block;
+        font-size: 11px;
+      }
+      .channel-choice small {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .b-lower {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .rule-builder {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px 10px;
+      }
+      .rule-builder .field {
+        min-width: 0;
+      }
+      .b-deliveries {
+        margin-top: 12px;
+      }
+      .option-c .app-window {
+        min-height: 760px;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 9px;
+        padding: 12px 0;
+      }
+      .metric {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 9px;
+        padding: 9px 11px;
+        background: #f8f6f3;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .metric span {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .metric strong {
+        font-size: 15px;
+        font-variant-numeric: tabular-nums;
+      }
+      .c-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.12fr) minmax(290px, 0.88fr);
+        gap: 12px;
+      }
+      .c-left,
+      .c-right {
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        min-width: 0;
+      }
+      .quick-route {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) 18px minmax(
+            0,
+            1fr
+          );
+        align-items: center;
+        gap: 8px;
+      }
+      .quick-route .route-node {
+        text-align: center;
+      }
+      .c-recent {
+        margin-top: 12px;
+      }
+      .mobile-label {
+        display: none;
+      }
+      @media (max-width: 920px) {
+        main {
+          width: min(100% - 24px, 760px);
+          margin-top: 14px;
+        }
+        .gallery-bar {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 10px 12px;
+        }
+        .app-window,
+        .option-b .app-window {
+          grid-template-columns: 58px minmax(0, 1fr);
+        }
+        .app-nav {
+          padding: 12px 6px;
+        }
+        .brand {
+          justify-content: center;
+          padding: 2px 0 14px;
+        }
+        .brand > span:last-child,
+        .nav-caption,
+        .nav-item:not(.active),
+        .nav-item span:last-child,
+        .nav-footer {
+          display: none;
+        }
+        .nav-item {
+          justify-content: center;
+          padding: 0;
+          font-size: 0;
+        }
+        .nav-glyph {
+          font-size: 12px;
+        }
+        .workspace {
+          padding: 0 12px 16px;
+        }
+        .channel-workspace,
+        .b-master-detail,
+        .c-layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .support-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .support-grid > :last-child {
+          grid-column: 1 / -1;
+        }
+        .b-layout {
+          grid-template-columns: 104px minmax(0, 1fr);
+        }
+        .b-main {
+          padding-right: 10px;
+          padding-left: 10px;
+        }
+      }
+      @media (max-width: 600px) {
+        main {
+          width: calc(100% - 16px);
+        }
+        .option-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .app-window,
+        .option-b .app-window {
+          grid-template-columns: 1fr;
+        }
+        .app-nav {
+          display: none;
+        }
+        .topbar {
+          min-height: 46px;
+        }
+        .user-chip {
+          font-size: 0;
+        }
+        .page-heading {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .heading-actions {
+          width: 100%;
+          flex-wrap: wrap;
+        }
+        .scope-select {
+          flex: 1 1 170px;
+          max-width: none;
+        }
+        .tabs {
+          gap: 14px;
+          overflow-x: auto;
+        }
+        .tabs span {
+          flex: 0 0 auto;
+        }
+        .support-grid,
+        .state-strip,
+        .metrics {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .support-grid > :last-child {
+          grid-column: auto;
+        }
+        .state-item {
+          padding-top: 5px;
+          padding-bottom: 5px;
+        }
+        .b-layout {
+          grid-template-columns: 1fr;
+        }
+        .section-rail {
+          display: flex;
+          gap: 4px;
+          overflow-x: auto;
+          padding: 8px 0;
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .section-rail h3 {
+          display: none;
+        }
+        .section-item {
+          flex: 0 0 auto;
+        }
+        .b-main {
+          padding-right: 0;
+          padding-left: 0;
+        }
+        .b-lower,
+        .rule-builder,
+        .form-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .quick-route {
+          grid-template-columns: 1fr;
+        }
+        .quick-route .route-arrow {
+          transform: rotate(90deg);
+        }
+        .metrics {
+          gap: 6px;
+        }
+        .metric {
+          padding: 7px 9px;
+        }
+        .mobile-label {
+          display: inline;
+        }
+        .table-scroll {
+          overflow-x: auto;
+        }
+        .table-scroll table {
+          min-width: 520px;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        html {
+          scroll-behavior: smooth;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="gallery-bar">
+      <div class="gallery-title">
+        <span class="tag">T07 · 预览</span>通知中心页面方案
+      </div>
+      <nav class="gallery-nav" aria-label="候选方案">
+        <a href="#option-a">01 页签工作区</a>
+        <a href="#option-b">02 分栏管理</a>
+        <a href="#option-c">03 投递概览</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="option option-a" id="option-a" aria-labelledby="title-a">
+        <div class="option-head">
+          <div>
+            <h2 id="title-a">
+              <span class="option-no">方案 01</span>页签工作区
+            </h2>
+            <p>四类对象在同一层切换，渠道配置与近期路由、投递状态并列呈现。</p>
+          </div>
+          <span class="tag">熟悉 · 直接</span>
+        </div>
+        <div class="app-window">
+          <aside class="app-nav" aria-label="主导航">
+            <div class="brand">
+              <span class="brand-mark">O</span
+              ><span>OpsKeeper<small>智能值守平台</small></span>
+            </div>
+            <div class="nav-caption">WORKSPACE</div>
+            <div class="nav-item"><span class="nav-glyph">○</span>总览</div>
+            <div class="nav-item"><span class="nav-glyph">▱</span>项目</div>
+            <div class="nav-item"><span class="nav-glyph">▦</span>资源</div>
+            <div class="nav-item"><span class="nav-glyph">⌘</span>模型</div>
+            <div class="nav-item"><span class="nav-glyph">✓</span>技能</div>
+            <div class="nav-item"><span class="nav-glyph">⌕</span>诊断</div>
+            <div class="nav-item"><span class="nav-glyph">◇</span>巡检</div>
+            <div class="nav-item active">
+              <span class="nav-glyph">◉</span>通知
+            </div>
+            <div class="nav-item"><span class="nav-glyph">♙</span>权限</div>
+            <div class="nav-footer">林知远 · 平台管理员</div>
+          </aside>
+          <div class="workspace">
+            <div class="topbar">
+              <span class="breadcrumb">星河云科技 / 通知</span
+              ><span class="user-chip"
+                ><span class="avatar">林</span>林知远</span
+              >
+            </div>
+            <div class="page-heading">
+              <div>
+                <h1>通知中心</h1>
+                <p>管理通知渠道、模板、规则与投递</p>
+              </div>
+              <div class="heading-actions">
+                <select class="scope-select" aria-label="当前范围">
+                  <option>平台 · 星河云科技</option></select
+                ><button class="button primary">新建渠道</button>
+              </div>
+            </div>
+            <nav class="tabs" aria-label="通知管理区域">
+              <span class="selected">渠道 <b class="count">4</b></span
+              ><span>模板 <b class="count">12</b></span
+              ><span>规则 <b class="count">8</b></span
+              ><span>投递 <b class="count">342</b></span>
+            </nav>
+            <div class="channel-workspace">
+              <section class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>通知渠道</h3>
+                    <p>当前 Scope · 4 个渠道</p>
+                  </div>
+                  <input
+                    class="search"
+                    aria-label="搜索渠道"
+                    placeholder="搜索渠道"
+                    style="max-width: 170px"
+                  />
+                </div>
+                <div class="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>渠道</th>
+                        <th>类型</th>
+                        <th>状态</th>
+                        <th>范围</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="channel-row-selected">
+                        <td>
+                          <span class="primary-cell">北辰告警接入</span
+                          ><span class="secondary-cell">更新于 6 分钟前</span>
+                        </td>
+                        <td>Webhook</td>
+                        <td><span class="status ok">启用</span></td>
+                        <td>平台级</td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">生产值守群</span
+                          ><span class="secondary-cell">变更于 昨天 16:40</span>
+                        </td>
+                        <td>Webhook</td>
+                        <td><span class="status ok">启用</span></td>
+                        <td>团队共享</td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">邮件汇总</span
+                          ><span class="secondary-cell">每分钟 12 / 30 次</span>
+                        </td>
+                        <td>Email</td>
+                        <td><span class="status pending">受限</span></td>
+                        <td>项目级</td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">旧值班通道</span
+                          ><span class="secondary-cell"
+                            >最后测试 9 月 28 日</span
+                          >
+                        </td>
+                        <td>Webhook</td>
+                        <td><span class="status neutral">停用</span></td>
+                        <td>团队级</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <form class="panel channel-form" onsubmit="return false;">
+                <div class="panel-heading">
+                  <div>
+                    <h3>新建通知渠道</h3>
+                    <p>凭据保存后仅显示脱敏摘要</p>
+                  </div>
+                  <span class="tag">HTTPS</span>
+                </div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label>渠道名称<span class="required">*</span></label
+                    ><input value="北辰告警接入" />
+                  </div>
+                  <div class="field">
+                    <label>Provider<span class="required">*</span></label
+                    ><select>
+                      <option>HTTPS Webhook</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Webhook 地址<span class="required">*</span></label
+                    ><input value="https://notify.example.com/hooks/••••" />
+                  </div>
+                  <div class="field">
+                    <label>签名密钥<span class="required">*</span></label
+                    ><input value="••••••••••••••" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>每分钟上限</label
+                  ><input type="number" value="30" style="max-width: 110px" />
+                </div>
+                <div class="switch-row">
+                  <span>对子 Scope 可用</span
+                  ><span
+                    class="toggle on"
+                    role="switch"
+                    aria-checked="true"
+                    aria-label="对子 Scope 可用"
+                  ></span>
+                </div>
+                <div class="form-foot">
+                  <span class="secondary-cell">凭据已加密 · 最近测试成功</span>
+                  <div class="form-buttons">
+                    <button class="button small">发送测试</button
+                    ><button class="button primary small">保存渠道</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div class="support-grid">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h3>规则路由</h3>
+                  <span class="tag">启用</span>
+                </div>
+                <div class="route-line">
+                  <div class="route-node">
+                    <strong>支付接口异常</strong><small>严重级别 ≥ 高</small>
+                  </div>
+                  <span class="route-arrow">›</span>
+                  <div class="route-node">
+                    <strong>北辰告警接入</strong><small>冷却 10 分钟</small>
+                  </div>
+                </div>
+                <p class="helper">
+                  策略：支付核心巡检 · 聚合 2 分钟，最多 5 条
+                </p>
+              </section>
+              <section class="panel">
+                <div class="panel-heading">
+                  <h3>模板预览</h3>
+                  <span class="tag">事故通知 v3</span>
+                </div>
+                <div class="preview-output">
+                  <strong>【高危】支付接口异常</strong
+                  >项目：清算平台<br />资源：pay-api-03<br />摘要：连接池等待超过阈值<br />时间：10:42
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-heading">
+                  <h3>最近投递</h3>
+                  <a class="tag" href="#option-a">查看全部</a>
+                </div>
+                <div class="table-scroll">
+                  <table class="delivery-table">
+                    <tbody>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">finding.opened</span
+                          ><span class="secondary-cell"
+                            >支付核心巡检 · 10:42</span
+                          >
+                        </td>
+                        <td><span class="status ok">已送达</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">inspection.failed</span
+                          ><span class="secondary-cell">库存巡检 · 10:38</span>
+                        </td>
+                        <td><span class="status pending">等待重试</span></td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="primary-cell">finding.resolved</span
+                          ><span class="secondary-cell">订单服务 · 10:31</span>
+                        </td>
+                        <td><span class="status fail">死信</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+            <section class="state-strip" aria-label="页面状态预览">
+              <div class="state-item empty">
+                <strong>空状态</strong>
+                <p>
+                  当前 Scope 尚无渠道。<button class="button small">
+                    创建第一个渠道
+                  </button>
+                </p>
+              </div>
+              <div class="state-item error">
+                <strong>加载失败</strong>
+                <p class="error-inline">
+                  读取渠道失败 · 服务暂不可用
+                  <button class="button small">重试</button>
+                </p>
+              </div>
+              <div class="state-item denied">
+                <strong>无管理权限</strong>
+                <p>
+                  你可以查看渠道，编辑与测试操作不可用
+                  <button class="button small" disabled>保存渠道</button>
+                </p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="option option-b" id="option-b" aria-labelledby="title-b">
+        <div class="option-head">
+          <div>
+            <h2 id="title-b"><span class="option-no">方案 02</span>分栏管理</h2>
+            <p>
+              主导航旁增加通知二级导航，列表与详情长期同屏，适合频繁维护多项配置。
+            </p>
+          </div>
+          <span class="tag">管理 · 高密度</span>
+        </div>
+        <div class="app-window">
+          <aside class="app-nav" aria-label="主导航">
+            <div class="brand">
+              <span class="brand-mark">O</span
+              ><span>OpsKeeper<small>智能值守平台</small></span>
+            </div>
+            <div class="nav-caption">WORKSPACE</div>
+            <div class="nav-item"><span class="nav-glyph">○</span>总览</div>
+            <div class="nav-item"><span class="nav-glyph">▱</span>项目</div>
+            <div class="nav-item"><span class="nav-glyph">▦</span>资源</div>
+            <div class="nav-item"><span class="nav-glyph">⌘</span>模型</div>
+            <div class="nav-item"><span class="nav-glyph">✓</span>技能</div>
+            <div class="nav-item"><span class="nav-glyph">⌕</span>诊断</div>
+            <div class="nav-item"><span class="nav-glyph">◇</span>巡检</div>
+            <div class="nav-item active">
+              <span class="nav-glyph">◉</span>通知
+            </div>
+            <div class="nav-item"><span class="nav-glyph">♙</span>权限</div>
+            <div class="nav-footer">林知远 · 平台管理员</div>
+          </aside>
+          <div class="b-layout">
+            <aside class="section-rail" aria-label="通知中心区域">
+              <h3>通知中心</h3>
+              <div class="section-item active">
+                渠道 <span class="count">4</span>
+              </div>
+              <div class="section-item">模板 <span class="count">12</span></div>
+              <div class="section-item">规则 <span class="count">8</span></div>
+              <div class="section-item">
+                投递 <span class="count">342</span>
+              </div>
+            </aside>
+            <div class="b-main">
+              <div class="topbar">
+                <span class="breadcrumb">星河云科技 / 通知 / 渠道</span
+                ><span class="user-chip"
+                  ><span class="avatar">林</span>林知远</span
+                >
+              </div>
+              <div class="page-heading">
+                <div>
+                  <h1>渠道</h1>
+                  <p>星河云科技 · 平台 Scope</p>
+                </div>
+                <div class="heading-actions">
+                  <select class="scope-select">
+                    <option>平台 · 星河云科技</option></select
+                  ><button class="button primary">新建渠道</button>
+                </div>
+              </div>
+              <div class="b-master-detail">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>渠道列表 <span class="count">4</span></h3>
+                  </div>
+                  <input
+                    class="search"
+                    placeholder="按名称或类型搜索"
+                    aria-label="搜索渠道"
+                  />
+                  <div class="channel-select" style="margin-top: 8px">
+                    <div class="channel-choice active">
+                      <strong>北辰告警接入</strong><small>Webhook · 启用</small>
+                    </div>
+                    <div class="channel-choice">
+                      <strong>生产值守群</strong
+                      ><small>Webhook · 团队共享</small>
+                    </div>
+                    <div class="channel-choice">
+                      <strong>邮件汇总</strong><small>Email · 受限</small>
+                    </div>
+                    <div class="channel-choice">
+                      <strong>旧值班通道</strong><small>Webhook · 已停用</small>
+                    </div>
+                  </div>
+                  <button class="button small" style="margin-top: 8px">
+                    添加渠道
+                  </button>
+                </section>
+                <form class="panel channel-form" onsubmit="return false;">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>北辰告警接入</h3>
+                      <p>最近更新 · 10 月 3 日 09:18</p>
+                    </div>
+                    <span class="status ok">启用</span>
+                  </div>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>名称<span class="required">*</span></label
+                      ><input value="北辰告警接入" />
+                    </div>
+                    <div class="field">
+                      <label>Provider</label
+                      ><select>
+                        <option>HTTPS Webhook</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Webhook 地址<span class="required">*</span></label
+                      ><input value="https://notify.example.com/hooks/••••" />
+                    </div>
+                    <div class="field">
+                      <label>签名密钥</label><input value="••••••••••••" />
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>每分钟上限</label
+                      ><input type="number" value="30" />
+                    </div>
+                    <div class="field">
+                      <label>状态</label
+                      ><select>
+                        <option>启用</option>
+                        <option>停用</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="switch-row">
+                    <span>对子 Scope 可用</span
+                    ><span
+                      class="toggle on"
+                      role="switch"
+                      aria-checked="true"
+                      aria-label="对子 Scope 可用"
+                    ></span>
+                  </div>
+                  <p class="helper">
+                    秘密字段不会再次显示；留空保持现有密钥。团队「支付研发」可只读使用该渠道。
+                  </p>
+                  <div class="form-foot">
+                    <button class="button small">发送测试</button>
+                    <div class="form-buttons">
+                      <button class="button small">取消</button
+                      ><button class="button primary small">保存更改</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+              <div class="b-lower">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>路由摘要 · 支付核心巡检</h3>
+                    <span class="tag">规则启用</span>
+                  </div>
+                  <div class="rule-builder">
+                    <div class="field">
+                      <label>事件类型</label
+                      ><select>
+                        <option>Finding 新建 / 恢复</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>最低级别</label
+                      ><select>
+                        <option>高</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>渠道</label
+                      ><select>
+                        <option>北辰告警接入</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>模板</label
+                      ><select>
+                        <option>事故通知 v3</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>冷却</label><input value="10 分钟" />
+                    </div>
+                    <div class="field">
+                      <label>聚合</label><input value="2 分钟 · 最多 5 条" />
+                    </div>
+                  </div>
+                  <p class="helper">
+                    恢复事件不受冷却抑制 · 静默窗口：工作日 00:00–07:00
+                  </p>
+                </section>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>模板预览</h3>
+                    <span class="tag">事故通知 v3</span>
+                  </div>
+                  <div class="preview-output">
+                    <strong>【高危】支付接口异常</strong
+                    >项目：清算平台<br />资源：pay-api-03<br />摘要：连接池等待超过阈值
+                  </div>
+                  <p class="helper">
+                    使用脱敏模拟数据 · 已发布版本不可原地修改
+                  </p>
+                </section>
+              </div>
+              <section class="panel b-deliveries">
+                <div class="panel-heading">
+                  <h3>近期投递</h3>
+                  <a class="tag" href="#option-b">打开投递记录</a>
+                </div>
+                <div class="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>事件</th>
+                        <th>目标</th>
+                        <th>时间</th>
+                        <th>尝试</th>
+                        <th>状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>finding.opened</td>
+                        <td>北辰告警接入</td>
+                        <td>10:42</td>
+                        <td>1</td>
+                        <td><span class="status ok">已送达</span></td>
+                      </tr>
+                      <tr>
+                        <td>inspection.failed</td>
+                        <td>北辰告警接入</td>
+                        <td>10:38</td>
+                        <td>2</td>
+                        <td><span class="status pending">等待重试</span></td>
+                      </tr>
+                      <tr>
+                        <td>finding.resolved</td>
+                        <td>北辰告警接入</td>
+                        <td>10:31</td>
+                        <td>5</td>
+                        <td><span class="status fail">死信</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="state-strip" aria-label="页面状态预览">
+                <div class="state-item empty">
+                  <strong>空状态</strong>
+                  <p>没有可用渠道，可从此处新建。</p>
+                </div>
+                <div class="state-item error">
+                  <strong>错误</strong>
+                  <p class="error-inline">
+                    渠道测试超时 · 检查地址与证书
+                    <button class="button small">重新测试</button>
+                  </p>
+                </div>
+                <div class="state-item denied">
+                  <strong>只读权限</strong>
+                  <p>继承渠道可查看详情，配置项保持禁用。</p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="option option-c" id="option-c" aria-labelledby="title-c">
+        <div class="option-head">
+          <div>
+            <h2 id="title-c"><span class="option-no">方案 03</span>投递概览</h2>
+            <p>
+              优先呈现队列健康和最近结果，配置内容围绕规则路由与发送链路组织。
+            </p>
+          </div>
+          <span class="tag">运维 · 状态优先</span>
+        </div>
+        <div class="app-window">
+          <aside class="app-nav" aria-label="主导航">
+            <div class="brand">
+              <span class="brand-mark">O</span
+              ><span>OpsKeeper<small>智能值守平台</small></span>
+            </div>
+            <div class="nav-caption">WORKSPACE</div>
+            <div class="nav-item"><span class="nav-glyph">○</span>总览</div>
+            <div class="nav-item"><span class="nav-glyph">▱</span>项目</div>
+            <div class="nav-item"><span class="nav-glyph">▦</span>资源</div>
+            <div class="nav-item"><span class="nav-glyph">⌘</span>模型</div>
+            <div class="nav-item"><span class="nav-glyph">✓</span>技能</div>
+            <div class="nav-item"><span class="nav-glyph">⌕</span>诊断</div>
+            <div class="nav-item"><span class="nav-glyph">◇</span>巡检</div>
+            <div class="nav-item active">
+              <span class="nav-glyph">◉</span>通知
+            </div>
+            <div class="nav-item"><span class="nav-glyph">♙</span>权限</div>
+            <div class="nav-footer">林知远 · 平台管理员</div>
+          </aside>
+          <div class="workspace">
+            <div class="topbar">
+              <span class="breadcrumb">星河云科技 / 通知</span
+              ><span class="user-chip"
+                ><span class="avatar">林</span>林知远</span
+              >
+            </div>
+            <div class="page-heading">
+              <div>
+                <h1>通知概览</h1>
+                <p>平台 Scope · 更新于 10:44</p>
+              </div>
+              <div class="heading-actions">
+                <select class="scope-select">
+                  <option>平台 · 星河云科技</option></select
+                ><button class="button primary">新建规则</button>
+              </div>
+            </div>
+            <div class="metrics">
+              <div class="metric">
+                <span>活跃渠道</span
+                ><strong>4 <small class="count">/ 5</small></strong>
+              </div>
+              <div class="metric"><span>启用规则</span><strong>8</strong></div>
+              <div class="metric">
+                <span>待投递</span
+                ><strong style="color: var(--amber)">6</strong>
+              </div>
+              <div class="metric">
+                <span>死信</span><strong style="color: var(--red)">2</strong>
+              </div>
+            </div>
+            <nav class="tabs" aria-label="通知管理区域">
+              <span class="selected">概览</span
+              ><span>渠道 <b class="count">4</b></span
+              ><span>模板 <b class="count">12</b></span
+              ><span>规则 <b class="count">8</b></span
+              ><span>投递 <b class="count">342</b></span>
+            </nav>
+            <div class="c-layout" style="padding-top: 12px">
+              <div class="c-left">
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>渠道状态</h3>
+                      <p>通道健康与限流</p>
+                    </div>
+                    <button class="button small">管理渠道</button>
+                  </div>
+                  <div class="table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>渠道</th>
+                          <th>近 1 小时</th>
+                          <th>状态</th>
+                          <th>范围</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">北辰告警接入</span
+                            ><span class="secondary-cell"
+                              >Webhook · 30 / 分钟</span
+                            >
+                          </td>
+                          <td>38 次</td>
+                          <td><span class="status ok">正常</span></td>
+                          <td>平台</td>
+                        </tr>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">生产值守群</span
+                            ><span class="secondary-cell"
+                              >Webhook · 18 / 分钟</span
+                            >
+                          </td>
+                          <td>51 次</td>
+                          <td><span class="status ok">正常</span></td>
+                          <td>团队共享</td>
+                        </tr>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">邮件汇总</span
+                            ><span class="secondary-cell"
+                              >Email · 12 / 30 分钟</span
+                            >
+                          </td>
+                          <td>9 次</td>
+                          <td><span class="status pending">接近限流</span></td>
+                          <td>项目</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>规则路由</h3>
+                      <p>规则 → 渠道 → 已发布模板</p>
+                    </div>
+                    <button class="button small">查看规则</button>
+                  </div>
+                  <div class="quick-route">
+                    <div class="route-node">
+                      <strong>支付接口异常</strong
+                      ><small>高危 · Finding 新建</small>
+                    </div>
+                    <span class="route-arrow">›</span>
+                    <div class="route-node">
+                      <strong>北辰告警接入</strong
+                      ><small>平台共享 · 启用</small>
+                    </div>
+                    <span class="route-arrow">›</span>
+                    <div class="route-node">
+                      <strong>事故通知 v3</strong><small>2 分钟聚合</small>
+                    </div>
+                  </div>
+                </section>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>通知模板预览</h3>
+                    <span class="tag">事故通知 v3</span>
+                  </div>
+                  <div class="preview-output">
+                    <strong>【高危】支付接口异常</strong>项目：清算平台 ·
+                    资源：pay-api-03<br />摘要：连接池等待超过阈值 ·
+                    观察时间：10:42
+                  </div>
+                  <div class="form-foot">
+                    <span class="secondary-cell">变量均来自事件快照</span
+                    ><button class="button small">预览模板</button>
+                  </div>
+                </section>
+              </div>
+              <div class="c-right">
+                <form class="panel channel-form" onsubmit="return false;">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>快速新建渠道</h3>
+                      <p>新增的渠道默认仅当前 Scope 可用</p>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>渠道名称<span class="required">*</span></label
+                    ><input value="北辰告警接入" />
+                  </div>
+                  <div class="field">
+                    <label>Provider<span class="required">*</span></label
+                    ><select>
+                      <option>HTTPS Webhook</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Webhook 地址<span class="required">*</span></label
+                    ><input value="https://notify.example.com/hooks/••••" />
+                  </div>
+                  <div class="field">
+                    <label>签名密钥<span class="required">*</span></label
+                    ><input value="••••••••••••" />
+                  </div>
+                  <div class="field">
+                    <label>每分钟上限</label><input type="number" value="30" />
+                  </div>
+                  <div class="switch-row">
+                    <span>对子 Scope 可用</span
+                    ><span
+                      class="toggle"
+                      role="switch"
+                      aria-checked="false"
+                      aria-label="对子 Scope 可用"
+                    ></span>
+                  </div>
+                  <div class="form-foot">
+                    <button class="button small">测试连接</button
+                    ><button class="button primary small">创建渠道</button>
+                  </div>
+                </form>
+                <section class="panel">
+                  <div class="panel-heading">
+                    <h3>最新投递</h3>
+                    <a class="tag" href="#option-c">全部记录</a>
+                  </div>
+                  <div class="table-scroll">
+                    <table class="delivery-table">
+                      <tbody>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">finding.opened</span
+                            ><span class="secondary-cell">10:42 · 第 1 次</span>
+                          </td>
+                          <td><span class="status ok">已送达</span></td>
+                        </tr>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">inspection.failed</span
+                            ><span class="secondary-cell">10:38 · 第 2 次</span>
+                          </td>
+                          <td><span class="status pending">重试中</span></td>
+                        </tr>
+                        <tr>
+                          <td>
+                            <span class="primary-cell">finding.resolved</span
+                            ><span class="secondary-cell">10:31 · 第 5 次</span>
+                          </td>
+                          <td><span class="status fail">死信</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </div>
+            <section class="state-strip" aria-label="页面状态预览">
+              <div class="state-item empty">
+                <strong>暂无投递</strong>
+                <p>关联规则并产生事件后，投递记录会显示在此处。</p>
+              </div>
+              <div class="state-item error">
+                <strong>队列读取失败</strong>
+                <p class="error-inline">
+                  无法读取投递状态
+                  <button class="button small">重试加载</button>
+                </p>
+              </div>
+              <div class="state-item denied">
+                <strong>权限不足</strong>
+                <p>此范围仅授予渠道读取权限，管理入口保持禁用。</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
