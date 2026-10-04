@@ -59,10 +59,11 @@ type Project struct {
 }
 
 type ProjectSummary struct {
-	Applications int `json:"applications"`
-	Resources    int `json:"resources"`
-	Alerts       int `json:"alerts"`
-	Dependencies int `json:"dependencies"`
+	Applications        int `json:"applications"`
+	ApplicationsHealthy int `json:"applications_healthy"`
+	Resources           int `json:"resources"`
+	Alerts              int `json:"alerts"`
+	Dependencies        int `json:"dependencies"`
 }
 
 type Page[T any] struct {

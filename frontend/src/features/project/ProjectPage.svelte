@@ -10,6 +10,7 @@
     Network,
     Pencil,
     Plus,
+    Search,
     Server,
     Sparkles,
     Upload,
@@ -25,6 +26,7 @@
   } from '../../lib/api';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
   import ScopeChip from '../../components/ScopeChip.svelte';
 
   export let teams: Team[] = [];
@@ -96,10 +98,15 @@
   let relationAppId = '';
   let collapsedTeams = new Set<string>();
   let initializedTeamKey = '';
+  let projectSearch = '';
 
   $: if (!projectTeamId && teams[0]) projectTeamId = teams[0].id;
   $: selectedProject = visibleProjects.find((item) => item.id === selectedProjectId) ?? null;
-  $: groupedProjects = teams.map((team) => ({ team, projects: visibleProjects.filter((project) => project.team_id === team.id) }));
+  $: normalizedProjectSearch = projectSearch.trim().toLocaleLowerCase();
+  $: filteredProjects = normalizedProjectSearch
+    ? visibleProjects.filter((project) => [project.name, project.code].some((value) => value.toLocaleLowerCase().includes(normalizedProjectSearch)))
+    : visibleProjects;
+  $: groupedProjects = teams.map((team) => ({ team, projects: filteredProjects.filter((project) => project.team_id === team.id) }));
   $: teamKey = teams.map((team) => team.id).join(',');
   $: if (teamKey !== initializedTeamKey) {
     initializedTeamKey = teamKey;
@@ -166,6 +173,23 @@
     if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前更新`;
     if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前更新`;
     return `${Math.floor(elapsed / day)} 天前更新`;
+  }
+
+  function projectTags(project: Project) {
+    const hiddenLabels = new Set(['description', 'selector', 'source']);
+    return Object.entries(project.labels ?? {})
+      .filter(([key, value]) => !hiddenLabels.has(key) && !key.startsWith('opskeeper.') && value.trim())
+      .map(([, value]) => value.trim())
+      .slice(0, 3);
+  }
+
+  function healthyApplicationCount(project: Project) {
+    const healthy = project.summary.applications_healthy;
+    return typeof healthy === 'number' && Number.isFinite(healthy) ? healthy : 0;
+  }
+
+  function projectOverallStatusLabel(status: string) {
+    return ['active', 'healthy', 'up'].includes(status) ? '正常' : '异常';
   }
 
   function toggleTeam(teamID: string) {
@@ -427,7 +451,7 @@
 
 <section class="resource-map-page">
   {#if !selectedProject}
-    <header class="resource-map-header">
+    <header class="resource-map-header project-overview-header">
       <div class="project-page-heading">
         <span class="project-page-heading-icon" aria-hidden="true"><Map size={19} /></span>
         <div>
@@ -435,6 +459,7 @@
           <p>按团队查看项目分布，进入项目查看运行状态与资源关系。</p>
         </div>
       </div>
+      <SearchInput bind:value={projectSearch} className="project-overview-search" placeholder="搜索项目名称或编号" ariaLabel="搜索项目名称或编号" />
       <div class="resource-map-actions">
         <button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
       </div>
@@ -448,36 +473,39 @@
       <button class="secondary team-filter-add" type="button" disabled={busy} on:click={onOpenTeamDialog}><Plus size={14} />添加团队</button>
     </nav>
 
-    <div class="team-project-groups">
-      {#each groupedProjects as group}
-        {#if group.projects.length || !selectedScopeId}
-          {@const teamSelected = selectedScopeId === group.team.scope.id}
-          {@const teamCollapsed = collapsedTeams.has(group.team.id) && !teamSelected}
-          <section class="team-project-group">
-            <button class="group-heading group-heading-toggle" type="button" aria-expanded={!teamCollapsed} on:click={() => toggleTeam(group.team.id)}>
-              <span class="group-title"><EntityBrandIcon kind="Team" fallback={group.team.icon || 'lucide:UsersRound'} size={16} className="team-mark" /><span><h2>{group.team.name}</h2><small>{group.team.description || '团队项目'}</small></span></span>
-              <span class="group-heading-end"><span class="group-count">{group.projects.length} 个项目</span><span class:rotate={teamCollapsed} class="team-collapse-icon" aria-hidden="true"><ChevronDown size={16} /></span></span>
-            </button>
-            {#if !teamCollapsed}
-              <div class="project-card-grid">
-                {#each group.projects as project}
-                <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
-                  <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
-                  <span class="project-card-summary" aria-label="项目运行摘要"><span class="project-card-stat"><strong>{project.summary.applications}</strong><small>应用</small></span><span class="project-card-stat"><strong>{project.summary.resources}</strong><small>关联</small></span><span class="project-card-stat"><strong>{project.summary.dependencies}</strong><small>依赖</small></span><span class="project-card-stat"><strong>{project.summary.alerts}</strong><small>告警</small></span></span>
-                  <span class="project-card-meta"><span class="project-card-source"><span class="project-source-icon" aria-hidden="true">{#if project.source === 'kubernetes'}<Server size={13} />{:else if project.source === 'file'}<Upload size={13} />{:else}<Pencil size={13} />{/if}</span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{projectStatusLabel(project.status)}</span></span>
-                  <span class="project-card-footer"><span class="project-health {projectHealthTone(project)}">{projectHealthSummary(project)}</span><span class="project-card-updated"><Clock3 size={12} />{projectUpdatedLabel(project.updated_at)}</span></span>
-                </button>
-                {:else}
-                  <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>
-                {/each}
-              </div>
-            {/if}
-          </section>
-        {/if}
-      {:else}
-        <div class="map-empty"><Network size={28} /><h2>暂无可见项目</h2><p>创建第一个项目，开始构建项目全景图。</p><button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button></div>
-      {/each}
-    </div>
+    {#if normalizedProjectSearch && filteredProjects.length === 0}
+      <div class="map-empty project-search-empty"><Search size={28} /><h2>没有匹配项目</h2><p>未找到名称或编号包含“{projectSearch.trim()}”的项目。</p><button class="secondary" type="button" on:click={() => (projectSearch = '')}>清除搜索</button></div>
+    {:else}
+      <div class="team-project-groups">
+        {#each groupedProjects as group}
+          {#if group.projects.length || (!selectedScopeId && !normalizedProjectSearch)}
+            {@const teamSelected = selectedScopeId === group.team.scope.id}
+            {@const teamCollapsed = !normalizedProjectSearch && collapsedTeams.has(group.team.id) && !teamSelected}
+            <section class="team-project-group">
+              <button class="group-heading group-heading-toggle" type="button" aria-expanded={!teamCollapsed} on:click={() => toggleTeam(group.team.id)}>
+                <span class="group-title"><EntityBrandIcon kind="Team" fallback={group.team.icon || 'lucide:UsersRound'} size={16} className="team-mark" /><span><h2>{group.team.name}</h2><small>{group.team.description || '团队项目'}</small></span></span>
+                <span class="group-heading-end"><span class="group-count">{group.projects.length} 个项目</span><span class:rotate={teamCollapsed} class="team-collapse-icon" aria-hidden="true"><ChevronDown size={16} /></span></span>
+              </button>
+              {#if !teamCollapsed}
+                <div class="project-card-grid">
+                  {#each group.projects as project}
+                  <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
+                    <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
+                    <span class="project-card-middle"><span class="project-card-primary"><span class="project-card-application-health"><strong>{healthyApplicationCount(project)} / {project.summary.applications}</strong><small>正常应用</small></span><span class="project-card-tags" aria-label="项目标签">{#each projectTags(project) as tag}<span class="project-card-tag">{tag}</span>{/each}</span><span class="project-card-meta"><span class="project-card-source"><span class="project-source-dot" aria-hidden="true"></span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{projectOverallStatusLabel(project.status)}</span></span></span><span class="project-card-secondary-metrics" aria-label="项目运行统计"><span><small>关联资源</small><strong>{project.summary.resources}</strong></span><span><small>服务依赖</small><strong>{project.summary.dependencies}</strong></span><span><small>项目告警</small><strong class:warning={project.summary.alerts > 0}>{project.summary.alerts}</strong></span></span></span>
+                    <span class="project-card-footer"><span class="project-health {projectHealthTone(project)}">{projectHealthSummary(project)}</span><span class="project-card-updated"><Clock3 size={12} />{projectUpdatedLabel(project.updated_at)}</span></span>
+                  </button>
+                  {:else}
+                    <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          {/if}
+        {:else}
+          <div class="map-empty"><Network size={28} /><h2>暂无可见项目</h2><p>创建第一个项目，开始构建项目全景图。</p><button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button></div>
+        {/each}
+      </div>
+    {/if}
   {:else}
     <header class="workspace-header resource-map-header">
       <div class="workspace-title"><div class="project-heading"><button class="project-heading-back" type="button" data-tooltip="返回项目全景图" aria-label="返回项目全景图" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={18} /></button><div><h1><strong>项目驾驶舱</strong><small class="project-heading-english">PROJECT COCKPIT</small></h1><p class="project-heading-context">{teamName(selectedProject.team_id)} / {selectedProject.name} · {selectedProject.code}</p></div></div></div>

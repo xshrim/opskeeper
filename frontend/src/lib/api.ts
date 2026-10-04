@@ -84,6 +84,7 @@ export interface Project {
   last_synced_at?: string;
   summary: {
     applications: number;
+    applications_healthy: number;
     resources: number;
     alerts: number;
     dependencies: number;

@@ -17,6 +17,22 @@
   align-items: center;
 }
 
+.project-overview-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 320px) minmax(0, 1fr);
+  align-items: center;
+}
+
+.project-overview-header .resource-map-actions {
+  justify-self: end;
+}
+
+.project-overview-search {
+  justify-self: center;
+  width: 100%;
+  max-width: 320px;
+}
+
 .project-page-heading,
 .project-map-heading {
   display: flex;
@@ -254,7 +270,7 @@
 
 .project-map-card {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   min-height: 210px;
   padding: 15px;
   color: var(--theme-fg);
@@ -315,46 +331,122 @@
   font-weight: 600;
 }
 
-.project-card-meta {
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 16px;
-  color: var(--theme-fg-muted);
-  font-size: 11px;
-}
-
-.project-card-summary {
+.project-card-middle {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 19px;
-}
-
-.project-card-stat {
-  display: grid;
-  justify-items: center;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  align-content: center;
+  gap: 16px;
   min-width: 0;
-  gap: 4px;
-  text-align: center;
+  margin-top: 16px;
 }
 
-.project-card-stat strong,
-.project-card-stat small {
+.project-card-primary {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-card-application-health {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+  gap: 9px;
+  transform: translateY(3px);
+}
+
+.project-card-application-health strong,
+.project-card-application-health small,
+.project-card-tag {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-card-stat strong {
+.project-card-application-health strong {
   color: var(--theme-fg-strong);
-  font-size: 17px;
-  line-height: 1;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: .95;
 }
 
-.project-card-stat small {
+.project-card-application-health small {
+  color: var(--theme-fg-muted);
+  font-size: 9px;
+}
+
+.project-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  min-height: 24px;
+}
+
+.project-card-tag {
+  max-width: 120px;
+  padding: 4px 7px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.project-card-tag:first-child {
+  color: var(--theme-teal);
+  background: var(--theme-bg-accent-soft);
+}
+
+.project-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
   color: var(--theme-fg-muted);
   font-size: 11px;
+}
+
+.project-card-secondary-metrics {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.project-card-secondary-metrics > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+
+.project-card-secondary-metrics > span:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.project-card-secondary-metrics small {
+  color: var(--theme-fg-muted);
+  font-size: 9px;
+}
+
+.project-card-secondary-metrics strong {
+  color: var(--theme-fg-strong);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.project-card-secondary-metrics strong.warning {
+  color: var(--theme-warning);
 }
 
 .project-card-source,
@@ -366,12 +458,23 @@
 }
 
 .project-card-source {
+  flex: 1;
+  overflow: hidden;
   color: var(--theme-fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.project-source-icon {
-  display: inline-flex;
-  color: var(--theme-info);
+.project-card-meta .status-label {
+  flex: none;
+}
+
+.project-source-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--theme-success);
 }
 
 .project-card-footer {
@@ -451,6 +554,10 @@
   gap: 9px;
   padding: 18px;
   text-align: left;
+}
+
+.project-search-empty {
+  margin-top: 8px;
 }
 
 .workspace-title {
@@ -1221,6 +1328,21 @@
     margin-top: 15px;
   }
 
+  .project-overview-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .project-overview-search {
+    justify-self: stretch;
+    max-width: none;
+  }
+
+  .project-overview-header .resource-map-actions {
+    justify-self: start;
+  }
+
   .project-card-grid,
   .workspace-stats,
   .wizard-choice-grid,
@@ -1250,6 +1372,32 @@
   .wizard-form-grid,
   .map-side-column {
     grid-template-columns: 1fr;
+  }
+
+  .project-card-middle {
+    grid-template-columns: 1fr;
+  }
+
+  .project-card-application-health strong {
+    font-size: 30px;
+  }
+
+  .project-card-secondary-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .project-card-secondary-metrics > span {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 7px 3px 0;
+    border-top: 1px solid var(--theme-divider);
+    border-bottom: 0;
+  }
+
+  .project-card-secondary-metrics > span:last-child {
+    padding-bottom: 0;
   }
 
   .workspace-stat strong {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>项目卡片 · 十种静态设计预览</title>
+    <title>项目卡片 · 三十种静态设计预览</title>
     <style>
       :root {
         --theme-bg: #f8fafc;
@@ -385,6 +385,160 @@
       .v20 .secondary-metrics strong { color: var(--theme-fg-strong); font-size: 16px; }
       .v20 .secondary-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
 
+      /* 21-30 · 观感优化变体 */
+      .v21 .card-body, .v23 .card-body, .v26 .card-body, .v27 .card-body, .v29 .card-body { display: grid; align-content: center; gap: 13px; }
+      .v21 .breathing-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+      .v21 .breathing-metrics div { display: grid; justify-items: center; gap: 5px; min-width: 0; padding: 9px 3px 8px; background: var(--theme-subtle); border: 1px solid transparent; border-radius: 8px; }
+      .v21 .breathing-metrics div:first-child { background: var(--theme-accent-soft); border-color: var(--theme-border); }
+      .v21 .breathing-metrics strong { color: var(--theme-fg-strong); font-size: 20px; line-height: 1; }
+      .v21 .breathing-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v22 .card-body { display: grid; align-content: center; gap: 12px; }
+      .v22 .quad-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+      .v22 .quad-metrics div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding: 8px 9px; border-left: 3px solid var(--theme-border); background: var(--theme-subtle); border-radius: 0 5px 5px 0; }
+      .v22 .quad-metrics div:first-child { border-left-color: var(--theme-accent); }
+      .v22 .quad-metrics div:last-child { border-left-color: var(--theme-warning); }
+      .v22 .quad-metrics strong { color: var(--theme-fg-strong); font-size: 17px; }
+      .v22 .quad-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v23 .number-track { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 0 4px 8px; border-bottom: 1px solid var(--theme-divider); }
+      .v23 .number-track div { position: relative; display: grid; justify-items: center; gap: 5px; min-width: 0; }
+      .v23 .number-track div::after { position: absolute; bottom: -11px; width: 5px; height: 5px; background: var(--theme-accent); border: 2px solid var(--theme-raised); border-radius: 50%; content: ""; }
+      .v23 .number-track div:last-child::after { background: var(--theme-warning); }
+      .v23 .number-track strong { color: var(--theme-fg-strong); font-size: 18px; line-height: 1; }
+      .v23 .number-track small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v24 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 124px; align-items: center; gap: 14px; }
+      .v24 .primary-summary { display: grid; gap: 5px; padding: 11px 12px; background: var(--theme-accent-soft); border: 1px solid var(--theme-border); border-radius: 7px; }
+      .v24 .primary-summary strong { color: var(--theme-fg-strong); font-size: 38px; line-height: .88; }
+      .v24 .primary-summary span { color: var(--theme-fg-muted); font-size: 10px; }
+      .v24 .secondary-stack { display: grid; gap: 6px; }
+      .v24 .secondary-stack div { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; padding-bottom: 5px; border-bottom: 1px solid var(--theme-divider); }
+      .v24 .secondary-stack div:last-child { border-bottom: 0; }
+      .v24 .secondary-stack strong { color: var(--theme-fg-strong); font-size: 15px; }
+      .v24 .secondary-stack small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v25 .card-body { display: grid; align-content: center; gap: 7px; }
+      .v25 .aligned-list { display: grid; gap: 6px; }
+      .v25 .aligned-list div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 5px 2px; border-bottom: 1px dashed var(--theme-divider); }
+      .v25 .aligned-list div:last-child { border-bottom: 0; }
+      .v25 .aligned-list span { color: var(--theme-fg-muted); font-size: 10px; }
+      .v25 .aligned-list strong { color: var(--theme-fg-strong); font-size: 17px; }
+      .v25 .aligned-list strong.danger { color: var(--theme-danger); }
+
+      .v26 .ribbon-metrics { display: flex; flex-wrap: wrap; gap: 6px; }
+      .v26 .ribbon-metrics div { display: inline-flex; align-items: baseline; gap: 6px; min-height: 30px; padding: 0 9px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 999px; }
+      .v26 .ribbon-metrics div:first-child { background: var(--theme-accent-soft); }
+      .v26 .ribbon-metrics strong { color: var(--theme-fg-strong); font-size: 16px; }
+      .v26 .ribbon-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v27 .health-ribbon { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: var(--theme-success); background: var(--theme-success-soft); border: 1px solid var(--theme-border); border-radius: 6px; font-size: 10px; }
+      .v27 .health-ribbon i { width: 7px; height: 7px; flex: none; background: currentColor; border-radius: 50%; }
+      .v27 .health-ribbon strong { color: var(--theme-fg-strong); font-size: 11px; }
+      .v27 .health-ribbon span { margin-left: auto; }
+      .v27 .health-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      .v27 .health-metrics div { display: grid; justify-items: center; gap: 4px; }
+      .v27 .health-metrics strong { color: var(--theme-fg-strong); font-size: 17px; }
+      .v27 .health-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v28 .card-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 8px; }
+      .v28 .metric-column { display: grid; align-content: center; gap: 6px; padding: 9px 10px; background: var(--theme-subtle); border-radius: 6px; }
+      .v28 .metric-column:first-child { background: var(--theme-accent-soft); }
+      .v28 .metric-column div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--theme-border); }
+      .v28 .metric-column div:last-child { padding-bottom: 0; border-bottom: 0; }
+      .v28 .metric-column span { color: var(--theme-fg-muted); font-size: 9px; }
+      .v28 .metric-column strong { color: var(--theme-fg-strong); font-size: 17px; }
+
+      .v29 .summary-strip { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 12px 8px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 7px; }
+      .v29 .summary-strip div { display: grid; justify-items: center; gap: 4px; min-width: 0; flex: 1; }
+      .v29 .summary-strip div + div { border-left: 1px solid var(--theme-border); }
+      .v29 .summary-strip strong { color: var(--theme-fg-strong); font-size: 18px; line-height: 1; }
+      .v29 .summary-strip small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v30 .card-body { display: grid; align-content: center; gap: 9px; }
+      .v30 .progress-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 12px; }
+      .v30 .progress-metric { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 7px; min-width: 0; }
+      .v30 .progress-metric strong { color: var(--theme-fg-strong); font-size: 16px; }
+      .v30 .progress-metric span { display: grid; gap: 4px; min-width: 0; }
+      .v30 .progress-metric small { color: var(--theme-fg-muted); font-size: 9px; }
+      .v30 .progress-metric i { display: block; height: 4px; background: var(--theme-accent); border-radius: 999px; }
+      .v30 .progress-metric:last-child i { background: var(--theme-warning); }
+
+      /* 31-40 · 应用统计展示方案 */
+      .app-stat-showcase .card-body { display: grid; align-content: center; gap: 9px; }
+      .app-stat-showcase .app-stat-source { justify-content: space-between; gap: 10px; }
+      .app-stat-showcase .app-stat-source .source-inline { color: var(--theme-fg-muted); }
+      .app-stat-showcase .app-stat-source .health-dot { flex: none; color: var(--theme-success); }
+      .app-stat-showcase .project-tags { min-height: 20px; margin-top: 0; }
+      .app-stat { min-width: 0; }
+      .app-stat strong { color: var(--theme-fg-strong); }
+      .app-stat small, .app-stat span { color: var(--theme-fg-muted); }
+
+      .v31 .app-stat-hero { display: flex; align-items: baseline; gap: 8px; }
+      .v31 .app-stat-hero strong { font-size: 36px; line-height: .9; letter-spacing: .01em; }
+      .v31 .app-stat-hero span { font-size: 11px; }
+
+      .v32 .app-stat-bar { display: grid; gap: 6px; }
+      .v32 .app-stat-bar-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .v32 .app-stat-bar-head strong { font-size: 23px; }
+      .v32 .app-stat-bar-head span { font-size: 10px; }
+      .v32 .app-stat-bar-track { display: block; height: 6px; overflow: hidden; background: var(--theme-subtle); border-radius: 999px; }
+      .v32 .app-stat-bar-track i { display: block; width: 67%; height: 100%; background: var(--theme-success); border-radius: inherit; }
+
+      .v33 .app-stat-compare { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+      .v33 .app-stat-compare div { display: grid; gap: 3px; }
+      .v33 .app-stat-compare div:last-child { justify-items: end; text-align: right; }
+      .v33 .app-stat-compare strong { font-size: 25px; line-height: .9; }
+      .v33 .app-stat-compare small { font-size: 9px; }
+      .v33 .app-stat-compare em { width: 1px; height: 28px; background: var(--theme-divider); }
+
+      .v34 .app-stat-ring { display: flex; align-items: center; gap: 10px; }
+      .v34 .app-stat-ring-visual { display: grid; place-items: center; width: 46px; height: 46px; flex: none; background: conic-gradient(var(--theme-success) 0 67%, var(--theme-subtle) 67% 100%); border-radius: 50%; }
+      .v34 .app-stat-ring-visual::after { width: 32px; height: 32px; background: var(--theme-raised); border-radius: 50%; content: ""; }
+      .v34 .app-stat-ring-copy { display: grid; gap: 3px; }
+      .v34 .app-stat-ring-copy strong { font-size: 21px; line-height: 1; }
+      .v34 .app-stat-ring-copy small { font-size: 9px; }
+
+      .v35 .app-stat-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+      .v35 .app-stat-tiles div { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; padding: 7px 8px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; }
+      .v35 .app-stat-tiles div:first-child { background: var(--theme-success-soft); }
+      .v35 .app-stat-tiles strong { font-size: 18px; line-height: 1; }
+      .v35 .app-stat-tiles small { font-size: 9px; }
+
+      .v36 .app-stat-flow { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      .v36 .app-stat-flow strong { font-size: 30px; line-height: .9; }
+      .v36 .app-stat-flow span { font-size: 10px; }
+      .v36 .app-stat-flow i { width: 22px; height: 1px; flex: none; background: var(--theme-divider); }
+      .v36 .app-stat-flow b { color: var(--theme-fg-subtle); font-size: 11px; font-weight: 500; }
+
+      .v37 .app-stat-segments { display: grid; gap: 6px; }
+      .v37 .app-stat-segments-head { display: flex; align-items: baseline; gap: 7px; }
+      .v37 .app-stat-segments-head strong { font-size: 27px; line-height: .9; }
+      .v37 .app-stat-segments-head span { font-size: 10px; }
+      .v37 .app-stat-segments-bar { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+      .v37 .app-stat-segments-bar i { height: 6px; background: var(--theme-success); border-radius: 2px; }
+      .v37 .app-stat-segments-bar i:nth-last-child(-n+4) { background: var(--theme-subtle); }
+
+      .v38 .app-stat-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .v38 .app-stat-columns div { display: grid; gap: 3px; padding-left: 9px; border-left: 2px solid var(--theme-success); }
+      .v38 .app-stat-columns div:last-child { border-left-color: var(--theme-border-strong); }
+      .v38 .app-stat-columns strong { font-size: 24px; line-height: .9; }
+      .v38 .app-stat-columns small { font-size: 9px; }
+
+      .v39 .app-stat-list { display: grid; gap: 5px; }
+      .v39 .app-stat-list div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--theme-divider); }
+      .v39 .app-stat-list div:last-child { padding-bottom: 0; border-bottom: 0; }
+      .v39 .app-stat-list span { font-size: 10px; }
+      .v39 .app-stat-list strong { font-size: 17px; line-height: 1; }
+
+      .v40 .app-stat-callout { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; background: var(--theme-accent-soft); border: 1px solid var(--theme-border); border-radius: 6px; }
+      .v40 .app-stat-callout-copy { display: grid; gap: 4px; min-width: 0; }
+      .v40 .app-stat-callout-copy strong { font-size: 24px; line-height: .9; }
+      .v40 .app-stat-callout-copy small { font-size: 9px; }
+      .v40 .app-stat-callout-rate { display: grid; justify-items: end; gap: 3px; flex: none; }
+      .v40 .app-stat-callout-rate strong { color: var(--theme-success); font-size: 16px; }
+      .v40 .app-stat-callout-rate small { font-size: 9px; }
+
       @media (max-width: 900px) {
         .design-grid { grid-template-columns: 1fr; }
         .intro { align-items: start; flex-direction: column; }
@@ -396,11 +550,15 @@
         main { width: min(100% - 24px, 520px); padding-top: 24px; }
         .reference-bar { align-items: start; flex-direction: column; gap: 8px; }
         .project-card { min-height: 252px; }
-        .v2 .card-body, .v4 .card-body, .v8 .card-body, .v11 .card-body, .v13 .card-body, .v20 .card-body { grid-template-columns: 1fr; }
+        .v2 .card-body, .v4 .card-body, .v8 .card-body, .v11 .card-body, .v13 .card-body, .v20 .card-body, .v24 .card-body { grid-template-columns: 1fr; }
         .v2 .metric-rail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .v8 .activity-summary { grid-template-columns: repeat(2, 1fr); padding: 9px 0 0; border-top: 1px solid var(--theme-divider); border-left: 0; }
         .v16 .resource-row { grid-template-columns: 1fr; }
         .v20 .secondary-metrics { grid-template-columns: repeat(3, 1fr); }
+        .v21 .breathing-metrics, .v27 .health-metrics { gap: 3px; }
+        .v22 .quad-metrics, .v28 .card-body, .v30 .progress-metrics { gap: 6px; }
+        .v33 .app-stat-compare { gap: 7px; }
+        .v38 .app-stat-columns { gap: 7px; }
       }
     </style>
   </head>
@@ -428,7 +586,7 @@
           <div class="brand-copy"><strong>OpsKeeper</strong><small>项目全景图 · 卡片方案预览</small></div>
         </div>
         <div class="top-actions">
-          <small>10 种项目卡片布局</small>
+          <small>40 种项目卡片布局</small>
           <button class="tool-button" id="theme-toggle" type="button" aria-label="切换浅色和深色主题" title="切换浅色和深色主题"><svg aria-hidden="true"><use href="#i-sun"></use></svg><span>切换主题</span></button>
         </div>
       </header>
@@ -437,7 +595,7 @@
         <section class="intro">
           <div>
             <p class="eyebrow">PROJECT CARD STUDY</p>
-            <h1>项目卡片的十种信息编排</h1>
+            <h1>项目卡片的四十种信息编排</h1>
             <p class="intro-copy">这些方案只调整卡片内部的信息层级，不改变项目全景图的整体栅格。每张卡片都保留项目名称、编号、来源、状态、应用、资源、告警和依赖等信息，并将底部基线固定在同一位置，便于批量比较。</p>
           </div>
           <p class="intro-note"><strong>评审重点：</strong>信息是否能被快速扫描，状态是否足够突出，卡片底部留白与横线是否稳定，以及浅色、深色主题下文字与图标是否清晰。</p>
@@ -634,6 +792,204 @@
                 <div class="card-header"><div class="identity"><span class="entity-icon danger"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>订单履约系统</strong><small>ord001</small></span></div><span class="status-badge danger"><i></i>异常</span></div>
                 <div class="card-body"><div><div class="hero-metric"><strong>18</strong><span>个应用正在运行</span></div><div class="project-tags"><span class="project-tag accent">订单</span><span class="project-tag">核心链路</span><span class="project-tag">生产</span></div><div class="source-inline" style="margin-top:10px"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</div></div><div class="secondary-metrics"><div><small>关联资源</small><strong>42</strong></div><div><small>告警</small><strong class="danger">06</strong></div><div><small>应用依赖</small><strong>21</strong></div></div></div>
                 <div class="card-footer"><span class="footer-health danger"><strong>健康状态异常 · 6 条告警待处理</strong><small>最近状态更新 2 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="follow-up" aria-labelledby="visual-variants-title">
+          <div class="follow-up-header">
+            <div><p class="eyebrow">OPERATIONS SUMMARY · VISUAL BALANCE</p><h2 id="visual-variants-title">观感优化的十种延展方案</h2><p>保留项目身份、来源、状态、应用、关联、依赖、告警、健康说明和更新时间，只改变统计数字的空间组织方式，让信息更容易扫读，也减少“密密麻麻”的压迫感。</p></div>
+            <small>21 — 30 · 视觉平衡</small>
+          </div>
+
+          <div class="design-grid follow-up-grid" aria-label="运营摘要项目卡片观感优化方案">
+            <article class="design-item">
+              <div class="design-caption"><div><h2>21 · 呼吸留白</h2><p>四项统计放入轻量色块，数字之间留出呼吸感</p></div><small>留白型</small></div>
+              <div class="project-card v21">
+                <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="breathing-metrics"><div><strong>08</strong><small>应用</small></div><div><strong>21</strong><small>关联</small></div><div><strong>12</strong><small>依赖</small></div><div><strong>02</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>22 · 四象限指标</h2><p>两行两列分组，避免四个数字挤在同一条线上</p></div><small>分组型</small></div>
+              <div class="project-card v22">
+                <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-boxes"></use></svg></span><span class="identity-copy"><strong>数据集成平台</strong><small>etl001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</span></div>
+                <div class="card-body"><div class="quad-metrics"><div><small>应用</small><strong>06</strong></div><div><small>关联</small><strong>17</strong></div><div><small>依赖</small><strong>09</strong></div><div><small>告警</small><strong class="danger">01</strong></div></div><div class="project-tags"><span class="project-tag">数据链路</span><span class="project-tag accent">自动同步</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>有 1 项告警新增</strong><small>最近状态更新 8 分钟前</small></span><span class="footer-action">查看变化 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>23 · 状态刻度</h2><p>用一条轻轨串起四项数字，强化整体运行感</p></div><small>轨道型</small></div>
+              <div class="project-card v23">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>持续交付平台</strong><small>cic001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="number-track"><div><strong>15</strong><small>应用</small></div><div><strong>31</strong><small>关联</small></div><div><strong>13</strong><small>依赖</small></div><div><strong>00</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag">持续交付</span><span class="project-tag accent">自动同步</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>状态连续 12 次正常</strong><small>最近状态更新 1 分钟前</small></span><span class="footer-action">查看趋势 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>24 · 主次双栏</h2><p>保留方案 10 的主指标，同时把三项次级数据收进侧栏</p></div><small>主次型</small></div>
+              <div class="project-card v24">
+                <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-boxes"></use></svg></span><span class="identity-copy"><strong>支付结算平台</strong><small>pay042</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="primary-summary"><strong>14</strong><span>个应用</span></div><div class="secondary-stack"><div><small>关联</small><strong>36</strong></div><div><small>依赖</small><strong>11</strong></div><div><small>告警</small><strong class="danger">03</strong></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>健康度较昨日提升 3%</strong><small>最近状态更新 5 分钟前</small></span><span class="footer-action">查看健康度 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>25 · 对齐清单</h2><p>用规则化标签和值形成清晰的纵向扫描线</p></div><small>清单型</small></div>
+              <div class="project-card v25">
+                <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>消息通知服务</strong><small>msg001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div class="aligned-list"><div><span>应用</span><strong>11</strong></div><div><span>关联资源</span><strong>24</strong></div><div><span>应用依赖</span><strong>08</strong></div><div><span>告警</span><strong class="danger">01</strong></div></div><div class="project-tags"><span class="project-tag">消息队列</span><span class="project-tag accent">自动探测</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>所有应用实例均正常</strong><small>最近状态更新 2 分钟前</small></span><span class="footer-action">查看应用 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>26 · 数据胶囊</h2><p>将统计做成紧凑胶囊，视觉重量更轻，标签仍然明确</p></div><small>胶囊型</small></div>
+              <div class="project-card v26">
+                <div class="card-header"><div class="identity"><span class="entity-icon warn"><svg aria-hidden="true"><use href="#i-bell"></use></svg></span><span class="identity-copy"><strong>研发效能门户</strong><small>dev001</small></span></div><span class="status-badge warn"><i></i>需关注</span></div>
+                <div class="card-body"><div class="ribbon-metrics"><div><strong>10</strong><small>应用</small></div><div><strong>27</strong><small>关联</small></div><div><strong>08</strong><small>依赖</small></div><div><strong class="danger">05</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag">研发平台</span><span class="project-tag">持续交付</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>健康状态需关注 · 2 条超时</strong><small>最近状态更新 12 分钟前</small></span><span class="footer-action">处理告警 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>27 · 健康横幅</h2><p>先给健康状态一个安静的锚点，再放四项轻量数据</p></div><small>状态型</small></div>
+              <div class="project-card v27">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>审计日志中心</strong><small>aud001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div class="health-ribbon"><i></i><strong>运行状态良好</strong><span>健康度 96</span></div><div class="health-metrics"><div><strong>07</strong><small>应用</small></div><div><strong>19</strong><small>关联</small></div><div><strong>10</strong><small>依赖</small></div><div><strong>00</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag accent">日志审计</span><span class="project-tag">合规</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>所有依赖检查通过</strong><small>最近状态更新 7 分钟前</small></span><span class="footer-action">查看状态 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>28 · 双列摘要</h2><p>把应用与关联资源放在左侧，依赖与告警放在右侧</p></div><small>对照型</small></div>
+              <div class="project-card v28">
+                <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-map"></use></svg></span><span class="identity-copy"><strong>主机监控告警</strong><small>mon001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="metric-column"><div><span>应用</span><strong>09</strong></div><div><span>关联</span><strong>24</strong></div></div><div class="metric-column"><div><span>依赖</span><strong>16</strong></div><div><span>告警</span><strong>04</strong></div></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>4 条告警中有 1 条未确认</strong><small>最近状态更新 18 分钟前</small></span><span class="footer-action">查看资源 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>29 · 中央摘要条</h2><p>四项数据收进一个统一的摘要条，卡片更完整利落</p></div><small>摘要型</small></div>
+              <div class="project-card v29">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-git"></use></svg></span><span class="identity-copy"><strong>服务注册中心</strong><small>reg001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</span></div>
+                <div class="card-body"><div class="summary-strip"><div><strong>12</strong><small>应用</small></div><div><strong>28</strong><small>关联</small></div><div><strong>14</strong><small>依赖</small></div><div><strong>00</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag">服务治理</span><span class="project-tag accent">多集群</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 暂无告警</strong><small>最近状态更新 4 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>30 · 微型状态条</h2><p>数字与短进度条并置，更像运营仪表而不是数字堆</p></div><small>仪表型</small></div>
+              <div class="project-card v30">
+                <div class="card-header"><div class="identity"><span class="entity-icon danger"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>订单履约系统</strong><small>ord001</small></span></div><span class="status-badge danger"><i></i>异常</span></div>
+                <div class="card-body"><div class="progress-metrics"><div class="progress-metric"><strong>18</strong><span><small>应用</small><i style="width:82%"></i></span></div><div class="progress-metric"><strong>42</strong><span><small>关联</small><i style="width:92%"></i></span></div><div class="progress-metric"><strong>21</strong><span><small>依赖</small><i style="width:68%"></i></span></div><div class="progress-metric"><strong class="danger">06</strong><span><small>告警</small><i style="width:38%"></i></span></div></div><div class="project-tags"><span class="project-tag accent">订单</span><span class="project-tag">核心链路</span><span class="project-tag">生产</span></div></div>
+                <div class="card-footer"><span class="footer-health danger"><strong>健康状态异常 · 6 条告警待处理</strong><small>最近状态更新 2 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="follow-up" aria-labelledby="app-stat-options-title">
+          <div class="follow-up-header">
+            <div><p class="eyebrow">APPLICATION HEALTH · FOCUSED STUDY</p><h2 id="app-stat-options-title">应用统计展示的十种方案</h2><p>以下方案只替换卡片中间的应用统计块，统一保留来源/状态、项目标签、底部健康说明和最近更新时间，用来比较“正常应用数 / 应用总数”的不同视觉表达。</p></div>
+            <small>31 — 40 · 应用统计</small>
+          </div>
+
+          <div class="design-grid follow-up-grid" aria-label="应用统计展示方案">
+            <article class="design-item">
+              <div class="design-caption"><div><h2>31 · 比例主数</h2><p>保持原句式，但把比例做成单一视觉焦点</p></div><small>主数型</small></div>
+              <div class="project-card app-stat-showcase v31">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-hero"><strong>08 / 12</strong><span>个应用正常</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>32 · 正常率进度</h2><p>用短进度条表达正常应用占比，数字仍然清晰</p></div><small>进度型</small></div>
+              <div class="project-card app-stat-showcase v32">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-bar"><div class="app-stat-bar-head"><strong>08 / 12</strong><span>个应用正常</span></div><span class="app-stat-bar-track"><i></i></span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>33 · 两端对照</h2><p>把正常数和总数分列，减少斜杠带来的拥挤</p></div><small>对照型</small></div>
+              <div class="project-card app-stat-showcase v33">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-compare"><div><strong>08</strong><small>正常应用</small></div><em></em><div><strong>12</strong><small>应用总数</small></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>34 · 环形比例</h2><p>用小型环形比例建立健康感，不抢项目标题焦点</p></div><small>环形型</small></div>
+              <div class="project-card app-stat-showcase v34">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-ring"><span class="app-stat-ring-visual"></span><span class="app-stat-ring-copy"><strong>08 / 12</strong><small>个应用正常 · 67%</small></span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>35 · 双格状态</h2><p>正常数和总数各自落在轻量格子里，边界清楚</p></div><small>分格型</small></div>
+              <div class="project-card app-stat-showcase v35">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-tiles"><div><strong>08</strong><small>正常</small></div><div><strong>12</strong><small>总数</small></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>36 · 流程读法</h2><p>沿着“正常 → 总数”的阅读方向，语义最直白</p></div><small>流程型</small></div>
+              <div class="project-card app-stat-showcase v36">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-flow"><strong>08</strong><span>正常应用</span><i></i><b>12</b><span>全部应用</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>37 · 分段刻度</h2><p>保留数字主次，再用离散刻度提示正常覆盖范围</p></div><small>刻度型</small></div>
+              <div class="project-card app-stat-showcase v37">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-segments"><div class="app-stat-segments-head"><strong>08 / 12</strong><span>个应用正常</span></div><span class="app-stat-segments-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>38 · 双列标签</h2><p>左侧突出正常，右侧承载总量，扫读路径稳定</p></div><small>双列型</small></div>
+              <div class="project-card app-stat-showcase v38">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-columns"><div><strong>08</strong><small>正常应用</small></div><div><strong>12</strong><small>应用总数</small></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>39 · 纵向摘要</h2><p>用两行短摘要交代正常数与总量，适合窄卡片</p></div><small>摘要型</small></div>
+              <div class="project-card app-stat-showcase v39">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-list"><div><span>正常应用</span><strong>08</strong></div><div><span>应用总数</span><strong>12</strong></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>40 · 运营摘要块</h2><p>把比例和正常率收入一块柔和面板，信息最完整</p></div><small>摘要块型</small></div>
+              <div class="project-card app-stat-showcase v40">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="card-arrow"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+                <div class="card-body"><div class="source-row app-stat-source"><span class="source-inline"><i class="health-dot"></i>手动创建</span><span class="status-badge"><i></i>正常</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span></div><div class="app-stat app-stat-callout"><span class="app-stat-callout-copy"><strong>08 / 12</strong><small>个应用正常</small></span><span class="app-stat-callout-rate"><strong>67%</strong><small>正常率</small></span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
               </div>
             </article>
           </div>
