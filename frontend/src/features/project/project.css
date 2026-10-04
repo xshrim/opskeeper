@@ -332,8 +332,10 @@
 
 .project-card-stat {
   display: grid;
+  justify-items: center;
   min-width: 0;
   gap: 4px;
+  text-align: center;
 }
 
 .project-card-stat strong,
@@ -346,13 +348,13 @@
 
 .project-card-stat strong {
   color: var(--theme-fg-strong);
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1;
 }
 
 .project-card-stat small {
   color: var(--theme-fg-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .project-card-source,
@@ -369,7 +371,7 @@
 
 .project-source-icon {
   display: inline-flex;
-  color: var(--theme-accent);
+  color: var(--theme-info);
 }
 
 .project-card-footer {

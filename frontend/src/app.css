@@ -275,6 +275,7 @@ label:has(:required:user-invalid):not(:has(.field-error, .access-field-error))::
   --theme-success: #2f7956;
   --theme-warning: #a46719;
   --theme-danger: #bc4839;
+  --theme-info: #3979b9;
   --theme-required: #b84435;
   --theme-focus: rgba(231, 96, 27, 0.14);
   --theme-focus-strong: rgba(231, 96, 27, 0.24);
@@ -337,6 +338,7 @@ label:has(:required:user-invalid):not(:has(.field-error, .access-field-error))::
   --theme-success: #9fe4cf;
   --theme-warning: #f4d18a;
   --theme-danger: #ffb4a2;
+  --theme-info: #99c6f2;
   --theme-required: #63d8b7;
   --theme-focus: rgba(24, 162, 125, 0.18);
   --theme-focus-strong: rgba(24, 162, 125, 0.3);
