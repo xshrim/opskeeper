@@ -286,6 +286,105 @@
       .v10 .secondary-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
       .v10 .card-footer { background: var(--theme-subtle); margin-right: -16px; margin-left: -16px; padding: 11px 16px 0; }
 
+      /* 11-20 · 运营摘要变体 */
+      .follow-up { margin-top: 42px; padding-top: 30px; border-top: 1px solid var(--theme-border); }
+      .follow-up-header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+      .follow-up-header h2 { color: var(--theme-fg-strong); font-size: 19px; }
+      .follow-up-header p { max-width: 710px; margin-top: 7px; color: var(--theme-fg-muted); font-size: 11px; line-height: 1.55; }
+      .follow-up-header small { color: var(--theme-fg-subtle); font-size: 10px; white-space: nowrap; }
+      .follow-up-grid { margin-top: 0; }
+      .project-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+      .project-tag { display: inline-flex; align-items: center; min-height: 20px; padding: 0 6px; color: var(--theme-fg-muted); background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 4px; font-size: 9px; }
+      .project-tag.accent { color: var(--theme-accent-strong); background: var(--theme-accent-soft); }
+      .source-inline { display: inline-flex; align-items: center; gap: 5px; color: var(--theme-fg-muted); font-size: 9px; white-space: nowrap; }
+      .source-inline svg { width: 13px; height: 13px; color: var(--theme-info); }
+      .footer-health { display: grid; gap: 3px; min-width: 0; }
+      .footer-health strong, .footer-health small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .footer-health strong { color: var(--theme-fg-muted); font-size: 10px; font-weight: 650; }
+      .footer-health small { color: var(--theme-fg-subtle); font-size: 9px; }
+      .footer-health.success strong { color: var(--theme-success); }
+      .footer-health.warning strong { color: var(--theme-warning); }
+      .footer-health.danger strong { color: var(--theme-danger); }
+      .variant-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .variant-metric-grid div { display: grid; gap: 4px; min-width: 0; padding: 8px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; }
+      .variant-metric-grid strong { color: var(--theme-fg-strong); font-size: 17px; line-height: 1; }
+      .variant-metric-grid small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      .v11 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 130px; align-items: center; gap: 16px; }
+      .v11 .hero-metric strong, .v12 .hero-metric strong { color: var(--theme-fg-strong); font-size: 40px; line-height: .9; }
+      .v11 .hero-metric span, .v12 .hero-metric span { display: block; margin-top: 6px; color: var(--theme-fg-muted); font-size: 10px; }
+      .v11 .card-footer, .v12 .card-footer, .v13 .card-footer, .v14 .card-footer, .v15 .card-footer, .v16 .card-footer, .v17 .card-footer, .v18 .card-footer, .v19 .card-footer, .v20 .card-footer { align-items: end; }
+
+      .v12 .card-body { display: grid; align-content: center; gap: 13px; }
+      .v12 .change-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .v12 .change-row div { display: grid; gap: 4px; padding-left: 9px; border-left: 2px solid var(--theme-border); }
+      .v12 .change-row div:first-child { border-left-color: var(--theme-accent); }
+      .v12 .change-row strong { color: var(--theme-fg-strong); font-size: 21px; line-height: 1; }
+      .v12 .change-row small { color: var(--theme-fg-muted); font-size: 9px; }
+      .change-up { color: var(--theme-success) !important; }
+      .change-down { color: var(--theme-warning) !important; }
+
+      .v13 .card-body { display: grid; grid-template-columns: 105px minmax(0, 1fr); align-items: center; gap: 16px; }
+      .v13 .health-score { width: 94px; height: 94px; }
+      .v13 .health-summary { display: grid; gap: 9px; }
+      .v13 .health-summary strong { color: var(--theme-fg-strong); font-size: 14px; }
+      .health-bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+      .health-bar i { height: 6px; background: var(--theme-success); border-radius: 2px; }
+      .health-bar i:nth-last-child(-n+2) { background: var(--theme-warning); }
+      .v13 .health-summary small { color: var(--theme-fg-muted); font-size: 10px; line-height: 1.4; }
+
+      .v14 .card-body { display: grid; align-content: center; gap: 11px; }
+      .v14 .application-focus { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; background: var(--theme-accent-soft); border: 1px solid var(--theme-border); border-radius: 6px; }
+      .v14 .application-focus span { display: grid; gap: 4px; }
+      .v14 .application-focus strong { color: var(--theme-fg-strong); font-size: 17px; }
+      .v14 .application-focus small { color: var(--theme-fg-muted); font-size: 9px; }
+      .v14 .application-focus b { color: var(--theme-accent); font-size: 11px; }
+
+      .v15 .card-body { display: grid; align-content: center; gap: 12px; }
+      .v15 .alert-focus { display: flex; align-items: center; justify-content: space-between; gap: 13px; padding: 10px; background: var(--theme-warning-soft); border: 1px solid var(--theme-border); border-radius: 6px; }
+      .v15 .alert-focus strong { color: var(--theme-warning); font-size: 33px; line-height: .9; }
+      .v15 .alert-focus span { display: grid; gap: 4px; color: var(--theme-fg-muted); font-size: 10px; }
+      .v15 .alert-focus b { color: var(--theme-fg-strong); font-size: 11px; }
+
+      .v16 .card-body { display: grid; align-content: center; gap: 11px; }
+      .v16 .resource-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+      .v16 .resource-row div { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px; color: var(--theme-fg-muted); background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; font-size: 9px; }
+      .v16 .resource-row svg { width: 13px; height: 13px; color: var(--theme-info); flex: none; }
+      .v16 .resource-row strong { margin-left: auto; color: var(--theme-fg-strong); font-size: 14px; }
+
+      .v17 .card-body { display: grid; align-content: center; gap: 13px; }
+      .v17 .summary-line { display: flex; align-items: baseline; gap: 8px; }
+      .v17 .summary-line strong { color: var(--theme-fg-strong); font-size: 34px; line-height: .9; }
+      .v17 .summary-line span { color: var(--theme-fg-muted); font-size: 10px; }
+      .v17 .variant-metric-grid { grid-template-columns: repeat(3, 1fr); }
+      .v17 .variant-metric-grid div:last-child strong { color: var(--theme-warning); }
+
+      .v18 .card-body { display: grid; align-content: center; gap: 12px; }
+      .v18 .trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .v18 .trend-head strong { color: var(--theme-fg-strong); font-size: 15px; }
+      .v18 .trend-head span { color: var(--theme-success); font-size: 10px; }
+      .trend-bars { display: grid; grid-template-columns: repeat(12, 1fr); align-items: end; gap: 4px; height: 52px; padding: 7px 8px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; }
+      .trend-bars i { min-height: 10px; background: var(--theme-accent); border-radius: 2px 2px 0 0; }
+      .trend-bars i:nth-child(1) { height: 30%; }.trend-bars i:nth-child(2) { height: 44%; }.trend-bars i:nth-child(3) { height: 37%; }.trend-bars i:nth-child(4) { height: 58%; }.trend-bars i:nth-child(5) { height: 50%; }.trend-bars i:nth-child(6) { height: 68%; }.trend-bars i:nth-child(7) { height: 61%; }.trend-bars i:nth-child(8) { height: 78%; }.trend-bars i:nth-child(9) { height: 71%; }.trend-bars i:nth-child(10) { height: 87%; }.trend-bars i:nth-child(11) { height: 81%; }.trend-bars i:nth-child(12) { height: 94%; background: var(--theme-success); }
+
+      .v19 .card-body { display: grid; align-content: center; gap: 12px; }
+      .v19 .health-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; align-items: center; gap: 9px; color: var(--theme-fg-muted); font-size: 9px; }
+      .v19 .health-row strong { color: var(--theme-fg-strong); font-size: 13px; }
+      .v19 .health-row em { color: var(--theme-success); font-style: normal; font-size: 9px; }
+      .v19 .health-row.warn em { color: var(--theme-warning); }
+      .mini-health-bar { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+      .mini-health-bar i { height: 5px; background: var(--theme-success); border-radius: 2px; }
+      .mini-health-bar i:last-child { background: var(--theme-warning); }
+
+      .v20 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 145px; align-items: center; gap: 15px; }
+      .v20 .hero-metric strong { color: var(--theme-fg-strong); font-size: 43px; line-height: .9; }
+      .v20 .hero-metric span { display: block; margin-top: 6px; color: var(--theme-fg-muted); font-size: 10px; }
+      .v20 .secondary-metrics { display: grid; gap: 7px; }
+      .v20 .secondary-metrics div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--theme-divider); }
+      .v20 .secondary-metrics div:last-child { border-bottom: 0; }
+      .v20 .secondary-metrics strong { color: var(--theme-fg-strong); font-size: 16px; }
+      .v20 .secondary-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+
       @media (max-width: 900px) {
         .design-grid { grid-template-columns: 1fr; }
         .intro { align-items: start; flex-direction: column; }
@@ -297,9 +396,11 @@
         main { width: min(100% - 24px, 520px); padding-top: 24px; }
         .reference-bar { align-items: start; flex-direction: column; gap: 8px; }
         .project-card { min-height: 252px; }
-        .v2 .card-body, .v4 .card-body, .v8 .card-body { grid-template-columns: 1fr; }
+        .v2 .card-body, .v4 .card-body, .v8 .card-body, .v11 .card-body, .v13 .card-body, .v20 .card-body { grid-template-columns: 1fr; }
         .v2 .metric-rail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .v8 .activity-summary { grid-template-columns: repeat(2, 1fr); padding: 9px 0 0; border-top: 1px solid var(--theme-divider); border-left: 0; }
+        .v16 .resource-row { grid-template-columns: 1fr; }
+        .v20 .secondary-metrics { grid-template-columns: repeat(3, 1fr); }
       }
     </style>
   </head>
@@ -437,6 +538,105 @@
               <div class="card-footer"><span><span class="source-badge">Kubernetes 导入</span></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
             </div>
           </article>
+        </section>
+
+        <section class="follow-up" aria-labelledby="operations-variants-title">
+          <div class="follow-up-header">
+            <div><p class="eyebrow">OPERATIONS SUMMARY · VARIATIONS</p><h2 id="operations-variants-title">运营摘要的十种延展方案</h2><p>以方案 10 的“主指标 + 次级指标”为基础，增加项目标签，并将来源放入身份区或指标区。所有卡片底部统一显示健康说明和最近状态更新时间。</p></div>
+            <small>11 — 20 · 同一信息基线</small>
+          </div>
+
+          <div class="design-grid follow-up-grid" aria-label="运营摘要项目卡片延展方案">
+            <article class="design-item">
+              <div class="design-caption"><div><h2>11 · 双列运营摘要</h2><p>左侧突出应用规模，右侧放四项运营指标</p></div><small>均衡型</small></div>
+              <div class="project-card v11">
+                <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div><div class="hero-metric"><strong>08</strong><span>个应用</span></div><div class="project-tags"><span class="project-tag accent">生产</span><span class="project-tag">核心系统</span><span class="project-tag">高可用</span></div></div><div class="variant-metric-grid"><div><strong>21</strong><small>资源</small></div><div><strong>02</strong><small>告警</small></div><div><strong>12</strong><small>依赖</small></div><div><strong>16</strong><small>实例</small></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>运行稳定 · 24h 无异常</strong><small>最近状态更新 3 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>12 · 变化摘要</h2><p>把近期规模变化直接作为运营主线</p></div><small>变化型</small></div>
+              <div class="project-card v12">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>数据集成平台</strong><small>etl001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入 · 3 个命名空间</div><div class="change-row"><div><strong>06</strong><small>应用总数 <b class="change-up">+2</b></small></div><div><strong>17</strong><small>关联资源 <b class="change-up">+4</b></small></div><div><strong>09</strong><small>告警 <b class="change-down">+1</b></small></div></div><div class="project-tags"><span class="project-tag">数据链路</span><span class="project-tag">批处理</span><span class="project-tag accent">自动同步</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>有 1 项告警新增</strong><small>最近状态更新 8 分钟前</small></span><span class="footer-action">查看变化 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>13 · 健康指数摘要</h2><p>将健康度作为主指标，标签和来源退居上下文</p></div><small>健康型</small></div>
+              <div class="project-card v13">
+                <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-boxes"></use></svg></span><span class="identity-copy"><strong>支付结算平台</strong><small>pay042</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</span></div>
+                <div class="card-body"><div class="health-score"><strong>96</strong><small>健康度</small></div><div class="health-summary"><strong>运行状态良好</strong><div class="health-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><small>14 个应用 · 36 个资源 · 03 条告警</small><div class="project-tags"><span class="project-tag accent">支付</span><span class="project-tag">生产</span></div></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>健康度较昨日提升 3%</strong><small>最近状态更新 5 分钟前</small></span><span class="footer-action">查看健康度 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>14 · 应用主指标</h2><p>强调应用数量，同时给出在线实例和绑定率</p></div><small>应用型</small></div>
+              <div class="project-card v14">
+                <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>消息通知服务</strong><small>msg001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</div><div class="application-focus"><span><strong>11 个应用</strong><small>15 个实例正在运行</small></span><b>绑定率 100%</b></div><div class="project-tags"><span class="project-tag">消息队列</span><span class="project-tag">通知中心</span><span class="project-tag accent">自动探测</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>所有应用实例均正常</strong><small>最近状态更新 2 分钟前</small></span><span class="footer-action">查看应用 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>15 · 告警侧写</h2><p>让告警数量成为主指标，适合异常驱动的运维视图</p></div><small>告警型</small></div>
+              <div class="project-card v15">
+                <div class="card-header"><div class="identity"><span class="entity-icon warn"><svg aria-hidden="true"><use href="#i-bell"></use></svg></span><span class="identity-copy"><strong>研发效能门户</strong><small>dev001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div class="alert-focus"><strong>05</strong><span><b>条告警待处理</b><small>最高等级 P2 · 2 条超过 30 分钟</small></span></div><div class="variant-metric-grid"><div><strong>10</strong><small>应用</small></div><div><strong>27</strong><small>资源</small></div><div><strong>08</strong><small>依赖</small></div><div><strong>19</strong><small>实例</small></div></div><div class="project-tags"><span class="project-tag">研发平台</span><span class="project-tag">持续交付</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>健康状态需关注 · 2 条超时</strong><small>最近状态更新 12 分钟前</small></span><span class="footer-action">处理告警 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>16 · 资源平衡摘要</h2><p>把 Host、Docker、Kubernetes 的资源量作为主信息</p></div><small>资源型</small></div>
+              <div class="project-card v16">
+                <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-map"></use></svg></span><span class="identity-copy"><strong>主机监控告警</strong><small>mon001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+                <div class="card-body"><div class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入 · 运行资源已关联</div><div class="resource-row"><div><svg aria-hidden="true"><use href="#i-server"></use></svg>Host<strong>12</strong></div><div><svg aria-hidden="true"><use href="#i-boxes"></use></svg>Docker<strong>08</strong></div><div><svg aria-hidden="true"><use href="#i-database"></use></svg>K8s<strong>03</strong></div></div><div class="project-tags"><span class="project-tag accent">资源探测正常</span><span class="project-tag">监控采集</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>23 个实例已绑定运行资源</strong><small>最近状态更新 4 分钟前</small></span><span class="footer-action">查看资源 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>17 · 标签摘要</h2><p>标签成为身份延伸，适合团队项目目录</p></div><small>目录型</small></div>
+              <div class="project-card v17">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>设备接入平台</strong><small>iot001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div class="summary-line"><strong>09</strong><span>个应用 · 24 个关联资源</span></div><div class="variant-metric-grid"><div><strong>18</strong><small>运行实例</small></div><div><strong>16</strong><small>应用依赖</small></div><div><strong>04</strong><small>告警</small></div></div><div class="project-tags"><span class="project-tag accent">物联网</span><span class="project-tag">设备接入</span><span class="project-tag">生产</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>4 条告警中有 1 条未确认</strong><small>最近状态更新 18 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>18 · 健康趋势摘要</h2><p>通过离散柱形展示近期状态走势，不占用底部区域</p></div><small>趋势型</small></div>
+              <div class="project-card v18">
+                <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>持续交付平台</strong><small>cic001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</span></div>
+                <div class="card-body"><div class="trend-head"><strong>近 12 次状态检查</strong><span>持续改善 +8%</span></div><div class="trend-bars" aria-label="近 12 次状态检查趋势"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="project-tags"><span class="project-tag">持续交付</span><span class="project-tag accent">自动同步</span><span class="project-tag">多集群</span></div></div>
+                <div class="card-footer"><span class="footer-health success"><strong>状态连续 12 次正常</strong><small>最近状态更新 1 分钟前</small></span><span class="footer-action">查看趋势 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>19 · 健康分层</h2><p>按应用、实例、资源三层解释当前健康状态</p></div><small>分层型</small></div>
+              <div class="project-card v19">
+                <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>审计日志中心</strong><small>aud001</small></span></div><span class="source-inline"><svg aria-hidden="true"><use href="#i-map"></use></svg>手动创建</span></div>
+                <div class="card-body"><div class="health-row"><strong>应用</strong><div class="mini-health-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><em>07/07</em></div><div class="health-row"><strong>实例</strong><div class="mini-health-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><em>19/19</em></div><div class="health-row warn"><strong>依赖</strong><div class="mini-health-bar"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><em>10/11</em></div><div class="project-tags"><span class="project-tag accent">日志审计</span><span class="project-tag">合规</span></div></div>
+                <div class="card-footer"><span class="footer-health warning"><strong>1 项依赖需要复核</strong><small>最近状态更新 7 分钟前</small></span><span class="footer-action">查看状态 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+
+            <article class="design-item">
+              <div class="design-caption"><div><h2>20 · 极简双栏摘要</h2><p>最接近方案 10，标签和来源都保持轻量</p></div><small>极简型</small></div>
+              <div class="project-card v20">
+                <div class="card-header"><div class="identity"><span class="entity-icon danger"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>订单履约系统</strong><small>ord001</small></span></div><span class="status-badge danger"><i></i>异常</span></div>
+                <div class="card-body"><div><div class="hero-metric"><strong>18</strong><span>个应用正在运行</span></div><div class="project-tags"><span class="project-tag accent">订单</span><span class="project-tag">核心链路</span><span class="project-tag">生产</span></div><div class="source-inline" style="margin-top:10px"><svg aria-hidden="true"><use href="#i-map"></use></svg>Kubernetes 导入</div></div><div class="secondary-metrics"><div><small>关联资源</small><strong>42</strong></div><div><small>告警</small><strong class="danger">06</strong></div><div><small>应用依赖</small><strong>21</strong></div></div></div>
+                <div class="card-footer"><span class="footer-health danger"><strong>健康状态异常 · 6 条告警待处理</strong><small>最近状态更新 2 分钟前</small></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              </div>
+            </article>
+          </div>
         </section>
       </main>
     </div>
