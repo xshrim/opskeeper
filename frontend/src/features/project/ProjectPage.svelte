@@ -141,6 +141,12 @@
     return project.summary.alerts > 0 ? 'warning' : 'success';
   }
 
+  function projectStatusLabel(status: string) {
+    if (status === 'active' || status === 'healthy' || status === 'up') return '正常';
+    if (status === 'disabled') return '已停用';
+    return '异常';
+  }
+
   function projectHealthSummary(project: Project) {
     if (project.status === 'disabled') return '项目已停用';
     if (project.summary.alerts > 0) return `${project.summary.alerts} 条告警待处理`;
@@ -458,7 +464,7 @@
                 <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
                   <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
                   <span class="project-card-summary" aria-label="项目运行摘要"><span class="project-card-stat"><strong>{project.summary.applications}</strong><small>应用</small></span><span class="project-card-stat"><strong>{project.summary.resources}</strong><small>关联</small></span><span class="project-card-stat"><strong>{project.summary.dependencies}</strong><small>依赖</small></span><span class="project-card-stat"><strong>{project.summary.alerts}</strong><small>告警</small></span></span>
-                  <span class="project-card-meta"><span class="project-card-source"><span class="project-source-icon" aria-hidden="true">{#if project.source === 'kubernetes'}<Server size={13} />{:else if project.source === 'file'}<Upload size={13} />{:else}<Pencil size={13} />{/if}</span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
+                  <span class="project-card-meta"><span class="project-card-source"><span class="project-source-icon" aria-hidden="true">{#if project.source === 'kubernetes'}<Server size={13} />{:else if project.source === 'file'}<Upload size={13} />{:else}<Pencil size={13} />{/if}</span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{projectStatusLabel(project.status)}</span></span>
                   <span class="project-card-footer"><span class="project-health {projectHealthTone(project)}">{projectHealthSummary(project)}</span><span class="project-card-updated"><Clock3 size={12} />{projectUpdatedLabel(project.updated_at)}</span></span>
                 </button>
                 {:else}
