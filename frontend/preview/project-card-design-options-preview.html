@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>项目卡片 · 十种静态设计预览</title>
+    <style>
+      :root {
+        --theme-bg: #f8fafc;
+        --theme-surface: #fffdfa;
+        --theme-raised: #ffffff;
+        --theme-subtle: #f5efec;
+        --theme-hover: #fff0e9;
+        --theme-selected: #fff0e8;
+        --theme-fg: #3a3431;
+        --theme-fg-strong: #423934;
+        --theme-fg-muted: #6f625b;
+        --theme-fg-subtle: #a0958f;
+        --theme-border: #eadfd9;
+        --theme-border-strong: #dfc8ba;
+        --theme-accent: #e7601b;
+        --theme-accent-strong: #9e3f0f;
+        --theme-action: #e7601b;
+        --theme-action-hover: #d95716;
+        --theme-accent-soft: #fff0e8;
+        --theme-success: #2f7956;
+        --theme-success-soft: #f5f2ef;
+        --theme-warning: #a46719;
+        --theme-warning-soft: #fff4dc;
+        --theme-danger: #bc4839;
+        --theme-danger-soft: #fcebe8;
+        --theme-info: #3979b9;
+        --theme-info-soft: #eaf2fb;
+        --theme-divider: #eadfd9;
+        --theme-shadow: 0 8px 24px rgb(47 41 38 / .08);
+        --theme-shadow-soft: 0 2px 8px rgb(47 41 38 / .06);
+        --theme-focus: rgb(231 96 27 / .16);
+        --page-grid: rgb(66 57 52 / .055);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--theme-fg);
+        background: var(--theme-bg);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+
+      :root[data-theme="dark"] {
+        --theme-bg: #211e1c;
+        --theme-surface: #2a2623;
+        --theme-raised: #342e2a;
+        --theme-subtle: #3a3430;
+        --theme-hover: #342e2a;
+        --theme-selected: #173e35;
+        --theme-fg: #eee4df;
+        --theme-fg-strong: #f1e8e3;
+        --theme-fg-muted: #bfb3ac;
+        --theme-fg-subtle: #9d8f87;
+        --theme-border: #473e39;
+        --theme-border-strong: #514740;
+        --theme-accent: #2c8d72;
+        --theme-accent-strong: #9fe4cf;
+        --theme-action: #18a27d;
+        --theme-action-hover: #158c6c;
+        --theme-accent-soft: #173e35;
+        --theme-success: #9fe4cf;
+        --theme-success-soft: #173e35;
+        --theme-warning: #f4d18a;
+        --theme-warning-soft: #46371e;
+        --theme-danger: #ffb4a2;
+        --theme-danger-soft: #4a2d27;
+        --theme-info: #99c6f2;
+        --theme-info-soft: #24374d;
+        --theme-divider: #473e39;
+        --theme-shadow: 0 8px 24px rgb(0 0 0 / .28);
+        --theme-shadow-soft: 0 2px 8px rgb(0 0 0 / .22);
+        --theme-focus: rgb(24 162 125 / .2);
+        --page-grid: rgb(241 232 227 / .05);
+      }
+
+      * { box-sizing: border-box; }
+      body { min-width: 320px; margin: 0; background: var(--theme-bg); }
+      button { font: inherit; cursor: pointer; }
+      button:focus-visible { outline: 3px solid var(--theme-focus); outline-offset: 2px; }
+      h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+      svg { display: block; }
+      .icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+      .shell { min-height: 100vh; }
+      .topbar {
+        position: sticky;
+        z-index: 5;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 68px;
+        padding: 13px clamp(18px, 5vw, 64px);
+        background: color-mix(in srgb, var(--theme-surface) 92%, transparent);
+        border-bottom: 1px solid var(--theme-border);
+        backdrop-filter: blur(12px);
+      }
+      .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .brand-mark { display: grid; place-items: center; width: 31px; height: 31px; color: var(--theme-action); background: var(--theme-accent-soft); border: 1px solid var(--theme-border); border-radius: 7px; font-weight: 850; }
+      .brand-copy strong, .brand-copy small { display: block; }
+      .brand-copy strong { color: var(--theme-fg-strong); font-size: 14px; }
+      .brand-copy small { margin-top: 2px; color: var(--theme-fg-muted); font-size: 10px; }
+      .top-actions { display: flex; align-items: center; gap: 8px; }
+      .top-actions small { color: var(--theme-fg-subtle); font-size: 10px; }
+      .tool-button { display: inline-flex; align-items: center; gap: 7px; min-height: 33px; padding: 0 10px; color: var(--theme-fg-muted); background: var(--theme-surface); border: 1px solid var(--theme-border); border-radius: 6px; font-size: 11px; }
+      .tool-button:hover { color: var(--theme-accent); background: var(--theme-hover); border-color: var(--theme-border-strong); }
+      .tool-button svg { width: 15px; height: 15px; }
+
+      main { width: min(1320px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 58px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 26px; margin-bottom: 24px; }
+      .eyebrow { margin-bottom: 8px; color: var(--theme-accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+      h1 { color: var(--theme-fg-strong); font-size: clamp(24px, 3vw, 30px); line-height: 1.18; }
+      .intro-copy { max-width: 720px; margin-top: 9px; color: var(--theme-fg-muted); font-size: 13px; line-height: 1.65; }
+      .intro-note { max-width: 320px; padding: 12px 14px; color: var(--theme-fg-muted); background: var(--theme-surface); border: 1px solid var(--theme-border); border-left: 3px solid var(--theme-accent); border-radius: 6px; font-size: 11px; line-height: 1.55; }
+      .intro-note strong { color: var(--theme-fg-strong); }
+
+      .reference-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; padding: 11px 14px; color: var(--theme-fg-muted); background: var(--theme-surface); border: 1px solid var(--theme-border); border-radius: 7px; font-size: 11px; }
+      .reference-bar span { display: inline-flex; align-items: center; gap: 7px; }
+      .reference-bar svg { width: 15px; height: 15px; color: var(--theme-accent); }
+      .reference-bar b { color: var(--theme-fg-strong); }
+
+      .design-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 18px; }
+      .design-item { min-width: 0; }
+      .design-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px 9px; }
+      .design-caption h2 { color: var(--theme-fg-strong); font-size: 14px; }
+      .design-caption small { color: var(--theme-fg-subtle); font-size: 10px; }
+      .design-caption p { margin-top: 4px; color: var(--theme-fg-muted); font-size: 10px; }
+
+      .project-card {
+        position: relative;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-width: 0;
+        min-height: 238px;
+        padding: 16px;
+        color: var(--theme-fg);
+        background: var(--theme-raised);
+        border: 1px solid var(--theme-border);
+        border-radius: 7px;
+        box-shadow: var(--theme-shadow-soft);
+        overflow: hidden;
+        transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      }
+      .project-card:hover { border-color: var(--theme-border-strong); box-shadow: var(--theme-shadow); transform: translateY(-2px); }
+      .card-header, .identity, .card-footer, .card-actions, .source-row, .metric-line, .status-line, .alert-line { display: flex; align-items: center; }
+      .card-header, .card-footer { justify-content: space-between; gap: 12px; }
+      .identity { min-width: 0; gap: 10px; }
+      .entity-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; color: var(--theme-accent-strong); background: var(--theme-accent-soft); border: 1px solid var(--theme-border); border-radius: 7px; }
+      .entity-icon svg { width: 19px; height: 19px; }
+      .entity-icon.success { color: var(--theme-success); background: var(--theme-success-soft); }
+      .entity-icon.info { color: var(--theme-info); background: var(--theme-info-soft); }
+      .entity-icon.warn { color: var(--theme-warning); background: var(--theme-warning-soft); }
+      .entity-icon.danger { color: var(--theme-danger); background: var(--theme-danger-soft); }
+      .identity-copy { min-width: 0; }
+      .identity-copy strong, .identity-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .identity-copy strong { color: var(--theme-fg-strong); font-size: 14px; }
+      .identity-copy small { margin-top: 4px; color: var(--theme-fg-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; }
+      .status-badge, .source-badge, .tag { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 0 7px; color: var(--theme-fg-muted); background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 4px; font-size: 9px; white-space: nowrap; }
+      .status-badge { color: var(--theme-success); background: var(--theme-success-soft); border-color: var(--theme-border); }
+      .status-badge.warn { color: var(--theme-warning); background: var(--theme-warning-soft); }
+      .status-badge.danger { color: var(--theme-danger); background: var(--theme-danger-soft); }
+      .status-badge i, .health-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+      .card-arrow { display: inline-grid; place-items: center; width: 27px; height: 27px; color: var(--theme-fg-subtle); background: transparent; border: 1px solid transparent; border-radius: 5px; }
+      .card-arrow:hover { color: var(--theme-accent); background: var(--theme-hover); border-color: var(--theme-border-strong); }
+      .card-arrow svg { width: 15px; height: 15px; }
+      .card-footer { align-self: end; min-height: 36px; margin-top: 14px; padding-top: 11px; color: var(--theme-fg-muted); border-top: 1px solid var(--theme-divider); font-size: 10px; }
+      .card-footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .footer-action { display: inline-flex; align-items: center; gap: 4px; color: var(--theme-accent); font-weight: 650; }
+      .footer-action svg { width: 13px; height: 13px; }
+      .muted { color: var(--theme-fg-subtle); }
+      .accent { color: var(--theme-accent); }
+      .success { color: var(--theme-success); }
+      .warning { color: var(--theme-warning); }
+      .danger { color: var(--theme-danger); }
+
+      /* 01 · 分层摘要 */
+      .v1 .card-header { align-items: start; }
+      .v1 .card-body { display: grid; align-content: center; gap: 15px; }
+      .v1 .summary { max-width: 360px; color: var(--theme-fg-muted); font-size: 11px; line-height: 1.5; }
+      .metric-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+      .metric-pill { display: inline-flex; align-items: baseline; gap: 5px; min-height: 29px; padding: 0 8px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; }
+      .metric-pill strong { color: var(--theme-fg-strong); font-size: 14px; }
+      .metric-pill small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      /* 02 · 右侧指标轨 */
+      .v2 { grid-template-rows: auto 1fr auto; }
+      .v2 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 116px; align-items: center; gap: 14px; }
+      .v2 .description { color: var(--theme-fg-muted); font-size: 11px; line-height: 1.55; }
+      .metric-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: var(--theme-border); border: 1px solid var(--theme-border); border-radius: 6px; }
+      .metric-rail div { display: grid; gap: 3px; min-height: 47px; padding: 8px 7px; background: var(--theme-surface); }
+      .metric-rail strong { color: var(--theme-fg-strong); font-size: 16px; line-height: 1; }
+      .metric-rail small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      /* 03 · 状态轨道 */
+      .v3 { padding-top: 0; }
+      .v3::before { display: block; height: 3px; margin: 0 -16px 16px; background: var(--theme-success); content: ""; }
+      .v3 .card-body { display: grid; align-content: center; gap: 13px; }
+      .status-line { justify-content: space-between; gap: 10px; color: var(--theme-fg-muted); font-size: 10px; }
+      .health-track { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin-top: 7px; }
+      .health-track i { height: 5px; background: var(--theme-success); border-radius: 2px; }
+      .health-track i:nth-last-child(-n+2) { background: var(--theme-warning); }
+      .v3 .stat-line { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .v3 .stat-line div { display: grid; gap: 3px; padding-left: 9px; border-left: 2px solid var(--theme-border); }
+      .v3 .stat-line div:first-child { border-left-color: var(--theme-accent); }
+      .v3 .stat-line strong { font-size: 17px; }
+      .v3 .stat-line small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      /* 04 · 健康度焦点 */
+      .v4 .card-body { display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: center; gap: 15px; }
+      .health-score { display: grid; place-items: center; gap: 3px; width: 96px; height: 96px; border: 8px solid var(--theme-success-soft); border-top-color: var(--theme-success); border-right-color: var(--theme-success); border-radius: 50%; }
+      .health-score strong { color: var(--theme-fg-strong); font-size: 23px; line-height: 1; }
+      .health-score small { color: var(--theme-success); font-size: 9px; font-weight: 700; }
+      .v4 .metric-list { display: grid; gap: 8px; }
+      .v4 .metric-line { justify-content: space-between; gap: 8px; min-height: 25px; color: var(--theme-fg-muted); font-size: 10px; }
+      .v4 .metric-line span { display: inline-flex; align-items: center; gap: 6px; }
+      .v4 .metric-line svg { width: 13px; height: 13px; color: var(--theme-accent); }
+      .v4 .metric-line strong { color: var(--theme-fg-strong); font-size: 13px; }
+
+      /* 05 · 项目档案 */
+      .v5 { padding: 0 16px 0; }
+      .v5 .card-header { margin: 0 -16px; padding: 12px 16px; background: var(--theme-subtle); border-bottom: 1px solid var(--theme-border); }
+      .v5 .card-body { display: grid; align-content: center; gap: 12px; padding-top: 12px; }
+      .v5 .archive-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .v5 .archive-meta div { display: grid; gap: 4px; }
+      .v5 .archive-meta small { color: var(--theme-fg-muted); font-size: 9px; }
+      .v5 .archive-meta strong { color: var(--theme-fg-strong); font-size: 13px; }
+      .v5 .archive-note { padding: 9px 10px; color: var(--theme-fg-muted); background: var(--theme-surface); border-left: 2px solid var(--theme-info); font-size: 10px; line-height: 1.45; }
+      .v5 .card-footer { padding-bottom: 12px; }
+
+      /* 06 · 高密度数据表 */
+      .v6 .card-body { display: grid; align-content: center; gap: 10px; }
+      .v6 .table-head, .v6 .table-row { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(42px, .6fr)); align-items: center; gap: 7px; }
+      .v6 .table-head { padding: 0 9px 5px; color: var(--theme-fg-subtle); font-size: 9px; }
+      .v6 .table-row { min-height: 40px; padding: 0 9px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 5px; font-size: 10px; }
+      .v6 .table-row strong { color: var(--theme-fg-strong); font-size: 12px; }
+      .v6 .table-row span:not(:first-child) { text-align: right; }
+      .v6 .table-row span:last-child { color: var(--theme-warning); }
+      .v6 .card-footer { margin-top: 12px; }
+
+      /* 07 · 资源矩阵 */
+      .v7 .card-body { display: grid; align-content: center; gap: 12px; }
+      .resource-matrix { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+      .resource-matrix div { display: grid; gap: 7px; min-height: 69px; padding: 9px; background: var(--theme-subtle); border: 1px solid var(--theme-border); border-radius: 6px; }
+      .resource-matrix span { display: inline-flex; align-items: center; gap: 5px; color: var(--theme-fg-muted); font-size: 9px; }
+      .resource-matrix svg { width: 13px; height: 13px; color: var(--theme-info); }
+      .resource-matrix strong { color: var(--theme-fg-strong); font-size: 18px; line-height: 1; }
+      .v7 .dependency-strip { display: flex; align-items: center; justify-content: space-between; color: var(--theme-fg-muted); font-size: 10px; }
+      .dependency-strip span { display: inline-flex; align-items: center; gap: 5px; }
+      .dependency-strip svg { width: 13px; height: 13px; color: var(--theme-accent); }
+
+      /* 08 · 最近活动 */
+      .v8 .card-body { display: grid; grid-template-columns: minmax(0, 1fr) 132px; align-items: center; gap: 16px; }
+      .activity-list { display: grid; gap: 8px; }
+      .activity-item { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 8px; color: var(--theme-fg-muted); font-size: 10px; }
+      .activity-item::before { width: 7px; height: 7px; border: 2px solid var(--theme-accent); border-radius: 50%; content: ""; }
+      .activity-item strong { color: var(--theme-fg-strong); font-size: 11px; }
+      .activity-item time { color: var(--theme-fg-subtle); font-size: 9px; }
+      .v8 .activity-summary { display: grid; gap: 9px; padding-left: 13px; border-left: 1px solid var(--theme-divider); }
+      .v8 .activity-summary div { display: grid; gap: 3px; }
+      .v8 .activity-summary strong { color: var(--theme-fg-strong); font-size: 17px; }
+      .v8 .activity-summary small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      /* 09 · 告警优先 */
+      .v9 .card-body { display: grid; align-content: center; gap: 12px; }
+      .alert-line { justify-content: space-between; gap: 10px; min-height: 40px; padding: 0 10px; color: var(--theme-warning); background: var(--theme-warning-soft); border: 1px solid var(--theme-border); border-radius: 6px; font-size: 10px; }
+      .alert-line span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+      .alert-line svg { width: 15px; height: 15px; flex: none; }
+      .alert-line strong { color: var(--theme-warning); font-size: 16px; }
+      .v9 .quick-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+      .v9 .quick-stats div { display: grid; gap: 4px; padding-left: 8px; border-left: 2px solid var(--theme-border); }
+      .v9 .quick-stats strong { color: var(--theme-fg-strong); font-size: 16px; }
+      .v9 .quick-stats small { color: var(--theme-fg-muted); font-size: 9px; }
+
+      /* 10 · 运营摘要 */
+      .v10 .card-body { display: grid; align-content: center; gap: 13px; }
+      .v10 .hero-metric { display: flex; align-items: end; gap: 9px; }
+      .v10 .hero-metric strong { color: var(--theme-fg-strong); font-size: 40px; line-height: .9; }
+      .v10 .hero-metric span { margin-bottom: 3px; color: var(--theme-fg-muted); font-size: 11px; }
+      .v10 .secondary-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .v10 .secondary-metrics div { display: grid; gap: 4px; }
+      .v10 .secondary-metrics strong { color: var(--theme-fg-strong); font-size: 15px; }
+      .v10 .secondary-metrics small { color: var(--theme-fg-muted); font-size: 9px; }
+      .v10 .card-footer { background: var(--theme-subtle); margin-right: -16px; margin-left: -16px; padding: 11px 16px 0; }
+
+      @media (max-width: 900px) {
+        .design-grid { grid-template-columns: 1fr; }
+        .intro { align-items: start; flex-direction: column; }
+        .intro-note { max-width: none; }
+      }
+      @media (max-width: 560px) {
+        .topbar { align-items: start; flex-direction: column; }
+        .top-actions { width: 100%; justify-content: space-between; }
+        main { width: min(100% - 24px, 520px); padding-top: 24px; }
+        .reference-bar { align-items: start; flex-direction: column; gap: 8px; }
+        .project-card { min-height: 252px; }
+        .v2 .card-body, .v4 .card-body, .v8 .card-body { grid-template-columns: 1fr; }
+        .v2 .metric-rail { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .v8 .activity-summary { grid-template-columns: repeat(2, 1fr); padding: 9px 0 0; border-top: 1px solid var(--theme-divider); border-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M3.5 9h17" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+      <symbol id="i-boxes" viewBox="0 0 24 24"><path d="m7 3 4 2-4 2-4-2 4-2Zm0 4v5m0 0 4-2V5m-4 7-4-2V5m14-2 4 2-4 2-4-2 4-2Zm0 4v5m0 0 4-2V5m-4 7-4-2V5M12 12l4 2-4 2-4-2 4-2Zm0 4v5m0 0 4-2v-5m-4 7-4-2v-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="3" y="14" width="18" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4.5 5.5v6c0 1.65 3.36 3 7.5 3s7.5-1.35 7.5-3v-6M4.5 11.5v6c0 1.65 3.36 3 7.5 3s7.5-1.35 7.5-3v-6" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4.2 12 2.2-6H21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="18" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 6h4a2 2 0 0 1 2 2v6m2-8h-2m-2 8H8a2 2 0 0 1-2-2V8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 15.7A8 8 0 0 1 8.3 4.5 8.5 8.5 0 1 0 19.5 15.7Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 3v15m6-12v15" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    </svg>
+
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">O</span>
+          <div class="brand-copy"><strong>OpsKeeper</strong><small>项目全景图 · 卡片方案预览</small></div>
+        </div>
+        <div class="top-actions">
+          <small>10 种项目卡片布局</small>
+          <button class="tool-button" id="theme-toggle" type="button" aria-label="切换浅色和深色主题" title="切换浅色和深色主题"><svg aria-hidden="true"><use href="#i-sun"></use></svg><span>切换主题</span></button>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div>
+            <p class="eyebrow">PROJECT CARD STUDY</p>
+            <h1>项目卡片的十种信息编排</h1>
+            <p class="intro-copy">这些方案只调整卡片内部的信息层级，不改变项目全景图的整体栅格。每张卡片都保留项目名称、编号、来源、状态、应用、资源、告警和依赖等信息，并将底部基线固定在同一位置，便于批量比较。</p>
+          </div>
+          <p class="intro-note"><strong>评审重点：</strong>信息是否能被快速扫描，状态是否足够突出，卡片底部留白与横线是否稳定，以及浅色、深色主题下文字与图标是否清晰。</p>
+        </section>
+
+        <div class="reference-bar">
+          <span><svg aria-hidden="true"><use href="#i-map"></use></svg><b>统一基线</b> 底部信息区距离卡片底部保持 12px，横线位置不随内容数量变化。</span>
+          <span><b>示例数据</b> 配置管理中心 · cfg001</span>
+        </div>
+
+        <section class="design-grid" aria-label="项目卡片设计方案">
+          <article class="design-item">
+            <div class="design-caption"><div><h2>01 · 分层摘要</h2><p>身份、摘要、指标胶囊，阅读顺序自然</p></div><small>扫描型</small></div>
+            <div class="project-card v1">
+              <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>配置管理中心</strong><small>cfg001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+              <div class="card-body"><p class="summary">统一管理运行配置、密钥和环境参数，当前服务运行稳定。</p><div class="metric-pills"><span class="metric-pill"><strong>08</strong><small>应用</small></span><span class="metric-pill"><strong>21</strong><small>资源</small></span><span class="metric-pill"><strong>02</strong><small>告警</small></span><span class="metric-pill"><strong>12</strong><small>依赖</small></span></div></div>
+              <div class="card-footer"><span>手动创建 · 2 分钟前同步</span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>02 · 右侧指标轨</h2><p>身份和描述在左，四项统计集中在右侧</p></div><small>对比型</small></div>
+            <div class="project-card v2">
+              <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-boxes"></use></svg></span><span class="identity-copy"><strong>支付结算平台</strong><small>pay042</small></span></div><span class="status-badge warn"><i></i>需关注</span></div>
+              <div class="card-body"><p class="description">Kubernetes 导入项目，应用实例分布在 3 个命名空间。</p><div class="metric-rail"><div><strong>14</strong><small>应用</small></div><div><strong>36</strong><small>资源</small></div><div><strong>03</strong><small>告警</small></div><div><strong>18</strong><small>依赖</small></div></div></div>
+              <div class="card-footer"><span><span class="source-badge">Kubernetes 导入</span></span><span class="footer-action">查看详情 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>03 · 状态轨道</h2><p>把健康度放到卡片上沿，适合快速巡检</p></div><small>值守型</small></div>
+            <div class="project-card v3">
+              <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>数据集成平台</strong><small>etl001</small></span></div><span class="card-arrow" title="进入数据集成平台" aria-label="进入数据集成平台"><svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+              <div class="card-body"><div class="status-line"><span class="success"><span class="health-dot"></span> 运行正常</span><span>最近 24 小时可用性 99.98%</span></div><div class="health-track" aria-label="最近 12 个健康检查周期"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="stat-line"><div><strong>06</strong><small>应用</small></div><div><strong>17</strong><small>资源</small></div><div><strong>09</strong><small>依赖</small></div></div></div>
+              <div class="card-footer"><span>手动创建 · 12 个检查周期全部通过</span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>04 · 健康度焦点</h2><p>用视觉中心突出项目健康度，指标作为证据</p></div><small>健康型</small></div>
+            <div class="project-card v4">
+              <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-activity"></use></svg></span><span class="identity-copy"><strong>消息通知服务</strong><small>msg001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+              <div class="card-body"><div class="health-score"><strong>98</strong><small>健康度</small></div><div class="metric-list"><div class="metric-line"><span><svg aria-hidden="true"><use href="#i-boxes"></use></svg> 应用</span><strong>11</strong></div><div class="metric-line"><span><svg aria-hidden="true"><use href="#i-server"></use></svg> 关联资源</span><strong>29</strong></div><div class="metric-line"><span><svg aria-hidden="true"><use href="#i-bell"></use></svg> 未处理告警</span><strong class="warning">01</strong></div><div class="metric-line"><span><svg aria-hidden="true"><use href="#i-git"></use></svg> 应用依赖</span><strong>16</strong></div></div></div>
+              <div class="card-footer"><span>手动创建 · 状态自动探测</span><span class="footer-action">查看健康详情 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>05 · 项目档案</h2><p>顶部做成档案头，正文适合放项目说明</p></div><small>档案型</small></div>
+            <div class="project-card v5">
+              <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>设备接入平台</strong><small>iot001</small></span></div><span class="source-badge">Kubernetes 导入</span></div>
+              <div class="card-body"><div class="archive-meta"><div><small>应用</small><strong>09 个</strong></div><div><small>关联资源</small><strong>24 个</strong></div><div><small>告警</small><strong class="warning">04 个</strong></div></div><p class="archive-note">当前项目使用 2 个集群、4 个命名空间，最后一次导入在 18 分钟前完成。</p></div>
+              <div class="card-footer"><span><span class="status-badge warn"><i></i>部分应用需关注</span></span><span class="footer-action">打开档案 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>06 · 高密度数据表</h2><p>使用一行紧凑数据表，适合项目数量较多的团队</p></div><small>密度型</small></div>
+            <div class="project-card v6">
+              <div class="card-header"><div class="identity"><span class="entity-icon success"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>审计日志中心</strong><small>aud001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+              <div class="card-body"><div class="table-head"><span>项目指标</span><span>应用</span><span>资源</span><span>依赖</span><span>告警</span></div><div class="table-row"><span><strong>运行摘要</strong></span><span>07</span><span>19</span><span>11</span><span>02</span></div><div class="table-row"><span><strong>实例变化</strong></span><span class="success">+2</span><span class="success">+4</span><span>—</span><span class="warning">+1</span></div></div>
+              <div class="card-footer"><span>手动创建 · 最近 1 小时变化</span><span class="footer-action">查看趋势 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>07 · 资源矩阵</h2><p>将运行时资源种类直接放进卡片，强化资源感知</p></div><small>资源型</small></div>
+            <div class="project-card v7">
+              <div class="card-header"><div class="identity"><span class="entity-icon"><svg aria-hidden="true"><use href="#i-map"></use></svg></span><span class="identity-copy"><strong>主机监控告警</strong><small>mon001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+              <div class="card-body"><div class="resource-matrix"><div><span><svg aria-hidden="true"><use href="#i-server"></use></svg> Host</span><strong>12</strong></div><div><span><svg aria-hidden="true"><use href="#i-boxes"></use></svg> Docker</span><strong>08</strong></div><div><span><svg aria-hidden="true"><use href="#i-database"></use></svg> K8s</span><strong>03</strong></div></div><div class="dependency-strip"><span><svg aria-hidden="true"><use href="#i-git"></use></svg> 关联依赖 <b>14</b></span><span class="success">资源探测正常</span></div></div>
+              <div class="card-footer"><span>手动创建 · 23 个实例已绑定运行资源</span><span class="footer-action">查看资源地图 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>08 · 最近活动</h2><p>以近期变更作为主体，适合持续交付项目</p></div><small>时间线型</small></div>
+            <div class="project-card v8">
+              <div class="card-header"><div class="identity"><span class="entity-icon info"><svg aria-hidden="true"><use href="#i-git"></use></svg></span><span class="identity-copy"><strong>持续交付平台</strong><small>cic001</small></span></div><span class="status-badge"><i></i>正常</span></div>
+              <div class="card-body"><div class="activity-list"><div class="activity-item"><strong>应用实例扩容</strong><span>payment-api +2</span><time>12 分钟</time></div><div class="activity-item"><strong>关联资源更新</strong><span>k8s-prod-02</span><time>28 分钟</time></div><div class="activity-item"><strong>依赖关系校验</strong><span>全部通过</span><time>1 小时</time></div></div><div class="activity-summary"><div><strong>15</strong><small>应用</small></div><div><strong>31</strong><small>关联资源</small></div><div><strong>13</strong><small>应用依赖</small></div></div></div>
+              <div class="card-footer"><span><svg aria-hidden="true" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-clock"></use></svg> 最近同步 1 分钟前</span><span class="footer-action">查看活动 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>09 · 告警优先</h2><p>告警成为第一视觉锚点，适合异常驱动的值守工作</p></div><small>告警型</small></div>
+            <div class="project-card v9">
+              <div class="card-header"><div class="identity"><span class="entity-icon warn"><svg aria-hidden="true"><use href="#i-bell"></use></svg></span><span class="identity-copy"><strong>研发效能门户</strong><small>dev001</small></span></div><span class="status-badge warn"><i></i>需关注</span></div>
+              <div class="card-body"><div class="alert-line"><span><svg aria-hidden="true"><use href="#i-bell"></use></svg><strong>05</strong> 条告警待处理</span><span>最高 P2</span></div><div class="quick-stats"><div><strong>10</strong><small>应用</small></div><div><strong>27</strong><small>关联资源</small></div><div><strong>08</strong><small>应用依赖</small></div></div></div>
+              <div class="card-footer"><span>手动创建 · 2 条告警已超过 30 分钟</span><span class="footer-action">处理告警 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+
+          <article class="design-item">
+            <div class="design-caption"><div><h2>10 · 运营摘要</h2><p>突出最重要的应用数，其他数据退居次级</p></div><small>主指标型</small></div>
+            <div class="project-card v10">
+              <div class="card-header"><div class="identity"><span class="entity-icon danger"><svg aria-hidden="true"><use href="#i-folder"></use></svg></span><span class="identity-copy"><strong>订单履约系统</strong><small>ord001</small></span></div><span class="status-badge danger"><i></i>异常</span></div>
+              <div class="card-body"><div class="hero-metric"><strong>18</strong><span>个应用正在运行</span></div><div class="secondary-metrics"><div><strong>42</strong><small>关联资源</small></div><div><strong class="danger">06</strong><small>告警</small></div><div><strong>21</strong><small>应用依赖</small></div></div></div>
+              <div class="card-footer"><span><span class="source-badge">Kubernetes 导入</span></span><span class="footer-action">进入驾驶舱 <svg aria-hidden="true"><use href="#i-arrow"></use></svg></span></div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const root = document.documentElement;
+      const themeToggle = document.getElementById('theme-toggle');
+      themeToggle.addEventListener('click', () => {
+        const dark = root.dataset.theme !== 'dark';
+        root.dataset.theme = dark ? 'dark' : 'light';
+        themeToggle.querySelector('span').textContent = dark ? '切换浅色' : '切换深色';
+        themeToggle.querySelector('use').setAttribute('href', dark ? '#i-moon' : '#i-sun');
+      });
+    </script>
+  </body>
+</html>
