@@ -863,8 +863,10 @@
           {visibleProjects}
           bind:selectedProjectId
           bind:selectedScopeId
+          allTeamsSelected={!selectedTeamId}
           {busy}
           onSelectTeam={(team) => { selectedTeamId = team.id; selectedProjectId = ''; selectedScopeId = team.scope.id; }}
+          onSelectAllTeams={() => chooseTeam('')}
           onSelectProject={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedTeamId = project.team_id; }}
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}

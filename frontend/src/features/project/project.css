@@ -170,6 +170,37 @@
   margin-bottom: 11px;
 }
 
+.group-heading-toggle {
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-heading-toggle:hover {
+  color: var(--theme-accent);
+}
+
+.group-heading-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.team-collapse-icon {
+  display: inline-flex;
+  color: var(--theme-fg-subtle);
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.group-heading-toggle:hover .team-collapse-icon {
+  color: var(--theme-accent);
+}
+
 .group-title,
 .project-heading {
   gap: 10px;
