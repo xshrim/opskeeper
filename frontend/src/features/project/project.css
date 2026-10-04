@@ -12,6 +12,31 @@
   margin-bottom: 22px;
 }
 
+.resource-map-header {
+  align-items: center;
+}
+
+.project-map-heading h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  color: var(--theme-fg-strong);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.project-map-heading h2 small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.resource-map-header .project-map-heading p:not(.eyebrow) {
+  margin-top: 4px;
+}
+
 .resource-map-header h1,
 .workspace-header h1 {
   margin: 2px 0 5px;
@@ -53,6 +78,16 @@
   margin-bottom: 26px;
   overflow-x: auto;
   padding-bottom: 3px;
+}
+
+.team-filter-add {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  min-height: 29px;
+  padding: 0 9px;
+  font-size: 11px;
 }
 
 .team-filter button {
@@ -122,6 +157,15 @@
 .section-heading h2 {
   color: var(--theme-fg-strong);
   font-size: 16px;
+}
+
+.section-heading p,
+.detail-heading p,
+.map-side-panel .panel-heading p,
+.topology-panel .panel-heading p {
+  margin: 4px 0 0;
+  color: var(--theme-fg-muted);
+  font-size: 11px;
 }
 
 .group-title small {
@@ -217,10 +261,14 @@
   justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
-  color: var(--theme-accent);
+  color: var(--theme-action);
   border-top: 1px solid var(--theme-divider);
   font-size: 11px;
   font-weight: 650;
+}
+
+.project-card-footer:hover {
+  color: var(--theme-action-hover);
 }
 
 .map-empty {
@@ -265,6 +313,28 @@
   gap: 13px;
 }
 
+.project-heading {
+  align-items: center;
+}
+
+.project-heading-back {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  color: var(--theme-fg-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.project-heading-back:hover {
+  color: var(--theme-accent);
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border-focus);
+}
+
 .back-link {
   padding: 0;
   color: var(--theme-fg-muted);
@@ -280,6 +350,20 @@
 .project-heading-icon {
   width: 44px;
   height: 44px;
+}
+
+.project-heading h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.project-heading-context {
+  margin-left: 7px;
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  vertical-align: middle;
 }
 
 .workspace-stats {
@@ -314,7 +398,7 @@
 
 .resource-map-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(250px, .85fr);
+  grid-template-columns: minmax(0, 3fr) minmax(250px, 2fr);
   gap: 19px;
   align-items: start;
 }
@@ -535,6 +619,13 @@
   border-radius: 4px;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.topology-icon {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
 }
 
 .app-node,

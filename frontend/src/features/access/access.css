@@ -248,6 +248,7 @@
 .access-scope-project-list { display: grid; gap: 2px; padding: 4px 0 8px 28px; }
 .access-scope-project-row { gap: 7px; min-height: 38px; padding: 6px 8px; border-radius: 4px; }
 .access-scope-project-row > svg { flex: 0 0 auto; }
+.access-scope-project-row .access-project-icon { width: 24px; height: 24px; border-radius: 5px; }
 .access-user-desk { display: flex; flex-direction: column; min-height: 620px; }
 .access-user-desk-head { display: flex; align-items: center; gap: 12px; }
 .access-user-desk-title { flex: 1 1 auto; min-width: 0; }

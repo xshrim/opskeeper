@@ -1,13 +1,13 @@
 <script lang="ts">
   import {
     ChevronDown,
-    FolderKanban,
     Pencil,
     Plus,
     Trash2,
     UsersRound
   } from 'lucide-svelte';
-  import IconValue from '../../components/IconValue.svelte';
+  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+  import ScopeChip from '../../components/ScopeChip.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
   import type {
     Group,
@@ -313,7 +313,7 @@
                   type="button"
                   disabled={Boolean(selectedProjectId)}
                   on:click={() => selectTeam(team)}
-                  ><IconValue value={team.icon} size={16} /><span
+                  ><EntityBrandIcon kind="Team" fallback={team.icon || 'lucide:UsersRound'} size={16} className="scope-tree-icon" /><span
                     ><strong>{team.name}</strong><small class="scope-tree-count"
                       >{teamProjects.length} 个项目 · {teamUsers.length} 位用户</small
                     ></span
@@ -337,7 +337,7 @@
                       class="access-scope-project-row"
                       type="button"
                       on:click={() => selectProject(project)}
-                      ><FolderKanban size={14} /><span
+                      ><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={14} className="access-project-icon" /><span
                         ><strong>{project.name}</strong><small
                           class="scope-tree-count"
                           >{memberCount(project)} 位用户</small
@@ -381,16 +381,13 @@
           </div>
         </div>
         <div class="access-project-strip">
-          {#each selectedProjects as project}<button
-              class:active={activeProjectID === project.id}
-              aria-pressed={activeProjectID === project.id}
-              class="access-project-chip"
-              type="button"
+          {#each selectedProjects as project}<ScopeChip
+              label={project.name}
+              count={`${memberCount(project)} 人`}
+              active={activeProjectID === project.id}
+              ariaLabel={`筛选项目 ${project.name}`}
               on:click={() => toggleProjectFilter(project.id)}
-              ><strong>{project.name}</strong><span
-                >{memberCount(project)} 人</span
-              ></button
-            >{:else}<span class="access-project-empty">当前范围暂无项目</span
+            />{:else}<span class="access-project-empty">当前范围暂无项目</span
             >{/each}
         </div>
         <div class="access-member-section">

@@ -10,6 +10,7 @@
     Save,
     Trash2
   } from 'lucide-svelte';
+  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
   import IconValue from '../../components/IconValue.svelte';
@@ -17,6 +18,7 @@
   import PasswordInput from '../../components/PasswordInput.svelte';
   import { providerTypeOptions } from './providerCatalog';
   import ProviderBrandIcon from './ProviderBrandIcon.svelte';
+  import { providerBrandIconValue } from '../../lib/iconifyIcons';
   import {
     api,
     ApiError,
@@ -1194,9 +1196,12 @@
             >
             <span class="provider-row-head">
               <span class="provider-title">
-                <span class="entity-icon provider-icon">
-                  <IconValue value={provider.config.icon || 'lucide:Bot'} size={24} />
-                </span>
+                <EntityBrandIcon
+                  kind="AIProvider"
+                  fallback={provider.config.icon || providerBrandIconValue(provider.config.provider_type) || 'lucide:Bot'}
+                  size={24}
+                  className="provider-icon"
+                />
                 <span class="provider-title-copy">
                   <span class="provider-name-line">
                     <strong>{provider.name}</strong>
@@ -1966,8 +1971,9 @@
     border-radius: 7px;
   }
   .provider-icon {
-    color: var(--theme-teal);
-    background: var(--theme-teal-soft);
+    color: var(--theme-fg-muted);
+    background: var(--theme-bg-surface);
+    border-color: var(--theme-border);
   }
   .engine-copy {
     min-width: 0;

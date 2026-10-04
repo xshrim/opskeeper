@@ -154,7 +154,8 @@ func (s *store) Get(ctx context.Context, projectID, applicationID string) (Appli
 }
 
 func (s *store) List(ctx context.Context, projectID string) ([]Application, error) {
-	query, args := visibleApplications(appSelect+` AND a.project_id=$1::uuid ORDER BY a.name, a.id`, []any{projectID}, ctx)
+	query, args := visibleApplications(appSelect+` AND a.project_id=$1::uuid`, []any{projectID}, ctx)
+	query += ` ORDER BY a.name, a.id`
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list applications: %w", err)

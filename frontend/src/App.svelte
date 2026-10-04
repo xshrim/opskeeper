@@ -859,6 +859,7 @@
       {:else if view === 'project'}
         <ProjectPage
           {teams}
+          allProjects={projects}
           {visibleProjects}
           bind:selectedProjectId
           bind:selectedScopeId
@@ -974,6 +975,7 @@
         <AccessPage
           bind:accessTab
           {openCreateTeamRequest}
+          onCreateTeamRequestHandled={() => (openCreateTeamRequest = 0)}
           bind:teams
           {projects}
           platformName={platform?.name ?? '平台'}

@@ -11,9 +11,9 @@
     ChevronDown,
     RefreshCw
   } from 'lucide-svelte';
+  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
-  import IconValue from '../../components/IconValue.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import {
@@ -58,6 +58,7 @@
 
   export let accessTab: AccessTab = 'teams';
   export let openCreateTeamRequest = 0;
+  export let onCreateTeamRequestHandled: () => void = () => {};
   export let accessSearch = '';
   export let visibleAccessTeams: Team[] = [];
   export let visibleAccessUsers: User[] = [];
@@ -361,11 +362,14 @@
   function auditTime(value: string) {
     return value ? new Date(value).toLocaleString() : '—';
   }
+  // The parent clears the request after it is consumed, so remounting this
+  // page cannot replay a dialog that was already opened and closed.
   let handledCreateTeamRequest = 0;
   $: if (openCreateTeamRequest > handledCreateTeamRequest) {
     handledCreateTeamRequest = openCreateTeamRequest;
     accessTab = 'teams';
     openTeamDialog();
+    onCreateTeamRequestHandled();
   }
   function scopeType(id: string) {
     return scopeChoices.find((scope) => scope.id === id)?.type ?? 'scope';
@@ -1487,9 +1491,8 @@
                         aria-expanded={teamAccessExpanded[team.id]}
                         on:click={() => toggleTeamAccess(team.id)}
                       >
-                        <span class="entity-icon team-icon"
-                          ><IconValue value={team.icon} size={17} /></span
-                        ><span
+                        <EntityBrandIcon kind="Team" fallback={team.icon || 'lucide:UsersRound'} size={17} className="team-icon" />
+                        <span
                           ><strong>{team.name}</strong><small>{team.description || '团队'}</small
                           ></span
                         ><ChevronDown

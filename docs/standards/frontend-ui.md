@@ -125,6 +125,16 @@
 
 正文和长文本行高固定在 `1.5-1.6`，避免因内容长度变化造成布局跳动或难以阅读。
 
+### 1.4 业务对象图标统一风格（强制）
+
+团队、项目、应用、AI 渠道以及同类业务对象必须使用资源目录一致的图标组合，不得在页面内重新绘制一套图标容器。统一使用 `frontend/src/components/EntityBrandIcon.svelte`，由它复用 `ResourceBrandIcon.svelte` 的资源类型/品牌图标解析，并使用 `entity-icon resource-icon` 的主题感知容器。
+
+- 对象图标容器统一使用 1px `--theme-border`、`--theme-bg-surface`、4-8px 圆角和资源目录的尺寸层级；页面只通过组件的 `className` 调整尺寸，不复制颜色值。
+- 团队使用 `Team` 类型和团队自定义图标作为 fallback，项目使用 `Project` 类型，应用使用 `Application` 类型；没有品牌图标时使用对应的 Lucide fallback（例如 `UsersRound`、`FolderKanban`、`AppWindow`）。
+- AI 渠道优先使用渠道配置图标，其次使用 `providerBrandIconValue()` 的品牌图标，最后使用 `lucide:Bot`；渠道列表、编辑器和选择器必须保持同一图标语义。
+- 团队/项目筛选小卡片统一使用 `frontend/src/components/ScopeChip.svelte`，选中态必须同时改变文字、背景和边框，保证浅色、深色主题下均有足够对比度。
+- 禁止在页面级样式中使用硬编码颜色、Emoji 或独立的图标背景体系；新增业务对象类型时先补充公共组件 fallback 和本规范，再接入页面。
+
 ## 2. 表单与输入交互
 
 ### 2.1 占位符与说明

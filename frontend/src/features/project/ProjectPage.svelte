@@ -21,10 +21,12 @@
     type ProjectWorkspace,
     type Team
   } from '../../lib/api';
+  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
-  import IconValue from '../../components/IconValue.svelte';
+  import ScopeChip from '../../components/ScopeChip.svelte';
 
   export let teams: Team[] = [];
+  export let allProjects: Project[] = [];
   export let visibleProjects: Project[] = [];
   export let selectedScopeId = '';
   export let selectedProjectId = '';
@@ -39,7 +41,7 @@
   export let onOpenApplicationDiagnosis: (project: Project, application: Application) => void = () => {};
 
   type WizardMode = 'project' | 'application' | 'dependency';
-  type ProjectSource = 'manual' | 'kubernetes' | 'file';
+  type ProjectSource = 'manual' | 'kubernetes';
   type RuntimeKind = 'virtual_machine' | 'containerized' | 'cloud_native';
 
   let projectTeamId = '';
@@ -66,7 +68,6 @@
   let editDescription = '';
   let editIcon = 'lucide:AppWindow';
   let importInput: HTMLInputElement;
-  let projectImportInput: HTMLInputElement;
 
   let wizardOpen = false;
   let wizardMode: WizardMode = 'project';
@@ -370,59 +371,37 @@
     (event.target as HTMLInputElement).value = '';
   }
 
-  function importProject(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const body = JSON.parse(String(reader.result));
-        const teamId = body.team_id || projectTeamId;
-        const created = await api.createProject(teamId, body);
-        onProjectCreated(created);
-        onSelectProject(created);
-        onNotice('项目已导入');
-      } catch (error) {
-        onError(describeError(error, '导入项目失败'));
-      }
-    };
-    reader.readAsText(file);
-    (event.target as HTMLInputElement).value = '';
-  }
 </script>
 
 <section class="resource-map-page">
   {#if !selectedProject}
     <header class="resource-map-header">
-      <div>
-        <p class="eyebrow">PROJECT RESOURCE MAP</p>
-        <h1>项目资源地图</h1>
+      <div class="project-map-heading">
+        <h2><strong>项目地图</strong><small>PROJECTS</small></h2>
         <p>按团队查看可见项目，进入项目后集中管理应用、实例、资源与依赖关系。</p>
       </div>
       <div class="resource-map-actions">
-        <button class="secondary" type="button" disabled={busy} on:click={onOpenTeamDialog}><Plus size={15} />添加团队</button>
-        <input bind:this={projectImportInput} type="file" accept="application/json" hidden on:change={importProject} />
-        <button class="secondary" type="button" on:click={() => projectImportInput?.click()}><Upload size={15} />导入项目</button>
         <button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
       </div>
     </header>
 
     <nav class="team-filter" aria-label="团队筛选">
-      <button class:active={!selectedScopeId} type="button" on:click={() => (selectedScopeId = '')}>全部团队 <span>{visibleProjects.length}</span></button>
+      <ScopeChip label="全部团队" count={allProjects.length} active={!selectedScopeId} on:click={() => (selectedScopeId = '')} />
       {#each teams as team}
-        <button class:active={selectedScopeId === team.scope.id} type="button" on:click={() => onSelectTeam(team)}>{team.name} <span>{visibleProjects.filter((project) => project.team_id === team.id).length}</span></button>
+        <ScopeChip label={team.name} count={allProjects.filter((project) => project.team_id === team.id).length} active={selectedScopeId === team.scope.id} on:click={() => onSelectTeam(team)} />
       {/each}
+      <button class="secondary team-filter-add" type="button" disabled={busy} on:click={onOpenTeamDialog}><Plus size={14} />添加团队</button>
     </nav>
 
     <div class="team-project-groups">
       {#each groupedProjects as group}
         {#if group.projects.length || !selectedScopeId}
           <section class="team-project-group">
-            <div class="group-heading"><div class="group-title"><span class="team-mark"><IconValue value={group.team.icon} size={16} /></span><span><h2>{group.team.name}</h2><small>{group.team.description || '团队项目'}</small></span></div><span class="group-count">{group.projects.length} 个项目</span></div>
+            <div class="group-heading"><div class="group-title"><EntityBrandIcon kind="Team" fallback={group.team.icon || 'lucide:UsersRound'} size={16} className="team-mark" /><span><h2>{group.team.name}</h2><small>{group.team.description || '团队项目'}</small></span></div><span class="group-count">{group.projects.length} 个项目</span></div>
             <div class="project-card-grid">
               {#each group.projects as project}
                 <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
-                  <span class="project-card-top"><span class="project-card-icon"><IconValue value={project.icon} size={20} /></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
+                  <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
                   <span class="project-card-name">{project.name}</span>
                   <span class="project-card-code">{project.code}</span>
                   <span class="project-card-meta"><span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
@@ -440,13 +419,13 @@
     </div>
   {:else}
     <header class="workspace-header resource-map-header">
-      <div class="workspace-title"><button class="back-link" type="button" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={15} />项目地图</button><div class="project-heading"><span class="project-heading-icon"><IconValue value={selectedProject.icon} size={22} /></span><div><p class="eyebrow">{teamName(selectedProject.team_id)} / {selectedProject.code}</p><h1>{selectedProject.name}</h1><p>资源健康、应用实例与依赖关系总览</p></div></div></div>
+      <div class="workspace-title"><div class="project-heading"><button class="project-heading-back" type="button" data-tooltip="返回项目地图" aria-label="返回项目地图" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={18} /></button><EntityBrandIcon kind="Project" fallback={selectedProject.icon || 'lucide:FolderKanban'} size={22} className="project-heading-icon" /><div><h1>项目管理 <small class="project-heading-context">{teamName(selectedProject.team_id)} / {selectedProject.name} · {selectedProject.code}</small></h1><p>资源健康、应用实例与依赖关系总览</p></div></div></div>
       <div class="workspace-actions">
         <input bind:this={importInput} type="file" accept="application/json" hidden on:change={importApplication} />
-        <button class="secondary" type="button" on:click={() => importInput?.click()}><Upload size={15} />导入应用</button>
-        <button class="secondary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
-        <button class="primary" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button>
-        <button class="secondary" type="button" on:click={() => openWizard('dependency')}><Plus size={15} />添加依赖</button>
+        <button class="primary workspace-action" type="button" on:click={() => importInput?.click()}><Upload size={15} />导入应用</button>
+        <button class="primary workspace-action" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
+        <button class="primary workspace-action" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button>
+        <button class="primary workspace-action" type="button" on:click={() => openWizard('dependency')}><Plus size={15} />添加依赖</button>
         <button class="diagnose" type="button" data-tooltip="进入 AI 诊断" on:click={() => onOpenDiagnosis(selectedProject)}><Sparkles size={15} />AI 诊断</button>
       </div>
     </header>
@@ -459,14 +438,14 @@
 
     <div class="resource-map-columns">
       <section class="map-main-column">
-        <div class="section-heading"><div><p class="eyebrow">APPLICATION INVENTORY</p><h2>应用与实例</h2></div><span class="muted">{workspace?.applications.length ?? 0} 个应用</span></div>
+        <div class="section-heading"><div><h2>应用与实例</h2><p>应用运行状态、实例绑定和应用级资源关系</p></div><span class="muted">{workspace?.applications.length ?? 0} 个应用</span></div>
         {#if loadingWorkspace}
           <div class="panel map-loading">正在加载项目资源地图...</div>
         {:else if workspace?.applications.length}
           {#each workspace.applications as app}
             <article class="application-map-card panel" class:expanded={expanded.has(app.id)}>
               <div class="application-card-head">
-                <button class="application-toggle" type="button" on:click={() => toggle(app)}><span class="application-icon"><IconValue value={app.icon} size={19} /></span><span class="application-title"><strong>{app.name}</strong><small>{app.code} · {app.description || '未填写描述'}</small></span></button>
+                <button class="application-toggle" type="button" on:click={() => toggle(app)}><EntityBrandIcon kind="Application" fallback={app.icon || 'lucide:AppWindow'} size={19} className="application-icon" /><span class="application-title"><strong>{app.name}</strong><small>{app.code} · {app.description || '未填写描述'}</small></span></button>
                 <div class="application-card-meta"><span>{app.instances.length} 实例</span><span>{app.dependencies.length} 依赖</span>{#if app.instances.length === 0}<span class="unbound-mark" data-tooltip="未关联运行资源" aria-label="未关联运行资源">!</span>{/if}<span class="status-label {app.status}">{statusLabel(app.status)}</span><button class="icon-button" type="button" data-tooltip="AI 诊断" aria-label="AI 诊断" on:click|stopPropagation={() => onOpenApplicationDiagnosis(selectedProject, app)}><Sparkles size={14} /></button><button class="icon-button" type="button" data-tooltip="编辑应用" aria-label="编辑应用" on:click|stopPropagation={() => beginEdit(app)}><Pencil size={14} /></button><button class="icon-button" type="button" data-tooltip="展开详情" aria-label="展开详情" on:click={() => toggle(app)}><span class:rotate={expanded.has(app.id)}><ChevronDown size={18} /></span></button></div>
               </div>
               {#if editingAppId === app.id}
@@ -476,7 +455,7 @@
                 <div class="application-detail-grid">
                   <section class="detail-block"><div class="detail-heading"><h3>运行实例</h3><button class="text-button" type="button" on:click={() => { relationAppId = app.id; openWizard('application', app); }}><Plus size={13} />添加实例</button></div>{#each app.instances as instance}<div class="instance-row"><span class="runtime-badge">{instance.runtime_kind === 'cloud_native' ? 'K8s' : instance.runtime_kind === 'containerized' ? 'Docker' : 'Host'}</span><span><strong>{instance.name}</strong><small>{instance.target_resource_name || instance.target_resource_id}</small></span><span class="status-label {instance.status}">{statusLabel(instance.status)}</span></div>{:else}<div class="detail-empty"><AlertTriangle size={14} />未绑定运行资源</div>{/each}</section>
                   <section class="detail-block"><div class="detail-heading"><h3>关联依赖</h3><button class="text-button" type="button" on:click={() => openWizard('dependency', app)}><Plus size={13} />添加依赖</button></div>{#each app.dependencies as dependency}<div class="instance-row"><span class="dependency-badge">{dependency.dependency_kind}</span><span><strong>{dependency.target_resource_name || dependency.target_resource_id}</strong><small>{dependency.target_resource_kind || '关联资源'}</small></span><span class="status-label {dependency.status}">{statusLabel(dependency.status)}</span></div>{:else}<div class="detail-empty">暂无应用依赖</div>{/each}</section>
-                  <section class="topology-block"><div class="detail-heading"><h3><Network size={15} />应用资源拓扑</h3><span class="muted">{app.instances.length + app.dependencies.length} 个连接</span></div><div class="topology-flow"><span class="topology-node app-node"><IconValue value={app.icon} size={14} />{app.name}</span>{#each [...app.instances, ...app.dependencies] as edge}<span class="topology-line"></span><span class="topology-node">{edge.target_resource_name || edge.target_resource_id}</span>{/each}</div></section>
+                  <section class="topology-block"><div class="detail-heading"><div><h3><Network size={15} />应用资源拓扑</h3><p>应用与实例、依赖资源之间的连接</p></div><span class="muted">{app.instances.length + app.dependencies.length} 个连接</span></div><div class="topology-flow"><span class="topology-node app-node"><EntityBrandIcon kind="Application" fallback={app.icon || 'lucide:AppWindow'} size={14} className="topology-icon" />{app.name}</span>{#each [...app.instances, ...app.dependencies] as edge}<span class="topology-line"></span><span class="topology-node">{edge.target_resource_name || edge.target_resource_id}</span>{/each}</div></section>
                 </div>
               {/if}
             </article>
@@ -487,9 +466,9 @@
       </section>
 
       <aside class="map-side-column">
-        <section class="panel map-side-panel"><div class="panel-heading"><div><p class="eyebrow">RUNTIME RESOURCES</p><h2>运行资源</h2></div><Server size={17} /></div>{#each workspace?.resources ?? [] as resource}<div class="resource-map-row"><span class="resource-kind">{resource.kind}</span><span><strong>{resource.name}</strong><small>{resource.role || '运行资源'}</small></span><span class="status-label {resource.status}">{statusLabel(resource.status)}</span></div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}</section>
-        <section class="panel topology-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT TOPOLOGY</p><h2>项目拓扑</h2></div><Network size={17} /></div><div class="project-topology"><div class="topology-node project-node"><IconValue value={selectedProject.icon} size={15} />{selectedProject.name}</div>{#each (workspace?.resources ?? []).slice(0, 5) as resource}<span class="topology-branch"></span><div class="topology-node">{resource.name}</div>{/each}</div><p class="topology-caption">应用、实例和运行资源的连接关系将在展开应用后显示。</p></section>
-        <section class="panel map-side-panel alerts-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT SIGNALS</p><h2>项目告警</h2></div><AlertTriangle size={17} /></div>{#each workspace?.alerts ?? [] as alert}<div class="alert-map-row"><span class="severity {alert.severity}"></span><span><strong>{alert.title}</strong><small>{statusLabel(alert.status)}</small></span></div>{:else}<div class="detail-empty success-empty"><CheckCircle2 size={15} />当前没有项目告警</div>{/each}</section>
+        <section class="panel map-side-panel"><div class="panel-heading"><div><h2>运行资源</h2><p>项目关联的 Host、Docker 和 Kubernetes 资源</p></div><Server size={17} /></div>{#each workspace?.resources ?? [] as resource}<div class="resource-map-row"><span class="resource-kind">{resource.kind}</span><span><strong>{resource.name}</strong><small>{resource.role || '运行资源'}</small></span><span class="status-label {resource.status}">{statusLabel(resource.status)}</span></div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}</section>
+        <section class="panel topology-panel"><div class="panel-heading"><div><h2>运行拓扑</h2><p>项目与运行资源之间的连接概览</p></div><Network size={17} /></div><div class="project-topology"><div class="topology-node project-node"><EntityBrandIcon kind="Project" fallback={selectedProject.icon || 'lucide:FolderKanban'} size={15} className="topology-icon" />{selectedProject.name}</div>{#each (workspace?.resources ?? []).slice(0, 5) as resource}<span class="topology-branch"></span><div class="topology-node">{resource.name}</div>{/each}</div><p class="topology-caption">展开应用后可查看实例和依赖的详细连接。</p></section>
+        <section class="panel map-side-panel alerts-panel"><div class="panel-heading"><div><h2>项目告警</h2><p>需要关注的项目健康信号</p></div><AlertTriangle size={17} /></div>{#each workspace?.alerts ?? [] as alert}<div class="alert-map-row"><span class="severity {alert.severity}"></span><span><strong>{alert.title}</strong><small>{statusLabel(alert.status)}</small></span></div>{:else}<div class="detail-empty success-empty"><CheckCircle2 size={15} />当前没有项目告警</div>{/each}</section>
       </aside>
     </div>
   {/if}
@@ -502,7 +481,15 @@
       <nav class="wizard-steps" aria-label="配置步骤">{#each ['项目来源', '应用清单', '实例绑定', '依赖关系'] as step, index}<button class:active={wizardStep === index} class:done={wizardStep > index} type="button" on:click={() => index <= wizardStep && (wizardStep = index)}><span>{index + 1}</span>{step}</button>{/each}</nav>
       <div class="wizard-content">
         {#if wizardStep === 0}
-          <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 01</p><h3>项目从哪里开始？</h3><p>选择手动创建、Kubernetes 候选导入或项目文件导入。</p></div></div><div class="wizard-choice-grid"><button class:selected={projectSource === 'manual'} type="button" on:click={() => (projectSource = 'manual')}><span class="choice-symbol">✎</span><span><strong>手动新增</strong><small>填写项目基本信息，应用和依赖可以稍后配置。</small></span></button><button class:selected={projectSource === 'kubernetes'} type="button" on:click={() => (projectSource = 'kubernetes')}><span class="choice-symbol">◌</span><span><strong>关联 Kubernetes</strong><small>先预览候选应用，删减后再真正导入项目。</small></span></button><button class:selected={projectSource === 'file'} type="button" on:click={() => (projectSource = 'file')}><span class="choice-symbol">↥</span><span><strong>导入项目文件</strong><small>使用 JSON 导入项目基础信息，继续完成校验。</small></span></button></div>{#if projectSource === 'kubernetes'}<div class="wizard-form-grid"><label>集群定位<input bind:value={kubernetesCluster} placeholder="cluster-prod-01" required /></label><label>命名空间<input bind:value={kubernetesNamespace} placeholder="payments" required /></label><label class="full-field">标签选择器<input bind:value={kubernetesSelector} placeholder="app.kubernetes.io/part-of=payments" required /></label></div><div class="candidate-preview"><div class="candidate-heading"><span><strong>候选应用预览</strong><small>取消勾选即可在导入前删减</small></span><span>{kubernetesCandidates.filter((candidate) => candidate.selected).length} / {kubernetesCandidates.length}</span></div>{#each kubernetesCandidates as candidate, index}<label class="candidate-row"><input type="checkbox" checked={candidate.selected} on:change={() => toggleCandidate(index)} /><span>{candidate.name}</span><small>Deployment</small></label>{/each}</div>{:else}<div class="wizard-form-grid"><label>所属团队<i class="required-mark">*</i><select bind:value={projectTeamId} required><option value="" disabled>选择团队</option>{#each teams as team}<option value={team.id}>{team.name}</option>{/each}</select></label><label>项目名称<i class="required-mark">*</i><input bind:value={projectName} placeholder="支付结算平台" required /></label><label>项目编码<input bind:value={projectCode} placeholder="留空自动生成" /></label><label>项目图标<span class="icon-control"><IconPicker value={projectIcon} onSelect={(icon) => (projectIcon = icon)} ariaLabel="选择项目图标" /></span></label><label class="full-field">项目说明<textarea bind:value={projectDescription} rows="3" placeholder="项目职责与边界"></textarea></label></div>{/if}</div>
+          <div class="wizard-pane">
+            <div class="wizard-pane-heading"><div><p class="eyebrow">STEP 01</p><h3>项目从哪里开始？</h3><p>选择手动创建或关联 Kubernetes，应用和依赖可以稍后配置。</p></div></div>
+            <div class="wizard-choice-grid"><button class:selected={projectSource === 'manual'} type="button" on:click={() => (projectSource = 'manual')}><span class="choice-symbol">✎</span><span><strong>手动新增</strong><small>填写项目基本信息，应用和依赖可以稍后配置。</small></span></button><button class:selected={projectSource === 'kubernetes'} type="button" on:click={() => (projectSource = 'kubernetes')}><span class="choice-symbol">◌</span><span><strong>关联 Kubernetes</strong><small>先预览候选应用，删减后再真正导入项目。</small></span></button></div>
+            <div class="wizard-form-grid"><label>所属团队<i class="required-mark">*</i><select bind:value={projectTeamId} required><option value="" disabled>选择团队</option>{#each teams as team}<option value={team.id}>{team.name}</option>{/each}</select></label><label>项目名称<i class="required-mark">*</i><input bind:value={projectName} placeholder="支付结算平台" required /></label><label>项目编码<input bind:value={projectCode} placeholder="留空自动生成" /></label><label>项目图标<span class="icon-control"><IconPicker value={projectIcon} onSelect={(icon) => (projectIcon = icon)} ariaLabel="选择项目图标" /></span></label><label class="full-field">项目说明<textarea bind:value={projectDescription} rows="3" placeholder="项目职责与边界"></textarea></label></div>
+            {#if projectSource === 'kubernetes'}
+              <div class="wizard-form-grid"><label>集群定位<input bind:value={kubernetesCluster} placeholder="cluster-prod-01" required /></label><label>命名空间<input bind:value={kubernetesNamespace} placeholder="payments" required /></label><label class="full-field">标签选择器<input bind:value={kubernetesSelector} placeholder="app.kubernetes.io/part-of=payments" required /></label></div>
+              <div class="candidate-preview"><div class="candidate-heading"><span><strong>候选应用预览</strong><small>取消勾选即可在导入前删减</small></span><span>{kubernetesCandidates.filter((candidate) => candidate.selected).length} / {kubernetesCandidates.length}</span></div>{#each kubernetesCandidates as candidate, index}<label class="candidate-row"><input type="checkbox" checked={candidate.selected} on:change={() => toggleCandidate(index)} /><span>{candidate.name}</span><small>Deployment</small></label>{/each}</div>
+            {/if}
+          </div>
         {:else if wizardStep === 1}
           <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 02</p><h3>应用清单</h3><p>{wizardMode === 'project' && projectSource === 'kubernetes' ? '确认 Kubernetes 候选应用后再导入。' : '可以先添加一个应用，也可以跳过后在驾驶舱继续配置。'}</p></div></div>{#if wizardMode === 'project' && projectSource === 'kubernetes'}<div class="import-review"><CheckCircle2 size={18} /><div><strong>{kubernetesCandidates.filter((candidate) => candidate.selected).length} 个候选应用待导入</strong><p>{kubernetesCluster || 'Kubernetes 集群'} / {kubernetesNamespace} · {kubernetesSelector}</p></div></div>{:else}<div class="wizard-form-grid"><label>应用名称<i class="required-mark">*</i><input bind:value={applicationName} placeholder="payments-api" required /></label><label>应用编码<i class="required-mark">*</i><input bind:value={applicationCode} pattern="[a-z0-9][a-z0-9-]*" placeholder="payments-api" required /></label><label>应用图标<span class="icon-control"><IconPicker value={applicationIcon} onSelect={(icon) => (applicationIcon = icon)} ariaLabel="选择应用图标" /></span></label><label>添加方式<div class="segmented-control"><button class:active={applicationSource === 'manual'} type="button" on:click={() => (applicationSource = 'manual')}>手动</button><button class:active={applicationSource === 'runtime'} type="button" on:click={() => (applicationSource = 'runtime')}>关联运行资源</button></div></label><label class="full-field">应用说明<textarea bind:value={applicationDescription} rows="3" placeholder="应用职责与边界"></textarea></label></div>{/if}</div>
         {:else if wizardStep === 2}
