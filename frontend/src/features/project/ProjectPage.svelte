@@ -5,6 +5,7 @@
     ArrowRight,
     CheckCircle2,
     ChevronDown,
+    Map,
     Network,
     Pencil,
     Plus,
@@ -135,7 +136,7 @@
       if (!runtimeResourceId) runtimeResourceId = workspace.resources[0]?.id ?? '';
       if (!relationResourceId) relationResourceId = workspace.resources[0]?.id ?? '';
     } catch (error) {
-      onError(describeError(error, '项目资源地图加载失败'));
+      onError(describeError(error, '项目驾驶舱加载失败'));
     } finally {
       loadingWorkspace = false;
     }
@@ -376,9 +377,12 @@
 <section class="resource-map-page">
   {#if !selectedProject}
     <header class="resource-map-header">
-      <div class="project-map-heading">
-        <h2><strong>项目地图</strong><small>PROJECTS</small></h2>
-        <p>按团队查看可见项目，进入项目后集中管理应用、实例、资源与依赖关系。</p>
+      <div class="project-page-heading">
+        <span class="project-page-heading-icon" aria-hidden="true"><Map size={19} /></span>
+        <div>
+          <h2><strong>项目全景图</strong><small>PROJECT OVERVIEW</small></h2>
+          <p>按团队查看项目分布，进入项目查看运行状态与资源关系。</p>
+        </div>
       </div>
       <div class="resource-map-actions">
         <button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
@@ -401,11 +405,9 @@
             <div class="project-card-grid">
               {#each group.projects as project}
                 <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
-                  <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
-                  <span class="project-card-name">{project.name}</span>
-                  <span class="project-card-code">{project.code}</span>
+                  <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
                   <span class="project-card-meta"><span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
-                  <span class="project-card-footer">查看资源地图 <ArrowRight size={14} /></span>
+                  <span class="project-card-footer">进入后查看应用、资源与告警统计</span>
                 </button>
               {:else}
                 <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>
@@ -414,12 +416,12 @@
           </section>
         {/if}
       {:else}
-        <div class="map-empty"><Network size={28} /><h2>暂无可见项目</h2><p>创建第一个项目，开始构建资源地图。</p><button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button></div>
+        <div class="map-empty"><Network size={28} /><h2>暂无可见项目</h2><p>创建第一个项目，开始构建项目全景图。</p><button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button></div>
       {/each}
     </div>
   {:else}
     <header class="workspace-header resource-map-header">
-      <div class="workspace-title"><div class="project-heading"><button class="project-heading-back" type="button" data-tooltip="返回项目地图" aria-label="返回项目地图" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={18} /></button><EntityBrandIcon kind="Project" fallback={selectedProject.icon || 'lucide:FolderKanban'} size={22} className="project-heading-icon" /><div><h1>项目管理 <small class="project-heading-context">{teamName(selectedProject.team_id)} / {selectedProject.name} · {selectedProject.code}</small></h1><p>资源健康、应用实例与依赖关系总览</p></div></div></div>
+      <div class="workspace-title"><div class="project-heading"><button class="project-heading-back" type="button" data-tooltip="返回项目全景图" aria-label="返回项目全景图" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={18} /></button><div><h1><strong>项目驾驶舱</strong><small class="project-heading-english">PROJECT COCKPIT</small></h1><p class="project-heading-context">{teamName(selectedProject.team_id)} / {selectedProject.name} · {selectedProject.code}</p></div></div></div>
       <div class="workspace-actions">
         <input bind:this={importInput} type="file" accept="application/json" hidden on:change={importApplication} />
         <button class="primary workspace-action" type="button" on:click={() => importInput?.click()}><Upload size={15} />导入应用</button>
@@ -440,7 +442,7 @@
       <section class="map-main-column">
         <div class="section-heading"><div><h2>应用与实例</h2><p>应用运行状态、实例绑定和应用级资源关系</p></div><span class="muted">{workspace?.applications.length ?? 0} 个应用</span></div>
         {#if loadingWorkspace}
-          <div class="panel map-loading">正在加载项目资源地图...</div>
+          <div class="panel map-loading">正在加载项目驾驶舱...</div>
         {:else if workspace?.applications.length}
           {#each workspace.applications as app}
             <article class="application-map-card panel" class:expanded={expanded.has(app.id)}>
@@ -461,7 +463,7 @@
             </article>
           {/each}
         {:else}
-          <div class="map-empty panel"><Network size={28} /><h3>还没有应用</h3><p>添加应用或从 Kubernetes 导入应用，开始完善资源地图。</p><button class="primary" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button></div>
+          <div class="map-empty panel"><Network size={28} /><h3>还没有应用</h3><p>添加应用或从 Kubernetes 导入应用，开始完善项目驾驶舱。</p><button class="primary" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button></div>
         {/if}
       </section>
 
@@ -477,7 +479,7 @@
 {#if wizardOpen}
   <div class="wizard-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeWizard()}>
     <div class="project-wizard" role="dialog" aria-modal="true" aria-labelledby="project-wizard-title" tabindex="-1">
-      <header class="wizard-header"><div><p class="eyebrow">RESOURCE MAP WIZARD</p><h2 id="project-wizard-title">{wizardMode === 'project' ? '新增项目' : wizardMode === 'application' ? '添加应用' : '添加应用依赖'}</h2><p>{wizardMode === 'project' ? '从项目到应用、实例和依赖关系，一次完成资源地图配置。' : '沿用项目资源地图的配置流，随时跳过暂不需要的步骤。'}</p></div><button class="icon-button" type="button" data-tooltip="关闭向导" aria-label="关闭向导" on:click={closeWizard}><X size={18} /></button></header>
+      <header class="wizard-header"><div><p class="eyebrow">PROJECT CONFIGURATION WIZARD</p><h2 id="project-wizard-title">{wizardMode === 'project' ? '新增项目' : wizardMode === 'application' ? '添加应用' : '添加应用依赖'}</h2><p>{wizardMode === 'project' ? '从项目到应用、实例和依赖关系，一次完成项目驾驶舱配置。' : '沿用项目驾驶舱配置流，随时跳过暂不需要的步骤。'}</p></div><button class="icon-button" type="button" data-tooltip="关闭向导" aria-label="关闭向导" on:click={closeWizard}><X size={18} /></button></header>
       <nav class="wizard-steps" aria-label="配置步骤">{#each ['项目来源', '应用清单', '实例绑定', '依赖关系'] as step, index}<button class:active={wizardStep === index} class:done={wizardStep > index} type="button" on:click={() => index <= wizardStep && (wizardStep = index)}><span>{index + 1}</span>{step}</button>{/each}</nav>
       <div class="wizard-content">
         {#if wizardStep === 0}

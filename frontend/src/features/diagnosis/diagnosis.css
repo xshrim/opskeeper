@@ -392,6 +392,9 @@
   flex-direction: column;
   padding-bottom: 28px;
 }
+.main-content.diagnosis-main-content > .topbar {
+  border-bottom: 1px solid var(--theme-divider);
+}
 .diagnosis-main-content > .diagnosis-workbench-f {
   min-height: 0;
   height: auto;
