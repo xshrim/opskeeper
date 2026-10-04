@@ -1,6 +1,26 @@
 <script lang="ts">
-  import { Plus, Upload, Sparkles, ChevronDown, Server, AlertTriangle, Network, Pencil } from 'lucide-svelte';
-  import { api, ApiError, type Application, type Project, type ProjectWorkspace, type Team } from '../../lib/api';
+  import {
+    AlertTriangle,
+    ArrowLeft,
+    ArrowRight,
+    CheckCircle2,
+    ChevronDown,
+    Network,
+    Pencil,
+    Plus,
+    Server,
+    Sparkles,
+    Upload,
+    X
+  } from 'lucide-svelte';
+  import {
+    api,
+    ApiError,
+    type Application,
+    type Project,
+    type ProjectWorkspace,
+    type Team
+  } from '../../lib/api';
   import IconPicker from '../../components/IconPicker.svelte';
   import IconValue from '../../components/IconValue.svelte';
 
@@ -18,117 +38,480 @@
   export let onOpenDiagnosis: (project: Project) => void;
   export let onOpenApplicationDiagnosis: (project: Project, application: Application) => void = () => {};
 
+  type WizardMode = 'project' | 'application' | 'dependency';
+  type ProjectSource = 'manual' | 'kubernetes' | 'file';
+  type RuntimeKind = 'virtual_machine' | 'containerized' | 'cloud_native';
+
   let projectTeamId = '';
   let projectName = '';
   let projectCode = '';
   let projectIcon = 'lucide:FolderKanban';
-  let creatingProject = false;
+  let projectDescription = '';
+  let projectSource: ProjectSource = 'manual';
+  let kubernetesCluster = '';
+  let kubernetesNamespace = 'default';
+  let kubernetesSelector = 'app.kubernetes.io/part-of=payments';
+  let kubernetesCandidates = [
+    { name: 'payments-api', selected: true },
+    { name: 'billing-worker', selected: true },
+    { name: 'settlement-job', selected: false }
+  ];
+
   let workspace: ProjectWorkspace | null = null;
+  let workspaceProjectId = '';
   let loadingWorkspace = false;
   let expanded = new Set<string>();
-  let showApplicationForm = false;
-  let applicationName = '';
-  let applicationCode = '';
-  let applicationDescription = '';
-  let applicationIcon = 'lucide:AppWindow';
-  let creatingApplication = false;
   let editingAppId = '';
   let editName = '';
   let editDescription = '';
   let editIcon = 'lucide:AppWindow';
-  let relationAppId = '';
-  let relationMode: 'instance' | 'dependency' = 'instance';
-  let relationName = '';
-  let relationResourceId = '';
-  let relationRuntime = 'virtual_machine';
-  let relationKind = 'database';
-  let relationBinding = '';
-  let savingRelation = false;
   let importInput: HTMLInputElement;
   let projectImportInput: HTMLInputElement;
 
+  let wizardOpen = false;
+  let wizardMode: WizardMode = 'project';
+  let wizardStep = 0;
+  let wizardProjectId = '';
+  let wizardApplicationId = '';
+  let wizardInstanceSaved = false;
+  let wizardDependencySaved = false;
+  let wizardSaving = false;
+  let applicationName = '';
+  let applicationCode = '';
+  let applicationDescription = '';
+  let applicationIcon = 'lucide:AppWindow';
+  let applicationSource: 'manual' | 'runtime' = 'manual';
+  let runtimeKind: RuntimeKind = 'virtual_machine';
+  let runtimeResourceId = '';
+  let relationName = '';
+  let relationBinding = '';
+  let relationKind = 'database';
+  let relationResourceId = '';
+  let relationRequired = true;
+  let relationAppId = '';
+
   $: if (!projectTeamId && teams[0]) projectTeamId = teams[0].id;
   $: selectedProject = visibleProjects.find((item) => item.id === selectedProjectId) ?? null;
-  $: if (selectedProjectId) void loadWorkspace(selectedProjectId);
+  $: groupedProjects = teams.map((team) => ({ team, projects: visibleProjects.filter((project) => project.team_id === team.id) }));
+  $: if (selectedProjectId && selectedProjectId !== workspaceProjectId) void loadWorkspace(selectedProjectId);
+  $: if (selectedProjectId === '') {
+    workspace = null;
+    workspaceProjectId = '';
+    expanded = new Set<string>();
+  }
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) return error.message || fallback;
     return error instanceof Error ? error.message || fallback : fallback;
   }
+
+  function teamName(id: string) {
+    return teams.find((team) => team.id === id)?.name ?? '未分配团队';
+  }
+
+  function sourceLabel(source: string) {
+    if (source === 'kubernetes') return 'Kubernetes 导入';
+    if (source === 'file') return '文件导入';
+    return '手动创建';
+  }
+
+  function statusLabel(status: string) {
+    if (status === 'active' || status === 'healthy' || status === 'up') return '正常';
+    if (status === 'warning') return '需关注';
+    if (status === 'disabled') return '已停用';
+    return status || '未知';
+  }
+
+  function selectedRuntimeResource() {
+    return (workspace?.resources ?? []).find((resource) => resource.id === runtimeResourceId) ?? null;
+  }
+
   async function loadWorkspace(id: string) {
     loadingWorkspace = true;
-    try { workspace = await api.projectWorkspace(id); } catch (error) { onError(describeError(error, '项目工作台加载失败')); } finally { loadingWorkspace = false; }
-  }
-  async function createProject() {
-    if (!projectTeamId) return;
-    creatingProject = true; onError('');
-    try { const created = await api.createProject(projectTeamId, { name: projectName, code: projectCode, icon: projectIcon, labels: {} }); onProjectCreated(created); onSelectProject(created); projectName = ''; projectCode = ''; projectIcon = 'lucide:FolderKanban'; onNotice(`项目“${created.name}”已创建`); }
-    catch (error) { onError(describeError(error, '创建项目失败')); } finally { creatingProject = false; }
-  }
-  async function createApplication() {
-    if (!selectedProject) return;
-    creatingApplication = true; onError('');
-    try { await api.createApplication(selectedProject.id, { name: applicationName, code: applicationCode, description: applicationDescription, icon: applicationIcon, labels: {} }); showApplicationForm = false; applicationName = ''; applicationCode = ''; applicationDescription = ''; applicationIcon = 'lucide:AppWindow'; await loadWorkspace(selectedProject.id); onNotice('应用已添加'); }
-    catch (error) { onError(describeError(error, '添加应用失败')); } finally { creatingApplication = false; }
-  }
-  function toggle(app: Application) { const next = new Set(expanded); next.has(app.id) ? next.delete(app.id) : next.add(app.id); expanded = next; }
-  function beginEdit(app: Application) { editingAppId = app.id; editName = app.name; editDescription = app.description; editIcon = app.icon; }
-  async function saveEdit(app: Application) { try { await api.updateApplication(selectedProjectId, app.id, { name: editName, description: editDescription, icon: editIcon }); editingAppId = ''; await loadWorkspace(selectedProjectId); onNotice('应用已更新'); } catch (error) { onError(describeError(error, '更新应用失败')); } }
-  function beginRelation(app: Application, mode: 'instance' | 'dependency') { relationAppId = app.id; relationMode = mode; relationName = ''; relationResourceId = workspace?.resources[0]?.id ?? ''; relationBinding = ''; }
-  async function saveRelation() {
-    if (!relationAppId || !relationResourceId) return;
-    savingRelation = true;
     try {
-      const binding = relationBinding.trim() ? JSON.parse(relationBinding) : {};
-      if (relationMode === 'instance') await api.createApplicationInstance(selectedProjectId, relationAppId, { name: relationName || 'default', runtime_kind: relationRuntime, target_resource_id: relationResourceId, selector: binding });
-      else await api.createApplicationDependency(selectedProjectId, relationAppId, { target_resource_id: relationResourceId, dependency_kind: relationKind, binding, required: true });
-      relationAppId = ''; await loadWorkspace(selectedProjectId); onNotice('关联已保存');
-    } catch (error) { onError(describeError(error, '保存关联失败')); } finally { savingRelation = false; }
+      workspace = await api.projectWorkspace(id);
+      workspaceProjectId = id;
+      if (!runtimeResourceId) runtimeResourceId = workspace.resources[0]?.id ?? '';
+      if (!relationResourceId) relationResourceId = workspace.resources[0]?.id ?? '';
+    } catch (error) {
+      onError(describeError(error, '项目资源地图加载失败'));
+    } finally {
+      loadingWorkspace = false;
+    }
   }
+
+  function resetWizard() {
+    wizardOpen = false;
+    wizardMode = 'project';
+    wizardStep = 0;
+    wizardProjectId = '';
+    wizardApplicationId = '';
+    wizardInstanceSaved = false;
+    wizardDependencySaved = false;
+    wizardSaving = false;
+    projectName = '';
+    projectCode = '';
+    projectDescription = '';
+    projectIcon = 'lucide:FolderKanban';
+    projectSource = 'manual';
+    kubernetesCluster = '';
+    kubernetesNamespace = 'default';
+    kubernetesSelector = 'app.kubernetes.io/part-of=payments';
+    applicationName = '';
+    applicationCode = '';
+    applicationDescription = '';
+    applicationIcon = 'lucide:AppWindow';
+    applicationSource = 'manual';
+    runtimeKind = 'virtual_machine';
+    runtimeResourceId = workspace?.resources[0]?.id ?? '';
+    relationName = '';
+    relationBinding = '';
+    relationKind = 'database';
+    relationResourceId = workspace?.resources[0]?.id ?? '';
+    relationRequired = true;
+    relationAppId = '';
+  }
+
+  function openWizard(mode: WizardMode, app?: Application) {
+    resetWizard();
+    wizardOpen = true;
+    wizardMode = mode;
+    wizardProjectId = selectedProjectId;
+    if (mode === 'application') wizardStep = 1;
+    if (mode === 'application' && app) {
+      wizardApplicationId = app.id;
+      wizardStep = 2;
+      relationAppId = app.id;
+    }
+    if (mode === 'dependency') {
+      wizardStep = 3;
+      relationAppId = app?.id ?? '';
+      relationResourceId = workspace?.resources[0]?.id ?? '';
+    }
+  }
+
+  function closeWizard() {
+    if (!wizardSaving) resetWizard();
+  }
+
+  async function ensureProjectCreated() {
+    if (wizardProjectId) return true;
+    if (!projectTeamId || !projectName.trim()) return false;
+    const created = await api.createProject(projectTeamId, {
+      name: projectName.trim(),
+      code: projectCode.trim(),
+      icon: projectIcon,
+      labels: { description: projectDescription.trim() },
+      source: projectSource
+    });
+    wizardProjectId = created.id;
+    onProjectCreated(created);
+    onSelectProject(created);
+    await loadWorkspace(created.id);
+    onNotice(`项目“${created.name}”已创建`);
+    return true;
+  }
+
+  async function ensureApplicationCreated() {
+    if (wizardApplicationId) return true;
+    const projectId = wizardProjectId || selectedProjectId;
+    if (!projectId) return false;
+    if (wizardMode === 'project' && projectSource === 'kubernetes') {
+      const candidates = kubernetesCandidates.filter((candidate) => candidate.selected);
+      if (!candidates.length) return true;
+      for (const candidate of candidates) {
+        const created = await api.createApplication(projectId, {
+          name: candidate.name,
+          code: candidate.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
+          description: `从 ${kubernetesCluster || 'Kubernetes'} / ${kubernetesNamespace} 导入`,
+          icon: 'lucide:AppWindow',
+          source: 'kubernetes',
+          labels: { source: 'kubernetes', selector: kubernetesSelector }
+        });
+        if (!wizardApplicationId) wizardApplicationId = created.id;
+      }
+      await loadWorkspace(projectId);
+      onNotice(`已导入 ${candidates.length} 个 Kubernetes 应用候选`);
+      return true;
+    }
+    if (!applicationName.trim() || !applicationCode.trim()) return false;
+    const created = await api.createApplication(projectId, {
+      name: applicationName.trim(),
+      code: applicationCode.trim(),
+      description: applicationDescription.trim(),
+      icon: applicationIcon,
+      source: applicationSource,
+      labels: { source: applicationSource }
+    });
+    wizardApplicationId = created.id;
+    await loadWorkspace(projectId);
+    onNotice('应用已添加，继续配置实例和依赖');
+    return true;
+  }
+
+  async function saveWizardInstance() {
+    if (wizardInstanceSaved || !wizardApplicationId) return true;
+    if (applicationSource === 'runtime' && !runtimeResourceId) return false;
+    if (applicationSource !== 'runtime') return true;
+    const selector = relationBinding.trim() ? JSON.parse(relationBinding) : {};
+    await api.createApplicationInstance(wizardProjectId || selectedProjectId, wizardApplicationId, {
+      name: relationName.trim() || 'default',
+      runtime_kind: runtimeKind,
+      target_resource_id: runtimeResourceId,
+      selector
+    });
+    wizardInstanceSaved = true;
+    await loadWorkspace(wizardProjectId || selectedProjectId);
+    return true;
+  }
+
+  async function saveWizardDependency() {
+    if (wizardDependencySaved) return true;
+    if (!relationAppId || !relationResourceId) return false;
+    const binding = relationBinding.trim() ? JSON.parse(relationBinding) : {};
+    await api.createApplicationDependency(wizardProjectId || selectedProjectId, relationAppId, {
+      target_resource_id: relationResourceId,
+      dependency_kind: relationKind,
+      binding,
+      required: relationRequired
+    });
+    wizardDependencySaved = true;
+    await loadWorkspace(wizardProjectId || selectedProjectId);
+    return true;
+  }
+
+  async function nextWizard() {
+    wizardSaving = true;
+    onError('');
+    try {
+      if (wizardStep === 0) {
+        if (!(await ensureProjectCreated())) return;
+        wizardStep = 1;
+      } else if (wizardStep === 1) {
+        if (!(await ensureApplicationCreated())) return;
+        wizardStep = 2;
+      } else if (wizardStep === 2) {
+        if (!(await saveWizardInstance())) return;
+        wizardStep = 3;
+      } else {
+        if (wizardMode === 'dependency') {
+          if (!(await saveWizardDependency())) {
+            onError('请选择应用和关联资源后再完成依赖配置');
+            return;
+          }
+        } else if (relationAppId) {
+          if (!(await saveWizardDependency())) {
+            onError('请选择依赖资源后再完成配置');
+            return;
+          }
+        }
+        const projectId = wizardProjectId || selectedProjectId;
+        if (projectId) await loadWorkspace(projectId);
+        onNotice(wizardMode === 'dependency' ? '应用依赖已添加' : '配置已完成');
+        resetWizard();
+      }
+    } catch (error) {
+      onError(describeError(error, '保存向导配置失败，请检查资源定位配置'));
+    } finally {
+      wizardSaving = false;
+    }
+  }
+
+  function skipWizardStep() {
+    if (wizardStep === 3) {
+      resetWizard();
+      return;
+    }
+    wizardStep += 1;
+  }
+
+  function toggleCandidate(index: number) {
+    kubernetesCandidates = kubernetesCandidates.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, selected: !candidate.selected } : candidate);
+  }
+
+  function toggle(app: Application) {
+    const next = new Set(expanded);
+    next.has(app.id) ? next.delete(app.id) : next.add(app.id);
+    expanded = next;
+  }
+
+  function beginEdit(app: Application) {
+    editingAppId = app.id;
+    editName = app.name;
+    editDescription = app.description;
+    editIcon = app.icon;
+  }
+
+  async function saveEdit(app: Application) {
+    try {
+      await api.updateApplication(selectedProjectId, app.id, { name: editName, description: editDescription, icon: editIcon });
+      editingAppId = '';
+      await loadWorkspace(selectedProjectId);
+      onNotice('应用已更新');
+    } catch (error) {
+      onError(describeError(error, '更新应用失败'));
+    }
+  }
+
   function importApplication(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0]; if (!file || !selectedProject) return;
-    const reader = new FileReader(); reader.onload = async () => { try { await api.importApplication(selectedProject.id, JSON.parse(String(reader.result))); await loadWorkspace(selectedProject.id); onNotice('应用已导入'); } catch (error) { onError(describeError(error, '导入应用失败')); } }; reader.readAsText(file); (event.target as HTMLInputElement).value = '';
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file || !selectedProject) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api.importApplication(selectedProject.id, JSON.parse(String(reader.result)));
+        await loadWorkspace(selectedProject.id);
+        onNotice('应用已导入');
+      } catch (error) {
+        onError(describeError(error, '导入应用失败'));
+      }
+    };
+    reader.readAsText(file);
+    (event.target as HTMLInputElement).value = '';
   }
+
   function importProject(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
-    const reader = new FileReader(); reader.onload = async () => { try { const body = JSON.parse(String(reader.result)); const teamId = body.team_id || projectTeamId; const created = await api.createProject(teamId, body); onProjectCreated(created); onSelectProject(created); onNotice('项目已导入'); } catch (error) { onError(describeError(error, '导入项目失败')); } }; reader.readAsText(file); (event.target as HTMLInputElement).value = '';
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const body = JSON.parse(String(reader.result));
+        const teamId = body.team_id || projectTeamId;
+        const created = await api.createProject(teamId, body);
+        onProjectCreated(created);
+        onSelectProject(created);
+        onNotice('项目已导入');
+      } catch (error) {
+        onError(describeError(error, '导入项目失败'));
+      }
+    };
+    reader.readAsText(file);
+    (event.target as HTMLInputElement).value = '';
   }
 </script>
 
-<section class="project-layout">
-  <aside class="project-nav panel">
-    <div class="panel-heading"><div><p class="eyebrow">WORKSPACE</p><h2>项目</h2></div><span class="count">{visibleProjects.length}</span></div>
-    <div class="table-list team-list">
+<section class="resource-map-page">
+  {#if !selectedProject}
+    <header class="resource-map-header">
+      <div>
+        <p class="eyebrow">PROJECT RESOURCE MAP</p>
+        <h1>项目资源地图</h1>
+        <p>按团队查看可见项目，进入项目后集中管理应用、实例、资源与依赖关系。</p>
+      </div>
+      <div class="resource-map-actions">
+        <button class="secondary" type="button" disabled={busy} on:click={onOpenTeamDialog}><Plus size={15} />添加团队</button>
+        <input bind:this={projectImportInput} type="file" accept="application/json" hidden on:change={importProject} />
+        <button class="secondary" type="button" on:click={() => projectImportInput?.click()}><Upload size={15} />导入项目</button>
+        <button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
+      </div>
+    </header>
+
+    <nav class="team-filter" aria-label="团队筛选">
+      <button class:active={!selectedScopeId} type="button" on:click={() => (selectedScopeId = '')}>全部团队 <span>{visibleProjects.length}</span></button>
       {#each teams as team}
-        <button class:selected={selectedScopeId === team.scope.id} class="list-row" on:click={() => onSelectTeam(team)}><span class="entity-summary"><span class="entity-icon team-icon"><IconValue value={team.icon} size={16} /></span><span><strong>{team.name}</strong><small>{team.description || '团队'}</small></span></span><span class="row-arrow">›</span></button>
+        <button class:active={selectedScopeId === team.scope.id} type="button" on:click={() => onSelectTeam(team)}>{team.name} <span>{visibleProjects.filter((project) => project.team_id === team.id).length}</span></button>
+      {/each}
+    </nav>
+
+    <div class="team-project-groups">
+      {#each groupedProjects as group}
+        {#if group.projects.length || !selectedScopeId}
+          <section class="team-project-group">
+            <div class="group-heading"><div class="group-title"><span class="team-mark"><IconValue value={group.team.icon} size={16} /></span><span><h2>{group.team.name}</h2><small>{group.team.description || '团队项目'}</small></span></div><span class="group-count">{group.projects.length} 个项目</span></div>
+            <div class="project-card-grid">
+              {#each group.projects as project}
+                <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
+                  <span class="project-card-top"><span class="project-card-icon"><IconValue value={project.icon} size={20} /></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
+                  <span class="project-card-name">{project.name}</span>
+                  <span class="project-card-code">{project.code}</span>
+                  <span class="project-card-meta"><span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
+                  <span class="project-card-footer">查看资源地图 <ArrowRight size={14} /></span>
+                </button>
+              {:else}
+                <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>
+              {/each}
+            </div>
+          </section>
+        {/if}
+      {:else}
+        <div class="map-empty"><Network size={28} /><h2>暂无可见项目</h2><p>创建第一个项目，开始构建资源地图。</p><button class="primary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button></div>
       {/each}
     </div>
-    <div class="project-list">
-      {#each visibleProjects as project}
-        <button class:selected={selectedProjectId === project.id} class="project-row" on:click={() => onSelectProject(project)}><span class="entity-icon project-icon"><IconValue value={project.icon} size={17} /></span><span><strong>{project.name}</strong><small>{project.code}</small></span><span class="status-dot {project.status}"></span></button>
-      {:else}<div class="empty-state">暂无项目</div>{/each}
-    </div>
-    <div class="inline-form"><button class="primary" type="button" disabled={busy} on:click={onOpenTeamDialog}><Plus size={15} />添加团队</button><input bind:this={projectImportInput} type="file" accept="application/json" hidden on:change={importProject} /><button class="secondary" type="button" on:click={() => projectImportInput?.click()}><Upload size={14} />导入项目</button></div>
-    <form class="stack-form compact-form" on:submit|preventDefault={createProject}><label><span>所属团队<i class="required-mark" aria-hidden="true">*</i></span><select bind:value={projectTeamId} required><option value="" disabled>选择团队</option>{#each teams as team}<option value={team.id}>{team.name}</option>{/each}</select></label><div class="form-row"><label><span>项目名称<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={projectName} required placeholder="项目名称" /></label><label><span>编码</span><input bind:value={projectCode} placeholder="留空自动生成，如 ops4821" /></label></div><div class="icon-field"><IconPicker value={projectIcon} onSelect={(icon) => (projectIcon = icon)} ariaLabel="选择项目图标" /><span>项目图标</span></div><button class="secondary" disabled={creatingProject || !projectTeamId}><Plus size={14} />新增项目</button></form>
-  </aside>
+  {:else}
+    <header class="workspace-header resource-map-header">
+      <div class="workspace-title"><button class="back-link" type="button" on:click={() => onSelectTeam(teams.find((team) => team.id === selectedProject?.team_id) ?? teams[0])}><ArrowLeft size={15} />项目地图</button><div class="project-heading"><span class="project-heading-icon"><IconValue value={selectedProject.icon} size={22} /></span><div><p class="eyebrow">{teamName(selectedProject.team_id)} / {selectedProject.code}</p><h1>{selectedProject.name}</h1><p>资源健康、应用实例与依赖关系总览</p></div></div></div>
+      <div class="workspace-actions">
+        <input bind:this={importInput} type="file" accept="application/json" hidden on:change={importApplication} />
+        <button class="secondary" type="button" on:click={() => importInput?.click()}><Upload size={15} />导入应用</button>
+        <button class="secondary" type="button" on:click={() => openWizard('project')}><Plus size={15} />新增项目</button>
+        <button class="primary" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button>
+        <button class="secondary" type="button" on:click={() => openWizard('dependency')}><Plus size={15} />添加依赖</button>
+        <button class="diagnose" type="button" data-tooltip="进入 AI 诊断" on:click={() => onOpenDiagnosis(selectedProject)}><Sparkles size={15} />AI 诊断</button>
+      </div>
+    </header>
 
-  <section class="project-workspace">
-    {#if !selectedProject}
-      <div class="panel empty-workspace"><Network size={28} /><h2>选择一个项目</h2><p>项目的应用、资源依赖和运行状态将在这里集中展示。</p></div>
-    {:else}
-      <header class="workspace-header"><div><p class="eyebrow">PROJECT / {selectedProject.code}</p><h1>{selectedProject.name}</h1><p>应用与运行资源工作台</p></div><div class="header-actions"><input bind:this={importInput} type="file" accept="application/json" hidden on:change={importApplication} /><button class="secondary" on:click={() => importInput?.click()}><Upload size={15} />导入应用</button><button class="primary" on:click={() => (showApplicationForm = !showApplicationForm)}><Plus size={15} />添加应用</button><button class="diagnose" title="进入 AI 诊断" on:click={() => onOpenDiagnosis(selectedProject)}><Sparkles size={15} />AI 诊断</button></div></header>
-      <div class="stat-grid">{#each [['应用', workspace?.summary.applications ?? 0], ['实例', workspace?.summary.instances ?? 0], ['关联资源', workspace?.summary.resources ?? 0], ['依赖', workspace?.summary.dependencies ?? 0], ['告警', workspace?.summary.alerts ?? 0]] as stat}<div class="stat"><span>{stat[0]}</span><strong>{stat[1]}</strong></div>{/each}</div>
-      {#if showApplicationForm}<form class="panel app-form" on:submit|preventDefault={createApplication}><div class="form-row"><label><span>应用名称<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={applicationName} required placeholder="payments-api" /></label><label><span>编码<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={applicationCode} required pattern="[a-z0-9][a-z0-9-]*" placeholder="payments-api" /></label><div class="icon-field"><IconPicker value={applicationIcon} onSelect={(icon) => (applicationIcon = icon)} ariaLabel="选择应用图标" /><span>应用图标</span></div></div><label>描述<textarea bind:value={applicationDescription} rows="2" placeholder="应用职责与边界"></textarea></label><div class="form-actions"><button class="secondary" type="button" on:click={() => (showApplicationForm = false)}>取消</button><button class="primary" disabled={creatingApplication}>保存应用</button></div></form>{/if}
-      {#if relationAppId}<form class="panel app-form" on:submit|preventDefault={saveRelation}><div class="form-row"><label><span>关联资源<i class="required-mark" aria-hidden="true">*</i></span><select bind:value={relationResourceId} required>{#each workspace?.resources ?? [] as resource}<option value={resource.id}>{resource.name} · {resource.kind}</option>{/each}</select></label>{#if relationMode === 'instance'}<label>实例名称<input bind:value={relationName} placeholder="default" /></label>{:else}<label>依赖类型<select bind:value={relationKind}><option value="database">数据库</option><option value="messaging">消息队列</option><option value="cache">缓存</option><option value="configuration">配置中心</option><option value="repository">代码仓库</option><option value="storage">存储</option></select></label>{/if}</div>{#if relationMode === 'instance'}<label>运行方式<select bind:value={relationRuntime}><option value="virtual_machine">虚拟机</option><option value="containerized">容器</option><option value="cloud_native">Kubernetes</option></select></label>{/if}<label>绑定字段 JSON<textarea bind:value={relationBinding} rows="2" placeholder="例如 namespace 或 topic 的 JSON"></textarea></label><div class="form-actions"><button class="secondary" type="button" on:click={() => (relationAppId = '')}>取消</button><button class="primary" disabled={savingRelation}>保存关联</button></div></form>{/if}
-      <div class="workspace-columns"><div class="workspace-side"><section class="panel side-section"><div class="panel-heading"><div><p class="eyebrow">DEPENDENCIES</p><h2>关联资源</h2></div><Server size={17} /></div>{#each workspace?.resources ?? [] as resource}<div class="resource-line"><span class="resource-kind">{resource.kind}</span><span><strong>{resource.name}</strong><small>{resource.role}</small></span><span class="status-dot {resource.status}"></span></div>{:else}<div class="empty-state">暂无关联资源</div>{/each}</section><section class="panel side-section"><div class="panel-heading"><div><p class="eyebrow">SIGNALS</p><h2>告警</h2></div><AlertTriangle size={17} /></div>{#each workspace?.alerts ?? [] as alert}<div class="alert-line"><span class="severity {alert.severity}"></span><span>{alert.title}</span></div>{:else}<div class="empty-state">当前没有告警</div>{/each}</section></div>
-        <section class="apps-section"><div class="section-heading"><div><p class="eyebrow">APPLICATIONS</p><h2>应用列表</h2></div><span class="muted">{workspace?.applications.length ?? 0} 个应用</span></div>{#if loadingWorkspace}<div class="panel loading">正在加载项目工作台...</div>{:else}{#each workspace?.applications ?? [] as app}<article class="panel app-card" class:expanded={expanded.has(app.id)}><div class="app-card-head"><button class="app-card-toggle" on:click={() => toggle(app)}><span class="app-icon"><IconValue value={app.icon} size={18} /></span><span class="app-title"><strong>{app.name}</strong><small>{app.code} · {app.description || '未填写描述'}</small></span></button><span class="app-meta"><span>{app.instances.length} 实例</span><span>{app.dependencies.length} 依赖</span><span class="status-label {app.status}">{app.status}</span><button class="icon-action" title="AI 诊断" on:click|stopPropagation={() => onOpenApplicationDiagnosis(selectedProject, app)}><Sparkles size={14} /></button><button class="icon-action" title="编辑应用" on:click|stopPropagation={() => beginEdit(app)}><Pencil size={14} /></button><button class="icon-action" title="展开应用" on:click={() => toggle(app)}><ChevronDown class={expanded.has(app.id) ? 'rotate' : ''} size={18} /></button></span></div>{#if editingAppId === app.id}<form class="inline-edit" on:submit|preventDefault={() => saveEdit(app)}><IconPicker value={editIcon} onSelect={(icon) => (editIcon = icon)} ariaLabel="选择应用图标" /><input bind:value={editName} required /><input bind:value={editDescription} placeholder="描述" /><button class="primary">保存</button><button type="button" class="secondary" on:click={() => (editingAppId = '')}>取消</button></form>{/if}{#if expanded.has(app.id)}<div class="app-detail"><div class="detail-column"><div class="detail-heading"><h3>实例</h3><button class="text-button" on:click={() => beginRelation(app, 'instance')}><Plus size={13} />添加</button></div>{#each app.instances as instance}<div class="detail-row"><span class="instance-mark">{instance.runtime_kind === 'cloud_native' ? 'K8s' : instance.runtime_kind === 'containerized' ? 'Docker' : 'VM'}</span><span><strong>{instance.name}</strong><small>{instance.target_resource_name || instance.target_resource_id}</small></span><code>{JSON.stringify(instance.selector)}</code></div>{:else}<div class="empty-state">未配置实例</div>{/each}</div><div class="detail-column"><div class="detail-heading"><h3>关联依赖</h3><button class="text-button" on:click={() => beginRelation(app, 'dependency')}><Plus size={13} />添加</button></div>{#each app.dependencies as dep}<div class="detail-row"><span class="dependency-mark">{dep.dependency_kind}</span><span><strong>{dep.target_resource_name || dep.target_resource_id}</strong><small>{dep.target_resource_kind}</small></span><code>{Object.entries(dep.binding).map(([key, value]) => `${key}: ${value}`).join(' · ') || '未设置绑定字段'}</code></div>{:else}<div class="empty-state">未配置依赖</div>{/each}</div><div class="topology"><h3><Network size={15} />关联拓扑</h3><div class="topology-flow"><div class="topology-node app-node">{app.name}</div>{#each [...app.instances, ...app.dependencies] as edge}<span class="topology-line"></span><div class="topology-node">{edge.target_resource_name || edge.target_resource_id}</div>{/each}</div></div></div>{/if}</article>{:else}<div class="panel empty-workspace"><Network size={26} /><p>还没有应用，添加或导入一个应用开始配置。</p></div>{/each}{/if}</section></div>
-    {/if}
-  </section>
+    <div class="workspace-stats">
+      {#each [['应用', workspace?.summary.applications ?? 0, '应用和服务'], ['实例', workspace?.summary.instances ?? 0, '运行中的实例'], ['关联资源', workspace?.summary.resources ?? 0, 'Host / Docker / K8s'], ['依赖', workspace?.summary.dependencies ?? 0, '应用关系'], ['告警', workspace?.summary.alerts ?? 0, '待处理信号']] as stat}
+        <div class="workspace-stat"><span>{stat[0]}</span><strong>{stat[1]}</strong><small>{stat[2]}</small></div>
+      {/each}
+    </div>
+
+    <div class="resource-map-columns">
+      <section class="map-main-column">
+        <div class="section-heading"><div><p class="eyebrow">APPLICATION INVENTORY</p><h2>应用与实例</h2></div><span class="muted">{workspace?.applications.length ?? 0} 个应用</span></div>
+        {#if loadingWorkspace}
+          <div class="panel map-loading">正在加载项目资源地图...</div>
+        {:else if workspace?.applications.length}
+          {#each workspace.applications as app}
+            <article class="application-map-card panel" class:expanded={expanded.has(app.id)}>
+              <div class="application-card-head">
+                <button class="application-toggle" type="button" on:click={() => toggle(app)}><span class="application-icon"><IconValue value={app.icon} size={19} /></span><span class="application-title"><strong>{app.name}</strong><small>{app.code} · {app.description || '未填写描述'}</small></span></button>
+                <div class="application-card-meta"><span>{app.instances.length} 实例</span><span>{app.dependencies.length} 依赖</span>{#if app.instances.length === 0}<span class="unbound-mark" data-tooltip="未关联运行资源" aria-label="未关联运行资源">!</span>{/if}<span class="status-label {app.status}">{statusLabel(app.status)}</span><button class="icon-button" type="button" data-tooltip="AI 诊断" aria-label="AI 诊断" on:click|stopPropagation={() => onOpenApplicationDiagnosis(selectedProject, app)}><Sparkles size={14} /></button><button class="icon-button" type="button" data-tooltip="编辑应用" aria-label="编辑应用" on:click|stopPropagation={() => beginEdit(app)}><Pencil size={14} /></button><button class="icon-button" type="button" data-tooltip="展开详情" aria-label="展开详情" on:click={() => toggle(app)}><span class:rotate={expanded.has(app.id)}><ChevronDown size={18} /></span></button></div>
+              </div>
+              {#if editingAppId === app.id}
+                <form class="inline-edit" on:submit|preventDefault={() => saveEdit(app)}><IconPicker value={editIcon} onSelect={(icon) => (editIcon = icon)} ariaLabel="选择应用图标" /><input bind:value={editName} required /><input bind:value={editDescription} placeholder="描述" /><button class="primary" type="submit">保存</button><button class="secondary" type="button" on:click={() => editingAppId = ''}>取消</button></form>
+              {/if}
+              {#if expanded.has(app.id)}
+                <div class="application-detail-grid">
+                  <section class="detail-block"><div class="detail-heading"><h3>运行实例</h3><button class="text-button" type="button" on:click={() => { relationAppId = app.id; openWizard('application', app); }}><Plus size={13} />添加实例</button></div>{#each app.instances as instance}<div class="instance-row"><span class="runtime-badge">{instance.runtime_kind === 'cloud_native' ? 'K8s' : instance.runtime_kind === 'containerized' ? 'Docker' : 'Host'}</span><span><strong>{instance.name}</strong><small>{instance.target_resource_name || instance.target_resource_id}</small></span><span class="status-label {instance.status}">{statusLabel(instance.status)}</span></div>{:else}<div class="detail-empty"><AlertTriangle size={14} />未绑定运行资源</div>{/each}</section>
+                  <section class="detail-block"><div class="detail-heading"><h3>关联依赖</h3><button class="text-button" type="button" on:click={() => openWizard('dependency', app)}><Plus size={13} />添加依赖</button></div>{#each app.dependencies as dependency}<div class="instance-row"><span class="dependency-badge">{dependency.dependency_kind}</span><span><strong>{dependency.target_resource_name || dependency.target_resource_id}</strong><small>{dependency.target_resource_kind || '关联资源'}</small></span><span class="status-label {dependency.status}">{statusLabel(dependency.status)}</span></div>{:else}<div class="detail-empty">暂无应用依赖</div>{/each}</section>
+                  <section class="topology-block"><div class="detail-heading"><h3><Network size={15} />应用资源拓扑</h3><span class="muted">{app.instances.length + app.dependencies.length} 个连接</span></div><div class="topology-flow"><span class="topology-node app-node"><IconValue value={app.icon} size={14} />{app.name}</span>{#each [...app.instances, ...app.dependencies] as edge}<span class="topology-line"></span><span class="topology-node">{edge.target_resource_name || edge.target_resource_id}</span>{/each}</div></section>
+                </div>
+              {/if}
+            </article>
+          {/each}
+        {:else}
+          <div class="map-empty panel"><Network size={28} /><h3>还没有应用</h3><p>添加应用或从 Kubernetes 导入应用，开始完善资源地图。</p><button class="primary" type="button" on:click={() => openWizard('application')}><Plus size={15} />添加应用</button></div>
+        {/if}
+      </section>
+
+      <aside class="map-side-column">
+        <section class="panel map-side-panel"><div class="panel-heading"><div><p class="eyebrow">RUNTIME RESOURCES</p><h2>运行资源</h2></div><Server size={17} /></div>{#each workspace?.resources ?? [] as resource}<div class="resource-map-row"><span class="resource-kind">{resource.kind}</span><span><strong>{resource.name}</strong><small>{resource.role || '运行资源'}</small></span><span class="status-label {resource.status}">{statusLabel(resource.status)}</span></div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}</section>
+        <section class="panel topology-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT TOPOLOGY</p><h2>项目拓扑</h2></div><Network size={17} /></div><div class="project-topology"><div class="topology-node project-node"><IconValue value={selectedProject.icon} size={15} />{selectedProject.name}</div>{#each (workspace?.resources ?? []).slice(0, 5) as resource}<span class="topology-branch"></span><div class="topology-node">{resource.name}</div>{/each}</div><p class="topology-caption">应用、实例和运行资源的连接关系将在展开应用后显示。</p></section>
+        <section class="panel map-side-panel alerts-panel"><div class="panel-heading"><div><p class="eyebrow">PROJECT SIGNALS</p><h2>项目告警</h2></div><AlertTriangle size={17} /></div>{#each workspace?.alerts ?? [] as alert}<div class="alert-map-row"><span class="severity {alert.severity}"></span><span><strong>{alert.title}</strong><small>{statusLabel(alert.status)}</small></span></div>{:else}<div class="detail-empty success-empty"><CheckCircle2 size={15} />当前没有项目告警</div>{/each}</section>
+      </aside>
+    </div>
+  {/if}
 </section>
 
-<style>
-  .project-layout{display:grid;grid-template-columns:minmax(230px,1fr) minmax(0,2fr);gap:20px;align-items:start}.project-nav{position:sticky;top:20px;padding:18px}.team-list{margin:0 -18px}.project-list{border-top:1px solid var(--theme-divider);margin-top:12px;padding-top:8px}.project-row{width:100%;display:flex;align-items:center;gap:10px;border:0;background:none;padding:10px 8px;border-radius:6px;color:var(--theme-text);text-align:left;cursor:pointer}.project-row:hover,.project-row.selected{background:var(--theme-surface-muted)}.project-row span:nth-child(2){flex:1;min-width:0}.project-row strong,.project-row small,.app-title strong,.app-title small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-row small,.app-title small,.resource-line small,.detail-row small{color:var(--theme-text-muted);font-size:12px;margin-top:3px}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--theme-text-muted)}.status-dot.active{background:#2f9e6f}.status-dot.disabled{background:#d97757}.workspace-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px}.workspace-header h1{margin:3px 0 4px;font-size:28px}.workspace-header p:not(.eyebrow){margin:0;color:var(--theme-text-muted)}.header-actions{display:flex;gap:8px;flex-wrap:wrap}.header-actions button,.app-form button{display:inline-flex;align-items:center;gap:7px}.diagnose{border:1px solid color-mix(in srgb,#bd7b3c 60%,var(--theme-divider));background:transparent;color:#b66d2f;border-radius:6px;padding:8px 12px;cursor:pointer}.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px}.stat{background:var(--theme-surface);border:1px solid var(--theme-divider);padding:13px 15px;border-radius:6px}.stat span{display:block;color:var(--theme-text-muted);font-size:12px}.stat strong{font-size:24px;line-height:1.2}.app-form{padding:16px;margin-bottom:18px}.app-form label{display:grid;gap:6px;font-size:13px;color:var(--theme-text-muted)}.app-form input,.app-form textarea{width:100%;box-sizing:border-box}.form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.workspace-columns{display:grid;grid-template-columns:minmax(210px,1fr) minmax(0,2fr);gap:18px}.workspace-side{display:grid;gap:18px;align-content:start}.side-section{padding:16px}.side-section .panel-heading{margin-bottom:8px}.resource-line,.alert-line{display:flex;align-items:center;gap:9px;padding:10px 0;border-bottom:1px solid var(--theme-divider)}.resource-line:last-child,.alert-line:last-child{border-bottom:0}.resource-line>span:nth-child(2){flex:1;min-width:0}.resource-kind,.severity{font-size:10px;color:var(--theme-text-muted);font-family:monospace}.alert-line{font-size:13px}.severity{width:7px;height:7px;border-radius:50%;background:#d97757}.severity.warning{background:#d4a13b}.apps-section{min-width:0}.section-heading{display:flex;justify-content:space-between;align-items:end;margin:0 0 10px}.section-heading h2{margin:3px 0 0}.muted{color:var(--theme-text-muted);font-size:13px}.app-card{overflow:hidden;margin-bottom:10px}.app-card-head{width:100%;display:flex;align-items:center;gap:12px;padding:15px;border:0;background:transparent;color:var(--theme-text);text-align:left;cursor:pointer}.app-card-head:hover{background:var(--theme-surface-muted)}.app-icon{width:34px;height:34px;display:grid;place-items:center;background:var(--theme-surface-muted);border-radius:6px;color:#b66d2f}.app-title{flex:1;min-width:0}.app-meta{display:flex;align-items:center;gap:12px;color:var(--theme-text-muted);font-size:12px}.app-meta .status-label{font-size:11px}.rotate{transform:rotate(180deg)}.app-detail{display:grid;grid-template-columns:1fr 1fr;gap:16px;border-top:1px solid var(--theme-divider);padding:16px}.detail-column h3,.topology h3{font-size:13px;margin:0 0 9px;display:flex;align-items:center;gap:6px}.detail-row{display:grid;grid-template-columns:auto minmax(80px,1fr);gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--theme-divider)}.detail-row code{grid-column:2;color:var(--theme-text-muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.instance-mark,.dependency-mark{font-size:10px;padding:3px 5px;border:1px solid var(--theme-divider);border-radius:4px;color:var(--theme-text-muted)}.dependency-mark{color:#b66d2f}.topology{grid-column:1/-1;border-top:1px solid var(--theme-divider);padding-top:14px}.topology-flow{display:flex;align-items:center;gap:8px;overflow:auto;padding-bottom:4px}.topology-node{white-space:nowrap;padding:8px 10px;border:1px solid var(--theme-divider);border-radius:5px;background:var(--theme-surface-muted);font-size:12px}.app-node{border-color:#b66d2f;color:#b66d2f}.topology-line{width:18px;height:1px;background:var(--theme-divider);flex:none}.empty-workspace{min-height:220px;display:grid;place-content:center;justify-items:center;gap:10px;color:var(--theme-text-muted);text-align:center}.empty-workspace h2,.empty-workspace p{margin:0}.loading{padding:22px;color:var(--theme-text-muted)}
-  .icon-field{display:flex;align-items:center;gap:8px;color:var(--theme-text-muted);font-size:12px}.inline-edit{display:flex;align-items:center;gap:8px;padding:0 15px 15px}.inline-edit input{min-width:0;flex:1}.inline-edit :global(.icon-picker-trigger){width:32px;height:32px}
-  @media(max-width:900px){.project-layout,.workspace-columns{grid-template-columns:1fr}.project-nav{position:static}.stat-grid{grid-template-columns:repeat(3,1fr)}.workspace-header{display:block}.header-actions{margin-top:14px}.app-detail{grid-template-columns:1fr}}
-  @media(max-width:540px){.stat-grid{grid-template-columns:repeat(2,1fr)}.app-meta span:not(.status-label){display:none}.workspace-header h1{font-size:24px}}
-</style>
+{#if wizardOpen}
+  <div class="wizard-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeWizard()}>
+    <div class="project-wizard" role="dialog" aria-modal="true" aria-labelledby="project-wizard-title" tabindex="-1">
+      <header class="wizard-header"><div><p class="eyebrow">RESOURCE MAP WIZARD</p><h2 id="project-wizard-title">{wizardMode === 'project' ? '新增项目' : wizardMode === 'application' ? '添加应用' : '添加应用依赖'}</h2><p>{wizardMode === 'project' ? '从项目到应用、实例和依赖关系，一次完成资源地图配置。' : '沿用项目资源地图的配置流，随时跳过暂不需要的步骤。'}</p></div><button class="icon-button" type="button" data-tooltip="关闭向导" aria-label="关闭向导" on:click={closeWizard}><X size={18} /></button></header>
+      <nav class="wizard-steps" aria-label="配置步骤">{#each ['项目来源', '应用清单', '实例绑定', '依赖关系'] as step, index}<button class:active={wizardStep === index} class:done={wizardStep > index} type="button" on:click={() => index <= wizardStep && (wizardStep = index)}><span>{index + 1}</span>{step}</button>{/each}</nav>
+      <div class="wizard-content">
+        {#if wizardStep === 0}
+          <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 01</p><h3>项目从哪里开始？</h3><p>选择手动创建、Kubernetes 候选导入或项目文件导入。</p></div></div><div class="wizard-choice-grid"><button class:selected={projectSource === 'manual'} type="button" on:click={() => (projectSource = 'manual')}><span class="choice-symbol">✎</span><span><strong>手动新增</strong><small>填写项目基本信息，应用和依赖可以稍后配置。</small></span></button><button class:selected={projectSource === 'kubernetes'} type="button" on:click={() => (projectSource = 'kubernetes')}><span class="choice-symbol">◌</span><span><strong>关联 Kubernetes</strong><small>先预览候选应用，删减后再真正导入项目。</small></span></button><button class:selected={projectSource === 'file'} type="button" on:click={() => (projectSource = 'file')}><span class="choice-symbol">↥</span><span><strong>导入项目文件</strong><small>使用 JSON 导入项目基础信息，继续完成校验。</small></span></button></div>{#if projectSource === 'kubernetes'}<div class="wizard-form-grid"><label>集群定位<input bind:value={kubernetesCluster} placeholder="cluster-prod-01" required /></label><label>命名空间<input bind:value={kubernetesNamespace} placeholder="payments" required /></label><label class="full-field">标签选择器<input bind:value={kubernetesSelector} placeholder="app.kubernetes.io/part-of=payments" required /></label></div><div class="candidate-preview"><div class="candidate-heading"><span><strong>候选应用预览</strong><small>取消勾选即可在导入前删减</small></span><span>{kubernetesCandidates.filter((candidate) => candidate.selected).length} / {kubernetesCandidates.length}</span></div>{#each kubernetesCandidates as candidate, index}<label class="candidate-row"><input type="checkbox" checked={candidate.selected} on:change={() => toggleCandidate(index)} /><span>{candidate.name}</span><small>Deployment</small></label>{/each}</div>{:else}<div class="wizard-form-grid"><label>所属团队<i class="required-mark">*</i><select bind:value={projectTeamId} required><option value="" disabled>选择团队</option>{#each teams as team}<option value={team.id}>{team.name}</option>{/each}</select></label><label>项目名称<i class="required-mark">*</i><input bind:value={projectName} placeholder="支付结算平台" required /></label><label>项目编码<input bind:value={projectCode} placeholder="留空自动生成" /></label><label>项目图标<span class="icon-control"><IconPicker value={projectIcon} onSelect={(icon) => (projectIcon = icon)} ariaLabel="选择项目图标" /></span></label><label class="full-field">项目说明<textarea bind:value={projectDescription} rows="3" placeholder="项目职责与边界"></textarea></label></div>{/if}</div>
+        {:else if wizardStep === 1}
+          <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 02</p><h3>应用清单</h3><p>{wizardMode === 'project' && projectSource === 'kubernetes' ? '确认 Kubernetes 候选应用后再导入。' : '可以先添加一个应用，也可以跳过后在驾驶舱继续配置。'}</p></div></div>{#if wizardMode === 'project' && projectSource === 'kubernetes'}<div class="import-review"><CheckCircle2 size={18} /><div><strong>{kubernetesCandidates.filter((candidate) => candidate.selected).length} 个候选应用待导入</strong><p>{kubernetesCluster || 'Kubernetes 集群'} / {kubernetesNamespace} · {kubernetesSelector}</p></div></div>{:else}<div class="wizard-form-grid"><label>应用名称<i class="required-mark">*</i><input bind:value={applicationName} placeholder="payments-api" required /></label><label>应用编码<i class="required-mark">*</i><input bind:value={applicationCode} pattern="[a-z0-9][a-z0-9-]*" placeholder="payments-api" required /></label><label>应用图标<span class="icon-control"><IconPicker value={applicationIcon} onSelect={(icon) => (applicationIcon = icon)} ariaLabel="选择应用图标" /></span></label><label>添加方式<div class="segmented-control"><button class:active={applicationSource === 'manual'} type="button" on:click={() => (applicationSource = 'manual')}>手动</button><button class:active={applicationSource === 'runtime'} type="button" on:click={() => (applicationSource = 'runtime')}>关联运行资源</button></div></label><label class="full-field">应用说明<textarea bind:value={applicationDescription} rows="3" placeholder="应用职责与边界"></textarea></label></div>{/if}</div>
+        {:else if wizardStep === 2}
+          <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 03</p><h3>实例绑定</h3><p>已关联资源的实例会自动显示健康状态；手动应用可以保留为待配置。</p></div></div>{#if wizardMode === 'dependency'}<div class="skip-pane"><Network size={22} /><strong>这是依赖配置向导</strong><p>实例绑定对当前动作不是必需步骤，可以直接跳过。</p></div>{:else if wizardMode === 'project' && projectSource === 'kubernetes'}<div class="skip-pane"><CheckCircle2 size={22} /><strong>Kubernetes 实例自动发现</strong><p>导入后由集群标签和命名空间定位实例，此步骤无需手动绑定。</p></div>{:else}<div class="runtime-options"><button class:selected={applicationSource === 'manual'} type="button" on:click={() => (applicationSource = 'manual')}><span>!</span><strong>暂不关联资源</strong><small>驾驶舱会保留待配置警示</small></button><button class:selected={applicationSource === 'runtime'} type="button" on:click={() => (applicationSource = 'runtime')}><span>↗</span><strong>绑定运行资源</strong><small>Host、Docker、Kubernetes 均需唯一定位</small></button></div>{#if applicationSource === 'runtime'}<div class="wizard-form-grid"><label>运行方式<select bind:value={runtimeKind}><option value="virtual_machine">Host</option><option value="containerized">Docker</option><option value="cloud_native">Kubernetes</option></select></label><label>实例名称<input bind:value={relationName} placeholder="default" /></label><label class="full-field">唯一资源<select bind:value={runtimeResourceId} required><option value="" disabled>选择运行资源</option>{#each workspace?.resources ?? [] as resource}<option value={resource.id}>{resource.name} · {resource.kind}</option>{/each}</select>{#if !selectedRuntimeResource()}<small class="field-error">必须选择一个可唯一定位的运行资源</small>{/if}</label><label class="full-field">定位字段 JSON<textarea bind:value={relationBinding} rows="3" placeholder="例如 namespace=payments"></textarea></label></div>{/if}{/if}</div>
+        {:else}
+          <div class="wizard-pane"><div class="wizard-pane-heading"><div><p class="eyebrow">STEP 04</p><h3>依赖关系</h3><p>把数据库、消息队列、缓存等资源挂到应用上，依赖也可以稍后补充。</p></div></div>{#if wizardMode === 'project' && !wizardApplicationId}<div class="skip-pane"><Network size={22} /><strong>还没有应用可绑定依赖</strong><p>完成项目后可以从驾驶舱的应用详情中继续添加。</p></div>{:else}<div class="wizard-form-grid"><label>应用<select bind:value={relationAppId} required><option value="" disabled>选择应用</option>{#each workspace?.applications ?? [] as app}<option value={app.id}>{app.name} · {app.code}</option>{/each}{#if wizardApplicationId && !(workspace?.applications.some((app) => app.id === wizardApplicationId) ?? false)}<option value={wizardApplicationId}>当前新增应用</option>{/if}</select></label><label>依赖类型<select bind:value={relationKind}><option value="database">数据库</option><option value="messaging">消息队列</option><option value="cache">缓存</option><option value="configuration">配置中心</option><option value="repository">代码仓库</option><option value="storage">存储</option></select></label><label class="full-field">关联资源<select bind:value={relationResourceId} required><option value="" disabled>选择资源</option>{#each workspace?.resources ?? [] as resource}<option value={resource.id}>{resource.name} · {resource.kind}</option>{/each}</select></label><label class="full-field">绑定字段 JSON<textarea bind:value={relationBinding} rows="3" placeholder="例如 database=payments"></textarea></label><label class="checkbox-field"><input type="checkbox" bind:checked={relationRequired} />必须可用</label></div>{/if}</div>
+        {/if}
+      </div>
+      <footer class="wizard-footer"><button class="secondary" type="button" on:click={closeWizard}>取消</button><div class="wizard-footer-right">{#if wizardStep > (wizardMode === 'project' ? 0 : wizardMode === 'application' ? 1 : 3)}<button class="secondary" type="button" on:click={() => (wizardStep -= 1)}><ArrowLeft size={14} />上一步</button>{/if}<button class="secondary" type="button" on:click={skipWizardStep}>{wizardStep === 3 ? '跳过并完成' : '跳过此步'}</button><button class="primary" type="button" disabled={wizardSaving} on:click={nextWizard}>{wizardStep === 3 ? '完成配置' : '下一步'}<ArrowRight size={14} /></button></div></footer>
+    </div>
+  </div>
+{/if}
