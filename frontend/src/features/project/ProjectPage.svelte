@@ -5,6 +5,7 @@
     ArrowRight,
     CheckCircle2,
     ChevronDown,
+    Clock3,
     Map,
     Network,
     Pencil,
@@ -130,7 +131,35 @@
     if (status === 'active' || status === 'healthy' || status === 'up') return '正常';
     if (status === 'warning') return '需关注';
     if (status === 'disabled') return '已停用';
+    if (status === 'unknown') return '未知';
     return status || '未知';
+  }
+
+  function projectHealthTone(project: Project) {
+    if (project.status === 'disabled') return 'disabled';
+    if (project.status === 'warning' || project.status === 'unknown') return 'warning';
+    return project.summary.alerts > 0 ? 'warning' : 'success';
+  }
+
+  function projectHealthSummary(project: Project) {
+    if (project.status === 'disabled') return '项目已停用';
+    if (project.summary.alerts > 0) return `${project.summary.alerts} 条告警待处理`;
+    if (project.status === 'warning') return '项目状态需关注';
+    if (project.status === 'unknown') return '项目状态未知';
+    return '运行正常 · 暂无告警';
+  }
+
+  function projectUpdatedLabel(value: string) {
+    const timestamp = Date.parse(value);
+    if (!Number.isFinite(timestamp)) return '更新时间未知';
+    const elapsed = Math.max(Date.now() - timestamp, 0);
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (elapsed < minute) return '刚刚更新';
+    if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前更新`;
+    if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前更新`;
+    return `${Math.floor(elapsed / day)} 天前更新`;
   }
 
   function toggleTeam(teamID: string) {
@@ -426,11 +455,12 @@
             {#if !teamCollapsed}
               <div class="project-card-grid">
                 {#each group.projects as project}
-                  <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
-                    <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
-                    <span class="project-card-meta"><span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
-                    <span class="project-card-footer" aria-label="项目运行摘要"><span class="project-card-fact"><strong>{project.summary.applications}</strong><small>应用</small></span><span class="project-card-fact"><strong>{project.summary.resources}</strong><small>资源</small></span><span class="project-card-fact"><strong>{project.summary.alerts}</strong><small>告警</small></span><span class="project-card-fact"><strong>{project.summary.dependencies}</strong><small>依赖</small></span></span>
-                  </button>
+                <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
+                  <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
+                  <span class="project-card-summary" aria-label="项目运行摘要"><span class="project-card-stat"><strong>{project.summary.applications}</strong><small>应用</small></span><span class="project-card-stat"><strong>{project.summary.resources}</strong><small>关联</small></span><span class="project-card-stat"><strong>{project.summary.dependencies}</strong><small>依赖</small></span><span class="project-card-stat"><strong>{project.summary.alerts}</strong><small>告警</small></span></span>
+                  <span class="project-card-meta"><span class="project-card-source"><span class="project-source-icon" aria-hidden="true">{#if project.source === 'kubernetes'}<Server size={13} />{:else if project.source === 'file'}<Upload size={13} />{:else}<Pencil size={13} />{/if}</span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
+                  <span class="project-card-footer"><span class="project-health {projectHealthTone(project)}">{projectHealthSummary(project)}</span><span class="project-card-updated"><Clock3 size={12} />{projectUpdatedLabel(project.updated_at)}</span></span>
+                </button>
                 {:else}
                   <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>
                 {/each}

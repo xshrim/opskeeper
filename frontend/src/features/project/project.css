@@ -254,7 +254,8 @@
 
 .project-map-card {
   display: grid;
-  min-height: 184px;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 210px;
   padding: 15px;
   color: var(--theme-fg);
   text-align: left;
@@ -317,55 +318,101 @@
 .project-card-meta {
   justify-content: space-between;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 16px;
   color: var(--theme-fg-muted);
   font-size: 11px;
 }
 
-.project-card-footer {
+.project-card-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-self: end;
-  gap: 0;
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid var(--theme-divider);
+  gap: 8px;
+  margin-top: 19px;
 }
 
-.project-card-fact {
+.project-card-stat {
   display: grid;
   min-width: 0;
-  gap: 3px;
-  padding: 0 8px;
-  border-right: 1px solid var(--theme-divider);
+  gap: 4px;
 }
 
-.project-card-fact:first-child {
-  padding-left: 0;
-}
-
-.project-card-fact:last-child {
-  padding-right: 0;
-  border-right: 0;
-}
-
-.project-card-fact strong,
-.project-card-fact small {
+.project-card-stat strong,
+.project-card-stat small {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-card-fact strong {
+.project-card-stat strong {
   color: var(--theme-fg-strong);
   font-size: 16px;
   line-height: 1;
 }
 
-.project-card-fact small {
+.project-card-stat small {
   color: var(--theme-fg-muted);
   font-size: 10px;
+}
+
+.project-card-source,
+.project-card-updated {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+}
+
+.project-card-source {
+  color: var(--theme-fg-muted);
+}
+
+.project-source-icon {
+  display: inline-flex;
+  color: var(--theme-accent);
+}
+
+.project-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: end;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 10px;
+  color: var(--theme-fg-muted);
+  border-top: 1px solid var(--theme-divider);
+  font-size: 10px;
+}
+
+.project-health,
+.project-card-updated {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-health {
+  min-width: 0;
+  font-weight: 650;
+}
+
+.project-health.success {
+  color: var(--theme-success);
+}
+
+.project-health.warning {
+  color: var(--theme-warning);
+}
+
+.project-health.disabled {
+  color: var(--theme-fg-muted);
+}
+
+.project-card-updated {
+  flex: none;
+  color: var(--theme-fg-subtle);
 }
 
 .map-empty {
