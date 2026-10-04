@@ -407,7 +407,7 @@
                 <button class="project-map-card" type="button" on:click={() => onSelectProject(project)}>
                   <span class="project-card-top"><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" /><span class="project-card-identity"><strong>{project.name}</strong><small>{project.code}</small></span><span class="project-card-arrow"><ArrowRight size={17} /></span></span>
                   <span class="project-card-meta"><span>{sourceLabel(project.source)}</span><span class="status-label {project.status}">{statusLabel(project.status)}</span></span>
-                  <span class="project-card-footer">进入后查看应用、资源与告警统计</span>
+                  <span class="project-card-footer" aria-label="项目运行摘要"><span class="project-card-fact"><strong>{project.summary.applications}</strong><small>应用</small></span><span class="project-card-fact"><strong>{project.summary.resources}</strong><small>资源</small></span><span class="project-card-fact"><strong>{project.summary.alerts}</strong><small>告警</small></span><span class="project-card-fact"><strong>{project.summary.dependencies}</strong><small>依赖</small></span></span>
                 </button>
               {:else}
                 <div class="map-empty compact"><Network size={20} /><span>该团队还没有项目</span><button type="button" class="text-button" on:click={() => openWizard('project')}>新增项目</button></div>

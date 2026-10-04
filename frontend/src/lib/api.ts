@@ -82,6 +82,12 @@ export interface Project {
   external_uid?: string;
   source_config: Record<string, unknown>;
   last_synced_at?: string;
+  summary: {
+    applications: number;
+    resources: number;
+    alerts: number;
+    dependencies: number;
+  };
   status: string;
   created_at: string;
   updated_at: string;

@@ -32,8 +32,41 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.icon, p.labels, p.source, p.source_resource_id::text, p.external_uid,
-	       p.source_config, p.last_synced_at, p.created_at, p.updated_at
+       p.icon, p.labels, p.source, p.source_resource_id::text, p.external_uid,
+       p.source_config, p.last_synced_at, p.created_at, p.updated_at,
+       (SELECT count(*)::int
+          FROM applications a
+         WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS application_count,
+       (SELECT count(DISTINCT r.id)::int
+          FROM resources r
+         WHERE r.deleted_at IS NULL
+           AND (r.scope_id = p.scope_id
+             OR EXISTS (
+                  SELECT 1
+                    FROM application_instances i
+                    JOIN applications a ON a.id = i.application_id
+                   WHERE a.project_id = p.id
+                     AND a.deleted_at IS NULL
+                     AND i.target_resource_id = r.id)
+             OR EXISTS (
+                  SELECT 1
+                    FROM application_dependencies d
+                    JOIN applications a ON a.id = d.application_id
+                   WHERE a.project_id = p.id
+                     AND a.deleted_at IS NULL
+                     AND d.target_resource_id = r.id))) AS resource_count,
+       (SELECT count(*)::int
+          FROM inspection_findings f
+          JOIN inspection_policies policy ON policy.id = f.policy_id
+          JOIN resources r ON r.id = f.target_resource_id
+         WHERE policy.scope_id = p.scope_id
+           AND r.scope_id = p.scope_id
+           AND f.status = 'open'
+           AND r.deleted_at IS NULL) AS alert_count,
+       (SELECT count(*)::int
+          FROM application_dependencies d
+          JOIN applications a ON a.id = d.application_id
+         WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS dependency_count
 	  FROM projects p
 	  JOIN scopes s ON s.id = p.scope_id
 	 WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL`
@@ -477,6 +510,10 @@ func scanProject(row scanner) (Project, error) {
 		&project.LastSyncedAt,
 		&project.CreatedAt,
 		&project.UpdatedAt,
+		&project.Summary.Applications,
+		&project.Summary.Resources,
+		&project.Summary.Alerts,
+		&project.Summary.Dependencies,
 	); err != nil {
 		return Project{}, err
 	}

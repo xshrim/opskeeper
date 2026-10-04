@@ -88,7 +88,6 @@
 .back-link,
 .text-button,
 .wizard-footer button,
-.project-card-footer,
 .application-card-meta button {
   display: inline-flex;
   align-items: center;
@@ -293,13 +292,49 @@
 }
 
 .project-card-footer {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-self: end;
+  gap: 0;
   margin-top: 14px;
   padding-top: 10px;
-  color: var(--theme-fg-muted);
   border-top: 1px solid var(--theme-divider);
-  font-size: 11px;
-  line-height: 1.45;
+}
+
+.project-card-fact {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 0 8px;
+  border-right: 1px solid var(--theme-divider);
+}
+
+.project-card-fact:first-child {
+  padding-left: 0;
+}
+
+.project-card-fact:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.project-card-fact strong,
+.project-card-fact small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card-fact strong {
+  color: var(--theme-fg-strong);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.project-card-fact small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
 }
 
 .map-empty {

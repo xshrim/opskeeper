@@ -52,9 +52,17 @@ type Project struct {
 	ExternalUID      string            `json:"external_uid,omitempty"`
 	SourceConfig     map[string]any    `json:"source_config"`
 	LastSyncedAt     *time.Time        `json:"last_synced_at,omitempty"`
+	Summary          ProjectSummary    `json:"summary"`
 	Status           string            `json:"status"`
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
+}
+
+type ProjectSummary struct {
+	Applications int `json:"applications"`
+	Resources    int `json:"resources"`
+	Alerts       int `json:"alerts"`
+	Dependencies int `json:"dependencies"`
 }
 
 type Page[T any] struct {
