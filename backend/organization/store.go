@@ -32,8 +32,7 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-       p.icon, p.labels, p.source, p.source_resource_id::text, p.external_uid,
-       p.source_config, p.last_synced_at, p.created_at, p.updated_at,
+	       p.description, p.icon, p.labels, p.created_at, p.updated_at,
        (SELECT count(*)::int
           FROM applications a
          WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS application_count,
@@ -41,7 +40,9 @@ const projectSelect = `
           FROM applications a
          WHERE a.project_id = p.id
            AND a.deleted_at IS NULL
-           AND a.status IN ('active', 'healthy', 'normal', 'up')) AS healthy_application_count,
+           AND a.status IN ('active', 'healthy', 'normal', 'up')
+           AND EXISTS (SELECT 1 FROM application_instances healthy_instance JOIN resources healthy_resource ON healthy_resource.id = healthy_instance.target_resource_id WHERE healthy_instance.application_id = a.id AND healthy_resource.status = 'active')
+           AND NOT EXISTS (SELECT 1 FROM application_instances unhealthy_instance JOIN resources unhealthy_resource ON unhealthy_resource.id = unhealthy_instance.target_resource_id WHERE unhealthy_instance.application_id = a.id AND (unhealthy_resource.status <> 'active' OR unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up')))) AS healthy_application_count,
        (SELECT count(DISTINCT r.id)::int
           FROM resources r
          WHERE r.deleted_at IS NULL
@@ -87,7 +88,6 @@ type Store interface {
 	ListProjects(context.Context, string, Pagination) (Page[Project], error)
 	GetProject(context.Context, string) (Project, error)
 	UpdateProject(context.Context, string, UpdateProjectInput) (Project, error)
-	BindProjectSource(context.Context, string, ProjectSourceInput) (Project, error)
 }
 
 type store struct {
@@ -283,17 +283,33 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	if err != nil {
 		return Project{}, fmt.Errorf("encode project labels: %w", err)
 	}
-	sourceConfig, err := json.Marshal(input.SourceConfig)
-	if err != nil {
-		return Project{}, fmt.Errorf("encode project source config: %w", err)
-	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels, source, source_resource_id, external_uid, source_config, last_synced_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::uuid, $10, $11::jsonb,
-		        CASE WHEN $9::uuid IS NULL THEN NULL ELSE now() END)
-		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Icon, labels, input.Source, nullableString(input.SourceResourceID), input.ExternalUID, sourceConfig).Scan(&projectID); err != nil {
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, description, icon, labels)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
+		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Description, input.Icon, labels).Scan(&projectID); err != nil {
 		return Project{}, mapStoreError(err)
+	}
+	for _, app := range input.Applications {
+		appLabels, err := json.Marshal(app.Labels)
+		if err != nil {
+			return Project{}, fmt.Errorf("encode application labels: %w", err)
+		}
+		var appID string
+		if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels)
+			VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`, projectID, app.Name, app.Code, app.Description, app.Icon, app.RuntimeKind, app.ExternalUID, appLabels).Scan(&appID); err != nil {
+			return Project{}, mapStoreError(err)
+		}
+		for _, instance := range app.Instances {
+			selector, err := json.Marshal(instance.Selector)
+			if err != nil {
+				return Project{}, fmt.Errorf("encode instance selector: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,status)
+				VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,'active')`, appID, instance.Name, app.RuntimeKind, instance.TargetResourceID, selector); err != nil {
+				return Project{}, mapStoreError(err)
+			}
+		}
 	}
 
 	project, err := scanProject(tx.QueryRow(ctx, projectSelect+" AND p.id = $1::uuid", projectID))
@@ -304,26 +320,6 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 		return Project{}, fmt.Errorf("commit create project: %w", err)
 	}
 	return project, nil
-}
-
-func (s *store) BindProjectSource(ctx context.Context, projectID string, input ProjectSourceInput) (Project, error) {
-	config, err := json.Marshal(input.SourceConfig)
-	if err != nil {
-		return Project{}, fmt.Errorf("encode project source config: %w", err)
-	}
-	query, args := scopedQuery(`
-		UPDATE projects p
-		   SET source = 'kubernetes', source_resource_id = $2::uuid, external_uid = $3,
-		       source_config = $4::jsonb, last_synced_at = now(), updated_at = now()
-		 WHERE p.id = $1::uuid AND p.deleted_at IS NULL`, "p", ctx, projectID, input.SourceResourceID, input.ExternalUID, config)
-	command, err := s.pool.Exec(ctx, query, args...)
-	if err != nil {
-		return Project{}, mapStoreError(err)
-	}
-	if command.RowsAffected() != 1 {
-		return Project{}, ErrNotFound
-	}
-	return s.GetProject(ctx, projectID)
 }
 
 func (s *store) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {
@@ -384,6 +380,9 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	if input.Name != nil {
 		current.Name = *input.Name
 	}
+	if input.Description != nil {
+		current.Description = *input.Description
+	}
 	if input.Labels != nil {
 		current.Labels = *input.Labels
 	}
@@ -408,8 +407,8 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE projects
-		   SET name = $2, icon = $3, labels = $4, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, current.Icon, labels); err != nil {
+		   SET name = $2, description = $3, icon = $4, labels = $5, updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, current.Description, current.Icon, labels); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -495,7 +494,6 @@ func scanProject(row scanner) (Project, error) {
 	var project Project
 	var parentID pgtype.Text
 	var labels []byte
-	var sourceConfig []byte
 	if err := row.Scan(
 		&project.ID,
 		&project.PlatformID,
@@ -506,13 +504,9 @@ func scanProject(row scanner) (Project, error) {
 		&project.Scope.Status,
 		&project.Name,
 		&project.Code,
+		&project.Description,
 		&project.Icon,
 		&labels,
-		&project.Source,
-		&project.SourceResourceID,
-		&project.ExternalUID,
-		&sourceConfig,
-		&project.LastSyncedAt,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 		&project.Summary.Applications,
@@ -526,19 +520,9 @@ func scanProject(row scanner) (Project, error) {
 	if err := json.Unmarshal(labels, &project.Labels); err != nil {
 		return Project{}, fmt.Errorf("decode project labels: %w", err)
 	}
-	if err := json.Unmarshal(sourceConfig, &project.SourceConfig); err != nil {
-		return Project{}, fmt.Errorf("decode project source config: %w", err)
-	}
 	project.Scope.ParentID = nullableText(parentID)
 	project.Status = project.Scope.Status
 	return project, nil
-}
-
-func nullableString(value *string) any {
-	if value == nil || *value == "" {
-		return nil
-	}
-	return *value
 }
 
 func nullableText(value pgtype.Text) *string {

@@ -21,7 +21,13 @@ var _ Store = (*store)(nil)
 func NewStore(pool *pgxpool.Pool) Store { return &store{pool: pool} }
 
 const appSelect = `SELECT a.id::text, a.project_id::text, p.scope_id::text,
-       a.name, a.code, a.description, a.icon, a.status, a.source,
+       a.name, a.code, a.description, a.icon,
+       CASE
+         WHEN a.status = 'disabled' THEN 'disabled'
+         WHEN NOT EXISTS (SELECT 1 FROM application_instances missing_instance WHERE missing_instance.application_id = a.id) THEN 'unknown'
+         WHEN EXISTS (SELECT 1 FROM application_instances unhealthy_instance JOIN resources unhealthy_resource ON unhealthy_resource.id = unhealthy_instance.target_resource_id WHERE unhealthy_instance.application_id = a.id AND (unhealthy_resource.status <> 'active' OR unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up'))) THEN 'warning'
+         ELSE 'active'
+       END, a.runtime_kind,
        a.external_uid, a.labels, a.created_at, a.updated_at
   FROM applications a
   JOIN projects p ON p.id = a.project_id
@@ -34,7 +40,7 @@ func scanApp(row rowScanner) (Application, error) {
 	var item Application
 	var labels []byte
 	if err := row.Scan(&item.ID, &item.ProjectID, &item.ProjectScopeID, &item.Name, &item.Code,
-		&item.Description, &item.Icon, &item.Status, &item.Source, &item.ExternalUID,
+		&item.Description, &item.Icon, &item.Status, &item.RuntimeKind, &item.ExternalUID,
 		&labels, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Application{}, ErrNotFound
@@ -88,56 +94,16 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Application, err
 	if err != nil {
 		return Application{}, fmt.Errorf("encode application labels: %w", err)
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,source,external_uid,labels)
+	if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels)
 VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`, input.ProjectID, input.Name, input.Code,
-		input.Description, input.Icon, input.Source, input.ExternalUID, labels).Scan(&id); err != nil {
+		input.Description, input.Icon, input.RuntimeKind, input.ExternalUID, labels).Scan(&id); err != nil {
 		return Application{}, mapStoreError(err)
 	}
-	if err := insertRelations(ctx, tx, id, input.Instances, input.Dependencies); err != nil {
+	if err := insertInstances(ctx, tx, id, input.Instances); err != nil {
 		return Application{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Application{}, fmt.Errorf("commit create application: %w", err)
-	}
-	return s.Get(ctx, input.ProjectID, id)
-}
-
-func (s *store) Import(ctx context.Context, input ImportInput) (Application, error) {
-	if err := s.projectExists(ctx, input.ProjectID); err != nil {
-		return Application{}, err
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Application{}, fmt.Errorf("begin import application: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	labels, err := json.Marshal(normalizeLabels(input.Labels))
-	if err != nil {
-		return Application{}, fmt.Errorf("encode imported application labels: %w", err)
-	}
-	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,source,external_uid,labels)
-VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8)
-ON CONFLICT (project_id, external_uid) WHERE deleted_at IS NULL AND external_uid <> ''
-DO UPDATE SET name=EXCLUDED.name, code=EXCLUDED.code, description=EXCLUDED.description,
-              icon=EXCLUDED.icon, source=EXCLUDED.source, labels=EXCLUDED.labels,
-              status='active', updated_at=now(), deleted_at=NULL
-RETURNING id::text`, input.ProjectID, input.Name, input.Code, input.Description, input.Icon,
-		input.Source, input.ExternalUID, labels).Scan(&id)
-	if err != nil {
-		return Application{}, mapStoreError(err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id=$1::uuid`, id); err != nil {
-		return Application{}, mapStoreError(err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id=$1::uuid`, id); err != nil {
-		return Application{}, mapStoreError(err)
-	}
-	if err := insertRelations(ctx, tx, id, input.Instances, input.Dependencies); err != nil {
-		return Application{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return Application{}, fmt.Errorf("commit import application: %w", err)
 	}
 	return s.Get(ctx, input.ProjectID, id)
 }
@@ -249,7 +215,7 @@ func (s *store) CreateInstance(ctx context.Context, projectID, applicationID str
 	}
 	var id string
 	if err := s.pool.QueryRow(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,log_binding,status)
-VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,COALESCE(NULLIF($7,''),'unknown')) RETURNING id::text`, applicationID,
+VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,COALESCE(NULLIF($7,''),'active')) RETURNING id::text`, applicationID,
 		input.Name, input.RuntimeKind, input.TargetResourceID, selector, logs, input.Status).Scan(&id); err != nil {
 		return Instance{}, mapStoreError(err)
 	}
@@ -325,23 +291,6 @@ func (s *store) DeleteInstance(ctx context.Context, projectID, applicationID, in
 	return nil
 }
 
-func (s *store) CreateDependency(ctx context.Context, projectID, applicationID string, input CreateDependencyInput) (Dependency, error) {
-	if _, err := s.Get(ctx, projectID, applicationID); err != nil {
-		return Dependency{}, err
-	}
-	binding, err := json.Marshal(normalizeObject(input.Binding))
-	if err != nil {
-		return Dependency{}, fmt.Errorf("encode application binding: %w", err)
-	}
-	var id string
-	if err := s.pool.QueryRow(ctx, `INSERT INTO application_dependencies(application_id,target_resource_id,dependency_kind,binding,required,status)
-VALUES($1::uuid,$2::uuid,$3,$4::jsonb,$5,COALESCE(NULLIF($6,''),'unknown')) RETURNING id::text`, applicationID,
-		input.TargetResourceID, input.DependencyKind, binding, input.Required, input.Status).Scan(&id); err != nil {
-		return Dependency{}, mapStoreError(err)
-	}
-	return s.getDependency(ctx, projectID, applicationID, id)
-}
-
 func (s *store) getDependency(ctx context.Context, projectID, applicationID, dependencyID string) (Dependency, error) {
 	args := []any{dependencyID, applicationID}
 	query := `SELECT d.id::text,d.application_id::text,d.target_resource_id::text,r.name,r.kind,
@@ -391,17 +340,6 @@ func (s *store) listDependencies(ctx context.Context, applicationID string) ([]D
 		items = append(items, item)
 	}
 	return items, rows.Err()
-}
-
-func (s *store) DeleteDependency(ctx context.Context, projectID, applicationID, dependencyID string) error {
-	if _, err := s.Get(ctx, projectID, applicationID); err != nil {
-		return err
-	}
-	var deletedID string
-	if err := s.pool.QueryRow(ctx, `DELETE FROM application_dependencies WHERE id=$1::uuid AND application_id=$2::uuid RETURNING id::text`, dependencyID, applicationID).Scan(&deletedID); err != nil {
-		return mapStoreError(err)
-	}
-	return nil
 }
 
 func (s *store) ContextResourceIDs(ctx context.Context, scopeID, applicationID string) ([]string, error) {
@@ -510,7 +448,7 @@ func (s *store) workspaceAlerts(ctx context.Context, projectID string) ([]Alert,
 	return items, rows.Err()
 }
 
-func insertRelations(ctx context.Context, tx pgx.Tx, applicationID string, instances []CreateInstanceInput, dependencies []CreateDependencyInput) error {
+func insertInstances(ctx context.Context, tx pgx.Tx, applicationID string, instances []CreateInstanceInput) error {
 	for _, input := range instances {
 		selector, err := json.Marshal(normalizeObject(input.Selector))
 		if err != nil {
@@ -521,19 +459,8 @@ func insertRelations(ctx context.Context, tx pgx.Tx, applicationID string, insta
 			return fmt.Errorf("encode application log binding: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,log_binding,status)
-VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,COALESCE(NULLIF($7,''),'unknown'))`, applicationID,
+VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,COALESCE(NULLIF($7,''),'active'))`, applicationID,
 			input.Name, input.RuntimeKind, input.TargetResourceID, selector, logs, input.Status); err != nil {
-			return mapStoreError(err)
-		}
-	}
-	for _, input := range dependencies {
-		binding, err := json.Marshal(normalizeObject(input.Binding))
-		if err != nil {
-			return fmt.Errorf("encode application binding: %w", err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO application_dependencies(application_id,target_resource_id,dependency_kind,binding,required,status)
-VALUES($1::uuid,$2::uuid,$3,$4::jsonb,$5,COALESCE(NULLIF($6,''),'unknown'))`, applicationID,
-			input.TargetResourceID, input.DependencyKind, binding, input.Required, input.Status); err != nil {
 			return mapStoreError(err)
 		}
 	}

@@ -13,8 +13,8 @@ type Application struct {
 	Code           string            `json:"code"`
 	Description    string            `json:"description"`
 	Icon           string            `json:"icon"`
+	RuntimeKind    string            `json:"runtime_kind"`
 	Status         string            `json:"status"`
-	Source         string            `json:"source"`
 	ExternalUID    string            `json:"external_uid,omitempty"`
 	Labels         map[string]string `json:"labels"`
 	Instances      []Instance        `json:"instances"`
@@ -79,10 +79,15 @@ type Alert struct {
 }
 
 type CreateInput struct {
-	ProjectID, Name, Code, Description, Icon, Source, ExternalUID string
-	Labels                                                        map[string]string
-	Instances                                                     []CreateInstanceInput
-	Dependencies                                                  []CreateDependencyInput
+	ProjectID   string                `json:"project_id,omitempty"`
+	Name        string                `json:"name"`
+	Code        string                `json:"code"`
+	Description string                `json:"description"`
+	Icon        string                `json:"icon"`
+	RuntimeKind string                `json:"runtime_kind"`
+	ExternalUID string                `json:"external_uid,omitempty"`
+	Labels      map[string]string     `json:"labels"`
+	Instances   []CreateInstanceInput `json:"instances"`
 }
 type UpdateInput struct {
 	Name, Description, Icon, Status *string
@@ -96,24 +101,4 @@ type CreateInstanceInput struct {
 	Selector         map[string]any `json:"selector"`
 	LogBinding       map[string]any `json:"log_binding"`
 	Status           string         `json:"status"`
-}
-type CreateDependencyInput struct {
-	ApplicationID    string         `json:"application_id,omitempty"`
-	TargetResourceID string         `json:"target_resource_id"`
-	DependencyKind   string         `json:"dependency_kind"`
-	Binding          map[string]any `json:"binding"`
-	Required         bool           `json:"required"`
-	Status           string         `json:"status"`
-}
-type ImportInput struct {
-	ProjectID    string                  `json:"project_id"`
-	Name         string                  `json:"name"`
-	Code         string                  `json:"code"`
-	Description  string                  `json:"description"`
-	Icon         string                  `json:"icon"`
-	Source       string                  `json:"source"`
-	ExternalUID  string                  `json:"external_uid"`
-	Labels       map[string]string       `json:"labels"`
-	Instances    []CreateInstanceInput   `json:"instances"`
-	Dependencies []CreateDependencyInput `json:"dependencies"`
 }

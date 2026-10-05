@@ -75,13 +75,9 @@ export interface Project {
   scope: Scope;
   name: string;
   code: string;
+  description: string;
   icon: string;
   labels: Record<string, string>;
-  source: string;
-  source_resource_id?: string;
-  external_uid?: string;
-  source_config: Record<string, unknown>;
-  last_synced_at?: string;
   summary: {
     applications: number;
     applications_healthy: number;
@@ -124,8 +120,8 @@ export interface Application {
   code: string;
   description: string;
   icon: string;
+  runtime_kind: string;
   status: string;
-  source: string;
   external_uid?: string;
   labels: Record<string, string>;
   instances: ApplicationInstance[];
@@ -904,9 +900,10 @@ export const api = {
     body: {
       name: string;
       code: string;
+      description: string;
       icon: string;
       labels: Record<string, string>;
-      source?: string;
+      applications?: Array<Record<string, unknown>>;
     }
   ) => request<Project>(`api/v1/teams/${teamId}/projects`, json(body)),
   updateProject: (id: string, body: Record<string, unknown>) =>
@@ -920,11 +917,6 @@ export const api = {
   createApplication: (projectId: string, body: Record<string, unknown>) =>
     request<Application>(
       `api/v1/projects/${projectId}/applications`,
-      json(body)
-    ),
-  importApplication: (projectId: string, body: Record<string, unknown>) =>
-    request<Application>(
-      `api/v1/projects/${projectId}/applications/import`,
       json(body)
     ),
   updateApplication: (
@@ -949,15 +941,6 @@ export const api = {
       `api/v1/projects/${projectId}/applications/${applicationId}/instances`,
       json(body)
     ),
-  createApplicationDependency: (
-    projectId: string,
-    applicationId: string,
-    body: Record<string, unknown>
-  ) =>
-    request<ApplicationDependency>(
-      `api/v1/projects/${projectId}/applications/${applicationId}/dependencies`,
-      json(body)
-    ),
   deleteApplicationInstance: (
     projectId: string,
     applicationId: string,
@@ -967,18 +950,13 @@ export const api = {
       `api/v1/projects/${projectId}/applications/${applicationId}/instances/${id}/`,
       { method: 'DELETE' }
     ),
-  deleteApplicationDependency: (
-    projectId: string,
-    applicationId: string,
-    id: string
-  ) =>
-    request<void>(
-      `api/v1/projects/${projectId}/applications/${applicationId}/dependencies/${id}/`,
-      { method: 'DELETE' }
-    ),
   resources: (kind = '') =>
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
+    ),
+  kubernetesWorkloads: (resourceId: string, params: { namespace: string; filters?: string; limit?: number }) =>
+    request<{ items: Array<{ namespace: string; name: string; kind: string; ready: boolean; phase?: string; restarts?: number; labels?: Record<string, string>; pods: Array<{ namespace: string; name: string; containers?: string[] }> }>; count: number }>(
+      `api/v1/resources/${resourceId}/kubernetes/workloads?namespace=${encodeURIComponent(params.namespace)}&filters=${encodeURIComponent(params.filters ?? '')}&limit=${params.limit ?? 100}`
     ),
   contextResources: () =>
     request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),

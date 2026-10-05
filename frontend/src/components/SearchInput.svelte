@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { Search } from 'lucide-svelte';
+  import { Search, X } from 'lucide-svelte';
 
   export let value = '';
   export let placeholder = '搜索';
@@ -11,7 +11,8 @@
   export let className = '';
   export let disabled = false;
 
-  const dispatch = createEventDispatcher<{ value: string; input: Event }>();
+  const dispatch = createEventDispatcher<{ value: string; input: Event; clear: void }>();
+  let inputElement: HTMLInputElement;
 
   $: resolvedAriaLabel = ariaLabel || placeholder;
 
@@ -20,14 +21,22 @@
     dispatch('value', value);
     dispatch('input', event);
   }
+
+  function clearValue() {
+    value = '';
+    dispatch('value', value);
+    dispatch('clear');
+    inputElement?.focus();
+  }
 </script>
 
 <label
   class={`search-input ${className}`}
   style={`--search-input-width:${width};--search-input-height:${height}`}
 >
-  <span class="search-input-prefix"><slot name="prefix" /></span>
+  <span class="search-input-prefix"><Search size={iconSize} aria-hidden="true" /><slot name="prefix" /></span>
   <input
+    bind:this={inputElement}
     type="text"
     {value}
     {placeholder}
@@ -35,7 +44,12 @@
     aria-label={resolvedAriaLabel}
     on:input={handleInput}
   />
-  <span class="search-input-suffix"><Search size={iconSize} aria-hidden="true" /><slot name="suffix" /></span>
+  <span class="search-input-suffix">
+    {#if value}
+      <button class="search-input-clear" type="button" aria-label="清空搜索" title="清空搜索" data-tooltip="清空搜索" on:click|preventDefault|stopPropagation={clearValue}><X size={iconSize} aria-hidden="true" /></button>
+    {/if}
+    <slot name="suffix" />
+  </span>
 </label>
 
 <style>
@@ -94,8 +108,31 @@
   .search-input input::placeholder {
     color: var(--theme-fg-muted);
   }
+  .search-input-prefix :global(svg),
   .search-input-suffix :global(svg) {
     flex: 0 0 auto;
     pointer-events: none;
+  }
+  .search-input-clear {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    padding: 0;
+    color: var(--theme-fg-subtle);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .search-input-clear:hover {
+    color: var(--theme-fg);
+    background: var(--theme-bg-hover);
+  }
+  .search-input-clear:focus-visible {
+    color: var(--theme-accent);
+    outline: 2px solid var(--theme-focus);
+    outline-offset: 1px;
   }
 </style>

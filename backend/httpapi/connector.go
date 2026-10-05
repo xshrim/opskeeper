@@ -18,6 +18,9 @@ type connectorService interface {
 	Test(context.Context, string, string) (connector.Check, error)
 	Latest(context.Context, string) (connector.Check, error)
 }
+type kubernetesWorkloadService interface {
+	ListKubernetesWorkloads(context.Context, string, string, string, int) (connector.WorkloadDiscovery, error)
+}
 type dockerDraftConnectorService interface {
 	TestDockerDraft(context.Context, connector.DockerDraftInput) (connector.DockerDraftCheck, error)
 }
@@ -69,6 +72,24 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 			return func(next http.Handler) http.Handler { return next }
 		}
 		return requirePermission(permission)
+	}
+	if workloads, ok := service.(kubernetesWorkloadService); ok {
+		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/kubernetes/workloads", func(w http.ResponseWriter, r *http.Request) {
+			namespace := r.URL.Query().Get("namespace")
+			filters := r.URL.Query().Get("filters")
+			limit := 100
+			if raw := r.URL.Query().Get("limit"); raw != "" {
+				if parsed, err := strconv.Atoi(raw); err == nil {
+					limit = parsed
+				}
+			}
+			items, err := workloads.ListKubernetesWorkloads(r.Context(), chi.URLParam(r, "resourceID"), namespace, filters, limit)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, items)
+		})
 	}
 	router.With(guard(authorization.ResourceUse)).Post("/resources/{resourceID}/connection-tests", handler.test)
 	if draft, ok := service.(dockerDraftConnectorService); ok {

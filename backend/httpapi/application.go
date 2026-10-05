@@ -11,15 +11,12 @@ import (
 
 type applicationService interface {
 	Create(context.Context, application.CreateInput) (application.Application, error)
-	Import(context.Context, application.ImportInput) (application.Application, error)
 	GetInProject(context.Context, string, string) (application.Application, error)
 	List(context.Context, string) ([]application.Application, error)
 	UpdateInProject(context.Context, string, string, application.UpdateInput) (application.Application, error)
 	DeleteInProject(context.Context, string, string) error
 	CreateInstanceInProject(context.Context, string, string, application.CreateInstanceInput) (application.Instance, error)
 	DeleteInstanceInProject(context.Context, string, string, string) error
-	CreateDependencyInProject(context.Context, string, string, application.CreateDependencyInput) (application.Dependency, error)
-	DeleteDependencyInProject(context.Context, string, string, string) error
 	Workspace(context.Context, string) (application.Workspace, error)
 }
 type applicationHandler struct {
@@ -27,15 +24,14 @@ type applicationHandler struct {
 	apiBasePath string
 }
 type createApplicationRequest struct {
-	Name         string                              `json:"name"`
-	Code         string                              `json:"code"`
-	Description  string                              `json:"description"`
-	Icon         string                              `json:"icon"`
-	Source       string                              `json:"source"`
-	ExternalUID  string                              `json:"external_uid"`
-	Labels       map[string]string                   `json:"labels"`
-	Instances    []application.CreateInstanceInput   `json:"instances"`
-	Dependencies []application.CreateDependencyInput `json:"dependencies"`
+	Name        string                            `json:"name"`
+	Code        string                            `json:"code"`
+	Description string                            `json:"description"`
+	Icon        string                            `json:"icon"`
+	ExternalUID string                            `json:"external_uid"`
+	RuntimeKind string                            `json:"runtime_kind"`
+	Labels      map[string]string                 `json:"labels"`
+	Instances   []application.CreateInstanceInput `json:"instances"`
 }
 type updateApplicationRequest struct {
 	Name        *string            `json:"name"`
@@ -52,13 +48,6 @@ type createInstanceRequest struct {
 	LogBinding       map[string]any `json:"log_binding"`
 	Status           string         `json:"status"`
 }
-type createDependencyRequest struct {
-	TargetResourceID string         `json:"target_resource_id"`
-	DependencyKind   string         `json:"dependency_kind"`
-	Binding          map[string]any `json:"binding"`
-	Required         *bool          `json:"required"`
-	Status           string         `json:"status"`
-}
 
 func registerApplicationRoutes(router chi.Router, service applicationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
 	h := applicationHandler{service: service, apiBasePath: apiBasePath}
@@ -71,14 +60,11 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/workspace", h.workspace)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
-	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/import", h.importApplication)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications/{applicationID}/", h.get)
 	router.With(guard(authorization.ProjectManage)).Patch("/projects/{projectID}/applications/{applicationID}/", h.update)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/", h.delete)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/instances", h.createInstance)
-	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/dependencies", h.createDependency)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/instances/{instanceID}/", h.deleteInstance)
-	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/dependencies/{dependencyID}/", h.deleteDependency)
 }
 func (h applicationHandler) workspace(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.Workspace(r.Context(), chi.URLParam(r, "projectID"))
@@ -101,26 +87,12 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Source: b.Source, ExternalUID: b.ExternalUID, Labels: b.Labels, Instances: b.Instances, Dependencies: b.Dependencies})
+	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Instances: b.Instances})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}
 	w.Header().Set("Location", h.apiBasePath+"/projects/"+chi.URLParam(r, "projectID")+"/applications/"+v.ID)
-	writeJSON(w, http.StatusCreated, v)
-}
-func (h applicationHandler) importApplication(w http.ResponseWriter, r *http.Request) {
-	var b application.ImportInput
-	if !decodeRequest(w, r, &b) {
-		return
-	}
-	b.ProjectID = chi.URLParam(r, "projectID")
-	v, err := h.service.Import(r.Context(), b)
-	if err != nil {
-		writeApplicationError(w, r, err)
-		return
-	}
-	w.Header().Set("Location", h.apiBasePath+"/projects/"+b.ProjectID+"/applications/"+v.ID)
 	writeJSON(w, http.StatusCreated, v)
 }
 func (h applicationHandler) get(w http.ResponseWriter, r *http.Request) {
@@ -164,29 +136,6 @@ func (h applicationHandler) createInstance(w http.ResponseWriter, r *http.Reques
 }
 func (h applicationHandler) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	if e := h.service.DeleteInstanceInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), chi.URLParam(r, "instanceID")); e != nil {
-		writeApplicationError(w, r, e)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-func (h applicationHandler) createDependency(w http.ResponseWriter, r *http.Request) {
-	var b createDependencyRequest
-	if !decodeRequest(w, r, &b) {
-		return
-	}
-	required := true
-	if b.Required != nil {
-		required = *b.Required
-	}
-	v, e := h.service.CreateDependencyInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.CreateDependencyInput{TargetResourceID: b.TargetResourceID, DependencyKind: b.DependencyKind, Binding: b.Binding, Required: required, Status: b.Status})
-	if e != nil {
-		writeApplicationError(w, r, e)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-func (h applicationHandler) deleteDependency(w http.ResponseWriter, r *http.Request) {
-	if e := h.service.DeleteDependencyInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), chi.URLParam(r, "dependencyID")); e != nil {
 		writeApplicationError(w, r, e)
 		return
 	}

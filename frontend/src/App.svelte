@@ -861,6 +861,7 @@
           {teams}
           allProjects={projects}
           {visibleProjects}
+          availableResources={visibleResources}
           bind:selectedProjectId
           bind:selectedScopeId
           allTeamsSelected={!selectedTeamId}

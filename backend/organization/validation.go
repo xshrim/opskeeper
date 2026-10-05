@@ -1,9 +1,6 @@
 package organization
 
 import (
-	"crypto/rand"
-	"fmt"
-	"math/big"
 	"regexp"
 	"strings"
 )
@@ -50,31 +47,6 @@ func validateCode(code string) error {
 		return invalid("code must contain 1-64 lowercase letters, numbers, or internal hyphens")
 	}
 	return nil
-}
-
-func generateProjectCode() (string, error) {
-	letters, err := randomCodePart(3, "abcdefghijklmnopqrstuvwxyz")
-	if err != nil {
-		return "", fmt.Errorf("generate project code letters: %w", err)
-	}
-	digits, err := randomCodePart(4, "0123456789")
-	if err != nil {
-		return "", fmt.Errorf("generate project code digits: %w", err)
-	}
-	return letters + digits, nil
-}
-
-func randomCodePart(length int, alphabet string) (string, error) {
-	result := make([]byte, length)
-	limit := big.NewInt(int64(len(alphabet)))
-	for index := range result {
-		digit, err := rand.Int(rand.Reader, limit)
-		if err != nil {
-			return "", err
-		}
-		result[index] = alphabet[digit.Int64()]
-	}
-	return string(result), nil
 }
 
 func validateStatus(status string) error {

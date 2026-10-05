@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"opskeeper/backend/application"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/identity"
 	"opskeeper/backend/organization"
@@ -41,11 +42,12 @@ type createTeamRequest struct {
 }
 
 type createProjectRequest struct {
-	Name   string            `json:"name"`
-	Code   string            `json:"code"`
-	Icon   string            `json:"icon"`
-	Labels map[string]string `json:"labels"`
-	Source string            `json:"source,omitempty"`
+	Name         string                    `json:"name"`
+	Code         string                    `json:"code"`
+	Description  string                    `json:"description"`
+	Icon         string                    `json:"icon"`
+	Labels       map[string]string         `json:"labels"`
+	Applications []application.CreateInput `json:"applications"`
 }
 
 type updateOrganizationRequest struct {
@@ -194,12 +196,13 @@ func (h organizationHandler) createProject(writer http.ResponseWriter, request *
 		return
 	}
 	project, err := h.service.CreateProject(request.Context(), organization.CreateProjectInput{
-		TeamID: chi.URLParam(request, "teamID"),
-		Name:   body.Name,
-		Code:   body.Code,
-		Icon:   body.Icon,
-		Labels: body.Labels,
-		Source: body.Source,
+		TeamID:       chi.URLParam(request, "teamID"),
+		Name:         body.Name,
+		Code:         body.Code,
+		Description:  body.Description,
+		Icon:         body.Icon,
+		Labels:       body.Labels,
+		Applications: body.Applications,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)
@@ -237,10 +240,11 @@ func (h organizationHandler) updateProject(writer http.ResponseWriter, request *
 		return
 	}
 	project, err := h.service.UpdateProject(request.Context(), chi.URLParam(request, "projectID"), organization.UpdateProjectInput{
-		Name:   body.Name,
-		Icon:   body.Icon,
-		Labels: body.Labels,
-		Status: body.Status,
+		Name:        body.Name,
+		Description: body.Description,
+		Icon:        body.Icon,
+		Labels:      body.Labels,
+		Status:      body.Status,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)

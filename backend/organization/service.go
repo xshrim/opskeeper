@@ -2,7 +2,7 @@ package organization
 
 import (
 	"context"
-	"fmt"
+	"opskeeper/backend/application"
 	"strings"
 )
 
@@ -98,51 +98,32 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	input.Code = strings.TrimSpace(input.Code)
+	input.Description = strings.TrimSpace(input.Description)
 	if err := validateName(input.Name); err != nil {
 		return Project{}, err
 	}
-	input.Icon = normalizeIcon(input.Icon, "lucide:FolderKanban")
-	if input.Code == "" {
-		generatedCode, err := generateProjectCode()
-		if err != nil {
-			return Project{}, fmt.Errorf("generate project code: %w", err)
-		}
-		input.Code = generatedCode
-	} else if err := validateCode(input.Code); err != nil {
+	if err := validateCode(input.Code); err != nil {
 		return Project{}, err
 	}
+	if len([]rune(input.Description)) > 1000 {
+		return Project{}, invalid("description must be at most 1000 characters")
+	}
+	input.Icon = normalizeIcon(input.Icon, "lucide:FolderKanban")
 	if err := validateLabels(input.Labels); err != nil {
 		return Project{}, err
 	}
-	if input.Source == "" {
-		input.Source = "manual"
-	}
-	if input.Source != "manual" && input.Source != "kubernetes" {
-		return Project{}, invalid("source must be manual or kubernetes")
-	}
-	if input.Source == "kubernetes" && (input.SourceResourceID == nil || strings.TrimSpace(*input.SourceResourceID) == "" || strings.TrimSpace(input.ExternalUID) == "") {
-		return Project{}, invalid("kubernetes projects require source_resource_id and external_uid")
-	}
-	if input.SourceConfig == nil {
-		input.SourceConfig = map[string]any{}
-	}
 	input.Labels = cloneLabels(input.Labels)
+	for index, app := range input.Applications {
+		prepared, err := application.PrepareCreateInput(app)
+		if err != nil {
+			return Project{}, invalid("application configuration is invalid")
+		}
+		if prepared.Labels == nil {
+			prepared.Labels = map[string]string{}
+		}
+		input.Applications[index] = prepared
+	}
 	return s.store.CreateProject(ctx, input)
-}
-
-func (s *Service) BindProjectSource(ctx context.Context, projectID string, input ProjectSourceInput) (Project, error) {
-	if err := validateID(projectID, "project_id"); err != nil {
-		return Project{}, err
-	}
-	input.SourceResourceID = strings.TrimSpace(input.SourceResourceID)
-	input.ExternalUID = strings.TrimSpace(input.ExternalUID)
-	if input.SourceResourceID == "" || input.ExternalUID == "" {
-		return Project{}, invalid("source_resource_id and external_uid are required")
-	}
-	if input.SourceConfig == nil {
-		input.SourceConfig = map[string]any{}
-	}
-	return s.store.BindProjectSource(ctx, projectID, input)
 }
 
 func (s *Service) ListProjects(ctx context.Context, teamID string, pagination Pagination) (Page[Project], error) {
@@ -167,7 +148,7 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 	if err := validateID(projectID, "project_id"); err != nil {
 		return Project{}, err
 	}
-	if input.Name == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
 		return Project{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -176,6 +157,13 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 			return Project{}, err
 		}
 		input.Name = &trimmed
+	}
+	if input.Description != nil {
+		description := strings.TrimSpace(*input.Description)
+		if len([]rune(description)) > 1000 {
+			return Project{}, invalid("description must be at most 1000 characters")
+		}
+		input.Description = &description
 	}
 	if input.Icon != nil {
 		icon := normalizeIcon(*input.Icon, "lucide:FolderKanban")

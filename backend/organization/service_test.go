@@ -3,7 +3,6 @@ package organization
 import (
 	"context"
 	"errors"
-	"regexp"
 	"testing"
 )
 
@@ -43,7 +42,7 @@ func (r *stubStore) UpdateTeam(_ context.Context, _ string, input UpdateTeamInpu
 
 func (r *stubStore) CreateProject(_ context.Context, input CreateProjectInput) (Project, error) {
 	r.createProjectInput = input
-	return Project{ID: testUUID, TeamID: input.TeamID, Source: input.Source}, nil
+	return Project{ID: testUUID, TeamID: input.TeamID}, nil
 }
 
 func (r *stubStore) ListProjects(_ context.Context, _ string, pagination Pagination) (Page[Project], error) {
@@ -56,10 +55,6 @@ func (r *stubStore) GetProject(context.Context, string) (Project, error) {
 
 func (r *stubStore) UpdateProject(context.Context, string, UpdateProjectInput) (Project, error) {
 	return Project{ID: testUUID}, nil
-}
-
-func (r *stubStore) BindProjectSource(context.Context, string, ProjectSourceInput) (Project, error) {
-	return Project{ID: testUUID, Source: "kubernetes"}, nil
 }
 
 func TestCreateTeamNormalizesInput(t *testing.T) {
@@ -119,18 +114,17 @@ func TestCreateProjectPreservesCustomIcon(t *testing.T) {
 	}
 }
 
-func TestCreateProjectGeneratesCodeWhenOmitted(t *testing.T) {
+func TestCreateProjectRequiresCode(t *testing.T) {
 	store := &stubStore{}
 	service := NewService(store)
 
-	if _, err := service.CreateProject(context.Background(), CreateProjectInput{
+	_, err := service.CreateProject(context.Background(), CreateProjectInput{
 		TeamID: testUUID,
 		Name:   "Checkout",
-	}); err != nil {
-		t.Fatalf("CreateProject() error = %v", err)
-	}
-	if !regexp.MustCompile(`^[a-z]{3}[0-9]{4}$`).MatchString(store.createProjectInput.Code) {
-		t.Fatalf("CreateProject() generated code = %q, want three lowercase letters and four digits", store.createProjectInput.Code)
+	})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("CreateProject() error = %v, want ValidationError", err)
 	}
 }
 
@@ -146,7 +140,7 @@ func TestListTeamsAppliesPaginationDefaults(t *testing.T) {
 	}
 }
 
-func TestCreateProjectDefaultsSource(t *testing.T) {
+func TestCreateProjectDoesNotCarryRuntimeSource(t *testing.T) {
 	store := &stubStore{}
 	service := NewService(store)
 
@@ -158,8 +152,8 @@ func TestCreateProjectDefaultsSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
-	if store.createProjectInput.Source != "manual" {
-		t.Fatalf("CreateProject() source = %q, want manual", store.createProjectInput.Source)
+	if store.createProjectInput.Name != "Checkout" {
+		t.Fatalf("project name = %q", store.createProjectInput.Name)
 	}
 }
 
