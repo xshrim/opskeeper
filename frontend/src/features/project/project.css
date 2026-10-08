@@ -18,19 +18,17 @@
 }
 
 .project-overview-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, 320px) minmax(0, 1fr);
-  align-items: center;
+  display: flex;
 }
 
 .project-overview-header .resource-map-actions {
-  justify-self: end;
+  align-items: center;
 }
 
 .project-overview-search {
-  justify-self: center;
-  width: 100%;
-  max-width: 320px;
+  flex: 0 0 160px;
+  width: 160px;
+  max-width: 160px;
 }
 
 .project-page-heading,
@@ -202,12 +200,11 @@
 .runtime-choice-grid strong { font-size: 16px; }
 .runtime-choice-grid small, .discovery-toolbar small { color: var(--theme-fg-muted); font-size: 12px; }
 .wizard-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.wizard-form-grid label, .instance-draft-row label { display: grid; gap: 6px; color: var(--theme-fg-muted); font-size: 12px; }
-.wizard-form-grid label > span, .instance-draft-row label > span { color: var(--theme-fg); font-weight: 600; }
+.wizard-form-grid label, .instance-draft-row label { display: grid; gap: 6px; color: var(--theme-fg-muted); font-size: 12px; font-weight: 400; }
+.wizard-form-grid label > span, .instance-draft-row label > span { color: var(--theme-fg-muted); font-weight: 400; }
 .wizard-form-grid input, .wizard-form-grid select, .wizard-form-grid textarea, .instance-draft-row input, .instance-draft-row select, .workload-name { width: 100%; min-height: 36px; padding: 8px 10px; color: var(--theme-fg); background: var(--theme-bg-input); border: 1px solid var(--theme-border-strong); border-radius: 4px; }
 .wizard-form-grid textarea { resize: vertical; }
 .full-field { grid-column: 1 / -1; }
-.required-mark { margin-left: 3px; color: var(--theme-danger); font-style: normal; }
 .form-error { margin: 16px 28px 0; padding: 10px 12px; color: var(--theme-danger); background: var(--theme-bg-danger-soft); border: 1px solid var(--theme-danger); border-radius: 4px; font-size: 13px; }
 .discovery-toolbar { margin: 24px 0 12px; color: var(--theme-fg-strong); font-size: 14px; font-weight: 600; }
 .workload-list, .instance-draft-list, .project-draft-list { display: grid; gap: 8px; }
@@ -228,6 +225,40 @@
 .create-section-heading p { margin: 4px 0 0; color: var(--theme-fg-muted); font-size: 12px; }
 .project-draft-row strong { color: var(--theme-fg-strong); }
 .project-create-content { padding-top: 16px; }
+.project-team-picker {
+  position: relative;
+  flex: 0 0 min(240px, 42%);
+  min-width: 180px;
+}
+.project-identity-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 280px) minmax(280px, 420px);
+  gap: 16px;
+  align-items: end;
+}
+.project-icon-code-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+.project-identity-row input,
+.project-create-content > .full-field textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--theme-fg);
+  background: var(--theme-bg-input);
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 4px;
+}
+.project-identity-row input { max-width: 420px; }
+.project-create-content > .full-field {
+  margin-top: 16px;
+}
+.project-create-content > .full-field textarea {
+  resize: vertical;
+}
 
 @media (max-width: 720px) {
   .project-overlay { padding: 8px; }
@@ -235,6 +266,9 @@
   .project-dialog-header, .project-dialog-content { padding-left: 16px; padding-right: 16px; }
   .application-steps { padding-left: 16px; padding-right: 16px; }
   .runtime-choice-grid, .wizard-form-grid { grid-template-columns: 1fr; }
+  .create-section-heading { flex-wrap: wrap; align-items: flex-start; }
+  .project-team-picker { flex: 1 1 100%; min-width: 0; }
+  .project-identity-row { grid-template-columns: 1fr; }
   .instance-draft-row { display: grid; grid-template-columns: 24px 1fr; align-items: start; }
   .instance-draft-row label { grid-column: 2; }
   .instance-draft-row > button { grid-column: 1 / -1; justify-self: end; }
@@ -1086,18 +1120,19 @@
   }
 
   .project-overview-header {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: block;
     gap: 12px;
   }
 
   .project-overview-search {
-    justify-self: stretch;
-    max-width: none;
+    flex: 0 1 160px;
+    width: min(160px, 100%);
+    max-width: 160px;
   }
 
   .project-overview-header .resource-map-actions {
-    justify-self: start;
+    justify-content: flex-start;
+    margin-top: 15px;
   }
 
   .project-card-grid,

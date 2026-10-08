@@ -10,12 +10,16 @@
     Save,
     Trash2
   } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+  import FieldLabel from '../../components/FieldLabel.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
   import IconValue from '../../components/IconValue.svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
+  import Switch from '../../components/Switch.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import { providerTypeOptions } from './providerCatalog';
   import ProviderBrandIcon from './ProviderBrandIcon.svelte';
   import { providerBrandIconValue } from '../../lib/iconifyIcons';
@@ -105,7 +109,6 @@
   let providerDraft: ProviderDraft = emptyProvider();
   let engineErrors: Record<string, string> = {};
   let providerErrors: Record<string, string> = {};
-  let providerTypeMenuOpen = false;
   let protocolMenuOpen = false;
   let sourceProviders: Provider[] = providers;
   let providerSearch = '';
@@ -127,6 +130,11 @@
 
   // Keep the shared scopeName prop for the page contract; the drawer subtitle no longer renders scope text.
   $: void scopeName;
+  $: providerSelectOptions = providerTypeOptions.map((option) => ({
+    value: option.value,
+    label: option.label,
+    icon: providerBrandIconValue(option.value) || 'lucide:Bot'
+  }));
 
   type ProviderDraft = {
     id?: string;
@@ -469,7 +477,6 @@
     providerDraft = { ...emptyProvider(), scopeId };
     providerErrors = {};
     clearProviderEditorMessage();
-    providerTypeMenuOpen = false;
     editingProvider = true;
     drawerOpen = true;
     selectedProviderId = '';
@@ -479,14 +486,12 @@
       providerDraft = toDraft(selectedProvider);
       providerErrors = {};
       clearProviderEditorMessage();
-      providerTypeMenuOpen = false;
       editingProvider = true;
       drawerOpen = true;
     }
   }
   function cancelProviderEdit() {
     providerErrors = {};
-    providerTypeMenuOpen = false;
     clearProviderEditorMessage();
     editingProvider = false;
     if (selectedProvider) providerDraft = toDraft(selectedProvider);
@@ -660,7 +665,6 @@
       providerType: value,
       baseUrl: option?.baseURL ?? ''
     };
-    providerTypeMenuOpen = false;
   }
   function protocolLabel(value: string) {
     return value === 'messages' ? 'Messages API' : 'Chat Completions';
@@ -943,7 +947,6 @@
     return tags?.includes(tag) ?? false;
   }
   function closeProviderTypeMenu() {
-    providerTypeMenuOpen = false;
     protocolMenuOpen = false;
   }
 </script>
@@ -1040,15 +1043,7 @@
               ariaLabel="选择引擎图标"
             />
           </div>
-          <label class="engine-name-field" class:invalid={Boolean(engineErrors.name)}
-            ><span class="field-label">引擎名称<i class="required-mark" aria-hidden="true">*</i></span><input
-              bind:value={engineDraft.name}
-              aria-label="引擎名称"
-              aria-invalid={Boolean(engineErrors.name)}
-              placeholder="引擎名称"
-              required
-            /></label
-          >
+          <label class="engine-name-field"><FieldLabel text="引擎名称" required invalid={Boolean(engineErrors.name)} /><TextInput bind:value={engineDraft.name} ariaLabel="引擎名称" invalid={Boolean(engineErrors.name)} placeholder="引擎名称" required /></label>
           <div class="engine-tag-editor">
             <span class="field-label">场景</span>
             <div class="tag-row">
@@ -1063,21 +1058,7 @@
                 >{/each}
             </div>
           </div>
-          <label class="engine-status-switch"
-            ><span class="field-label">状态</span><span class="switch-control"
-              ><input
-                type="checkbox"
-                checked={engineDraft.status === 'active'}
-                on:change={(event) =>
-                  (engineDraft.status = (
-                    event.currentTarget as HTMLInputElement
-                  ).checked
-                    ? 'active'
-                    : 'disabled')}
-                aria-label="启用引擎"
-              /><i aria-hidden="true"></i></span
-            ></label
-          >
+          <div class="engine-status-switch"><FieldLabel text="状态" /><Switch checked={engineDraft.status === 'active'} ariaLabel="启用引擎" on:change={(event) => (engineDraft.status = event.detail ? 'active' : 'disabled')} /></div>
         </div>
         <div class="engine-editor-content">
           <div class="capability-field">
@@ -1350,14 +1331,7 @@
                       ariaLabel="选择图标"
                     />
                   </div>
-                  <label class="provider-name-field" class:invalid={Boolean(providerErrors.name)}
-                    ><span class="field-label">名称<i class="required-mark" aria-hidden="true">*</i></span><input
-                      bind:value={providerDraft.name}
-                      aria-invalid={Boolean(providerErrors.name)}
-                      required
-                      placeholder="名称"
-                    /></label
-                  >
+                  <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
                   <label class="provider-level-field"
                     ><span class="field-label">级别</span><span class="scope-select-wrap"
                       ><select
@@ -1397,43 +1371,30 @@
                       >{Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
                     ><small class="connection-age">{formatConnectionAge(selectedProvider?.last_connection_test?.checked_at)}</small></div
                   ><div class="provider-status-switch"
-                    ><span class="field-label">状态</span><span class="switch-control"
-                      ><input
-                        type="checkbox"
-                        checked={providerDraft.status === 'active'}
-                        on:change={(event) => {
-                          const enabled = (
-                            event.currentTarget as HTMLInputElement
-                          ).checked;
-                          providerDraft.status = enabled ? 'active' : 'disabled';
-                          providerDraft.enabled = enabled;
-                        }}
-                        aria-label="启用渠道"
-                      /><i aria-hidden="true"></i></span
-                    ></div
+                    ><FieldLabel text="状态" /><Switch checked={providerDraft.status === 'active'} ariaLabel="启用渠道" on:change={(event) => { const enabled = event.detail; providerDraft.status = enabled ? 'active' : 'disabled'; providerDraft.enabled = enabled; }} /></div
                   >
                   </div>
                 </div>
                 <div class="provider-runtime-grid">
-                  <label class:invalid={Boolean(providerErrors.timeoutSeconds)}
-                    >超时（秒）<input
+                  ><label class:invalid={Boolean(providerErrors.timeoutSeconds)}
+                    >超时（秒）<TextInput
                       bind:value={providerDraft.timeoutSeconds}
-                      aria-invalid={Boolean(providerErrors.timeoutSeconds)}
+                      invalid={Boolean(providerErrors.timeoutSeconds)}
                       type="number"
                       min="1"
                       max="300"
                     /></label
                   ><label class:invalid={Boolean(providerErrors.maxConcurrency)}
-                    >最大并发<input
+                    >最大并发<TextInput
                       bind:value={providerDraft.maxConcurrency}
-                      aria-invalid={Boolean(providerErrors.maxConcurrency)}
+                      invalid={Boolean(providerErrors.maxConcurrency)}
                       type="number"
                       min="1"
                     /></label
                   ><label class:invalid={Boolean(providerErrors.rateLimitPerMinute)}
-                    >限流（请求 / 分钟）<input
+                    >限流（请求 / 分钟）<TextInput
                       bind:value={providerDraft.rateLimitPerMinute}
-                      aria-invalid={Boolean(providerErrors.rateLimitPerMinute)}
+                      invalid={Boolean(providerErrors.rateLimitPerMinute)}
                       type="number"
                       min="0"
                     /></label
@@ -1447,36 +1408,20 @@
                 <div class="provider-connection-row">
                   <label class:invalid={Boolean(providerErrors.providerType)}
                     ><span>类型<i class="required-mark" aria-hidden="true">*</i></span>
-                    <div class="provider-type-picker">
-                      <button
-                        class="provider-type-trigger"
-                        class:open={providerTypeMenuOpen}
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={providerTypeMenuOpen}
-                        on:click|stopPropagation={() => (providerTypeMenuOpen = !providerTypeMenuOpen)}
-                      ><ProviderBrandIcon
-                          providerType={providerDraft.providerType}
-                          label={providerTypeLabel(providerDraft.providerType)}
-                          size={16}
-                        /><span>{providerTypeLabel(providerDraft.providerType)}</span><span class="provider-type-chevron"><ChevronDown size={13} /></span></button
-                      >{#if providerTypeMenuOpen}<div class="provider-type-options" role="listbox">
-                          {#each providerTypeOptions as option}<button
-                              class="provider-type-option"
-                              class:selected={option.value === providerDraft.providerType}
-                              type="button"
-                              role="option"
-                              aria-selected={option.value === providerDraft.providerType}
-                              on:click|stopPropagation={() => selectProviderType(option.value)}
-                            ><ProviderBrandIcon providerType={option.value} label={option.label} size={16} /><span>{option.label}</span></button
-                          >{/each}
-                        </div>{/if}
-                    </div>
+                    <DropdownSelect
+                      options={providerSelectOptions}
+                      value={providerDraft.providerType}
+                      showIcons
+                      searchable
+                      invalid={Boolean(providerErrors.providerType)}
+                      ariaLabel="连接凭据类型"
+                      on:change={(event) => selectProviderType(String(event.detail))}
+                    />
                   </label
                   ><label class:invalid={Boolean(providerErrors.baseUrl)}
-                    ><span>Base URL<i class="required-mark" aria-hidden="true">*</i></span><input
+                    ><span>Base URL<i class="required-mark" aria-hidden="true">*</i></span><TextInput
                       bind:value={providerDraft.baseUrl}
-                      aria-invalid={Boolean(providerErrors.baseUrl)}
+                      invalid={Boolean(providerErrors.baseUrl)}
                       required
                       placeholder="https://api.example.com/v1"
                     /></label
@@ -1535,9 +1480,9 @@
                     >
                       <div class="model-primary-row">
                         <label class="model-name-field" class:invalid={Boolean(providerErrors[`models.${index}.name`])}
-                          ><span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><input
+                          ><span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><TextInput
                             bind:value={model.name}
-                            aria-invalid={Boolean(providerErrors[`models.${index}.name`])}
+                            invalid={Boolean(providerErrors[`models.${index}.name`])}
                             required
                           /></label
                         ><div class="model-capability-editor">
@@ -1553,28 +1498,28 @@
                           </div>
                         </div>
                         <label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.context`])}
-                          ><span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><input
+                          ><span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><TextInput
                             bind:value={model.context_window_tokens}
-                            aria-invalid={Boolean(providerErrors[`models.${index}.context`])}
+                            invalid={Boolean(providerErrors[`models.${index}.context`])}
                             required
                             type="number"
                             min="1"
                           /></label
                         ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
-                          ><span class="field-label">最大输出</span><input
+                          ><span class="field-label">最大输出</span><TextInput
                             bind:value={model.max_output_tokens}
-                            aria-invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
+                            invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
                             type="number"
                             min="1"
                           /></label
                         ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.temperature`])}
-                          ><span class="field-label">温度</span><input
+                          ><span class="field-label">温度</span><TextInput
                             bind:value={model.temperature}
-                            aria-invalid={Boolean(providerErrors[`models.${index}.temperature`])}
+                            invalid={Boolean(providerErrors[`models.${index}.temperature`])}
                             type="number"
                             min="0"
                             max="2"
-                            step="0.1"
+                            step={0.1}
                           /></label
                         ><label class="model-default-control"
                           ><span class="field-label">默认</span><input
@@ -1584,20 +1529,7 @@
                             on:change={() => setDraftDefault(model)}
                           /></label
                         ><label class="model-enabled-control"
-                          ><span class="field-label">状态</span><span
-                            class="switch-control"
-                            ><input
-                              type="checkbox"
-                              checked={model.enabled !== false}
-                              on:change={(event) => {
-                                model.enabled = (
-                                  event.currentTarget as HTMLInputElement
-                                ).checked;
-                                providerDraft.models = providerDraft.models;
-                              }}
-                              aria-label="启用模型"
-                            /><i aria-hidden="true"></i></span
-                          ></label
+                          ><span class="field-label">状态</span><Switch checked={model.enabled !== false} ariaLabel="启用模型" on:change={(event) => { model.enabled = event.detail; providerDraft.models = providerDraft.models; }} /></label
                         >
                       </div>
                       <button
@@ -2603,9 +2535,7 @@
     color: var(--theme-required);
     font-style: normal;
   }
-  .engine-editor label.invalid input,
-  .drawer-form label.invalid input,
-  .drawer-form label.invalid .provider-type-trigger {
+  .drawer-form label.invalid :global(.text-input-wrap input) {
     border-color: var(--theme-danger) !important;
     box-shadow: 0 0 0 2px var(--theme-bg-danger-soft) !important;
   }
@@ -2872,11 +2802,11 @@
     width: 46px;
     min-width: 46px;
   }
-  .provider-status-switch .field-label {
+  .provider-status-switch :global(.field-label) {
     align-self: stretch;
     text-align: center;
   }
-  .provider-status-switch .switch-control {
+  .provider-status-switch :global(.switch-control) {
     align-self: center;
     justify-self: center;
   }
@@ -2907,7 +2837,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .drawer-form .model-runtime-field input {
+  .drawer-form .model-runtime-field :global(.text-input-wrap input) {
     transform: translateY(3px);
   }
   .connection-status-button {
@@ -3129,7 +3059,7 @@
   .model-capability-editor + .model-runtime-field {
     margin-left: 0;
   }
-  .model-runtime-field input,
+  .model-runtime-field :global(.text-input-wrap input),
   .model-runtime-field .provider-preview-value {
     width: 90px;
     max-width: 90px;
@@ -3274,7 +3204,7 @@
   .engine-editor-identity-row .field-label {
     margin-bottom: 0;
   }
-  .engine-name-field input {
+  .engine-name-field :global(.text-input-wrap input) {
     min-width: 0;
   }
   .field-label {
@@ -3420,11 +3350,11 @@
     gap: 5px;
     min-width: 34px;
   }
-  .engine-status-switch .field-label {
+  .engine-status-switch :global(.field-label) {
     align-self: stretch;
     text-align: right;
   }
-  .engine-status-switch .switch-control {
+  .engine-status-switch :global(.switch-control) {
     align-self: center;
   }
   .switch-control {
@@ -3685,7 +3615,7 @@
       width: auto;
       min-width: 0;
     }
-    .provider-status-switch .field-label {
+    .provider-status-switch :global(.field-label) {
       text-align: center;
     }
     .model-default-control {
@@ -3701,7 +3631,7 @@
       min-width: 90px;
       max-width: 90px;
     }
-    .model-runtime-field input,
+    .model-runtime-field :global(.text-input-wrap input),
     .model-runtime-field .provider-preview-value {
       width: 90px;
       max-width: 90px;

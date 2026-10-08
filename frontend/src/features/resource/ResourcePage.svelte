@@ -2699,7 +2699,7 @@
             bind:labels={resourceLabels}
             categoryOptions={resourceCategoryOptions}
             subtypeOptions={resourceAddSubtypeOptions}
-            typeSelectionAttempted={resourceTypeSelectionAttempted}
+            bind:typeSelectionAttempted={resourceTypeSelectionAttempted}
             basicConfigurationAttempted={resourceBasicConfigurationAttempted}
             editing={Boolean(
               editingResourceId ||

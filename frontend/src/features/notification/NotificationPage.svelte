@@ -12,7 +12,10 @@
     Settings2,
     ShieldCheck
   } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import {
     api,
     ApiError,
@@ -1026,7 +1029,7 @@
               type="submit"
               disabled={busyAction === 'channel-create' || !channelKind}
               ><Save size={13} />创建渠道</button
-            >
+          >
           </div>
         </form>
       </div>
@@ -1144,22 +1147,9 @@
               <p>变量必须使用受限字段。</p>
             </div>
           </div>
-          <label
-            >模板名称<i class="required-mark" aria-hidden="true">*</i><input
-              bind:value={templateName}
-              required
-              maxlength="120"
-              placeholder="例如：事故通知"
-            /></label
-          >
+          <FormField label="模板名称" required><TextInput bind:value={templateName} required maxlength={120} placeholder="例如：事故通知" ariaLabel="模板名称" /></FormField>
           <div class="notification-form-grid">
-            <label
-              >格式<select bind:value={templateFormat}
-                ><option value="text">文本</option><option value="markdown"
-                  >Markdown</option
-                ><option value="json">JSON</option></select
-              ></label
-            ><label
+            <FormField label="格式"><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><label
               >共享范围<select bind:value={templateShare}
                 ><option value={false}>仅当前范围</option><option value={true}
                   >对子 Scope 可用</option
@@ -1167,7 +1157,7 @@
               ></label
             >
           </div>
-          <label>标题模板<input bind:value={templateTitle} /></label><label
+          <FormField label="标题模板"><TextInput bind:value={templateTitle} placeholder="例如：严重级别与规则名称" ariaLabel="标题模板" /></FormField><label
             >正文模板<textarea rows="5" bind:value={templateBody}
             ></textarea></label
           >
@@ -1231,30 +1221,9 @@
               <p>启用规则至少需要一条完整路由。</p>
             </div>
           </div>
-          <label
-            >规则名称<i class="required-mark" aria-hidden="true">*</i><input
-              bind:value={ruleName}
-              required
-              maxlength="120"
-              placeholder="例如：核心链路异常"
-            /></label
-          >
+          <FormField label="规则名称" required><TextInput bind:value={ruleName} required maxlength={120} placeholder="例如：核心链路异常" ariaLabel="规则名称" /></FormField>
           <div class="notification-form-grid">
-            <label
-              >事件<select bind:value={ruleEvent}
-                ><option value="finding.opened">Finding 新建</option><option
-                  value="finding.reopened">Finding 恢复后再次打开</option
-                ><option value="finding.severity_changed">严重级别变化</option
-                ><option value="finding.resolved">Finding 已恢复</option><option
-                  value="inspection.failed">巡检失败</option
-                ><option value="inspection.degraded">巡检降级</option></select
-              ></label
-            ><label
-              >最低级别<select bind:value={ruleSeverity}
-                ><option value="info">Info</option><option value="warning"
-                  >Warning</option
-                ><option value="critical">Critical</option></select
-              ></label
+            <FormField label="事件"><DropdownSelect bind:value={ruleEvent} options={[{ value: 'finding.opened', label: 'Finding 新建' }, { value: 'finding.reopened', label: 'Finding 恢复后再次打开' }, { value: 'finding.severity_changed', label: '严重级别变化' }, { value: 'finding.resolved', label: 'Finding 已恢复' }, { value: 'inspection.failed', label: '巡检失败' }, { value: 'inspection.degraded', label: '巡检降级' }]} searchable ariaLabel="通知事件" /></FormField><FormField label="最低级别"><DropdownSelect bind:value={ruleSeverity} options={[{ value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'critical', label: 'Critical' }]} ariaLabel="最低级别" /></FormField>
             >
           </div>
           <label

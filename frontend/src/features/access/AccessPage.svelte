@@ -15,6 +15,9 @@
   import MessageBanner from '../../components/MessageBanner.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
+  import FormField from '../../components/FormField.svelte';
+  import TextInput from '../../components/TextInput.svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import {
     api,
@@ -1776,34 +1779,11 @@
           />{/if}
         <div class="team-identity-field">
           <div class="team-icon-selection">
-            <label
-              >图标<IconPicker
-                value={teamIcon}
-                onSelect={(icon) => (teamIcon = icon)}
-                ariaLabel="选择团队图标"
-              /></label
-            >
+            <label><span>图标</span><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
           </div>
-          <label class:invalid={Boolean(teamNameError)}
-            ><span>名称<i class="required-mark" aria-hidden="true">*</i></span
-            ><input
-              bind:value={teamName}
-              required
-              aria-invalid={Boolean(teamNameError)}
-              aria-describedby={teamNameError
-                ? 'create-team-name-error'
-                : undefined}
-              on:input={() => {
-                if (teamName.trim()) teamNameError = '';
-              }}
-              maxlength="120"
-              placeholder="例如：支付平台"
-            />{#if teamNameError}<small
-                id="create-team-name-error"
-                class="access-field-error"
-                role="alert">{teamNameError}</small
-              >{/if}</label
-          >
+          <FormField label="名称" required invalid={Boolean(teamNameError)} error={teamNameError}>
+            <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
+          </FormField>
         </div>
         <label
           >描述<textarea
@@ -1872,58 +1852,29 @@
             tone={activeMessageTone}
           />{/if}
         <div class="form-row">
-          <label class:invalid={Boolean(newUserUsernameError)}
-            ><span
-              >用户名<span class="required-mark" aria-hidden="true">*</span
-              ></span
-            ><input
+          <FormField label="用户名" required invalid={Boolean(newUserUsernameError)} error={newUserUsernameError}>
+            <TextInput
               value={editingUser ? editingUser.username : newUserUsername}
               disabled={Boolean(editingUser)}
-              on:input={(event) =>
-                updateNewUserUsername(event.currentTarget.value)}
+              on:input={(event) => updateNewUserUsername((event.currentTarget as HTMLInputElement).value)}
               required
-              aria-invalid={Boolean(newUserUsernameError)}
-              aria-describedby={newUserUsernameError
-                ? 'new-user-username-error'
-                : undefined}
               placeholder="登录用户名"
-            />{#if newUserUsernameError}<small
-                id="new-user-username-error"
-                class="access-field-error"
-                role="alert">{newUserUsernameError}</small
-              >{/if}</label
-          >
-          <label
-            class:invalid={Boolean(editingUser && editUserDisplayNameError)}
-            >显示名<input
+              ariaLabel="用户名"
+            />
+          </FormField>
+          <FormField label="显示名" invalid={Boolean(editingUser && editUserDisplayNameError)} error={editingUser ? editUserDisplayNameError : ''}>
+            <TextInput
               bind:value={newUserDisplayName}
-              aria-invalid={Boolean(editingUser && editUserDisplayNameError)}
-              aria-describedby={editingUser && editUserDisplayNameError
-                ? 'edit-user-display-name-error'
-                : undefined}
-              on:input={() => {
-                if (newUserDisplayName.trim()) editUserDisplayNameError = '';
-              }}
-              maxlength="120"
+              maxlength={120}
               placeholder="默认使用用户名"
-            />{#if editingUser && editUserDisplayNameError}<small
-                id="edit-user-display-name-error"
-                class="access-field-error"
-                role="alert">{editUserDisplayNameError}</small
-              >{/if}</label
-          >
+              ariaLabel="显示名"
+              on:input={() => { if (newUserDisplayName.trim()) editUserDisplayNameError = ''; }}
+            />
+          </FormField>
         </div>
         <div class="form-row">
-          <label
-            >邮箱<input
-              type="email"
-              bind:value={newUserEmail}
-              placeholder="name@example.com"
-            /></label
-          >
-          <label
-            >手机号<input bind:value={newUserPhone} placeholder="+86" /></label
-          >
+          <FormField label="邮箱"><TextInput type="email" bind:value={newUserEmail} placeholder="name@example.com" ariaLabel="邮箱" /></FormField>
+          <FormField label="手机号"><TextInput type="tel" bind:value={newUserPhone} placeholder="+86 13800138000" ariaLabel="手机号" /></FormField>
         </div>
         <fieldset class="preference-group">
           <legend>{editingUser ? '重置密码' : '一次性密码'}</legend>
@@ -2239,50 +2190,23 @@
           />{/if}
         <div class="team-identity-field">
           <div class="team-icon-selection">
-            <label
-              >图标<IconPicker
-                value={editTeamIcon}
-                onSelect={(icon) => (editTeamIcon = icon)}
-                ariaLabel="选择团队图标"
-              /></label
-            >
+        <label>
+          <span>图标</span><IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
+        </label>
           </div>
-          <label class:invalid={Boolean(editTeamNameError)}
-            ><span>名称<i class="required-mark" aria-hidden="true">*</i></span
-            ><input
-              bind:value={editTeamName}
-              required
-              aria-invalid={Boolean(editTeamNameError)}
-              aria-describedby={editTeamNameError
-                ? 'edit-team-name-error'
-                : undefined}
-              on:input={() => {
-                if (editTeamName.trim()) editTeamNameError = '';
-              }}
-              maxlength="120"
-              placeholder="例如：支付平台"
-            />{#if editTeamNameError}<small
-                id="edit-team-name-error"
-                class="access-field-error"
-                role="alert">{editTeamNameError}</small
-              >{/if}</label
-          >
+          <FormField label="名称" required invalid={Boolean(editTeamNameError)} error={editTeamNameError}>
+            <TextInput bind:value={editTeamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }} />
+          </FormField>
         </div>
-        <label
-          >描述<textarea
+        <label>
+          描述<textarea
             bind:value={editTeamDescription}
             rows="3"
             maxlength="1000"
             placeholder="描述团队的职责或用途"
           ></textarea></label
         >
-        <label
-          >状态<select bind:value={editTeamStatus}
-            ><option value="active">启用</option><option value="disabled"
-              >禁用</option
-            ></select
-          ></label
-        >
+        <FormField label="状态"><DropdownSelect bind:value={editTeamStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '禁用' }]} ariaLabel="团队状态" /></FormField>
       </form>
     </dialog>
   </div>

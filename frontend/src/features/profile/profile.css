@@ -46,16 +46,7 @@
   gap: 14px;
   padding: 20px;
 }
-.profile-fields label {
-  display: grid;
-  gap: 6px;
-  color: var(--theme-fg-muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-.profile-fields input {
-  width: 100%;
-}
+.profile-fields :global(.form-field) { min-width: 0; }
 .profile-password-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
@@ -63,13 +54,7 @@
   gap: 12px;
   padding: 20px;
 }
-.profile-password-row label {
-  display: block;
-  min-width: 0;
-}
-.profile-password-row input {
-  width: 100%;
-}
+.profile-password-row :global(.form-field) { min-width: 0; }
 .profile-password-row button {
   min-height: 38px;
   white-space: nowrap;
@@ -170,9 +155,6 @@
 :root[data-theme='dark'] .preference-group,
 :root[data-theme='dark'] .profile-actions {
   border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .profile-fields label {
-  color: var(--theme-fg-muted);
 }
 :root[data-theme='dark'] .profile-team {
   background: var(--theme-bg-surface);

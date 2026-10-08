@@ -1079,7 +1079,7 @@ body:has(.resource-add-workflow) {
   font-size: 11px;
   line-height: 16px;
 }
-.resource-add-workflow i {
+.resource-add-workflow i:not(.required-mark) {
   margin-right: 3px;
   color: var(--theme-accent);
   font-style: normal;
@@ -1232,11 +1232,9 @@ body:has(.resource-add-workflow) {
   gap: 7px;
   color: var(--theme-fg-muted);
   font-size: 12px;
+  font-weight: 400;
 }
-.resource-type-selection label.invalid select {
-  border-color: var(--theme-danger);
-  box-shadow: 0 0 0 1px var(--theme-danger);
-}
+.resource-type-selection .dropdown-select { width: 100%; }
 .mcp-resource-form label.invalid input {
   border-color: var(--theme-danger);
   box-shadow: 0 0 0 1px var(--theme-danger);
@@ -1463,12 +1461,12 @@ body:has(.resource-add-workflow) {
 }
 .provider-toggle-control input {
   position: absolute;
+  z-index: 1;
   width: 100%;
   height: 100%;
   min-height: 0;
   opacity: 0;
   cursor: pointer;
-  z-index: 1;
 }
 .provider-toggle-control i {
   display: block;
@@ -1488,16 +1486,9 @@ body:has(.resource-add-workflow) {
   content: '';
   transition: transform 140ms ease;
 }
-.provider-toggle-control input:checked + i {
-  background: var(--color-primary);
-}
-.provider-toggle-control input:checked + i::after {
-  transform: translateX(16px);
-}
-.provider-toggle-control input:focus-visible + i {
-  outline: 3px solid var(--theme-focus);
-  outline-offset: 2px;
-}
+.provider-toggle-control input:checked + i { background: var(--color-primary); }
+.provider-toggle-control input:checked + i::after { transform: translateX(16px); }
+.provider-toggle-control input:focus-visible + i { outline: 3px solid var(--theme-focus); outline-offset: 2px; }
 .provider-api-key-control {
   position: relative;
   display: block;
@@ -1975,7 +1966,7 @@ body:has(.resource-add-workflow) {
   min-width: 0;
   color: var(--theme-fg-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
 }
 .host-auth-method,
 .host-password,
@@ -2021,7 +2012,7 @@ body:has(.resource-add-workflow) {
   min-width: 0;
   color: var(--theme-fg-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 400;
 }
 .docker-form-grid label.invalid,
 .docker-agent-form label.invalid {

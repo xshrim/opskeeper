@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Switch from '../../components/Switch.svelte';
   import { onMount } from 'svelte';
   import { Pencil, Trash2 } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
@@ -102,7 +103,7 @@
           <small title={connectionDetail}>{connectionDetail}</small>
         </span>
         <span class="resource-row-actions" aria-label="资源操作">
-          <span class="resource-enabled-control" title="是否启用"><span class="provider-toggle-control"><input type="checkbox" checked={resource.status === 'active'} disabled={busy || resourceActionBusy || !resourceCanManage(resource, 'resource:update')} aria-label={`是否启用 ${resource.name}`} on:click|stopPropagation on:change={(event) => onToggleEnabled(resource, (event.currentTarget as HTMLInputElement).checked)} /><i aria-hidden="true"></i></span></span>
+          <span class="resource-enabled-control" title="是否启用"><Switch checked={resource.status === 'active'} disabled={busy || resourceActionBusy || !resourceCanManage(resource, 'resource:update')} ariaLabel={`是否启用 ${resource.name}`} on:change={(event) => onToggleEnabled(resource, event.detail)} /></span>
           <button class="icon-button" type="button" on:click|stopPropagation={() => onEdit(resource)} disabled={busy || !resourceCanManage(resource, 'resource:update')} title={resourceCanManage(resource, 'resource:update') ? '编辑资源' : '无编辑权限'} aria-label="编辑资源"><Pencil size={15} aria-hidden="true" /></button>
           <button class="icon-button danger-action" type="button" on:click|stopPropagation={() => onDelete(resource)} disabled={busy || !resourceCanManage(resource, 'resource:delete')} title={resourceCanManage(resource, 'resource:delete') ? '删除资源' : '无删除权限'} aria-label="删除资源"><Trash2 size={15} aria-hidden="true" /></button>
         </span>

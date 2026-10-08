@@ -1,5 +1,7 @@
 <script lang="ts">
   import { X } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
   import type { Relation, Resource, TopologyNode } from '../../lib/api';
 
   export let resource: Resource;
@@ -12,13 +14,21 @@
   export let relationBusy = false;
   export let onCreate: () => void = () => {};
   export let onDelete: (relation: Relation) => void = () => {};
+  $: targetOptions = resources.filter((item) => item.id !== resource.id).map((item) => ({ value: item.id, label: `${item.name} · ${item.kind}` }));
+  const relationOptions = [
+    { value: 'depends_on', label: 'depends_on' },
+    { value: 'contains', label: 'contains' },
+    { value: 'deployed_on', label: 'deployed_on' },
+    { value: 'exposes', label: 'exposes' },
+    { value: 'uses_provider', label: 'uses_provider' }
+  ];
 </script>
 
 <div class="relation-section">
   <div class="subheading"><h3>关系与拓扑</h3><span>{relations.length} 条关系 · {topology.length} 个节点</span></div>
   <form class="relation-form" on:submit|preventDefault={onCreate}>
-    <label>目标资源<i class="required-mark" aria-hidden="true">*</i><select bind:value={target} required aria-label="目标资源"><option value="" disabled>选择目标资源</option>{#each resources.filter((item) => item.id !== resource.id) as candidate}<option value={candidate.id}>{candidate.name} · {candidate.kind}</option>{/each}</select></label>
-    <select bind:value={relationType}><option value="depends_on">depends_on</option><option value="contains">contains</option><option value="deployed_on">deployed_on</option><option value="exposes">exposes</option><option value="uses_provider">uses_provider</option></select>
+    <FormField label="目标资源" required><DropdownSelect bind:value={target} options={targetOptions} placeholder="选择目标资源" ariaLabel="目标资源" /></FormField>
+    <DropdownSelect bind:value={relationType} options={relationOptions} ariaLabel="关系类型" />
     <button class="secondary" disabled={busy || relationBusy}>建立关系</button>
   </form>
   {#if relations.length}<div class="relation-list">

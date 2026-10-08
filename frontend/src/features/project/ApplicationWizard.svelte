@@ -1,8 +1,11 @@
 <script lang="ts">
   import { Plus, Server, X } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+  import FormField from '../../components/FormField.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import type { Resource } from '../../lib/api';
   import { api } from '../../lib/api';
   import {
@@ -46,6 +49,7 @@
   let error = '';
 
   $: runtimeResources = resourcesForRuntime(resources, runtimeKind);
+  $: runtimeResourceOptions = runtimeResources.map((resource) => ({ value: resource.id, label: resource.name }));
   $: if (runtimeKind !== 'cloud_native' && instances.length === 0 && runtimeResources.length) {
     instances = [newInstance()];
   }
@@ -190,9 +194,9 @@
         </div>
       {:else if runtimeKind === 'cloud_native'}
         <div class="wizard-form-grid">
-          <label><span>运行资源<i class="required-mark">*</i></span><select bind:value={kubernetesResourceId}><option value="">选择 Kubernetes 资源</option>{#each runtimeResources as resource}<option value={resource.id}>{resource.name}</option>{/each}</select></label>
-          <label><span>命名空间<i class="required-mark">*</i></span><input bind:value={namespace} placeholder="default" /></label>
-          <label class="full-field"><span>标签选择器</span><input bind:value={filters} placeholder="app.kubernetes.io/part-of=payments" /></label>
+          <FormField label="运行资源" required><DropdownSelect bind:value={kubernetesResourceId} options={runtimeResourceOptions} placeholder="选择 Kubernetes 资源" ariaLabel="运行资源" /></FormField>
+          <FormField label="命名空间" required><TextInput bind:value={namespace} placeholder="default" /></FormField>
+          <FormField label="标签选择器" className="full-field"><TextInput bind:value={filters} placeholder="app.kubernetes.io/part-of=payments" /></FormField>
         </div>
         <div class="discovery-toolbar"><span>工作负载列表</span><button class="secondary" type="button" disabled={loading} on:click={discoverWorkloads}><Server size={14} />{loading ? '读取中…' : '读取工作负载'}</button></div>
         {#if workloads.length}
@@ -200,13 +204,13 @@
         {:else}<div class="empty-inline"><Server size={18} /><span>填写定位条件后读取 Kubernetes 工作负载。</span></div>{/if}
       {:else}
         <div class="wizard-form-grid">
-          <label><span>应用名称<i class="required-mark">*</i></span><input bind:value={name} placeholder="支付 API" /></label>
-          <label><span>应用编码<i class="required-mark">*</i></span><input bind:value={code} placeholder="payments-api" /></label>
-          <label><span>应用图标</span><IconPicker value={icon} onSelect={(value) => (icon = value)} ariaLabel="选择应用图标" /></label>
-          <label class="full-field"><span>应用描述</span><textarea bind:value={description} rows="2" placeholder="应用职责和运行边界"></textarea></label>
+          <FormField label="应用名称" required><TextInput bind:value={name} placeholder="支付 API" /></FormField>
+          <FormField label="应用编码" required><TextInput bind:value={code} placeholder="payments-api" /></FormField>
+          <FormField label="应用图标"><IconPicker value={icon} onSelect={(value) => (icon = value)} ariaLabel="选择应用图标" /></FormField>
+          <FormField label="应用描述" className="full-field"><textarea bind:value={description} rows="2" placeholder="应用职责和运行边界"></textarea></FormField>
         </div>
         <div class="discovery-toolbar"><span>实例绑定 <small>每个实例绑定一个唯一的 {runtimeLabel(runtimeKind)} 资源</small></span><button class="secondary" type="button" on:click={addInstance}><Plus size={14} />添加实例</button></div>
-        <div class="instance-draft-list">{#each instances as instance, index}<div class="instance-draft-row"><span class="instance-index">{index + 1}</span><label><span>实例名称</span><input bind:value={instance.name} placeholder="instance-1" /></label><label><span>{runtimeLabel(runtimeKind)} 资源<i class="required-mark">*</i></span><select bind:value={instance.targetResourceId}><option value="">选择资源</option>{#each runtimeResources as resource}<option value={resource.id}>{resource.name}</option>{/each}</select></label><label><span>{runtimeKind === 'virtual_machine' ? '进程关键字' : '容器名称'}<i class="required-mark">*</i></span><input value={String(instance.selector[runtimeKind === 'virtual_machine' ? 'process_keyword' : 'container_name'] ?? '')} placeholder={runtimeKind === 'virtual_machine' ? 'java -jar payments.jar' : 'payments-api'} on:input={(event) => updateSelector(instance, runtimeKind === 'virtual_machine' ? 'process_keyword' : 'container_name', (event.currentTarget as HTMLInputElement).value)} /></label><button class="icon-button" type="button" aria-label="移除实例" data-tooltip="移除实例" disabled={instances.length === 1} on:click={() => removeInstance(instance.id)}><X size={15} /></button></div>{/each}</div>
+        <div class="instance-draft-list">{#each instances as instance, index}<div class="instance-draft-row"><span class="instance-index">{index + 1}</span><FormField label="实例名称"><TextInput bind:value={instance.name} placeholder="instance-1" /></FormField><FormField label={`${runtimeLabel(runtimeKind)} 资源`} required><DropdownSelect bind:value={instance.targetResourceId} options={runtimeResourceOptions} placeholder="选择资源" ariaLabel={`${runtimeLabel(runtimeKind)} 资源`} /></FormField><FormField label={runtimeKind === 'virtual_machine' ? '进程关键字' : '容器名称'} required><TextInput value={String(instance.selector[runtimeKind === 'virtual_machine' ? 'process_keyword' : 'container_name'] ?? '')} placeholder={runtimeKind === 'virtual_machine' ? 'java -jar payments.jar' : 'payments-api'} on:input={(event) => updateSelector(instance, runtimeKind === 'virtual_machine' ? 'process_keyword' : 'container_name', (event.currentTarget as HTMLInputElement).value)} /></FormField><button class="icon-button" type="button" aria-label="移除实例" data-tooltip="移除实例" disabled={instances.length === 1} on:click={() => removeInstance(instance.id)}><X size={15} /></button></div>{/each}</div>
       {/if}
     </div>
   </div>

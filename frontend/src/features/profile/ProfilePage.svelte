@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
+import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
+  import FormField from '../../components/FormField.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import { api, ApiError, type User, type UserPreferences } from '../../lib/api';
 
   export let currentUser: User | null = null;
@@ -151,18 +153,18 @@
         </div>
       </div>
       <div class="profile-fields">
-        <label>用户名<input value={currentUser?.username ?? ''} disabled aria-label="用户名" /></label>
-        <label>显示名<i class="required-mark" aria-hidden="true">*</i><input bind:value={profileDisplayName} required maxlength="120" placeholder="请输入显示名" aria-label="显示名" /></label>
-        <label>邮箱<input type="email" bind:value={profileEmail} placeholder="例如：name@example.com" aria-label="邮箱" /></label>
-        <label>电话<input type="tel" bind:value={profilePhone} placeholder="例如：13800138000" aria-label="电话" /></label>
+        <FormField label="用户名"><TextInput value={currentUser?.username ?? ''} disabled ariaLabel="用户名" /></FormField>
+        <FormField label="显示名" required><TextInput bind:value={profileDisplayName} required maxlength={120} placeholder="请输入显示名" ariaLabel="显示名" /></FormField>
+        <FormField label="邮箱"><TextInput type="email" bind:value={profileEmail} placeholder="例如：name@example.com" ariaLabel="邮箱" /></FormField>
+        <FormField label="电话"><TextInput type="tel" bind:value={profilePhone} placeholder="例如：13800138000" ariaLabel="电话" /></FormField>
       </div>
       <div class="profile-team"><UsersRound size={17} strokeWidth={1.8} aria-hidden="true" /><span><strong>所属团队</strong><small>当前未配置团队成员关系</small></span></div>
     </form>
     <form class="profile-password-form" on:submit|preventDefault={changePassword}>
       <div class="profile-password-row">
-        <label>当前密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></label>
-        <label>新密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></label>
-        <label>确认新密码<i class="required-mark" aria-hidden="true">*</i><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></label>
+        <FormField label="当前密码" required><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></FormField>
+        <FormField label="新密码" required><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></FormField>
+        <FormField label="确认新密码" required><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></FormField>
         <button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在更新' : '更新密码'}</button>
       </div>
     </form>

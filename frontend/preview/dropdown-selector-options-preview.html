@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>范围下拉框 · 10 种样式预览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-soft: #f8fafb;
+      --ink: #17212b;
+      --muted: #64717d;
+      --subtle: #8b97a3;
+      --line: #d9e0e6;
+      --line-strong: #b8c3ce;
+      --accent: #2563a8;
+      --accent-soft: #e8f1fb;
+      --accent-strong: #174b82;
+      --teal: #16766e;
+      --shadow: 0 14px 32px rgba(36, 54, 72, .12);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #141a20;
+      --surface: #1c252e;
+      --surface-soft: #202b35;
+      --ink: #e7edf3;
+      --muted: #a7b4c0;
+      --subtle: #81909e;
+      --line: #34424f;
+      --line-strong: #4a5a68;
+      --accent: #8eb6f3;
+      --accent-soft: #243a56;
+      --accent-strong: #b4d1fb;
+      --teal: #67d0b6;
+      --shadow: 0 16px 36px rgba(0, 0, 0, .32);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--bg); font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .shell { width: min(1440px, calc(100% - 40px)); margin: 0 auto; padding: 30px 0 54px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    .eyebrow { margin: 0 0 6px; color: var(--accent); font-size: 11px; font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: 0; line-height: 1.2; }
+    .lead { max-width: 760px; margin: 10px 0 0; color: var(--muted); }
+    .theme-button { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 8px 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; }
+    .theme-button:hover { border-color: var(--accent); }
+    .control-panel { display: grid; grid-template-columns: 1fr auto; gap: 14px 22px; align-items: center; margin-bottom: 24px; padding: 15px 17px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+    .control-copy strong { display: block; margin-bottom: 2px; font-size: 13px; }
+    .control-copy span { color: var(--muted); font-size: 12px; }
+    .controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 14px; }
+    .check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .check input { accent-color: var(--accent); }
+    .all-name { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+    .all-name input { width: 92px; height: 28px; padding: 0 7px; color: var(--ink); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; }
+    .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .option { min-width: 0; padding: 17px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+    .option-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+    .option-number { color: var(--accent); font-size: 11px; font-weight: 750; letter-spacing: .08em; }
+    .option h2 { margin: 2px 0 3px; font-size: 16px; line-height: 1.3; }
+    .option p { margin: 0; color: var(--muted); font-size: 12px; }
+    .fit { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 104px; }
+    .fit b { padding: 3px 6px; color: var(--muted); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 3px; font-size: 10px; font-weight: 600; }
+    .fit b.on { color: var(--accent-strong); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+    .demo { position: relative; min-height: 190px; padding: 14px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 6px; }
+    .demo-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; color: var(--subtle); font-size: 11px; }
+    .demo-label span:last-child { color: var(--teal); }
+    .selector { position: relative; width: min(100%, 340px); }
+    .trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 0 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; text-align: left; }
+    .trigger:hover { border-color: var(--accent); }
+    .trigger .value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trigger .chevron { margin-left: auto; color: var(--muted); }
+    .icon { display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; color: var(--accent); background: var(--accent-soft); border-radius: 4px; font-size: 12px; }
+    .menu { position: absolute; z-index: 2; top: calc(100% + 6px); right: 0; left: 0; padding: 5px; overflow: hidden; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; box-shadow: var(--shadow); }
+    .search { width: 100%; height: 31px; margin-bottom: 5px; padding: 0 8px; color: var(--ink); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; outline: none; }
+    .search:focus { border-color: var(--accent); }
+    .items { max-height: 122px; overflow: auto; }
+    .item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 7px; color: var(--ink); background: transparent; border: 0; border-radius: 4px; text-align: left; }
+    .item:hover, .item.selected { background: var(--accent-soft); }
+    .item small { display: block; margin-top: 1px; color: var(--muted); font-size: 10px; }
+    .item > span:nth-last-child(1) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .all-item { color: var(--accent-strong); border-bottom: 1px solid var(--line); border-radius: 0; }
+    .manual { display: flex; gap: 5px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
+    .manual input { min-width: 0; flex: 1; height: 30px; padding: 0 7px; color: var(--ink); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; }
+    .manual button { height: 30px; padding: 0 8px; color: var(--accent-strong); background: var(--accent-soft); border: 1px solid transparent; border-radius: 4px; }
+    .helper { position: absolute; right: 14px; bottom: 14px; left: 14px; color: var(--muted); font-size: 11px; }
+    .scheme-01 .trigger { border-radius: 5px; }
+    .scheme-02 .trigger { border-width: 0 0 1px; border-radius: 0; background: transparent; }
+    .scheme-02 .menu { border-top: 2px solid var(--accent); border-radius: 0 0 6px 6px; }
+    .scheme-03 .trigger { border-radius: 18px; padding-left: 14px; }
+    .scheme-03 .menu { border-radius: 13px; }
+    .scheme-04 .trigger { background: var(--accent-soft); border-color: transparent; }
+    .scheme-04 .item { border-radius: 3px; }
+    .scheme-05 .trigger { min-height: 46px; align-items: flex-start; padding-top: 7px; padding-bottom: 7px; }
+    .scheme-05 .trigger .value::before { display: block; content: "当前范围"; color: var(--subtle); font-size: 10px; line-height: 1.2; }
+    .scheme-06 .trigger { border-left: 3px solid var(--accent); }
+    .scheme-06 .menu { left: 12px; width: calc(100% - 12px); }
+    .scheme-07 .menu { padding: 0; }
+    .scheme-07 .search { margin: 7px 7px 4px; width: calc(100% - 14px); }
+    .scheme-07 .items { padding: 0 5px 5px; }
+    .scheme-08 .trigger { box-shadow: 0 2px 0 var(--line); }
+    .scheme-08 .item { min-height: 36px; border-bottom: 1px solid var(--line); border-radius: 0; }
+    .scheme-09 .trigger { justify-content: space-between; }
+    .scheme-09 .trigger .value { order: 2; flex: 1; text-align: right; }
+    .scheme-09 .trigger .icon { order: 3; }
+    .scheme-09 .trigger .chevron { order: 1; margin-left: 0; }
+    .scheme-10 .trigger { min-height: 34px; padding: 0 7px; border-radius: 3px; font-size: 12px; }
+    .scheme-10 .icon { width: 18px; height: 18px; font-size: 10px; border-radius: 3px; }
+    .scheme-10 .menu { padding: 3px; border-radius: 4px; }
+    .scheme-10 .item { min-height: 28px; padding: 3px 5px; font-size: 12px; }
+    .scheme-10 .items { max-height: 108px; }
+    .footnote { margin-top: 22px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 860px) { .gallery { grid-template-columns: 1fr; } .control-panel { grid-template-columns: 1fr; } .controls { justify-content: flex-start; } }
+    @media (max-width: 560px) { .shell { width: min(100% - 24px, 1440px); padding-top: 18px; } .topbar { display: block; } .theme-button { margin-top: 14px; } .option-head { display: block; } .fit { justify-content: flex-start; margin-top: 9px; } .demo { min-height: 205px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">COMPONENT DESIGN REVIEW</p>
+        <h1>范围下拉框 · 10 种样式预览</h1>
+        <p class="lead">面向团队、项目、成员等高密度范围选择。所有方案沿用 OpsKeeper 的明暗主题色，并比较图标、搜索、手动输入与“全部”选项的组合方式。</p>
+      </div>
+      <button class="theme-button" id="theme-toggle" type="button">◐ <span>切换深色主题</span></button>
+    </header>
+
+    <section class="control-panel" aria-label="下拉框能力配置预览">
+      <div class="control-copy"><strong>能力配置预览</strong><span>开关会同步影响下方 10 个静态方案，用于比较同一组件在不同配置下的密度。</span></div>
+      <div class="controls">
+        <label class="check"><input id="icons" type="checkbox" checked />支持图标</label>
+        <label class="check"><input id="search" type="checkbox" checked />支持搜索</label>
+        <label class="check"><input id="manual" type="checkbox" checked />支持手动输入</label>
+        <label class="check"><input id="all" type="checkbox" checked />支持全部选项</label>
+        <label class="all-name">全部名称<input id="all-label" value="全部团队" /></label>
+      </div>
+    </section>
+
+    <section class="gallery" id="gallery" aria-label="范围下拉框样式方案"></section>
+    <p class="footnote">静态交互预览 · 点击每个选择器查看菜单效果。能力开关只改变预览，不接入正式组件或 API。</p>
+  </main>
+  <script>
+    const teams = [
+      { icon: '◈', name: '基础设施运维部', detail: '8 个项目' },
+      { icon: '◇', name: '企业业务开发团队', detail: '12 个项目' },
+      { icon: '○', name: '数据平台组', detail: '5 个项目' },
+      { icon: '△', name: '安全与合规', detail: '3 个项目' }
+    ];
+    const variants = [
+      ['标准边框', '清晰可靠的默认方案，适合团队和项目两级范围。'],
+      ['底线强调', '降低视觉重量，用顶部强调线表达菜单边界。'],
+      ['胶囊范围', '更轻量的范围切换，适合顶部全局筛选器。'],
+      ['浅色底座', '选中范围有明确底色，适合高频切换场景。'],
+      ['双行信息', '主范围与辅助说明分层，适合展示项目数量。'],
+      ['侧边标记', '用左侧色线保持紧凑，同时强化当前层级。'],
+      ['分组菜单', '搜索固定在菜单顶部，选项区域独立滚动。'],
+      ['行式清单', '更像资源列表，适合名称较长或信息较多的选项。'],
+      ['两端对齐', '将范围值置右，适合与页面右侧操作区对齐。'],
+      ['密集令牌', '最低高度与最小间距，适合空间极紧的工具栏。']
+    ];
+    const state = { icons: true, search: true, manual: true, all: true, allLabel: '全部团队' };
+    const el = id => document.getElementById(id);
+    function icon(item) { return state.icons ? `<span class="icon" aria-hidden="true">${item.icon}</span>` : ''; }
+    function itemMarkup(item, selected = false) { return `<button class="item${selected ? ' selected' : ''}" type="button">${icon(item)}<span>${item.name}<small>${item.detail}</small></span></button>`; }
+    function menuMarkup() {
+      const all = state.all ? `<button class="item all-item" type="button">${state.icons ? '<span class="icon" aria-hidden="true">✦</span>' : ''}<span>${state.allLabel || '全部团队'}</span></button>` : '';
+      const search = state.search ? '<input class="search" type="search" placeholder="搜索团队或项目" />' : '';
+      const manual = state.manual ? '<div class="manual"><input placeholder="输入名称或编码" /><button type="button">确定</button></div>' : '';
+      return `<div class="menu">${search}<div class="items">${all}${teams.map((team, i) => itemMarkup(team, i === 1)).join('')}</div>${manual}</div>`;
+    }
+    function render() {
+      state.icons = el('icons').checked;
+      state.search = el('search').checked;
+      state.manual = el('manual').checked;
+      state.all = el('all').checked;
+      state.allLabel = el('all-label').value.trim() || '全部团队';
+      el('gallery').innerHTML = variants.map((variant, index) => {
+        const n = String(index + 1).padStart(2, '0');
+        const abilities = [['图标', state.icons], ['搜索', state.search], ['手动', state.manual], ['全部', state.all]]
+          .map(([label, on]) => `<b class="${on ? 'on' : ''}">${label}</b>`).join('');
+        return `<article class="option scheme-${n}">
+          <div class="option-head"><div><span class="option-number">方案 ${n}</span><h2>${variant[0]}</h2><p>${variant[1]}</p></div><div class="fit" aria-label="支持能力">${abilities}</div></div>
+          <div class="demo"><div class="demo-label"><span>所属团队</span><span>展开态</span></div><div class="selector"><button class="trigger" type="button" aria-expanded="true">${icon(teams[1])}<span class="value">${teams[1].name}</span><span class="chevron">⌄</span></button>${menuMarkup()}</div><div class="helper">可复用为“全部项目”“全部成员”等同类范围选择。</div></div>
+        </article>`;
+      }).join('');
+    }
+    el('theme-toggle').addEventListener('click', () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+      document.querySelector('#theme-toggle span').textContent = dark ? '切换深色主题' : '切换浅色主题';
+    });
+    ['icons', 'search', 'manual', 'all', 'all-label'].forEach(id => el(id).addEventListener('input', render));
+    render();
+  </script>
+</body>
+</html>

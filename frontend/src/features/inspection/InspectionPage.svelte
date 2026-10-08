@@ -1,4 +1,7 @@
 <script lang="ts">
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import {
     api,
     ApiError,
@@ -32,6 +35,11 @@
   let maxTokens = 20000;
   let busy = false;
   let loadedScopeId = '';
+  $: personaOptions = personas.filter((item) => item.status === 'active').map((profile) => ({
+    value: profile.id,
+    label: profile.name,
+    description: scopeName(profile.scope_id)
+  }));
 
   $: if (scopeId && scopeId !== loadedScopeId) {
     loadedScopeId = scopeId;
@@ -141,70 +149,16 @@
     </div>
     <form class="stack-form" on:submit|preventDefault={createPolicy}>
       <div class="form-grid">
-        <label
-          >名称<i class="required-mark" aria-hidden="true">*</i><input
-            bind:value={policyName}
-            required
-            maxlength="200"
-          /></label
-        >
-        <label
-          >Cron<i class="required-mark" aria-hidden="true">*</i><input
-            bind:value={cron}
-            required
-          /></label
-        >
-        <label
-          >时区<i class="required-mark" aria-hidden="true">*</i><input
-            bind:value={timezone}
-            required
-          /></label
-        >
-        <label
-          >超时（秒）<input
-            type="number"
-            min="1"
-            max="3600"
-            bind:value={timeoutSeconds}
-          /></label
-        >
-        <label
-          >重试次数<input
-            type="number"
-            min="0"
-            max="10"
-            bind:value={retries}
-          /></label
-        >
-        <label
-          >目标并发<input
-            type="number"
-            min="1"
-            max="64"
-            bind:value={maxConcurrent}
-          /></label
-        >
-        <label
-          >Tool 预算<input
-            type="number"
-            min="1"
-            max="100"
-            bind:value={maxToolCalls}
-          /></label
-        >
-        <label
-          >Token 预算<input
-            type="number"
-            min="1"
-            max="200000"
-            bind:value={maxTokens}
-          /></label
-        >
+        <FormField label="名称" required><TextInput bind:value={policyName} required maxlength={200} /></FormField>
+        <FormField label="Cron" required><TextInput bind:value={cron} required /></FormField>
+        <FormField label="时区" required><TextInput bind:value={timezone} required /></FormField>
+        <FormField label="超时（秒）"><TextInput type="number" min="1" max="3600" bind:value={timeoutSeconds} /></FormField>
+        <FormField label="重试次数"><TextInput type="number" min="0" max="10" bind:value={retries} /></FormField>
+        <FormField label="目标并发"><TextInput type="number" min="1" max="64" bind:value={maxConcurrent} /></FormField>
+        <FormField label="Tool 预算"><TextInput type="number" min="1" max="100" bind:value={maxToolCalls} /></FormField>
+        <FormField label="Token 预算"><TextInput type="number" min="1" max="200000" bind:value={maxTokens} /></FormField>
       </div>
-      <label
-        >标签选择器（JSON 对象）<textarea rows="3" bind:value={targetLabels}
-        ></textarea></label
-      >
+      <FormField label="标签选择器（JSON 对象）"><textarea rows="3" bind:value={targetLabels}></textarea></FormField>
       <fieldset>
         <legend>目标资源</legend>
         <div class="check-grid">
@@ -218,15 +172,7 @@
             >{/each}
         </div>
       </fieldset>
-      <label
-        >解释 Persona（可选）<select bind:value={personaId}
-          ><option value="">使用内置巡检解释 Persona</option
-          >{#each personas.filter((item) => item.status === 'active') as profile}<option
-              value={profile.id}
-              >{profile.name} · {scopeName(profile.scope_id)}</option
-            >{/each}</select
-        ></label
-      >
+      <FormField label="解释 Persona（可选）"><DropdownSelect bind:value={personaId} options={personaOptions} placeholder="使用内置巡检解释 Persona" ariaLabel="解释 Persona" /></FormField>
       <button
         class="primary"
         disabled={busy ||

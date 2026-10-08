@@ -1,6 +1,40 @@
 <script lang="ts">
- import type { Resource } from '../../lib/api';
- import PasswordInput from '../../components/PasswordInput.svelte';
- export let accessMode:'direct'|'agent'='direct'; export let host=''; export let port=8848; export let scheme='http'; export let contextPath='/nacos'; export let username=''; export let password=''; export let accessToken=''; export let timeoutSeconds=10; export let mcpServerResourceId=''; export let mcpServers:Resource[]=[]; export let configurationAttempted=false; export let onConfigurationChange:()=>void=()=>{};
+  import type { Resource } from '../../lib/api';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
+  import PasswordInput from '../../components/PasswordInput.svelte';
+  import TextInput from '../../components/TextInput.svelte';
+
+  export let accessMode: 'direct' | 'agent' = 'direct';
+  export let host = '';
+  export let port = 8848;
+  export let scheme = 'http';
+  export let contextPath = '/nacos';
+  export let username = '';
+  export let password = '';
+  export let accessToken = '';
+  export let timeoutSeconds = 10;
+  export let mcpServerResourceId = '';
+  export let mcpServers: Resource[] = [];
+  export let configurationAttempted = false;
+  export let onConfigurationChange: () => void = () => {};
+
+  $: mcpServerOptions = mcpServers.map((server) => ({ value: server.id, label: server.name }));
+  const schemeOptions = [{ value: 'http', label: 'HTTP' }, { value: 'https', label: 'HTTPS' }];
 </script>
-{#if accessMode==='agent'}<label class:invalid={configurationAttempted&&!mcpServerResourceId}><span>关联 MCPServer<i class="required-mark" aria-hidden="true">*</i></span><select bind:value={mcpServerResourceId} required on:change={onConfigurationChange}><option value="">请选择活动的 MCPServer</option>{#each mcpServers as server}<option value={server.id}>{server.name}</option>{/each}</select></label><p class="docker-field-help">Nacos Agent 通过关联 MCPServer 提供统一只读 API 工具。</p>{:else}<div class="docker-form-grid"><label class:invalid={configurationAttempted&&!host.trim()}><span>Nacos 主机<i class="required-mark" aria-hidden="true">*</i></span><input bind:value={host} required on:input={onConfigurationChange} placeholder="例如 nacos.example.com"/></label><label><span>协议</span><select bind:value={scheme} on:change={onConfigurationChange}><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label><span>端口</span><input type="number" min="1" max="65535" bind:value={port} on:input={onConfigurationChange}/></label><label><span>上下文路径</span><input bind:value={contextPath} on:input={onConfigurationChange} placeholder="/nacos"/></label><label><span>用户名（可选）</span><input bind:value={username} on:input={onConfigurationChange}/></label><label><span>密码（可选）</span><PasswordInput bind:value={password} on:input={onConfigurationChange} ariaLabel="密码" /></label><label><span>访问 Token（可选）</span><PasswordInput bind:value={accessToken} on:input={onConfigurationChange} ariaLabel="访问 Token" /></label><label><span>超时时间（秒）</span><input type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange}/></label></div>{/if}
+
+{#if accessMode === 'agent'}
+  <FormField label="关联 MCPServer" required invalid={configurationAttempted && !mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
+  <p class="docker-field-help">Nacos Agent 通过关联 MCPServer 提供统一只读 API 工具。</p>
+{:else}
+  <div class="docker-form-grid">
+    <FormField label="Nacos 主机" required invalid={configurationAttempted && !host.trim()}><TextInput bind:value={host} required invalid={configurationAttempted && !host.trim()} on:input={onConfigurationChange} placeholder="例如 nacos.example.com" /></FormField>
+    <FormField label="协议"><DropdownSelect bind:value={scheme} options={schemeOptions} ariaLabel="协议" on:change={onConfigurationChange} /></FormField>
+    <FormField label="端口"><TextInput type="number" min="1" max="65535" bind:value={port} on:input={onConfigurationChange} /></FormField>
+    <FormField label="上下文路径"><TextInput bind:value={contextPath} on:input={onConfigurationChange} placeholder="/nacos" /></FormField>
+    <FormField label="用户名（可选）"><TextInput bind:value={username} on:input={onConfigurationChange} /></FormField>
+    <FormField label="密码（可选）"><PasswordInput bind:value={password} on:input={onConfigurationChange} ariaLabel="密码" /></FormField>
+    <FormField label="访问 Token（可选）"><PasswordInput bind:value={accessToken} on:input={onConfigurationChange} ariaLabel="访问 Token" /></FormField>
+    <FormField label="超时时间（秒）"><TextInput type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></FormField>
+  </div>
+{/if}

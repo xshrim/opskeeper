@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { Eye, EyeOff } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
+  import PasswordInput from '../../components/PasswordInput.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import type { ResourceSchema } from '../../lib/api';
 
   export let schema: ResourceSchema | null = null;
@@ -12,43 +15,33 @@
   export let timeoutSeconds = 60;
   export let isRequired: (key: string) => boolean = () => false;
   export let configurationAttempted = false;
-  let sensitiveVisible: Record<string, boolean> = {};
-
-  function toggleSensitive(key: string) {
-    sensitiveVisible = { ...sensitiveVisible, [key]: !sensitiveVisible[key] };
-  }
 </script>
 
 {#if schema?.schema.properties && Object.keys(schema.schema.properties).length > 0}
   <div class="schema-inputs">
     <p class="eyebrow">SCHEMA FIELDS</p>
     {#each Object.entries(schema.schema.properties) as [key, field]}
-      <label class:invalid={configurationAttempted && isRequired(key) && !(field.sensitive ? (sensitiveValues[key] ?? '') : (values[key] ?? '')).trim()}>
-        <span>{field.title || key}{#if isRequired(key)}<i class="required-mark" aria-hidden="true">*</i>{/if}</span>
+      {@const fieldInvalid = configurationAttempted && isRequired(key) && !(field.sensitive ? (sensitiveValues[key] ?? '') : (values[key] ?? '')).trim()}
         {#if field.sensitive}
-          <span class="resource-secret-control"><input type={sensitiveVisible[key] ? 'text' : 'password'} bind:value={sensitiveValues[key]} required={isRequired(key) && !(editMode && credentialConfigured)} placeholder={editMode && credentialConfigured ? '已有资源密文，留空保持不变' : '敏感信息将加密保存'} autocomplete="new-password" /><button class="resource-secret-toggle" type="button" aria-label={sensitiveVisible[key] ? `隐藏${field.title || key}` : `显示${field.title || key}`} aria-pressed={sensitiveVisible[key] ?? false} data-tooltip={sensitiveVisible[key] ? `隐藏${field.title || key}` : `显示${field.title || key}`} on:click={() => toggleSensitive(key)}>{#if sensitiveVisible[key]}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}</button></span>
+          <FormField label={field.title || key} required={isRequired(key)} invalid={fieldInvalid}><PasswordInput bind:value={sensitiveValues[key]} required={isRequired(key) && !(editMode && credentialConfigured)} ariaInvalid={fieldInvalid} placeholder={editMode && credentialConfigured ? '已有资源密文，留空保持不变' : '敏感信息将加密保存'} autocomplete="new-password" secretLabel={field.title || key} /></FormField>
         {:else if field.enum}
-          <select bind:value={values[key]} required={isRequired(key)}><option value="">未设置</option>{#each field.enum as option}<option value={option}>{option}</option>{/each}</select>
+          <FormField label={field.title || key} required={isRequired(key)} invalid={fieldInvalid}><DropdownSelect bind:value={values[key]} options={field.enum.map((option) => ({ value: option, label: option }))} placeholder="未设置" ariaLabel={field.title || key} invalid={fieldInvalid} /></FormField>
         {:else if field.type === 'array'}
-          <textarea bind:value={values[key]} required={isRequired(key)} rows="4" placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'} spellcheck="false"></textarea>
+          <FormField label={field.title || key} required={isRequired(key)} invalid={fieldInvalid}><textarea bind:value={values[key]} required={isRequired(key)} rows="4" placeholder={'JSON 数组，例如 [{"name":"model","context_window":8192}]'} spellcheck="false"></textarea></FormField>
         {:else}
-          <input bind:value={values[key]} required={isRequired(key)} type={field.type === 'number' || field.type === 'integer' ? 'number' : field.type === 'url' || field.format === 'uri' ? 'url' : 'text'} placeholder={editMode ? undefined : field.description || key} autocomplete="off" />
+          <FormField label={field.title || key} required={isRequired(key)} invalid={fieldInvalid}><TextInput bind:value={values[key]} required={isRequired(key)} invalid={fieldInvalid} type={field.type === 'number' || field.type === 'integer' ? 'number' : field.type === 'url' || field.format === 'uri' ? 'url' : 'text'} placeholder={editMode ? undefined : field.description || key} autocomplete="off" /></FormField>
         {/if}
-      </label>
     {/each}
     {#if showTimeout && !schema.schema.properties.timeout_seconds}
-      <label>
-        <span>超时时间（秒）</span>
-        <input bind:value={timeoutSeconds} type="number" min="1" max="600" />
-      </label>
+      <FormField label="超时时间（秒）"><TextInput bind:value={timeoutSeconds} type="number" min="1" max="600" /></FormField>
     {/if}
   </div>
 {:else}
   {#if showTimeout}
     <div class="schema-inputs">
       <p class="eyebrow">SCHEMA FIELDS</p>
-      <label><span>超时时间（秒）</span><input bind:value={timeoutSeconds} type="number" min="1" max="600" /></label>
+      <FormField label="超时时间（秒）"><TextInput bind:value={timeoutSeconds} type="number" min="1" max="600" /></FormField>
     </div>
   {/if}
-  <label>配置 JSON<textarea bind:value={rawConfig} rows="4" spellcheck="false"></textarea></label>
+  <FormField label="配置 JSON"><textarea bind:value={rawConfig} rows="4" spellcheck="false"></textarea></FormField>
 {/if}
