@@ -19,6 +19,7 @@
   import MessageBanner from '../../components/MessageBanner.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import Switch from '../../components/Switch.svelte';
+  import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import { providerTypeOptions } from './providerCatalog';
   import ProviderBrandIcon from './ProviderBrandIcon.svelte';
@@ -109,7 +110,6 @@
   let providerDraft: ProviderDraft = emptyProvider();
   let engineErrors: Record<string, string> = {};
   let providerErrors: Record<string, string> = {};
-  let protocolMenuOpen = false;
   let sourceProviders: Provider[] = providers;
   let providerSearch = '';
   let loadedScopeId = '';
@@ -666,13 +666,6 @@
       baseUrl: option?.baseURL ?? ''
     };
   }
-  function protocolLabel(value: string) {
-    return value === 'messages' ? 'Messages API' : 'Chat Completions';
-  }
-  function selectProtocol(value: string) {
-    providerDraft = { ...providerDraft, protocol: value };
-    protocolMenuOpen = false;
-  }
   function parseNumber(value: unknown) {
     if (value === '' || value === null || value === undefined) return null;
     const parsed = Number(value);
@@ -946,12 +939,7 @@
   function isBound(tags: string[] | undefined, tag: string) {
     return tags?.includes(tag) ?? false;
   }
-  function closeProviderTypeMenu() {
-    protocolMenuOpen = false;
-  }
 </script>
-
-<svelte:window on:click={closeProviderTypeMenu} />
 
 <section class="llm-page">
   <section class="engine-section">
@@ -1037,7 +1025,7 @@
         </div>
         <div class="engine-editor-identity-row">
           <div class="engine-icon-field">
-            <span class="field-label">引擎图标</span><IconPicker
+            <FieldLabel text="引擎图标" /><IconPicker
               value={engineDraft.icon}
               onSelect={(icon) => (engineDraft.icon = icon)}
               ariaLabel="选择引擎图标"
@@ -1045,7 +1033,7 @@
           </div>
           <label class="engine-name-field"><FieldLabel text="引擎名称" required invalid={Boolean(engineErrors.name)} /><TextInput bind:value={engineDraft.name} ariaLabel="引擎名称" invalid={Boolean(engineErrors.name)} placeholder="引擎名称" required /></label>
           <div class="engine-tag-editor">
-            <span class="field-label">场景</span>
+            <FieldLabel text="场景" />
             <div class="tag-row">
               {#each scenarioTags as tag}<button
                   class={`tag-chip ${capabilityTagClass(tag.value)}`}
@@ -1062,7 +1050,7 @@
         </div>
         <div class="engine-editor-content">
           <div class="capability-field">
-            <span class="field-label">引擎能力</span>
+            <FieldLabel text="引擎能力" />
             <div class="capability-picker">
               <div class="capability-chip-list" aria-label="引擎能力词条">
                 {#each capabilityTerms as term}<button
@@ -1117,11 +1105,11 @@
             </div>
           </div>
           <label class="engine-description-field"
-            ><span class="field-label">描述</span><textarea
+            ><FieldLabel text="描述" /><TextArea
               bind:value={engineDraft.description}
-              rows="1"
+              rows={1}
               placeholder="可选，说明引擎的运行定位"
-            ></textarea></label
+            /></label
           >
         </div>
       </form>
@@ -1325,7 +1313,7 @@
                 <div class="provider-identity-row">
                   <div class="provider-identity-primary">
                   <div class="provider-icon-field">
-                    <span class="field-label">图标</span><IconPicker
+                    <FieldLabel text="图标" /><IconPicker
                       value={providerDraft.icon}
                       onSelect={(icon) => (providerDraft.icon = icon)}
                       ariaLabel="选择图标"
@@ -1333,7 +1321,7 @@
                   </div>
                   <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
                   <label class="provider-level-field"
-                    ><span class="field-label">级别</span><span class="scope-select-wrap"
+                    ><FieldLabel text="级别" /><span class="scope-select-wrap"
                       ><select
                         bind:value={providerDraft.scopeId}
                         disabled={Boolean(providerDraft.id)}
@@ -1345,7 +1333,7 @@
                   </div>
                   <div class="provider-identity-secondary">
                   <div class="provider-tag-editor">
-                    <span class="field-label">场景</span>
+                    <FieldLabel text="场景" />
                     <div class="tag-row">
                       {#each scenarioTags as tag}<button
                           class={`tag-chip ${capabilityTagClass(tag.value)}`}
@@ -1358,47 +1346,48 @@
                     </div>
                   </div>
                   <div class="provider-connection-test"
-                    ><span class="field-label">连接</span><button
-                      class="connection-status-button"
-                      class:testing={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
-                      class:connection-success={providerConnectionSummary(selectedProvider).tone === 'success'}
-                      class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
-                      class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
-                      type="button"
-                      title={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
-                      disabled={!providerDraft.id || Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
-                      on:click|stopPropagation={() => testProvider()}
-                      >{Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
-                    ><small class="connection-age">{formatConnectionAge(selectedProvider?.last_connection_test?.checked_at)}</small></div
+                    ><FieldLabel text="连接" /><span class="provider-connection-value"
+                      ><button
+                        class="connection-status-button"
+                        class:testing={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
+                        class:connection-success={providerConnectionSummary(selectedProvider).tone === 'success'}
+                        class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
+                        class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
+                        type="button"
+                        title={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
+                        disabled={!providerDraft.id || Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
+                        on:click|stopPropagation={() => testProvider()}
+                        >{Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
+                      ><small class="connection-age">{formatConnectionAge(selectedProvider?.last_connection_test?.checked_at)}</small></span
+                    ></div
                   ><div class="provider-status-switch"
                     ><FieldLabel text="状态" /><Switch checked={providerDraft.status === 'active'} ariaLabel="启用渠道" on:change={(event) => { const enabled = event.detail; providerDraft.status = enabled ? 'active' : 'disabled'; providerDraft.enabled = enabled; }} /></div
                   >
                   </div>
                 </div>
                 <div class="provider-runtime-grid">
-                  ><label class:invalid={Boolean(providerErrors.timeoutSeconds)}
-                    >超时（秒）<TextInput
+                  <label class:invalid={Boolean(providerErrors.timeoutSeconds)}
+                    ><FieldLabel text="超时（秒）" /><TextInput
                       bind:value={providerDraft.timeoutSeconds}
                       invalid={Boolean(providerErrors.timeoutSeconds)}
                       type="number"
                       min="1"
                       max="300"
-                    /></label
-                  ><label class:invalid={Boolean(providerErrors.maxConcurrency)}
-                    >最大并发<TextInput
+                    /></label>
+                  <label class:invalid={Boolean(providerErrors.maxConcurrency)}
+                    ><FieldLabel text="最大并发" /><TextInput
                       bind:value={providerDraft.maxConcurrency}
                       invalid={Boolean(providerErrors.maxConcurrency)}
                       type="number"
                       min="1"
-                    /></label
-                  ><label class:invalid={Boolean(providerErrors.rateLimitPerMinute)}
-                    >限流（请求 / 分钟）<TextInput
+                    /></label>
+                  <label class:invalid={Boolean(providerErrors.rateLimitPerMinute)}
+                    ><FieldLabel text="限流（请求 / 分钟）" /><TextInput
                       bind:value={providerDraft.rateLimitPerMinute}
                       invalid={Boolean(providerErrors.rateLimitPerMinute)}
                       type="number"
                       min="0"
-                    /></label
-                  >
+                    /></label>
                 </div>
               </div>
               <div class="drawer-section">
@@ -1407,7 +1396,7 @@
                 </div>
                 <div class="provider-connection-row">
                   <label class:invalid={Boolean(providerErrors.providerType)}
-                    ><span>类型<i class="required-mark" aria-hidden="true">*</i></span>
+                    ><FieldLabel text="类型" required />
                     <DropdownSelect
                       options={providerSelectOptions}
                       value={providerDraft.providerType}
@@ -1419,7 +1408,7 @@
                     />
                   </label
                   ><label class:invalid={Boolean(providerErrors.baseUrl)}
-                    ><span>Base URL<i class="required-mark" aria-hidden="true">*</i></span><TextInput
+                    ><FieldLabel text="Base URL" required /><TextInput
                       bind:value={providerDraft.baseUrl}
                       invalid={Boolean(providerErrors.baseUrl)}
                       required
@@ -1429,29 +1418,13 @@
                 </div>
                 <div class="provider-connection-row">
                   <label
-                    >协议<div class="provider-type-picker protocol-picker">
-                      <button
-                        class="provider-type-trigger"
-                        class:open={protocolMenuOpen}
-                        type="button"
-                        aria-haspopup="listbox"
-                        aria-expanded={protocolMenuOpen}
-                        on:click|stopPropagation={() => (protocolMenuOpen = !protocolMenuOpen)}
-                      ><span>{protocolLabel(providerDraft.protocol)}</span><span class="provider-type-chevron"><ChevronDown size={13} /></span></button
-                      >{#if protocolMenuOpen}<div class="provider-type-options" role="listbox">
-                          {#each [{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'messages', label: 'Messages API' }] as option}<button
-                              class="provider-type-option"
-                              class:selected={option.value === providerDraft.protocol}
-                              type="button"
-                              role="option"
-                              aria-selected={option.value === providerDraft.protocol}
-                              on:click|stopPropagation={() => selectProtocol(option.value)}
-                            ><span>{option.label}</span></button
-                          >{/each}
-                        </div>{/if}
-                    </div></label
+                    ><FieldLabel text="协议" /><DropdownSelect
+                      options={[{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'messages', label: 'Messages API' }]}
+                      bind:value={providerDraft.protocol}
+                      ariaLabel="协议"
+                    /></label
                   ><label
-                    >API Key<PasswordInput
+                    ><FieldLabel text="API Key" /><PasswordInput
                       bind:value={providerDraft.apiKey}
                       placeholder={providerDraft.id
                         ? '留空表示保持现有凭据'
@@ -1480,13 +1453,13 @@
                     >
                       <div class="model-primary-row">
                         <label class="model-name-field" class:invalid={Boolean(providerErrors[`models.${index}.name`])}
-                          ><span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><TextInput
+                          ><FieldLabel text="模型" required /><TextInput
                             bind:value={model.name}
                             invalid={Boolean(providerErrors[`models.${index}.name`])}
                             required
                           /></label
                         ><div class="model-capability-editor">
-                          <span class="field-label">能力</span>
+                          <FieldLabel text="能力" />
                           <div class="tag-row">
                             {#each modelTags as tag}<button
                                 class={`tag-chip ${capabilityTagClass(tag.value)}`}
@@ -1498,7 +1471,7 @@
                           </div>
                         </div>
                         <label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.context`])}
-                          ><span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><TextInput
+                          ><FieldLabel text="上下文" required /><TextInput
                             bind:value={model.context_window_tokens}
                             invalid={Boolean(providerErrors[`models.${index}.context`])}
                             required
@@ -1506,14 +1479,14 @@
                             min="1"
                           /></label
                         ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
-                          ><span class="field-label">最大输出</span><TextInput
+                          ><FieldLabel text="最大输出" /><TextInput
                             bind:value={model.max_output_tokens}
                             invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
                             type="number"
                             min="1"
                           /></label
                         ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.temperature`])}
-                          ><span class="field-label">温度</span><TextInput
+                          ><FieldLabel text="温度" /><TextInput
                             bind:value={model.temperature}
                             invalid={Boolean(providerErrors[`models.${index}.temperature`])}
                             type="number"
@@ -1522,14 +1495,14 @@
                             step={0.1}
                           /></label
                         ><label class="model-default-control"
-                          ><span class="field-label">默认</span><input
+                          ><FieldLabel text="默认" /><input
                             type="radio"
                             name="default-model"
                             checked={providerDraft.defaultModel === model.name}
                             on:change={() => setDraftDefault(model)}
                           /></label
                         ><label class="model-enabled-control"
-                          ><span class="field-label">状态</span><Switch checked={model.enabled !== false} ariaLabel="启用模型" on:change={(event) => { model.enabled = event.detail; providerDraft.models = providerDraft.models; }} /></label
+                          ><FieldLabel text="状态" /><Switch checked={model.enabled !== false} ariaLabel="启用模型" on:change={(event) => { model.enabled = event.detail; providerDraft.models = providerDraft.models; }} /></label
                         >
                       </div>
                       <button
@@ -1552,7 +1525,7 @@
               </div>
               <div class="provider-preview-identity-row">
                 <div class="provider-preview-field">
-                  <span class="field-label">图标</span><span
+                  <FieldLabel text="图标" /><span
                     class="provider-preview-value provider-preview-icon"><IconValue
                       value={selectedProvider.config.icon || 'lucide:Bot'}
                       size={18}
@@ -1560,19 +1533,19 @@
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label">名称<i class="required-mark" aria-hidden="true">*</i></span><strong
+                  <FieldLabel text="名称" required /><strong
                     class="provider-preview-value"
                     >{selectedProvider.name}</strong
                   >
                 </div>
                 <div class="provider-preview-field provider-preview-level-field">
-                  <span class="field-label">级别</span><strong
+                  <FieldLabel text="级别" /><strong
                     class="provider-preview-value provider-preview-plain"
                     >{scopeLevelLabel(scopeType(selectedProvider.scope_id))}</strong
                   >
                 </div>
                 <div class="provider-preview-field provider-preview-tags">
-                  <span class="field-label">场景</span><span class="tag-row"
+                  <FieldLabel text="场景" /><span class="tag-row"
                     >{#each scenarioTags as tag}<span
                         class={`tag-chip ${capabilityTagClass(tag.value)}`}
                         class:active={isBound(selectedProvider.tags, tag.value)}
@@ -1583,7 +1556,7 @@
                   >
                 </div>
                 <div class="provider-preview-field provider-preview-connection-test">
-                  <span class="field-label">连接</span><span
+                  <FieldLabel text="连接" /><span
                     class="provider-preview-value provider-preview-connection-value"><button
                       class="connection-status-button"
                       class:testing={Boolean(testingProviders[selectedProvider.id])}
@@ -1599,33 +1572,24 @@
                   >
                 </div>
                 <div class="provider-preview-field provider-preview-status">
-                  <span class="field-label">状态</span><span
-                    class="provider-preview-value provider-preview-switch-value"><span class="switch-control"
-                      ><input
-                        type="checkbox"
-                        checked={selectedProvider.status === 'active'}
-                        disabled
-                        aria-label="渠道状态"
-                      /><i aria-hidden="true"></i></span
-                    ></span
-                  >
+                  <FieldLabel text="状态" /><span class="provider-preview-value provider-preview-switch-value"><Switch checked={selectedProvider.status === 'active'} disabled ariaLabel="渠道状态" /></span>
                 </div>
               </div>
               <div class="provider-runtime-grid">
                 <div class="provider-preview-field">
-                  <span class="field-label">超时（秒）</span><strong
+                  <FieldLabel text="超时（秒）" /><strong
                     class="provider-preview-value"
                     >{selectedProvider.config.timeout_seconds ?? 60}</strong
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label">最大并发</span><strong
+                  <FieldLabel text="最大并发" /><strong
                     class="provider-preview-value"
                     >{selectedProvider.config.max_concurrency ?? '未限制'}</strong
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label">限流（请求 / 分钟）</span><strong
+                  <FieldLabel text="限流（请求 / 分钟）" /><strong
                     class="provider-preview-value"
                     >{selectedProvider.config.rate_limit_per_minute ?? 0}</strong
                   >
@@ -1638,7 +1602,7 @@
               </div>
               <div class="provider-connection-row">
                 <div class="provider-preview-field">
-                  <span class="field-label">类型<i class="required-mark" aria-hidden="true">*</i></span><strong
+                  <FieldLabel text="类型" required /><strong
                     class="provider-preview-value provider-preview-type"
                     ><ProviderBrandIcon
                       providerType={selectedProvider.config.provider_type}
@@ -1648,7 +1612,7 @@
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label">Base URL<i class="required-mark" aria-hidden="true">*</i></span><strong
+                  <FieldLabel text="Base URL" required /><strong
                     class="provider-preview-value mono"
                     >{selectedProvider.config.base_url}</strong
                   >
@@ -1656,13 +1620,13 @@
               </div>
               <div class="provider-connection-row">
                 <div class="provider-preview-field">
-                  <span class="field-label">协议</span><strong
+                  <FieldLabel text="协议" /><strong
                     class="provider-preview-value"
                     >{selectedProvider.config.protocol || 'Chat Completions'}</strong
                   >
                 </div>
                 <div class="provider-preview-field">
-                  <span class="field-label">API Key</span><strong
+                  <FieldLabel text="API Key" /><strong
                     class="provider-preview-value"
                     >服务端加密保存</strong
                   >
@@ -1685,13 +1649,13 @@
                   >
                     <div class="model-primary-row">
                       <div class="model-name-field provider-preview-field">
-                        <span class="field-label">模型<i class="required-mark" aria-hidden="true">*</i></span><strong
+                        <FieldLabel text="模型" required /><strong
                           class="provider-preview-value"
                           >{model.name}</strong
                         >
                       </div>
                       <div class="model-capability-editor">
-                        <span class="field-label">能力</span>
+                        <FieldLabel text="能力" />
                         <div class="tag-row">
                           {#each modelTags as tag}<span
                               class="tag-chip"
@@ -1703,26 +1667,26 @@
                         </div>
                         </div>
                       <div class="model-runtime-field provider-preview-field">
-                        <span class="field-label">上下文<i class="required-mark" aria-hidden="true">*</i></span><strong
+                        <FieldLabel text="上下文" required /><strong
                           class="provider-preview-value"
                           >{model.context_window_tokens?.toLocaleString()}</strong
                         >
                       </div>
                       <div class="model-runtime-field provider-preview-field">
-                        <span class="field-label">最大输出</span><strong
+                        <FieldLabel text="最大输出" /><strong
                           class="provider-preview-value"
                           >{model.max_output_tokens?.toLocaleString() ||
                             '未限制'}</strong
                         >
                       </div>
                       <div class="model-runtime-field provider-preview-field">
-                        <span class="field-label">温度</span><strong
+                        <FieldLabel text="温度" /><strong
                           class="provider-preview-value"
                           >{model.temperature ?? 0.2}</strong
                         >
                       </div>
                       <div class="model-default-control">
-                        <span class="field-label">默认</span><input
+                        <FieldLabel text="默认" /><input
                           type="radio"
                           name="preview-default-model"
                           checked={(selectedProvider.config.default_model ||
@@ -1733,15 +1697,7 @@
                         />
                       </div>
                       <div class="model-enabled-control">
-                        <span class="field-label">状态</span><span
-                          class="switch-control"
-                          ><input
-                            type="checkbox"
-                            checked={model.enabled !== false}
-                            disabled
-                            aria-label="模型状态"
-                          /><i aria-hidden="true"></i></span
-                        >
+                        <FieldLabel text="状态" /><Switch checked={model.enabled !== false} disabled ariaLabel="模型状态" />
                       </div>
                     </div>
                   </div>{/each}
@@ -2512,8 +2468,7 @@
     grid-column: 1 / -1;
   }
   label input,
-  label select,
-  label textarea {
+  label select {
     width: 100%;
     min-height: 35px;
     padding: 7px 9px;
@@ -2529,22 +2484,13 @@
     margin-left: 0;
     text-align: left;
   }
-  .field-label i,
-  label > span > i {
-    margin-left: 3px;
-    color: var(--theme-required);
-    font-style: normal;
-  }
   .drawer-form label.invalid :global(.text-input-wrap input) {
     border-color: var(--theme-danger) !important;
     box-shadow: 0 0 0 2px var(--theme-bg-danger-soft) !important;
   }
-  label textarea {
-    resize: vertical;
-  }
   .provider-identity-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: auto minmax(140px, 3fr) 65px minmax(0, 1fr) 80px 46px;
     align-items: start;
     column-gap: 10px;
     row-gap: 12px;
@@ -2552,20 +2498,10 @@
     min-width: 0;
   }
   .provider-identity-primary {
-    display: grid;
-    grid-column: 1 / span 2;
-    grid-template-columns: auto minmax(0, 1fr) 65px;
-    align-items: start;
-    gap: 10px;
-    min-width: 0;
+    display: contents;
   }
   .provider-identity-secondary {
-    display: grid;
-    grid-column: 3;
-    grid-template-columns: minmax(0, 1fr) 80px 46px;
-    align-items: start;
-    gap: 10px;
-    min-width: 0;
+    display: contents;
   }
   .provider-preview-identity-row {
     display: grid;
@@ -2584,7 +2520,7 @@
     color: var(--theme-fg-muted);
     font-size: 10px;
   }
-  .provider-preview-field .field-label {
+  .provider-preview-field :global(.field-label) {
     margin-bottom: 0;
   }
   .provider-preview-value {
@@ -2616,13 +2552,13 @@
   }
   .provider-preview-icon {
     justify-content: center;
-    width: 38px;
-    min-height: 38px;
+    width: 35px;
+    min-height: 35px;
     padding: 0;
     color: var(--theme-teal);
     background: transparent;
     border-color: transparent;
-    transform: translate(-6px, -2px);
+    transform: none;
   }
   .provider-preview-plain {
     padding-right: 3px;
@@ -2631,17 +2567,25 @@
   .provider-preview-level-field {
     justify-items: start;
   }
-  .provider-preview-level-field .field-label,
-  .provider-preview-status .field-label {
+  .provider-preview-level-field :global(.field-label) {
     text-align: left;
   }
+  .provider-status-switch,
   .provider-preview-status {
+    display: grid;
+    grid-template-rows: auto 35px;
+    align-items: start;
+    justify-items: center;
+    gap: 5px;
     width: 46px;
     min-width: 46px;
-    height: 35px;
-    min-height: 35px;
-    padding-right: 0;
-    padding-left: 0;
+    min-height: 55px;
+  }
+  .provider-status-switch :global(.field-label),
+  .provider-preview-status :global(.field-label) {
+    align-self: stretch;
+    width: 100%;
+    text-align: center;
   }
   .provider-preview-switch-value {
     justify-content: center;
@@ -2655,17 +2599,22 @@
     width: 80px;
     min-width: 80px;
   }
-  .provider-preview-connection-test .field-label {
+  .provider-preview-connection-test :global(.field-label) {
     text-align: center;
   }
+  .provider-connection-value,
   .provider-preview-connection-value {
+    display: flex;
     flex-direction: column;
     gap: 2px;
     justify-content: center;
+    width: 100%;
     height: 42px;
     min-height: 42px;
+    box-sizing: border-box;
     padding: 0;
   }
+  .provider-connection-value .connection-status-button,
   .provider-preview-connection-value .connection-status-button {
     width: fit-content;
     max-width: 100%;
@@ -2711,9 +2660,6 @@
   .model-preview .model-capability-editor .tag-row {
     justify-content: flex-start;
   }
-  .drawer-form .model-runtime-field {
-    transform: translateY(-2px);
-  }
   .provider-icon-field,
   .provider-name-field,
   .provider-tag-editor,
@@ -2728,7 +2674,6 @@
   .provider-icon-field,
   .provider-tag-editor,
   .provider-level-field,
-  .provider-status-switch,
   .provider-connection-test {
     display: flex;
     flex-direction: column;
@@ -2754,7 +2699,7 @@
   .provider-level-field .scope-select-wrap {
     justify-self: start;
   }
-  .provider-level-field .field-label {
+  .provider-level-field :global(.field-label) {
     text-align: left;
   }
   .scope-select-wrap {
@@ -2793,19 +2738,6 @@
     pointer-events: none;
     color: var(--theme-fg-muted);
   }
-  .provider-status-switch {
-    display: grid;
-    grid-template-rows: auto 35px;
-    align-items: start;
-    justify-items: center;
-    gap: 5px;
-    width: 46px;
-    min-width: 46px;
-  }
-  .provider-status-switch :global(.field-label) {
-    align-self: stretch;
-    text-align: center;
-  }
   .provider-status-switch :global(.switch-control) {
     align-self: center;
     justify-self: center;
@@ -2818,13 +2750,8 @@
     width: 80px;
     min-width: 80px;
   }
-  .provider-connection-test .field-label {
+  .provider-connection-test :global(.field-label) {
     text-align: center;
-  }
-  .provider-connection-test .connection-status-button {
-    width: fit-content;
-    max-width: 100%;
-    transform: translateY(5px);
   }
   .connection-age {
     display: block;
@@ -2836,9 +2763,6 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .drawer-form .model-runtime-field :global(.text-input-wrap input) {
-    transform: translateY(3px);
   }
   .connection-status-button {
     display: inline-flex;
@@ -2926,77 +2850,6 @@
   .provider-type-picker {
     position: relative;
   }
-  .provider-type-trigger {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 7px;
-    width: 100%;
-    min-height: 35px;
-    padding: 7px 9px;
-    color: var(--theme-fg);
-    background: var(--theme-bg-input);
-    border: 1px solid var(--theme-border);
-    border-radius: 4px;
-    font-size: 11px;
-    text-align: left;
-  }
-  .provider-type-trigger > span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .provider-type-chevron {
-    display: inline-flex;
-    position: absolute;
-    right: 9px;
-    color: var(--theme-fg-muted);
-  }
-  .provider-type-picker.protocol-picker {
-    position: relative;
-  }
-  .provider-type-trigger:hover,
-  .provider-type-trigger.open {
-    border-color: var(--theme-border-focus);
-    background: var(--theme-bg-hover);
-  }
-  .provider-type-options {
-    position: absolute;
-    z-index: 12;
-    top: calc(100% + 4px);
-    right: 0;
-    left: 0;
-    display: grid;
-    max-height: 260px;
-    overflow: auto;
-    padding: 4px;
-    background: var(--theme-bg-raised);
-    border: 1px solid var(--theme-border-strong);
-    border-radius: 5px;
-    box-shadow: var(--theme-shadow);
-  }
-  .provider-type-option {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 32px;
-    padding: 5px 7px;
-    color: var(--theme-fg);
-    background: transparent;
-    border: 0;
-    border-radius: 3px;
-    font-size: 11px;
-    text-align: left;
-    justify-content: flex-start;
-  }
-  .provider-type-option:hover,
-  .provider-type-option:focus-visible,
-  .provider-type-option.selected {
-    color: var(--theme-fg-strong);
-    background: var(--theme-bg-selected);
-    outline: none;
-  }
   .model-primary-row {
     display: grid;
     grid-template-columns:
@@ -3035,7 +2888,7 @@
     color: var(--theme-required);
     font-style: normal;
   }
-  .model-primary-row .field-label {
+  .model-primary-row :global(.field-label) {
     display: none;
   }
   .model-name-field,
@@ -3068,7 +2921,7 @@
     justify-self: start;
     align-self: center;
   }
-  .model-runtime-field .field-label {
+  .model-runtime-field :global(.field-label) {
     margin-bottom: 0;
     text-align: left;
   }
@@ -3101,16 +2954,18 @@
   }
   .model-default-control,
   .model-enabled-control {
-    display: grid;
-    grid-template-rows: 35px;
-    align-items: start;
-    justify-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     gap: 5px;
+    align-self: center;
+    height: 52px;
+    min-height: 52px;
   }
   .model-default-control,
   .model-enabled-control {
     justify-self: center;
-    justify-items: center;
   }
   .model-default-control {
     margin-left: 0;
@@ -3118,12 +2973,13 @@
   .model-enabled-control {
     margin-left: 0;
   }
-  .model-enabled-control .field-label {
+  .model-enabled-control :global(.field-label) {
     width: 100%;
     text-align: center;
   }
   .model-default-control input,
-  .model-enabled-control .switch-control {
+  .model-enabled-control :global(.switch-control) {
+    flex: 0 0 auto;
     align-self: center;
   }
   .model-default-control input {
@@ -3161,8 +3017,9 @@
     outline: none;
     box-shadow: none;
   }
-  .model-enabled-control .switch-control {
+  .model-enabled-control :global(.switch-control) {
     align-self: center;
+    justify-self: center;
   }
   .engine-editor {
     display: grid;
@@ -3271,12 +3128,6 @@
     min-height: 0;
     flex-direction: column;
   }
-  .engine-description-field textarea {
-    flex: 1;
-    height: 100%;
-    min-height: 35px;
-    resize: vertical;
-  }
   .engine-editor-content {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3356,49 +3207,6 @@
   }
   .engine-status-switch :global(.switch-control) {
     align-self: center;
-  }
-  .switch-control {
-    position: relative;
-    display: inline-flex;
-    width: 36px;
-    height: 20px;
-  }
-  .switch-control input {
-    position: absolute;
-    z-index: 1;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    opacity: 0;
-    cursor: pointer;
-  }
-  .switch-control i {
-    display: block;
-    width: 36px;
-    height: 20px;
-    background: var(--theme-border-strong);
-    border-radius: 999px;
-    transition: background 0.15s ease;
-  }
-  .switch-control i::after {
-    display: block;
-    width: 16px;
-    height: 16px;
-    margin: 2px;
-    background: var(--theme-bg-raised);
-    border-radius: 50%;
-    content: '';
-    transition: transform 0.15s ease;
-  }
-  .switch-control input:checked + i {
-    background: var(--color-primary);
-  }
-  .switch-control input:checked + i::after {
-    transform: translateX(16px);
-  }
-  .switch-control input:focus-visible + i {
-    outline: 3px solid var(--color-primary-focus);
-    outline-offset: 2px;
   }
   .engine-tag-editor {
     min-width: 0;
@@ -3584,12 +3392,8 @@
     .model-editor {
       padding: 11px;
     }
-    .model-primary-row .field-label {
+    .model-primary-row :global(.field-label) {
       display: block;
-    }
-    .model-default-control,
-    .model-enabled-control {
-      grid-template-rows: auto 35px;
     }
     .full {
       grid-column: auto;
@@ -3620,11 +3424,9 @@
     }
     .model-default-control {
       justify-self: center;
-      justify-items: center;
     }
     .model-enabled-control {
       justify-self: center;
-      justify-items: center;
     }
     .model-runtime-field {
       width: 90px;

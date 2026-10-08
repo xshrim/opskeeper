@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Plus, RefreshCw } from 'lucide-svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import FormField from '../../components/FormField.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import ResourceCatalogRail from './ResourceCatalogRail.svelte';
   import ResourceCatalogList from './ResourceCatalogList.svelte';
   import ResourceCatalogDetails from './ResourceCatalogDetails.svelte';
@@ -2520,20 +2523,8 @@
           <small>{resourceCatalogItems.length} 个可见资源</small>
         </div>
         <div class="resource-catalog-filters">
-          <select bind:value={resourceStatusFilter} aria-label="连接状态"
-            ><option value="all">全部状态</option><option value="active"
-              >正常</option
-            ><option value="disabled">已停用</option><option value="unknown"
-              >未知</option
-            ></select
-          >
-          <select bind:value={resourceLevelFilter} aria-label="资源级别"
-            ><option value="all">全部级别</option><option value="platform"
-              >平台级</option
-            ><option value="team">团队级</option><option value="project"
-              >项目级</option
-            ></select
-          >
+          <DropdownSelect bind:value={resourceStatusFilter} ariaLabel="连接状态" options={[{ value: 'all', label: '全部状态' }, { value: 'active', label: '正常' }, { value: 'disabled', label: '已停用' }, { value: 'unknown', label: '未知' }]} />
+          <DropdownSelect bind:value={resourceLevelFilter} ariaLabel="资源级别" options={[{ value: 'all', label: '全部级别' }, { value: 'platform', label: '平台级' }, { value: 'team', label: '团队级' }, { value: 'project', label: '项目级' }]} />
           <button
             class="icon-button"
             type="button"
@@ -2958,25 +2949,11 @@
         {:else if selectedResource?.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">
-              <label
-                ><span>资源名称<i class="required-mark" aria-hidden="true">*</i></span><input
-                  bind:value={editResourceName}
-                  required
-                /></label
-              ><label
-                ><span>状态</span><select bind:value={editResourceStatus}
-                  ><option value="active">正常</option><option value="disabled"
-                    >停用</option
-                  ><option value="unknown">未知</option></select
-                ></label
-              >
+              <FormField label="资源名称" required><TextInput bind:value={editResourceName} required ariaLabel="资源名称" /></FormField>
+              <FormField label="状态"><DropdownSelect bind:value={editResourceStatus} ariaLabel="资源状态" options={[{ value: 'active', label: '正常' }, { value: 'disabled', label: '停用' }, { value: 'unknown', label: '未知' }]} /></FormField>
             </div>
-            <label
-              ><span>标签</span><input
-                bind:value={editResourceLabels}
-                placeholder="env=prod, owner=platform"
-              /></label
-            ><McpConnectionFields
+            <FormField label="标签"><TextInput bind:value={editResourceLabels} placeholder="env=prod, owner=platform" ariaLabel="资源标签" /></FormField>
+            <McpConnectionFields
               bind:url={mcpURL}
               bind:token={mcpToken}
               bind:requestHeaders={mcpRequestHeaders}

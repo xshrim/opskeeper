@@ -3,6 +3,7 @@
   import FieldLabel from '../../components/FieldLabel.svelte';
   import Switch from '../../components/Switch.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import { resourceCategoryIcon } from './resourceCatalog';
   export let category = '';
   export let subtype = '';
   export let name = '';
@@ -17,8 +18,21 @@
   export let onSelectCategory: (category: string) => void = () => {};
   export let onSelectSubtype: (subtype: string) => void = () => {};
 
-  $: categoryDropdownOptions = Object.keys(categoryOptions).filter((option) => option !== '全部').map((option) => ({ value: option, label: option }));
-  $: subtypeDropdownOptions = subtypeOptions.map((option) => ({ value: option, label: option }));
+  const subtypeIcons: Record<string, string> = {
+    Direct: 'lucide:Plug',
+    Agent: 'lucide:Bot',
+    Generic: 'lucide:Package',
+    Git: 'lucide:GitBranch',
+    Bundle: 'lucide:Archive',
+    StreamHTTP: 'lucide:Radio',
+    SSE: 'lucide:Radio',
+    指标: 'lucide:ChartNoAxesCombined',
+    日志: 'lucide:FileText',
+    链路: 'lucide:Route',
+    告警: 'lucide:Bell'
+  };
+  $: categoryDropdownOptions = Object.keys(categoryOptions).filter((option) => option !== '全部').map((option) => ({ value: option, label: option, icon: resourceCategoryIcon(option) }));
+  $: subtypeDropdownOptions = subtypeOptions.map((option) => ({ value: option, label: option, icon: subtypeIcons[option] ?? 'lucide:Package' }));
 
   function selectCategory(value: string) {
     typeSelectionAttempted = false;
@@ -35,11 +49,11 @@
   <div class="resource-basic-type-row">
     <label>
       <FieldLabel text="资源类型" required invalid={typeSelectionAttempted && !category} />
-      <DropdownSelect bind:value={category} options={categoryDropdownOptions} disabled={editing} placeholder="请选择资源类型" ariaLabel="资源类型" invalid={typeSelectionAttempted && !category} invalidMode="bubble" invalidMessage="请选择资源类型" on:change={(event) => selectCategory(String(event.detail))} />
+      <DropdownSelect bind:value={category} options={categoryDropdownOptions} showIcons disabled={editing} placeholder="请选择资源类型" ariaLabel="资源类型" invalid={typeSelectionAttempted && !category} invalidMode="bubble" invalidMessage="请选择资源类型" on:change={(event) => selectCategory(String(event.detail))} />
     </label>
     <label>
       <FieldLabel text="资源子类型" required invalid={typeSelectionAttempted && !subtype} />
-      <DropdownSelect bind:value={subtype} options={subtypeDropdownOptions} disabled={!category || editing} placeholder="请选择资源子类型" ariaLabel="资源子类型" invalid={typeSelectionAttempted && !subtype} invalidMode="bubble" invalidMessage="请选择资源子类型" on:change={(event) => selectSubtype(String(event.detail))} />
+      <DropdownSelect bind:value={subtype} options={subtypeDropdownOptions} showIcons disabled={!category || editing} placeholder="请选择资源子类型" ariaLabel="资源子类型" invalid={typeSelectionAttempted && !subtype} invalidMode="bubble" invalidMessage="请选择资源子类型" on:change={(event) => selectSubtype(String(event.detail))} />
     </label>
   </div>
   <div class="resource-basic-identity-row">

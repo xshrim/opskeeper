@@ -5,7 +5,7 @@
   import FormField from '../../components/FormField.svelte';
   import Switch from '../../components/Switch.svelte';
   import TextInput from '../../components/TextInput.svelte';
-  import { resourceCategoryFor, resourceCategoryOptions, resourceSubtypeFor, resourceSubtypeOptionsFor } from './resourceCatalog';
+  import { resourceCategoryFor, resourceCategoryIcon, resourceCategoryOptions, resourceSubtypeFor, resourceSubtypeOptionsFor } from './resourceCatalog';
 
   export let resource: Resource;
   export let name = '';
@@ -14,16 +14,21 @@
   export let scopeName: (id: string) => string;
   $: categoryValue = resourceCategoryFor(resource);
   $: subtypeValue = resourceSubtypeFor(resource);
-  $: categoryOptions = Object.keys(resourceCategoryOptions).filter((category) => category !== '全部').map((category) => ({ value: category, label: category }));
-  $: subtypeOptions = resourceSubtypeOptionsFor(resource).map((subtype) => ({ value: subtype, label: subtype }));
+  const subtypeIcons: Record<string, string> = {
+    Direct: 'lucide:Plug', Agent: 'lucide:Bot', Generic: 'lucide:Package', Git: 'lucide:GitBranch',
+    Bundle: 'lucide:Archive', StreamHTTP: 'lucide:Radio', SSE: 'lucide:Radio', 指标: 'lucide:ChartNoAxesCombined',
+    日志: 'lucide:FileText', 链路: 'lucide:Route', 告警: 'lucide:Bell'
+  };
+  $: categoryOptions = Object.keys(resourceCategoryOptions).filter((category) => category !== '全部').map((category) => ({ value: category, label: category, icon: resourceCategoryIcon(category) }));
+  $: subtypeOptions = resourceSubtypeOptionsFor(resource).map((subtype) => ({ value: subtype, label: subtype, icon: subtypeIcons[subtype] ?? 'lucide:Package' }));
 </script>
 
 <h3 class="editor-section-title">基础配置</h3>
 <p class="editor-section-description">资源类型和子类型只读，资源名称、启用状态与资源标签可在此调整。</p>
 <div class="resource-basic-edit-grid">
   <div class="resource-basic-type-row">
-    <FormField label="资源类型"><DropdownSelect value={categoryValue} options={categoryOptions} disabled ariaLabel="资源类型" /></FormField>
-    <FormField label="资源子类型"><DropdownSelect value={subtypeValue} options={subtypeOptions} disabled ariaLabel="资源子类型" /></FormField>
+    <FormField label="资源类型"><DropdownSelect value={categoryValue} options={categoryOptions} showIcons disabled ariaLabel="资源类型" /></FormField>
+    <FormField label="资源子类型"><DropdownSelect value={subtypeValue} options={subtypeOptions} showIcons disabled ariaLabel="资源子类型" /></FormField>
   </div>
   <div class="resource-basic-identity-row">
     <FormField label="资源名称" required><TextInput bind:value={name} required /></FormField>

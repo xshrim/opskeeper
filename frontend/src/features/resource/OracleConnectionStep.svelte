@@ -4,6 +4,7 @@
   import FormField from '../../components/FormField.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import Switch from '../../components/Switch.svelte';
 
   export let accessMode: 'direct' | 'agent' = 'direct';
   export let host = '';
@@ -36,6 +37,6 @@
     <FormField label="用户名" required invalid={configurationAttempted && !username.trim()}><TextInput bind:value={username} required invalid={configurationAttempted && !username.trim()} on:input={onConfigurationChange} /></FormField>
     <FormField label="密码" required invalid={configurationAttempted && !password.trim()}><PasswordInput bind:value={password} required on:input={onConfigurationChange} ariaLabel="密码" /></FormField>
     <FormField label="超时时间（秒）"><TextInput type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></FormField>
-    <label><span>启用 TCPS</span><input type="checkbox" bind:checked={tls} on:change={onConfigurationChange} /></label>
+    <div class="checkbox-field"><span>启用 TCPS</span><Switch bind:checked={tls} ariaLabel="启用 TCPS" on:change={onConfigurationChange} /></div>
   </div>
 {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ChevronDown, X } from 'lucide-svelte';
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import IconValue from './IconValue.svelte';
   import SearchInput from './SearchInput.svelte';
 
@@ -36,6 +36,7 @@
   let query = '';
   let root: HTMLDivElement;
   let customValue = '';
+  let menuStyle = '';
 
   $: selectedValues = multiple ? (Array.isArray(value) ? value : value ? [value] : []) : value ? [value] : [];
   $: selectedOptions = options.filter((option) => selectedValues.includes(option.value));
@@ -72,18 +73,43 @@
       return;
     }
     emit(next);
-    if (!multiple) open = false;
+    if (!multiple) {
+      open = false;
+      menuStyle = '';
+    }
     query = '';
   }
 
   function toggle() {
     if (disabled) return;
     open = !open;
-    if (open) query = '';
+    if (open) {
+      query = '';
+      positionMenu();
+    } else {
+      menuStyle = '';
+    }
+  }
+
+  async function positionMenu() {
+    await tick();
+    if (!open || !root) return;
+    const rect = root.getBoundingClientRect();
+    const padding = 8;
+    const gap = 5;
+    const availableHeight = Math.max(0, window.innerHeight - rect.bottom - gap - padding);
+    menuStyle = `top: ${Math.round(rect.bottom + gap)}px; left: ${Math.round(rect.left)}px; width: ${Math.round(rect.width)}px; max-height: ${Math.round(availableHeight)}px;`;
+  }
+
+  function handleViewportChange() {
+    if (open) positionMenu();
   }
 
   function close(event: MouseEvent) {
-    if (root && !root.contains(event.target as Node)) open = false;
+    if (root && !root.contains(event.target as Node)) {
+      open = false;
+      menuStyle = '';
+    }
   }
 
   function handleCustomInput(event: Event) {
@@ -98,7 +124,7 @@
   }
 </script>
 
-<svelte:window on:click={close} />
+<svelte:window on:click={close} on:resize={handleViewportChange} on:scroll={handleViewportChange} />
 
 <div class={`dropdown-select variant-${variant}`} class:open class:disabled class:invalid class:bubble={invalid && invalidMode === 'bubble'} data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined} bind:this={root}>
   <div class="dropdown-select-trigger" class:editable={allowCustom}>
@@ -130,7 +156,7 @@
   </div>
 
   {#if open}
-    <div class={`dropdown-select-menu ${menuClass}`.trim()} role="listbox" tabindex="-1" aria-label={ariaLabel}>
+    <div class={`dropdown-select-menu ${menuClass}`.trim()} style={menuStyle} role="listbox" tabindex="-1" aria-label={ariaLabel}>
       {#if searchable}<SearchInput bind:value={query} width="100%" height="30px" placeholder="搜索" ariaLabel={`搜索${ariaLabel}`} />{/if}
       <div class="dropdown-select-options">
         {#if allowAll}<button class="dropdown-select-option all-option" type="button" role="option" aria-selected={selectedValues.includes(allValue)} on:click={() => select(allValue)}>{#if showIcons}<span class="dropdown-select-icon"><span aria-hidden="true">✦</span></span>{/if}<span>{allLabel}</span></button>{/if}
@@ -159,7 +185,7 @@
   .dropdown-select-chevron, .dropdown-select-clear { display: grid; place-items: center; flex: 0 0 30px; height: 34px; padding: 0; color: var(--theme-fg-muted); background: transparent; border: 0; }
   .dropdown-select.open .dropdown-select-chevron { color: var(--theme-fg); transform: rotate(180deg); }
   .dropdown-select.disabled { opacity: .6; pointer-events: none; }
-  .dropdown-select-menu { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; left: 0; padding: 5px; background: var(--theme-bg-raised); border: 1px solid var(--theme-border-strong); border-radius: 5px; box-shadow: var(--theme-shadow); }
+  .dropdown-select-menu { position: fixed; z-index: 1000; padding: 5px; overflow: auto; background: var(--theme-bg-raised); border: 1px solid var(--theme-border-strong); border-radius: 5px; box-shadow: var(--theme-shadow); }
   .dropdown-select-menu :global(.search-input) { margin-bottom: 5px; border-radius: 4px; }
   .dropdown-select-options { max-height: 240px; overflow: auto; }
   .dropdown-select-option { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 5px 7px; color: var(--theme-fg); background: transparent; border: 0; border-radius: 3px; text-align: left; }

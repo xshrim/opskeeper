@@ -17,6 +17,7 @@
   import PasswordInput from '../../components/PasswordInput.svelte';
   import FormField from '../../components/FormField.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import TextArea from '../../components/TextArea.svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import {
@@ -1360,384 +1361,6 @@
       </div>
     {/if}
   </section>
-  <!-- legacy tabbed management surface retained below for reference; the unified workbench above owns this page. {#if false}
-          <nav class="access-view-switcher" aria-label="权限管理视图">
-            <button type="button" class:active={accessTab === 'teams'} on:click={() => (accessTab = 'teams')}>团队</button>
-            <button type="button" class:active={accessTab === 'users'} on:click={() => (accessTab = 'users')}>用户</button>
-            <button type="button" class:active={accessTab === 'roles'} on:click={() => (accessTab = 'roles')}>角色</button>
-          </nav>
-          <section class="panel access-workbench">
-            {#if accessTab !== 'roles'}
-              <div class="access-filterbar">
-                <div class="access-filter-copy">
-                  <div>
-                    <h2>{accessTab === 'teams' ? '团队列表' : '用户列表'}</h2>
-                    <p>
-                      {accessTab === 'teams'
-                        ? '展开团队可查看其成员与项目。仅平台管理员可添加、编辑或删除团队。'
-                        : '角色包含直接授权和成员组继承授权；管理员仅可授权、删除或重置其他用户的密码。'}
-                    </p>
-                  </div>
-                  <span class="access-count"
-                    >{accessTab === 'teams'
-                      ? visibleAccessTeams.length + ' 个团队'
-                      : visibleAccessUsers.length + ' 个用户'}</span
-                  >
-                </div>
-                <label class="access-search">
-                  <Search size={15} aria-hidden="true" />
-                  <span class="sr-only"
-                    >搜索{accessTab === 'teams' ? '团队' : '用户'}</span
-                  ><input
-                    bind:value={accessSearch}
-                    placeholder={accessTab === 'teams'
-                      ? '搜索团队名称、编码或状态'
-                      : '搜索姓名、用户名、邮箱或手机号'}
-                  />
-                </label>
-                <div class="access-heading-actions">
-                  {#if accessTab === 'teams'}
-                    <button
-                      class="secondary danger-action"
-                      type="button"
-                      disabled={selectedAccessTeamIds.length === 0 || busy}
-                      data-tooltip={selectedAccessTeamIds.length === 0
-                        ? '请先选择可管理的团队'
-                        : '批量禁用所选团队'}
-                      on:click={() =>
-                        requestDisable('team', selectedAccessTeamIds)}
-                      ><Trash2 size={15} aria-hidden="true" />批量删除</button
-                    >
-                    {#if accessCanCreateTeam}<button
-                        class="primary"
-                        type="button"
-                        on:click={openTeamDialog}
-                        ><Plus size={15} aria-hidden="true" />添加团队</button
-                      >{/if}
-                  {:else if accessTab === 'users'}
-                    <button
-                      class="secondary danger-action"
-                      type="button"
-                      disabled={selectedAccessUserIds.length === 0 || busy}
-                      data-tooltip={selectedAccessUserIds.length === 0
-                        ? '请先选择可管理的用户'
-                        : '批量禁用所选用户'}
-                      on:click={() =>
-                        requestDisable('user', selectedAccessUserIds)}
-                      ><Trash2 size={15} aria-hidden="true" />批量删除</button
-                    >
-                    {#if accessCanCreateUser}<button
-                        class="primary"
-                        type="button"
-                        on:click={() => {
-                          resetUserDialog();
-                          userDialogOpen = true;
-                        }}><Plus size={15} aria-hidden="true" />添加用户</button
-                      >{/if}
-                  {/if}
-                </div>
-              </div>
-            {/if}
-            {#if accessLoading}
-              <div class="access-state" aria-live="polite">
-                正在加载管理数据...
-              </div>
-            {:else if accessLoadError}
-              <div class="access-state access-error">
-                <span>{accessLoadError}</span><button
-                  class="secondary"
-                  type="button"
-                  on:click={loadAccess}>重试</button
-                >
-              </div>
-            {:else if accessTab === 'teams'}
-              <div class="access-table access-team-table">
-                <div class="access-table-header">
-                  <input
-                    type="checkbox"
-                    aria-label="选择全部可管理团队"
-                    checked={visibleAccessTeams.some(canManageTeam) &&
-                      visibleAccessTeams
-                        .filter(canManageTeam)
-                        .every((team) =>
-                          selectedAccessTeamIds.includes(team.id)
-                        )}
-                    on:change={(event) => {
-                      selectedAccessTeamIds = event.currentTarget.checked
-                        ? visibleAccessTeams
-                            .filter(canManageTeam)
-                            .map((team) => team.id)
-                        : [];
-                    }}
-                  /><span>团队</span><span>成员</span><span>项目</span><span
-                    >状态</span
-                  ><span>操作</span>
-                </div>
-                {#each visibleAccessTeams as team}
-                  {@const teamMembers = accessTeamUsers[team.id] ?? []}
-                  {@const teamProjects = projects.filter(
-                    (project) => project.team_id === team.id
-                  )}
-                  <article class="access-record">
-                    <div class="access-table-row">
-                      <input
-                        type="checkbox"
-                        aria-label={`选择团队 ${team.name}`}
-                        disabled={!canManageTeam(team) ||
-                          team.status !== 'active'}
-                        bind:group={selectedAccessTeamIds}
-                        value={team.id}
-                      />
-                      <button
-                        class="access-team-trigger"
-                        type="button"
-                        aria-expanded={teamAccessExpanded[team.id]}
-                        on:click={() => toggleTeamAccess(team.id)}
-                      >
-                        <EntityBrandIcon kind="Team" fallback={team.icon || 'lucide:UsersRound'} size={17} className="team-icon" />
-                        <span
-                          ><strong>{team.name}</strong><small>{team.description || '团队'}</small
-                          ></span
-                        ><ChevronDown
-                          size={16}
-                          class={teamAccessExpanded[team.id]
-                            ? 'expanded'
-                            : undefined}
-                          aria-hidden="true"
-                        />
-                      </button>
-                      <span class="access-metric"
-                        ><strong>{teamMembers.length}</strong><small
-                          >位可见成员</small
-                        ></span
-                      ><span class="access-metric"
-                        ><strong>{teamProjects.length}</strong><small
-                          >个关联项目</small
-                        ></span
-                      ><span class="status-label {team.status}"
-                        >{team.status === 'active' ? '启用' : '已禁用'}</span
-                      >
-                      <div class="access-row-actions">
-                        {#if canManageTeam(team)}
-                          <button
-                            class="icon-button"
-                            type="button"
-                            aria-label={`编辑团队 ${team.name}`}
-                            data-tooltip="编辑团队"
-                            on:click={() => openEditTeam(team)}
-                            ><Pencil size={15} aria-hidden="true" /></button
-                          ><button
-                            class="icon-button danger-action"
-                            type="button"
-                            aria-label={`删除团队 ${team.name}`}
-                            data-tooltip="禁用团队"
-                            disabled={team.status !== 'active'}
-                            on:click={() => requestDisable('team', [team.id])}
-                            ><Trash2 size={15} aria-hidden="true" /></button
-                          >
-                        {:else}<span class="read-only-label">只读</span>{/if}
-                      </div>
-                    </div>
-                    {#if teamAccessExpanded[team.id]}
-                      <div class="team-directory-detail">
-                        <div class="directory-subsection">
-                          <span class="directory-label">成员</span>
-                          {#each teamMembers as member}<button
-                              class="directory-user"
-                              type="button"
-                              on:click={() => {
-                                accessTab = 'users';
-                                accessSearch = member.username;
-                              }}
-                              ><span class="avatar tiny-avatar"
-                                >{(member.display_name || member.username)
-                                  .slice(0, 1)
-                                  .toUpperCase()}</span
-                              ><span
-                                ><strong
-                                  >{member.display_name ||
-                                    member.username}</strong
-                                ><small
-                                  >{userRoles(member.id)
-                                    .map(roleLabel)
-                                    .join(' · ') || '未分配角色'}</small
-                                ></span
-                              ></button
-                            >{:else}<span class="directory-empty"
-                              >当前账号看不到该团队的成员</span
-                            >{/each}
-                        </div>
-                        <div class="directory-subsection">
-                          <span class="directory-label">项目</span>
-                          {#each teamProjects as project}<div
-                              class="directory-project"
-                            >
-                              <span class="project-dot"></span><span
-                                ><strong>{project.name}</strong><small
-                                  >{project.code} · {project.status}</small
-                                ></span
-                              >
-                            </div>{:else}<span class="directory-empty"
-                              >暂无项目</span
-                            >{/each}
-                        </div>
-                      </div>
-                    {/if}
-                  </article>
-                {:else}<div class="access-state">
-                    没有匹配的团队。请清除搜索条件后重试。
-                  </div>{/each}
-              </div>
-            {:else if accessTab === 'users'}
-              <div class="access-table access-user-table">
-                <div class="access-table-header">
-                  <input
-                    type="checkbox"
-                    aria-label="选择全部可管理用户"
-                    checked={visibleAccessUsers.some(canManageUser) &&
-                      visibleAccessUsers
-                        .filter(canManageUser)
-                        .every((user) =>
-                          selectedAccessUserIds.includes(user.id)
-                        )}
-                    on:change={(event) => {
-                      selectedAccessUserIds = event.currentTarget.checked
-                        ? visibleAccessUsers
-                            .filter(canManageUser)
-                            .map((user) => user.id)
-                        : [];
-                    }}
-                  /><span>用户</span><span>授权范围</span><span>角色与权限</span
-                  ><span>状态</span><span>操作</span>
-                </div>
-                {#each visibleAccessUsers as user}
-                  <article class="access-table-row access-user-row">
-                    <input
-                      type="checkbox"
-                      aria-label={`选择用户 ${user.display_name || user.username}`}
-                      disabled={!canManageUser(user) ||
-                        user.status !== 'active'}
-                      bind:group={selectedAccessUserIds}
-                      value={user.id}
-                    />
-                    <div class="access-user-main">
-                      <span class="avatar access-avatar"
-                        >{(user.display_name || user.username)
-                          .slice(0, 1)
-                          .toUpperCase()}</span
-                      ><span
-                        ><strong>{user.display_name || user.username}</strong
-                        ><small
-                          >@{user.username}{user.email
-                            ? ` · ${user.email}`
-                            : ''}</small
-                        ></span
-                      >
-                    </div>
-                    <div class="access-user-scopes">
-                      {#each userScopeNames(user.id).slice(0, 2) as scope}<span
-                          >{scope}</span
-                        >{:else}<span class="permission-empty"
-                          >无可见 Scope</span
-                        >{/each}
-                    </div>
-                    <div class="access-user-auth">
-                      <div class="access-user-roles">
-                        {#each userRoles(user.id) as role}<span
-                            class="role-chip">{roleLabel(role)}</span
-                          >{:else}<span class="role-chip muted-chip"
-                            >未分配角色</span
-                          >{/each}
-                      </div>
-                      <div class="access-user-permissions">
-                        {#each userPermissions(user.id).slice(0, 3) as permission}<span
-                            data-tooltip={permissionDescription(permission)}
-                            title={permissionDescription(permission)}
-                            >{permission}</span
-                          >{:else}<span class="permission-empty">暂无权限</span
-                          >{/each}{#if userPermissions(user.id).length > 3}<span
-                            >+{userPermissions(user.id).length - 3}</span
-                          >{/if}
-                      </div>
-                    </div>
-                    <span class="status-label {user.status}"
-                      >{user.status === 'active'
-                        ? '启用'
-                        : user.status === 'locked'
-                          ? '已锁定'
-                          : '已禁用'}</span
-                    >
-                    <div class="access-row-actions">
-                      {#if canManageUser(user)}
-                        <button
-                          class="icon-button"
-                          type="button"
-                          aria-label={`编辑用户 ${user.display_name || user.username}`}
-                          data-tooltip="编辑用户与授权"
-                          on:click={() => openEditUser(user)}
-                          ><Pencil size={15} aria-hidden="true" /></button
-                        ><button
-                          class="icon-button danger-action"
-                          type="button"
-                          aria-label={`删除用户 ${user.display_name || user.username}`}
-                          data-tooltip="禁用用户"
-                          disabled={user.status !== 'active'}
-                          on:click={() => requestDisable('user', [user.id])}
-                          ><Trash2 size={15} aria-hidden="true" /></button
-                        >
-                      {:else}<span class="read-only-label"
-                          >{user.id === currentUser?.id
-                            ? '当前账号'
-                            : '只读'}</span
-                        >{/if}
-                    </div>
-                  </article>
-                {:else}<div class="access-state">
-                    没有匹配的用户，或当前账号没有成员查看权限。
-                  </div>{/each}
-              </div>
-            {:else}
-              <div class="role-catalog-grid">
-                <div class="role-catalog-toolbar">
-                  <div>
-                    <h2>角色权限</h2>
-                    <p>
-                      角色权限决定用户在对应 Scope
-                      内可以执行的操作；仅管理员可为其他用户授权。
-                    </p>
-                  </div>
-                  <span class="access-role-boundary"
-                    ><ShieldCheck
-                      size={16}
-                      aria-hidden="true"
-                    />授权时只显示当前账号可完整授予的角色</span
-                  >
-                </div>
-                {#each orderedRoles as role}<article class="role-catalog-item">
-                    <div>
-                      <strong>{roleLabel(role.name)}</strong><small
-                        >{roleScopeLabel(role.scope_type)}{role.builtin
-                          ? ' · 内置'
-                          : ''}</small
-                      >
-                    </div>
-                    <div class="permission-list">
-                      {#each role.permissions as permission}<span
-                          data-tooltip={permissionDescription(
-                            String(permission)
-                          )}
-                          title={permissionDescription(String(permission))}
-                          >{permission}</span
-                        >{/each}
-                    </div>
-                  </article>{:else}<div class="access-state">
-                    当前账号没有角色目录查看权限。
-                  </div>{/each}
-              </div>
-            {/if}
-          <!-- </section>
-        </section>
-          {/if} -->
 </section>
 {#if teamDialogOpen}
   <div
@@ -1785,14 +1408,7 @@
             <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
           </FormField>
         </div>
-        <label
-          >描述<textarea
-            bind:value={teamDescription}
-            rows="3"
-            maxlength="1000"
-            placeholder="描述团队的职责或用途"
-          ></textarea></label
-        >
+        <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
       </form>
     </dialog>
   </div>
@@ -2005,63 +1621,55 @@
             <section class="new-user-grant-row">
               <div class="new-user-grant-fields">
                 <label
-                  ><span class="sr-only">授权级别</span><select
+                  ><span class="sr-only">授权级别</span><DropdownSelect
                     value={grant.scopeType}
+                    options={['platform', 'team', 'project']
+                      .filter((type) => newUserGrantScopes(type as NewUserGrant['scopeType'], grantIndex).length > 0)
+                      .map((type) => ({ value: type, label: grantScopeLabel(type as NewUserGrant['scopeType']) }))}
+                    ariaLabel="授权级别"
                     on:change={(event) =>
                       chooseNewUserGrantType(
                         grantIndex,
-                        event.currentTarget.value as NewUserGrant['scopeType']
+                        String(event.detail) as NewUserGrant['scopeType']
                       )}
-                    >{#each ['platform', 'team', 'project'] as type}
-                      {#if newUserGrantScopes(type as NewUserGrant['scopeType'], grantIndex).length > 0}
-                        <option value={type}
-                          >{grantScopeLabel(
-                            type as NewUserGrant['scopeType']
-                          )}</option
-                        >
-                      {/if}
-                    {/each}</select
-                  ></label
+                  /></label
                 >
                 <label
                   ><span class="sr-only">授权对象</span>
                   {#if grant.scopeType === 'platform'}
                     <span class="new-user-no-object">无需选择</span>
                   {:else}
-                    <select
+                    <DropdownSelect
                       value={grant.scopeID}
+                      options={[
+                        { value: '', label: `选择${grant.scopeType === 'team' ? '团队' : '项目'}` },
+                        ...newUserGrantScopes(grant.scopeType, grantIndex).map((scope) => ({ value: scope.id, label: scope.name }))
+                      ]}
+                      ariaLabel="授权对象"
                       on:change={(event) =>
                         updateNewUserGrant(grantIndex, {
-                          scopeID: event.currentTarget.value,
+                          scopeID: String(event.detail),
                           roleID: '',
                           resourceGrants: []
                         })}
-                      ><option value=""
-                        >选择{grant.scopeType === 'team'
-                          ? '团队'
-                          : '项目'}</option
-                      >{#each newUserGrantScopes(grant.scopeType, grantIndex) as scope}
-                        <option value={scope.id}>{scope.name}</option>
-                      {/each}</select
-                    >
+                    />
                   {/if}
                 </label>
                 <label
-                  ><span class="sr-only">角色</span><select
+                  ><span class="sr-only">角色</span><DropdownSelect
                     value={grant.roleID}
+                    options={[
+                      { value: '', label: '选择角色' },
+                      ...newUserGrantRoles(grant).map((role) => ({ value: role.id, label: grantRoleLabel(role.name) }))
+                    ]}
                     disabled={!grant.scopeID}
+                    ariaLabel="角色"
                     on:change={(event) =>
                       updateNewUserGrant(grantIndex, {
-                        roleID: event.currentTarget.value,
+                        roleID: String(event.detail),
                         resourceGrants: []
                       })}
-                    ><option value="">选择角色</option
-                    >{#each newUserGrantRoles(grant) as role}
-                      <option value={role.id}
-                        >{grantRoleLabel(role.name)}</option
-                      >
-                    {/each}</select
-                  ></label
+                  /></label
                 >
                 <button
                   class="icon-button danger-action"
@@ -2086,37 +1694,37 @@
                   {#each grant.resourceGrants as resourceGrant, resourceIndex}
                     <div class="new-user-resource-grant-row">
                       <label
-                        >资源<select
+                        >资源<DropdownSelect
                           value={resourceGrant.resourceID}
+                          options={[
+                            { value: '', label: '选择范围内资源' },
+                            ...newUserGrantResources(grant, resourceIndex).map((resource) => ({ value: resource.id, label: `${resource.name} · ${resource.kind}` }))
+                          ]}
+                          ariaLabel="资源"
                           on:change={(event) =>
                             updateNewUserResourceGrant(
                               grantIndex,
                               resourceIndex,
-                              { resourceID: event.currentTarget.value }
+                              { resourceID: String(event.detail) }
                             )}
-                          ><option value="">选择范围内资源</option
-                          >{#each newUserGrantResources(grant, resourceIndex) as resource}
-                            <option value={resource.id}
-                              >{resource.name} · {resource.kind}</option
-                            >
-                          {/each}</select
+                        />
                         ></label
                       >
                       <label
-                        >资源权限<select
+                        >资源权限<DropdownSelect
                           value={resourceGrant.roleID}
+                          options={[
+                            { value: '', label: '选择资源权限' },
+                            ...newUserGrantResourceRoles(grant).map((resourceRole) => ({ value: resourceRole.id, label: roleLabel(resourceRole.name) }))
+                          ]}
+                          ariaLabel="资源权限"
                           on:change={(event) =>
                             updateNewUserResourceGrant(
                               grantIndex,
                               resourceIndex,
-                              { roleID: event.currentTarget.value }
+                              { roleID: String(event.detail) }
                             )}
-                          ><option value="">选择资源权限</option
-                          >{#each newUserGrantResourceRoles(grant) as resourceRole}
-                            <option value={resourceRole.id}
-                              >{roleLabel(resourceRole.name)}</option
-                            >
-                          {/each}</select
+                        />
                         ></label
                       >
                       <button
@@ -2198,14 +1806,7 @@
             <TextInput bind:value={editTeamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }} />
           </FormField>
         </div>
-        <label>
-          描述<textarea
-            bind:value={editTeamDescription}
-            rows="3"
-            maxlength="1000"
-            placeholder="描述团队的职责或用途"
-          ></textarea></label
-        >
+        <FormField label="描述"><TextArea bind:value={editTeamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
         <FormField label="状态"><DropdownSelect bind:value={editTeamStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '禁用' }]} ariaLabel="团队状态" /></FormField>
       </form>
     </dialog>

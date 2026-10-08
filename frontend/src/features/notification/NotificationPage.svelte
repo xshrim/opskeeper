@@ -14,7 +14,9 @@
   } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
+  import NotificationChannelFields from './NotificationChannelFields.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
+  import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import {
     api,
@@ -86,10 +88,6 @@
   $: overviewTemplateVersion = selectedTemplate
     ? latestPublishedVersion(selectedTemplate)
     : undefined;
-  $: selectedProvider = providers.find(
-    (provider) => provider.kind === channelKind
-  );
-  $: providerFields = selectedProvider?.fields ?? [];
   $: filteredChannels = filterItems(
     channels,
     search,
@@ -212,26 +210,6 @@
     }
     loading = false;
     refreshing = false;
-  }
-
-  function setChannelConfig(name: string, value: string) {
-    channelConfig = { ...channelConfig, [name]: value };
-  }
-
-  function selectProvider(kind: string) {
-    channelKind = kind;
-    channelConfig = {};
-  }
-
-  function providerFieldType(type: string) {
-    if (
-      type === 'password' ||
-      type === 'email' ||
-      type === 'url' ||
-      type === 'number'
-    )
-      return type;
-    return 'text';
   }
 
   function statusLabel(status: string) {
@@ -773,66 +751,7 @@
               </div>
               <Settings2 size={17} />
             </div>
-            <label
-              >渠道名称<i class="required-mark" aria-hidden="true">*</i><input
-                bind:value={channelName}
-                required
-                maxlength="120"
-                placeholder="例如：生产值守群"
-              /></label
-            >
-            <label
-              >Provider<i class="required-mark" aria-hidden="true">*</i><select
-                value={channelKind}
-                required
-                on:change={(event) =>
-                  selectProvider(
-                    (event.currentTarget as HTMLSelectElement).value
-                  )}
-                ><option value="" disabled>选择通知 Provider</option
-                >{#each providers.filter((provider) => provider.supported) as provider}<option
-                    value={provider.kind}>{provider.name}</option
-                  >{/each}</select
-              ></label
-            >
-            {#if selectedProvider}{#each providerFields as field}<label
-                  >{field.label}{#if field.required}<i
-                      class="required-mark"
-                      aria-hidden="true">*</i
-                    >{/if}{#if field.type === 'textarea'}<textarea
-                      rows="3"
-                      required={field.required}
-                      value={channelConfig[field.name] ?? ''}
-                      on:input={(event) =>
-                        setChannelConfig(
-                          field.name,
-                          (event.currentTarget as HTMLTextAreaElement).value
-                        )}
-                    ></textarea>{:else}<input
-                      type={providerFieldType(field.type)}
-                      required={field.required}
-                      value={channelConfig[field.name] ?? ''}
-                      on:input={(event) =>
-                        setChannelConfig(
-                          field.name,
-                          (event.currentTarget as HTMLInputElement).value
-                        )}
-                    />{/if}</label
-                >{/each}{/if}
-            <label
-              >每分钟上限<input
-                type="number"
-                min="1"
-                max="10000"
-                bind:value={channelRateLimit}
-              /></label
-            >
-            <label class="notification-switch"
-              ><span>对子 Scope 可用</span><input
-                type="checkbox"
-                bind:checked={channelShare}
-              /><span aria-hidden="true"></span></label
-            >
+            <NotificationChannelFields {providers} bind:channelName bind:channelKind bind:channelRateLimit bind:channelShare bind:channelConfig />
             <div class="notification-form-actions">
               <small>凭据只返回脱敏状态。</small><button
                 class="primary compact"
@@ -968,61 +887,7 @@
               <p>凭据保存后仅显示脱敏摘要。</p>
             </div>
           </div>
-          <label
-            >渠道名称<i class="required-mark" aria-hidden="true">*</i><input
-              bind:value={channelName}
-              required
-              maxlength="120"
-            /></label
-          ><label
-            >Provider<i class="required-mark" aria-hidden="true">*</i><select
-              value={channelKind}
-              required
-              on:change={(event) =>
-                selectProvider(
-                  (event.currentTarget as HTMLSelectElement).value
-                )}
-              ><option value="" disabled>选择通知 Provider</option
-              >{#each providers.filter((provider) => provider.supported) as provider}<option
-                  value={provider.kind}>{provider.name}</option
-                >{/each}</select
-            ></label
-          >{#each providerFields as field}<label
-              >{field.label}{#if field.required}<i
-                  class="required-mark"
-                  aria-hidden="true">*</i
-                >{/if}{#if field.type === 'textarea'}<textarea
-                  rows="3"
-                  required={field.required}
-                  value={channelConfig[field.name] ?? ''}
-                  on:input={(event) =>
-                    setChannelConfig(
-                      field.name,
-                      (event.currentTarget as HTMLTextAreaElement).value
-                    )}
-                ></textarea>{:else}<input
-                  type={providerFieldType(field.type)}
-                  required={field.required}
-                  value={channelConfig[field.name] ?? ''}
-                  on:input={(event) =>
-                    setChannelConfig(
-                      field.name,
-                      (event.currentTarget as HTMLInputElement).value
-                    )}
-                />{/if}</label
-            >{/each}<label
-            >每分钟上限<input
-              type="number"
-              min="1"
-              max="10000"
-              bind:value={channelRateLimit}
-            /></label
-          ><label class="notification-switch"
-            ><span>对子 Scope 可用</span><input
-              type="checkbox"
-              bind:checked={channelShare}
-            /><span aria-hidden="true"></span></label
-          >
+          <NotificationChannelFields {providers} bind:channelName bind:channelKind bind:channelRateLimit bind:channelShare bind:channelConfig />
           <div class="notification-form-actions">
             <small>HTTPS 与 Provider 字段由服务端校验。</small><button
               class="primary compact"
@@ -1149,18 +1014,9 @@
           </div>
           <FormField label="模板名称" required><TextInput bind:value={templateName} required maxlength={120} placeholder="例如：事故通知" ariaLabel="模板名称" /></FormField>
           <div class="notification-form-grid">
-            <FormField label="格式"><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><label
-              >共享范围<select bind:value={templateShare}
-                ><option value={false}>仅当前范围</option><option value={true}
-                  >对子 Scope 可用</option
-                ></select
-              ></label
-            >
+            <FormField label="格式"><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><FormField label="共享范围"><DropdownSelect value={templateShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="模板共享范围" on:change={(event) => (templateShare = event.detail === 'shared')} /></FormField>
           </div>
-          <FormField label="标题模板"><TextInput bind:value={templateTitle} placeholder="例如：严重级别与规则名称" ariaLabel="标题模板" /></FormField><label
-            >正文模板<textarea rows="5" bind:value={templateBody}
-            ></textarea></label
-          >
+          <FormField label="标题模板"><TextInput bind:value={templateTitle} placeholder="例如：严重级别与规则名称" ariaLabel="标题模板" /></FormField><FormField label="正文模板"><TextArea rows={5} bind:value={templateBody} /></FormField>
           <div class="notification-form-actions">
             <small>草稿创建后可独立预览与发布。</small><button
               class="primary compact"
@@ -1226,36 +1082,10 @@
             <FormField label="事件"><DropdownSelect bind:value={ruleEvent} options={[{ value: 'finding.opened', label: 'Finding 新建' }, { value: 'finding.reopened', label: 'Finding 恢复后再次打开' }, { value: 'finding.severity_changed', label: '严重级别变化' }, { value: 'finding.resolved', label: 'Finding 已恢复' }, { value: 'inspection.failed', label: '巡检失败' }, { value: 'inspection.degraded', label: '巡检降级' }]} searchable ariaLabel="通知事件" /></FormField><FormField label="最低级别"><DropdownSelect bind:value={ruleSeverity} options={[{ value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'critical', label: 'Critical' }]} ariaLabel="最低级别" /></FormField>
             >
           </div>
-          <label
-            >投递渠道<select bind:value={ruleChannelId}
-              ><option value="">先不配置</option
-              >{#each channels.filter((channel) => channel.status === 'active') as channel}<option
-                  value={channel.id}>{channel.name}</option
-                >{/each}</select
-            ></label
-          ><label
-            >已发布模板<select bind:value={ruleTemplateVersionId}
-              ><option value="">先不配置</option
-              >{#each templates as template}{#each template.versions.filter((version) => version.status === 'published') as version}<option
-                    value={version.id}
-                    >{template.name} · v{version.version}</option
-                  >{/each}{/each}</select
-            ></label
-          >
+          <FormField label="投递渠道"><DropdownSelect bind:value={ruleChannelId} options={[{ value: '', label: '先不配置' }, ...channels.filter((channel) => channel.status === 'active').map((channel) => ({ value: channel.id, label: channel.name }))]} ariaLabel="投递渠道" /></FormField>
+          <FormField label="已发布模板"><DropdownSelect bind:value={ruleTemplateVersionId} options={[{ value: '', label: '先不配置' }, ...templates.flatMap((template) => template.versions.filter((version) => version.status === 'published').map((version) => ({ value: version.id, label: `${template.name} · v${version.version}` })))]} ariaLabel="已发布模板" /></FormField>
           <div class="notification-form-grid">
-            <label
-              >状态<select bind:value={ruleStatus}
-                ><option value="active">启用</option><option value="disabled"
-                  >停用</option
-                ></select
-              ></label
-            ><label
-              >共享范围<select bind:value={ruleShare}
-                ><option value={false}>仅当前范围</option><option value={true}
-                  >对子 Scope 可用</option
-                ></select
-              ></label
-            >
+            <FormField label="状态"><DropdownSelect bind:value={ruleStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '停用' }]} ariaLabel="规则状态" /></FormField><FormField label="共享范围"><DropdownSelect value={ruleShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="规则共享范围" on:change={(event) => (ruleShare = event.detail === 'shared')} /></FormField>
           </div>
           <div class="notification-form-actions">
             <small>无完整路由时会以停用状态保存。</small><button
@@ -1275,19 +1105,7 @@
             <ShieldCheck size={17} />
           </div>
           <div class="notification-form-grid">
-            <label
-              >巡检策略<select
-                value={selectedPolicyId}
-                on:change={(event) =>
-                  loadPolicyRules(
-                    (event.currentTarget as HTMLSelectElement).value
-                  )}
-                ><option value="">选择策略</option
-                >{#each policies as policy}<option value={policy.id}
-                    >{policy.name}</option
-                  >{/each}</select
-              ></label
-            >
+            <FormField label="巡检策略"><DropdownSelect options={[{ value: '', label: '选择策略' }, ...policies.map((policy) => ({ value: policy.id, label: policy.name }))]} value={selectedPolicyId} ariaLabel="巡检策略" on:change={(event) => loadPolicyRules(String(event.detail))} /></FormField>
             <div class="notification-policy-actions">
               <button
                 class="secondary compact"
@@ -1324,15 +1142,7 @@
               height="34px"
               placeholder="搜索事件或 ID"
               ariaLabel="搜索事件或 ID"
-            /><select bind:value={deliveryStatus} aria-label="按投递状态筛选"
-              ><option value="">全部状态</option><option value="queued"
-                >待投递</option
-              ><option value="delivering">发送中</option><option
-                value="retrying">重试中</option
-              ><option value="succeeded">已送达</option><option
-                value="dead_letter">死信</option
-              ><option value="failed">失败</option></select
-            >
+            /><DropdownSelect bind:value={deliveryStatus} options={[{ value: '', label: '全部状态' }, { value: 'queued', label: '待投递' }, { value: 'delivering', label: '发送中' }, { value: 'retrying', label: '重试中' }, { value: 'succeeded', label: '已送达' }, { value: 'dead_letter', label: '死信' }, { value: 'failed', label: '失败' }]} ariaLabel="按投递状态筛选" />
           </div>
         </div>
         <div class="notification-table-scroll">
