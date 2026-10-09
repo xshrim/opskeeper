@@ -52,7 +52,11 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Resource, error)
 		return Resource{}, fmt.Errorf("encode resource config: %w", err)
 	}
 	var id string
-	var ciphertext, keyVersion, purpose any
+	// Credential metadata columns are NOT NULL. Keep their empty values
+	// explicit when a resource has no credential so the INSERT does not turn
+	// the absence of a credential into SQL NULL.
+	var ciphertext any
+	var keyVersion, purpose any = "", ""
 	if input.Credential != nil {
 		ciphertext, keyVersion, purpose = input.Credential.Ciphertext, input.Credential.KeyVersion, input.Credential.Purpose
 	}
