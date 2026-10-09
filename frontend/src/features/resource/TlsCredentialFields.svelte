@@ -2,6 +2,7 @@
   import FormField from '../../components/FormField.svelte';
   import Switch from '../../components/Switch.svelte';
   import TextArea from '../../components/TextArea.svelte';
+  import FilePicker from '../../components/FilePicker.svelte';
 
   export let ca = '';
   export let cert = '';
@@ -27,16 +28,6 @@
     cert: '',
     key: ''
   };
-  let fileInputs: Record<CredentialField, HTMLInputElement | undefined> = {
-    ca: undefined,
-    cert: undefined,
-    key: undefined
-  };
-
-  function inputFor(field: CredentialField) {
-    return fileInputs[field];
-  }
-
   async function importFile(event: Event, field: CredentialField) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -92,26 +83,18 @@
         {@const value = entry[1] as string}
         <FormField label={fileLabel(field)} invalid={invalid(value)}>
           <span class="docker-credential-label">
-            <span class="docker-file-picker">
-              {#if selectedFileNames[field]}<small
-                  >{selectedFileNames[field]}</small
-                >{/if}
-              <input
-                class="docker-file-input"
-                bind:this={fileInputs[field]}
-                type="file"
-                accept={fileAccept(field)}
-                aria-label={`选择${fileLabel(field)}文件`}
-                on:change={(event) => void importFile(event, field)}
-              />
-              <button
-                class="docker-file-import"
-                type="button"
-                aria-label={`导入${fileLabel(field)}文件`}
-                on:click|stopPropagation|preventDefault={() =>
-                  inputFor(field)?.click()}>导入</button
-              >
-            </span>
+            <FilePicker
+              className="docker-file-picker"
+              inputClass="docker-file-input"
+              buttonClass="docker-file-import"
+              fileName={selectedFileNames[field]}
+              accept={fileAccept(field)}
+              label={`选择${fileLabel(field)}文件`}
+              ariaLabel={`导入${fileLabel(field)}文件`}
+              inputAriaLabel={`选择${fileLabel(field)}文件`}
+              buttonLabel="导入"
+              onFileChange={(event) => void importFile(event, field)}
+            />
             {#if field === 'ca' && showSkipVerify}<span class="docker-tls-label"
                 ><Switch
                   bind:checked={skipVerify}

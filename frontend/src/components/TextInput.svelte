@@ -93,14 +93,24 @@
     left: 0;
     max-width: min(280px, 90vw);
     padding: 6px 9px;
-    color: var(--theme-fg-strong);
-    background: var(--theme-bg-raised);
-    border: 1px solid var(--theme-danger);
+    color: var(--theme-danger);
+    background: var(--theme-bg-danger-soft);
     border-radius: 4px;
     box-shadow: var(--theme-shadow-soft);
     content: attr(data-error);
     font-size: 11px;
     line-height: 1.35;
     white-space: normal;
+  }
+  .text-input-wrap.bubble::before {
+    position: absolute;
+    z-index: 30;
+    bottom: calc(100% + 1px);
+    left: 12px;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    border-top-color: var(--theme-bg-danger-soft);
+    content: '';
   }
 </style>

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import PanelHeading from '../../components/PanelHeading.svelte';
+  import EmptyState from '../../components/EmptyState.svelte';
+  import StatusBadge from '../../components/StatusBadge.svelte';
   import type { Resource } from '../../lib/api';
   import type { StatusRow } from '../../lib/health';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
@@ -23,11 +26,11 @@
     <article class="metric"><span class="metric-label">资源</span><strong>{resourceCount}</strong><span class="metric-note">已登记资源</span></article>
   </div>
   <section class="panel wide-panel" aria-labelledby="health-heading">
-    <div class="panel-heading"><div><p class="eyebrow">SYSTEM</p><h2 id="health-heading">控制平面状态</h2></div><span class:healthy={healthStatus === 'ready'} class="status-pill"><span class="status-dot"></span>{healthStatus === 'ready' ? 'Ready' : 'Checking'}</span></div>
+    <PanelHeading eyebrow="SYSTEM" title="控制平面状态" titleId="health-heading"><span slot="actions" class:healthy={healthStatus === 'ready'} class="status-pill"><span class="status-dot"></span>{healthStatus === 'ready' ? 'Ready' : 'Checking'}</span></PanelHeading>
     <div class="status-table"><div class="table-header"><span>服务</span><span>状态</span><span>延迟</span></div>{#each rows as row}<div class="table-row"><span class="service-name">{row.name}</span><span class:up={row.status === 'up'} class:down={row.status === 'down'} class="service-status"><span class="status-dot"></span>{row.status === 'up' ? 'Operational' : row.status === 'down' ? 'Unavailable' : 'Checking'}</span><span class="latency">{row.latency ?? '—'}</span></div>{/each}</div>
   </section>
   <section class="panel recent-panel">
-    <div class="panel-heading"><div><p class="eyebrow">CATALOG</p><h2>最近资源</h2></div><button class="text-button" on:click={onOpenResources}>查看全部 →</button></div>
-    {#if visibleResources.length === 0}<div class="empty-state">当前作用域还没有资源。</div>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span><span class="status-label {resource.status}">{resource.status}</span></button>{/each}</div>{/if}
+    <PanelHeading eyebrow="CATALOG" title="最近资源"><button slot="actions" class="text-button" on:click={onOpenResources}>查看全部 →</button></PanelHeading>
+    {#if visibleResources.length === 0}<EmptyState>当前作用域还没有资源。</EmptyState>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span><StatusBadge className="status-label" tone={resource.status}>{resource.status}</StatusBadge></button>{/each}</div>{/if}
   </section>
 </section>

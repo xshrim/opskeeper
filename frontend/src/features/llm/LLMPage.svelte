@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmptyState from '../../components/EmptyState.svelte';
   import { onMount, tick } from 'svelte';
   import {
     Cpu,
@@ -996,7 +997,7 @@
               >{/if}
           </div>
         </article>
-      {:else}<div class="empty-state">当前级别暂无 AI 引擎。</div>{/each}
+      {:else}<EmptyState>当前级别暂无 AI 引擎。</EmptyState>{/each}
     </div>
     {#if editingEngine}
       <form class="engine-editor panel" novalidate on:submit|preventDefault={saveEngine}>
@@ -1254,9 +1255,7 @@
                 >{/if}
             </span>
             </button
-            >{:else}<div class="empty-state">
-              {#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}
-            </div>{/each}
+            >{:else}<EmptyState>{#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}</EmptyState>{/each}
         </div>
       </section>
       {#if drawerOpen}
@@ -1703,7 +1702,7 @@
                   </div>{/each}
               </div>
               </div>
-            {:else}<div class="empty-state">选择一个渠道查看详情。</div>{/if}
+            {:else}<EmptyState>选择一个渠道查看详情。</EmptyState>{/if}
           </div>
         </aside>
       {:else}<div class="drawer-placeholder">
@@ -2070,7 +2069,7 @@
     display: block;
     margin-top: 4px;
     color: var(--theme-fg-muted);
-    content: '选择渠道查看详情';
+    content: '点击查看详情';
     font-size: 10px;
     font-weight: 400;
     line-height: 12px;

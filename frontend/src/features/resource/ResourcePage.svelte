@@ -3,6 +3,7 @@
   import { Plus, RefreshCw } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import ResourceCatalogRail from './ResourceCatalogRail.svelte';
   import ResourceCatalogList from './ResourceCatalogList.svelte';
@@ -2451,8 +2452,40 @@
   let resourceSubtype = '全部';
   let resourceSearch = '';
   let selectedCatalogTags: string[] = [];
-  let resourceStatusFilter = 'all';
-  let resourceLevelFilter = 'all';
+  let resourceFilterQuery = '';
+  let resourceFieldValues: Record<string, string> = {};
+  const resourceSearchFields = [
+    { key: 'name', label: '名称', placeholder: '输入资源名称' },
+    { key: 'kind', label: '类型', placeholder: '输入资源类型' },
+    { key: 'subtype', label: '子类型', placeholder: '输入资源子类型' },
+    { key: 'endpoint', label: '端点', placeholder: '输入连接端点' },
+    { key: 'label', label: '标签', placeholder: '输入标签或 key=value' },
+    {
+      key: 'status',
+      label: '状态',
+      values: [
+        { value: 'active', label: '正常' },
+        { value: 'disabled', label: '已停用' },
+        { value: 'unknown', label: '未知' }
+      ]
+    },
+    {
+      key: 'level',
+      label: '级别',
+      values: [
+        { value: 'platform', label: '平台级' },
+        { value: 'team', label: '团队级' },
+        { value: 'project', label: '项目级' }
+      ]
+    }
+  ];
+  $: resourceSearchFieldPattern = resourceSearchFields
+    .map((field) => field.key)
+    .join('|');
+  $: resourceFreeQuery = resourceFilterQuery
+    .replace(new RegExp(`(?:^|\\s)(?:${resourceSearchFieldPattern}):(?:"[^"]*"|'[^']*'|\\S*)`, 'g'), ' ')
+    .trim()
+    .toLocaleLowerCase();
   $: resourceCatalogItems = visibleResources.filter((resource) => {
     if (
       resourceCategory !== '全部' &&
@@ -2465,13 +2498,51 @@
     )
       return false;
     if (
-      resourceStatusFilter !== 'all' &&
-      resource.status !== resourceStatusFilter
+      resourceFieldValues.status &&
+      !resource.status
+        .toLocaleLowerCase()
+        .includes(resourceFieldValues.status.toLocaleLowerCase())
     )
       return false;
     if (
-      resourceLevelFilter !== 'all' &&
-      scopeType(resource.scope_id) !== resourceLevelFilter
+      resourceFieldValues.level &&
+      !scopeType(resource.scope_id)
+        .toLocaleLowerCase()
+        .includes(resourceFieldValues.level.toLocaleLowerCase())
+    )
+      return false;
+    const fieldText = {
+      name: resource.name,
+      kind: `${resource.kind} ${resourceCategoryFor(resource)}`,
+      subtype: `${resource.subtype ?? ''} ${resourceSubtypeFor(resource)}`,
+      endpoint: resourceEndpointFor(resource),
+      label: Object.entries(resource.labels ?? {})
+        .map(([key, value]) => `${key}=${value}`)
+        .join(' ')
+    };
+    if (
+      Object.entries(resourceFieldValues).some(([key, filterValue]) =>
+        key in fieldText &&
+        !fieldText[key as keyof typeof fieldText]
+          .toLocaleLowerCase()
+          .includes(filterValue.toLocaleLowerCase())
+      )
+    )
+      return false;
+    if (
+      resourceFreeQuery &&
+      ![
+        resource.name,
+        resource.kind,
+        resource.subtype,
+        resourceCategoryFor(resource),
+        resourceSubtypeFor(resource),
+        resourceEndpointFor(resource),
+        ...Object.entries(resource.labels ?? {}).flat()
+      ]
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(resourceFreeQuery)
     )
       return false;
     return true;
@@ -2523,8 +2594,17 @@
           <small>{resourceCatalogItems.length} 个可见资源</small>
         </div>
         <div class="resource-catalog-filters">
-          <DropdownSelect bind:value={resourceStatusFilter} ariaLabel="连接状态" options={[{ value: 'all', label: '全部状态' }, { value: 'active', label: '正常' }, { value: 'disabled', label: '已停用' }, { value: 'unknown', label: '未知' }]} />
-          <DropdownSelect bind:value={resourceLevelFilter} ariaLabel="资源级别" options={[{ value: 'all', label: '全部级别' }, { value: 'platform', label: '平台级' }, { value: 'team', label: '团队级' }, { value: 'project', label: '项目级' }]} />
+          <SearchInput
+            className="resource-filter-search"
+            bind:value={resourceFilterQuery}
+            fieldSearchable
+            fieldOptions={resourceSearchFields}
+            width="min(320px, 100%)"
+            height="34px"
+            ariaLabel="搜索资源"
+            placeholder="搜索资源或输入 status:active"
+            on:fields={(event) => (resourceFieldValues = event.detail)}
+          />
           <button
             class="icon-button"
             type="button"

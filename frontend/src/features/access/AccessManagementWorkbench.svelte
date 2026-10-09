@@ -1,4 +1,8 @@
 <script lang="ts">
+  import ExpandableTable from '../../components/ExpandableTable.svelte';
+  import ReadonlyTable from '../../components/ReadonlyTable.svelte';
+  import type { ReadonlyTableColumn } from '../../components/ReadonlyTable.svelte';
+  import StatusBadge from '../../components/StatusBadge.svelte';
   import {
     ChevronDown,
     Pencil,
@@ -92,6 +96,27 @@
   let previousGlobalScopeKey = '';
   let activeProjectID = '';
   let memberQuery = '';
+  let memberFieldValues: Record<string, string> = {};
+  const memberSearchFields = [
+    { key: 'username', label: '用户名', placeholder: '输入用户名' },
+    { key: 'name', label: '姓名', placeholder: '输入姓名' },
+    { key: 'email', label: '邮箱', placeholder: '输入邮箱' },
+    { key: 'phone', label: '电话', placeholder: '输入电话' },
+    { key: 'status', label: '状态', placeholder: '输入启用、锁定或禁用' }
+  ];
+  const memberColumns: ReadonlyTableColumn[] = [
+    { key: 'user', label: '用户' },
+    { key: 'contact', label: '联络' },
+    { key: 'permissions', label: '权限' },
+    { key: 'status', label: '状态', width: '65px' },
+    { key: 'actions', label: '操作', width: '68px', className: 'access-member-actions-heading' }
+  ];
+  const roleColumns: ReadonlyTableColumn[] = [
+    { key: 'level', label: '级别', width: '80px' },
+    { key: 'object', label: '授权对象' },
+    { key: 'role', label: '角色' },
+    { key: 'extra', label: '额外授权' }
+  ];
   $: globalScopeSelection = globalSelection();
   $: globalScopeKey = `${selectedTeamId}|${selectedProjectId}|${globalScopeSelection.kind}|${globalScopeSelection.id}|${globalScopeSelection.name}`;
   $: if (globalScopeKey !== previousGlobalScopeKey) {
@@ -99,6 +124,7 @@
     selected = globalScopeSelection;
     activeProjectID = '';
     memberQuery = '';
+    memberFieldValues = {};
     selectedAccessUserIds = [];
   }
   $: if (selected.kind === 'platform' && selected.name !== platformName)
@@ -117,17 +143,33 @@
   $: projectFilteredUsers = activeProjectID
     ? scopedUsers.filter((user) => projectScopedUserIDs.has(user.id))
     : scopedUsers;
-  $: visibleScopedUsers = memberQuery
-    ? projectFilteredUsers.filter((user) =>
-        `${user.display_name} ${user.username} ${user.email}`
-          .toLowerCase()
-          .includes(memberQuery.toLowerCase())
+  $: memberFreeQuery = memberQuery
+    .replace(/(?:^|\s)(?:username|name|email|phone|status):(?:"[^"]*"|'[^']*'|\S*)/g, ' ')
+    .trim()
+    .toLocaleLowerCase();
+  $: visibleScopedUsers = projectFilteredUsers.filter((user) => {
+    const searchValues = {
+      username: user.username,
+      name: user.display_name,
+      email: user.email,
+      phone: user.phone,
+      status: `${user.status} ${statusLabel(user.status)}`
+    };
+    if (
+      Object.entries(memberFieldValues).some(([key, filterValue]) =>
+        key in searchValues &&
+        !searchValues[key as keyof typeof searchValues]
+          .toLocaleLowerCase()
+          .includes(filterValue.toLocaleLowerCase())
       )
-    : projectFilteredUsers;
-  $: manageableUsers = visibleScopedUsers.filter(canManageUser);
-  $: allUsersSelected =
-    manageableUsers.length > 0 &&
-    manageableUsers.every((user) => selectedAccessUserIds.includes(user.id));
+    )
+      return false;
+    return !memberFreeQuery ||
+      Object.values(searchValues)
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(memberFreeQuery);
+  });
   $: visibleProjects = projects.filter((project) =>
     visibleAccessTeams.some((team) => team.id === project.team_id)
   );
@@ -196,11 +238,6 @@
   function toggleProjectFilter(projectID: string) {
     activeProjectID = activeProjectID === projectID ? '' : projectID;
     selectedAccessUserIds = [];
-  }
-  function toggleAllUsers(checked: boolean) {
-    selectedAccessUserIds = checked
-      ? manageableUsers.map((user) => user.id)
-      : [];
   }
   function memberCount(project: Project) {
     return dedupeUsers(accessProjectUsers[project.id] ?? []).length;
@@ -365,8 +402,11 @@
               className="access-member-search"
               width="195px"
               height="35px"
-              placeholder="筛选当前成员"
+              fieldSearchable
+              fieldOptions={memberSearchFields}
+              placeholder="筛选成员或输入 name:张"
               ariaLabel="筛选当前成员"
+              on:fields={(event) => (memberFieldValues = event.detail)}
             /><button
               class="secondary danger-action"
               type="button"
@@ -391,42 +431,23 @@
             >{/each}
         </div>
         <div class="access-member-section">
-          <div class="access-member-table">
-            <div class="access-member-table-head">
-              <input
-                type="checkbox"
-                aria-label="选择全部可管理成员"
-                checked={allUsersSelected}
-                on:change={(event) =>
-                  toggleAllUsers(event.currentTarget.checked)}
-              /><span>用户</span><span>联络</span><span>权限</span><span
-                >状态</span
-              ><span class="access-member-actions-heading">操作</span>
-            </div>
-            {#each visibleScopedUsers as user}{@const roleSelection =
-                activeProjectID
-                  ? ({
-                      kind: 'project',
-                      id: activeProjectID,
-                      name: ''
-                    } as Selection)
-                  : selected}{@const scopeRoles = userScopeRoles(
-                user.id,
-                roleSelection
-              )}{@const resourceScopeRoles = userResourceRoleBindings(
-                user.id,
-                roleSelection
-              )}
-              <details class="access-member-item">
-                <summary class="access-member-row">
-                  <input
-                    type="checkbox"
-                    aria-label={`选择用户 ${user.display_name || user.username}`}
-                    disabled={!canManageUser(user) || user.status !== 'active'}
-                    bind:group={selectedAccessUserIds}
-                    value={user.id}
-                    on:click|stopPropagation
-                  />
+          <ExpandableTable
+            columns={memberColumns}
+            rows={visibleScopedUsers}
+            rowKey={(user) => user.id}
+            expandable
+            selectable
+            selectedIds={selectedAccessUserIds}
+            canSelectRow={(user) => canManageUser(user) && user.status === 'active'}
+            onSelectionChange={(ids) => (selectedAccessUserIds = ids)}
+            className="access-member-table"
+            emptyText="当前范围没有可见成员。"
+          >
+            <svelte:fragment slot="cell" let:row let:column>
+              {@const user = row as User}
+              {@const roleSelection = activeProjectID ? ({ kind: 'project', id: activeProjectID, name: '' } as Selection) : selected}
+              {@const scopeRoles = userScopeRoles(user.id, roleSelection)}
+              {#if column.key === 'user'}
                   <div class="access-user-main">
                     <span class="avatar access-avatar">{initials(user)}</span
                     ><span
@@ -435,10 +456,12 @@
                       ></span
                     >
                   </div>
+              {:else if column.key === 'contact'}
                   <div class="access-user-contact">
                     <span>{user.phone || '未填写电话'}</span>
                     <span>{user.email || '未填写邮箱'}</span>
                   </div>
+              {:else if column.key === 'permissions'}
                   <div class="access-user-permissions">
                     {#if scopeRoles.length > 0}
                       {#each scopeRoles.slice(0, 2) as entry}
@@ -464,9 +487,9 @@
                       <span class="permission-empty">当前范围无角色</span>
                     {/if}
                   </div>
-                  <span class="status-label {user.status}">
-                    {statusLabel(user.status)}
-                  </span>
+              {:else if column.key === 'status'}
+                  <StatusBadge className="status-label" tone={user.status} label={statusLabel(user.status)} />
+              {:else if column.key === 'actions'}
                   <div class="access-row-actions">
                     {#if canManageUser(user)}
                       <button
@@ -492,8 +515,14 @@
                       </span>
                     {/if}
                   </div>
-                </summary>
-                <div class="access-user-details">
+              {/if}
+            </svelte:fragment>
+            <svelte:fragment slot="details" let:row>
+              {@const user = row as User}
+              {@const roleSelection = activeProjectID ? ({ kind: 'project', id: activeProjectID, name: '' } as Selection) : selected}
+              {@const scopeRoles = userScopeRoles(user.id, roleSelection)}
+              {@const resourceScopeRoles = userResourceRoleBindings(user.id, roleSelection)}
+              <div class="access-user-details">
                   <div class="access-user-details-grid">
                     <div><span>用户名</span><strong>{user.username}</strong></div>
                     <div><span>姓名</span><strong>{user.display_name || '未填写'}</strong></div>
@@ -505,41 +534,16 @@
                     <div><span>状态</span><strong>{statusLabel(user.status)}</strong></div>
                   </div>
                   <section class="access-user-details-section access-user-roles-section">
-                    <div class="access-user-role-table-wrap">
-                      <table class="access-user-role-table">
-                        <thead><tr><th>级别</th><th>授权对象</th><th>角色</th><th>额外授权</th></tr></thead>
-                        <tbody>
-                          {#each scopeRoles as entry}
-                            <tr>
-                              <td>{scopeTypeLabel(entry.scopeType)}</td>
-                              <td>{entry.scopeName}</td>
-                              <td class="permission-role-{roleTone(entry.roleName)}">{entry.roleName}</td>
-                              <td>—</td>
-                            </tr>
-                          {/each}
-                          {#each resourceScopeRoles as entry}
-                            <tr>
-                              <td>资源</td>
-                              <td title={entry.resource_name}>{entry.resource_kind} · {entry.resource_name}</td>
-                              <td>—</td>
-                              <td class="permission-role-{roleTone(resourceRoleLabel(entry.role_name))}">{resourceRoleLabel(entry.role_name)}</td>
-                            </tr>
-                          {/each}
-                          {#if scopeRoles.length === 0 && resourceScopeRoles.length === 0}
-                            <tr><td colspan="4" class="access-user-roles-empty">当前范围无角色</td></tr>
-                          {/if}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ReadonlyTable columns={roleColumns} rows={[...scopeRoles.map((entry) => ({ level: scopeTypeLabel(entry.scopeType), object: entry.scopeName, role: entry.roleName, extra: '—', tone: roleTone(entry.roleName) })), ...resourceScopeRoles.map((entry) => ({ level: '资源', object: `${entry.resource_kind} · ${entry.resource_name}`, role: '—', extra: resourceRoleLabel(entry.role_name), tone: roleTone(resourceRoleLabel(entry.role_name)) }))]} emptyText="当前范围无角色">
+                      <svelte:fragment slot="cell" let:row let:column>
+                        {@const roleRow = row as Record<string, string>}
+                        <span class={column.key === 'role' || column.key === 'extra' ? `permission-role-${roleRow.tone}` : ''}>{roleRow[column.key]}</span>
+                      </svelte:fragment>
+                    </ReadonlyTable>
                   </section>
                 </div>
-              </details>
-            {:else}
-              <div class="access-state">
-                当前范围没有可见成员。
-              </div>
-            {/each}
-          </div>
+            </svelte:fragment>
+          </ExpandableTable>
         </div>
       </section>
     </div>

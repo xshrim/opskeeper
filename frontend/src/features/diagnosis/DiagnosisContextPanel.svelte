@@ -7,6 +7,8 @@
     Application
   } from '../../lib/api';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
+  import Tabs from '../../components/Tabs.svelte';
+  import SelectableList from '../../components/SelectableList.svelte';
 
   type DiagnosisEvidenceTimelineItem = {
     id: string;
@@ -57,17 +59,7 @@
       <small>{diagnosisApplicationIds.length} 个应用 · {diagnosisTargetIds.length} 个资源已选</small>
     </div>
   </div>
-  <div class="diagnosis-context-tabs">
-    <button
-      class:active={diagnosisContextTab === 'context'}
-      on:click={() => (diagnosisContextTab = 'context')}
-      >上下文</button
-    ><button
-      class:active={diagnosisContextTab === 'evidence'}
-      on:click={() => (diagnosisContextTab = 'evidence')}
-      >证据链</button
-    >
-  </div>
+  <Tabs className="diagnosis-context-tabs" value={diagnosisContextTab} ariaLabel="诊断面板" items={[{ value: 'context', label: '上下文' }, { value: 'evidence', label: '证据链' }]} onChange={(value) => (diagnosisContextTab = value as 'context' | 'evidence')} />
   {#if diagnosisContextTab === 'context'}
     <div class="diagnosis-context-budget" aria-label="上下文窗口使用量">
       <div class="diagnosis-context-budget-head"><strong>上下文窗口</strong><span>{contextUsage.used.toLocaleString()} / {contextUsage.total.toLocaleString()} Token</span></div>
@@ -75,18 +67,18 @@
     </div>
     <section class="diagnosis-context-section">
       <div class="diagnosis-context-section-title"><strong>应用</strong><small>{diagnosisApplicationIds.length} 已选</small></div>
-      <div class="diagnosis-resource-list-f">
+      <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选应用">
         {#each diagnosisApplications as application}
           <label class:selected={diagnosisApplicationIds.includes(application.id)}>
             <span class="diagnosis-resource-icon">⌘</span><span><strong>{application.name}</strong><small>{visibleResourceCount(application)} 个可用关联资源</small></span>
             <input type="checkbox" checked={diagnosisApplicationIds.includes(application.id)} on:change={() => toggleDiagnosisApplication(application)} />
           </label>
         {:else}<p class="diagnosis-empty">当前项目没有可用于诊断的应用。</p>{/each}
-      </div>
+      </SelectableList>
     </section>
     <section class="diagnosis-context-section">
       <div class="diagnosis-context-section-title"><strong>资源</strong><small>{diagnosisTargetIds.length} 已选</small></div>
-      <div class="diagnosis-resource-list-f">
+      <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选资源">
       {#each diagnosisTargets as resource}
         <label
           class:selected={diagnosisTargetIds.includes(resource.id)}
@@ -108,7 +100,7 @@
       {:else}
         <p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>
       {/each}
-      </div>
+      </SelectableList>
     </section>
   {:else}
     <div class="diagnosis-evidence-pane">

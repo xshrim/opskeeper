@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>字段搜索交互 · 10 种方案</title>
+  <style>
+    :root { color-scheme: light; --bg:#f3f5f7; --surface:#fff; --soft:#f8fafb; --ink:#1c2730; --muted:#687682; --subtle:#93a0aa; --line:#dbe2e7; --strong:#b9c5ce; --accent:#e7601b; --accent-soft:#fff0e8; --selected:#e9f2fb; --shadow:0 12px 28px rgba(31,48,64,.13); }
+    :root[data-theme="dark"] { color-scheme:dark; --bg:#141a20; --surface:#1d262e; --soft:#222d36; --ink:#e8eef3; --muted:#a7b4c0; --subtle:#81909e; --line:#34434f; --strong:#526270; --accent:#f39a68; --accent-soft:#4a2d20; --selected:#273b50; --shadow:0 15px 32px rgba(0,0,0,.35); }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button,input { font:inherit; } button { cursor:pointer; }
+    .shell { width:min(1440px,calc(100% - 36px)); margin:auto; padding:28px 0 50px; }
+    .topbar { display:flex; justify-content:space-between; gap:22px; align-items:flex-start; margin-bottom:22px; }
+    .eyebrow { margin:0 0 6px; color:var(--accent); font-size:11px; font-weight:750; letter-spacing:.1em; }
+    h1 { margin:0; font-size:clamp(24px,3vw,34px); line-height:1.2; }
+    .lead { max-width:880px; margin:9px 0 0; color:var(--muted); font-size:13px; }
+    .theme-toggle { flex:none; min-height:32px; padding:0 10px; color:var(--ink); background:var(--surface); border:1px solid var(--strong); border-radius:5px; font-size:12px; }
+    .note { margin-bottom:16px; padding:13px 15px; color:var(--muted); background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:6px; font-size:11px; }
+    .note strong { color:var(--ink); font-size:13px; }
+    .gallery { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .option { min-width:0; padding:15px; background:var(--surface); border:1px solid var(--line); border-radius:7px; }
+    .option-head { min-height:58px; margin-bottom:10px; }
+    .number { color:var(--accent); font-size:10px; font-weight:800; letter-spacing:.1em; }
+    h2 { margin:3px 0; font-size:15px; line-height:1.3; }
+    .option p { margin:0; color:var(--muted); font-size:11px; }
+    .demo { position:relative; min-height:195px; padding:13px; overflow:visible; background:var(--soft); border:1px solid var(--line); border-radius:6px; }
+    .demo-label { display:flex; justify-content:space-between; margin-bottom:7px; color:var(--subtle); font-size:10px; }
+    .demo-label b { color:var(--accent); font-weight:600; }
+    .search { display:flex; align-items:center; gap:6px; min-height:35px; padding:0 8px; color:var(--ink); background:var(--surface); border:1px solid var(--strong); border-radius:5px; }
+    .search.focus { border-color:var(--accent); outline:2px solid color-mix(in srgb,var(--accent) 20%,transparent); outline-offset:-2px; }
+    .search i { flex:none; color:var(--muted); font-style:normal; }
+    .search input { min-width:0; flex:1; height:28px; padding:0; color:var(--ink); background:transparent; border:0; outline:0; font-size:12px; }
+    .search input::placeholder { color:var(--subtle); }
+    .filter { display:grid; place-items:center; width:23px; height:23px; flex:none; color:var(--muted); background:transparent; border:0; border-radius:4px; }
+    .filter::before { content:'☷'; font-size:15px; }
+    .filter.active,.filter:hover { color:var(--accent); background:var(--accent-soft); }
+    .panel { position:absolute; z-index:2; top:63px; right:13px; width:min(300px,calc(100% - 26px)); padding:8px; background:var(--surface); border:1px solid var(--strong); border-radius:6px; box-shadow:var(--shadow); }
+    .panel-title { margin-bottom:5px; color:var(--muted); font-size:10px; }
+    .panel-title strong { color:var(--ink); }
+    .panel.hidden { display:none; }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-height:30px; padding:5px 7px; color:var(--ink); background:transparent; border:0; border-radius:4px; text-align:left; font-size:11px; }
+    .item:hover,.item.active { background:var(--selected); }
+    .item code { color:var(--subtle); font-size:10px; }
+    .value-row { display:flex; flex-wrap:wrap; gap:4px; }
+    .value { min-height:27px; padding:0 7px; color:var(--ink); background:var(--soft); border:1px solid var(--line); border-radius:4px; font-size:10px; }
+    .value:hover,.value.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent); }
+    .hint { margin-top:6px; color:var(--muted); font-size:10px; }
+    .results { display:grid; gap:5px; margin-top:13px; }
+    .result { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; min-height:31px; padding:0 8px; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:4px; font-size:11px; }
+    .result small { color:var(--muted); font-size:10px; } .result b { color:var(--accent); font-weight:650; }
+    .token { display:inline-flex; align-items:center; gap:3px; min-height:22px; padding:0 6px; color:var(--accent); background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 50%,var(--line)); border-radius:4px; font-size:10px; }
+    .token em { color:var(--muted); font-style:normal; }
+    .scheme-01 .panel { left:13px; right:auto; }
+    .scheme-02 .search { border-width:0 0 1px; border-radius:0; background:transparent; }
+    .scheme-02 .panel { top:57px; left:13px; right:auto; border-width:0 0 1px; border-radius:0; box-shadow:none; }
+    .scheme-03 .search { border-radius:18px; padding-left:11px; }
+    .scheme-03 .panel { border-radius:14px; }
+    .scheme-04 .search { background:var(--selected); border-color:transparent; }
+    .scheme-04 .panel { left:13px; right:13px; width:auto; }
+    .scheme-05 .search { min-height:46px; align-items:flex-start; padding-top:6px; padding-bottom:6px; }
+    .scheme-05 .panel { top:70px; }
+    .scheme-06 .search { border-left:3px solid var(--accent); }
+    .scheme-06 .panel { left:26px; right:auto; }
+    .scheme-07 .search { flex-wrap:wrap; min-height:45px; padding:4px 7px; }
+    .scheme-07 .search .token { order:2; } .scheme-07 .search input { order:3; flex-basis:105px; }
+    .scheme-07 .search .filter { order:4; }
+    .scheme-08 .panel { left:13px; right:auto; width:min(340px,calc(100% - 26px)); }
+    .scheme-08 .panel .item { display:grid; grid-template-columns:64px 1fr; }
+    .scheme-09 .search { flex-direction:row-reverse; } .scheme-09 .search input { text-align:right; }
+    .scheme-09 .panel { left:auto; right:0; }
+    .scheme-10 .search { min-height:30px; border-radius:3px; } .scheme-10 .search input { height:24px; font-size:11px; }
+    .scheme-10 .panel { top:57px; width:240px; padding:4px; border-radius:4px; }
+    .scheme-10 .item { min-height:26px; padding:3px 5px; font-size:10px; }
+    .footnote { margin-top:18px; color:var(--muted); font-size:11px; }
+    @media (max-width:840px) { .gallery { grid-template-columns:1fr; } }
+    @media (max-width:560px) { .shell { width:calc(100% - 24px); padding-top:18px; } .topbar { display:block; } .theme-toggle { margin-top:12px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><div><p class="eyebrow">SEARCH INPUT · KEY VALUE FLOW</p><h1>字段搜索的 10 种交互方案</h1><p class="lead">每个方案都展示完整流程：搜索框获得焦点 → 选择 key → 搜索框出现 <code>key:</code> → 选择或手动输入 value → 回车提交。也支持直接输入完整的 <code>key:value</code>。</p></div><button class="theme-toggle" id="theme-toggle" type="button">◐ 切换深色主题</button></header>
+    <div class="note"><strong>预览说明</strong>　点击字段选项会把字段写入搜索框；点击值选项会补全条件。10 个方案的区别是流程布局和信息呈现，不是同一个面板换颜色。</div>
+    <section class="gallery" id="gallery"></section>
+    <p class="footnote">静态交互预览，不连接资源数据。资源页正式组件采用统一 SearchInput 能力，不同页面只配置字段定义。</p>
+  </main>
+  <script>
+    const variants = [
+      ['标准两步面板', '先列出字段，再在同一面板列出该字段的值。', 'key'],
+      ['底线命令栏', '字段列表贴近底线，适合页面标题栏的轻量搜索。', 'key'],
+      ['胶囊条件流', '搜索框和条件面板都使用圆角，强调连续输入。', 'value'],
+      ['全宽值选择', '选择 key 后，值选项横向占满搜索区域，选择更快。', 'value'],
+      ['双行编辑器', '搜索框增高，key:value 过程拥有更清晰的输入层次。', 'key'],
+      ['侧边引导线', '用左侧强调线标记字段搜索的当前步骤。', 'value'],
+      ['令牌编辑器', '已选 key:value 变为可识别令牌，继续输入下一个条件。', 'value'],
+      ['键值对照面板', '面板按两列展示 key 与 value，适合字段较多的页面。', 'key'],
+      ['右对齐命令框', '搜索框与右侧操作区对齐，面板向左展开。', 'value'],
+      ['密集键值菜单', '最小高度和间距，适合资源列表标题栏。', 'key']
+    ];
+    const fields = [{ key:'status', label:'状态', values:[['正常','active'],['已停用','disabled'],['未知','unknown']] }, { key:'level', label:'级别', values:[['平台级','platform'],['团队级','team'],['项目级','project']] }];
+    function keyPanel() { return `<div class="panel"><div class="panel-title">选择字段 <code>key:</code></div>${fields.map((f,i)=>`<button class="item ${i===0?'active':''}" data-key="${f.key}" type="button"><span>${f.label}</span><code>${f.key}:</code></button>`).join('')}<div class="hint">也可以直接输入 status:active</div></div>`; }
+    function valuePanel(key='status') { const field=fields.find(f=>f.key===key)||fields[0]; return `<div class="panel"><div class="panel-title"><strong>${field.label}</strong>　选择值或继续输入，回车提交</div><div class="value-row">${field.values.map((v,i)=>`<button class="value ${i===0?'active':''}" data-value="${v[1]}" type="button">${v[0]}</button>`).join('')}</div><div class="hint">搜索框当前内容：<code>${key}:</code></div></div>`; }
+    function search(i) { const token = i===6 ? '<span class="token"><em>level:</em>project</span>' : ''; const text = ['status:','status:','status:','status:','status:','status:active','level:project','level:','status:active','status:'][i]; return `<div class="search focus"><i>⌕</i>${token}<input value="${text}" aria-label="搜索资源" /><button class="filter ${i%3===0?'active':''}" type="button" aria-label="字段搜索">☷</button></div>`; }
+    function render() { document.getElementById('gallery').innerHTML = variants.map((v,i)=>{ const n=String(i+1).padStart(2,'0'); const panel=v[2]==='key'?keyPanel():valuePanel(); return `<article class="option scheme-${n}"><div class="option-head"><span class="number">方案 ${n}</span><h2>${v[0]}</h2><p>${v[1]}</p></div><div class="demo"><div class="demo-label"><span>资源搜索</span><b>${v[2]==='key'?'选择 key':'选择 value'}</b></div>${search(i)}${i===6?'<div class="token"><em>status:</em>active</div>':''}<div class="results"><div class="result"><span>订单服务 API</span><small><b>项目级</b> · 正常</small></div><div class="result"><span>基础设施集群</span><small><b>平台级</b> · 正常</small></div></div>${panel}</div></article>`; }).join(''); }
+    document.getElementById('gallery').addEventListener('click', event => {
+      const target = event.target;
+      const keyButton = target.closest('[data-key]');
+      const valueButton = target.closest('[data-value]');
+      const demo = target.closest('.demo');
+      if (!demo) return;
+      const input = demo.querySelector('.search input');
+      const panel = demo.querySelector('.panel');
+      if (keyButton) {
+        const key = keyButton.dataset.key;
+        input.value = `${input.value.replace(/\s*$/, '')}${input.value.trim() ? ' ' : ''}${key}:`;
+        panel.outerHTML = valuePanel(key);
+      } else if (valueButton) {
+        const value = valueButton.dataset.value;
+        input.value = input.value.replace(/([\w.-]+):[^\s]*$/, `$1:${value}`);
+        panel.querySelector('.hint').innerHTML = `已选择 <code>${input.value}</code>，按回车提交`;
+      }
+    });
+    document.getElementById('theme-toggle').addEventListener('click',()=>{ const dark=document.documentElement.dataset.theme==='dark'; document.documentElement.dataset.theme=dark?'light':'dark'; document.getElementById('theme-toggle').textContent=dark?'◐ 切换深色主题':'◐ 切换浅色主题'; });
+    render();
+  </script>
+</body>
+</html>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Tabs from '../../components/Tabs.svelte';
+  import FormActions from '../../components/FormActions.svelte';
   import {
     BookOpen,
     Check,
@@ -428,7 +430,7 @@
       <div class="skill-list-header">
         <label
           ><input type="checkbox" aria-label="选择全部技能" /><span
-            >名称 / KEY</span
+            >名称</span
           ></label
         ><span>分类</span><span>类型</span><span>来源</span><span>上次调用</span
         ><span>平均 TOKEN</span><span>风险</span><span>描述</span><span
@@ -546,21 +548,7 @@
               : selectedSkill.status}</span
           ><span>{selectedSkill.tags.length} 个标签</span>
         </div>
-        <nav class="skill-detail-tabs" aria-label="Skill 详情">
-          <button
-            class:active={detailTab === 'overview'}
-            on:click={() => (detailTab = 'overview')}>概览</button
-          ><button
-            class:active={detailTab === 'schema'}
-            on:click={() => (detailTab = 'schema')}>输入输出</button
-          ><button
-            class:active={detailTab === 'versions'}
-            on:click={() => (detailTab = 'versions')}>版本</button
-          ><button
-            class:active={detailTab === 'logs'}
-            on:click={() => (detailTab = 'logs')}>调用日志</button
-          >
-        </nav>
+        <Tabs className="skill-detail-tabs" ariaLabel="Skill 详情" value={detailTab} items={[{ value: 'overview', label: '概览' }, { value: 'schema', label: '输入输出' }, { value: 'versions', label: '版本' }, { value: 'logs', label: '调用日志' }]} onChange={(value) => (detailTab = value as typeof detailTab)} />
         <div class="skill-detail-scroll">
           {#if versionsLoading}<div class="skill-detail-loading">
               正在加载版本...
@@ -669,7 +657,7 @@
               >
             </section>{/if}
         </div>
-        <div class="skill-detail-footer">
+        <FormActions className="skill-detail-footer">
           <button
             class="secondary"
             type="button"
@@ -683,7 +671,7 @@
             >{/if}<button class="primary" type="button" on:click={startEdit}
             ><Edit3 size={14} />编辑 Skill</button
           >
-        </div>
+        </FormActions>
 
         {#if editing}<div class="skill-editor-overlay">
             <div class="skill-editor-heading">

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Dialog from '../../components/Dialog.svelte';
+  import FormActions from '../../components/FormActions.svelte';
   import { onMount } from 'svelte';
   import {
     ClipboardCheck,
@@ -16,6 +18,7 @@
   import IconPicker from '../../components/IconPicker.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import FormField from '../../components/FormField.svelte';
+  import StatusBadge from '../../components/StatusBadge.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
@@ -1297,10 +1300,10 @@
                   ><strong>{event.target_type || '—'}</strong><small
                     >{event.target_id || '—'}</small
                   ></span
-                ><span
-                  class="status-label {event.result === 'success'
-                    ? 'active'
-                    : 'disabled'}">{event.result || '—'}</span
+                ><StatusBadge
+                  className="status-label"
+                  tone={event.result === 'success' ? 'active' : 'disabled'}
+                  label={event.result || '—'} />
                 ><span
                   class="access-audit-details"
                   title={JSON.stringify(event.details ?? {})}
@@ -1363,14 +1366,7 @@
   </section>
 </section>
 {#if teamDialogOpen}
-  <div
-    class="dialog-backdrop"
-    role="presentation"
-    on:click={(event) => {
-      if (event.currentTarget === event.target) teamDialogOpen = false;
-    }}
-  >
-    <dialog open class="dialog" aria-labelledby="team-dialog-title">
+  <Dialog labelledBy="team-dialog-title" onBackdrop={() => (teamDialogOpen = false)}>
       <div class="dialog-heading team-dialog-heading">
         <div>
           <h2 id="team-dialog-title">新增团队</h2>
@@ -1410,21 +1406,10 @@
         </div>
         <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
       </form>
-    </dialog>
-  </div>
+  </Dialog>
 {/if}
 {#if userDialogOpen || editingUser}
-  <div
-    class="dialog-backdrop"
-    role="presentation"
-    on:click={(event) => {
-      if (event.currentTarget === event.target) {
-        userDialogOpen = false;
-        editingUser = null;
-      }
-    }}
-  >
-    <dialog open class="dialog wide-dialog" aria-labelledby="user-dialog-title">
+  <Dialog dialogClass="wide-dialog" labelledBy="user-dialog-title" onBackdrop={() => { userDialogOpen = false; editingUser = null; }}>
       <div class="dialog-heading team-dialog-heading">
         <div>
           <h2 id="user-dialog-title">
@@ -1753,18 +1738,10 @@
           {/each}
         </section>
       </form>
-    </dialog>
-  </div>
+  </Dialog>
 {/if}
 {#if editingTeam}
-  <div
-    class="dialog-backdrop"
-    role="presentation"
-    on:click={(event) => {
-      if (event.currentTarget === event.target) editingTeam = null;
-    }}
-  >
-    <dialog open class="dialog" aria-labelledby="edit-team-dialog-title">
+  <Dialog labelledBy="edit-team-dialog-title" onBackdrop={() => (editingTeam = null)}>
       <div class="dialog-heading team-dialog-heading">
         <div>
           <h2 id="edit-team-dialog-title">编辑团队</h2>
@@ -1809,16 +1786,10 @@
         <FormField label="描述"><TextArea bind:value={editTeamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
         <FormField label="状态"><DropdownSelect bind:value={editTeamStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '禁用' }]} ariaLabel="团队状态" /></FormField>
       </form>
-    </dialog>
-  </div>
+  </Dialog>
 {/if}
 {#if disableTarget}
-  <div class="dialog-backdrop" role="presentation">
-    <dialog
-      open
-      class="dialog confirm-dialog"
-      aria-labelledby="disable-dialog-title"
-    >
+  <Dialog dialogClass="confirm-dialog" labelledBy="disable-dialog-title" closeOnBackdrop={false}>
       <div class="dialog-heading">
         <div>
           <p class="eyebrow">CONFIRM ACTION</p>
@@ -1838,7 +1809,7 @@
           ? '团队将被禁用，其项目与历史数据会保留。禁用后团队不可继续用于新操作。'
           : '用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。'}
       </p>
-      <div class="form-actions">
+      <FormActions>
         <button
           class="secondary"
           type="button"
@@ -1850,7 +1821,6 @@
           disabled={busy}
           on:click={confirmDisable}>{busy ? '正在处理' : '确认删除'}</button
         >
-      </div>
-    </dialog>
-  </div>
+      </FormActions>
+  </Dialog>
 {/if}

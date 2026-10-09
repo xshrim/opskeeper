@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmptyState from '../../components/EmptyState.svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
   import TextInput from '../../components/TextInput.svelte';
@@ -214,9 +215,7 @@
                 )}>{policy.status === 'active' ? '停止' : '恢复'}</button
             >
           </div>
-        </article>{:else}<p class="empty-state">
-          当前作用域还没有巡检策略。
-        </p>{/each}
+        </article>{:else}<EmptyState className="empty-state">当前作用域还没有巡检策略。</EmptyState>{/each}
     </div>
   </section>
   <section class="panel">
@@ -235,7 +234,7 @@
               {new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}
             </p>
           </div>
-        </article>{:else}<p class="empty-state">尚无运行记录。</p>{/each}
+        </article>{:else}<EmptyState className="empty-state">尚无运行记录。</EmptyState>{/each}
     </div>
   </section>
   <section class="panel wide-panel">
@@ -252,7 +251,7 @@
             <strong>{finding.severity} · {finding.rule}</strong>
             <p>{finding.message || '无补充说明'} · {finding.status}</p>
           </div>
-        </article>{:else}<p class="empty-state">没有已记录的异常。</p>{/each}
+        </article>{:else}<EmptyState className="empty-state">没有已记录的异常。</EmptyState>{/each}
     </div>
   </section>
 </section>

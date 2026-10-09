@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Tabs from '../../components/Tabs.svelte';
+  import FormActions from '../../components/FormActions.svelte';
   import {
     AlertTriangle,
     ChevronRight,
@@ -556,22 +558,19 @@
       </div>{/if}
 
     <div class="notification-tab-bar">
-      <div class="notification-tabs" aria-label="通知管理区域" role="tablist">
-        {#each [['overview', '概览', ''], ['channels', '渠道', String(channels.length)], ['templates', '模板', String(templates.length)], ['rules', '规则', String(rules.length)], ['deliveries', '投递', String(deliveries.length)]] as tab}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab[0]}
-            class:active={activeTab === tab[0]}
-            on:click={() => {
-              activeTab = tab[0] as Tab;
-              search = '';
-            }}
-            >{tab[1]}
-            {#if tab[2]}<span>{tab[2]}</span>{/if}</button
-          >
-        {/each}
-      </div>
+      <Tabs
+        className="notification-tabs"
+        ariaLabel="通知管理区域"
+        value={activeTab}
+        items={[
+          { value: 'overview', label: '概览' },
+          { value: 'channels', label: '渠道', count: channels.length },
+          { value: 'templates', label: '模板', count: templates.length },
+          { value: 'rules', label: '规则', count: rules.length },
+          { value: 'deliveries', label: '投递', count: deliveries.length }
+        ]}
+        onChange={(next) => { activeTab = next as Tab; search = ''; }}
+      />
       <div class="notification-tab-actions">
         <button
           class="secondary notification-refresh"
@@ -752,7 +751,7 @@
               <Settings2 size={17} />
             </div>
             <NotificationChannelFields {providers} bind:channelName bind:channelKind bind:channelRateLimit bind:channelShare bind:channelConfig />
-            <div class="notification-form-actions">
+            <FormActions className="notification-form-actions">
               <small>凭据只返回脱敏状态。</small><button
                 class="primary compact"
                 type="submit"
@@ -761,7 +760,7 @@
                   ? '创建中…'
                   : '创建渠道'}</button
               >
-            </div>
+            </FormActions>
           </form>
 
           <section class="panel notification-panel">
@@ -888,14 +887,14 @@
             </div>
           </div>
           <NotificationChannelFields {providers} bind:channelName bind:channelKind bind:channelRateLimit bind:channelShare bind:channelConfig />
-          <div class="notification-form-actions">
+          <FormActions className="notification-form-actions">
             <small>HTTPS 与 Provider 字段由服务端校验。</small><button
               class="primary compact"
               type="submit"
               disabled={busyAction === 'channel-create' || !channelKind}
               ><Save size={13} />创建渠道</button
           >
-          </div>
+          </FormActions>
         </form>
       </div>
     {:else if activeTab === 'templates'}
@@ -1017,14 +1016,14 @@
             <FormField label="格式"><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><FormField label="共享范围"><DropdownSelect value={templateShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="模板共享范围" on:change={(event) => (templateShare = event.detail === 'shared')} /></FormField>
           </div>
           <FormField label="标题模板"><TextInput bind:value={templateTitle} placeholder="例如：严重级别与规则名称" ariaLabel="标题模板" /></FormField><FormField label="正文模板"><TextArea rows={5} bind:value={templateBody} /></FormField>
-          <div class="notification-form-actions">
+          <FormActions className="notification-form-actions">
             <small>草稿创建后可独立预览与发布。</small><button
               class="primary compact"
               type="submit"
               disabled={busyAction === 'template-create'}
               ><Plus size={13} />创建模板</button
             >
-          </div>
+          </FormActions>
         </form>
       </div>
     {:else if activeTab === 'rules'}
@@ -1087,14 +1086,14 @@
           <div class="notification-form-grid">
             <FormField label="状态"><DropdownSelect bind:value={ruleStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '停用' }]} ariaLabel="规则状态" /></FormField><FormField label="共享范围"><DropdownSelect value={ruleShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="规则共享范围" on:change={(event) => (ruleShare = event.detail === 'shared')} /></FormField>
           </div>
-          <div class="notification-form-actions">
+          <FormActions className="notification-form-actions">
             <small>无完整路由时会以停用状态保存。</small><button
               class="primary compact"
               type="submit"
               disabled={busyAction === 'rule-create'}
               ><Plus size={13} />创建规则</button
             >
-          </div>
+          </FormActions>
         </form>
         <section class="panel notification-panel notification-policy-panel">
           <div class="notification-panel-heading">

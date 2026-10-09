@@ -263,16 +263,8 @@
 .access-project-empty { color: var(--theme-fg-muted); font-size: 11px; }
 .access-member-section { min-width: 0; flex: 1; }
 .access-member-search { flex: 0 1 195px; width: min(100%, 195px); }
-.access-member-table { overflow: auto; }
-.access-member-table-head,
-.access-member-row { display: grid; grid-template-columns: 24px minmax(170px, 1.35fr) minmax(100px, .9fr) minmax(145px, 1.2fr) 65px 68px; align-items: center; gap: 10px; padding: 10px 16px; }
-.access-member-table-head { color: var(--theme-fg-muted); background: var(--theme-bg-subtle); border-top: 1px solid var(--theme-divider); border-bottom: 1px solid var(--theme-divider); font-size: 10px; font-weight: 700; }
-.access-member-row { min-height: 72px; border-bottom: 1px solid var(--theme-divider); }
-.access-member-row:last-child { border-bottom: 0; }
-.access-member-row:hover { background: var(--theme-bg-hover); }
-.access-member-row .access-row-actions { display: flex; justify-content: flex-end; gap: 1px; }
-.access-member-row .access-row-actions .icon-button { width: 26px; height: 26px; }
-@media (max-width: 1050px) { .access-scope-desk { grid-template-columns: 220px minmax(0, 1fr); } .access-member-table { overflow-x: auto; } .access-member-table-head, .access-member-row { min-width: 700px; } }
+.access-member-table { overflow: visible; }
+@media (max-width: 1050px) { .access-scope-desk { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 760px) { .access-scope-desk { grid-template-columns: 1fr; } .access-scope-tree { min-height: 0; } .access-user-desk { min-height: 560px; } .access-user-desk-head { height: auto; min-height: 60px; align-items: stretch; flex-direction: column; gap: 10px; } .access-member-search { flex-basis: auto; width: 100%; } .access-user-desk-actions { flex-wrap: wrap; justify-content: flex-start; } }
 .access-view-switcher {
   display: inline-flex;
@@ -1364,17 +1356,33 @@
 .access-member-table {
   overflow: visible;
 }
-.access-member-table-head,
-.access-member-row {
-  grid-template-columns:
-    24px minmax(120px, 0.6fr) minmax(175px, 0.75fr)
-    minmax(220px, 2.25fr) 65px 68px;
+.access-member-table .expandable-table {
+  min-width: 100%;
+  table-layout: fixed;
+}
+.access-member-table .expandable-table th,
+.access-member-table .expandable-table td {
+  padding: 10px 16px;
+}
+.access-member-table .expandable-table thead th {
+  height: 34px;
+}
+.access-member-table .expandable-table tbody > tr:not(.expandable-table-details-row) > td {
+  min-height: 72px;
+}
+.access-member-table .expandable-table-details-row > td {
+  padding: 0;
+}
+.access-member-table .readonly-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: 5px;
+}
+.access-member-table .readonly-table {
+  width: 100%;
 }
 .access-member-actions-heading {
   text-align: center;
-}
-.access-member-row .access-row-actions {
-  justify-content: center;
 }
 .access-user-contact {
   display: grid;
@@ -1400,28 +1408,6 @@
   align-items: flex-start;
   gap: 5px;
   min-width: 0;
-}
-.access-member-item {
-  min-width: 0;
-  border-bottom: 1px solid var(--theme-divider);
-}
-.access-member-item:last-child {
-  border-bottom: 0;
-}
-.access-member-row {
-  cursor: pointer;
-  list-style: none;
-  border-bottom: 0;
-}
-.access-member-row::-webkit-details-marker {
-  display: none;
-}
-.access-member-item:hover {
-  background: var(--theme-bg-hover);
-}
-.access-member-item[open] > .access-member-row {
-  background: var(--theme-bg-subtle);
-  border-bottom: 1px solid var(--theme-divider);
 }
 .access-user-details {
   display: grid;
@@ -1457,43 +1443,6 @@
   color: var(--theme-fg-muted);
   font-size: 11px;
 }
-.access-user-role-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--theme-border);
-  border-radius: 5px;
-}
-.access-user-role-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0 1px;
-  background: var(--theme-divider);
-  font-size: 11px;
-}
-.access-user-role-table th,
-.access-user-role-table td {
-  padding: 7px 12px;
-  text-align: left;
-}
-.access-user-role-table th {
-  height: 32px;
-  padding-top: 0;
-  padding-bottom: 0;
-  color: var(--theme-fg-muted);
-  background: var(--theme-bg-subtle);
-  font-size: 10px;
-  font-weight: 700;
-}
-.access-user-role-table td {
-  min-height: 46px;
-  color: var(--theme-fg);
-  background: var(--theme-bg-raised);
-  font-weight: 400;
-}
-.access-user-role-table td:first-child {
-  width: 80px;
-}
-.access-user-role-table td:nth-child(3),
-.access-user-role-table td:nth-child(4) { white-space: nowrap; }
 .access-user-permissions .permission-overflow {
   display: inline-flex;
   align-items: center;
@@ -1609,11 +1558,7 @@
 }
 @media (max-width: 1050px) {
   .access-member-table {
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-  .access-member-item {
-    min-width: 700px;
+    overflow: visible;
   }
 }
 @media (max-width: 760px) {

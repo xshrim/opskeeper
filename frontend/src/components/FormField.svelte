@@ -31,4 +31,9 @@
     line-height: 1.35;
   }
   .form-field-error { color: var(--theme-danger); }
+  .form-field.invalid :global(.textarea-wrap textarea),
+  .form-field.invalid :global(.password-control input) {
+    border-color: var(--theme-danger);
+    box-shadow: 0 0 0 1px var(--theme-danger);
+  }
 </style>

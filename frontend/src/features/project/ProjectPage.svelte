@@ -24,6 +24,7 @@
     type Team
   } from '../../lib/api';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+  import StatusBadge from '../../components/StatusBadge.svelte';
   import FormField from '../../components/FormField.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
@@ -383,9 +384,10 @@
                         ><span
                           class="project-card-health-summary"
                           data-tooltip={projectHealthSummary(project)}
-                          ><span
-                            class="status-label {projectHealthTone(project)}"
-                            >{projectStatus(project)}</span
+                          ><StatusBadge
+                            className="status-label"
+                            tone={projectHealthTone(project)}
+                            label={projectStatus(project)} />
                           ><span
                             class="project-health-separator"
                             aria-hidden="true">·</span
@@ -497,9 +499,10 @@
                   ></button
                 >
                 <div class="application-card-meta">
-                  <span>{app.instances.length} 实例</span><span
-                    class="status-label {app.status}"
-                    >{statusLabel(app.status)}</span
+                  <span>{app.instances.length} 实例</span><StatusBadge
+                    className="status-label"
+                    tone={app.status}
+                    label={statusLabel(app.status)} />
                   ><button
                     class="icon-button"
                     type="button"
@@ -558,9 +561,7 @@
                             >{instance.target_resource_name ||
                               instance.target_resource_id}</small
                           ></span
-                        ><span class="status-label {instance.status}"
-                          >{statusLabel(instance.status)}</span
-                        >
+                        ><StatusBadge className="status-label" tone={instance.status} label={statusLabel(instance.status)} />
                       </div>{:else}<div class="detail-empty">
                         <AlertTriangle size={14} />未绑定运行资源
                       </div>{/each}
@@ -598,9 +599,7 @@
                 ><strong>{resource.name}</strong><small
                   >{resource.role || '运行资源'}</small
                 ></span
-              ><span class="status-label {resource.status}"
-                >{statusLabel(resource.status)}</span
-              >
+              ><StatusBadge className="status-label" tone={resource.status} label={statusLabel(resource.status)} />
             </div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}
         </section>
         <section class="panel topology-panel">

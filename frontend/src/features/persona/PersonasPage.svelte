@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Tabs from '../../components/Tabs.svelte';
+  import FormActions from '../../components/FormActions.svelte';
   import {
     Bot,
     Check,
@@ -415,18 +417,7 @@
           >{profileEngine(selectedProfile)}</span
         >
       </div>
-      <nav class="persona-detail-tabs">
-        <button
-          class:active={detailTab === 'overview'}
-          on:click={() => (detailTab = 'overview')}>概览</button
-        ><button
-          class:active={detailTab === 'contract'}
-          on:click={() => (detailTab = 'contract')}>配置契约</button
-        ><button
-          class:active={detailTab === 'versions'}
-          on:click={() => (detailTab = 'versions')}>版本历史</button
-        >
-      </nav>
+      <Tabs className="persona-detail-tabs" value={detailTab} ariaLabel="Persona 详情" items={[{ value: 'overview', label: '概览' }, { value: 'contract', label: '配置契约' }, { value: 'versions', label: '版本历史' }]} onChange={(value) => (detailTab = value as typeof detailTab)} />
       <div class="persona-detail-scroll">
         {#if loading}<div class="persona-detail-empty">
             正在加载版本...
@@ -503,7 +494,7 @@
             </div>
           </section>{/if}
       </div>
-      <div class="persona-detail-footer">
+      <FormActions className="persona-detail-footer">
         <button
           class="secondary"
           type="button"
@@ -515,7 +506,7 @@
         ><button class="primary" type="button" on:click={startEdit}
           ><Edit3 size={14} />编辑</button
         >
-      </div>
+      </FormActions>
       {#if editorOpen}<div class="persona-editor-overlay">
           <div class="persona-editor-heading">
             <div>

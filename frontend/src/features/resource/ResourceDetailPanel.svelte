@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmptyState from '../../components/EmptyState.svelte';
   import McpConnectionFields from './McpConnectionFields.svelte';
   import ResourceBasicEditFields from './ResourceBasicEditFields.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
@@ -94,6 +95,6 @@
   </section>
 {:else}
   <section class="panel empty-detail">
-    <div class="empty-state"><span class="empty-icon">◇</span><h2>选择一个资源</h2><p>从左侧目录选择资源查看作用域、配置和关系。</p></div>
+    <EmptyState className="empty-state" title="选择一个资源" description="从左侧目录选择资源查看作用域、配置和关系。"><span slot="icon" class="empty-icon">◇</span></EmptyState>
   </section>
 {/if}
