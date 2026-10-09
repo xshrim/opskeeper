@@ -164,12 +164,12 @@ func (h authHandler) sessionContext(writer http.ResponseWriter, request *http.Re
 	}
 	isPlatformAdmin, err := h.platformAdmin.IsPlatformAdmin(request.Context(), user.ID)
 	if err != nil {
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to load session context")
+		writeInternalError(writer, request, "platform administrator lookup", err)
 		return
 	}
 	hasPlatformRole, err := h.platformAdmin.HasPlatformRole(request.Context(), user.ID)
 	if err != nil {
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to load session context")
+		writeInternalError(writer, request, "platform role lookup", err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, sessionContextResponse{PlatformAdmin: isPlatformAdmin, PlatformRole: hasPlatformRole})
@@ -467,6 +467,6 @@ func writeIdentityError(writer http.ResponseWriter, request *http.Request, err e
 	case errors.Is(err, identity.ErrInvalidSession):
 		writeError(writer, request, http.StatusUnauthorized, "invalid_session", "Session is invalid or expired")
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(writer, request, "authentication operation", err)
 	}
 }

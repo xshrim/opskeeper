@@ -545,6 +545,6 @@ func writeInspectionError(w http.ResponseWriter, r *http.Request, err error) {
 	case inspection.IsInvalid(err):
 		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 	default:
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(w, r, "inspection operation", err)
 	}
 }

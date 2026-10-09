@@ -365,14 +365,14 @@ func TestLoginMapsInvalidCredentials(t *testing.T) {
 	}
 }
 
-func TestLoginMapsInternalErrorWithoutDetails(t *testing.T) {
+func TestLoginMapsInternalErrorWithSafeDetails(t *testing.T) {
 	service := &stubIdentityService{loginError: errors.New("database password leaked here")}
 	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/login", strings.NewReader(`{"email":"admin@example.com","password":"secret"}`))
 	response := httptest.NewRecorder()
 
 	newAuthTestRouter(service, false).ServeHTTP(response, request)
 
-	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "database password") {
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "authentication operation failed") || strings.Contains(response.Body.String(), "database password") {
 		t.Fatalf("login response = %d %s", response.Code, response.Body.String())
 	}
 }

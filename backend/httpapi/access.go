@@ -617,6 +617,6 @@ func writeAccessError(writer http.ResponseWriter, request *http.Request, err err
 			writeError(writer, request, http.StatusBadRequest, "invalid_request", validationError.Message)
 			return
 		}
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(writer, request, "access operation", err)
 	}
 }

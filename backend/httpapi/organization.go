@@ -82,7 +82,7 @@ func registerOrganizationRoutes(router chi.Router, service organizationService, 
 			}
 			allowed, err := platformAdmins[0].IsPlatformAdmin(request.Context(), user.ID)
 			if err != nil {
-				writeError(writer, request, http.StatusInternalServerError, "internal_error", "Unable to verify platform administrator permission")
+				writeInternalError(writer, request, "platform administrator permission check", err)
 				return
 			}
 			if !allowed {
@@ -305,6 +305,6 @@ func writeOrganizationError(writer http.ResponseWriter, request *http.Request, e
 	case errors.Is(err, organization.ErrParentInactive):
 		writeError(writer, request, http.StatusConflict, "parent_inactive", "Parent organization is inactive")
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(writer, request, "organization operation", err)
 	}
 }

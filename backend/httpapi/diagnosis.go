@@ -283,7 +283,7 @@ func writeDiagnosisError(w http.ResponseWriter, r *http.Request, err error) {
 			writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		writeError(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(w, r, "diagnosis operation", err)
 	}
 }
 

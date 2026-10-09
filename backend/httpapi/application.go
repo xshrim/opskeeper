@@ -150,5 +150,5 @@ func writeApplicationError(w http.ResponseWriter, r *http.Request, e error) {
 		writeError(w, r, http.StatusNotFound, "not_found", e.Error())
 		return
 	}
-	writeError(w, r, http.StatusInternalServerError, "internal_error", "Internal server error")
+	writeInternalError(w, r, "application operation", e)
 }

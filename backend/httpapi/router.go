@@ -54,6 +54,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 	basePath := options.BasePath
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
+	router.Use(requestLoggerContext(logger))
 	router.Use(trustedProxyClientIP(options.TrustedProxies))
 	router.Use(recoverer(logger))
 	router.Use(securityHeaders(options.Production))

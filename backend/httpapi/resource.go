@@ -352,6 +352,6 @@ func writeResourceError(writer http.ResponseWriter, request *http.Request, err e
 	case errors.Is(err, resource.ErrRelationCycle):
 		writeError(writer, request, http.StatusConflict, "relation_cycle", "Resource relation would create a cycle")
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(writer, request, "resource operation", err)
 	}
 }

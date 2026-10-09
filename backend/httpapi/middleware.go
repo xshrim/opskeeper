@@ -21,6 +21,8 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status      int
 	wroteHeader bool
+	errorCode   string
+	errorReason string
 }
 
 func trustedProxyClientIP(trustedProxies []netip.Prefix) func(http.Handler) http.Handler {
@@ -129,14 +131,30 @@ func requestLogger(logger *slog.Logger, basePath string, ignoreHealthLogs bool) 
 			if ignoreHealthLogs && isHealthCheckRequest(request, basePath) {
 				return
 			}
-			logger.Info("http request", "kind", "http-request",
+			level := slog.LevelInfo
+			if recorder.status >= http.StatusInternalServerError {
+				level = slog.LevelError
+			} else if recorder.status >= http.StatusBadRequest {
+				level = slog.LevelWarn
+			}
+			logger.Log(request.Context(), level, "http request", "kind", "http-request",
 				"reqid", middleware.GetReqID(request.Context()),
 				"method", request.Method,
 				"path", request.URL.Path,
 				"clientip", requestClientIP(request),
 				"status", recorder.status,
 				"duration", time.Since(started).Round(time.Millisecond),
+				"error_code", recorder.errorCode,
+				"error_summary", recorder.errorReason,
 			)
+		})
+	}
+}
+
+func requestLoggerContext(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			next.ServeHTTP(writer, request.WithContext(withRequestLogger(request.Context(), logger)))
 		})
 	}
 }
@@ -160,7 +178,7 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 						"panic", recovered,
 						"stack", string(debug.Stack()),
 					)
-					writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+					writeError(writer, request, http.StatusInternalServerError, "internal_error", "request handling failed due to an unexpected server panic; see request_id in the server log")
 				}
 			}()
 			next.ServeHTTP(writer, request)

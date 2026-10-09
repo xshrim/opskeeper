@@ -443,6 +443,10 @@ func writeAIError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, context.DeadlineExceeded):
 		writeError(w, r, http.StatusGatewayTimeout, "timeout", "AI execution timed out")
 	default:
-		writeError(w, r, http.StatusBadGateway, "ai_runtime_error", "AI runtime request failed")
+		message := safeAIConnectionError(err)
+		if message == "" {
+			message = "AI runtime request failed"
+		}
+		writeError(w, r, http.StatusBadGateway, "ai_runtime_error", message)
 	}
 }

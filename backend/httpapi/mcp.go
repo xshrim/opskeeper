@@ -118,6 +118,12 @@ func writeMCPError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, mcp.ErrInvalid):
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "Invalid MCP server configuration")
 	default:
-		writeError(w, r, http.StatusBadGateway, "mcp_unavailable", "MCP server is unavailable")
+		message := publicErrorMessage(err.Error())
+		if message == "" {
+			message = "MCP server is unavailable"
+		} else {
+			message = "MCP server request failed: " + message
+		}
+		writeError(w, r, http.StatusBadGateway, "mcp_unavailable", message)
 	}
 }

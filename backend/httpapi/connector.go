@@ -226,7 +226,7 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 			}
 			check, err := draft.TestKafkaDraft(r.Context(), body)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeConnectorError(w, r, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, check)
@@ -320,6 +320,6 @@ func writeConnectorError(writer http.ResponseWriter, request *http.Request, err 
 	case errors.Is(err, connector.ErrUnsupported):
 		writeError(writer, request, http.StatusBadRequest, "unsupported", err.Error())
 	default:
-		writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+		writeInternalError(writer, request, "connector operation", err)
 	}
 }

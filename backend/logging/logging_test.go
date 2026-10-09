@@ -3,6 +3,7 @@ package logging
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,19 @@ func TestNewJSONLogger(t *testing.T) {
 	}
 	if record["msg"] != "started" || record["service"] != "opskeeper-api" {
 		t.Fatalf("JSON log record = %#v", record)
+	}
+}
+
+func TestErrorAttributesKeepRedactedCause(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := New(&output, FormatText)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	logger.Error("request failed", "kind", "error", "error_type", "database", "error", errors.New("password=super-secret postgres://db-user:db-secret@db.internal/opskeeper connection refused"))
+	line := output.String()
+	if !strings.Contains(line, "connection refused") || strings.Contains(line, "super-secret") || strings.Contains(line, "db-secret") {
+		t.Fatalf("redacted error log = %q", line)
 	}
 }
 

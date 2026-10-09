@@ -28,7 +28,7 @@ func (h authorizationHandler) requirePermission(permission authorization.Permiss
 			if resourceScopedPermission(permission) {
 				filter, err := h.service.ResourceFilter(request.Context(), authorization.Subject{UserID: user.ID}, permission)
 				if err != nil {
-					writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+					writeInternalError(writer, request, "resource permission lookup", err)
 					return
 				}
 				if len(filter.ScopeIDs) == 0 && len(filter.ResourceIDs) == 0 {
@@ -41,7 +41,7 @@ func (h authorizationHandler) requirePermission(permission authorization.Permiss
 			}
 			filter, err := h.service.ScopeFilter(request.Context(), authorization.Subject{UserID: user.ID}, permission)
 			if err != nil {
-				writeError(writer, request, http.StatusInternalServerError, "internal_error", "Internal server error")
+				writeInternalError(writer, request, "scope permission lookup", err)
 				return
 			}
 			if len(filter.ScopeIDs) == 0 {

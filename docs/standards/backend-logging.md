@@ -57,6 +57,14 @@ reqid clientip method path status duration
 
 其中 `clientip` 按可信代理规则解析；`path` 不包含敏感查询参数；`status` 为 HTTP 状态码；`duration` 使用可读的耗时值，例如 `12ms`。
 
+当响应为错误状态时，消息末尾追加：
+
+```text
+error_code=<稳定错误码> error_summary=<已脱敏的响应原因>
+```
+
+这两个字段与错误响应中的 `error.code`、`error.message` 一致，便于仅查看请求日志时定位问题。
+
 ### 3.2 其他类别
 
 `service-start`、`job`、`audit`、`error` 等类别应优先使用稳定、低基数的标识和结果。例如：
@@ -69,6 +77,24 @@ error database timeout
 ```
 
 不得把任意 JSON、完整 SQL、请求正文或第三方响应直接拼入 `msg`。
+
+### 3.3 `error`
+
+每个接口错误响应都会产生一条 `error` 日志。其消息至少包含：
+
+```text
+request failed reqid=<request-id> status=<http-status> error_type=<error-code> error_summary=<脱敏原因>
+```
+
+接口响应和两条日志通过同一个 `request_id`/`reqid` 关联。未知服务端错误不得再只记录或返回无上下文的 `internal_error`：响应消息应包含失败操作和安全的具体原因；日志额外保留底层错误摘要用于排障。密码、令牌、连接串等敏感值在响应和日志中都必须替换为 `<redacted>`。
+
+HTTP 错误响应统一使用以下结构：
+
+```json
+{"error":{"code":"internal_error","message":"resource lookup failed: connection refused","request_id":"<request-id>"}}
+```
+
+`code` 用于程序分支，`message` 用于用户和前端提示，`request_id` 用于关联日志。认证失败等安全敏感场景可以使用固定文案，避免暴露账号是否存在或凭据校验细节。
 
 ## 4. 输出格式
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -153,11 +154,11 @@ func (h *handler) collect(attr slog.Attr, prefix string, fields map[string]strin
 	}
 	value := sanitize(valueString(attr.Value))
 	if key == "error" {
-		// Error values may contain credentials, SQL, or untrusted upstream text.
-		// Callers should provide a low-cardinality error_type instead.
+		// Keep the cause searchable while removing control characters and secrets.
+		*extras = append(*extras, "error_summary="+sanitizeError(value))
 		return
 	}
-	if key == "service" || key == "kind" || key == "reqid" || key == "clientip" || key == "method" || key == "path" || key == "status" || key == "duration" {
+	if key == "service" || key == "kind" || key == "reqid" || key == "clientip" || key == "method" || key == "path" || key == "status" || key == "duration" || key == "error_code" || key == "error_summary" {
 		fields[key] = value
 		return
 	}
@@ -204,18 +205,37 @@ func marshalJSON(item entry) (string, error) {
 
 func formatMessage(kind, message string, fields map[string]string, extras []string) string {
 	if kind == "http-request" {
-		return strings.Join([]string{
+		parts := []string{
 			valueOrDash(fields, "reqid"),
 			valueOrDash(fields, "clientip"),
 			valueOrDash(fields, "method"),
 			valueOrDash(fields, "path"),
 			valueOrDash(fields, "status"),
 			valueOrDash(fields, "duration"),
-		}, " ")
+		}
+		if fields["error_code"] != "" {
+			parts = append(parts, "error_code="+fields["error_code"])
+		}
+		if fields["error_summary"] != "" {
+			parts = append(parts, "error_summary="+sanitizeError(fields["error_summary"]))
+		}
+		return strings.Join(parts, " ")
 	}
 	parts := make([]string, 0, 1+len(extras))
 	if message = sanitize(message); message != "" {
 		parts = append(parts, message)
+	}
+	if fields["reqid"] != "" {
+		parts = append(parts, "reqid="+fields["reqid"])
+	}
+	if fields["status"] != "" {
+		parts = append(parts, "status="+fields["status"])
+	}
+	if fields["error_code"] != "" {
+		parts = append(parts, "error_code="+fields["error_code"])
+	}
+	if fields["error_summary"] != "" {
+		parts = append(parts, "error_summary="+sanitizeError(fields["error_summary"]))
 	}
 	parts = append(parts, extras...)
 	if len(parts) == 0 {
@@ -299,6 +319,13 @@ func sanitize(value string) string {
 		return character
 	}, value)
 }
+
+func sanitizeError(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	return strings.TrimSpace(sensitivePattern.ReplaceAllString(value, "<redacted>"))
+}
+
+var sensitivePattern = regexp.MustCompile(`(?i)(?:postgres(?:ql)?|mysql|redis|rediss|amqp|kafka)://[^\s,;\)\]}]+|https?://[^/@\s]+:[^/@\s]+@[^\s,;\)\]}]+|(authorization|api[- ]?key|token|secret|password|bearer|dsn|connection string)(\s*(?:[:=]|\s)\s*)[^\s,;\)\]}]+`)
 
 func sanitizeHeader(value string) string {
 	return strings.Join(strings.Fields(sanitize(value)), "_")
