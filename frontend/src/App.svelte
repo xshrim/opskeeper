@@ -42,6 +42,7 @@
   } from './features/access/accessUtils';
   import { formatDate } from './lib/format';
   import MessageBanner from './components/MessageBanner.svelte';
+  import OpsKeeperLogo from './components/OpsKeeperLogo.svelte';
   import DiagnosisPage from './features/diagnosis/DiagnosisPage.svelte';
   import LLMPage from './features/llm/LLMPage.svelte';
   import PersonasPage from './features/persona/PersonasPage.svelte';
@@ -645,7 +646,7 @@
       on:mouseleave={() => (sidebarHovered = false)}
     >
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">O</span><span
+        <OpsKeeperLogo size={30} /><span
           class="brand-copy">OpsKeeper<small>智能值守平台</small></span
         >
       </div>

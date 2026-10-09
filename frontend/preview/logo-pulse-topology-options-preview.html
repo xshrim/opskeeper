@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpsKeeper Logo Concepts - Bold Natural Marks</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #edf3f2;
+      --surface: #ffffff;
+      --surface-soft: #f5f8f7;
+      --ink: #1a292d;
+      --muted: #687a7d;
+      --line: #d7e2e0;
+      --line-strong: #b9cbc8;
+      --logo: #2f9688;
+      --logo-soft: #dcefeb;
+      --dark-surface: #172627;
+      --dark-ink: #ecf5f1;
+      --favicon-ink: #1b3162;
+      --favicon-accent: #e77b50;
+      --favicon-soft: #f8d8c3;
+      --shadow: 0 12px 28px rgba(31, 57, 58, .1);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #101c1d;
+      --surface: #192a2b;
+      --surface-soft: #203335;
+      --ink: #e7f1ee;
+      --muted: #afc2bf;
+      --line: #30494a;
+      --line-strong: #4a6565;
+      --logo: #79d3c1;
+      --logo-soft: #2b514c;
+      --dark-surface: #142021;
+      --dark-ink: #ecf5f1;
+      --shadow: 0 16px 34px rgba(0, 0, 0, .28);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--page); font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button { font: inherit; cursor: pointer; }
+    .shell { width: min(1380px, calc(100% - 36px)); margin: auto; padding: 30px 0 56px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; margin-bottom: 17px; }
+    .eyebrow { margin: 0 0 7px; color: var(--logo); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+    h1 { margin: 0; max-width: 850px; font-size: clamp(25px, 3vw, 38px); line-height: 1.16; }
+    .lead { max-width: 920px; margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+    .theme-toggle { flex: none; min-height: 34px; padding: 0 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; }
+    .note { margin-bottom: 18px; padding: 13px 15px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--logo); border-radius: 6px; font-size: 11px; }
+    .note strong { color: var(--ink); font-size: 12px; }
+    .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+    .option { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; box-shadow: var(--shadow); transition: border-color 140ms ease, transform 140ms ease; }
+    .option:hover, .option[data-copied="true"] { border-color: var(--logo); transform: translateY(-1px); }
+    .option-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 14px 16px 11px; border-bottom: 1px solid var(--line); }
+    .number { color: var(--logo); font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+    h2 { margin: 0; font-size: 15px; line-height: 1.25; }
+    .option-head p { grid-column: 2 / -1; margin: -5px 0 0; color: var(--muted); font-size: 11px; }
+    .tag { padding: 2px 6px; color: var(--muted); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; font-size: 9px; white-space: nowrap; }
+    .preview { display: grid; grid-template-columns: minmax(0, 1fr) 94px; gap: 13px; padding: 14px 16px 16px; }
+    .theme-previews { display: grid; gap: 8px; min-width: 0; }
+    .theme-row { display: grid; grid-template-columns: 65px minmax(0, 1fr); min-height: 63px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; }
+    .theme-label { display: grid; align-content: center; gap: 2px; padding: 0 8px; color: var(--muted); background: var(--surface-soft); font-size: 9px; }
+    .theme-label b { color: var(--ink); font-size: 10px; font-weight: 650; }
+    .brand-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 12px; }
+    .brand-bar.light { color: #19282b; background: #fbfcfc; }
+    .brand-bar.dark { color: var(--dark-ink); background: var(--dark-surface); }
+    .brand-bar svg { flex: none; width: 31px; height: 31px; }
+    .brand-word { min-width: 0; }
+    .brand-word strong { display: block; font-size: 13px; line-height: 1.05; letter-spacing: .01em; }
+    .brand-word small { display: block; margin-top: 3px; color: #708083; font-size: 8px; letter-spacing: .02em; }
+    .brand-bar.dark .brand-word small { color: #a9c0bb; }
+    .favicon-panel { display: grid; align-content: center; justify-items: center; gap: 6px; min-width: 0; padding: 9px 7px; background: var(--surface-soft); border-left: 1px solid var(--line); }
+    .favicon-tile { display: grid; place-items: center; width: 55px; height: 55px; background: #f4eee7; border: 1px solid #e4d4c5; border-radius: 13px; box-shadow: 0 7px 16px rgba(42, 38, 47, .12); }
+    .favicon-tile svg { width: 39px; height: 39px; }
+    .favicon-caption { color: var(--muted); font-size: 9px; text-align: center; }
+    .semantic { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+    .semantic span { min-height: 18px; padding: 1px 5px; color: var(--logo); background: var(--logo-soft); border-radius: 3px; font-size: 9px; }
+    svg { display: block; overflow: visible; }
+    svg .main { fill: none; stroke: var(--logo); }
+    svg .fill { fill: var(--logo); }
+    svg .soft { fill: var(--logo-soft); stroke: var(--logo); }
+    svg .accent { fill: none; stroke: var(--logo); }
+    svg.logo-dark .main { stroke: var(--logo); }
+    svg.logo-dark .fill { fill: var(--logo); }
+    svg.logo-dark .soft { fill: var(--logo-soft); stroke: var(--logo); }
+    svg.logo-dark .accent { stroke: var(--logo); }
+    svg.logo-favicon .main { stroke: var(--favicon-ink); }
+    svg.logo-favicon .fill { fill: var(--favicon-accent); }
+    svg.logo-favicon .soft { fill: var(--favicon-soft); stroke: var(--favicon-ink); }
+    svg.logo-favicon .accent { stroke: var(--favicon-accent); }
+    .footer { margin-top: 19px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 850px) { .gallery { grid-template-columns: 1fr; } }
+    @media (max-width: 580px) { .shell { width: calc(100% - 24px); padding-top: 19px; } .topbar { display: block; } .theme-toggle { margin-top: 13px; } .preview { grid-template-columns: minmax(0, 1fr) 77px; gap: 8px; padding: 11px; } .theme-row { grid-template-columns: 57px minmax(0, 1fr); } .option-head { grid-template-columns: auto minmax(0, 1fr); } .tag { grid-column: 2; justify-self: start; } .option-head p { grid-column: 1 / -1; margin-top: 0; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OpsKeeper · NEW LOGO EXPLORATION</p>
+        <h1>十种大胆、自然、粗线条的智能值守 Logo</h1>
+        <p class="lead">这是一轮完全重新设计。构图不再直接复刻脉冲和拓扑环，而是从观察、判断、连接和守护中提取更简洁的符号，让“智能、诊断、守护”自然藏在轮廓和负形里。</p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button">◐ 切换深色主题</button>
+    </header>
+    <div class="note"><strong>设计原则</strong>　每个方案只保留一到两个核心动作，使用粗线、圆角和清晰负形；浅色/深色 Logo 使用对应主题主色，favicon 固定采用独立靛蓝 + 珊瑚色。点击卡片可复制方案名称。</div>
+    <section class="gallery" id="gallery"></section>
+    <p class="footer">静态预览，不修改现有页面、BrandIcon 或 favicon 实现。确定方向后，再将选定方案提取为正式 Logo 资源。</p>
+  </main>
+  <script>
+    const designs = [
+      ['信号日环', '断环 + 一笔跃迁', '断开的圆环像开放的观察边界，一笔跃迁代表系统从信号中给出判断。', ['智能', '诊断']],
+      ['三点引力', '三节点 + 柔性轨道', '三个节点被同一条柔性轨道牵引，隐含资源连接、智能中枢和持续守护。', ['连接', '智能', '守护']],
+      ['守望盾', '盾形负形 + 心跳缺口', '粗盾轮廓提供守护感，中央缺口像诊断信号，也保留向前的动作。', ['守护', '诊断']],
+      ['思考汇流', '三道弧线 + 中央菱核', '三道不同方向的弧线汇入中心，表现多源信息被智能收束成结论。', ['智能', '汇聚']],
+      ['诊断视窗', '眼形轮廓 + 目标点', '不画完整的眼睛，只用一笔视窗和中心目标点表达持续观察与定位。', ['观察', '诊断']],
+      ['值守灯标', '灯标 + 稳定底座', '上方是主动感知的灯标，下方是稳固托座，传达发现异常并守住系统。', ['感知', '守护']],
+      ['连接扣', '三段扣环 + 连续路径', '三段粗路径彼此扣合，像不同系统被可靠地接入同一个值守体系。', ['连接', '可靠']],
+      ['脉冲结', '横向无穷结 + 中心节点', '一笔成结，中心节点将循环运行、诊断反馈和守护闭环压缩成一个符号。', ['反馈', '闭环']],
+      ['定向星', '四向星标 + 开口轨道', '四向星标代表定位和决策，开口轨道代表随时接入新的资源与信号。', ['定位', '智能']],
+      ['Keeper 骨架', 'O/K 负形 + 保护弧', '用 O 的包裹和 K 的前进骨架保留品牌识别度，保护弧暗示值守边界。', ['品牌', '守护']]
+    ];
+
+    function svg(id, mode) {
+      const modeClass = mode === 'favicon' ? 'logo-favicon' : mode === 'dark' ? 'logo-dark' : 'logo-light';
+      const common = `class="${modeClass}" viewBox="0 0 48 48" role="img" aria-label="${designs[id][0]}"`;
+      const thick = 'stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"';
+      switch (id) {
+        case 0: return `<svg ${common}><path class="main" d="M39 16a17 17 0 1 0 2 13" ${thick}/><path class="main" d="M8 26h7l3-10 5 17 4-13 3 6h9" ${thick}/><circle class="fill" cx="24" cy="24" r="3.3"/></svg>`;
+        case 1: return `<svg ${common}><path class="main" d="M11 31c-4-8 1-18 10-21 9-3 18 2 19 10 1 7-4 14-11 16" ${thick}/><path class="main" d="M12 17c4 8 13 13 24 13" ${thick}/><circle class="fill" cx="12" cy="31" r="3.3"/><circle class="fill" cx="20" cy="10" r="3.3"/><circle class="fill" cx="36" cy="30" r="3.3"/><circle class="soft" cx="25" cy="24" r="4.8" stroke-width="2.4"/></svg>`;
+        case 2: return `<svg ${common}><path class="main" d="M24 6l15 7v10c0 9-6 15-15 19C15 38 9 32 9 23V13l15-7z" ${thick}/><path class="main" d="M13 25h7l3-9 5 16 3-7h4" ${thick}/><circle class="fill" cx="24" cy="6" r="2.8"/></svg>`;
+        case 3: return `<svg ${common}><path class="main" d="M10 15c8-8 17-8 27-1M8 25c9-6 18-5 31 3M12 35c7-3 14-2 22 3" ${thick}/><path class="soft" d="M24 17l7 7-7 7-7-7 7-7z" stroke-width="2.6"/><circle class="fill" cx="24" cy="24" r="2.8"/></svg>`;
+        case 4: return `<svg ${common}><path class="main" d="M6 24c6-10 13-14 18-14s12 4 18 14c-6 10-13 14-18 14S12 34 6 24z" ${thick}/><path class="main" d="M12 24h7l3-7 4 14 3-7h7" ${thick}/><circle class="fill" cx="24" cy="24" r="3.2"/></svg>`;
+        case 5: return `<svg ${common}><path class="main" d="M24 7v17M18 24h12M15 31h18M10 38h28" ${thick}/><path class="soft" d="M17 24h14l-7-13-7 13z" stroke-width="2.5"/><path class="main" d="M13 38c2-4 5-6 11-6s9 2 11 6" ${thick}/><circle class="fill" cx="24" cy="7" r="3"/></svg>`;
+        case 6: return `<svg ${common}><path class="main" d="M14 11h8a7 7 0 0 1 0 14h-8a7 7 0 0 0 0 14h8" ${thick}/><path class="main" d="M34 11h-8a7 7 0 0 0 0 14h8a7 7 0 0 1 0 14h-8" ${thick}/><circle class="fill" cx="14" cy="18" r="2.8"/><circle class="fill" cx="34" cy="30" r="2.8"/></svg>`;
+        case 7: return `<svg ${common}><path class="main" d="M8 24c0-8 11-11 16-3s16 5 16-3M8 24c0 8 11 11 16 3s16-5 16 3" ${thick}/><circle class="soft" cx="24" cy="24" r="5.3" stroke-width="2.5"/><circle class="fill" cx="24" cy="24" r="2.6"/></svg>`;
+        case 8: return `<svg ${common}><path class="main" d="M24 7v34M7 24h34M12 12l24 24M36 12L12 36" stroke-width="3.3"/><path class="main" d="M24 8a16 16 0 1 1-11 4" ${thick}/><path class="soft" d="M24 14l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7z" stroke-width="2.2"/><circle class="fill" cx="24" cy="24" r="2.8"/></svg>`;
+        case 9: return `<svg ${common}><path class="main" d="M24 7a17 17 0 1 0 12 5" ${thick}/><path class="main" d="M18 14v20M18 24l14-10M18 24l15 10" ${thick}/><path class="accent" d="M34 12v10" stroke-width="4.2"/><circle class="fill" cx="18" cy="24" r="3.2"/></svg>`;
+      }
+    }
+
+    function render() {
+      document.getElementById('gallery').innerHTML = designs.map((design, id) => `
+        <article class="option" data-design="${id}" tabindex="0" title="点击复制方案名称">
+          <header class="option-head"><span class="number">方案 ${String(id + 1).padStart(2, '0')}</span><h2>${design[0]}</h2><span class="tag">${design[1]}</span><p>${design[2]}</p></header>
+          <div class="preview">
+            <div class="theme-previews">
+              <div class="theme-row"><div class="theme-label"><b>浅色</b><span>浅色主色</span></div><div class="brand-bar light">${svg(id, 'light')}<div class="brand-word"><strong>OpsKeeper</strong><small>智能值守平台</small></div></div></div>
+              <div class="theme-row"><div class="theme-label"><b>深色</b><span>深色主色</span></div><div class="brand-bar dark">${svg(id, 'dark')}<div class="brand-word"><strong>OpsKeeper</strong><small>智能值守平台</small></div></div></div>
+              <div class="semantic">${design[3].map(item => `<span>${item}</span>`).join('')}</div>
+            </div>
+            <div class="favicon-panel"><div class="favicon-tile">${svg(id, 'favicon')}</div><span class="favicon-caption">favicon<br />独立蓝橙色</span></div>
+          </div>
+        </article>`).join('');
+    }
+
+    document.getElementById('gallery').addEventListener('click', event => {
+      const card = event.target.closest('[data-design]');
+      if (!card) return;
+      navigator.clipboard?.writeText(`方案 ${Number(card.dataset.design) + 1}: ${card.querySelector('h2').textContent}`);
+      card.dataset.copied = 'true';
+      setTimeout(() => delete card.dataset.copied, 900);
+    });
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+      document.getElementById('theme-toggle').textContent = dark ? '◐ 切换深色主题' : '◐ 切换浅色主题';
+    });
+    render();
+  </script>
+</body>
+</html>

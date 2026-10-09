@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpsKeeper Logo Design Options</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #eef2f4;
+      --surface: #ffffff;
+      --surface-soft: #f7f9fa;
+      --ink: #18242b;
+      --muted: #687780;
+      --subtle: #96a3aa;
+      --line: #d9e1e5;
+      --line-strong: #b8c5cc;
+      --accent: #167c72;
+      --accent-soft: #e2f1ee;
+      --dark-panel: #172326;
+      --dark-panel-soft: #223236;
+      --dark-ink: #eef5f3;
+      --dark-muted: #a9bbb7;
+      --favicon-ink: #182c61;
+      --favicon-accent: #f08a54;
+      --shadow: 0 14px 34px rgba(27, 45, 54, .11);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #111a1d;
+      --surface: #1a272b;
+      --surface-soft: #202f33;
+      --ink: #e8f0ee;
+      --muted: #aec0bd;
+      --subtle: #829692;
+      --line: #304247;
+      --line-strong: #496067;
+      --accent: #62c6b5;
+      --accent-soft: #203e3a;
+      --shadow: 0 18px 38px rgba(0, 0, 0, .28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button { font: inherit; cursor: pointer; }
+    .shell { width: min(1380px, calc(100% - 36px)); margin: 0 auto; padding: 30px 0 54px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .13em; }
+    h1 { margin: 0; max-width: 760px; font-size: clamp(25px, 3vw, 38px); line-height: 1.16; letter-spacing: 0; }
+    .lead { max-width: 840px; margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+    .theme-toggle { flex: none; min-height: 34px; padding: 0 11px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 5px; font-size: 12px; }
+    .note { margin: 0 0 18px; padding: 13px 15px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 11px; }
+    .note strong { color: var(--ink); font-size: 12px; }
+    .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+    .option { min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; box-shadow: var(--shadow); }
+    .option-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 14px 16px 11px; border-bottom: 1px solid var(--line); }
+    .number { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+    h2 { margin: 0; font-size: 15px; line-height: 1.25; }
+    .option-head p { grid-column: 2 / -1; margin: -5px 0 0; color: var(--muted); font-size: 11px; }
+    .tag { padding: 2px 6px; color: var(--muted); background: var(--surface-soft); border: 1px solid var(--line); border-radius: 4px; font-size: 9px; white-space: nowrap; }
+    .preview { display: grid; grid-template-columns: minmax(0, 1fr) 94px; gap: 13px; padding: 14px 16px 16px; }
+    .theme-previews { display: grid; gap: 8px; min-width: 0; }
+    .theme-row { display: grid; grid-template-columns: 65px minmax(0, 1fr); min-height: 63px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; }
+    .theme-label { display: grid; align-content: center; gap: 2px; padding: 0 8px; color: var(--muted); background: var(--surface-soft); font-size: 9px; }
+    .theme-label b { color: var(--ink); font-size: 10px; font-weight: 650; }
+    .brand-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 12px; }
+    .brand-bar.light { color: #19272d; background: #fbfcfc; }
+    .brand-bar.dark { color: var(--dark-ink); background: var(--dark-panel); }
+    .brand-bar svg { flex: none; width: 29px; height: 29px; }
+    .brand-word { min-width: 0; }
+    .brand-word strong { display: block; font-size: 13px; line-height: 1.05; letter-spacing: .01em; }
+    .brand-word small { display: block; margin-top: 3px; color: #6b7b80; font-size: 8px; letter-spacing: .02em; }
+    .brand-bar.dark .brand-word small { color: var(--dark-muted); }
+    .favicon-panel { display: grid; align-content: center; justify-items: center; gap: 6px; min-width: 0; padding: 9px 7px; background: var(--surface-soft); border-left: 1px solid var(--line); }
+    .favicon-tile { display: grid; place-items: center; width: 55px; height: 55px; color: var(--favicon-ink); background: #f3eee7; border: 1px solid #e4d6c7; border-radius: 13px; box-shadow: 0 7px 16px rgba(42, 38, 47, .12); }
+    .favicon-tile svg { width: 38px; height: 38px; }
+    .favicon-caption { color: var(--muted); font-size: 9px; text-align: center; }
+    .palette { display: flex; gap: 4px; margin-top: 7px; }
+    .swatch { width: 12px; height: 12px; border: 1px solid rgba(0,0,0,.08); border-radius: 3px; }
+    .swatch.teal { background: #167c72; }
+    .swatch.coral { background: var(--favicon-accent); }
+    .swatch.ink { background: #18242b; }
+    .swatch.gold { background: #d7a33c; }
+    svg { display: block; }
+    svg .theme-stroke { stroke: var(--accent); }
+    svg .theme-fill { fill: var(--accent); }
+    svg .theme-soft { fill: var(--accent-soft); }
+    svg .dark-stroke { stroke: #7cdbca; }
+    svg .dark-fill { fill: #7cdbca; }
+    svg .dark-soft { fill: #2b514b; }
+    svg .favicon-stroke { stroke: var(--favicon-accent); }
+    svg .favicon-fill { fill: var(--favicon-accent); }
+    svg .favicon-ink { stroke: var(--favicon-ink); fill: var(--favicon-ink); }
+    .footer { margin-top: 19px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 850px) { .gallery { grid-template-columns: 1fr; } }
+    @media (max-width: 580px) { .shell { width: calc(100% - 24px); padding-top: 19px; } .topbar { display: block; } .theme-toggle { margin-top: 13px; } .preview { grid-template-columns: minmax(0, 1fr) 77px; gap: 8px; padding: 11px; } .theme-row { grid-template-columns: 57px minmax(0, 1fr); } .option-head { grid-template-columns: auto minmax(0, 1fr); } .tag { grid-column: 2; justify-self: start; } .option-head p { grid-column: 1 / -1; margin-top: 0; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OpsKeeper · BRAND MARK EXPLORATION</p>
+        <h1>贴合智能值守定位的 Logo 方案</h1>
+        <p class="lead">每个方案都把“资源连接、运行状态、巡检与诊断”融进图形结构。页面左上角标识随主题切换明暗，favicon 沿用同一构图但固定使用独立的蓝橙色调，不依赖主题色。</p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button">◐ 切换深色主题</button>
+    </header>
+    <div class="note"><strong>预览说明</strong>　页面标识中的绿色只是主题适配示例；右侧 favicon 始终使用固定蓝橙配色。点击任意方案卡片可复制该方案编号与名称，便于反馈选择。</div>
+    <section class="gallery" id="gallery"></section>
+    <p class="footer">静态预览，不修改现有页面和 favicon。选定方案后再将同一 SVG 构图提取为 BrandIcon 与 favicon 资源。</p>
+  </main>
+  <script>
+    const designs = [
+      ['监控哨塔', '塔形哨兵 + 状态节点', '把持续值守和异常发现作为第一视觉信号。', '巡检 / 告警'],
+      ['脉冲 O', '字母 O + 实时脉冲线', '用一条稳定心跳表达平台持续观测与服务健康度。', '状态 / 可观测'],
+      ['拓扑环', '闭环节点网络', '资源、团队和项目都可以理解为同一控制面的连接节点。', '资源 / 拓扑'],
+      ['守护盾', '盾牌 + 检查路径', '强调权限、安全凭据和自动化巡检的可靠边界。', '安全 / 可信'],
+      ['控制罗盘', '罗盘 + 分层刻度', '表达平台、团队、项目三级范围与统一控制方向。', '组织 / 范围'],
+      ['运行手册', '终端括号 + 执行光标', '贴近工具、技能、Agent 和巡检任务的自动化执行。', '自动化 / 工具'],
+      ['诊断透镜', '六边形透镜 + 证据节点', '将 AI 诊断的观察、取证和关联分析融进图形。', 'AI / 诊断'],
+      ['巡检回路', '双向回路 + 状态点', '用循环路径表现周期巡检、反馈和持续改进。', '巡检 / 回路'],
+      ['控制棱镜', '三层控制面 + 信号束', '将多种资源入口汇聚为一个清晰的运维控制面。', '平台 / 汇聚'],
+      ['OK 连接体', 'O-K 字母骨架 + 连接点', '保留易识别的品牌首字母，同时引入连接与运行语义。', '品牌 / 连接']
+    ];
+
+    function svg(id, mode) {
+      const dark = mode === 'dark';
+      const favicon = mode === 'favicon';
+      const stroke = favicon ? 'class="favicon-stroke"' : dark ? 'class="dark-stroke"' : 'class="theme-stroke"';
+      const fill = favicon ? 'class="favicon-fill"' : dark ? 'class="dark-fill"' : 'class="theme-fill"';
+      const soft = favicon ? 'fill="#f7d7bf"' : dark ? 'class="dark-soft"' : 'class="theme-soft"';
+      const softStroke = favicon ? 'fill="#f7d7bf" stroke="#f08a54"' : dark ? 'class="dark-soft dark-stroke"' : 'class="theme-soft theme-stroke"';
+      const common = `viewBox="0 0 48 48" role="img" aria-label="${designs[id][0]}"`;
+      switch (id) {
+        case 0: return `<svg ${common}><path d="M10 39h28M14 37V17l10-7 10 7v20" ${stroke} fill="none" stroke-width="3" stroke-linejoin="round"/><path d="M18 37V24h12v13" ${soft}/><circle cx="24" cy="17" r="4" ${fill}/><circle cx="16" cy="22" r="2.4" ${fill}/><circle cx="32" cy="22" r="2.4" ${fill}/><path d="M16 22h16" ${stroke} fill="none" stroke-width="2"/></svg>`;
+        case 1: return `<svg ${common}><circle cx="24" cy="24" r="15" ${stroke} fill="none" stroke-width="3"/><path d="M10 27h7l3-9 5 16 4-12 3 5h6" ${stroke} fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="36" cy="12" r="3.5" ${fill}/></svg>`;
+        case 2: return `<svg ${common}><circle cx="24" cy="24" r="16" ${soft}/><path d="M24 8v8M40 24h-8M24 40v-8M8 24h8" ${stroke} fill="none" stroke-width="2"/><circle cx="24" cy="24" r="5" ${fill}/><circle cx="13" cy="13" r="3" ${fill}/><circle cx="35" cy="13" r="3" ${fill}/><circle cx="35" cy="35" r="3" ${fill}/><path d="M15 15l6 6M33 15l-6 6M33 33l-6-6" ${stroke} fill="none" stroke-width="2.3"/></svg>`;
+        case 3: return `<svg ${common}><path d="M24 6l16 7v11c0 9-6.4 15.2-16 18-9.6-2.8-16-9-16-18V13l16-7z" ${softStroke} stroke-width="2.5" stroke-linejoin="round"/><path d="M16 24l5 5 11-12" ${stroke} fill="none" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="35" cy="14" r="3" ${fill}/></svg>`;
+        case 4: return `<svg ${common}><circle cx="24" cy="24" r="16" ${stroke} fill="none" stroke-width="2.4"/><path d="M24 10v28M10 24h28" ${stroke} fill="none" stroke-width="1.5"/><path d="M24 13l4 11-4 11-4-11 4-11z" ${softStroke} stroke-width="2" stroke-linejoin="round"/><circle cx="24" cy="24" r="3" ${fill}/></svg>`;
+        case 5: return `<svg ${common}><path d="M11 13h11M11 24h11M11 35h11M27 13h10M27 24h10M27 35h10" ${stroke} fill="none" stroke-width="3" stroke-linecap="round"/><path d="M24 8v32" ${stroke} fill="none" stroke-width="2"/><path d="M25 18l7 6-7 6" ${fill}/><circle cx="11" cy="13" r="2.5" ${fill}/><circle cx="11" cy="24" r="2.5" ${fill}/><circle cx="11" cy="35" r="2.5" ${fill}/></svg>`;
+        case 6: return `<svg ${common}><path d="M17 10L8 24l9 14M31 10l9 14-9 14" ${stroke} fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M23 14l-4 10h6l-4 10" ${fill}/><circle cx="24" cy="7" r="2.5" ${fill}/></svg>`;
+        case 7: return `<svg ${common}><path d="M24 5l16 9v20l-16 9-16-9V14l16-9z" ${softStroke} stroke-width="2.4" stroke-linejoin="round"/><circle cx="24" cy="24" r="8" ${stroke} fill="none" stroke-width="2.3"/><circle cx="24" cy="24" r="3" ${fill}/><circle cx="13" cy="15" r="2.5" ${fill}/><circle cx="35" cy="33" r="2.5" ${fill}/><path d="M15 17l4 4M29 29l4 3" ${stroke} fill="none" stroke-width="2"/></svg>`;
+        case 8: return `<svg ${common}><path d="M37 19a14 14 0 0 0-24-5l-3 4M11 29a14 14 0 0 0 24 5l3-4" ${stroke} fill="none" stroke-width="3" stroke-linecap="round"/><path d="M10 12v7h7M38 36v-7h-7" ${fill}/><circle cx="24" cy="24" r="6" ${softStroke} stroke-width="2"/><circle cx="24" cy="24" r="2.5" ${fill}/></svg>`;
+        case 9: return `<svg ${common}><path d="M10 12h28v8H10zM10 24h28v8H10zM10 36h28v3H10z" ${softStroke} stroke-width="2"/><path d="M17 12v-5M31 20v5M21 32v7" ${stroke} fill="none" stroke-width="2.2"/><circle cx="17" cy="7" r="3" ${fill}/><circle cx="31" cy="25" r="3" ${fill}/><circle cx="21" cy="39" r="2.5" ${fill}/></svg>`;
+      }
+    }
+    function render() {
+      document.getElementById('gallery').innerHTML = designs.map((design, id) => `
+        <article class="option" data-design="${id}" tabindex="0" title="点击复制方案名称">
+          <header class="option-head"><span class="number">方案 ${String(id + 1).padStart(2, '0')}</span><h2>${design[0]}</h2><span class="tag">${design[3]}</span><p>${design[1]} · ${design[2]}</p></header>
+          <div class="preview">
+            <div class="theme-previews">
+              <div class="theme-row"><div class="theme-label"><b>浅色</b><span>页面左上角</span></div><div class="brand-bar light">${svg(id, 'light')}<div class="brand-word"><strong>OpsKeeper</strong><small>智能值守平台</small></div></div></div>
+              <div class="theme-row"><div class="theme-label"><b>深色</b><span>页面左上角</span></div><div class="brand-bar dark">${svg(id, 'dark')}<div class="brand-word"><strong>OpsKeeper</strong><small>智能值守平台</small></div></div></div>
+              <div class="palette"><span class="swatch teal" title="主题适配色"></span><span class="swatch ink" title="页面文字色"></span><span class="swatch coral" title="favicon 独立色"></span><span class="swatch gold" title="状态强调色"></span></div>
+            </div>
+            <div class="favicon-panel"><div class="favicon-tile">${svg(id, 'favicon')}</div><span class="favicon-caption">favicon<br />固定蓝橙色调</span></div>
+          </div>
+        </article>`).join('');
+    }
+    document.getElementById('gallery').addEventListener('click', event => {
+      const card = event.target.closest('[data-design]');
+      if (!card) return;
+      const title = card.querySelector('h2').textContent;
+      navigator.clipboard?.writeText(`方案 ${card.dataset.design}: ${title}`);
+      card.dataset.copied = 'true';
+      setTimeout(() => delete card.dataset.copied, 900);
+    });
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+      document.getElementById('theme-toggle').textContent = dark ? '◐ 切换深色主题' : '◐ 切换浅色主题';
+    });
+    render();
+  </script>
+</body>
+</html>

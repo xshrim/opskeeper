@@ -236,6 +236,7 @@ body {
 /* Global theme contract. Component rules consume these semantic tokens so the
    same surfaces and states stay consistent across every page. */
 :root {
+  --theme-logo-fg: #e77b50;
   --theme-bg-page: #f8fafc;
   --theme-bg-surface: #fffdfa;
   --theme-bg-raised: #fff;
@@ -299,6 +300,7 @@ body {
   color-scheme: light;
 }
 :root[data-theme='dark'] {
+  --theme-logo-fg: #9fe4cf;
   --theme-bg-page: #211e1c;
   --theme-bg-surface: #2a2623;
   --theme-bg-raised: #342e2a;

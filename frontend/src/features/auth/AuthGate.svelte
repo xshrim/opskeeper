@@ -3,6 +3,7 @@
   import { Eye, EyeOff } from 'lucide-svelte';
   import { api, ApiError, type User } from '../../lib/api';
   import MessageBanner from '../../components/MessageBanner.svelte';
+  import OpsKeeperLogo from '../../components/OpsKeeperLogo.svelte';
 
   export let authState: 'loading' | 'login' | 'ready' = 'loading';
   export let currentUser: User | null = null;
@@ -127,7 +128,7 @@
   <div class="loading-screen"><div class="loading-state"><span class="spinner"></span><p>正在恢复工作区会话…</p></div></div>
 {:else if authState === 'login'}
   <main class="login-shell">
-    <div class="login-brand" aria-label="OpsKeeper 智能值守平台"><span class="login-logo" aria-hidden="true">O</span><span class="login-brand-copy"><strong>OpsKeeper</strong><small>智能值守平台</small></span></div>
+    <div class="login-brand" aria-label="OpsKeeper 智能值守平台"><OpsKeeperLogo size={56} /><span class="login-brand-copy"><strong>OpsKeeper</strong><small>智能值守平台</small></span></div>
     <section class="login-panel" aria-labelledby="login-heading">
       <header class="login-panel-header"><p class="login-kicker">账号登录</p><h1 id="login-heading">欢迎回来</h1><p class="login-intro">使用平台账号继续访问 OpsKeeper。</p>{#if authError}<MessageBanner message={authError} tone="error" />{/if}</header>
       <form class="stack-form login-form" on:submit|preventDefault={login}>
