@@ -60,19 +60,18 @@
   rows={resources}
   rowKey={(resource) => resource.id}
   expandable
-  togglePlacement="cell"
   className="resource-expandable-table"
   rowClass={(resource) => `resource-catalog-row ${selectedResourceId === resource.id ? 'selected' : ''} ${resource.kind === 'MCPServer' ? 'mcp-resource-row' : ''} ${resource.kind === 'Docker' ? 'docker-resource-row' : ''}`}
   emptyText="没有匹配的资源。"
   onRowToggle={(resource) => { onSelect(resource); if (resource.kind === 'MCPServer') onLoadSnapshot(resource.id); }}
 >
-  <svelte:fragment slot="cell" let:row let:column let:expanded let:toggle>
+  <svelte:fragment slot="cell" let:row let:column>
     {@const resource = row as Resource}
     {@const resourceCheck = resourceConnectionChecks[resource.id]}
     {@const connectionStatus = resourceCheck ? resourceCheck.status === 'succeeded' ? '正常' : '异常' : resourceHasConnector(resource) ? '未测试' : '不支持'}
     {@const connectionDetail = connectionDetailResourceId === resource.id && resourceCheck ? resourceCheck.status === 'succeeded' ? `时延 ${resourceCheck.latency_ms}ms` : resourceCheck.message : resourceCheck ? relativeConnectionTime(resourceCheck.checked_at, now) : resourceHasConnector(resource) ? '未测试' : '不支持'}
     {#if column.key === 'resource'}
-      <span class="entity-summary"><button class="resource-expand-toggle" type="button" aria-label={`${expanded ? '折叠' : '展开'} ${resource.name}`} aria-expanded={expanded} on:click={toggle}><span class:expanded>{expanded ? '⌄' : '›'}</span></button><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{endpointLabel(resource, resourceCheck)}</small></span></span>
+      <span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{endpointLabel(resource, resourceCheck)}</small></span></span>
     {:else if column.key === 'category'}
       <span class="resource-cell resource-category-cell">{#if resource.kind === 'MCPServer'}<strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>{:else}<strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>{/if}</span>
     {:else if column.key === 'scope'}

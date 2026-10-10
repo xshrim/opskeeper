@@ -261,6 +261,7 @@
         <SearchInput
           bind:value={projectSearch}
           className="project-overview-search"
+          width="160px"
           placeholder="搜索项目名称或编号"
           ariaLabel="搜索项目名称或编号"
         /><button

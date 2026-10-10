@@ -229,8 +229,10 @@
     position: absolute;
     z-index: 50;
     top: calc(100% + 6px);
-    right: 0;
-    width: min(300px, 100vw - 24px);
+    left: 0;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 9px;
     color: var(--theme-fg);
     background: var(--theme-bg-raised);

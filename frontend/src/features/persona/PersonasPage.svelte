@@ -281,8 +281,7 @@
   <div class="persona-toolbar">
     <SearchInput
       bind:value={query}
-      className="persona-search"
-      width="288px"
+      width="min(288px, 100%)"
       height="40px"
       placeholder="搜索名称 / 领域 / 提示词"
       ariaLabel="搜索专家"

@@ -175,7 +175,7 @@
 }
 .access-scope-tree,
 .access-user-desk { min-width: 0; overflow: hidden; }
-.access-scope-tree { min-height: 620px; }
+.access-scope-tree { min-height: 0; }
 .access-scope-tree-head,
 .access-user-desk-head {
   display: flex;
@@ -249,7 +249,7 @@
 .access-scope-project-row { gap: 7px; min-height: 38px; padding: 6px 8px; border-radius: 4px; }
 .access-scope-project-row > svg { flex: 0 0 auto; }
 .access-scope-project-row .access-project-icon { width: 24px; height: 24px; border-radius: 5px; }
-.access-user-desk { display: flex; flex-direction: column; min-height: 620px; }
+.access-user-desk { display: flex; flex-direction: column; min-height: 0; height: auto; }
 .access-user-desk-head { display: flex; align-items: center; gap: 12px; }
 .access-user-desk-title { flex: 1 1 auto; min-width: 0; }
 .access-user-desk-actions { display: flex; align-items: center; flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; gap: 7px; min-width: 0; }
@@ -261,8 +261,8 @@
 .access-project-chip strong { overflow: hidden; font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
 .access-project-chip span { flex: 0 0 auto; color: var(--theme-fg-muted); font-size: 10px; }
 .access-project-empty { color: var(--theme-fg-muted); font-size: 11px; }
-.access-member-section { min-width: 0; flex: 1; }
-.access-member-search { flex: 0 1 195px; width: min(100%, 195px); }
+.access-member-section { display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; }
+.access-member-search { flex: 0 1 260px; width: min(100%, 260px); }
 .access-member-table { overflow: visible; }
 @media (max-width: 1050px) { .access-scope-desk { grid-template-columns: 220px minmax(0, 1fr); } }
 @media (max-width: 760px) { .access-scope-desk { grid-template-columns: 1fr; } .access-scope-tree { min-height: 0; } .access-user-desk { min-height: 560px; } .access-user-desk-head { height: auto; min-height: 60px; align-items: stretch; flex-direction: column; gap: 10px; } .access-member-search { flex-basis: auto; width: 100%; } .access-user-desk-actions { flex-wrap: wrap; justify-content: flex-start; } }
@@ -724,13 +724,13 @@
   height: 32px;
   padding: 0;
   color: var(--theme-fg-muted);
-  background: var(--theme-bg-raised);
-  border: 1px solid var(--theme-border);
+  background: transparent;
+  border: 0;
   border-radius: 6px;
 }
 .access-row-actions .icon-button:hover {
   color: var(--color-primary);
-  border-color: var(--theme-border-focus);
+  background: var(--theme-bg-hover);
 }
 .access-state {
   display: flex;
@@ -1083,8 +1083,11 @@
 :root[data-theme='dark'] .access-search,
 :root[data-theme='dark'] .access-row-actions .icon-button {
   color: var(--theme-fg-muted);
-  background: var(--theme-bg-input);
-  border-color: var(--theme-border);
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-theme='dark'] .access-row-actions .icon-button:hover {
+  background: var(--theme-bg-hover);
 }
 :root[data-theme='dark'] .access-search input {
   color: var(--theme-fg-strong);
@@ -1354,11 +1357,30 @@
 
 /* Member permissions stay readable without making the table a nested scroll container. */
 .access-member-table {
+  min-height: 0;
+  flex: 1 1 auto;
   overflow: visible;
+}
+.expandable-table-container.access-member-table .expandable-table-scroll {
+  min-height: 0;
+  overflow-x: visible;
+  overflow-y: visible;
 }
 .access-member-table .expandable-table {
   min-width: 100%;
   table-layout: fixed;
+}
+.expandable-table-container.access-member-table .expandable-table col:nth-child(1) {
+  width: 30px !important;
+}
+.expandable-table-container.access-member-table .expandable-table col:nth-child(2) {
+  width: 30px !important;
+}
+.expandable-table-container.access-member-table .expandable-table col:nth-child(6) {
+  width: 50px !important;
+}
+.expandable-table-container.access-member-table .expandable-table col:nth-child(7) {
+  width: 60px !important;
 }
 .access-member-table .expandable-table th,
 .access-member-table .expandable-table td {
@@ -1373,8 +1395,41 @@
 .access-member-table .expandable-table-details-row > td {
   padding: 0;
 }
+.expandable-table-container.access-member-table .expandable-table-toggle {
+  width: 30px;
+  color: var(--theme-fg-subtle);
+  opacity: 0.72;
+}
+.expandable-table-container.access-member-table .expandable-table-toggle:hover {
+  color: var(--theme-fg-muted);
+  opacity: 1;
+}
+.access-member-table .expandable-table-toggle-cell,
+.access-member-table .expandable-table-toggle-column {
+  width: 30px;
+}
+.access-member-table .expandable-table :is(th, td).expandable-table-toggle-cell {
+  padding-right: 0;
+  padding-left: 0;
+}
+.access-member-table .expandable-table-select-cell,
+.access-member-table .expandable-table-select-column {
+  width: 30px;
+}
+.access-member-table .expandable-table :is(th, td).expandable-table-select-cell {
+  padding-right: 0;
+  padding-left: 0;
+}
+.access-member-table .expandable-table th:nth-child(6),
+.access-member-table .expandable-table td:nth-child(6),
+.access-member-table .expandable-table th:nth-child(7),
+.access-member-table .expandable-table td:nth-child(7) {
+  padding-right: 3px;
+  padding-left: 3px;
+  white-space: nowrap;
+}
 .access-member-table .readonly-table-scroll {
-  overflow-x: auto;
+  overflow: visible;
   border: 1px solid var(--theme-border);
   border-radius: 5px;
 }
@@ -1383,6 +1438,19 @@
 }
 .access-member-actions-heading {
   text-align: center;
+}
+.access-member-table .access-row-actions {
+  justify-content: flex-start;
+  gap: 2px;
+}
+.access-member-table .access-row-actions .icon-button {
+  width: 24px;
+  height: 28px;
+}
+.access-member-table .read-only-label {
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 .access-user-contact {
   display: grid;
@@ -1404,10 +1472,12 @@
 }
 .access-user-permissions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .access-user-details {
   display: grid;
@@ -1447,7 +1517,9 @@
   display: inline-flex;
   align-items: center;
   min-height: 23px;
-  padding: 0 7px;
+  width: max-content;
+  padding: 0 6px;
+  flex: 0 0 auto;
   color: var(--theme-fg-muted);
   background: var(--theme-bg-subtle);
   border: 1px solid var(--theme-border);
@@ -1456,13 +1528,15 @@
   font-weight: 700;
 }
 .permission-card {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 7px;
   max-width: 100%;
   min-width: 0;
   width: fit-content;
+  min-height: 23px;
   flex: 0 1 auto;
+  box-sizing: border-box;
   padding: 4px 7px;
   color: var(--theme-fg);
   background: var(--theme-bg-surface);

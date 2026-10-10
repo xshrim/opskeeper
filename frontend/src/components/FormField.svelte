@@ -6,13 +6,14 @@
   export let error = '';
   export let help = '';
   export let className = '';
+  export let asLabel = true;
 </script>
 
-<label class={`form-field ${className}`.trim()} class:invalid={invalid || Boolean(error)}>
+<svelte:element this={asLabel ? 'label' : 'div'} class={`form-field ${className}`.trim()} class:invalid={invalid || Boolean(error)}>
   <FieldLabel text={label} {required} invalid={invalid || Boolean(error)} className="form-field-label" />
   <slot />
   {#if error}<small class="form-field-message form-field-error">{error}</small>{:else if help}<small class="form-field-message">{help}</small>{/if}
-</label>
+</svelte:element>
 
 <style>
   .form-field {

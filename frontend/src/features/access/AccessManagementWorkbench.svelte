@@ -105,11 +105,11 @@
     { key: 'status', label: '状态', placeholder: '输入启用、锁定或禁用' }
   ];
   const memberColumns: ReadonlyTableColumn[] = [
-    { key: 'user', label: '用户' },
-    { key: 'contact', label: '联络' },
-    { key: 'permissions', label: '权限' },
-    { key: 'status', label: '状态', width: '65px' },
-    { key: 'actions', label: '操作', width: '68px', className: 'access-member-actions-heading' }
+    { key: 'user', label: '用户', width: '15%' },
+    { key: 'contact', label: '联络', width: '25%' },
+    { key: 'permissions', label: '权限', width: '60%' },
+    { key: 'status', label: '状态', width: '50px' },
+    { key: 'actions', label: '操作', width: '60px', className: 'access-member-actions-heading' }
   ];
   const roleColumns: ReadonlyTableColumn[] = [
     { key: 'level', label: '级别', width: '80px' },
@@ -400,7 +400,7 @@
             <SearchInput
               bind:value={memberQuery}
               className="access-member-search"
-              width="195px"
+              width="260px"
               height="35px"
               fieldSearchable
               fieldOptions={memberSearchFields}

@@ -6,6 +6,7 @@
   export let disabled = false;
   export let ariaLabel = '开关';
   export let className = '';
+  export let tooltip = '';
 
   const dispatch = createEventDispatcher<{ change: boolean }>();
   let internalValue = defaultOn;
@@ -28,6 +29,8 @@
   role="switch"
   aria-checked={isChecked}
   aria-label={ariaLabel}
+  data-tooltip={tooltip || undefined}
+  title={tooltip || undefined}
   {disabled}
   on:click|stopPropagation={toggle}
 >

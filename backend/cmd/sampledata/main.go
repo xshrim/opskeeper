@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/config"
 	"opskeeper/backend/identity"
@@ -154,23 +156,6 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		return fmt.Errorf("lock sample seed: %w", err)
 	}
 
-	var existing bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM teams WHERE labels->>$1 = $2 AND deleted_at IS NULL
-			UNION ALL
-			SELECT 1 FROM projects WHERE labels->>$1 = $2 AND deleted_at IS NULL
-			UNION ALL
-			SELECT 1 FROM users WHERE username = ANY($3::text[]) AND deleted_at IS NULL
-			UNION ALL
-			SELECT 1 FROM users WHERE username = ANY($4::text[]) AND deleted_at IS NULL
-		)`, markerKey, markerValue, sampleUsernames, legacySampleUsernames).Scan(&existing); err != nil {
-		return fmt.Errorf("check existing sample data: %w", err)
-	}
-	if existing {
-		return errors.New("sample data already exists; run `make sample-clean` first")
-	}
-
 	var platformID, platformScopeID, tenantID string
 	if err := tx.QueryRow(ctx, `
 		SELECT p.id::text, s.id::text, s.tenant_id
@@ -178,6 +163,56 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		 WHERE p.code = 'default' AND p.deleted_at IS NULL AND s.deleted_at IS NULL`).
 		Scan(&platformID, &platformScopeID, &tenantID); err != nil {
 		return fmt.Errorf("find default platform: %w", err)
+	}
+	var dockerExists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM resources WHERE scope_id = $1::uuid AND kind = 'Docker' AND deleted_at IS NULL AND labels->>$2 = $3)`, platformScopeID, markerKey, markerValue).Scan(&dockerExists); err != nil {
+		return fmt.Errorf("check sample Docker resource: %w", err)
+	}
+	if !dockerExists {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config, status)
+			VALUES ($1::uuid, 'Docker', 'Direct', 1, 'docker', jsonb_build_object($2::text, $3::text), '{"host":"unix:///var/run/docker.sock"}'::jsonb, 'active')`, platformScopeID, markerKey, markerValue); err != nil {
+			return fmt.Errorf("create sample Docker resource: %w", err)
+		}
+	}
+	var providerExists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM providers WHERE scope_id = $1::uuid AND deleted_at IS NULL AND config->>$2 = $3)`, platformScopeID, markerKey, markerValue).Scan(&providerExists); err != nil {
+		return fmt.Errorf("check sample GLM AI channel: %w", err)
+	}
+	if !providerExists {
+		providerConfig, err := json.Marshal(map[string]any{
+			"provider_type":         "glm",
+			"protocol":              "chat_completions",
+			"base_url":              "https://open.bigmodel.cn/api/paas/v4",
+			"timeout_seconds":       60,
+			"max_concurrency":       5,
+			"rate_limit_per_minute": 0,
+			"enabled":               true,
+			"default_model":         "GLM-4-Flash",
+			"icon":                  "lucide:Bot",
+			"models": []map[string]any{{
+				"name":                  "GLM-4-Flash",
+				"context_window_tokens": 128000,
+				"max_output_tokens":     128000,
+				"temperature":           0.2,
+				"temperature_mutable":   true,
+				"tags":                  []string{"text", "stream", "tool_calling"},
+				"capabilities":          []string{"text", "stream", "tool_calling"},
+				"enabled":               true,
+				"priority":              1,
+			}},
+			markerKey: markerValue,
+		})
+		if err != nil {
+			return fmt.Errorf("encode sample GLM provider config: %w", err)
+		}
+		var providerID string
+		if err := tx.QueryRow(ctx, `
+				INSERT INTO providers (id, scope_id, name, config, status)
+				VALUES (gen_random_uuid(), $1::uuid, 'GLM', $2::jsonb, 'active')
+				RETURNING id::text`, platformScopeID, providerConfig).Scan(&providerID); err != nil {
+			return fmt.Errorf("create sample GLM AI channel: %w", err)
+		}
 	}
 
 	teams := []team{
@@ -189,27 +224,36 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 	projects := make(map[string]string)
 	for _, item := range teams {
 		var scopeID, teamID string
-		if err := tx.QueryRow(ctx, `INSERT INTO scopes (tenant_id, scope_type, parent_scope_id) VALUES ($1, 'team', $2::uuid) RETURNING id::text`, tenantID, platformScopeID).Scan(&scopeID); err != nil {
-			return fmt.Errorf("create team scope %s: %w", item.key, err)
-		}
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO teams (scope_id, platform_id, name, description, icon, labels)
-			VALUES ($1::uuid, $2::uuid, $3, 'OpsKeeper 权限演示数据', $4, jsonb_build_object($5::text, $6::text))
-			RETURNING id::text`, scopeID, platformID, item.name, item.icon, markerKey, markerValue).Scan(&teamID); err != nil {
-			return fmt.Errorf("create sample team %s: %w", item.key, err)
+		err := tx.QueryRow(ctx, `SELECT scope_id::text, id::text FROM teams WHERE platform_id = $1::uuid AND name = $2 AND labels->>$3 = $4 AND deleted_at IS NULL`, platformID, item.name, markerKey, markerValue).Scan(&scopeID, &teamID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := tx.QueryRow(ctx, `INSERT INTO scopes (tenant_id, scope_type, parent_scope_id) VALUES ($1, 'team', $2::uuid) RETURNING id::text`, tenantID, platformScopeID).Scan(&scopeID); err != nil {
+				return fmt.Errorf("create team scope %s: %w", item.key, err)
+			}
+			if err := tx.QueryRow(ctx, `
+					INSERT INTO teams (scope_id, platform_id, name, description, icon, labels)
+					VALUES ($1::uuid, $2::uuid, $3, 'OpsKeeper 权限演示数据', $4, jsonb_build_object($5::text, $6::text))
+					RETURNING id::text`, scopeID, platformID, item.name, item.icon, markerKey, markerValue).Scan(&teamID); err != nil {
+				return fmt.Errorf("create sample team %s: %w", item.key, err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("find sample team %s: %w", item.key, err)
 		}
 		teamScopes[item.key] = scopeID
 		for index, projectItem := range item.projects {
 			code := projectItem.code
-			var projectScopeID, projectID string
-			if err := tx.QueryRow(ctx, `INSERT INTO scopes (tenant_id, scope_type, parent_scope_id) VALUES ($1, 'project', $2::uuid) RETURNING id::text`, tenantID, scopeID).Scan(&projectScopeID); err != nil {
-				return fmt.Errorf("create project scope %s: %w", code, err)
-			}
-			if err := tx.QueryRow(ctx, `
-				INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels)
-				VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'lucide:FolderKanban', jsonb_build_object($6::text, $7::text))
-				RETURNING id::text`, projectScopeID, platformID, teamID, projectItem.name, code, markerKey, markerValue).Scan(&projectID); err != nil {
-				return fmt.Errorf("create sample project %s: %w", code, err)
+			var projectScopeID string
+			err := tx.QueryRow(ctx, `SELECT scope_id::text FROM projects WHERE team_id = $1::uuid AND code = $2 AND labels->>$3 = $4 AND deleted_at IS NULL`, teamID, code, markerKey, markerValue).Scan(&projectScopeID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				if err := tx.QueryRow(ctx, `INSERT INTO scopes (tenant_id, scope_type, parent_scope_id) VALUES ($1, 'project', $2::uuid) RETURNING id::text`, tenantID, scopeID).Scan(&projectScopeID); err != nil {
+					return fmt.Errorf("create project scope %s: %w", code, err)
+				}
+				if _, err := tx.Exec(ctx, `
+						INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels)
+						VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'lucide:FolderKanban', jsonb_build_object($6::text, $7::text))`, projectScopeID, platformID, teamID, projectItem.name, code, markerKey, markerValue); err != nil {
+					return fmt.Errorf("create sample project %s: %w", code, err)
+				}
+			} else if err != nil {
+				return fmt.Errorf("find sample project %s: %w", code, err)
 			}
 			projects[projectScopeKey(item.key, index)] = projectScopeID
 		}
@@ -224,21 +268,32 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		{username: "sunmin", name: "孙敏", roles: []binding{{"ProjectAdmin", "alpha-01"}, {"ProjectViewer", "alpha-02"}, {"ProjectViewer", "gamma-02"}}},
 	}
 	userIDs := make(map[string]string, len(users))
+	createdUsers := make([]string, 0, len(users))
 	for _, item := range users {
-		var userID string
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO users (username, email, display_name)
-			VALUES ($1, $2, $3) RETURNING id::text`, item.username, item.username+"@"+emailDomain, item.name).Scan(&userID); err != nil {
-			return fmt.Errorf("create sample user %s: %w", item.username, err)
+		var userID, email string
+		err := tx.QueryRow(ctx, `SELECT id::text, email FROM users WHERE username = $1 AND deleted_at IS NULL`, item.username).Scan(&userID, &email)
+		if err == nil && !strings.EqualFold(email, item.username+"@"+emailDomain) {
+			continue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO credentials (user_id, password_hash, must_change_password) VALUES ($1::uuid, $2, false)`, userID, hash); err != nil {
-			return fmt.Errorf("create credentials for %s: %w", item.username, err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := tx.QueryRow(ctx, `INSERT INTO users (username, email, display_name) VALUES ($1, $2, $3) RETURNING id::text`, item.username, item.username+"@"+emailDomain, item.name).Scan(&userID); err != nil {
+				return fmt.Errorf("create sample user %s: %w", item.username, err)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO credentials (user_id, password_hash, must_change_password) VALUES ($1::uuid, $2, false)`, userID, hash); err != nil {
+				return fmt.Errorf("create credentials for %s: %w", item.username, err)
+			}
+			createdUsers = append(createdUsers, item.username)
+		} else if err != nil {
+			return fmt.Errorf("find sample user %s: %w", item.username, err)
 		}
 		userIDs[item.username] = userID
 	}
 
 	for _, item := range users {
 		for _, grant := range item.roles {
+			if userIDs[item.username] == "" {
+				continue
+			}
 			scopeID := platformScopeID
 			if grant.scope != "platform" {
 				var ok bool
@@ -247,19 +302,26 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 					scopeID, ok = projects[grant.scope]
 				}
 				if !ok {
-					return fmt.Errorf("unknown sample scope %q", grant.scope)
+					continue
 				}
 			}
 			command, err := tx.Exec(ctx, `
 				INSERT INTO role_bindings (subject_type, subject_id, role_id, scope_id)
 				SELECT 'user', $1::uuid, role.id, $2::uuid FROM roles role
-				 WHERE role.name = $3 AND role.scope_type = CASE WHEN $4 = 'platform' THEN 'platform' WHEN $4 IN ('alpha', 'beta', 'gamma') THEN 'team' ELSE 'project' END`,
+				 WHERE role.name = $3 AND role.scope_type = CASE WHEN $4 = 'platform' THEN 'platform' WHEN $4 IN ('alpha', 'beta', 'gamma') THEN 'team' ELSE 'project' END
+				ON CONFLICT (subject_type, subject_id, role_id, scope_id) DO NOTHING`,
 				userIDs[item.username], scopeID, grant.role, grant.scope)
 			if err != nil {
 				return fmt.Errorf("bind %s to %s at %s: %w", item.username, grant.role, grant.scope, err)
 			}
-			if command.RowsAffected() != 1 {
-				return fmt.Errorf("role %s was not found for scope %s", grant.role, grant.scope)
+			if command.RowsAffected() == 0 {
+				var roleExists bool
+				if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM roles WHERE name = $1 AND scope_type = CASE WHEN $2 = 'platform' THEN 'platform' WHEN $2 IN ('alpha', 'beta', 'gamma') THEN 'team' ELSE 'project' END)`, grant.role, grant.scope).Scan(&roleExists); err != nil {
+					return fmt.Errorf("check sample role %s: %w", grant.role, err)
+				}
+				if !roleExists {
+					return fmt.Errorf("role %s was not found for scope %s", grant.role, grant.scope)
+				}
 			}
 		}
 	}
@@ -267,9 +329,12 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit sample seed: %w", err)
 	}
-	fmt.Printf("Seeded 3 teams, 16 projects, and 6 users. Sample login password: %s\n", samplePassword)
-	for _, item := range users {
-		fmt.Printf("  %-24s %s@%s\n", item.username, item.username, emailDomain)
+	fmt.Println("Sample seed complete.")
+	if len(createdUsers) > 0 {
+		fmt.Printf("Sample login password for newly created accounts: %s\n", samplePassword)
+		for _, username := range createdUsers {
+			fmt.Printf("  %-24s %s@%s\n", username, username, emailDomain)
+		}
 	}
 	return nil
 }
@@ -289,7 +354,7 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("lock sample cleanup: %w", err)
 	}
 
-	var userIDs, teamIDs, teamScopeIDs, projectIDs, projectScopeIDs []string
+	var userIDs, teamIDs, teamScopeIDs, projectIDs, projectScopeIDs, resourceIDs, providerIDs []string
 	if err := tx.QueryRow(ctx, `
 		SELECT COALESCE(array_agg(id::text), ARRAY[]::text[])
 		  FROM users
@@ -303,6 +368,21 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]), COALESCE(array_agg(scope_id::text), ARRAY[]::text[]) FROM projects WHERE labels->>$1 = $2`, markerKey, markerValue).Scan(&projectIDs, &projectScopeIDs); err != nil {
 		return fmt.Errorf("find sample projects: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) FROM resources WHERE kind = 'Docker' AND labels->>$1 = $2`, markerKey, markerValue).Scan(&resourceIDs); err != nil {
+		return fmt.Errorf("find sample Docker resources: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) FROM providers WHERE config->>$1 = $2`, markerKey, markerValue).Scan(&providerIDs); err != nil {
+		return fmt.Errorf("find sample AI channels: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM provider_scope_bindings WHERE provider_id::text = ANY($1::text[])`, providerIDs); err != nil {
+		return fmt.Errorf("remove sample AI channel bindings: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM providers WHERE id::text = ANY($1::text[])`, providerIDs); err != nil {
+		return fmt.Errorf("remove sample AI channels: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM resources WHERE id::text = ANY($1::text[])`, resourceIDs); err != nil {
+		return fmt.Errorf("remove sample Docker resources: %w", err)
 	}
 	allScopeIDs := append(append([]string{}, teamScopeIDs...), projectScopeIDs...)
 	if _, err := tx.Exec(ctx, `DELETE FROM role_bindings WHERE (subject_type = 'user' AND subject_id::text = ANY($1::text[])) OR scope_id::text = ANY($2::text[])`, userIDs, allScopeIDs); err != nil {

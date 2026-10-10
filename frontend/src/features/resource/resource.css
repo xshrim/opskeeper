@@ -393,6 +393,32 @@
   border-left: 1px solid var(--theme-border);
   border-radius: 6px 0 0 6px;
 }
+.resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td.expandable-table-toggle-cell {
+  width: 30px;
+  padding: 10px 0;
+  text-align: center;
+}
+.resource-expandable-table .expandable-table col.expandable-table-toggle-column {
+  width: 30px;
+}
+.resource-expandable-table .expandable-table-toggle {
+  width: 30px;
+  color: var(--theme-fg-subtle);
+  opacity: 0.72;
+}
+.resource-expandable-table .expandable-table-toggle:hover {
+  color: var(--theme-fg-muted);
+  opacity: 1;
+}
+.resource-expandable-table .expandable-table button.expandable-table-toggle:hover {
+  background: transparent;
+}
+.resource-expandable-table .expandable-table button.expandable-table-toggle {
+  transform: translateX(2px);
+}
+.resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td.expandable-table-toggle-cell + td {
+  padding-left: 10px;
+}
 .resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td:last-child {
   border-right: 1px solid var(--theme-border);
   border-radius: 0 6px 6px 0;
@@ -407,23 +433,6 @@
   background: transparent;
   border: 0;
 }
-.resource-expand-toggle {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 24px;
-  margin-right: 3px;
-  padding: 0;
-  color: var(--theme-fg-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  font-size: 19px;
-  line-height: 1;
-  cursor: pointer;
-}
-.resource-expand-toggle:hover,
-.resource-expand-toggle .expanded { color: var(--theme-fg); }
 .resource-expandable-table .entity-summary { gap: 5px; }
 .resource-row-details {
   display: grid;
@@ -721,7 +730,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 2px;
+}
+.resource-row-actions .resource-enabled-control {
+  margin-right: 8px;
 }
 .resource-row-actions .icon-button {
   width: 28px;
@@ -2001,17 +2013,6 @@ body:has(.resource-add-workflow) {
   grid-template-columns: max-content minmax(280px, 1fr);
   align-items: stretch;
 }
-.docker-tls-label {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 6px !important;
-  white-space: nowrap;
-}
-.docker-tls-label small {
-  color: var(--theme-fg-subtle);
-  font-size: 11px;
-  font-weight: 500;
-}
 .docker-tls-certificate-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2026,6 +2027,43 @@ body:has(.resource-add-workflow) {
   grid-template-rows: 26px minmax(144px, auto) auto;
   align-content: start;
   gap: 6px;
+  min-width: 0;
+}
+.docker-tls-grid .tls-credential-field {
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  grid-template-rows: auto minmax(144px, auto) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 0;
+  gap: 0 !important;
+  column-gap: 8px !important;
+}
+.docker-tls-grid .tls-credential-field > .form-field-label {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  white-space: nowrap;
+}
+.docker-tls-grid .tls-credential-field > .docker-credential-label {
+  display: contents;
+}
+.docker-tls-grid .tls-credential-field > .docker-credential-label > .docker-file-picker {
+  grid-column: 4;
+  grid-row: 1;
+  margin-left: 0;
+}
+.docker-tls-grid .tls-credential-field > .docker-credential-label > .switch-control {
+  grid-column: 2;
+  grid-row: 1;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+.docker-tls-grid .tls-credential-field > .textarea-wrap,
+.docker-tls-grid .tls-credential-field > .form-field-message {
+  grid-column: 1 / -1;
+}
+.docker-tls-grid .tls-credential-field > .textarea-wrap {
   min-width: 0;
 }
 .docker-tls-grid textarea {

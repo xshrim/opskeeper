@@ -81,8 +81,19 @@
       {#each [['ca', ca], ['cert', cert], ['key', key]] as entry}
         {@const field = entry[0] as CredentialField}
         {@const value = entry[1] as string}
-        <FormField label={fileLabel(field)} invalid={invalid(value)}>
+        <FormField
+          label={fileLabel(field)}
+          className="tls-credential-field"
+          asLabel={false}
+          invalid={invalid(value)}
+        >
           <span class="docker-credential-label">
+            {#if field === 'ca' && showSkipVerify}<Switch
+                bind:checked={skipVerify}
+                ariaLabel={skipVerify ? '跳过TLS校验' : '开启TLS校验'}
+                tooltip={skipVerify ? '跳过TLS校验' : '开启TLS校验'}
+                on:change={onChange}
+              />{/if}
             <FilePicker
               className="docker-file-picker"
               inputClass="docker-file-input"
@@ -95,13 +106,6 @@
               buttonLabel="导入"
               onFileChange={(event) => void importFile(event, field)}
             />
-            {#if field === 'ca' && showSkipVerify}<span class="docker-tls-label"
-                ><Switch
-                  bind:checked={skipVerify}
-                  ariaLabel="跳过 TLS 证书校验"
-                  on:change={onChange}
-                /><small>跳过校验</small></span
-              >{/if}
           </span>
           <TextArea
             {value}

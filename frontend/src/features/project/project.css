@@ -22,6 +22,8 @@
 }
 
 .project-overview-header .resource-map-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
   align-items: center;
 }
 
@@ -1138,6 +1140,7 @@
   }
 
   .project-overview-header .resource-map-actions {
+    flex-wrap: nowrap;
     justify-content: flex-start;
     margin-top: 15px;
   }

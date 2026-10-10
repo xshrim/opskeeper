@@ -63,10 +63,10 @@ migrate-down: ## Roll back the latest PostgreSQL migration.
 admin-create: ## Create the first administrator through the controlled bootstrap flow.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
 
-sample-seed: ## Insert local sample teams, projects, users, and scoped role bindings.
+sample-seed: ## Insert local sample teams, projects, users, AI channel, Docker resource, and role bindings.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata seed
 
-sample-clean: ## Remove only the marked local sample teams, projects, users, and bindings.
+sample-clean: ## Remove only marked local sample teams, projects, users, AI channel, Docker resource, and bindings.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata clean
 
 infra-up: ## Start the PostgreSQL development dependency.
