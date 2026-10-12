@@ -106,10 +106,10 @@
     />
     <span class="search-input-suffix">
       {#if value}
-        <button class="search-input-clear" type="button" aria-label="清空搜索" title="清空搜索" data-tooltip="清空搜索" on:click|preventDefault|stopPropagation={clearValue}><X size={iconSize} aria-hidden="true" /></button>
+        <button class="search-input-clear" type="button" aria-label="清空搜索" data-tooltip="清空搜索" on:click|preventDefault|stopPropagation={clearValue}><X size={iconSize} aria-hidden="true" /></button>
       {/if}
       {#if fieldSearchable && fieldOptions.length > 0}
-        <button class:active={fieldOpen} class="search-input-fields" type="button" aria-label="字段筛选" aria-expanded={fieldOpen} title="字段筛选" on:click|preventDefault|stopPropagation={() => (fieldOpen = !fieldOpen)}><ListFilter size={iconSize} aria-hidden="true" /></button>
+        <button class:active={fieldOpen} class="search-input-fields" type="button" aria-label="字段筛选" aria-expanded={fieldOpen} data-tooltip="字段筛选" on:click|preventDefault|stopPropagation={() => (fieldOpen = !fieldOpen)}><ListFilter size={iconSize} aria-hidden="true" /></button>
       {/if}
       <slot name="suffix" />
     </span>

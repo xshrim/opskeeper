@@ -90,6 +90,15 @@ export interface Project {
   updated_at: string;
 }
 
+export interface DeleteSummary {
+  teams: number;
+  projects: number;
+  applications: number;
+  instances: number;
+  role_bindings: number;
+  resources: number;
+}
+
 export interface ApplicationInstance {
   id: string;
   application_id: string;
@@ -175,8 +184,17 @@ export interface Resource {
   config: Record<string, unknown>;
   status: string;
   credential_configured?: boolean;
+  application_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApplicationReference {
+  application_id: string;
+  application_name: string;
+  project_id: string;
+  project_name: string;
+  relation_type: string;
 }
 
 export interface ResourceSchema {
@@ -890,6 +908,11 @@ export const api = {
   }) => request<Team>('api/v1/teams/', json(body)),
   updateTeam: (id: string, body: Record<string, unknown>) =>
     request<Team>(`api/v1/teams/${id}/`, patch(body)),
+  deleteTeam: (id: string, confirmationName: string) =>
+    request<DeleteSummary>(`api/v1/teams/${id}/`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmation_name: confirmationName, cascade: true })
+    }),
   projects: (teamId: string) =>
     request<Page<Project>>(
       `api/v1/teams/${teamId}/projects?page=1&page_size=100`
@@ -908,6 +931,11 @@ export const api = {
   ) => request<Project>(`api/v1/teams/${teamId}/projects`, json(body)),
   updateProject: (id: string, body: Record<string, unknown>) =>
     request<Project>(`api/v1/projects/${id}/`, patch(body)),
+  deleteProject: (id: string, confirmationName: string) =>
+    request<DeleteSummary>(`api/v1/projects/${id}/`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmation_name: confirmationName, cascade: true })
+    }),
   projectWorkspace: (id: string) =>
     request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
   applications: (projectId: string) =>
@@ -961,6 +989,8 @@ export const api = {
   contextResources: () =>
     request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),
+  resourceApplications: (id: string) =>
+    request<ApplicationReference[]>(`api/v1/resources/${id}/applications`),
   schemas: () => request<ResourceSchema[]>('api/v1/resources/schemas'),
   createResource: (body: Record<string, unknown>) =>
     request<Resource>('api/v1/resources', json(body)),
@@ -968,6 +998,11 @@ export const api = {
     request<Resource>(`api/v1/resources/${id}/`, patch(body)),
   deleteResource: (id: string) =>
     request<void>(`api/v1/resources/${id}/`, { method: 'DELETE' }),
+  deleteResources: (ids: string[]) =>
+    request<void>('api/v1/resources', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids })
+    }),
   testResourceConnection: (id: string) =>
     request<ConnectionCheck>(`api/v1/resources/${id}/connection-tests`, {
       method: 'POST'

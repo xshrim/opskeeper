@@ -173,46 +173,6 @@ body {
 }
 
 
-/* Theme-aware tooltips replace browser-native title bubbles throughout the console. */
-[data-tooltip] {
-  position: relative;
-}
-[data-tooltip]::after {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 8px);
-  left: 50%;
-  width: max-content;
-  max-width: 240px;
-  padding: 6px 9px;
-  color: var(--theme-fg-strong);
-  background: var(--theme-bg-raised);
-  border: 1px solid var(--theme-border);
-  border-radius: 5px;
-  box-shadow: var(--theme-shadow-soft);
-  content: attr(data-tooltip);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.35;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, -3px);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-  white-space: normal;
-}
-[data-tooltip]:hover::after,
-[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-:root[data-theme='dark'] [data-tooltip]::after {
-  color: var(--theme-teal);
-  background: var(--theme-bg-raised);
-  border-color: var(--theme-border-focus);
-  box-shadow: var(--theme-shadow-soft);
-}
 :root[data-theme='dark'] input[type='checkbox'] {
   background-color: var(--theme-bg-page);
   border-color: var(--theme-fg-subtle);

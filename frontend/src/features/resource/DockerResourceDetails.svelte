@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { resourceEndpointFor } from './resourceCatalog';
+  import CompactToolList from '../../components/CompactToolList.svelte';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -36,8 +37,6 @@
   </div>
   <div class="provider-resource-models mcp-resource-tools">
     <div class="provider-resource-models-heading"><strong>工具列表</strong><span>6 个</span></div>
-    {#each tools as [name, description]}
-      <div class="provider-resource-model-row mcp-resource-tool-row"><div><span>工具名称</span><strong>{name}</strong></div><div class="mcp-tool-description"><span>工具说明</span><strong>{description}</strong></div></div>
-    {/each}
+    <CompactToolList {tools} />
   </div>
 </div>

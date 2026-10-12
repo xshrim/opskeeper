@@ -31,14 +31,12 @@ export function removeResourceRelation(resourceId: string, relation: Relation) {
   return api.deleteRelation(resourceId, relation.id);
 }
 
-export function setResourceEnabled(resource: Resource, enabled: boolean) {
-  return api.updateResource(resource.id, {
-    status: enabled ? 'active' : 'disabled'
-  });
-}
-
 export function removeResource(resourceId: string) {
   return api.deleteResource(resourceId);
+}
+
+export function removeResources(resourceIDs: string[]) {
+  return api.deleteResources(resourceIDs);
 }
 
 export function schemaSecret(

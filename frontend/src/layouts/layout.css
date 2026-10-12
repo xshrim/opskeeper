@@ -666,15 +666,6 @@
   border-color: var(--theme-border-strong);
   box-shadow: var(--theme-shadow);
 }
-.sidebar.sidebar-compact [data-tooltip]::after {
-  top: 50%;
-  left: calc(100% + 10px);
-  transform: translate(0, -50%);
-}
-.sidebar.sidebar-compact [data-tooltip]:hover::after,
-.sidebar.sidebar-compact [data-tooltip]:focus-visible::after {
-  transform: translate(0, -50%);
-}
 :root[data-theme='dark'] .user-menu-trigger:hover,
 :root[data-theme='dark'] .sidebar-toggle:hover,
 :root[data-theme='dark'] .user-menu button:hover {

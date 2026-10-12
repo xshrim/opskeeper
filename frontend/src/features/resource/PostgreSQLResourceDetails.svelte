@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { resourceEndpointFor } from './resourceCatalog';
+  import CompactToolList from '../../components/CompactToolList.svelte';
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
   export let mcpServerEndpoint = '';
@@ -19,5 +20,5 @@
     <div><span>连接凭据</span><strong>{agent ? '由 MCPServer 管理' : resource.credential_configured ? '已配置' : '未配置'}</strong></div>
     <div><span>状态</span><strong>{status} ({resource.status === 'active' ? '已启用' : '已停用'})</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
   </div>
-  <div class="provider-resource-models mcp-resource-tools"><div class="provider-resource-models-heading"><strong>工具列表</strong><span>{tools.length} 个</span></div>{#each tools as tool}<div class="provider-resource-model-row mcp-resource-tool-row"><div><strong>{tool}</strong></div></div>{/each}</div>
+	<div class="provider-resource-models mcp-resource-tools"><div class="provider-resource-models-heading"><strong>工具列表</strong><span>{tools.length} 个</span></div><CompactToolList {tools} /></div>
 </div>

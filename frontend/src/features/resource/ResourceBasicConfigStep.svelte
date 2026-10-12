@@ -1,13 +1,11 @@
 <script lang="ts">
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FieldLabel from '../../components/FieldLabel.svelte';
-  import Switch from '../../components/Switch.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import { resourceCategoryIcon } from './resourceCatalog';
   export let category = '';
   export let subtype = '';
   export let name = '';
-  export let status = 'active';
   export let labels = '';
   export let categoryOptions: Record<string, string[]> = {};
   export let subtypeOptions: string[] = [];
@@ -61,9 +59,6 @@
       <FieldLabel text="资源名称" required invalid={basicConfigurationAttempted && !name.trim()} /><TextInput bind:value={name} required invalid={basicConfigurationAttempted && !name.trim()} invalidMode="bubble" invalidMessage="请填写资源名称" placeholder="例如 production-resource" autocomplete="off" />
     </label>
     <label class="resource-basic-level"><FieldLabel text="资源级别" required invalid={basicConfigurationAttempted && !scopeSummary} /><TextInput value={scopeSummary} readonly invalid={basicConfigurationAttempted && !scopeSummary} invalidMode="bubble" invalidMessage="请选择资源范围" ariaLabel="资源级别" /></label>
-    <label class="resource-basic-enabled">
-      <FieldLabel text="是否启用" /><Switch checked={status === 'active'} ariaLabel="是否启用资源" on:change={(event) => (status = event.detail ? 'active' : 'disabled')} />
-    </label>
   </div>
   <label class="resource-basic-labels"><FieldLabel text="资源标签" /><TextInput bind:value={labels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" /></label>
 </div>

@@ -19,8 +19,10 @@ type resourceService interface {
 	Create(context.Context, resource.CreateInput) (resource.Resource, error)
 	List(context.Context, resource.Pagination, string, map[string]string) (resource.Page[resource.Resource], error)
 	Get(context.Context, string) (resource.Resource, error)
+	ListApplicationReferences(context.Context, string) ([]resource.ApplicationReference, error)
 	Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
 	Delete(context.Context, string) error
+	DeleteMany(context.Context, []string) error
 	ListSchemas(context.Context) ([]resource.Schema, error)
 	CreateRelation(context.Context, string, resource.CreateRelationInput) (resource.Relation, error)
 	ListRelations(context.Context, string) ([]resource.Relation, error)
@@ -61,6 +63,10 @@ type updateResourceRequest struct {
 	Config           *map[string]any         `json:"config"`
 	Status           *string                 `json:"status"`
 	Credential       nullableCredentialPatch `json:"credential"`
+}
+
+type deleteResourcesRequest struct {
+	IDs []string `json:"ids"`
 }
 
 type resourceCredentialRequest struct {
@@ -114,11 +120,13 @@ func registerResourceRoutes(router chi.Router, services resourceService, auditor
 		router.With(guard(authorization.ResourceUse)).Get("/resources/context", handler.listResources)
 		router.With(guard(authorization.ResourceRead)).Get("/resources", handler.listResources)
 		router.With(guard(authorization.ResourceCreate)).Post("/resources", handler.createResource)
+		router.With(guard(authorization.ResourceDelete)).Delete("/resources", handler.deleteResources)
 		router.With(guard(authorization.ResourceRead)).Get("/resources/schemas", handler.listSchemas)
 		router.With(guard(authorization.ResourceUpdate)).Put("/resource-defaults", handler.setDefault)
 		router.With(guard(authorization.ResourceRead)).Get("/resource-defaults", handler.resolveDefault)
 		router.Route("/resources/{resourceID}", func(router chi.Router) {
 			router.With(guard(authorization.ResourceRead)).Get("/", handler.getResource)
+			router.With(guard(authorization.ResourceRead)).Get("/applications", handler.listApplicationReferences)
 			router.With(guard(authorization.ResourceUpdate)).Patch("/", handler.updateResource)
 			router.With(guard(authorization.ResourceDelete)).Delete("/", handler.deleteResource)
 			router.With(guard(authorization.RelationManage)).Get("/relations", handler.listRelations)
@@ -176,6 +184,15 @@ func (h resourceHandler) getResource(writer http.ResponseWriter, request *http.R
 	writeJSON(writer, http.StatusOK, item)
 }
 
+func (h resourceHandler) listApplicationReferences(writer http.ResponseWriter, request *http.Request) {
+	items, err := h.resources.ListApplicationReferences(request.Context(), chi.URLParam(request, "resourceID"))
+	if err != nil {
+		writeResourceError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, items)
+}
+
 func (h resourceHandler) updateResource(writer http.ResponseWriter, request *http.Request) {
 	var body updateResourceRequest
 	if !decodeRequest(writer, request, &body) {
@@ -216,6 +233,21 @@ func (h resourceHandler) deleteResource(writer http.ResponseWriter, request *htt
 		return
 	}
 	h.record(request, "resource.delete", "resource", id, "")
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (h resourceHandler) deleteResources(writer http.ResponseWriter, request *http.Request) {
+	var body deleteResourcesRequest
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	if err := h.resources.DeleteMany(request.Context(), body.IDs); err != nil {
+		writeResourceError(writer, request, err)
+		return
+	}
+	for _, id := range body.IDs {
+		h.record(request, "resource.delete", "resource", id, "")
+	}
 	writer.WriteHeader(http.StatusNoContent)
 }
 
@@ -347,6 +379,8 @@ func writeResourceError(writer http.ResponseWriter, request *http.Request, err e
 		writeError(writer, request, http.StatusNotFound, "not_found", "Resource not found")
 	case errors.Is(err, resource.ErrConflict):
 		writeError(writer, request, http.StatusConflict, "conflict", "Resource conflicts with existing data")
+	case errors.Is(err, resource.ErrInUse):
+		writeError(writer, request, http.StatusConflict, "resource_in_use", "Resource is associated with an application and cannot be deleted")
 	case errors.Is(err, resource.ErrSchemaNotFound):
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", "Resource kind or schema is not registered")
 	case errors.Is(err, resource.ErrRelationCycle):

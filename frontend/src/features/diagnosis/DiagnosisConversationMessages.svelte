@@ -171,8 +171,8 @@
               >
                 <textarea bind:value={diagnosisEditDraft} aria-label="编辑诊断问题" rows="1"></textarea>
                 <div class="diagnosis-edit-actions">
-                  <button class="secondary" aria-label="取消编辑" title="取消编辑" on:click={cancelMessageEdit}><X size={13} /></button
-                  ><button class="primary" aria-label="重新发送" title="重新发送" on:click={() => void saveMessageEdit()} disabled={busy}><Check size={13} /></button>
+                  <button class="secondary" aria-label="取消编辑" data-tooltip="取消编辑" on:click={cancelMessageEdit}><X size={13} /></button
+                  ><button class="primary" aria-label="重新发送" data-tooltip="重新发送" on:click={() => void saveMessageEdit()} disabled={busy}><Check size={13} /></button>
                 </div>
               </div>
               {#if message.role === 'user'}
@@ -243,12 +243,12 @@
               </div>
               {#if message.role === 'user'}
                 <div class="diagnosis-user-actions">
-                  {#if isLastDiagnosisUser(index)}<button class="diagnosis-user-action" aria-label="编辑并重新发送" title="编辑并重新发送" on:click={(event) => beginMessageEdit(message, event)}><Pencil size={13} /></button>{/if}
-                  <button class="diagnosis-user-action" aria-label="复制问题" title="复制问题" on:click={() => copyDiagnosisMessage(message, false)}><Copy size={13} /></button>
+                  {#if isLastDiagnosisUser(index)}<button class="diagnosis-user-action edit-action" aria-label="编辑并重新发送" data-tooltip="编辑并重新发送" on:click={(event) => beginMessageEdit(message, event)}><Pencil size={13} /></button>{/if}
+                  <button class="diagnosis-user-action" aria-label="复制问题" data-tooltip="复制问题" on:click={() => copyDiagnosisMessage(message, false)}><Copy size={13} /></button>
                 </div>
               {/if}
               {#if message.role === 'assistant' && (!isStreaming || diagnosisAnswerCompleted)}
-                <div class="diagnosis-answer-actions"><button class="diagnosis-answer-copy" aria-label="复制回答" title="复制回答" on:click={() => isStreaming ? copyStreamingAnswer() : copyDiagnosisMessage(message, diagnosisProcessExpanded[message.id] ?? false)}><Copy size={14} />复制回答</button></div>
+                <div class="diagnosis-answer-actions"><button class="diagnosis-answer-copy" aria-label="复制回答" data-tooltip="复制回答" on:click={() => isStreaming ? copyStreamingAnswer() : copyDiagnosisMessage(message, diagnosisProcessExpanded[message.id] ?? false)}><Copy size={14} />复制回答</button></div>
               {/if}
               {#if isStreaming && (diagnosisGenerating || (!diagnosisAnswerCompleted && diagnosisHasRunningActions(diagnosisSnapshot)))}
                 <span class="diagnosis-thinking diagnosis-thinking-inline" aria-live="polite"><i></i><i></i><i></i><span>正在思考</span></span>

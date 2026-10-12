@@ -46,6 +46,10 @@ func (s *stubOrganizationService) UpdateTeam(context.Context, string, organizati
 	return organization.Team{ID: handlerTestUUID}, nil
 }
 
+func (s *stubOrganizationService) DeleteTeam(context.Context, string, organization.DeleteInput) (organization.DeleteSummary, error) {
+	return organization.DeleteSummary{}, nil
+}
+
 func (s *stubOrganizationService) CreateProject(context.Context, organization.CreateProjectInput) (organization.Project, error) {
 	return organization.Project{ID: handlerTestUUID}, nil
 }
@@ -60,6 +64,10 @@ func (s *stubOrganizationService) GetProject(context.Context, string) (organizat
 
 func (s *stubOrganizationService) UpdateProject(context.Context, string, organization.UpdateProjectInput) (organization.Project, error) {
 	return organization.Project{ID: handlerTestUUID}, nil
+}
+
+func (s *stubOrganizationService) DeleteProject(context.Context, string, organization.DeleteInput) (organization.DeleteSummary, error) {
+	return organization.DeleteSummary{}, nil
 }
 
 func newOrganizationTestRouter(service organizationService) http.Handler {

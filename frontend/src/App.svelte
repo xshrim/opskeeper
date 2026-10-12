@@ -43,6 +43,7 @@
   import { formatDate } from './lib/format';
   import MessageBanner from './components/MessageBanner.svelte';
   import OpsKeeperLogo from './components/OpsKeeperLogo.svelte';
+  import TooltipPortal from './components/TooltipPortal.svelte';
   import DiagnosisPage from './features/diagnosis/DiagnosisPage.svelte';
   import LLMPage from './features/llm/LLMPage.svelte';
   import PersonasPage from './features/persona/PersonasPage.svelte';
@@ -628,6 +629,7 @@
 </svelte:head>
 
 <svelte:window on:keydown={handleGlobalKeydown} />
+<TooltipPortal />
 
 <AuthGate
   bind:authState
@@ -872,6 +874,7 @@
           onSelectProject={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedTeamId = project.team_id; }}
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}
+          onProjectDeleted={(project) => (projects = projects.filter((item) => item.id !== project.id))}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
           onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
@@ -964,6 +967,7 @@
           profiles={personas}
           {scopeName}
           {formatDate}
+          onReload={() => loadDomainCatalogs(selectedScopeId)}
           onNotice={(message: string) => (notice = message)}
           onError={(message: string) => (errorMessage = message)}
         />
@@ -972,6 +976,7 @@
           skills={skills}
           scopeId={selectedScopeId}
           {scopeName}
+          onReload={() => loadDomainCatalogs(selectedScopeId)}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
         />
@@ -982,6 +987,10 @@
           onCreateTeamRequestHandled={() => (openCreateTeamRequest = 0)}
           bind:teams
           {projects}
+          onTeamDeleted={(team) => {
+            projects = projects.filter((project) => project.team_id !== team.id);
+            if (selectedTeamId === team.id) chooseTeam('');
+          }}
           platformName={platform?.name ?? '平台'}
           {resources}
           {scopeChoices}

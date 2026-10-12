@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Plus, RefreshCw } from 'lucide-svelte';
+  import { Plus, RefreshCw, Trash2 } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
@@ -48,7 +48,7 @@
     createResourceRelation,
     removeResourceRelation,
     removeResource,
-    setResourceEnabled,
+    removeResources,
     testResourceConnector,
     schemaSecret,
     mcpSecret,
@@ -117,6 +117,7 @@
     MCPSnapshot,
     Relation,
     Resource,
+    ApplicationReference,
     ResourceSchema,
     TopologyNode
   } from '../../lib/api';
@@ -199,6 +200,7 @@
   export let schemas: ResourceSchema[] = [];
   export let childSurfaceActive = false;
   let connectionDetailResourceId = '';
+  let applicationReferences: Record<string, ApplicationReference[]> = {};
   let connectionBusyResourceIds: string[] = [];
   let autoSummaryTestKey = '';
   let resourceAddMenuOpen = false;
@@ -215,7 +217,6 @@
   let resourceConfigValues: Record<string, string> = {};
   let resourceSensitiveValues: Record<string, string> = {};
   let editResourceName = '';
-  let editResourceStatus = 'active';
   let editResourceLabels = '';
   let editResourceConfig = '{}';
   let editResourceSensitiveValues: Record<string, string> = {};
@@ -324,6 +325,7 @@
 
   let relationBusy = false;
   let resourceActionBusy = false;
+  let selectedResourceIds: string[] = [];
 
   const capabilityName = connectorCapabilityName;
   $: selectedSchema =
@@ -427,6 +429,11 @@
       topology = details.topology;
     } catch (error) {
       onError(describeError(error, '资源关系加载失败'));
+    }
+    try {
+      applicationReferences = { ...applicationReferences, [id]: await api.resourceApplications(id) };
+    } catch (error) {
+      onError(describeError(error, '资源应用引用加载失败'));
     }
     await loadConnectionCheck(id);
   }
@@ -581,7 +588,6 @@
 
   function syncResourceEditor(resource: Resource) {
     editResourceName = resource.name;
-    editResourceStatus = resource.status;
     editResourceLabels = Object.entries(resource.labels ?? {})
       .map(([key, value]) => `${key}=${value}`)
       .join(', ');
@@ -1784,7 +1790,6 @@
       const updated = await updateResourceRecord(selectedResource.id, {
         name: editResourceName,
         subtype: resourceSubtypeFor({ kind: selectedResource.kind, config }),
-        status: editResourceStatus,
         labels: parseLabels(editResourceLabels),
         config,
         ...(credentialDraft ? { credential: credentialDraft } : {})
@@ -2404,31 +2409,6 @@
     }
   }
 
-  async function toggleResourceEnabled(resource: Resource, enabled: boolean) {
-    if (!resourceCanManage(resource, 'resource:update')) return;
-    resourceActionBusy = true;
-    onError('');
-    try {
-      const updated = await setResourceEnabled(resource, enabled);
-      resources = resources.map((item) =>
-        item.id === updated.id ? updated : item
-      );
-      if (selectedResourceId === updated.id) {
-        editResourceName = updated.name;
-        editResourceStatus = updated.status;
-        editResourceLabels = Object.entries(updated.labels ?? {})
-          .map(([key, value]) => `${key}=${value}`)
-          .join(', ');
-        editResourceConfig = JSON.stringify(updated.config ?? {}, null, 2);
-      }
-      onNotice(`资源“${updated.name}”已${enabled ? '启用' : '停用'}`);
-    } catch (error) {
-      onError(describeError(error, '更新资源状态失败'));
-    } finally {
-      resourceActionBusy = false;
-    }
-  }
-
   async function deleteSelectedResource() {
     const resource = selectedResource;
     if (!resource || !resourceCanManage(resource, 'resource:delete')) return;
@@ -2437,12 +2417,41 @@
     try {
       await removeResource(resource.id);
       resources = resources.filter((item) => item.id !== resource.id);
+      selectedResourceIds = selectedResourceIds.filter((id) => id !== resource.id);
       selectedResourceId = '';
       relations = [];
       topology = [];
-      onNotice('资源已停用并从当前列表移除');
+      onNotice('资源已删除');
     } catch (error) {
-      onError(describeError(error, '停用资源失败'));
+      onError(describeError(error, '删除资源失败'));
+    } finally {
+      resourceActionBusy = false;
+    }
+  }
+
+  async function deleteSelectedResources() {
+    const ids = selectedResourceIds.filter((id) =>
+      resources.some(
+        (resource) =>
+          resource.id === id && resourceCanManage(resource, 'resource:delete')
+      )
+    );
+    if (ids.length === 0) return;
+    resourceActionBusy = true;
+    onError('');
+    try {
+      await removeResources(ids);
+      const removed = new Set(ids);
+      resources = resources.filter((resource) => !removed.has(resource.id));
+      selectedResourceIds = [];
+      if (selectedResourceId && removed.has(selectedResourceId)) {
+        selectedResourceId = '';
+        relations = [];
+        topology = [];
+      }
+      onNotice(`已删除 ${ids.length} 个资源`);
+    } catch (error) {
+      onError(describeError(error, '批量删除资源失败'));
     } finally {
       resourceActionBusy = false;
     }
@@ -2465,7 +2474,6 @@
       label: '状态',
       values: [
         { value: 'active', label: '正常' },
-        { value: 'disabled', label: '已停用' },
         { value: 'unknown', label: '未知' }
       ]
     },
@@ -2606,13 +2614,20 @@
             on:fields={(event) => (resourceFieldValues = event.detail)}
           />
           <button
-            class="icon-button"
+            class="secondary"
             type="button"
             disabled={busy || resourceRefreshBusy}
-            title="刷新资源目录"
+            data-tooltip="刷新资源目录"
             aria-label="刷新资源目录"
             on:click={() => void refreshResources()}
-            ><RefreshCw size={15} aria-hidden="true" /></button
+            ><RefreshCw size={15} aria-hidden="true" />刷新</button
+          >
+          <button
+            class="danger-button resource-delete-selected"
+            type="button"
+            disabled={busy || resourceActionBusy || selectedResourceIds.length === 0}
+            on:click={() => void deleteSelectedResources()}
+            ><Trash2 size={15} aria-hidden="true" />删除资源</button
           >
           <button
             class="primary resource-add-menu-trigger"
@@ -2630,10 +2645,10 @@
       <ResourceCatalogList
         resources={resourceCatalogItems}
         {selectedResourceId}
+        bind:selectedResourceIds
         {resourceConnectionChecks}
         {connectionDetailResourceId}
         {busy}
-        {resourceActionBusy}
         {connectionBusyResourceIds}
         {resourceCanManage}
         {resourcePermissionLabel}
@@ -2643,8 +2658,6 @@
         {mcpServerEndpointFor}
         onSelect={(resource) => void loadResourceDetails(resource.id)}
         onLoadSnapshot={(resourceId) => void loadMCPSnapshots(resourceId)}
-        onToggleEnabled={(resource, enabled) =>
-          void toggleResourceEnabled(resource, enabled)}
         onTestConnection={(resource) =>
           void testResourceRowConnection(resource)}
         onEdit={openResourceEditor}
@@ -2661,6 +2674,7 @@
             {formatDate}
             {resourceCanManage}
             {mcpServerEndpointFor}
+            applicationReferences={applicationReferences[resource.id] ?? []}
           />
         </svelte:fragment>
       </ResourceCatalogList>
@@ -2766,7 +2780,6 @@
             bind:category={resourceAddCategory}
             bind:subtype={resourceAddSubtype}
             bind:name={resourceName}
-            bind:status={resourceStatus}
             bind:labels={resourceLabels}
             categoryOptions={resourceCategoryOptions}
             subtypeOptions={resourceAddSubtypeOptions}
@@ -3030,7 +3043,6 @@
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">
               <FormField label="资源名称" required><TextInput bind:value={editResourceName} required ariaLabel="资源名称" /></FormField>
-              <FormField label="状态"><DropdownSelect bind:value={editResourceStatus} ariaLabel="资源状态" options={[{ value: 'active', label: '正常' }, { value: 'disabled', label: '停用' }, { value: 'unknown', label: '未知' }]} /></FormField>
             </div>
             <FormField label="标签"><TextInput bind:value={editResourceLabels} placeholder="env=prod, owner=platform" ariaLabel="资源标签" /></FormField>
             <McpConnectionFields
@@ -3095,7 +3107,6 @@
       bind:mcpTLSKey
       bind:mcpTLSSkipVerify
       bind:editResourceName
-      bind:editResourceStatus
       bind:editResourceLabels
       bind:editResourceConfig
       bind:resourceConfigValues

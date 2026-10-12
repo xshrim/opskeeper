@@ -30,7 +30,7 @@ function renderCode(source: string, language = '') {
     }
   }
   const encoded = encodeURIComponent(source);
-  return `<div class="diagnosis-code-wrap"><button class="diagnosis-code-copy" type="button" data-code-copy="${encoded}" aria-label="复制代码" title="复制代码"><span aria-hidden="true">⧉</span></button><pre class="diagnosis-code-block"><code${normalized ? ` class="language-${normalized} hljs"` : ' class="hljs"'}>${rendered}</code></pre></div>`;
+  return `<div class="diagnosis-code-wrap"><button class="diagnosis-code-copy" type="button" data-code-copy="${encoded}" aria-label="复制代码" data-tooltip="复制代码"><span aria-hidden="true">⧉</span></button><pre class="diagnosis-code-block"><code${normalized ? ` class="language-${normalized} hljs"` : ' class="hljs"'}>${rendered}</code></pre></div>`;
 }
 
 export function renderDiagnosisMarkdown(value: string) {
@@ -43,7 +43,7 @@ export function renderDiagnosisMarkdown(value: string) {
     link({ href, title, tokens }) {
       const safeHref = /^(?:https?:|mailto:)/i.test(href) ? href : '#';
       const label = this.parser.parseInline(tokens);
-      const titleAttr = title ? ` title="${escapeHTML(title)}"` : '';
+      const titleAttr = title ? ` data-tooltip="${escapeHTML(title)}"` : '';
       return `<a href="${escapeHTML(safeHref)}"${titleAttr} target="_blank" rel="noreferrer">${label}</a>`;
     }
   };

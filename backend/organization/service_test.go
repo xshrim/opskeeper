@@ -13,6 +13,8 @@ type stubStore struct {
 	listTeamsInput     Pagination
 	createProjectInput CreateProjectInput
 	updateTeamInput    UpdateTeamInput
+	deleteTeamInput    DeleteInput
+	deleteProjectInput DeleteInput
 	called             bool
 }
 
@@ -40,6 +42,11 @@ func (r *stubStore) UpdateTeam(_ context.Context, _ string, input UpdateTeamInpu
 	return Team{ID: testUUID}, nil
 }
 
+func (r *stubStore) DeleteTeam(_ context.Context, _ string, input DeleteInput) (DeleteSummary, error) {
+	r.deleteTeamInput = input
+	return DeleteSummary{}, nil
+}
+
 func (r *stubStore) CreateProject(_ context.Context, input CreateProjectInput) (Project, error) {
 	r.createProjectInput = input
 	return Project{ID: testUUID, TeamID: input.TeamID}, nil
@@ -55,6 +62,11 @@ func (r *stubStore) GetProject(context.Context, string) (Project, error) {
 
 func (r *stubStore) UpdateProject(context.Context, string, UpdateProjectInput) (Project, error) {
 	return Project{ID: testUUID}, nil
+}
+
+func (r *stubStore) DeleteProject(_ context.Context, _ string, input DeleteInput) (DeleteSummary, error) {
+	r.deleteProjectInput = input
+	return DeleteSummary{}, nil
 }
 
 func TestCreateTeamNormalizesInput(t *testing.T) {
@@ -165,5 +177,26 @@ func TestUpdateTeamRequiresAtLeastOneField(t *testing.T) {
 	var validationError *ValidationError
 	if !errors.As(err, &validationError) {
 		t.Fatalf("UpdateTeam() error = %v, want ValidationError", err)
+	}
+}
+
+func TestDeleteTeamRequiresAndNormalizesConfirmation(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+	if _, err := service.DeleteTeam(context.Background(), testUUID, DeleteInput{ConfirmationName: "  Payments  ", Cascade: true}); err != nil {
+		t.Fatalf("DeleteTeam() error = %v", err)
+	}
+	if store.deleteTeamInput.ConfirmationName != "Payments" || !store.deleteTeamInput.Cascade {
+		t.Fatalf("DeleteTeam() input = %#v", store.deleteTeamInput)
+	}
+	if _, err := service.DeleteTeam(context.Background(), testUUID, DeleteInput{}); err == nil {
+		t.Fatal("DeleteTeam() accepted an empty confirmation")
+	}
+}
+
+func TestDeleteProjectRequiresConfirmation(t *testing.T) {
+	service := NewService(&stubStore{})
+	if _, err := service.DeleteProject(context.Background(), testUUID, DeleteInput{}); err == nil {
+		t.Fatal("DeleteProject() accepted an empty confirmation")
 	}
 }

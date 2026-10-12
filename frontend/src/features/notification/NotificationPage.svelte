@@ -577,7 +577,7 @@
           type="button"
           disabled={refreshing}
           on:click={() => loadData(scopeId, true)}
-          title="刷新通知数据"
+          data-tooltip="刷新通知数据"
           aria-label="刷新通知数据"
         >
           <RefreshCw size={15} class={refreshing ? 'spin' : ''} />刷新

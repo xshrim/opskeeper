@@ -113,3 +113,20 @@ type UpdateProjectInput struct {
 	Labels      *map[string]string
 	Status      *string
 }
+
+// DeleteInput keeps destructive operations explicit. Resources are deliberately
+// not part of this operation: applications only reference resources and a
+// project or team removal must never remove infrastructure implicitly.
+type DeleteInput struct {
+	ConfirmationName string
+	Cascade          bool
+}
+
+type DeleteSummary struct {
+	Teams        int `json:"teams"`
+	Projects     int `json:"projects"`
+	Applications int `json:"applications"`
+	Instances    int `json:"instances"`
+	RoleBindings int `json:"role_bindings"`
+	Resources    int `json:"resources"`
+}

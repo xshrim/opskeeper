@@ -13,6 +13,7 @@
     Filter,
     Play,
     Plus,
+    RefreshCw,
     Search,
     ShieldCheck,
     Sparkles,
@@ -143,6 +144,7 @@
   export let skills: SkillCatalogItem[] = [];
   export let scopeId = '';
   export let scopeName: (id: string) => string;
+  export let onReload: () => void | Promise<void> = () => {};
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
 
@@ -352,13 +354,17 @@
       </div>
       <p>诊断定位 · LLM 可调用的能力与扩展</p>
     </div>
-    <button
-      class="primary skill-create-button"
-      type="button"
-      on:click={startNewVersion}
-      disabled={skills.length === 0}
-      ><Plus size={16} aria-hidden="true" />新建 Skill</button
-    >
+    <div class="skill-header-actions">
+      <button class="secondary" type="button" on:click={onReload}
+        ><RefreshCw size={15} />刷新</button
+      ><button
+        class="primary skill-create-button"
+        type="button"
+        on:click={startNewVersion}
+        disabled={skills.length === 0}
+        ><Plus size={16} aria-hidden="true" />新建 Skill</button
+      >
+    </div>
   </header>
 
   <div class="skill-stat-grid">

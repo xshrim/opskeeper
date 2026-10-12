@@ -38,6 +38,14 @@ const resourceSelect = `
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name,
        resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels,
        resource.config, resource.status, resource.credential_ciphertext IS NOT NULL,
+       (SELECT COUNT(DISTINCT reference.application_id)
+          FROM (
+            SELECT instance.application_id FROM application_instances instance WHERE instance.target_resource_id = resource.id
+            UNION
+            SELECT dependency.application_id FROM application_dependencies dependency WHERE dependency.target_resource_id = resource.id
+          ) reference
+          JOIN applications application ON application.id = reference.application_id
+         WHERE application.deleted_at IS NULL),
        resource.created_at, resource.updated_at
   FROM resources resource
  WHERE resource.deleted_at IS NULL`
@@ -121,7 +129,7 @@ func (s *store) List(ctx context.Context, pagination Pagination, kind string, la
 	limitPosition := len(queryArgs) + 1
 	offsetPosition := len(queryArgs) + 2
 	queryArgs = append(queryArgs, pagination.PageSize, pagination.Offset())
-	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_ciphertext IS NOT NULL, resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
+	rows, err := s.pool.Query(ctx, "SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version, resource.external_uid, resource.source_resource_id, resource.labels, resource.config, resource.status, resource.credential_ciphertext IS NOT NULL, (SELECT COUNT(DISTINCT reference.application_id) FROM (SELECT instance.application_id FROM application_instances instance WHERE instance.target_resource_id = resource.id UNION SELECT dependency.application_id FROM application_dependencies dependency WHERE dependency.target_resource_id = resource.id) reference JOIN applications application ON application.id = reference.application_id WHERE application.deleted_at IS NULL), resource.created_at, resource.updated_at"+base+" ORDER BY resource.created_at DESC, resource.id LIMIT $"+strconv.Itoa(limitPosition)+" OFFSET $"+strconv.Itoa(offsetPosition), queryArgs...)
 	if err != nil {
 		return Page[Resource]{}, fmt.Errorf("list resources: %w", err)
 	}
@@ -143,6 +151,44 @@ func (s *store) List(ctx context.Context, pagination Pagination, kind string, la
 func (s *store) Get(ctx context.Context, id string) (Resource, error) {
 	query, args := visibleQuery(resourceSelect+" AND resource.id = $1::uuid", "resource", ctx, id)
 	return scanResource(s.pool.QueryRow(ctx, query, args...))
+}
+
+func (s *store) ListApplicationReferences(ctx context.Context, id string) ([]ApplicationReference, error) {
+	query := `SELECT application.id::text, application.name, project.id::text, project.name, reference.relation_type
+      FROM (
+        SELECT instance.application_id, instance.target_resource_id, 'instance'::text AS relation_type FROM application_instances instance
+        UNION ALL
+        SELECT dependency.application_id, dependency.target_resource_id, 'dependency'::text FROM application_dependencies dependency
+      ) reference
+      JOIN applications application ON application.id = reference.application_id
+      JOIN projects project ON project.id = application.project_id
+      JOIN resources resource ON resource.id = reference.target_resource_id
+     WHERE resource.id = $1::uuid AND resource.deleted_at IS NULL
+       AND application.deleted_at IS NULL AND project.deleted_at IS NULL`
+	query, args := appendResourceVisibility(query, []any{id}, ctx, "resource")
+	if scopeIDs, _, restricted := accessFilter(ctx); restricted {
+		if len(scopeIDs) == 0 {
+			query += " AND FALSE"
+		} else {
+			query += " AND project.scope_id = ANY($" + strconv.Itoa(len(args)+1) + "::uuid[])"
+			args = append(args, scopeIDs)
+		}
+	}
+	query += " ORDER BY project.name, application.name, reference.relation_type"
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list resource application references: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ApplicationReference, 0)
+	for rows.Next() {
+		var item ApplicationReference
+		if err := rows.Scan(&item.ApplicationID, &item.ApplicationName, &item.ProjectID, &item.ProjectName, &item.RelationType); err != nil {
+			return nil, mapStoreError(err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *store) Update(ctx context.Context, id string, input UpdateInput) (Resource, error) {
@@ -219,13 +265,72 @@ func resourceUpdateStatement(ctx context.Context, id string, input UpdateInput) 
 }
 
 func (s *store) Delete(ctx context.Context, id string) error {
-	query, args := exactResourceQuery("UPDATE resources resource SET deleted_at = now(), updated_at = now() WHERE resource.id = $1::uuid AND resource.deleted_at IS NULL", ctx, id)
-	command, err := s.pool.Exec(ctx, query, args...)
+	return s.deleteResources(ctx, []string{id})
+}
+
+func (s *store) DeleteMany(ctx context.Context, ids []string) error {
+	return s.deleteResources(ctx, ids)
+}
+
+func (s *store) deleteResources(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return ErrNotFound
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin resource deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	lockQuery, lockArgs := exactResourceQuery("SELECT resource.id::text FROM resources resource WHERE resource.id = ANY($1::uuid[]) AND resource.deleted_at IS NULL", ctx, ids)
+	lockQuery += " FOR UPDATE"
+	rows, err := tx.Query(ctx, lockQuery, lockArgs...)
 	if err != nil {
 		return mapStoreError(err)
 	}
-	if command.RowsAffected() != 1 {
+	locked := make([]string, 0, len(ids))
+	for rows.Next() {
+		var lockedID string
+		if err := rows.Scan(&lockedID); err != nil {
+			rows.Close()
+			return mapStoreError(err)
+		}
+		locked = append(locked, lockedID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return mapStoreError(err)
+	}
+	rows.Close()
+	if len(locked) != len(ids) {
 		return ErrNotFound
+	}
+
+	var inUse bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (
+        SELECT 1 FROM application_instances instance
+        JOIN applications application ON application.id = instance.application_id
+        WHERE instance.target_resource_id = ANY($1::uuid[]) AND application.deleted_at IS NULL
+        UNION ALL
+        SELECT 1 FROM application_dependencies dependency
+        JOIN applications application ON application.id = dependency.application_id
+        WHERE dependency.target_resource_id = ANY($1::uuid[]) AND application.deleted_at IS NULL
+    )`, ids).Scan(&inUse); err != nil {
+		return fmt.Errorf("check resource application references: %w", err)
+	}
+	if inUse {
+		return ErrInUse
+	}
+	updateQuery, updateArgs := exactResourceQuery("UPDATE resources resource SET deleted_at = now(), updated_at = now() WHERE resource.id = ANY($1::uuid[]) AND resource.deleted_at IS NULL", ctx, ids)
+	command, err := tx.Exec(ctx, updateQuery, updateArgs...)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if command.RowsAffected() != int64(len(ids)) {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit resource deletion: %w", err)
 	}
 	return nil
 }
@@ -405,8 +510,10 @@ WITH RECURSIVE chain(id, depth) AS (
      WHERE scope.parent_scope_id IS NOT NULL
 )
 SELECT resource.id::text, resource.scope_id::text, resource.kind, resource.name, resource.subtype, resource.agent_ref::text, resource.schema_version,
-       resource.external_uid, resource.source_resource_id, resource.labels, resource.config,
-	       resource.status, resource.credential_ciphertext IS NOT NULL, resource.created_at, resource.updated_at
+		resource.external_uid, resource.source_resource_id, resource.labels, resource.config,
+	       resource.status, resource.credential_ciphertext IS NOT NULL,
+	       (SELECT COUNT(DISTINCT reference.application_id) FROM (SELECT instance.application_id FROM application_instances instance WHERE instance.target_resource_id = resource.id UNION SELECT dependency.application_id FROM application_dependencies dependency WHERE dependency.target_resource_id = resource.id) reference JOIN applications application ON application.id = reference.application_id WHERE application.deleted_at IS NULL),
+	       resource.created_at, resource.updated_at
   FROM chain
   JOIN scope_defaults defaults ON defaults.scope_id = chain.id AND defaults.default_key = $2
   JOIN resources resource ON resource.id = defaults.resource_id
@@ -437,7 +544,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanResource(row rowScanner) (Resource, error) {
 	var item Resource
 	var labelsRaw, configRaw []byte
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialConfigured, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.Kind, &item.Name, &item.Subtype, &item.AgentRef, &item.SchemaVersion, &item.ExternalUID, &item.SourceResourceID, &labelsRaw, &configRaw, &item.Status, &item.CredentialConfigured, &item.ApplicationCount, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return Resource{}, mapStoreError(err)
 	}
 	if err := json.Unmarshal(labelsRaw, &item.Labels); err != nil {

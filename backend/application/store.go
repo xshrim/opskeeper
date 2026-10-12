@@ -186,17 +186,32 @@ WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 }
 
 func (s *store) Delete(ctx context.Context, projectID, applicationID string) error {
-	args := []any{applicationID}
-	query := `UPDATE applications a SET deleted_at=now(),status='disabled',updated_at=now()
-WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
-	if strings.TrimSpace(projectID) != "" {
-		args = append(args, projectID)
-		query += ` AND a.project_id=$2::uuid`
+	// Delete the application graph in one transaction. Instances and dependency
+	// rows are application-owned bindings; target resources are never deleted.
+	current, err := s.Get(ctx, projectID, applicationID)
+	if err != nil {
+		return err
 	}
-	query, args = visibleApplications(query+` RETURNING a.id`, args, ctx)
-	var deletedID string
-	if err := s.pool.QueryRow(ctx, query, args...).Scan(&deletedID); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete application: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id=$1::uuid`, current.ID); err != nil {
+		return fmt.Errorf("delete application dependencies: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id=$1::uuid`, current.ID); err != nil {
+		return fmt.Errorf("delete application instances: %w", err)
+	}
+	command, err := tx.Exec(ctx, `UPDATE applications SET deleted_at=now(),status='disabled',updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, current.ID)
+	if err != nil {
 		return mapStoreError(err)
+	}
+	if command.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete application: %w", err)
 	}
 	return nil
 }

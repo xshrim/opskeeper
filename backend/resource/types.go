@@ -24,8 +24,17 @@ type Resource struct {
 	Config               map[string]any    `json:"config"`
 	Status               string            `json:"status"`
 	CredentialConfigured bool              `json:"credential_configured"`
+	ApplicationCount     int               `json:"application_count"`
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
+}
+
+type ApplicationReference struct {
+	ApplicationID   string `json:"application_id"`
+	ApplicationName string `json:"application_name"`
+	ProjectID       string `json:"project_id"`
+	ProjectName     string `json:"project_name"`
+	RelationType    string `json:"relation_type"`
 }
 
 type Schema struct {

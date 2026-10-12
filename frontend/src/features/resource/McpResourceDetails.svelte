@@ -1,5 +1,6 @@
 <script lang="ts">
   import EmptyState from '../../components/EmptyState.svelte';
+  import CompactToolList from '../../components/CompactToolList.svelte';
   import type { MCPSnapshot, Resource } from '../../lib/api';
   import { resourceEndpointFor, resourceLabelsText } from './resourceCatalog';
   export let resource: Resource;
@@ -29,7 +30,6 @@
   </div>
   <div class="provider-resource-models mcp-resource-tools">
     <div class="provider-resource-models-heading"><strong>工具列表</strong><span>{snapshot?.tools?.length ?? 0} 个</span></div>
-    {#each snapshot?.tools ?? [] as tool}<div class="provider-resource-model-row mcp-resource-tool-row"><div><span>工具名称</span><strong>{tool.name}</strong></div><div class="mcp-tool-description"><span>工具说明</span><strong>{tool.description || '未提供说明'}</strong></div></div>
-    {:else}<EmptyState>尚未发现工具，请先执行连接测试。</EmptyState>{/each}
+    {#if snapshot?.tools?.length}<CompactToolList tools={snapshot.tools} />{:else}<EmptyState>尚未发现工具，请先执行连接测试。</EmptyState>{/if}
   </div>
 </div>

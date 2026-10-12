@@ -16,9 +16,11 @@ type Store interface {
 	UpsertImported(context.Context, ImportedInput) (Resource, error)
 	List(context.Context, Pagination, string, map[string]string) (Page[Resource], error)
 	Get(context.Context, string) (Resource, error)
+	ListApplicationReferences(context.Context, string) ([]ApplicationReference, error)
 	Secret(context.Context, string) ([]byte, string, error)
 	Update(context.Context, string, UpdateInput) (Resource, error)
 	Delete(context.Context, string) error
+	DeleteMany(context.Context, []string) error
 	GetSchema(context.Context, string, int) (Schema, error)
 	ListSchemas(context.Context) ([]Schema, error)
 	CreateRelation(context.Context, CreateRelationInput, string) (Relation, error)
@@ -137,6 +139,13 @@ func (s *Service) Get(ctx context.Context, id string) (Resource, error) {
 		return Resource{}, invalid("resource_id is required")
 	}
 	return s.store.Get(ctx, id)
+}
+
+func (s *Service) ListApplicationReferences(ctx context.Context, id string) ([]ApplicationReference, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, invalid("resource_id is required")
+	}
+	return s.store.ListApplicationReferences(ctx, id)
 }
 
 func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Resource, error) {
@@ -508,6 +517,25 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		return invalid("resource_id is required")
 	}
 	return s.store.Delete(ctx, id)
+}
+
+func (s *Service) DeleteMany(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return invalid("resource_ids is required")
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for index, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return invalid("resource_ids must not contain empty values")
+		}
+		if _, exists := seen[id]; exists {
+			return invalid("resource_ids must not contain duplicates")
+		}
+		seen[id] = struct{}{}
+		ids[index] = id
+	}
+	return s.store.DeleteMany(ctx, ids)
 }
 
 func (s *Service) ListSchemas(ctx context.Context) ([]Schema, error) { return s.store.ListSchemas(ctx) }

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ConnectionCheck, MCPSnapshot, Resource } from '../../lib/api';
+  import ReadonlyTable from '../../components/ReadonlyTable.svelte';
+  import type { ApplicationReference, ConnectionCheck, MCPSnapshot, Resource } from '../../lib/api';
   import GenericResourceDetails from './GenericResourceDetails.svelte';
   import DockerResourceDetails from './DockerResourceDetails.svelte';
   import KubernetesResourceDetails from './KubernetesResourceDetails.svelte';
@@ -24,8 +25,10 @@
   export let formatDate: (value: string) => string;
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
   export let mcpServerEndpointFor: (resource: Resource) => string = () => '';
+  export let applicationReferences: ApplicationReference[] = [];
 </script>
 
+<div class="resource-catalog-details-stack">
 {#if resource.kind === 'MCPServer'}
   <McpResourceDetails {resource} snapshots={operationSnapshots[resource.id] ?? []} {formatDate} />
 {:else if resource.kind === 'Docker'}
@@ -57,3 +60,13 @@
 {:else}
   <GenericResourceDetails {resource} {selectedResourceId} {connectionCheck} mcpServerEndpoint={mcpServerEndpointFor(resource)} {formatDate} {resourceCanManage} />
 {/if}
+<section class="resource-application-references">
+  <div class="provider-resource-models-heading"><strong>应用引用</strong><span>{applicationReferences.length} 条</span></div>
+  <ReadonlyTable columns={[{ key: 'project', label: '项目', width: '28%' }, { key: 'application', label: '应用', width: '32%' }, { key: 'relation', label: '引用方式' }]} rows={applicationReferences} emptyText="当前资源未被应用引用">
+    <svelte:fragment slot="cell" let:row let:column>
+      {@const reference = row as ApplicationReference}
+      {#if column.key === 'project'}{reference.project_name}{:else if column.key === 'application'}{reference.application_name}{:else}{reference.relation_type === 'instance' ? '实例' : '依赖'}{/if}
+    </svelte:fragment>
+  </ReadonlyTable>
+</section>
+</div>

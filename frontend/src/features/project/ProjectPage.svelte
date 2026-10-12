@@ -10,9 +10,11 @@
     Network,
     Pencil,
     Plus,
+    RefreshCw,
     Search,
     Server,
-    Sparkles
+    Sparkles,
+    Trash2
   } from 'lucide-svelte';
   import {
     api,
@@ -30,6 +32,7 @@
   import SearchInput from '../../components/SearchInput.svelte';
   import ScopeChip from '../../components/ScopeChip.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
@@ -47,6 +50,7 @@
   export let onSelectProject: (project: Project) => void;
   export let onOpenTeamDialog: () => void;
   export let onProjectCreated: (project: Project) => void;
+  export let onProjectDeleted: (project: Project) => void = () => {};
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
   export let onOpenDiagnosis: (project: Project) => void;
@@ -68,6 +72,9 @@
   let editName = '';
   let editDescription = '';
   let editIcon = 'lucide:AppWindow';
+  let deletingProject: Project | null = null;
+  let deletingApplication: Application | null = null;
+  let selectedApplicationId = '';
 
   $: selectedProject =
     visibleProjects.find((project) => project.id === selectedProjectId) ??
@@ -90,13 +97,19 @@
     initializedTeamKey = teamKey;
     collapsedTeams = new Set(teams.slice(3).map((team) => team.id));
   }
-  $: if (selectedProjectId && selectedProjectId !== workspaceProjectId)
+  $: if (selectedProjectId && selectedProjectId !== workspaceProjectId) {
+    selectedApplicationId = '';
     void loadWorkspace(selectedProjectId);
+  }
   $: if (!selectedProjectId) {
     workspace = null;
     workspaceProjectId = '';
     expanded = new Set<string>();
+    selectedApplicationId = '';
   }
+  $: selectedApplication =
+    workspace?.applications.find((application) => application.id === selectedApplicationId) ??
+    null;
 
   function describeError(error: unknown, fallback: string) {
     return error instanceof ApiError
@@ -163,6 +176,7 @@
     collapsedTeams = next;
   }
   function toggle(app: Application) {
+    selectedApplicationId = app.id;
     const next = new Set(expanded);
     next.has(app.id) ? next.delete(app.id) : next.add(app.id);
   }
@@ -241,6 +255,32 @@
       onNotice('应用已更新');
     } catch (error) {
       onError(describeError(error, '更新应用失败'));
+    }
+  }
+  async function confirmProjectDelete() {
+    if (!deletingProject) return;
+    const project = deletingProject;
+    try {
+      await api.deleteProject(project.id, project.name);
+      deletingProject = null;
+      onProjectDeleted(project);
+      onSelectAllTeams();
+      onNotice(`项目“${project.name}”及其应用和范围配置已删除；关联资源已保留至团队范围`);
+    } catch (error) {
+      onError(describeError(error, '删除项目失败'));
+    }
+  }
+  async function confirmApplicationDelete() {
+    if (!deletingApplication || !selectedProjectId) return;
+    const application = deletingApplication;
+    try {
+      await api.deleteApplication(selectedProjectId, application.id);
+      deletingApplication = null;
+      if (selectedApplicationId === application.id) selectedApplicationId = '';
+      await loadWorkspace(selectedProjectId);
+      onNotice(`应用“${application.name}”已删除，关联资源未受影响`);
+    } catch (error) {
+      onError(describeError(error, '删除应用失败'));
     }
   }
 </script>
@@ -437,15 +477,24 @@
       </div>
       <div class="workspace-actions">
         <button
+          class="secondary"
+          type="button"
+          disabled={loadingWorkspace}
+          data-tooltip="刷新项目驾驶舱"
+          aria-label="刷新项目驾驶舱"
+          on:click={() => selectedProject && void loadWorkspace(selectedProject.id)}
+          ><RefreshCw size={15} />刷新</button
+        >
+        <button
+          class="danger-button workspace-action"
+          type="button"
+          on:click={() => (deletingProject = selectedProject)}
+          ><Trash2 size={15} />删除项目</button
+        ><button
           class="primary workspace-action"
           type="button"
           on:click={() => (projectCreateOpen = true)}
           ><Plus size={15} />新增项目</button
-        ><button
-          class="primary workspace-action"
-          type="button"
-          on:click={() => (applicationWizardOpen = true)}
-          ><Plus size={15} />添加应用</button
         ><button
           class="diagnose"
           type="button"
@@ -471,12 +520,29 @@
             <h2>项目应用</h2>
             <p>应用状态、实例绑定和运行资源</p>
           </div>
-          <span class="muted">{workspace?.applications.length ?? 0} 个应用</span
-          >
+          <div class="section-heading-actions">
+            <span class="muted">{workspace?.applications.length ?? 0} 个应用</span><button
+              class="secondary"
+              type="button"
+              disabled={loadingWorkspace}
+              data-tooltip="刷新项目应用"
+              aria-label="刷新项目应用"
+              on:click={() => selectedProject && void loadWorkspace(selectedProject.id)}
+              ><RefreshCw size={15} />刷新</button
+            ><button
+              class="danger-button workspace-action"
+              type="button"
+              disabled={!selectedApplication}
+              data-tooltip={selectedApplication ? `删除应用 ${selectedApplication.name}` : '请先展开要删除的应用'}
+              on:click={() => selectedApplication && (deletingApplication = selectedApplication)}
+              ><Trash2 size={15} />删除应用</button
+            ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />添加应用</button>
+          </div>
         </div>
         {#if loadingWorkspace}<div class="panel map-loading">
             正在加载项目驾驶舱...
           </div>{:else if workspace?.applications.length}{#each workspace.applications as app}<article
+              class:selected={selectedApplicationId === app.id}
               class="application-map-card panel"
               class:expanded={expanded.has(app.id)}
             >
@@ -505,7 +571,7 @@
                     tone={app.status}
                     label={statusLabel(app.status)} />
                   ><button
-                    class="icon-button"
+                    class="icon-button edit-action"
                     type="button"
                     data-tooltip="AI 诊断"
                     aria-label="AI 诊断"
@@ -519,6 +585,13 @@
                     aria-label="编辑应用"
                     on:click|stopPropagation={() => beginEdit(app)}
                     ><Pencil size={14} /></button
+                  ><button
+                    class="icon-button danger-action delete-action"
+                    type="button"
+                    data-tooltip="删除应用"
+                    aria-label={`删除应用 ${app.name}`}
+                    on:click|stopPropagation={() => (deletingApplication = app)}
+                    ><Trash2 size={14} /></button
                   ><button
                     class="icon-button"
                     type="button"
@@ -664,3 +737,25 @@
     onSave={saveApplications}
     onCancel={() => (applicationWizardOpen = false)}
   />{/if}
+{#if deletingProject}
+  <DeleteConfirmationDialog
+    title={`删除项目“${deletingProject.name}”？`}
+    name={deletingProject.name}
+    description="将删除该项目的应用、实例、授权和范围配置。用户账号、审计记录及关联资源不会被删除；资源将保留至所属团队范围。"
+    impact="此操作不可撤销。"
+    {busy}
+    onCancel={() => (deletingProject = null)}
+    onConfirm={confirmProjectDelete}
+  />
+{/if}
+{#if deletingApplication}
+  <DeleteConfirmationDialog
+    title={`删除应用“${deletingApplication.name}”？`}
+    name={deletingApplication.name}
+    description="将删除该应用及其运行实例和资源绑定。关联资源、项目、用户和历史审计记录不会被删除。"
+    impact="此操作不可撤销。"
+    {busy}
+    onCancel={() => (deletingApplication = null)}
+    onConfirm={confirmApplicationDelete}
+  />
+{/if}

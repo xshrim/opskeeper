@@ -7,6 +7,7 @@
     ChevronDown,
     Pencil,
     Plus,
+    RefreshCw,
     Trash2,
     UsersRound
   } from 'lucide-svelte';
@@ -21,7 +22,6 @@
     User
   } from '../../lib/api';
 
-  type DisableKind = 'team' | 'user';
   type Selection = {
     kind: 'platform' | 'team' | 'project';
     id: string;
@@ -63,8 +63,9 @@
   export let onAddTeam: () => void = () => {};
   export let onAddUser: () => void = () => {};
   export let onEditTeam: (team: Team) => void = () => {};
+  export let onDeleteTeam: (team: Team) => void = () => {};
   export let onEditUser: (user: User) => void = () => {};
-  export let onDisable: (kind: DisableKind, ids: string[]) => void = () => {};
+  export let onDisable: (ids: string[]) => void = () => {};
   export let onToggleTeam: (id: string) => void = () => {};
   export let onReload: () => void = () => {};
   export let canManageTeam: (team: Team) => boolean = () => false;
@@ -105,17 +106,17 @@
     { key: 'status', label: '状态', placeholder: '输入启用、锁定或禁用' }
   ];
   const memberColumns: ReadonlyTableColumn[] = [
-    { key: 'user', label: '用户', width: '15%' },
-    { key: 'contact', label: '联络', width: '25%' },
-    { key: 'permissions', label: '权限', width: '60%' },
+    { key: 'user', label: '用户', width: '20%' },
+    { key: 'contact', label: '联络', width: '20%' },
+    { key: 'permissions', label: '权限' },
     { key: 'status', label: '状态', width: '50px' },
     { key: 'actions', label: '操作', width: '60px', className: 'access-member-actions-heading' }
   ];
   const roleColumns: ReadonlyTableColumn[] = [
-    { key: 'level', label: '级别', width: '80px' },
-    { key: 'object', label: '授权对象' },
-    { key: 'role', label: '角色' },
-    { key: 'extra', label: '额外授权' }
+    { key: 'level', label: '级别', width: '72px', className: 'access-role-nowrap' },
+    { key: 'object', label: '对象', width: '220px', className: 'access-role-nowrap' },
+    { key: 'role', label: '角色', width: '120px', className: 'access-role-nowrap' },
+    { key: 'extra', label: '额外授权', width: '130px' }
   ];
   $: globalScopeSelection = globalSelection();
   $: globalScopeKey = `${selectedTeamId}|${selectedProjectId}|${globalScopeSelection.kind}|${globalScopeSelection.id}|${globalScopeSelection.name}`;
@@ -358,12 +359,20 @@
                 >
                 <div class="scope-tree-actions">
                   {#if canManageTeam(team)}<button
-                      class="icon-button"
+                      class="icon-button edit-action"
                       type="button"
                       aria-label={`编辑团队 ${team.name}`}
                       data-tooltip="编辑团队"
                       on:click={() => onEditTeam(team)}
                       ><Pencil size={13} /></button
+                    >{/if}
+                  {#if canManageTeam(team)}<button
+                      class="icon-button danger-action delete-action"
+                      type="button"
+                      aria-label={`删除团队 ${team.name}`}
+                      data-tooltip="删除团队"
+                      on:click={() => onDeleteTeam(team)}
+                      ><Trash2 size={13} /></button
                     >{/if}
                 </div>
               </div>
@@ -408,11 +417,19 @@
               ariaLabel="筛选当前成员"
               on:fields={(event) => (memberFieldValues = event.detail)}
             /><button
-              class="secondary danger-action"
+              class="secondary"
               type="button"
-              on:click={() => onDisable('user', selectedAccessUserIds)}
+              disabled={accessLoading || busy}
+              data-tooltip="刷新成员列表"
+              aria-label="刷新成员列表"
+              on:click={onReload}
+              ><RefreshCw size={15} />刷新</button
+            ><button
+              class="danger-button"
+              type="button"
+              on:click={() => onDisable(selectedAccessUserIds)}
               disabled={selectedAccessUserIds.length === 0 || busy}
-              ><Trash2 size={14} />批量禁用</button
+              ><Trash2 size={14} />禁用用户</button
             >{#if accessCanCreateUser}<button
                 class="primary"
                 type="button"
@@ -467,7 +484,7 @@
                       {#each scopeRoles.slice(0, 2) as entry}
                         <div
                           class={`permission-card permission-${entry.scopeType} permission-role-${roleTone(entry.roleName)}`}
-                          title={`${entry.scopeName} · ${entry.roleName}`}
+                          data-tooltip={`${entry.scopeName} · ${entry.roleName}`}
                         >
                           <span class="permission-card-object">
                             <small>{scopeTypeLabel(entry.scopeType)}</small>
@@ -479,7 +496,7 @@
                       {#if scopeRoles.length > 2}
                         <span
                           class="permission-overflow"
-                          title={`还有 ${scopeRoles.length - 2} 项权限`}
+                          data-tooltip={`还有 ${scopeRoles.length - 2} 项权限`}
                           >+{scopeRoles.length - 2}</span
                         >
                       {/if}
@@ -493,21 +510,21 @@
                   <div class="access-row-actions">
                     {#if canManageUser(user)}
                       <button
-                        class="icon-button"
+                        class="icon-button edit-action"
                         type="button"
                         aria-label={`编辑用户 ${user.display_name || user.username}`}
                         data-tooltip="编辑用户与授权"
                         on:click|stopPropagation={() => onEditUser(user)}
                         ><Pencil size={15} /></button
                       ><button
-                        class="icon-button danger-action"
+                        class="icon-button danger-action delete-action"
                         type="button"
                         aria-label={`禁用用户 ${user.display_name || user.username}`}
                         data-tooltip="禁用用户"
                         disabled={user.status !== 'active' ||
                           user.id === currentUser?.id}
                         on:click|stopPropagation={() =>
-                          onDisable('user', [user.id])}
+                          onDisable([user.id])}
                         ><Trash2 size={15} /></button
                       >{:else}
                       <span class="read-only-label">

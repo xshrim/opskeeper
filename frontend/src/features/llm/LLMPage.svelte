@@ -988,9 +988,9 @@
                 >{/each}
             </div>
             {#if canManageEngine}<button
-                class="icon-action provider-models-action"
+                class="icon-action provider-models-action edit-action"
                 type="button"
-                title="编辑引擎"
+                data-tooltip="编辑引擎"
                 aria-label="编辑引擎"
                 on:click={() => openEditEngine(engine)}
                 ><Pencil size={14} /></button
@@ -1099,7 +1099,7 @@
                     class="capability-add"
                     type="button"
                     aria-label="新增能力词条"
-                    title="新增能力词条"
+                    data-tooltip="新增能力词条"
                     on:click={openCapabilityMenu}><Plus size={14} /></button
                   >{/if}
               </div>
@@ -1141,12 +1141,12 @@
               class="icon-button"
               type="button"
               on:click={reloadProviders}
-              title="刷新渠道"><RefreshCw size={14} /></button
+              data-tooltip="刷新渠道"><RefreshCw size={14} /></button
             >{#if canManageProvider}<button
                 class="icon-button"
                 type="button"
                 on:click={openNewProvider}
-                title="添加渠道"
+                data-tooltip="添加渠道"
                 aria-label="添加渠道"><Plus size={14} /></button
             >{/if}
             </span
@@ -1181,7 +1181,7 @@
                       {/each}
                     </span>
                   </span>
-                  <small title={provider.config.base_url || '未填写 Base URL'}>{provider.config.base_url || '未填写 Base URL'}</small>
+                  <small data-tooltip={provider.config.base_url || '未填写 Base URL'}>{provider.config.base_url || '未填写 Base URL'}</small>
                 </span>
               </span>
             </span>
@@ -1214,7 +1214,7 @@
                   }
                 }}
               >
-                <strong title={isTesting ? '连接测试中' : '点击进行连接测试'}>{isTesting ? '测试中' : health.label}</strong>
+                <strong data-tooltip={isTesting ? '连接测试中' : '点击进行连接测试'}>{isTesting ? '测试中' : health.label}</strong>
               </span>
             </span>
             <span class="provider-row-models">
@@ -1225,11 +1225,11 @@
               {/each}
               {#if modelSummary.hidden > 0}<span class="model-chip model-overflow">+{modelSummary.hidden}</span>{/if}
               {#if canManageProvider}<span
-                  class="icon-action provider-models-action"
+                  class="icon-action provider-models-action edit-action"
                   role="button"
                   tabindex="0"
                   aria-label={`编辑${provider.name}`}
-                  title={`编辑${provider.name}`}
+                  data-tooltip={`编辑${provider.name}`}
                   on:click|stopPropagation={() => editProviderFromList(provider)}
                   on:keydown|stopPropagation={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -1239,11 +1239,11 @@
                   }}
                   ><Pencil size={14} /></span
                 ><span
-                  class="icon-action provider-models-action provider-delete-action"
+                  class="icon-action provider-models-action provider-delete-action delete-action"
                   role="button"
                   tabindex="0"
                   aria-label={`删除${provider.name}`}
-                  title={`删除${provider.name}`}
+                  data-tooltip={`删除${provider.name}`}
                   on:click|stopPropagation={() => void deleteProvider(provider)}
                   on:keydown|stopPropagation={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -1353,7 +1353,7 @@
                         class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
                         class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
                         type="button"
-                        title={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
+                        data-tooltip={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
                         disabled={!providerDraft.id || Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
                         on:click|stopPropagation={() => testProvider()}
                         >{Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
@@ -1507,7 +1507,7 @@
                       <button
                         class="icon-action model-remove"
                         type="button"
-                        title="删除模型"
+                        data-tooltip="删除模型"
                         aria-label="删除模型"
                         on:click={() => removeModel(index)}
                         disabled={providerDraft.models.length === 1}
@@ -1563,7 +1563,7 @@
                       class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
                       class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
                       type="button"
-                      title={Boolean(testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
+                      data-tooltip={Boolean(testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
                       disabled={Boolean(testingProviders[selectedProvider.id])}
                       on:click|stopPropagation={() => testProvider()}
                       >{Boolean(testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button

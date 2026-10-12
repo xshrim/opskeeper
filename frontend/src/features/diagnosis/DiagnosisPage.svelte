@@ -663,14 +663,14 @@
         </div>
         <div class="diagnosis-heading-actions">
           <button
-            class="icon-button"
+            class="icon-button delete-action"
             aria-label="清空会话历史"
-            title="清空会话历史"
+            data-tooltip="清空会话历史"
             on:click={clearDiagnosisHistory}><Trash2 size={15} /></button
           ><button
             class="icon-button"
             aria-label="新建诊断会话"
-            title="新建诊断会话"
+            data-tooltip="新建诊断会话"
             on:click={newDiagnosisSession}><Plus size={16} /></button
           >
         </div>
@@ -697,13 +697,15 @@
             >
             <div class="diagnosis-session-actions">
               <button
+                class="edit-action"
                 aria-label="重命名会话"
-                title="重命名会话"
+                data-tooltip="重命名会话"
                 on:click|stopPropagation={() => renameDiagnosisSession(session)}
                 ><Pencil size={13} /></button
               ><button
+                class="delete-action"
                 aria-label="删除会话"
-                title="删除会话"
+                data-tooltip="删除会话"
                 on:click|stopPropagation={() => deleteDiagnosisSession(session)}
                 ><Trash2 size={13} /></button
               >
@@ -758,7 +760,7 @@
           class="icon-button"
           type="button"
           aria-label="新建诊断会话"
-          title="新建诊断会话"
+          data-tooltip="新建诊断会话"
           on:click={newDiagnosisSession}><MessageSquarePlus size={16} /></button
         >
       </div>
@@ -814,26 +816,26 @@
             <button
               type="button"
               class="diagnosis-tool"
-              title="添加附件"
+              data-tooltip="添加附件"
               on:click={() => onNotice('附件入口已打开。')}
               ><Paperclip size={15} />附件</button
             ><button
               type="button"
               class="diagnosis-tool"
-              title="添加链接"
+              data-tooltip="添加链接"
               on:click={() => onNotice('链接入口已打开。')}
               ><Link2 size={15} />链接</button
             ><button
               type="button"
               class="diagnosis-tool"
-              title="选择 Skills"
+              data-tooltip="选择 Skills"
               on:click={() =>
                 onNotice('Skills：指标查询、日志查询、Kubernetes 只读查询。')}
               ><Sparkles size={15} />Skills</button
             ><button
               type="button"
               class="diagnosis-tool"
-              title="选择 Agent"
+              data-tooltip="选择 Agent"
               on:click={() => onNotice('Agent：故障定位 Agent。')}
               ><Bot size={15} />Agent</button
             >

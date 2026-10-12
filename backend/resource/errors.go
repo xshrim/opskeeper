@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrNotFound       = errors.New("resource not found")
 	ErrConflict       = errors.New("resource conflicts with existing data")
+	ErrInUse          = errors.New("resource is associated with an application")
 	ErrSchemaNotFound = errors.New("resource schema not found")
 	ErrRelationCycle  = errors.New("resource relation would create a cycle")
 )

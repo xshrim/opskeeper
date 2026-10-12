@@ -8,6 +8,14 @@ var (
 	ErrParentInactive = errors.New("parent organization is inactive")
 )
 
+type DeleteBlockedError struct {
+	Summary DeleteSummary
+}
+
+func (e *DeleteBlockedError) Error() string {
+	return "organization has dependent objects"
+}
+
 type ValidationError struct {
 	Message string
 }

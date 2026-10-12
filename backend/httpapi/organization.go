@@ -23,10 +23,12 @@ type organizationService interface {
 	ListTeams(context.Context, organization.Pagination) (organization.Page[organization.Team], error)
 	GetTeam(context.Context, string) (organization.Team, error)
 	UpdateTeam(context.Context, string, organization.UpdateTeamInput) (organization.Team, error)
+	DeleteTeam(context.Context, string, organization.DeleteInput) (organization.DeleteSummary, error)
 	CreateProject(context.Context, organization.CreateProjectInput) (organization.Project, error)
 	ListProjects(context.Context, string, organization.Pagination) (organization.Page[organization.Project], error)
 	GetProject(context.Context, string) (organization.Project, error)
 	UpdateProject(context.Context, string, organization.UpdateProjectInput) (organization.Project, error)
+	DeleteProject(context.Context, string, organization.DeleteInput) (organization.DeleteSummary, error)
 }
 
 type organizationHandler struct {
@@ -56,6 +58,11 @@ type updateOrganizationRequest struct {
 	Icon        *string            `json:"icon"`
 	Labels      *map[string]string `json:"labels"`
 	Status      *string            `json:"status"`
+}
+
+type deleteOrganizationRequest struct {
+	ConfirmationName string `json:"confirmation_name"`
+	Cascade          bool   `json:"cascade"`
 }
 
 func registerOrganizationRoutes(router chi.Router, service organizationService, apiBasePath string, requirePermission func(authorization.Permission) func(http.Handler) http.Handler, platformAdmins ...platformAdminService) {
@@ -109,16 +116,33 @@ func registerOrganizationRoutes(router chi.Router, service organizationService, 
 	// application workspace routes from being registered on the same mux.
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/", handler.getProject)
 	router.With(guard(authorization.ProjectManage)).Patch("/projects/{projectID}/", handler.updateProject)
+	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/", handler.deleteProject)
 }
 
 func (h organizationHandler) deleteTeam(writer http.ResponseWriter, request *http.Request) {
-	status := "disabled"
-	team, err := h.service.UpdateTeam(request.Context(), chi.URLParam(request, "teamID"), organization.UpdateTeamInput{Status: &status})
+	var body deleteOrganizationRequest
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	summary, err := h.service.DeleteTeam(request.Context(), chi.URLParam(request, "teamID"), organization.DeleteInput{ConfirmationName: body.ConfirmationName, Cascade: body.Cascade})
 	if err != nil {
 		writeOrganizationError(writer, request, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, team)
+	writeJSON(writer, http.StatusOK, summary)
+}
+
+func (h organizationHandler) deleteProject(writer http.ResponseWriter, request *http.Request) {
+	var body deleteOrganizationRequest
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	summary, err := h.service.DeleteProject(request.Context(), chi.URLParam(request, "projectID"), organization.DeleteInput{ConfirmationName: body.ConfirmationName, Cascade: body.Cascade})
+	if err != nil {
+		writeOrganizationError(writer, request, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, summary)
 }
 
 func (h organizationHandler) getPlatform(writer http.ResponseWriter, request *http.Request) {
@@ -295,6 +319,7 @@ func parseOptionalPositiveInt(value string) (int, error) {
 
 func writeOrganizationError(writer http.ResponseWriter, request *http.Request, err error) {
 	var validationError *organization.ValidationError
+	var deleteBlocked *organization.DeleteBlockedError
 	switch {
 	case errors.As(err, &validationError):
 		writeError(writer, request, http.StatusBadRequest, "invalid_request", validationError.Message)
@@ -304,6 +329,8 @@ func writeOrganizationError(writer http.ResponseWriter, request *http.Request, e
 		writeError(writer, request, http.StatusConflict, "conflict", "Organization conflicts with existing data")
 	case errors.Is(err, organization.ErrParentInactive):
 		writeError(writer, request, http.StatusConflict, "parent_inactive", "Parent organization is inactive")
+	case errors.As(err, &deleteBlocked):
+		writeError(writer, request, http.StatusConflict, "delete_blocked", "Delete requires explicit cascade confirmation")
 	default:
 		writeInternalError(writer, request, "organization operation", err)
 	}

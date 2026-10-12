@@ -153,7 +153,7 @@
               <details class="diagnosis-evidence-chain">
                 <summary>
                   <span class="diagnosis-evidence-chain-marker" aria-hidden="true"></span>
-                  <span class="diagnosis-evidence-chain-title" title={item.title}>{item.title}</span>
+                  <span class="diagnosis-evidence-chain-title" data-tooltip={item.title}>{item.title}</span>
                   <small>{item.detail}</small>
                   <span class="diagnosis-evidence-chevron">›</span>
                 </summary>

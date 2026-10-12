@@ -30,7 +30,6 @@
   aria-checked={isChecked}
   aria-label={ariaLabel}
   data-tooltip={tooltip || undefined}
-  title={tooltip || undefined}
   {disabled}
   on:click|stopPropagation={toggle}
 >

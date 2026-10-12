@@ -84,10 +84,12 @@ type Store interface {
 	ListTeams(context.Context, Pagination) (Page[Team], error)
 	GetTeam(context.Context, string) (Team, error)
 	UpdateTeam(context.Context, string, UpdateTeamInput) (Team, error)
+	DeleteTeam(context.Context, string, DeleteInput) (DeleteSummary, error)
 	CreateProject(context.Context, CreateProjectInput) (Project, error)
 	ListProjects(context.Context, string, Pagination) (Page[Project], error)
 	GetProject(context.Context, string) (Project, error)
 	UpdateProject(context.Context, string, UpdateProjectInput) (Project, error)
+	DeleteProject(context.Context, string, DeleteInput) (DeleteSummary, error)
 }
 
 type store struct {
@@ -420,6 +422,172 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 		return Project{}, fmt.Errorf("commit update project: %w", err)
 	}
 	return updated, nil
+}
+
+func (s *store) DeleteProject(ctx context.Context, projectID string, input DeleteInput) (DeleteSummary, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return DeleteSummary{}, fmt.Errorf("begin delete project: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	query, args := scopedQuery(projectSelect+" AND p.id = $1::uuid", "p", ctx, projectID)
+	project, err := scanProject(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
+	if err != nil {
+		return DeleteSummary{}, mapStoreError(err)
+	}
+	if input.ConfirmationName != project.Name {
+		return DeleteSummary{}, invalid("project name confirmation does not match")
+	}
+	summary, err := deleteSummary(ctx, tx, []string{project.Scope.ID}, 0, 1)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	if !input.Cascade && (summary.Applications > 0 || summary.RoleBindings > 0 || summary.Resources > 0) {
+		return summary, &DeleteBlockedError{Summary: summary}
+	}
+	if err := archiveScopes(ctx, tx, []string{project.Scope.ID}, project.Scope.ParentID); err != nil {
+		return DeleteSummary{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET deleted_at=now(), updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, project.ID); err != nil {
+		return DeleteSummary{}, fmt.Errorf("archive project: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DeleteSummary{}, fmt.Errorf("commit delete project: %w", err)
+	}
+	return summary, nil
+}
+
+func (s *store) DeleteTeam(ctx context.Context, teamID string, input DeleteInput) (DeleteSummary, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return DeleteSummary{}, fmt.Errorf("begin delete team: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	query, args := scopedQuery(teamSelect+" AND t.id = $1::uuid", "t", ctx, teamID)
+	team, err := scanTeam(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
+	if err != nil {
+		return DeleteSummary{}, mapStoreError(err)
+	}
+	if input.ConfirmationName != team.Name {
+		return DeleteSummary{}, invalid("team name confirmation does not match")
+	}
+	rows, err := tx.Query(ctx, `SELECT scope_id::text FROM projects WHERE team_id=$1::uuid AND deleted_at IS NULL`, team.ID)
+	if err != nil {
+		return DeleteSummary{}, fmt.Errorf("list team project scopes: %w", err)
+	}
+	scopeIDs := []string{team.Scope.ID}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return DeleteSummary{}, err
+		}
+		scopeIDs = append(scopeIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return DeleteSummary{}, err
+	}
+	summary, err := deleteSummary(ctx, tx, scopeIDs, 1, len(scopeIDs)-1)
+	if err != nil {
+		return DeleteSummary{}, err
+	}
+	if !input.Cascade && (summary.Projects > 0 || summary.Applications > 0 || summary.RoleBindings > 0 || summary.Resources > 0) {
+		return summary, &DeleteBlockedError{Summary: summary}
+	}
+	if err := archiveScopes(ctx, tx, scopeIDs, team.Scope.ParentID); err != nil {
+		return DeleteSummary{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET deleted_at=now(),updated_at=now() WHERE team_id=$1::uuid AND deleted_at IS NULL`, team.ID); err != nil {
+		return DeleteSummary{}, fmt.Errorf("archive team projects: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teams SET deleted_at=now(),updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, team.ID); err != nil {
+		return DeleteSummary{}, fmt.Errorf("archive team: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DeleteSummary{}, fmt.Errorf("commit delete team: %w", err)
+	}
+	return summary, nil
+}
+
+func deleteSummary(ctx context.Context, tx pgx.Tx, scopeIDs []string, teamCount, projectCount int) (DeleteSummary, error) {
+	result := DeleteSummary{Teams: teamCount, Projects: projectCount}
+	queries := []struct {
+		target *int
+		query  string
+	}{
+		{&result.Applications, `SELECT count(*)::int FROM applications a JOIN projects p ON p.id=a.project_id WHERE a.deleted_at IS NULL AND p.scope_id=ANY($1::uuid[])`},
+		{&result.Instances, `SELECT count(*)::int FROM application_instances i JOIN applications a ON a.id=i.application_id JOIN projects p ON p.id=a.project_id WHERE a.deleted_at IS NULL AND p.scope_id=ANY($1::uuid[])`},
+		{&result.RoleBindings, `SELECT count(*)::int FROM role_bindings WHERE scope_id=ANY($1::uuid[])`},
+		{&result.Resources, `SELECT count(*)::int FROM resources WHERE deleted_at IS NULL AND scope_id=ANY($1::uuid[])`},
+	}
+	for _, item := range queries {
+		if err := tx.QueryRow(ctx, item.query, scopeIDs).Scan(item.target); err != nil {
+			return DeleteSummary{}, fmt.Errorf("build deletion summary: %w", err)
+		}
+	}
+	return result, nil
+}
+
+// archiveScopes removes scope-owned configuration from active use, clears
+// authorization, and retains resources by moving them to the parent scope.
+// Application bindings are removed before application rows are archived.
+func archiveScopes(ctx context.Context, tx pgx.Tx, scopeIDs []string, parentScopeID *string) error {
+	if parentScopeID == nil || *parentScopeID == "" {
+		return invalid("organization has no parent scope for resource preservation")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE resources SET scope_id=$2::uuid,updated_at=now() WHERE deleted_at IS NULL AND scope_id=ANY($1::uuid[])`, scopeIDs, *parentScopeID); err != nil {
+		return fmt.Errorf("preserve scoped resources: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM role_bindings WHERE scope_id=ANY($1::uuid[])`, scopeIDs); err != nil {
+		return fmt.Errorf("delete scope role bindings: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM scope_defaults WHERE scope_id=ANY($1::uuid[])`, scopeIDs); err != nil {
+		return fmt.Errorf("delete resource scope defaults: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM provider_scope_bindings WHERE scope_id=ANY($1::uuid[])`, scopeIDs); err != nil {
+		return fmt.Errorf("delete provider scope bindings: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM engine_scope_bindings WHERE scope_id=ANY($1::uuid[])`, scopeIDs); err != nil {
+		return fmt.Errorf("delete engine scope bindings: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE providers SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive providers: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE engines SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive engines: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE personas SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive personas: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE skills SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive skills: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE inspection_policies SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive inspection policies: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notification_channels SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive notification channels: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notification_rules SET status='disabled',deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive notification rules: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE notification_templates SET deleted_at=now(),updated_at=now() WHERE scope_id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive notification templates: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[]))`, scopeIDs); err != nil {
+		return fmt.Errorf("delete application dependencies: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[]))`, scopeIDs); err != nil {
+		return fmt.Errorf("delete application instances: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE applications SET deleted_at=now(),status='disabled',updated_at=now() WHERE id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[])) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive applications: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE scopes SET status='disabled',deleted_at=now(),updated_at=now() WHERE id=ANY($1::uuid[]) AND deleted_at IS NULL`, scopeIDs); err != nil {
+		return fmt.Errorf("archive scopes: %w", err)
+	}
+	return nil
 }
 
 // scopedQuery applies the server-computed authorization filter before any

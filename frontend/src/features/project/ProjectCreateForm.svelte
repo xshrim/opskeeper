@@ -205,7 +205,7 @@
                   >
                 </div>
                 <button
-                  class="icon-button"
+                  class="icon-button delete-action"
                   type="button"
                   aria-label="删除待添加应用"
                   data-tooltip="删除"

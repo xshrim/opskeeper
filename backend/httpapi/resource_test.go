@@ -15,7 +15,7 @@ import (
 	"opskeeper/backend/resource"
 )
 
-type stubResourceService struct{}
+type stubResourceService struct{ deletedIDs []string }
 
 func (stubResourceService) Create(context.Context, resource.CreateInput) (resource.Resource, error) {
 	return resource.Resource{ID: handlerTestUUID, ScopeID: handlerTestUUID, Kind: "Redis", Name: "shared"}, nil
@@ -26,10 +26,17 @@ func (stubResourceService) List(context.Context, resource.Pagination, string, ma
 func (stubResourceService) Get(context.Context, string) (resource.Resource, error) {
 	return resource.Resource{ID: handlerTestUUID}, nil
 }
+func (stubResourceService) ListApplicationReferences(context.Context, string) ([]resource.ApplicationReference, error) {
+	return []resource.ApplicationReference{}, nil
+}
 func (stubResourceService) Update(context.Context, string, resource.UpdateInput) (resource.Resource, error) {
 	return resource.Resource{ID: handlerTestUUID}, nil
 }
 func (stubResourceService) Delete(context.Context, string) error { return nil }
+func (s *stubResourceService) DeleteMany(_ context.Context, ids []string) error {
+	s.deletedIDs = append([]string(nil), ids...)
+	return nil
+}
 func (stubResourceService) ListSchemas(context.Context) ([]resource.Schema, error) {
 	return []resource.Schema{}, nil
 }
@@ -62,5 +69,21 @@ func TestCredentialRoutesAreRemoved(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("POST credentials status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestDeleteResourcesPassesAllIDs(t *testing.T) {
+	service := &stubResourceService{}
+	handler := resourceHandler{resources: service}
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/resources", strings.NewReader(`{"ids":["11111111-1111-4111-8111-111111111111","22222222-2222-4222-8222-222222222222"]}`))
+	response := httptest.NewRecorder()
+
+	handler.deleteResources(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("DELETE /resources status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if len(service.deletedIDs) != 2 || service.deletedIDs[0] != handlerTestUUID {
+		t.Fatalf("DeleteMany() ids = %#v", service.deletedIDs)
 	}
 }

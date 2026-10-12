@@ -1,5 +1,6 @@
 <script lang="ts">
   import Dialog from '../../components/Dialog.svelte';
+  import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
   import FormActions from '../../components/FormActions.svelte';
   import { onMount } from 'svelte';
   import {
@@ -48,7 +49,7 @@
   } from './accessUtils';
 
   type AccessTab = 'teams' | 'users' | 'roles';
-  type DisableTarget = { kind: 'team' | 'user'; ids: string[] };
+  type DisableTarget = { ids: string[] };
   type NewUserResourceGrant = { resourceID: string; roleID: string };
   type NewUserGrant = {
     scopeType: 'platform' | 'team' | 'project';
@@ -90,6 +91,7 @@
   export let accessTeamUsers: Record<string, User[]> = {};
   export let accessProjectUsers: Record<string, User[]> = {};
   export let teamAccessExpanded: Record<string, boolean> = {};
+  export let onTeamDeleted: (team: Team) => void = () => {};
   export let selectedAccessTeamIds: string[] = [];
   export let selectedAccessUserIds: string[] = [];
   export let teamDialogOpen = false;
@@ -104,6 +106,7 @@
   export let editTeamStatus = 'active';
   export let editingUser: User | null = null;
   export let disableTarget: DisableTarget | null = null;
+  let deletingTeam: Team | null = null;
   export let newUserUsername = '';
   export let newUserEmail = '';
   export let newUserPhone = '';
@@ -664,32 +667,33 @@
       [id]: !teamAccessExpanded[id]
     };
   }
-  function requestDisable(kind: DisableTarget['kind'], ids: string[]) {
-    if (ids.length > 0) disableTarget = { kind, ids: [...ids] };
+  function requestDisable(ids: string[]) {
+    if (ids.length > 0) disableTarget = { ids: [...ids] };
   }
   async function confirmDisable() {
     if (!disableTarget) return;
     const target = disableTarget;
     await action(async () => {
-      if (target.kind === 'team') {
-        const updated = await Promise.all(
-          target.ids.map((id) => api.updateTeam(id, { status: 'disabled' }))
-        );
-        const byID = new Map(updated.map((team) => [team.id, team]));
-        teams = teams.map((team) => byID.get(team.id) ?? team);
-        selectedAccessTeamIds = [];
-      } else {
-        const updated = await Promise.all(
-          target.ids.map((id) => api.updateUser(id, { status: 'disabled' }))
-        );
-        const byID = new Map(updated.map((user) => [user.id, user]));
-        users = users.map((user) => byID.get(user.id) ?? user);
-        selectedAccessUserIds = [];
-      }
-      disableTarget = null;
-      onNotice(
-        `${target.ids.length} 个${target.kind === 'team' ? '团队' : '用户'}已禁用`
+      const updated = await Promise.all(
+        target.ids.map((id) => api.updateUser(id, { status: 'disabled' }))
       );
+      const byID = new Map(updated.map((user) => [user.id, user]));
+      users = users.map((user) => byID.get(user.id) ?? user);
+      selectedAccessUserIds = [];
+      disableTarget = null;
+      onNotice(`${target.ids.length} 个用户已禁用`);
+    });
+  }
+  async function confirmTeamDelete() {
+    if (!deletingTeam) return;
+    const team = deletingTeam;
+    await action(async () => {
+      await api.deleteTeam(team.id, team.name);
+      teams = teams.filter((item) => item.id !== team.id);
+      selectedAccessTeamIds = selectedAccessTeamIds.filter((id) => id !== team.id);
+      onTeamDeleted(team);
+      deletingTeam = null;
+      onNotice(`团队“${team.name}”及其项目、应用和范围配置已删除；关联资源已保留至上级范围`);
     });
   }
   function resetUserDialog() {
@@ -1228,6 +1232,7 @@
             userDialogOpen = true;
           }}
           onEditTeam={openEditTeam}
+          onDeleteTeam={(team) => (deletingTeam = team)}
           onEditUser={openEditUser}
           onDisable={requestDisable}
           onToggleTeam={toggleTeamAccess}
@@ -1306,7 +1311,7 @@
                   label={event.result || '—'} />
                 ><span
                   class="access-audit-details"
-                  title={JSON.stringify(event.details ?? {})}
+                  data-tooltip={JSON.stringify(event.details ?? {})}
                   >{JSON.stringify(event.details ?? {}) || '—'}</span
                 >
               </article>
@@ -1352,7 +1357,6 @@
               <div class="permission-list">
                 {#each role.permissions as permission}<span
                     data-tooltip={permissionDescription(String(permission))}
-                    title={permissionDescription(String(permission))}
                     >{permission}</span
                   >{/each}
               </div>
@@ -1407,6 +1411,17 @@
         <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
       </form>
   </Dialog>
+{/if}
+{#if deletingTeam}
+  <DeleteConfirmationDialog
+    title={`删除团队“${deletingTeam.name}”？`}
+    name={deletingTeam.name}
+    description="将删除该团队下的项目、应用、实例、授权和范围配置。用户账号、审计记录及关联资源不会被删除；资源将保留至平台范围。"
+    impact="此操作不可撤销。"
+    {busy}
+    onCancel={() => (deletingTeam = null)}
+    onConfirm={confirmTeamDelete}
+  />
 {/if}
 {#if userDialogOpen || editingUser}
   <Dialog dialogClass="wide-dialog" labelledBy="user-dialog-title" onBackdrop={() => { userDialogOpen = false; editingUser = null; }}>
@@ -1657,7 +1672,7 @@
                   /></label
                 >
                 <button
-                  class="icon-button danger-action"
+                  class="icon-button danger-action delete-action"
                   type="button"
                   data-tooltip="移除此授权"
                   aria-label="移除此授权"
@@ -1713,7 +1728,7 @@
                         ></label
                       >
                       <button
-                        class="icon-button danger-action"
+                        class="icon-button danger-action delete-action"
                         type="button"
                         data-tooltip="移除资源权限"
                         aria-label="移除资源权限"
@@ -1794,9 +1809,7 @@
         <div>
           <p class="eyebrow">CONFIRM ACTION</p>
           <h2 id="disable-dialog-title">
-            删除{disableTarget.ids.length} 个{disableTarget.kind === 'team'
-              ? '团队'
-              : '用户'}？
+            禁用{disableTarget.ids.length} 个用户？
           </h2>
         </div>
         {#if activeMessage}<MessageBanner
@@ -1805,9 +1818,7 @@
           />{/if}
       </div>
       <p class="confirm-copy">
-        {disableTarget.kind === 'team'
-          ? '团队将被禁用，其项目与历史数据会保留。禁用后团队不可继续用于新操作。'
-          : '用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。'}
+        用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。
       </p>
       <FormActions>
         <button
@@ -1819,7 +1830,7 @@
           class="danger-button"
           type="button"
           disabled={busy}
-          on:click={confirmDisable}>{busy ? '正在处理' : '确认删除'}</button
+          on:click={confirmDisable}>{busy ? '正在处理' : '确认禁用'}</button
         >
       </FormActions>
   </Dialog>

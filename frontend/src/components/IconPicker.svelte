@@ -151,7 +151,7 @@
 </script>
 
 <div class="icon-picker" bind:this={root}>
-  <button bind:this={trigger} class="icon-picker-trigger" type="button" aria-label={ariaLabel} title={ariaLabel} aria-expanded={open} on:click|stopPropagation={toggleOpen}>
+  <button bind:this={trigger} class="icon-picker-trigger" type="button" aria-label={ariaLabel} data-tooltip={ariaLabel} aria-expanded={open} on:click|stopPropagation={toggleOpen}>
     <IconValue {value} size={18} />
   </button>
   {#if open}
@@ -169,9 +169,9 @@
         {/if}
         <input bind:this={fileInput} type="file" accept="image/*" hidden on:change={importFile} />
         {#if category === 'image'}
-          <button type="button" class="icon-picker-upload" title="上传本地图标" aria-label="上传本地图标" on:click={() => fileInput?.click()}><Upload size={14} /></button>
+          <button type="button" class="icon-picker-upload" data-tooltip="上传本地图标" aria-label="上传本地图标" on:click={() => fileInput?.click()}><Upload size={14} /></button>
         {/if}
-        <button type="button" class="icon-picker-close" title="关闭" aria-label="关闭" on:click={() => (open = false)}><X size={14} /></button>
+        <button type="button" class="icon-picker-close" data-tooltip="关闭" aria-label="关闭" on:click={() => (open = false)}><X size={14} /></button>
       </div>
       {#if category === 'image'}
         <div class="icon-picker-image-panel">
@@ -185,7 +185,7 @@
       {:else if category === 'iconify'}
         <div class="icon-picker-grid" aria-label="引入图标列表" on:scroll={loadMore}>
           {#each visibleIconifyIcons as entry}
-            <button type="button" title={entry.label} aria-label={`选择图标 ${entry.label}`} class:active={value === entry.id} on:click={() => select(entry.id)}><IconValue value={entry.id} size={17} /></button>
+            <button type="button" data-tooltip={entry.label} aria-label={`选择图标 ${entry.label}`} class:active={value === entry.id} on:click={() => select(entry.id)}><IconValue value={entry.id} size={17} /></button>
           {:else}
             <small class="icon-picker-empty">没有匹配的引入图标</small>
           {/each}
@@ -194,7 +194,7 @@
         <div class="icon-picker-grid" aria-label="Lucide 图标列表" on:scroll={loadMore}>
           {#each visibleIcons as name}
             {@const Icon: any = lucideIcons[name as keyof typeof lucideIcons]}
-            <button type="button" title={name} aria-label={`选择图标 ${name}`} class:active={isSelected(lucideValue(name))} on:click={() => select(lucideValue(name))}><svelte:component this={Icon} size={17} strokeWidth={1.8} /></button>
+            <button type="button" data-tooltip={name} aria-label={`选择图标 ${name}`} class:active={isSelected(lucideValue(name))} on:click={() => select(lucideValue(name))}><svelte:component this={Icon} size={17} strokeWidth={1.8} /></button>
           {:else}
             <small class="icon-picker-empty">没有匹配的图标</small>
           {/each}

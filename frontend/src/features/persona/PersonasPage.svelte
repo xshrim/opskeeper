@@ -29,6 +29,7 @@
   export let profiles: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
   export let formatDate: (value: string) => string;
+  export let onReload: () => void | Promise<void> = () => {};
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
 
@@ -164,6 +165,10 @@
     selectedProfileId = profile.id;
     void loadVersions(profile.id, true);
   }
+  async function refreshProfiles() {
+    await onReload();
+    if (selectedProfileId) await loadVersions();
+  }
   async function openEdit(profile: PersonaCatalogItem) {
     await loadVersions(profile.id, true);
     resetEditor(versions.find((item) => item.id === selectedVersionId));
@@ -266,15 +271,15 @@
     </div>
     <div class="persona-header-actions">
       <button
+        class="secondary"
+        type="button"
+        on:click={refreshProfiles}
+        ><RefreshCw size={15} />刷新</button
+      ><button
         class="primary"
         type="button"
         on:click={startCreate}
         disabled={profiles.length === 0}><Plus size={16} />创建专家</button
-      ><button
-        class="secondary"
-        type="button"
-        on:click={() => selectedProfile && loadVersions()}
-        ><RefreshCw size={15} />刷新</button
       >
     </div>
   </header>

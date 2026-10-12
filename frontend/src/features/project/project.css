@@ -311,6 +311,14 @@
   margin-bottom: 11px;
 }
 
+.section-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .group-heading-toggle {
   width: 100%;
   padding: 0;
@@ -795,6 +803,11 @@
 .application-map-card {
   overflow: hidden;
   margin-bottom: 10px;
+}
+
+.application-map-card.selected {
+  border-color: var(--theme-border-focus);
+  box-shadow: inset 3px 0 0 var(--theme-accent), var(--theme-shadow-soft);
 }
 
 .application-card-head {

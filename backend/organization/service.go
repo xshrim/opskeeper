@@ -92,6 +92,17 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 	return s.store.UpdateTeam(ctx, teamID, input)
 }
 
+func (s *Service) DeleteTeam(ctx context.Context, teamID string, input DeleteInput) (DeleteSummary, error) {
+	if err := validateID(teamID, "team_id"); err != nil {
+		return DeleteSummary{}, err
+	}
+	input.ConfirmationName = strings.TrimSpace(input.ConfirmationName)
+	if input.ConfirmationName == "" {
+		return DeleteSummary{}, invalid("team name confirmation is required")
+	}
+	return s.store.DeleteTeam(ctx, teamID, input)
+}
+
 func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (Project, error) {
 	if err := validateID(input.TeamID, "team_id"); err != nil {
 		return Project{}, err
@@ -184,4 +195,15 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 		input.Status = &status
 	}
 	return s.store.UpdateProject(ctx, projectID, input)
+}
+
+func (s *Service) DeleteProject(ctx context.Context, projectID string, input DeleteInput) (DeleteSummary, error) {
+	if err := validateID(projectID, "project_id"); err != nil {
+		return DeleteSummary{}, err
+	}
+	input.ConfirmationName = strings.TrimSpace(input.ConfirmationName)
+	if input.ConfirmationName == "" {
+		return DeleteSummary{}, invalid("project name confirmation is required")
+	}
+	return s.store.DeleteProject(ctx, projectID, input)
 }

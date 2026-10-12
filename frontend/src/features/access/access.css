@@ -1436,6 +1436,11 @@
 .access-member-table .readonly-table {
   width: 100%;
 }
+.access-member-table .access-role-nowrap {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .access-member-actions-heading {
   text-align: center;
 }

@@ -2,7 +2,7 @@
   export let label = '';
   export let tone = '';
   export let className = 'status-label';
-  export let title = '';
+  export let tooltip = '';
   export let interactive = false;
   export let type: 'button' | 'submit' | 'reset' = 'button';
   export let disabled = false;
@@ -11,7 +11,7 @@
 </script>
 
 {#if interactive}
-  <button class={`${className}${tone ? ` ${tone}` : ''}`} {title} {type} {disabled} aria-label={ariaLabel || undefined} on:click={onClick}><slot>{label}</slot></button>
+  <button class={`${className}${tone ? ` ${tone}` : ''}`} data-tooltip={tooltip || undefined} {type} {disabled} aria-label={ariaLabel || undefined} on:click={onClick}><slot>{label}</slot></button>
 {:else}
-  <span class={`${className}${tone ? ` ${tone}` : ''}`} {title}><slot>{label}</slot></span>
+  <span class={`${className}${tone ? ` ${tone}` : ''}`} data-tooltip={tooltip || undefined}><slot>{label}</slot></span>
 {/if}
