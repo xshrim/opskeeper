@@ -1,7 +1,6 @@
 <script lang="ts">
-  import Dialog from '../../components/Dialog.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
-  import FormActions from '../../components/FormActions.svelte';
   import { onMount } from 'svelte';
   import {
     ClipboardCheck,
@@ -15,7 +14,6 @@
     RefreshCw
   } from 'lucide-svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
-  import MessageBanner from '../../components/MessageBanner.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import FormField from '../../components/FormField.svelte';
@@ -1370,36 +1368,13 @@
   </section>
 </section>
 {#if teamDialogOpen}
-  <Dialog labelledBy="team-dialog-title" onBackdrop={() => (teamDialogOpen = false)}>
-      <div class="dialog-heading team-dialog-heading">
-        <div>
-          <h2 id="team-dialog-title">新增团队</h2>
-          <p class="team-dialog-description">设置团队的名称、图标和描述。</p>
-        </div>
-        <div class="team-dialog-actions">
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => (teamDialogOpen = false)}>取消</button
-          >
-          <button
-            class="primary"
-            type="submit"
-            form="create-team-form"
-            disabled={busy}>创建团队</button
-          >
-        </div>
-      </div>
+  <ModalDialog title="新增团队" description="设置团队的名称、图标和描述。" confirmLabel="创建团队" confirmForm="create-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (teamDialogOpen = false)}>
       <form
         id="create-team-form"
         class="stack-form"
         novalidate
         on:submit|preventDefault={createTeam}
       >
-        {#if activeMessage}<MessageBanner
-            message={activeMessage}
-            tone={activeMessageTone}
-          />{/if}
         <div class="team-identity-field">
           <div class="team-icon-selection">
             <label><span>图标</span><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
@@ -1410,7 +1385,7 @@
         </div>
         <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
       </form>
-  </Dialog>
+  </ModalDialog>
 {/if}
 {#if deletingTeam}
   <DeleteConfirmationDialog
@@ -1424,49 +1399,13 @@
   />
 {/if}
 {#if userDialogOpen || editingUser}
-  <Dialog dialogClass="wide-dialog" labelledBy="user-dialog-title" onBackdrop={() => { userDialogOpen = false; editingUser = null; }}>
-      <div class="dialog-heading team-dialog-heading">
-        <div>
-          <h2 id="user-dialog-title">
-            {editingUser ? '编辑用户' : '新增用户'}
-          </h2>
-        </div>
-        <div class="team-dialog-actions">
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => {
-              userDialogOpen = false;
-              editingUser = null;
-            }}>取消</button
-          ><button
-            class="primary"
-            type="submit"
-            form="user-dialog-form"
-            disabled={busy ||
-              newUserGrants.length === 0 ||
-              newUserGrants.some(
-                (grant) =>
-                  !grant.scopeID ||
-                  !grant.roleID ||
-                  grant.resourceGrants.some(
-                    (resourceGrant) =>
-                      !resourceGrant.resourceID || !resourceGrant.roleID
-                  )
-              )}>{editingUser ? '保存用户与授权' : '创建用户并授权'}</button
-          >
-        </div>
-      </div>
+  <ModalDialog dialogClass="wide-dialog" size="large" title={editingUser ? '编辑用户' : '新增用户'} description={editingUser ? '更新用户资料、密码和授权范围。' : '填写用户资料、登录方式和授权范围。'} confirmLabel={editingUser ? '保存用户与授权' : '创建用户并授权'} confirmForm="user-dialog-form" confirmDisabled={newUserGrants.length === 0 || newUserGrants.some((grant) => !grant.scopeID || !grant.roleID || grant.resourceGrants.some((resourceGrant) => !resourceGrant.resourceID || !resourceGrant.roleID))} {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => { userDialogOpen = false; editingUser = null; }}>
       <form
         id="user-dialog-form"
         class="stack-form"
         novalidate
         on:submit|preventDefault={editingUser ? saveUser : createUser}
       >
-        {#if activeMessage}<MessageBanner
-            message={activeMessage}
-            tone={activeMessageTone}
-          />{/if}
         <div class="form-row">
           <FormField label="用户名" required invalid={Boolean(newUserUsernameError)} error={newUserUsernameError}>
             <TextInput
@@ -1753,41 +1692,16 @@
           {/each}
         </section>
       </form>
-  </Dialog>
+  </ModalDialog>
 {/if}
 {#if editingTeam}
-  <Dialog labelledBy="edit-team-dialog-title" onBackdrop={() => (editingTeam = null)}>
-      <div class="dialog-heading team-dialog-heading">
-        <div>
-          <h2 id="edit-team-dialog-title">编辑团队</h2>
-          <p class="team-dialog-description">
-            更新团队的名称、图标、描述和状态。
-          </p>
-        </div>
-        <div class="team-dialog-actions">
-          <button
-            class="secondary"
-            type="button"
-            on:click={() => (editingTeam = null)}>取消</button
-          >
-          <button
-            class="primary"
-            type="submit"
-            form="edit-team-form"
-            disabled={busy}>保存团队</button
-          >
-        </div>
-      </div>
+  <ModalDialog title="编辑团队" description="更新团队的名称、图标、描述和状态。" confirmLabel="保存团队" confirmForm="edit-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (editingTeam = null)}>
       <form
         id="edit-team-form"
         class="stack-form"
         novalidate
         on:submit|preventDefault={saveTeam}
       >
-        {#if activeMessage}<MessageBanner
-            message={activeMessage}
-            tone={activeMessageTone}
-          />{/if}
         <div class="team-identity-field">
           <div class="team-icon-selection">
         <label>
@@ -1801,37 +1715,10 @@
         <FormField label="描述"><TextArea bind:value={editTeamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
         <FormField label="状态"><DropdownSelect bind:value={editTeamStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '禁用' }]} ariaLabel="团队状态" /></FormField>
       </form>
-  </Dialog>
+  </ModalDialog>
 {/if}
 {#if disableTarget}
-  <Dialog dialogClass="confirm-dialog" labelledBy="disable-dialog-title" closeOnBackdrop={false}>
-      <div class="dialog-heading">
-        <div>
-          <p class="eyebrow">CONFIRM ACTION</p>
-          <h2 id="disable-dialog-title">
-            禁用{disableTarget.ids.length} 个用户？
-          </h2>
-        </div>
-        {#if activeMessage}<MessageBanner
-            message={activeMessage}
-            tone={activeMessageTone}
-          />{/if}
-      </div>
-      <p class="confirm-copy">
-        用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。
-      </p>
-      <FormActions>
-        <button
-          class="secondary"
-          type="button"
-          disabled={busy}
-          on:click={() => (disableTarget = null)}>取消</button
-        ><button
-          class="danger-button"
-          type="button"
-          disabled={busy}
-          on:click={confirmDisable}>{busy ? '正在处理' : '确认禁用'}</button
-        >
-      </FormActions>
-  </Dialog>
+  <ModalDialog dialogClass="confirm-dialog" size="small" title={`禁用 ${disableTarget.ids.length} 个用户？`} description="禁用后用户将无法继续登录。" confirmLabel="确认禁用" busyLabel="正在处理" confirmVariant="danger" {busy} message={activeMessage} messageTone={activeMessageTone} closeOnBackdrop={false} onCancel={() => (disableTarget = null)} onConfirm={confirmDisable}>
+    <p class="confirm-copy">用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。</p>
+  </ModalDialog>
 {/if}

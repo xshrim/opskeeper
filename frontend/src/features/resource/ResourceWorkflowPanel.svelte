@@ -1,10 +1,6 @@
 <script lang="ts">
-  import MessageBanner from '../../components/MessageBanner.svelte';
-
   export let step = 1;
   export let kind = '';
-  export let category = '';
-  export let subtype = '';
   export let editingResource = false;
   export let editingDocker = false;
   export let editingKubernetes = false;
@@ -36,12 +32,9 @@
   export let repositoryConfigurationComplete = false;
   export let busy = false;
   export let scopeSelected = false;
-  export let message = '';
-  export let messageTone: 'success' | 'error' = 'success';
   export let stepTitle = '';
   export let stepDescription = '';
   export let validationMessage = '';
-  export let onCancel: () => void = () => {};
   export let onSelectStep: (step: number) => void = () => {};
   export let onContinueBasic: () => void = () => {};
   export let onContinueMcp: () => void = () => {};
@@ -73,35 +66,7 @@
   export let onSubmitRepository: () => void = () => {};
 </script>
 
-<section
-  class="panel resource-add-workflow"
-  aria-labelledby="resource-add-title"
->
-  <header class="resource-add-main-heading">
-    <div>
-      <p class="eyebrow">
-        {editingResource ||
-        editingDocker ||
-        editingKubernetes ||
-        editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRabbitMQ || editingMinIO || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
-          ? 'EDIT RESOURCE'
-          : 'ADD RESOURCE'}
-      </p>
-      <h2 id="resource-add-title">
-        <span
-          >{editingResource ||
-          editingDocker ||
-          editingKubernetes ||
-          editingHost || editingPostgreSQL || editingMySQL || editingOracle || editingRabbitMQ || editingMinIO || editingRedis || editingNacos || editingKafka || editingElasticsearch || editingRepository
-            ? '编辑资源'
-            : '添加资源'}</span
-        >
-        {#if category && subtype}<small>{category} · {subtype}</small>{/if}
-      </h2>
-    </div>
-    <button class="secondary" type="button" on:click={onCancel}>取消</button>
-  </header>
-
+<section class="resource-add-workflow">
   <aside class="resource-add-steps" aria-label="添加资源步骤">
     <button
       class:active={step === 1}
@@ -214,7 +179,6 @@
   </aside>
 
   <div class="resource-add-content" class:type-selection-content={step === 1}>
-    {#if message}<MessageBanner {message} tone={messageTone} />{/if}
     <div class="resource-add-step-heading">
       <div class="resource-add-step-heading-copy">
         <h3>{stepTitle}</h3>

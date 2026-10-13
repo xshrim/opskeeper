@@ -1,6 +1,4 @@
 <script lang="ts">
-  import EmptyState from '../../components/EmptyState.svelte';
-  import CompactToolList from '../../components/CompactToolList.svelte';
   import type { MCPSnapshot, Resource } from '../../lib/api';
   import { resourceEndpointFor, resourceLabelsText } from './resourceCatalog';
   export let resource: Resource;
@@ -10,7 +8,6 @@
   $: config = resource.config ?? {};
   $: snapshot = snapshots[0];
   $: connectionStatus = snapshot ? snapshot.status === 'succeeded' ? `正常·${snapshot.latency_ms ?? 0}ms` : '异常' : '尚未测试';
-  $: enabledStatus = resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知';
 </script>
 
 <div class="provider-resource-details mcp-resource-details">
@@ -26,10 +23,6 @@
     <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置 Token / Header' : '未配置'}</strong></div>
     <div><span>传输凭据</span><strong>{resource.credential_configured ? '随连接凭据保存' : '未配置'}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><strong>{resourceLabelsText(resource) || '未设置标签'}</strong></div>
-    <div><span>状态</span><strong>{connectionStatus} ({enabledStatus})</strong></div>
-  </div>
-  <div class="provider-resource-models mcp-resource-tools">
-    <div class="provider-resource-models-heading"><strong>工具列表</strong><span>{snapshot?.tools?.length ?? 0} 个</span></div>
-    {#if snapshot?.tools?.length}<CompactToolList tools={snapshot.tools} />{:else}<EmptyState>尚未发现工具，请先执行连接测试。</EmptyState>{/if}
+    <div><span>状态</span><strong>{connectionStatus}</strong></div>
   </div>
 </div>

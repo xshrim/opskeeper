@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { resourceEndpointFor } from './resourceCatalog';
-  import CompactToolList from '../../components/CompactToolList.svelte';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -12,16 +11,6 @@
   $: connectionStatus = resourceCheck
     ? resourceCheck.status === 'succeeded' ? `正常·${resourceCheck.latency_ms}ms` : '异常'
     : '尚未测试';
-  $: enabledStatus = resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知';
-
-  const tools = [
-    ['docker_info', '读取 Docker Engine 信息'],
-    ['docker_images', '读取镜像列表'],
-    ['docker_containers', '读取容器列表'],
-    ['docker_container_logs', '读取容器日志'],
-    ['docker_container_inspect', '读取容器详情'],
-    ['docker_container_stats', '读取容器统计']
-  ];
 </script>
 
 <div class="provider-resource-details docker-resource-details">
@@ -33,10 +22,6 @@
     <div><span>连接凭据</span><strong>未配置</strong></div>
     <div><span>传输凭据</span><strong>{accessMode === 'agent' ? '由 MCPServer 管理' : resource.credential_configured ? 'TLS 凭据已配置' : '未配置 TLS 凭据'}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
-    <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus} ({enabledStatus})</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
-  </div>
-  <div class="provider-resource-models mcp-resource-tools">
-    <div class="provider-resource-models-heading"><strong>工具列表</strong><span>6 个</span></div>
-    <CompactToolList {tools} />
+    <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus}</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
   </div>
 </div>

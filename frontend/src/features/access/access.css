@@ -1249,7 +1249,7 @@
 }
 .confirm-copy {
   margin: 0;
-  padding: 4px 20px 20px;
+  padding: 0;
 }
 .form-help {
   margin: 0;
@@ -1268,9 +1268,6 @@
   justify-items: start;
   text-align: left;
 }
-.team-dialog-heading { align-items: center; padding-top: 12px; padding-bottom: 10px; }
-.team-dialog-description { margin: 4px 0 0; color: var(--theme-fg-muted); font-size: 11px; line-height: 1.4; }
-.team-dialog-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .user-password-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .user-password-row .segmented-control { margin-top: 0; }
 .user-password-hint { color: var(--theme-fg-subtle); font-size: 11px; line-height: 1.4; }

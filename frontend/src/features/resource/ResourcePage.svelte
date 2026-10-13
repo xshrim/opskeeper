@@ -5,6 +5,8 @@
   import FormField from '../../components/FormField.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
+  import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
   import ResourceCatalogRail from './ResourceCatalogRail.svelte';
   import ResourceCatalogList from './ResourceCatalogList.svelte';
   import ResourceCatalogDetails from './ResourceCatalogDetails.svelte';
@@ -326,6 +328,7 @@
   let relationBusy = false;
   let resourceActionBusy = false;
   let selectedResourceIds: string[] = [];
+  let resourceDeleteTargets: Resource[] = [];
 
   const capabilityName = connectorCapabilityName;
   $: selectedSchema =
@@ -924,6 +927,70 @@
     editingDockerResourceId = '';
     editingKubernetesResourceId = '';
     editingHostResourceId = '';
+  }
+
+  function resourceWorkflowEditing() {
+    return Boolean(
+      editingResourceId || editingDockerResourceId || editingKubernetesResourceId ||
+      editingHostResourceId || editingPostgreSQLResourceId || editingMySQLResourceId ||
+      editingOracleResourceId || editingRedisResourceId || editingNacosResourceId ||
+      editingKafkaResourceId || editingElasticsearchResourceId || editingRabbitMQResourceId ||
+      editingMinIOResourceId || editingRepositoryResourceId
+    );
+  }
+
+  function resourceWorkflowNeedsReview() {
+    return ['MCPServer', 'Docker', 'Kubernetes', 'Host', 'PostgreSQL', 'MySQL', 'Oracle', 'Redis', 'Nacos', 'Kafka', 'Elasticsearch', 'RabbitMQ', 'MinIO', 'Repository'].includes(resourceKind);
+  }
+
+  function confirmResourceWorkflow() {
+    if (resourceAddStep === 1) {
+      continueResourceAdd();
+      return;
+    }
+    if (resourceAddStep === 2) {
+      switch (resourceKind) {
+        case 'MCPServer': onContinueMcpWorkflow(); return;
+        case 'Docker': continueDockerAdd(); return;
+        case 'Kubernetes': continueKubernetesAdd(); return;
+        case 'Host': continueHostAdd(); return;
+        case 'PostgreSQL': postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } return;
+        case 'MySQL': continueMySQLAdd(); return;
+        case 'Oracle': continueOracleAdd(); return;
+        case 'Redis': continueRedisAdd(); return;
+        case 'Nacos': continueNacosAdd(); return;
+        case 'Kafka': continueKafkaAdd(); return;
+        case 'Elasticsearch': continueElasticsearchAdd(); return;
+        case 'RabbitMQ': continueRabbitMQAdd(); return;
+        case 'MinIO': continueMinIOAdd(); return;
+        case 'Repository': repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; resourceAddStep = 3; } return;
+        default: void createResource(); return;
+      }
+    }
+    switch (resourceKind) {
+      case 'MCPServer': void (editingResourceId ? updateMCPFromWorkflow() : createResource()); return;
+      case 'Docker':
+      case 'Kubernetes': void (editingDockerResourceId ? updateDockerFromWorkflow() : editingKubernetesResourceId ? updateKubernetesFromWorkflow() : resourceKind === 'Kubernetes' ? createKubernetesFromWorkflow() : createDockerFromWorkflow()); return;
+      case 'Host': void (editingHostResourceId ? updateHostFromWorkflow() : createHostFromWorkflow()); return;
+      case 'PostgreSQL': void runResourceAction(savePostgreSQLWorkflow); return;
+      case 'MySQL': void runResourceAction(saveMySQLWorkflow); return;
+      case 'Oracle': void runResourceAction(saveOracleWorkflow); return;
+      case 'Redis': void runResourceAction(saveRedisWorkflow); return;
+      case 'Nacos': void runResourceAction(saveNacosWorkflow); return;
+      case 'Kafka': void runResourceAction(saveKafkaWorkflow); return;
+      case 'Elasticsearch': void runResourceAction(saveElasticsearchWorkflow); return;
+      case 'RabbitMQ': void runResourceAction(saveRabbitMQWorkflow); return;
+      case 'MinIO': void runResourceAction(saveMinIOWorkflow); return;
+      case 'Repository': void runResourceAction(saveRepositoryWorkflow); return;
+    }
+  }
+
+  function onContinueMcpWorkflow() {
+    mcpConfigurationAttempted = true;
+    if (mcpConfigurationValid()) {
+      mcpConfigurationAttempted = false;
+      resourceAddStep = 3;
+    }
   }
 
   function selectResourceAddCategory(category: string) {
@@ -2409,8 +2476,7 @@
     }
   }
 
-  async function deleteSelectedResource() {
-    const resource = selectedResource;
+  async function deleteSelectedResource(resource = selectedResource) {
     if (!resource || !resourceCanManage(resource, 'resource:delete')) return;
     resourceActionBusy = true;
     onError('');
@@ -2418,9 +2484,11 @@
       await removeResource(resource.id);
       resources = resources.filter((item) => item.id !== resource.id);
       selectedResourceIds = selectedResourceIds.filter((id) => id !== resource.id);
-      selectedResourceId = '';
-      relations = [];
-      topology = [];
+      if (selectedResourceId === resource.id) {
+        selectedResourceId = '';
+        relations = [];
+        topology = [];
+      }
       onNotice('资源已删除');
     } catch (error) {
       onError(describeError(error, '删除资源失败'));
@@ -2429,8 +2497,8 @@
     }
   }
 
-  async function deleteSelectedResources() {
-    const ids = selectedResourceIds.filter((id) =>
+  async function deleteSelectedResources(requestedIds = selectedResourceIds) {
+    const ids = requestedIds.filter((id) =>
       resources.some(
         (resource) =>
           resource.id === id && resourceCanManage(resource, 'resource:delete')
@@ -2455,6 +2523,23 @@
     } finally {
       resourceActionBusy = false;
     }
+  }
+
+  function requestResourceDelete(resource: Resource) {
+    if (resourceCanManage(resource, 'resource:delete')) resourceDeleteTargets = [resource];
+  }
+
+  function requestSelectedResourcesDelete() {
+    resourceDeleteTargets = selectedResourceIds
+      .map((id) => resources.find((resource) => resource.id === id))
+      .filter((resource): resource is Resource => Boolean(resource && resourceCanManage(resource, 'resource:delete')));
+  }
+
+  async function confirmResourceDelete() {
+    const targets = resourceDeleteTargets;
+    if (targets.length === 1) await deleteSelectedResource(targets[0]);
+    else if (targets.length > 1) await deleteSelectedResources(targets.map((resource) => resource.id));
+    resourceDeleteTargets = [];
   }
 
   let resourceCategory = '全部';
@@ -2626,7 +2711,7 @@
             class="danger-button resource-delete-selected"
             type="button"
             disabled={busy || resourceActionBusy || selectedResourceIds.length === 0}
-            on:click={() => void deleteSelectedResources()}
+            on:click={requestSelectedResourcesDelete}
             ><Trash2 size={15} aria-hidden="true" />删除资源</button
           >
           <button
@@ -2661,8 +2746,7 @@
         onTestConnection={(resource) =>
           void testResourceRowConnection(resource)}
         onEdit={openResourceEditor}
-        onDelete={(resource) =>
-          void loadResourceDetails(resource.id).then(deleteSelectedResource)}
+        onDelete={requestResourceDelete}
       >
         <svelte:fragment slot="details" let:resource let:resourceCheck>
           <ResourceCatalogDetails
@@ -2680,11 +2764,32 @@
       </ResourceCatalogList>
     </section>
     {#if resourceAddMenuOpen}
+      <ModalDialog
+        title={resourceWorkflowEditing() ? '编辑资源' : '添加资源'}
+        coverage="target"
+        inertTarget=".resource-catalog-panel"
+        positionTarget=".resource-catalog-panel"
+        widthTargetRatio={0.9}
+        description={resourceWorkflowEditing()
+          ? `修改${resourceAddCategory}${resourceAddSubtype ? ` · ${resourceAddSubtype}` : ''}的连接配置、凭据和资源属性。`
+          : '配置资源范围、连接信息和访问凭据。'}
+        size="wide"
+        dialogClass="resource-workflow-dialog"
+        contentInset={false}
+        confirmLabel={resourceAddStep === 1 || (resourceAddStep === 2 && resourceWorkflowNeedsReview())
+          ? '下一步'
+          : resourceWorkflowEditing() ? '保存' : '创建'}
+        busyLabel={resourceWorkflowEditing() ? '保存中…' : '创建中…'}
+        confirmDisabled={resourceAddStep === 3 && !selectedScopeId}
+        {busy}
+        message={activeMessage}
+        messageTone={activeMessageTone}
+        onCancel={cancelResourceWorkflow}
+        onConfirm={confirmResourceWorkflow}
+      >
       <ResourceWorkflowPanel
         step={resourceAddStep}
         kind={resourceKind}
-        category={resourceAddCategory}
-        subtype={resourceAddSubtype}
         editingResource={Boolean(editingResourceId)}
         editingDocker={Boolean(editingDockerResourceId)}
         editingKubernetes={Boolean(editingKubernetesResourceId)}
@@ -2716,15 +2821,12 @@
         repositoryConfigurationComplete={repositoryConfigurationComplete()}
         {busy}
         scopeSelected={Boolean(selectedScopeId)}
-        message={activeMessage}
-        messageTone={activeMessageTone}
         stepTitle={resourceAddStepTitle(resourceAddStep, resourceKind)}
         stepDescription={resourceAddStepDescription(
           resourceAddStep,
           resourceKind
         )}
         validationMessage={resourceAddStepValidationMessage()}
-        onCancel={cancelResourceWorkflow}
         onSelectStep={(step: number) => {
           resourceAddStep = step;
           autoSummaryTestKey = '';
@@ -3038,7 +3140,7 @@
         {:else if resourceKind === 'Repository' && resourceAddStep === 2}
           <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:defaultBranch={repositoryDefaultBranch} bind:storageBackend={repositoryStorageBackend} bind:localRoot={repositoryLocalRoot} bind:s3Endpoint={repositoryS3Endpoint} bind:s3Bucket={repositoryS3Bucket} bind:s3Prefix={repositoryS3Prefix} configurationAttempted={repositoryConfigurationAttempted} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 3}
-          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} storageBackend={repositoryStorageBackend} s3Bucket={repositoryS3Bucket} onSubmit={() => void runResourceAction(saveRepositoryWorkflow)} />
+          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} storageBackend={repositoryStorageBackend} s3Bucket={repositoryS3Bucket} />
         {:else if selectedResource?.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">
@@ -3078,6 +3180,7 @@
           </form>
         {/if}
       </ResourceWorkflowPanel>
+      </ModalDialog>
     {/if}
     <ResourceDetailPanel
       {selectedResource}
@@ -3118,11 +3221,28 @@
       {resourceCategoryFor}
       {resourceSubtypeFor}
       {resourceSchemaFieldRequired}
-      onDelete={deleteSelectedResource}
+      onDelete={() => selectedResource && requestResourceDelete(selectedResource)}
       onTestConnection={testSelectedResourceConnection}
       onUpdate={updateSelectedResource}
       onCreateRelation={createRelation}
       onDeleteRelation={deleteRelation}
     />
+    {#if resourceDeleteTargets.length}
+      <DeleteConfirmationDialog
+        title={resourceDeleteTargets.length === 1
+          ? `删除资源“${resourceDeleteTargets[0].name}”？`
+          : `删除 ${resourceDeleteTargets.length} 个资源？`}
+        name={resourceDeleteTargets.length === 1
+          ? resourceDeleteTargets[0].name
+          : `删除 ${resourceDeleteTargets.length} 个资源`}
+        description={resourceDeleteTargets.length === 1
+          ? '删除后资源配置和凭据将一并移除。'
+          : `即将删除所选的 ${resourceDeleteTargets.length} 个资源，配置和凭据将一并移除。`}
+        impact="此操作不可撤销。"
+        busy={resourceActionBusy}
+        onCancel={() => (resourceDeleteTargets = [])}
+        onConfirm={confirmResourceDelete}
+      />
+    {/if}
   </section>
 </section>

@@ -7,6 +7,7 @@
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import type { Resource } from '../../lib/api';
   import { api } from '../../lib/api';
   import {
@@ -229,38 +230,7 @@
   }
 </script>
 
-<div
-  class="project-overlay"
-  role="presentation"
-  on:click={(event) => event.target === event.currentTarget && onCancel()}
->
-  <div
-    class="project-dialog application-wizard-dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="application-wizard-title"
-    tabindex="-1"
-  >
-    <header class="project-dialog-header">
-      <div>
-        <h2 id="application-wizard-title">添加应用</h2>
-        <p>先选择运行时类型，再完成应用信息与实例绑定。</p>
-      </div>
-      <div class="project-dialog-actions">
-        <button class="secondary" type="button" on:click={onCancel}>取消</button
-        >{#if step === 1}<button
-            class="secondary"
-            type="button"
-            on:click={() => (step = 0)}>上一步</button
-          >{/if}<button
-          class="primary"
-          type="button"
-          disabled={saving}
-          on:click={step === 0 ? () => (step = 1) : save}
-          >{step === 0 ? '下一步' : saving ? '保存中…' : '完成添加'}</button
-        >
-      </div>
-    </header>
+<ModalDialog dialogClass="project-dialog application-wizard-dialog" size="wide" title="添加应用" description="选择运行时类型并填写应用信息。" confirmLabel={step === 0 ? '下一步' : '完成添加'} busyLabel="保存中…" busy={saving} message={error} onCancel={onCancel} onConfirm={step === 0 ? () => { step = 1; } : save}>
     <nav class="application-steps" aria-label="添加应用步骤">
       <button
         class:active={step === 0}
@@ -274,7 +244,6 @@
         on:click={() => (step = 1)}><span>2</span>应用与实例</button
       >
     </nav>
-    {#if error}<div class="form-error" role="alert">{error}</div>{/if}
     <div class="project-dialog-content">
       {#if step === 0}
         <div class="runtime-choice-grid">
@@ -457,5 +426,4 @@
         </div>
       {/if}
     </div>
-  </div>
-</div>
+</ModalDialog>

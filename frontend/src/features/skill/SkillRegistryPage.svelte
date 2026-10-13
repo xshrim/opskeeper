@@ -1,6 +1,7 @@
 <script lang="ts">
   import Tabs from '../../components/Tabs.svelte';
   import FormActions from '../../components/FormActions.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import {
     BookOpen,
     Check,
@@ -679,21 +680,9 @@
           >
         </FormActions>
 
-        {#if editing}<div class="skill-editor-overlay">
-            <div class="skill-editor-heading">
-              <div>
-                <p class="eyebrow">SKILL VERSION</p>
-                <h3>{selectedSkill.name}</h3>
-                <small>创建不可变版本草稿</small>
-              </div>
-              <button
-                class="icon-button"
-                type="button"
-                aria-label="关闭编辑"
-                on:click={cancelEdit}><X size={17} /></button
-              >
-            </div>
+        {#if editing}<ModalDialog title="创建 Skill 版本" description={`为“${selectedSkill.name}”创建并配置新的版本草稿。`} confirmLabel="创建版本" confirmForm="skill-version-form" {busy} confirmDisabled={!selectedSkillId} onCancel={cancelEdit}>
             <form
+              id="skill-version-form"
               class="skill-editor-form"
               on:submit|preventDefault={createVersion}
             >
@@ -721,15 +710,8 @@
                     >{/each}
                 </div>
               </fieldset>
-              <div class="skill-editor-actions">
-                <button class="secondary" type="button" on:click={cancelEdit}
-                  >取消</button
-                ><button class="primary" disabled={busy || !selectedSkillId}
-                  ><Plus size={14} />创建版本</button
-                >
-              </div>
             </form>
-          </div>{/if}
+          </ModalDialog>{/if}
       </aside>
     {/if}
   </div>

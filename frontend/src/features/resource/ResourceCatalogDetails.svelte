@@ -16,6 +16,7 @@
   import KafkaResourceDetails from './KafkaResourceDetails.svelte';
   import ElasticsearchResourceDetails from './ElasticsearchResourceDetails.svelte';
   import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
+  import { resourceToolsFor } from './resourceTools';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -26,6 +27,10 @@
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
   export let mcpServerEndpointFor: (resource: Resource) => string = () => '';
   export let applicationReferences: ApplicationReference[] = [];
+
+  $: toolRows = resource.kind === 'MCPServer'
+    ? (operationSnapshots[resource.id]?.[0]?.tools ?? []).map(({ name, description }) => ({ name, description }))
+    : resourceToolsFor(resource.kind);
 </script>
 
 <div class="resource-catalog-details-stack">
@@ -68,5 +73,9 @@
       {#if column.key === 'project'}{reference.project_name}{:else if column.key === 'application'}{reference.application_name}{:else}{reference.relation_type === 'instance' ? '实例' : '依赖'}{/if}
     </svelte:fragment>
   </ReadonlyTable>
+</section>
+<section class="resource-tool-table">
+  <div class="provider-resource-models-heading"><strong>工具列表</strong><span>{toolRows.length} 个</span></div>
+  <ReadonlyTable columns={[{ key: 'name', label: '工具名称', width: '30%' }, { key: 'description', label: '工具说明' }]} rows={toolRows} emptyText={resource.kind === 'MCPServer' ? '尚未发现工具，请先执行连接测试。' : '暂无工具'} />
 </section>
 </div>

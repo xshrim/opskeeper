@@ -6,6 +6,7 @@
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import type { Resource, Team } from '../../lib/api';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
@@ -94,32 +95,8 @@
   }
 </script>
 
-<div
-  class="project-overlay"
-  role="presentation"
-  on:click={(event) => event.target === event.currentTarget && onCancel()}
->
-  <div
-    class="project-dialog project-create-dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="project-create-title"
-    tabindex="-1"
-  >
-    <header class="project-dialog-header">
-      <div>
-        <h2 id="project-create-title">新增项目</h2>
-        <p>先填写项目基本信息，再将应用加入项目。项目本身不区分来源类型。</p>
-      </div>
-      <div class="project-dialog-actions">
-        <button class="secondary" type="button" on:click={onCancel}>取消</button
-        ><button class="primary" type="button" disabled={saving} on:click={save}
-          >{saving ? '创建中…' : '创建项目'}</button
-        >
-      </div>
-    </header>
-    {#if error}<div class="form-error" role="alert">{error}</div>{/if}
-    <div class="project-dialog-content project-create-content">
+<ModalDialog dialogClass="project-dialog project-create-dialog" size="large" title="新增项目" description="填写项目基本信息并添加应用。" confirmLabel="创建项目" busyLabel="创建中…" busy={saving} message={error} onCancel={onCancel} onConfirm={save}>
+  <div class="project-dialog-content project-create-content">
       <section class="create-section">
         <div class="create-section-heading">
           <div>
@@ -224,11 +201,10 @@
             >
           </div>{/if}
       </section>
-    </div>
   </div>
+  </ModalDialog>
   {#if applicationWizardOpen}<ApplicationWizard
       {resources}
       onSave={addApplications}
       onCancel={() => (applicationWizardOpen = false)}
     />{/if}
-</div>

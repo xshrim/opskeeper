@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { Pencil, Trash2 } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
+  import ResourceTagList from '../../components/ResourceTagList.svelte';
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { relativeConnectionTime, resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
@@ -31,10 +32,10 @@
   let now = Date.now();
   const columns: ReadonlyTableColumn[] = [
     { key: 'resource', label: '资源', width: '300px' },
-    { key: 'category', label: '类型', width: '150px' },
+    { key: 'category', label: '类型', width: '75px' },
     { key: 'scope', label: '范围', width: '58px' },
     { key: 'labels', label: '标签' },
-    { key: 'application', label: '应用', width: '56px' },
+    { key: 'application', label: '引用', width: '56px' },
     { key: 'connection', label: '连接', width: '80px' },
     { key: 'actions', label: '操作', width: '64px' }
   ];
@@ -81,7 +82,7 @@
     {:else if column.key === 'scope'}
       <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>
     {:else if column.key === 'labels'}
-      <span class="resource-tags-group"><span class:resource-tags-empty-state={Object.keys(resource.labels ?? {}).length === 0} class="resource-tags" aria-label="资源标签">{#each Object.entries(resource.labels ?? {}) as [key, value]}<span class="resource-tag">{key}{value ? `=${value}` : ''}</span>{:else}<small class="resource-tags-empty">未设置标签</small>{/each}</span></span>
+      <ResourceTagList tags={Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key)} />
     {:else if column.key === 'application'}
       <span class="resource-cell resource-application-cell">{resource.application_count ?? 0}</span>
     {:else if column.key === 'connection'}

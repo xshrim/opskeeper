@@ -1,6 +1,7 @@
 <script lang="ts">
   import Tabs from '../../components/Tabs.svelte';
   import FormActions from '../../components/FormActions.svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import {
     Bot,
     Check,
@@ -511,21 +512,9 @@
           ><Edit3 size={14} />编辑</button
         >
       </FormActions>
-      {#if editorOpen}<div class="persona-editor-overlay">
-          <div class="persona-editor-heading">
-            <div>
-              <p class="eyebrow">PERSONA VERSION</p>
-              <h3>{selectedProfile.name}</h3>
-              <small>创建不可变版本草稿</small>
-            </div>
-            <button
-              class="icon-button"
-              type="button"
-              aria-label="关闭编辑"
-              on:click={() => (editorOpen = false)}><X size={17} /></button
-            >
-          </div>
+      {#if editorOpen}<ModalDialog title="创建专家版本" description={`为“${selectedProfile.name}”创建新的专家版本草稿。`} confirmLabel="创建版本" confirmForm="persona-version-form" {busy} confirmDisabled={!selectedProfileId} onCancel={() => (editorOpen = false)}>
           <form
+            id="persona-version-form"
             class="persona-editor-form"
             on:submit|preventDefault={createVersion}
           >
@@ -536,16 +525,7 @@
             <div class="persona-editor-grid">
               <FormField label="输入 Schema"><TextArea bind:value={profileInputSchema} rows={7} spellcheck={false} /></FormField><FormField label="输出 Schema"><TextArea bind:value={profileOutputSchema} rows={7} spellcheck={false} /></FormField>
             </div>
-            <div class="persona-editor-actions">
-              <button
-                class="secondary"
-                type="button"
-                on:click={() => (editorOpen = false)}>取消</button
-              ><button class="primary" disabled={busy || !selectedProfileId}
-                ><Plus size={14} />创建版本</button
-              >
-            </div>
           </form>
-        </div>{/if}
+        </ModalDialog>{/if}
     </aside>{/if}
 </section>

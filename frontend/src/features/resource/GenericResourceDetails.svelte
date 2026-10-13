@@ -9,7 +9,6 @@
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
 
   $: isAgent = String(resource.subtype ?? '').toLowerCase() === 'agent';
-  $: enabledStatus = resource.status === 'active' ? '已启用' : resource.status === 'disabled' ? '已停用' : '未知';
 </script>
 
 <div class="resource-row-details">
@@ -22,7 +21,7 @@
   <div><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
   <div>
     <span>状态</span>
-    <strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? `正常·${connectionCheck.latency_ms}ms` : '异常' : '尚未测试'} ({enabledStatus})</strong>
+    <strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? `正常·${connectionCheck.latency_ms}ms` : '异常' : '尚未测试'}</strong>
     {#if selectedResourceId === resource.id && connectionCheck?.status === 'failed'}<small>{connectionCheck.message}</small>{/if}
   </div>
 </div>
