@@ -82,6 +82,9 @@
   gap: 24px;
   border-bottom: 1px solid var(--theme-divider);
 }
+.topbar h1 {
+  font-size: 20px;
+}
 .topbar-message-slot {
   position: absolute;
   top: 50%;
@@ -410,7 +413,7 @@
   left: 0;
   z-index: 10;
   display: grid;
-  width: 206px;
+  width: 100%;
   padding: 5px;
   background: var(--theme-bg-surface);
   border: 1px solid var(--theme-border);

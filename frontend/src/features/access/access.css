@@ -125,9 +125,10 @@
 .access-accordion-heading > span,
 .access-accordion-heading strong,
 .access-accordion-heading small { display: block; }
-.access-accordion-heading strong { font-size: 15px; }
-.access-accordion-heading small { margin-top: 4px; color: var(--theme-fg-muted); font-size: 11px; }
+.access-accordion-heading strong { font-size: 16px; }
+.access-accordion-heading small { margin-top: 4px; color: var(--theme-fg-muted); font-size: 12px; }
 .access-heading-code { color: var(--theme-fg-muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; }
+.access-accordion-heading .access-heading-code { font-size: 10px; }
 .access-accordion-heading strong .access-heading-code { display: inline; margin: 0 0 0 5px; vertical-align: middle; }
 .access-accordion-heading > svg { flex: 0 0 auto; color: var(--theme-fg-muted); transition: transform 160ms ease; }
 .access-accordion-heading > svg.expanded { transform: rotate(180deg); }

@@ -80,7 +80,7 @@
 }
 .resource-catalog-row .entity-summary > span:last-child strong {
   color: var(--theme-fg-strong);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 650;
 }
 .provider-name-role-tag {
@@ -227,6 +227,7 @@
 .catalog-subtypes button {
   gap: 7px;
 }
+.catalog-root .catalog-label { font-size: 16px; }
 .catalog-name,
 .catalog-label {
   display: inline-flex;
@@ -309,8 +310,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 62px;
-  padding: 12px 16px;
+  height: 60px;
+  min-height: 60px;
+  padding: 10px 15px;
   border-bottom: 1px solid var(--theme-divider);
 }
 .resource-catalog-filters {
@@ -336,7 +338,7 @@
 }
 .resource-catalog-title small {
   color: var(--theme-fg-subtle);
-  font-size: 11px;
+  font-size: 12px;
 }
 .resource-catalog-toolbar .resource-search {
   width: min(210px, 22vw);
@@ -443,7 +445,6 @@
   align-items: end;
   margin: 0;
   padding: 11px 0 13px;
-  border-top: 1px solid var(--theme-divider);
 }
 .resource-cell {
   min-width: 0;
@@ -635,7 +636,6 @@
 .provider-resource-details {
   margin: 0;
   padding: 11px 0 13px;
-  border-top: 1px solid var(--theme-divider);
 }
 .resource-tool-summary {
   display: grid;
@@ -1031,7 +1031,7 @@
   display: grid;
   align-content: start;
   gap: 4px;
-  padding: 14px 10px;
+  padding: 14px 15px;
   background: var(--theme-bg-surface);
   border-right: 1px solid var(--theme-divider);
 }
@@ -1080,13 +1080,13 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: hidden;
-  padding: 22px 24px;
+  padding: 11px 15px;
 }
 .resource-add-content.type-selection-content {
-  padding-top: 22px;
-  padding-bottom: 18px;
+  padding-top: 11px;
+  padding-bottom: 9px;
 }
-.resource-add-step-actions > .primary { display: none; }
+.resource-add-step-actions { display: none !important; }
 .resource-add-step-heading {
   position: relative;
   display: grid;
@@ -1094,12 +1094,12 @@
   align-items: center;
   gap: 12px;
   min-height: 28px;
-  margin-bottom: 22px;
+  margin-bottom: 11px;
 }
 .resource-add-step-heading h3 {
   margin: 0;
   color: var(--theme-fg-strong);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 20px;
 }
 .resource-add-step-heading-copy {
@@ -2212,7 +2212,6 @@
   display: block;
   margin: 0;
   padding: 11px 0 13px;
-  border-top: 1px solid var(--theme-divider);
 }
 .docker-resource-row .resource-category-cell strong {
   color: var(--theme-teal);
@@ -2290,7 +2289,7 @@
   .docker-tls-fieldset {
     padding: 10px;
   }
-  .resource-add-content { padding: 18px 16px; }
+  .resource-add-content { padding: 9px 16px; }
   .resource-add-step-heading {
     grid-template-columns: minmax(0, 1fr) auto;
   }

@@ -1,11 +1,14 @@
 /* Feature styles migrated from app.css. */
 .profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 16px;
   max-width: 940px;
   padding: 28px 0 48px;
 }
 .profile-form {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 .profile-panel {
   overflow: hidden;
@@ -14,7 +17,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 4px 20px 20px;
+  padding: 4px 16px 14px;
   border-bottom: 1px solid var(--theme-divider);
 }
 .profile-avatar {
@@ -43,16 +46,16 @@
 .profile-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  padding: 20px;
+  gap: 10px;
+  padding: 14px 16px;
 }
 .profile-fields :global(.form-field) { min-width: 0; }
 .profile-password-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   align-items: end;
-  gap: 12px;
-  padding: 20px;
+  gap: 10px;
+  padding: 14px 16px;
 }
 .profile-password-row :global(.form-field) { min-width: 0; }
 .profile-password-row button {
@@ -63,7 +66,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 20px 20px;
+  margin: 0 16px 16px;
   padding: 12px;
   color: var(--theme-fg-muted);
   background: var(--theme-bg-surface);
@@ -83,7 +86,7 @@
 }
 .preference-group {
   margin: 0;
-  padding: 18px 20px;
+  padding: 14px 16px;
   border: 0;
   border-top: 1px solid var(--theme-divider);
 }
@@ -102,11 +105,12 @@
 .profile-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-top: 1px solid var(--theme-divider);
 }
 @media (max-width: 720px) {
   .profile-layout {
+    grid-template-columns: 1fr;
     padding-top: 18px;
   }
   .profile-fields {

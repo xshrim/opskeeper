@@ -8,12 +8,16 @@
   export let closeOnBackdrop = true;
   export let modal = true;
   export let inertTarget = '';
+  export let maskTarget = '';
   export let positionTarget = '';
   export let widthTargetRatio = 0;
   export let overflowMode: 'clip' | 'scroll' | 'expand' = 'scroll';
+  export let autoHeight = false;
   export let onBackdrop: () => void = () => {};
 
   let dialogElement: HTMLDialogElement;
+  let targetMaskStyle = '';
+  let positionInitialized = false;
   let interaction:
     | { kind: 'drag'; pointerId: number; offsetX: number; offsetY: number }
     | {
@@ -28,6 +32,18 @@
   const minWidth = 320;
   const minHeight = 220;
 
+  function updateTargetMask() {
+    const target = maskTarget
+      ? document.querySelector<HTMLElement>(maskTarget)
+      : null;
+    if (!target) {
+      targetMaskStyle = '';
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    targetMaskStyle = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+  }
+
   function clamp(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), Math.max(min, max));
   }
@@ -38,14 +54,17 @@
     width: number,
     height: number,
     lockWidth = true,
-    lockHeight = true
+    lockHeight = true,
+    preservePosition = false
   ) {
     const maxWidth = Math.max(minWidth, window.innerWidth - viewportMargin * 2);
     const maxHeight = Math.max(minHeight, window.innerHeight - viewportMargin * 2);
     width = clamp(width, minWidth, maxWidth);
     height = clamp(height, minHeight, maxHeight);
-    left = clamp(left, viewportMargin, window.innerWidth - width - viewportMargin);
-    top = clamp(top, viewportMargin, window.innerHeight - height - viewportMargin);
+    if (!preservePosition) {
+      left = clamp(left, viewportMargin, window.innerWidth - width - viewportMargin);
+      top = clamp(top, viewportMargin, window.innerHeight - height - viewportMargin);
+    }
     dialogElement.style.left = `${left}px`;
     dialogElement.style.top = `${top}px`;
     dialogElement.style.width = lockWidth ? `${width}px` : '';
@@ -53,7 +72,9 @@
     dialogElement.style.transform = 'none';
   }
 
-  function positionDialog() {
+  function positionDialog(preservePosition = false) {
+    preservePosition = preservePosition && positionInitialized;
+    updateTargetMask();
     const target = positionTarget
       ? document.querySelector<HTMLElement>(positionTarget)
       : null;
@@ -68,18 +89,32 @@
       );
       dialogElement.style.width = `${width}px`;
     }
-    const measuredRect = dialogElement.getBoundingClientRect();
-    if (!targetRect) return;
-    const left = targetRect.left + (targetRect.width - measuredRect.width) / 2;
-    const top = (window.innerHeight - measuredRect.height) / 2;
+    if (overflowMode === 'expand' || autoHeight) {
+      if (overflowMode === 'expand' && !(targetRect && widthTargetRatio > 0)) {
+        dialogElement.style.width = '';
+      }
+      dialogElement.style.height = 'auto';
+    }
+    if (!targetRect && !autoHeight && overflowMode !== 'expand') return;
+    const expandedRect = dialogElement.getBoundingClientRect();
+    const left = preservePosition
+      ? currentRect.left
+      : targetRect
+        ? targetRect.left + (targetRect.width - expandedRect.width) / 2
+        : (window.innerWidth - expandedRect.width) / 2;
+    const top = preservePosition
+      ? currentRect.top
+      : (window.innerHeight - expandedRect.height) / 2;
     setGeometry(
       left,
       top,
-      measuredRect.width,
-      measuredRect.height,
-      overflowMode !== 'expand' || Boolean(positionTarget && widthTargetRatio > 0),
-      overflowMode !== 'expand'
+      expandedRect.width,
+      expandedRect.height,
+      overflowMode !== 'expand' || Boolean(targetRect && widthTargetRatio > 0),
+      overflowMode !== 'expand' && !autoHeight,
+      preservePosition && autoHeight
     );
+    positionInitialized = true;
   }
 
   function handlePointerDown(event: PointerEvent) {
@@ -137,7 +172,15 @@
   }
 
   function handleBackdrop(event: MouseEvent) {
-    if (closeOnBackdrop && event.currentTarget === event.target) onBackdrop();
+    if (!closeOnBackdrop || event.currentTarget !== event.target) return;
+    if (event.currentTarget === dialogElement) {
+      const rect = dialogElement.getBoundingClientRect();
+      if (
+        event.clientX >= rect.left && event.clientX <= rect.right &&
+        event.clientY >= rect.top && event.clientY <= rect.bottom
+      ) return;
+    }
+    onBackdrop();
   }
 
   onMount(() => {
@@ -152,11 +195,19 @@
       element.inert = true;
     });
 
-    const frame = requestAnimationFrame(positionDialog);
-    window.addEventListener('resize', positionDialog);
+    const frame = requestAnimationFrame(() => positionDialog());
+    const resizeObserver = autoHeight
+      ? new ResizeObserver(() => requestAnimationFrame(() => positionDialog(true)))
+      : null;
+    resizeObserver?.observe(dialogElement);
+    const handleWindowResize = () => positionDialog();
+    window.addEventListener('resize', handleWindowResize);
+    window.addEventListener('scroll', updateTargetMask, true);
     return () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener('resize', positionDialog);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
+      window.removeEventListener('scroll', updateTargetMask, true);
       inertElements.forEach((element, index) => {
         element.inert = previousInert[index];
       });
@@ -166,6 +217,9 @@
 </script>
 
 <div class={`dialog-backdrop ${className}`.trim()} role="presentation" on:click={handleBackdrop}>
+  {#if maskTarget && targetMaskStyle}
+    <div class="dialog-target-mask" style={targetMaskStyle} aria-hidden="true" on:click={handleBackdrop}></div>
+  {/if}
   <dialog
     bind:this={dialogElement}
     aria-modal={modal ? 'true' : undefined}
@@ -200,8 +254,8 @@
     position: absolute;
     bottom: 0;
     z-index: 3;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     background: transparent;
     border: 0;
@@ -214,8 +268,8 @@
     position: absolute;
     right: 4px;
     bottom: 4px;
-    width: 7px;
-    height: 7px;
+    width: 9px;
+    height: 9px;
     border-right: 1px solid var(--theme-fg-subtle);
     border-bottom: 1px solid var(--theme-fg-subtle);
     content: '';
@@ -225,5 +279,11 @@
     right: auto;
     left: 4px;
     transform: scaleX(-1);
+  }
+  .dialog-target-mask {
+    position: fixed;
+    z-index: 0;
+    background: var(--theme-overlay);
+    pointer-events: auto;
   }
 </style>

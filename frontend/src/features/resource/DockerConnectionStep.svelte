@@ -110,9 +110,7 @@
         /></FormField
       >
       <p id="docker-host-help" class="docker-field-help">
-        支持 <code>unix://</code>、<code>tcp://</code>、<code>http://</code> 和
-        <code>https://</code>；<code>unix://</code> 和 <code>http://</code>
-        不支持 TLS，<code>tcp://</code> 和 <code>https://</code> 支持 TLS；不能包含用户名或密码。
+        支持 <code>unix://</code>、<code>tcp://</code>、<code>http://</code>、<code>https://</code>；仅 <code>tcp://</code>、<code>https://</code> 支持 TLS，且不能包含用户名或密码。
       </p>
     </div>
 

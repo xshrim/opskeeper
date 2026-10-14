@@ -399,6 +399,7 @@
   min-height: 0;
   height: auto;
   flex: 1 1 auto;
+  margin-top: 25px;
 }
 @media (max-width: 720px) {
   .main-content.diagnosis-main-content {
@@ -531,13 +532,13 @@
 .diagnosis-panel-top h2 {
   margin: 0;
   color: var(--diagnosis-ink);
-  font-size: 13px;
+  font-size: 16px;
 }
 .diagnosis-panel-top small {
   display: block;
   margin-top: 3px;
   color: var(--diagnosis-subtle);
-  font-size: 10px;
+  font-size: 12px;
 }
 .diagnosis-heading-actions {
   display: flex;
@@ -742,7 +743,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--diagnosis-ink);
-  font-size: 17px;
+  font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -750,7 +751,7 @@
   display: block;
   margin-top: 4px;
   color: var(--diagnosis-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 .diagnosis-loaded-context {
   display: flex;

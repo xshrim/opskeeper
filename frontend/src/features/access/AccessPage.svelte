@@ -17,6 +17,7 @@
   import IconPicker from '../../components/IconPicker.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import FormField from '../../components/FormField.svelte';
+  import FieldLabel from '../../components/FieldLabel.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
@@ -1377,7 +1378,7 @@
       >
         <div class="team-identity-field">
           <div class="team-icon-selection">
-            <label><span>图标</span><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
+            <label><FieldLabel text="图标" /><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
           </div>
           <FormField label="名称" required invalid={Boolean(teamNameError)} error={teamNameError}>
             <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
@@ -1705,7 +1706,7 @@
         <div class="team-identity-field">
           <div class="team-icon-selection">
         <label>
-          <span>图标</span><IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
+          <FieldLabel text="图标" /><IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
         </label>
           </div>
           <FormField label="名称" required invalid={Boolean(editTeamNameError)} error={editTeamNameError}>

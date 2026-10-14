@@ -2776,6 +2776,8 @@
         size="wide"
         dialogClass="resource-workflow-dialog"
         contentInset={false}
+        autoHeight
+        backLabel={resourceAddStep > 1 ? '上一步' : ''}
         confirmLabel={resourceAddStep === 1 || (resourceAddStep === 2 && resourceWorkflowNeedsReview())
           ? '下一步'
           : resourceWorkflowEditing() ? '保存' : '创建'}
@@ -2785,6 +2787,10 @@
         message={activeMessage}
         messageTone={activeMessageTone}
         onCancel={cancelResourceWorkflow}
+        onBack={() => {
+          resourceAddStep -= 1;
+          autoSummaryTestKey = '';
+        }}
         onConfirm={confirmResourceWorkflow}
       >
       <ResourceWorkflowPanel

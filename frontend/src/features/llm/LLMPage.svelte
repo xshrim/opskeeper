@@ -1716,7 +1716,7 @@
   .llm-page {
     display: grid;
     gap: 28px;
-    padding-top: 27px;
+    padding-top: 20px;
   }
   .section-heading,
   .drawer-heading,
@@ -1751,6 +1751,7 @@
   }
   .section-heading h2 {
     color: var(--theme-fg-strong);
+    font-size: 16px;
   }
   .heading-code {
     margin-left: 5px;
@@ -2059,8 +2060,8 @@
   .list-toolbar strong {
     display: block;
     flex: 0 0 auto;
-    font-size: 14px;
-    line-height: 14px;
+    font-size: 15px;
+    line-height: 18px;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
@@ -2070,7 +2071,7 @@
     margin-top: 4px;
     color: var(--theme-fg-muted);
     content: '点击查看详情';
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 400;
     line-height: 12px;
     overflow: hidden;
@@ -2424,14 +2425,14 @@
   }
   .drawer-title h2 {
     color: var(--theme-fg-strong);
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.25;
   }
   .drawer-title small {
     display: block;
     margin-top: 4px;
     color: var(--theme-fg-muted);
-    font-size: 10px;
+    font-size: 11px;
   }
   .drawer-section {
     padding: 15px 17px;
