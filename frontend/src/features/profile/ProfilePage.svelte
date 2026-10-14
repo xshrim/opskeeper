@@ -1,16 +1,29 @@
 <script lang="ts">
-import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
+  import { Monitor, Moon, Sun, Upload } from 'lucide-svelte';
+  import ModalDialog from '../../components/ModalDialog.svelte';
   import FormField from '../../components/FormField.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
-  import { api, ApiError, type User, type UserPreferences } from '../../lib/api';
+  import {
+    api,
+    ApiError,
+    type RoleBinding,
+    type User,
+    type UserPreferences
+  } from '../../lib/api';
 
   export let currentUser: User | null = null;
   export let avatarURL = '';
   export let preferences: UserPreferences;
+  export let roleBindings: RoleBinding[] = [];
+  export let scopeChoices: Array<{ id: string; type: string; name: string }> =
+    [];
+  export let message = '';
+  export let messageTone: 'success' | 'error' = 'success';
   export let onApplyTheme: () => void;
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
+  export let onCancel: () => void = () => {};
 
   let profileDisplayName = '';
   let profileEmail = '';
@@ -21,7 +34,7 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
   let avatarBusy = false;
   let busy = false;
   let profileUserID = '';
-  let themeSaveQueue: Promise<void> = Promise.resolve();
+  let savedPreferences: UserPreferences = { ...preferences };
 
   $: if (currentUser?.id !== profileUserID) {
     profileUserID = currentUser?.id ?? '';
@@ -31,7 +44,14 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
     profileCurrentPassword = '';
     profileNewPassword = '';
     profileConfirmPassword = '';
+    savedPreferences = { ...preferences };
   }
+  $: organizationRoles = roleBindings.map((binding) => ({
+    ...binding,
+    scope_name:
+      scopeChoices.find((scope) => scope.id === binding.scope_id)?.name ??
+      binding.scope_id
+  }));
 
   function describeError(error: unknown, fallback: string) {
     if (error instanceof ApiError) {
@@ -57,8 +77,10 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
         sidebar_mode: preferences.sidebar_mode,
         sidebar_collapsed: preferences.sidebar_collapsed
       });
+      savedPreferences = { ...preferences };
       onApplyTheme();
       onNotice('个人中心配置已保存');
+      onCancel();
     } catch (error) {
       onError(describeError(error, '个人中心配置保存失败'));
     } finally {
@@ -70,24 +92,6 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
     preferences = { ...preferences, theme };
     onApplyTheme();
     onError('');
-
-    const selectedTheme = theme;
-    themeSaveQueue = themeSaveQueue
-      .catch(() => undefined)
-      .then(async () => {
-        try {
-          const saved = await api.updatePreferences({
-            theme: selectedTheme,
-            sidebar_mode: preferences.sidebar_mode,
-            sidebar_collapsed: preferences.sidebar_collapsed
-          });
-          if (preferences.theme === selectedTheme) preferences = saved;
-        } catch (error) {
-          if (preferences.theme === selectedTheme) {
-            onError(describeError(error, '主题设置保存失败'));
-          }
-        }
-      });
   }
 
   async function changePassword() {
@@ -129,6 +133,7 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
     onError('');
     try {
       preferences = await api.updateAvatar(file);
+      savedPreferences = { ...preferences };
       onNotice('头像已更新');
     } catch (error) {
       onError(describeError(error, '头像上传失败'));
@@ -137,51 +142,225 @@ import { Monitor, Moon, Sun, Upload, UsersRound } from 'lucide-svelte';
       input.value = '';
     }
   }
+
+  function cancel() {
+    preferences = { ...savedPreferences };
+    onApplyTheme();
+    onCancel();
+  }
+
+  function scopeTypeLabel(type: string) {
+    return { platform: '平台', team: '团队', project: '项目' }[type] ?? type;
+  }
 </script>
 
-<section class="profile-layout">
-  <section class="panel profile-panel">
-    <form class="profile-form" on:submit|preventDefault={saveProfile}>
-      <div class="panel-heading"><div><p class="eyebrow">PROFILE</p><h2>个人资料</h2></div></div>
+<ModalDialog
+  size="large"
+  dialogClass="profile-dialog"
+  title="个人中心"
+  confirmLabel="保存配置"
+  busyLabel="正在保存"
+  confirmForm="profile-dialog-form"
+  {busy}
+  {message}
+  {messageTone}
+  contentInset={false}
+  onCancel={cancel}
+>
+  <form id="profile-dialog-form" on:submit|preventDefault={saveProfile}>
+    <section class="profile-section">
+      <h3>基本信息</h3>
       <div class="profile-avatar-row">
-        {#if avatarURL}<img src={avatarURL} alt="当前头像" class="profile-avatar avatar-image" />{:else}<span class="profile-avatar">{(currentUser?.display_name || currentUser?.username || 'U').slice(0, 1).toUpperCase()}</span>{/if}
-        <div>
+        {#if avatarURL}
+          <img
+            src={avatarURL}
+            alt="当前头像"
+            class="profile-avatar avatar-image"
+          />
+        {:else}
+          <span class="profile-avatar"
+            >{(currentUser?.display_name || currentUser?.username || 'U')
+              .slice(0, 1)
+              .toUpperCase()}</span
+          >
+        {/if}
+        <div class="profile-avatar-copy">
           <strong>{currentUser?.username}</strong>
-          <p>PNG 或 JPEG，最大 1 MiB。</p>
-          <label class="secondary-button upload-button" for="profile-avatar-upload"><Upload size={15} strokeWidth={1.8} aria-hidden="true" />{avatarBusy ? '正在上传' : '更换头像'}</label>
-          <input id="profile-avatar-upload" class="visually-hidden" type="file" accept="image/png,image/jpeg" disabled={avatarBusy} on:change={uploadAvatar} />
+          <label
+            class="secondary-button upload-button"
+            for="profile-avatar-upload"
+            ><Upload
+              size={15}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />{avatarBusy ? '正在上传' : '更换头像'}</label
+          >
         </div>
+        <input
+          id="profile-avatar-upload"
+          class="visually-hidden"
+          type="file"
+          accept="image/png,image/jpeg"
+          disabled={avatarBusy}
+          on:change={uploadAvatar}
+        />
       </div>
       <div class="profile-fields">
-        <FormField label="用户名"><TextInput value={currentUser?.username ?? ''} disabled ariaLabel="用户名" /></FormField>
-        <FormField label="显示名" required><TextInput bind:value={profileDisplayName} required maxlength={120} placeholder="请输入显示名" ariaLabel="显示名" /></FormField>
-        <FormField label="邮箱"><TextInput type="email" bind:value={profileEmail} placeholder="例如：name@example.com" ariaLabel="邮箱" /></FormField>
-        <FormField label="电话"><TextInput type="tel" bind:value={profilePhone} placeholder="例如：13800138000" ariaLabel="电话" /></FormField>
+        <FormField label="用户名"
+          ><TextInput
+            value={currentUser?.username ?? ''}
+            disabled
+            ariaLabel="用户名"
+          /></FormField
+        >
+        <FormField label="显示名" required
+          ><TextInput
+            bind:value={profileDisplayName}
+            required
+            maxlength={120}
+            placeholder="请输入显示名"
+            ariaLabel="显示名"
+          /></FormField
+        >
+        <FormField label="邮箱"
+          ><TextInput
+            type="email"
+            bind:value={profileEmail}
+            placeholder="例如：name@example.com"
+            ariaLabel="邮箱"
+          /></FormField
+        >
+        <FormField label="电话"
+          ><TextInput
+            type="tel"
+            bind:value={profilePhone}
+            placeholder="例如：13800138000"
+            ariaLabel="电话"
+          /></FormField
+        >
       </div>
-      <div class="profile-team"><UsersRound size={17} strokeWidth={1.8} aria-hidden="true" /><span><strong>所属团队</strong><small>当前未配置团队成员关系</small></span></div>
-    </form>
-    <form class="profile-password-form" on:submit|preventDefault={changePassword}>
-      <div class="profile-password-row">
-        <FormField label="当前密码" required><PasswordInput bind:value={profileCurrentPassword} required autocomplete="current-password" placeholder="当前密码" ariaLabel="当前密码" /></FormField>
-        <FormField label="新密码" required><PasswordInput bind:value={profileNewPassword} required minlength={8} autocomplete="new-password" placeholder="新密码" ariaLabel="新密码" /></FormField>
-        <FormField label="确认新密码" required><PasswordInput bind:value={profileConfirmPassword} required minlength={8} autocomplete="new-password" placeholder="确认新密码" ariaLabel="确认新密码" /></FormField>
-        <button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在更新' : '更新密码'}</button>
-      </div>
-    </form>
-  </section>
-  <form class="profile-form" on:submit|preventDefault={saveProfile}>
-    <section class="panel profile-panel">
-      <div class="panel-heading"><div><p class="eyebrow">PREFERENCES</p><h2>界面偏好</h2></div></div>
-      <fieldset class="preference-group"><legend>系统主题</legend><div class="segmented-control" role="radiogroup" aria-label="系统主题">
-        <button type="button" class:active={preferences.theme === 'auto'} role="radio" aria-checked={preferences.theme === 'auto'} on:click={() => selectTheme('auto')}><Monitor size={16} strokeWidth={1.8} aria-hidden="true" />自动</button>
-        <button type="button" class:active={preferences.theme === 'light'} role="radio" aria-checked={preferences.theme === 'light'} on:click={() => selectTheme('light')}><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button>
-        <button type="button" class:active={preferences.theme === 'dark'} role="radio" aria-checked={preferences.theme === 'dark'} on:click={() => selectTheme('dark')}><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button>
-      </div></fieldset>
-      <fieldset class="preference-group"><legend>侧边导航栏</legend><div class="segmented-control" role="radiogroup" aria-label="侧边导航栏模式">
-        <button type="button" class:active={preferences.sidebar_mode === 'fixed'} role="radio" aria-checked={preferences.sidebar_mode === 'fixed'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'fixed' })}>固定模式</button>
-        <button type="button" class:active={preferences.sidebar_mode === 'hover'} role="radio" aria-checked={preferences.sidebar_mode === 'hover'} on:click={() => (preferences = { ...preferences, sidebar_mode: 'hover', sidebar_collapsed: true })}>窄栏悬浮展开</button>
-      </div><p class="preference-help">固定模式可通过侧栏右下角图标展开或收起；悬浮模式默认显示图标，鼠标移入后展开。</p></fieldset>
-      <div class="profile-actions"><button class="primary" disabled={busy} aria-busy={busy}>{busy ? '正在保存' : '保存配置'}</button></div>
     </section>
   </form>
-</section>
+
+  <form class="profile-section" on:submit|preventDefault={changePassword}>
+    <h3>修改密码</h3>
+    <div class="profile-password-row">
+      <FormField label="当前密码" required
+        ><PasswordInput
+          bind:value={profileCurrentPassword}
+          required
+          autocomplete="current-password"
+          placeholder="当前密码"
+          ariaLabel="当前密码"
+        /></FormField
+      >
+      <FormField label="新密码" required
+        ><PasswordInput
+          bind:value={profileNewPassword}
+          required
+          minlength={8}
+          autocomplete="new-password"
+          placeholder="新密码"
+          ariaLabel="新密码"
+        /></FormField
+      >
+      <FormField label="确认新密码" required
+        ><PasswordInput
+          bind:value={profileConfirmPassword}
+          required
+          minlength={8}
+          autocomplete="new-password"
+          placeholder="确认新密码"
+          ariaLabel="确认新密码"
+        /></FormField
+      >
+      <button class="primary" disabled={busy} aria-busy={busy}
+        >{busy ? '正在更新' : '更新密码'}</button
+      >
+    </div>
+  </form>
+
+  <section class="profile-section">
+    <h3>界面偏好</h3>
+    <div class="profile-preferences">
+      <FormField label="系统主题"
+        ><div class="segmented-control" role="radiogroup" aria-label="系统主题">
+          <button
+            type="button"
+            class:active={preferences.theme === 'auto'}
+            role="radio"
+            aria-checked={preferences.theme === 'auto'}
+            on:click={() => selectTheme('auto')}
+            ><Monitor
+              size={16}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />自动</button
+          >
+          <button
+            type="button"
+            class:active={preferences.theme === 'light'}
+            role="radio"
+            aria-checked={preferences.theme === 'light'}
+            on:click={() => selectTheme('light')}
+            ><Sun size={16} strokeWidth={1.8} aria-hidden="true" />浅色</button
+          >
+          <button
+            type="button"
+            class:active={preferences.theme === 'dark'}
+            role="radio"
+            aria-checked={preferences.theme === 'dark'}
+            on:click={() => selectTheme('dark')}
+            ><Moon size={16} strokeWidth={1.8} aria-hidden="true" />深色</button
+          >
+        </div></FormField
+      >
+      <FormField label="侧边导航栏"
+        ><div
+          class="segmented-control"
+          role="radiogroup"
+          aria-label="侧边导航栏模式"
+        >
+          <button
+            type="button"
+            class:active={preferences.sidebar_mode === 'fixed'}
+            role="radio"
+            aria-checked={preferences.sidebar_mode === 'fixed'}
+            on:click={() =>
+              (preferences = { ...preferences, sidebar_mode: 'fixed' })}
+            >固定模式</button
+          >
+          <button
+            type="button"
+            class:active={preferences.sidebar_mode === 'hover'}
+            role="radio"
+            aria-checked={preferences.sidebar_mode === 'hover'}
+            on:click={() =>
+              (preferences = {
+                ...preferences,
+                sidebar_mode: 'hover',
+                sidebar_collapsed: true
+              })}>窄栏悬浮</button
+          >
+        </div></FormField
+      >
+    </div>
+  </section>
+
+  <section class="profile-section">
+    <h3>组织关系</h3>
+    {#if organizationRoles.length}
+      <div class="profile-roles">
+        {#each organizationRoles as role}
+          <div class="profile-role">
+            <span class={`scope-chip ${role.scope_type}`}
+              >{scopeTypeLabel(role.scope_type)}</span
+            ><span>{role.scope_name}</span><strong>{role.role_name}</strong>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <p class="profile-empty">当前账号未配置组织角色。</p>
+    {/if}
+  </section>
+</ModalDialog>

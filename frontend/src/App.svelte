@@ -92,8 +92,7 @@
     | 'diagnosis'
     | 'inspection'
     | 'notification'
-    | 'access'
-    | 'profile';
+    | 'access';
   type Theme = UserPreferences['theme'];
   type SidebarMode = UserPreferences['sidebar_mode'];
   type AccessTab = 'teams' | 'users' | 'roles';
@@ -122,6 +121,7 @@
   let sidebarHovered = false;
   let previousSidebarCompact = false;
   let userMenuOpen = false;
+  let profileOpen = false;
   let isPlatformAdmin = false;
   let hasPlatformRole = false;
   let selectedTeamId = '';
@@ -377,6 +377,7 @@
       currentUser = null;
       isPlatformAdmin = false;
       hasPlatformRole = false;
+      profileOpen = false;
       selectedTeamId = '';
       selectedProjectId = '';
       authState = 'login';
@@ -429,7 +430,8 @@
   }
 
   function openProfile() {
-    chooseView('profile');
+    profileOpen = true;
+    userMenuOpen = false;
   }
 
   function openTeamDialog() {
@@ -850,15 +852,6 @@
             chooseView('resource');
           }}
         />
-      {:else if view === 'profile'}
-        <ProfilePage
-          bind:currentUser
-          {avatarURL}
-          bind:preferences
-          onApplyTheme={applyTheme}
-          onNotice={(message) => (notice = message)}
-          onError={(message) => (errorMessage = message)}
-        />
       {:else if view === 'project'}
         <ProjectPage
           {teams}
@@ -1006,5 +999,20 @@
         />
       {/if}
     </main>
+    {#if profileOpen}
+      <ProfilePage
+        bind:currentUser
+        {avatarURL}
+        bind:preferences
+        roleBindings={currentUser ? userRoleBindings(currentUser.id) : []}
+        {scopeChoices}
+        message={activeMessage}
+        messageTone={activeMessageTone}
+        onApplyTheme={applyTheme}
+        onNotice={(message) => (notice = message)}
+        onError={(message) => (errorMessage = message)}
+        onCancel={() => (profileOpen = false)}
+      />
+    {/if}
   </AppShell>
 {/if}

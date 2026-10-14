@@ -1,0 +1,1595 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>个人中心弹窗 · 10 种布局预览</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f5f1ed;
+        --surface: #fffdfa;
+        --raised: #fff;
+        --soft: #f3ece7;
+        --text: #302924;
+        --muted: #776b63;
+        --subtle: #a0958e;
+        --border: #dfd3cb;
+        --line: #eee6e1;
+        --accent: #e7601b;
+        --accent-soft: #fff0e7;
+        --teal: #277a63;
+        --teal-soft: #e5f3ef;
+        --blue: #3979b9;
+        --blue-soft: #eaf2fb;
+        --purple: #7650a2;
+        --purple-soft: #f1ebfa;
+        --shadow: 0 18px 52px rgb(70 48 34 / 16%);
+        font:
+          13px Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      :root.dark {
+        color-scheme: dark;
+        --page: #211e1c;
+        --surface: #2a2623;
+        --raised: #342e2a;
+        --soft: #38322e;
+        --text: #f1e8e3;
+        --muted: #c0b1a9;
+        --subtle: #9d9088;
+        --border: #51473f;
+        --line: #443b36;
+        --accent: #ff9a63;
+        --accent-soft: #513426;
+        --teal: #9fe4cf;
+        --teal-soft: #173e35;
+        --blue: #a9ccf0;
+        --blue-soft: #263d55;
+        --purple: #ddc7ff;
+        --purple-soft: #3d2d55;
+        --shadow: 0 22px 62px rgb(0 0 0 / 38%);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-width: 320px;
+        margin: 0;
+        background: var(--page);
+        color: var(--text);
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .page {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+      .page-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 16px;
+      }
+      .eyebrow {
+        margin: 0 0 5px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+      }
+      .page-head h1 {
+        margin: 0;
+        font-size: 25px;
+        letter-spacing: 0;
+      }
+      .page-head p {
+        max-width: 690px;
+        margin: 7px 0 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .tools,
+      .picker,
+      .inline-actions,
+      .segmented,
+      .chips {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .button {
+        min-height: 34px;
+        padding: 0 11px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--surface);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .button:hover {
+        border-color: var(--accent);
+      }
+      .button.primary {
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .button.selected {
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+      .picker {
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+        padding: 11px 12px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        box-shadow: 0 6px 18px rgb(70 48 34 / 5%);
+      }
+      .picker span {
+        margin-right: 3px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .picker button {
+        min-height: 30px;
+        padding: 0 9px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .picker button:hover {
+        background: var(--soft);
+      }
+      .picker button.active {
+        color: var(--text);
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+      .selection {
+        margin: 0 0 15px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .selection strong {
+        color: var(--accent);
+      }
+
+      /* The surrounding app is intentionally restrained; the modal must be the focus. */
+      .app-frame {
+        position: relative;
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        min-height: 700px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--raised);
+        box-shadow: var(--shadow);
+      }
+      .sidebar {
+        padding: 17px 12px;
+        background: var(--surface);
+        border-right: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 25px;
+        font-weight: 800;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 25px;
+        height: 25px;
+        color: #fff;
+        background: var(--accent);
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      .nav-label {
+        margin: 17px 8px 6px;
+        color: var(--subtle);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 8px;
+        border-radius: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .nav-item.active {
+        color: var(--text);
+        background: var(--soft);
+        font-weight: 700;
+      }
+      .nav-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--border);
+      }
+      .nav-item.active .nav-dot {
+        background: var(--accent);
+      }
+      .workspace {
+        padding: 25px;
+      }
+      .workspace-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 17px;
+        border-bottom: 1px solid var(--line);
+      }
+      .workspace-title {
+        display: grid;
+        gap: 5px;
+      }
+      .workspace-title strong {
+        font-size: 17px;
+      }
+      .workspace-title small {
+        color: var(--muted);
+      }
+      .workspace-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 14px;
+        margin-top: 17px;
+      }
+      .ghost-panel {
+        min-height: 140px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+      }
+      .ghost-panel strong {
+        font-size: 12px;
+      }
+      .ghost-lines {
+        display: grid;
+        gap: 9px;
+        margin-top: 14px;
+      }
+      .ghost-lines i {
+        display: block;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--soft);
+      }
+      .ghost-lines i:nth-child(2) {
+        width: 76%;
+      }
+      .ghost-lines i:nth-child(3) {
+        width: 88%;
+      }
+      .app-overlay {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 25px;
+        background: rgb(35 28 24 / 46%);
+      }
+
+      /* Shared profile primitives. All concepts stay in one vertically ordered surface. */
+      .option {
+        display: none;
+        width: min(950px, 100%);
+      }
+      .option.active {
+        display: block;
+      }
+      .modal {
+        overflow: hidden;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        box-shadow: 0 24px 70px rgb(0 0 0 / 32%);
+      }
+      .modal-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        min-height: 59px;
+        padding: 11px 15px;
+        border-bottom: 1px solid var(--line);
+      }
+      .modal-title {
+        min-width: 0;
+      }
+      .modal-title h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+      .modal-title p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .close {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .close:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .modal-body {
+        padding: 0;
+      }
+      .profile-section {
+        padding: 17px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .profile-section:last-child {
+        border-bottom: 0;
+      }
+      .section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 13px;
+      }
+      .section-head h3 {
+        margin: 0;
+        font-size: 13px;
+      }
+      .section-head small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .avatar-row {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        margin-bottom: 14px;
+      }
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        flex: 0 0 auto;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        color: var(--accent);
+        background: var(--accent-soft);
+        font-size: 18px;
+        font-weight: 800;
+      }
+      .avatar-copy {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+      .avatar-copy strong {
+        font-size: 13px;
+      }
+      .avatar-copy span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .avatar-row .button {
+        margin-left: auto;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .field {
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+      }
+      .field label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .field input,
+      .field select {
+        width: 100%;
+        height: 34px;
+        padding: 0 9px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--raised);
+        font-size: 12px;
+      }
+      .field input:disabled {
+        color: var(--muted);
+        background: var(--soft);
+      }
+      .password-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+        gap: 10px;
+        align-items: end;
+      }
+      .password-grid .button {
+        height: 34px;
+        white-space: nowrap;
+      }
+      .preference-list {
+        display: grid;
+        gap: 14px;
+      }
+      .preference-row {
+        display: grid;
+        grid-template-columns: 144px minmax(0, 1fr);
+        align-items: center;
+        gap: 13px;
+      }
+      .preference-copy {
+        display: grid;
+        gap: 3px;
+      }
+      .preference-copy strong {
+        font-size: 12px;
+      }
+      .preference-copy small {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .segmented {
+        width: max-content;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--soft);
+      }
+      .segmented button {
+        min-height: 27px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .segmented button.active {
+        color: var(--text);
+        background: var(--raised);
+        box-shadow: 0 1px 3px rgb(70 48 34 / 13%);
+      }
+      .role-list {
+        display: grid;
+        gap: 7px;
+      }
+      .role-row {
+        display: grid;
+        grid-template-columns: 94px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 38px;
+        padding: 7px 9px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--raised);
+      }
+      .scope {
+        width: max-content;
+        padding: 3px 6px;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        background: var(--soft);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .scope.team {
+        color: var(--teal);
+        background: var(--teal-soft);
+        border-color: color-mix(in srgb, var(--teal) 35%, var(--border));
+      }
+      .scope.project {
+        color: var(--purple);
+        background: var(--purple-soft);
+        border-color: color-mix(in srgb, var(--purple) 35%, var(--border));
+      }
+      .role-name {
+        min-width: 0;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .role-name small {
+        display: inline;
+        margin-left: 5px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 400;
+      }
+      .role-count {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 15px;
+        border-top: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      /* A: baseline compact document. */
+      .a .modal {
+        width: 760px;
+        margin: auto;
+      }
+      .a .profile-section {
+        padding-inline: 18px;
+      }
+      .a .section-head {
+        margin-bottom: 12px;
+      }
+      .a .section-head h3 {
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .a .avatar-row {
+        margin-bottom: 13px;
+      }
+      .a .role-row {
+        grid-template-columns: 88px minmax(0, 1fr) auto;
+      }
+      /* B: an identity band starts the ordered sheet. */
+      .b .modal {
+        width: 810px;
+        margin: auto;
+      }
+      .b .identity-band {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 18px 20px;
+        background: linear-gradient(
+          90deg,
+          var(--accent-soft),
+          var(--surface) 62%
+        );
+        border-bottom: 1px solid var(--line);
+      }
+      .b .identity-band .avatar {
+        width: 62px;
+        height: 62px;
+      }
+      .b .identity-band div {
+        display: grid;
+        gap: 4px;
+      }
+      .b .identity-band strong {
+        font-size: 16px;
+      }
+      .b .identity-band span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .b .profile-section {
+        padding-top: 15px;
+        padding-bottom: 15px;
+      }
+      .b .section-head {
+        margin-bottom: 10px;
+      }
+      .b .section-head h3 {
+        color: var(--accent);
+      }
+      /* C: compact metadata rows, good for operational density. */
+      .c .modal {
+        width: 870px;
+        margin: auto;
+      }
+      .c .profile-section {
+        padding: 0;
+      }
+      .c .section-head {
+        margin: 0;
+        padding: 12px 18px;
+        background: var(--soft);
+        border-bottom: 1px solid var(--line);
+      }
+      .c .profile-section > div:not(.section-head) {
+        margin: 14px 18px;
+      }
+      .c .avatar-row {
+        margin-bottom: 14px !important;
+      }
+      .c .form-grid {
+        grid-template-columns: 120px minmax(0, 1fr) 120px minmax(0, 1fr);
+        align-items: center;
+      }
+      .c .field {
+        display: contents;
+      }
+      .c .field label {
+        align-self: center;
+      }
+      .c .password-grid {
+        grid-template-columns: 1fr 1fr 1fr auto;
+      }
+      .c .role-row {
+        border-width: 0 0 1px;
+        border-radius: 0;
+      }
+      .c .role-row:last-child {
+        border-bottom: 0;
+      }
+      /* D: alternating full-width rows give every configuration a clear scan line. */
+      .d .modal {
+        width: 820px;
+        margin: auto;
+      }
+      .d .profile-section {
+        padding: 16px 20px;
+      }
+      .d .profile-section:nth-child(even) {
+        background: color-mix(in srgb, var(--soft) 58%, var(--surface));
+      }
+      .d .section-head h3 {
+        font-size: 15px;
+      }
+      .d .form-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .d .password-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      .d .password-grid .button {
+        grid-column: 3;
+      }
+      .d .preference-row {
+        grid-template-columns: 1fr auto;
+        padding: 9px 0;
+        border-top: 1px solid var(--line);
+      }
+      .d .preference-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+      .d .role-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .d .role-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 5px;
+        min-height: 88px;
+      }
+      .d .role-count {
+        display: none;
+      }
+      /* E: a document-like profile, stronger typography and no cards inside cards. */
+      .e .modal {
+        width: 720px;
+        margin: auto;
+      }
+      .e .modal-bar {
+        min-height: 74px;
+        padding-inline: 24px;
+      }
+      .e .modal-title h2 {
+        font-size: 20px;
+      }
+      .e .profile-section {
+        padding: 20px 24px;
+      }
+      .e .section-head {
+        margin-bottom: 16px;
+      }
+      .e .section-head h3 {
+        font-size: 15px;
+      }
+      .e .section-head small {
+        max-width: 260px;
+        text-align: right;
+      }
+      .e .avatar-row {
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .e .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .e .password-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .e .password-grid .field:first-child {
+        grid-column: 1/-1;
+      }
+      .e .password-grid .button {
+        grid-column: 2;
+      }
+      .e .preference-row {
+        grid-template-columns: 1fr;
+      }
+      .e .segmented {
+        width: 100%;
+      }
+      .e .segmented button {
+        flex: 1;
+      }
+      .e .role-row {
+        grid-template-columns: 78px minmax(0, 1fr) auto;
+      }
+      /* F: wide settings inspector with a summary column, still one surface and vertical order. */
+      .f .modal {
+        width: 930px;
+        margin: auto;
+      }
+      .f .profile-section {
+        display: grid;
+        grid-template-columns: 160px minmax(0, 1fr);
+        gap: 20px;
+        padding: 18px 22px;
+      }
+      .f .section-head {
+        display: block;
+        margin: 0;
+      }
+      .f .section-head h3 {
+        font-size: 14px;
+      }
+      .f .section-head small {
+        display: block;
+        margin-top: 5px;
+        line-height: 1.45;
+      }
+      .f .profile-section > div:not(.section-head) {
+        margin: 0;
+      }
+      .f .avatar-row {
+        margin-bottom: 12px;
+      }
+      .f .password-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .f .password-grid .button {
+        grid-column: 3;
+      }
+      .f .preference-row {
+        grid-template-columns: 1fr auto;
+        padding: 7px 0;
+      }
+      .f .role-row {
+        grid-template-columns: 90px minmax(0, 1fr) auto;
+      }
+      /* G: a top-to-bottom timeline lets the long modal remain easy to navigate. */
+      .g .modal {
+        width: 780px;
+        margin: auto;
+      }
+      .g .profile-section {
+        position: relative;
+        padding-left: 72px;
+      }
+      .g .profile-section::before {
+        position: absolute;
+        left: 29px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: var(--line);
+        content: '';
+      }
+      .g .profile-section::after {
+        position: absolute;
+        top: 20px;
+        left: 22px;
+        display: grid;
+        place-items: center;
+        width: 15px;
+        height: 15px;
+        border: 3px solid var(--surface);
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+        content: '';
+      }
+      .g .profile-section:nth-child(2)::after {
+        background: var(--blue);
+        box-shadow: 0 0 0 1px var(--blue);
+      }
+      .g .profile-section:nth-child(3)::after {
+        background: var(--teal);
+        box-shadow: 0 0 0 1px var(--teal);
+      }
+      .g .profile-section:nth-child(4)::after {
+        background: var(--purple);
+        box-shadow: 0 0 0 1px var(--purple);
+      }
+      .g .section-head h3::before {
+        position: absolute;
+        left: 20px;
+        top: 41px;
+        width: 20px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        content: counter(section);
+        counter-increment: section;
+      }
+      .g .modal-body {
+        counter-reset: section;
+      }
+      .g .role-row {
+        background: var(--surface);
+      }
+      /* H: a quiet account card with dense, read-only-like identity data. */
+      .h .modal {
+        width: 800px;
+        margin: auto;
+      }
+      .h .profile-section {
+        padding: 16px 19px;
+      }
+      .h .avatar-row {
+        padding: 13px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--raised);
+      }
+      .h .avatar-row .button {
+        background: var(--soft);
+      }
+      .h .form-grid {
+        gap: 0;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .h .field {
+        gap: 3px;
+        padding: 9px 11px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .h .field:nth-child(2n) {
+        border-right: 0;
+      }
+      .h .field:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+      .h .field input {
+        height: 26px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font-weight: 700;
+      }
+      .h .password-grid {
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--raised);
+      }
+      .h .preference-list {
+        gap: 0;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .h .preference-row {
+        padding: 11px;
+        border-bottom: 1px solid var(--line);
+      }
+      .h .preference-row:last-child {
+        border-bottom: 0;
+      }
+      .h .role-list {
+        gap: 0;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .h .role-row {
+        border-width: 0 0 1px;
+        border-radius: 0;
+      }
+      .h .role-row:last-child {
+        border-bottom: 0;
+      }
+      /* I: a low-chrome modal for keyboard-heavy operational users. */
+      .i .modal {
+        width: 900px;
+        margin: auto;
+        border-radius: 4px;
+      }
+      .i .modal-bar {
+        padding-inline: 18px;
+      }
+      .i .modal-title p {
+        display: none;
+      }
+      .i .profile-section {
+        padding: 14px 18px;
+      }
+      .i .section-head {
+        padding-bottom: 8px;
+        margin-bottom: 11px;
+        border-bottom: 1px solid var(--line);
+      }
+      .i .section-head h3 {
+        font-size: 12px;
+      }
+      .i .form-grid {
+        grid-template-columns: 100px minmax(0, 1fr) 100px minmax(0, 1fr);
+      }
+      .i .field {
+        display: contents;
+      }
+      .i .field label {
+        align-self: center;
+      }
+      .i .field input {
+        align-self: center;
+      }
+      .i .password-grid {
+        grid-template-columns: 1fr 1fr 1fr 92px;
+      }
+      .i .preference-list {
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .i .preference-row {
+        grid-template-columns: 1fr;
+        align-content: start;
+        gap: 7px;
+      }
+      .i .role-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .i .role-row {
+        grid-template-columns: 1fr;
+        align-content: start;
+        gap: 5px;
+      }
+      .i .role-count {
+        display: none;
+      }
+      /* J: a prominent account header and compact remainder for an executive-style profile. */
+      .j .modal {
+        width: 840px;
+        margin: auto;
+      }
+      .j .modal-bar {
+        display: none;
+      }
+      .j .account-head {
+        display: flex;
+        align-items: flex-end;
+        gap: 15px;
+        padding: 24px 22px 19px;
+        background: var(--accent);
+        color: #fff;
+      }
+      .j .account-head .avatar {
+        width: 64px;
+        height: 64px;
+        color: #fff;
+        background: rgb(255 255 255 / 16%);
+        border-color: rgb(255 255 255 / 38%);
+      }
+      .j .account-head div {
+        display: grid;
+        gap: 4px;
+      }
+      .j .account-head strong {
+        font-size: 20px;
+      }
+      .j .account-head small {
+        opacity: 0.78;
+      }
+      .j .account-head .close {
+        margin-left: auto;
+        color: #fff;
+        background: transparent;
+        border-color: rgb(255 255 255 / 35%);
+      }
+      .j .profile-section {
+        padding: 16px 21px;
+      }
+      .j .section-head {
+        margin-bottom: 11px;
+      }
+      .j .section-head h3 {
+        font-size: 13px;
+      }
+      .j .avatar-row {
+        display: none;
+      }
+      .j .form-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .j .password-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .j .password-grid .button {
+        grid-column: 3;
+      }
+      .j .preference-row {
+        grid-template-columns: 130px minmax(0, 1fr);
+      }
+      .j .role-list {
+        grid-template-columns: 1fr 1fr;
+      }
+      .j .role-row:last-child {
+        grid-column: 1/-1;
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          padding: 16px;
+        }
+        .page-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .tools {
+          width: 100%;
+        }
+        .app-frame {
+          grid-template-columns: 1fr;
+          min-height: 770px;
+        }
+        .sidebar {
+          display: none;
+        }
+        .workspace {
+          padding: 16px;
+        }
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+        .app-overlay {
+          align-items: start;
+          padding: 16px;
+        }
+        .option,
+        .a .modal,
+        .b .modal,
+        .c .modal,
+        .d .modal,
+        .e .modal,
+        .f .modal,
+        .g .modal,
+        .h .modal,
+        .i .modal,
+        .j .modal {
+          width: 100%;
+        }
+        .modal {
+          max-height: calc(100vh - 32px);
+          overflow: auto;
+        }
+        .profile-section,
+        .f .profile-section {
+          display: block;
+          padding: 16px;
+        }
+        .form-grid,
+        .d .form-grid,
+        .j .form-grid,
+        .password-grid,
+        .i .password-grid {
+          grid-template-columns: 1fr;
+        }
+        .c .form-grid,
+        .i .form-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+        .c .field,
+        .i .field {
+          display: grid;
+        }
+        .c .field label,
+        .i .field label {
+          align-self: auto;
+        }
+        .password-grid .button,
+        .d .password-grid .button,
+        .e .password-grid .button,
+        .f .password-grid .button,
+        .j .password-grid .button {
+          grid-column: auto;
+        }
+        .preference-row,
+        .f .preference-row,
+        .j .preference-row {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .segmented {
+          width: 100%;
+        }
+        .segmented button {
+          flex: 1;
+        }
+        .role-list,
+        .d .role-list,
+        .i .role-list,
+        .j .role-list {
+          grid-template-columns: 1fr;
+        }
+        .role-row {
+          grid-template-columns: 78px minmax(0, 1fr);
+        }
+        .role-count {
+          display: none;
+        }
+        .g .profile-section {
+          padding-left: 62px;
+        }
+        .g .profile-section::before {
+          left: 24px;
+        }
+        .g .profile-section::after {
+          left: 17px;
+        }
+        .g .section-head h3::before {
+          left: 15px;
+        }
+        .h .form-grid {
+          display: grid;
+        }
+        .h .field {
+          display: grid;
+          border-right: 0;
+        }
+        .h .field:nth-last-child(-n + 2) {
+          border-bottom: 1px solid var(--line);
+        }
+        .h .field:last-child {
+          border-bottom: 0;
+        }
+        .j .account-head {
+          padding: 18px;
+        }
+        .j .form-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .j .role-row:last-child {
+          grid-column: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">PROFILE CENTER / MODAL EXPLORATION</p>
+          <h1>个人中心弹窗 · 10 种设计方案</h1>
+          <p>
+            所有方案均取消独立页面与“个人资料 /
+            界面偏好”双区域结构，改为单一弹窗内从上到下依次呈现基本信息、修改密码、界面偏好和组织关系。
+          </p>
+        </div>
+        <div class="tools">
+          <button class="button" id="theme-toggle">切换深浅主题</button
+          ><button class="button primary" id="choose">选择当前方案</button>
+        </div>
+      </header>
+
+      <nav class="picker" aria-label="个人中心的 10 种设计方案">
+        <span>选择方案</span>
+        <button class="active" data-option="a">A · 紧凑文档</button
+        ><button data-option="b">B · 身份横幅</button
+        ><button data-option="c">C · 配置清单</button
+        ><button data-option="d">D · 分段节奏</button
+        ><button data-option="e">E · 纵向表单</button
+        ><button data-option="f">F · 设置检查器</button
+        ><button data-option="g">G · 配置时间线</button
+        ><button data-option="h">H · 信息卡片</button
+        ><button data-option="i">I · 高密度操作台</button
+        ><button data-option="j">J · 账户主视图</button>
+      </nav>
+      <p class="selection">
+        当前查看：<strong id="current">A · 紧凑文档</strong
+        >。点击“选择当前方案”可标记您的偏好。
+      </p>
+
+      <section class="app-frame" aria-label="个人中心在应用中的弹窗效果">
+        <aside class="sidebar" aria-hidden="true">
+          <div class="brand">
+            <span class="mark">O</span><span>OpsKeeper</span>
+          </div>
+          <p class="nav-label">WORKSPACE</p>
+          <div class="nav-item active"><i class="nav-dot"></i>平台总览</div>
+          <div class="nav-item"><i class="nav-dot"></i>项目管理</div>
+          <div class="nav-item"><i class="nav-dot"></i>资源目录</div>
+          <div class="nav-item"><i class="nav-dot"></i>诊断工作台</div>
+          <p class="nav-label">MANAGEMENT</p>
+          <div class="nav-item"><i class="nav-dot"></i>通知中心</div>
+          <div class="nav-item"><i class="nav-dot"></i>权限</div>
+        </aside>
+        <div class="workspace" aria-hidden="true">
+          <div class="workspace-bar">
+            <div class="workspace-title">
+              <strong>平台总览</strong><small>当前范围：OpsKeeper 平台</small>
+            </div>
+            <button class="button">刷新</button>
+          </div>
+          <div class="workspace-grid">
+            <div class="ghost-panel">
+              <strong>资源状态</strong>
+              <div class="ghost-lines"><i></i><i></i><i></i></div>
+            </div>
+            <div class="ghost-panel">
+              <strong>待处理事项</strong>
+              <div class="ghost-lines"><i></i><i></i><i></i></div>
+            </div>
+            <div class="ghost-panel">
+              <strong>诊断活动</strong>
+              <div class="ghost-lines"><i></i><i></i><i></i></div>
+            </div>
+            <div class="ghost-panel">
+              <strong>巡检趋势</strong>
+              <div class="ghost-lines"><i></i><i></i><i></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="app-overlay">
+          <div class="option a active" data-view="a">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                </div>
+                <div class="inline-actions">
+                  <button class="button">取消</button>
+                  <button class="button primary">保存配置</button>
+                </div>
+              </div>
+              <div class="modal-body profile-content"></div>
+            </div>
+          </div>
+          <div class="option b" data-view="b">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>账户、偏好与角色</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="identity-band">
+                <span class="avatar">林</span>
+                <div>
+                  <strong>林晓</strong><span>lin.xiao · 平台管理员</span>
+                </div>
+                <button class="button">更换头像</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存资料</button>
+              </div>
+            </div>
+          </div>
+          <div class="option c" data-view="c">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>一处完成账户、密码与工作方式配置。</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存配置</button>
+              </div>
+            </div>
+          </div>
+          <div class="option d" data-view="d">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>按使用频率组织的账户设置。</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">取消</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option e" data-view="e">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>个人信息与运维工作偏好</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option f" data-view="f">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>设置检查器</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option g" data-view="g">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>按顺序处理账户与工作上下文。</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option h" data-view="h">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>账户详情</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option i" data-view="i">
+            <div class="modal">
+              <div class="modal-bar">
+                <div class="modal-title">
+                  <h2>个人中心</h2>
+                  <p>账户、密码、偏好、角色</p>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">取消</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+          <div class="option j" data-view="j">
+            <div class="modal">
+              <div class="account-head">
+                <span class="avatar">林</span>
+                <div>
+                  <strong>林晓</strong
+                  ><small>lin.xiao · opskeeper@example.com</small>
+                </div>
+                <button class="close" aria-label="关闭">×</button>
+              </div>
+              <div class="modal-body profile-content"></div>
+              <div class="footer">
+                <button class="button">关闭</button
+                ><button class="button primary">保存基本信息</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="profile-template">
+      <section class="profile-section">
+        <div class="section-head">
+          <h3>基本信息</h3>
+          <small>用于显示与通知联系</small>
+        </div>
+        <div class="avatar-row">
+          <span class="avatar">林</span>
+          <div class="avatar-copy">
+            <strong>林晓</strong><span>PNG 或 JPEG，最大 1 MiB</span>
+          </div>
+          <button class="button">更换头像</button>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label>用户名</label><input value="lin.xiao" disabled />
+          </div>
+          <div class="field"><label>显示名</label><input value="林晓" /></div>
+          <div class="field">
+            <label>邮箱</label><input value="lin.xiao@example.com" />
+          </div>
+          <div class="field">
+            <label>电话</label><input value="138 0013 8000" />
+          </div>
+        </div>
+      </section>
+      <section class="profile-section">
+        <div class="section-head">
+          <h3>修改密码</h3>
+          <small>新密码至少 8 个字符</small>
+        </div>
+        <div class="password-grid">
+          <div class="field">
+            <label>当前密码</label><input type="password" value="password" />
+          </div>
+          <div class="field">
+            <label>新密码</label><input type="password" value="newpassword" />
+          </div>
+          <div class="field">
+            <label>确认新密码</label
+            ><input type="password" value="newpassword" />
+          </div>
+          <button class="button primary">更新密码</button>
+        </div>
+      </section>
+      <section class="profile-section">
+        <div class="section-head">
+          <h3>界面偏好</h3>
+        </div>
+        <div class="preference-list">
+          <div class="preference-row">
+            <div class="preference-copy">
+              <strong>系统主题</strong>
+            </div>
+            <div class="segmented">
+              <button class="active">自动</button><button>浅色</button
+              ><button>深色</button>
+            </div>
+          </div>
+          <div class="preference-row">
+            <div class="preference-copy">
+              <strong>侧边导航栏</strong>
+            </div>
+            <div class="segmented">
+              <button class="active">固定模式</button><button>窄栏悬浮</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="profile-section">
+        <div class="section-head">
+          <h3>组织关系</h3>
+          <small>当前账号在各范围内获得的直接角色</small>
+        </div>
+        <div class="role-list">
+          <div class="role-row">
+            <span class="scope">平台</span
+            ><span class="role-name"
+              >PlatformAdmin <small>OpsKeeper 平台</small></span
+            ><span class="role-count">全局管理</span>
+          </div>
+          <div class="role-row">
+            <span class="scope team">团队</span
+            ><span class="role-name">TeamAdmin <small>支付平台</small></span
+            ><span class="role-count">团队管理</span>
+          </div>
+          <div class="role-row">
+            <span class="scope project">项目</span
+            ><span class="role-name">ProjectViewer <small>订单服务</small></span
+            ><span class="role-count">只读访问</span>
+          </div>
+        </div>
+      </section>
+    </template>
+    <script>
+      const labels = {
+        a: 'A · 紧凑文档',
+        b: 'B · 身份横幅',
+        c: 'C · 配置清单',
+        d: 'D · 分段节奏',
+        e: 'E · 纵向表单',
+        f: 'F · 设置检查器',
+        g: 'G · 配置时间线',
+        h: 'H · 信息卡片',
+        i: 'I · 高密度操作台',
+        j: 'J · 账户主视图'
+      };
+      const markup = document.getElementById('profile-template').content;
+      document
+        .querySelectorAll('.profile-content')
+        .forEach((slot) => slot.append(markup.cloneNode(true)));
+      const buttons = [...document.querySelectorAll('[data-option]')];
+      const views = [...document.querySelectorAll('[data-view]')];
+      let selected = 'a';
+      function show(key) {
+        selected = key;
+        buttons.forEach((button) =>
+          button.classList.toggle('active', button.dataset.option === key)
+        );
+        views.forEach((view) =>
+          view.classList.toggle('active', view.dataset.view === key)
+        );
+        document.getElementById('current').textContent = labels[key];
+        document.getElementById('choose').textContent = '选择当前方案';
+      }
+      buttons.forEach((button) =>
+        button.addEventListener('click', () => show(button.dataset.option))
+      );
+      document
+        .getElementById('theme-toggle')
+        .addEventListener('click', () =>
+          document.documentElement.classList.toggle('dark')
+        );
+      document.getElementById('choose').addEventListener('click', (event) => {
+        event.currentTarget.textContent = `已选择 ${labels[selected]}`;
+        event.currentTarget.classList.add('selected');
+      });
+    </script>
+  </body>
+</html>

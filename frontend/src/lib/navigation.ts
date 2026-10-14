@@ -8,8 +8,7 @@ export type NavigationView =
   | 'diagnosis'
   | 'inspection'
   | 'notification'
-  | 'access'
-  | 'profile';
+  | 'access';
 
 const titles: Record<NavigationView, string> = {
   overview: '平台总览',
@@ -21,8 +20,7 @@ const titles: Record<NavigationView, string> = {
   diagnosis: '诊断工作台',
   inspection: '巡检与健康',
   notification: '通知中心',
-  access: '权限',
-  profile: '个人中心'
+  access: '权限'
 };
 
 const breadcrumbs: Record<NavigationView, string> = {
@@ -35,15 +33,22 @@ const breadcrumbs: Record<NavigationView, string> = {
   diagnosis: '诊断',
   inspection: '巡检',
   notification: '通知',
-  access: '权限',
-  profile: '个人中心'
+  access: '权限'
 };
 
-export function viewTitle(view: NavigationView, accessTab?: 'teams' | 'users' | 'roles') {
+export function viewTitle(
+  view: NavigationView,
+  accessTab?: 'teams' | 'users' | 'roles'
+) {
   if (view === 'access') return '权限';
   return titles[view];
 }
 
-export function viewBreadcrumb(view: NavigationView, accessTab?: 'teams' | 'users' | 'roles') {
-  return view === 'access' ? `权限 / ${viewTitle(view, accessTab)}` : breadcrumbs[view];
+export function viewBreadcrumb(
+  view: NavigationView,
+  accessTab?: 'teams' | 'users' | 'roles'
+) {
+  return view === 'access'
+    ? `权限 / ${viewTitle(view, accessTab)}`
+    : breadcrumbs[view];
 }

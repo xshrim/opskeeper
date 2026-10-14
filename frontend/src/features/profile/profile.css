@@ -1,178 +1,135 @@
-/* Feature styles migrated from app.css. */
-.profile-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 16px;
-  max-width: 940px;
-  padding: 28px 0 48px;
+.profile-section {
+  padding: 17px 20px;
+  border-bottom: 1px solid var(--theme-divider);
 }
-.profile-form {
-  display: grid;
-  gap: 12px;
+.profile-section:last-child {
+  border-bottom: 0;
 }
-.profile-panel {
-  overflow: hidden;
+.profile-section h3 {
+  margin: 0 0 13px;
+  color: var(--theme-fg-strong);
+  font-size: 13px;
 }
 .profile-avatar-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 4px 16px 14px;
-  border-bottom: 1px solid var(--theme-divider);
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .profile-avatar {
   display: grid;
   place-items: center;
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   color: var(--theme-teal);
   background: var(--theme-bg-accent-soft);
   border: 1px solid var(--theme-border-strong);
   border-radius: 50%;
-  font-size: 24px;
+  font-size: 19px;
   font-weight: 750;
   object-fit: cover;
 }
-.profile-avatar-row strong,
-.profile-avatar-row p {
-  display: block;
+.profile-avatar-copy {
+  display: grid;
+  gap: 8px;
 }
-.profile-avatar-row p {
-  margin: 4px 0 10px;
-  color: var(--theme-fg-subtle);
-  font-size: 12px;
+.profile-avatar-copy strong {
+  font-size: 13px;
 }
-.profile-fields {
+.profile-avatar-copy .upload-button {
+  width: max-content;
+}
+.profile-fields,
+.profile-preferences {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 11px 12px;
 }
-.profile-fields :global(.form-field) { min-width: 0; }
+.profile-fields :global(.form-field),
+.profile-preferences :global(.form-field),
+.profile-password-row :global(.form-field) {
+  min-width: 0;
+}
 .profile-password-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   align-items: end;
   gap: 10px;
-  padding: 14px 16px;
 }
-.profile-password-row :global(.form-field) { min-width: 0; }
 .profile-password-row button {
-  min-height: 38px;
+  min-height: 36px;
   white-space: nowrap;
 }
-.profile-team {
-  display: flex;
+.profile-preferences :global(.segmented-control) {
+  width: 100%;
+}
+.profile-preferences :global(.segmented-control button) {
+  flex: 1;
+  justify-content: center;
+}
+.profile-roles {
+  display: grid;
+  gap: 7px;
+}
+.profile-role {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  margin: 0 16px 16px;
-  padding: 12px;
+  min-height: 39px;
+  padding: 7px 9px;
   color: var(--theme-fg-muted);
-  background: var(--theme-bg-surface);
+  background: var(--theme-bg-raised);
   border: 1px solid var(--theme-border);
-  border-radius: 6px;
-}
-.profile-team span {
-  display: grid;
-  gap: 3px;
-}
-.profile-team strong {
+  border-radius: 5px;
   font-size: 12px;
 }
-.profile-team small {
-  color: var(--theme-fg-subtle);
-  font-size: 11px;
+.profile-role strong {
+  color: var(--theme-fg-strong);
+  font-size: 12px;
 }
-.preference-group {
-  margin: 0;
-  padding: 14px 16px;
-  border: 0;
-  border-top: 1px solid var(--theme-divider);
-}
-.preference-group legend {
-  padding: 0;
+.scope-chip {
+  width: max-content;
+  padding: 3px 6px;
   color: var(--theme-fg-muted);
-  font-size: 13px;
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  font-size: 10px;
   font-weight: 700;
 }
-.preference-help {
-  margin: 10px 0 0;
-  color: var(--theme-fg-subtle);
-  font-size: 12px;
-  line-height: 1.55;
+.scope-chip.team {
+  color: var(--theme-scope-team-fg);
+  background: var(--theme-scope-team-bg);
+  border-color: var(--theme-scope-team-border);
 }
-.profile-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 16px;
-  border-top: 1px solid var(--theme-divider);
+.scope-chip.project {
+  color: var(--theme-scope-project-fg);
+  background: var(--theme-scope-project-bg);
+  border-color: var(--theme-scope-project-border);
+}
+.profile-empty {
+  margin: 0;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
 }
 @media (max-width: 720px) {
-  .profile-layout {
-    grid-template-columns: 1fr;
-    padding-top: 18px;
+  .profile-section {
+    padding: 16px;
   }
-  .profile-fields {
-    grid-template-columns: 1fr;
-  }
+  .profile-fields,
+  .profile-preferences,
   .profile-password-row {
     grid-template-columns: 1fr;
   }
   .profile-password-row button {
     width: 100%;
   }
-}
-:root[data-theme='dark'] .dialog .preference-group,
-:root[data-theme='dark'] .dialog .preference-group legend {
-  color: var(--theme-fg-strong);
-  background: var(--theme-bg-surface);
-  border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .dialog .preference-group .segmented-control {
-  background: var(--theme-bg-surface);
-  border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .dialog .preference-group .segmented-control button {
-  color: var(--theme-fg-muted);
-}
-:root[data-theme='dark']
-  .dialog
-  .preference-group
-  .segmented-control
-  button:hover,
-:root[data-theme='dark']
-  .dialog
-  .preference-group
-  .segmented-control
-  button.active {
-  color: var(--theme-teal);
-  background: var(--theme-bg-selected);
-}
-
-/* Additional selector-level migration from app.css. */
-:root[data-theme='dark'] .profile-actions {
-  border-top-color: var(--theme-divider);
-  border-bottom-color: var(--theme-divider);
-}
-:root[data-theme='dark'] .profile-avatar-row,
-:root[data-theme='dark'] .preference-group,
-:root[data-theme='dark'] .profile-actions {
-  border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .profile-team {
-  background: var(--theme-bg-surface);
-  border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .profile-panel .secondary,
-:root[data-theme='dark'] .profile-actions .secondary {
-  color: var(--theme-fg-muted);
-  background: var(--theme-bg-surface);
-  border-color: var(--theme-border);
-}
-:root[data-theme='dark'] .profile-panel .secondary:hover,
-:root[data-theme='dark'] .profile-actions .secondary:hover {
-  color: var(--theme-teal);
-  background: var(--theme-bg-hover);
-  border-color: var(--color-primary);
+  .profile-role {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+  .profile-role strong {
+    grid-column: 2;
+  }
 }
