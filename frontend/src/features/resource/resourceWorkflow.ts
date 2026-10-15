@@ -14,6 +14,8 @@ export function resourceAddStepTitle(step: number, kind: string) {
     return ['PostgreSQL 配置', '总结核验'][step - 2] ?? 'PostgreSQL 配置';
   if (kind === 'Oracle')
     return ['Oracle 配置', '总结核验'][step - 2] ?? 'Oracle 配置';
+  if (kind === 'OceanBase')
+    return ['OceanBase 配置', '总结核验'][step - 2] ?? 'OceanBase 配置';
   if (kind === 'RabbitMQ')
     return ['RabbitMQ 配置', '总结核验'][step - 2] ?? 'RabbitMQ 配置';
   if (kind === 'MinIO')
@@ -46,6 +48,8 @@ export function resourceAddStepDescription(step: number, kind: string) {
     return step === 2 ? '配置 PostgreSQL 数据库连接方式和凭据。' : '确认配置并核验 PostgreSQL 连接。';
   if (kind === 'Oracle')
     return step === 2 ? '配置 Oracle 数据库连接方式和凭据。' : '确认配置并核验 Oracle 连接。';
+  if (kind === 'OceanBase')
+    return step === 2 ? '配置 OceanBase MySQL 或 Oracle 模式的连接方式和凭据。' : '确认配置并核验 OceanBase 连接。';
   if (kind === 'RabbitMQ')
     return step === 2 ? '配置 RabbitMQ Management API 连接方式和凭据。' : '确认配置并核验 RabbitMQ 连接。';
   if (kind === 'MinIO')

@@ -53,6 +53,8 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource engine.Context
 			inputSchema = mysqlAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Oracle") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = oracleAgentSchema(inputSchema)
+		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "OceanBase") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
+			inputSchema = oceanBaseAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "RabbitMQ") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = rabbitMQAgentSchema(inputSchema)
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "MinIO") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
@@ -101,7 +103,7 @@ func (p mcpContextProvider) dockerAgentArguments(ctx context.Context, contextRes
 
 func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource engine.ContextResource, arguments map[string]any) (map[string]any, error) {
 	kind := strings.TrimSpace(contextResource.Kind)
-	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "RabbitMQ") && !strings.EqualFold(kind, "Elasticsearch") && !strings.EqualFold(kind, "MinIO")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
+	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "OceanBase") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "RabbitMQ") && !strings.EqualFold(kind, "Elasticsearch") && !strings.EqualFold(kind, "MinIO")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
 	}
 	merged := make(map[string]any, len(arguments)+12)
@@ -144,6 +146,12 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		}
 	} else if strings.EqualFold(kind, "Oracle") {
 		for _, key := range []string{"host", "port", "service_name", "sid", "username", "password", "timeout_seconds", "tls"} {
+			if value, ok := contextResource.Config[key]; ok && value != nil {
+				merged[key] = value
+			}
+		}
+	} else if strings.EqualFold(kind, "OceanBase") {
+		for _, key := range []string{"host", "port", "mode", "database", "service_name", "username", "password", "timeout_seconds"} {
 			if value, ok := contextResource.Config[key]; ok && value != nil {
 				merged[key] = value
 			}
@@ -236,6 +244,8 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		keys = []string{"host", "port", "database", "username", "password", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "Oracle") {
 		keys = []string{"host", "port", "service_name", "sid", "username", "password", "timeout_seconds"}
+	} else if strings.EqualFold(kind, "OceanBase") {
+		keys = []string{"host", "port", "mode", "database", "service_name", "username", "password", "timeout_seconds"}
 	} else if strings.EqualFold(kind, "RabbitMQ") {
 		keys = []string{"url", "username", "password", "timeout_seconds", "tls_insecure"}
 	} else if strings.EqualFold(kind, "MinIO") {
@@ -376,6 +386,23 @@ func oracleAgentSchema(raw json.RawMessage) json.RawMessage {
 	}
 	if properties, ok := schema["properties"].(map[string]any); ok {
 		for _, key := range []string{"host", "port", "service_name", "sid", "username", "password", "timeout_seconds", "tls"} {
+			delete(properties, key)
+		}
+	}
+	delete(schema, "required")
+	encoded, _ := json.Marshal(schema)
+	return encoded
+}
+func oceanBaseAgentSchema(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	var schema map[string]any
+	if json.Unmarshal(raw, &schema) != nil {
+		return raw
+	}
+	if properties, ok := schema["properties"].(map[string]any); ok {
+		for _, key := range []string{"host", "port", "mode", "database", "service_name", "username", "password", "timeout_seconds"} {
 			delete(properties, key)
 		}
 	}

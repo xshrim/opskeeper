@@ -1,0 +1,1 @@
+-- OceanBase tool unification is a hard cutover; preserve the schema and Skill records on rollback.

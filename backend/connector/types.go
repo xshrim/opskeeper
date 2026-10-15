@@ -21,6 +21,7 @@ const (
 	CapabilityNacosHealth          Capability = "nacos_health"
 	CapabilityMySQLHealth          Capability = "mysql_health"
 	CapabilityOracleHealth         Capability = "oracle_health"
+	CapabilityOceanBaseHealth      Capability = "oceanbase_health"
 	CapabilityRabbitMQInspect      Capability = "rabbitmq_inspect"
 	CapabilityKafkaInspect         Capability = "kafka_inspect"
 	CapabilityElasticsearchInspect Capability = "elasticsearch_inspect"

@@ -45,6 +45,7 @@ const toolsByKind: Record<string, ResourceTool[]> = {
   PostgreSQL: ['postgresql_health', 'postgresql_sessions', 'postgresql_long_running_queries', 'postgresql_locks', 'postgresql_replication', 'postgresql_capacity', 'postgresql_tables', 'postgresql_table_columns', 'postgresql_performance', 'postgresql_vacuum', 'postgresql_extensions', 'postgresql_database_info'].map((name) => tool(name)),
   MySQL: ['mysql_health', 'mysql_status', 'mysql_performance', 'mysql_tables', 'mysql_table_columns', 'mysql_table_structure', 'mysql_database_info'].map((name) => tool(name)),
   Oracle: ['oracle_health', 'oracle_status', 'oracle_performance', 'oracle_database_info', 'oracle_tables', 'oracle_table_columns', 'oracle_table_structure'].map((name) => tool(name)),
+  OceanBase: ['oceanbase_health', 'oceanbase_status', 'oceanbase_performance', 'oceanbase_database_info', 'oceanbase_tables', 'oceanbase_table_columns', 'oceanbase_table_structure'].map((name) => tool(name)),
   RabbitMQ: ['rabbitmq_health', 'rabbitmq_overview', 'rabbitmq_nodes', 'rabbitmq_queues', 'rabbitmq_exchanges', 'rabbitmq_connections', 'rabbitmq_channels', 'rabbitmq_consumers', 'rabbitmq_vhosts'].map((name) => tool(name)),
   MinIO: ['minio_health', 'minio_buckets', 'minio_bucket_objects', 'minio_object_stat', 'minio_bucket_versioning', 'minio_bucket_lifecycle'].map((name) => tool(name)),
   Redis: ['redis_health', 'redis_memory', 'redis_clients', 'redis_replication', 'redis_slowlog', 'redis_database_info'].map((name) => tool(name)),

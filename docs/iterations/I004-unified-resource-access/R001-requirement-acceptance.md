@@ -2,11 +2,11 @@
 
 **迭代：** I004-unified-resource-access  
 **需求：** R001 统一资源接入  
-**验收结论：** T01-T09、T11-T16 已完成，T10 保持部分完成
+**验收结论：** T01-T09、T11-T16 已完成，T10 保持部分完成；T17 自动化验收通过，待真实 OceanBase 环境验收
 
 ## 1. 需求级验收结论
 
-T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按任务表继续实施。
+T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按任务表继续实施；T17 已完成实现和自动化验证，真实 OceanBase 连接验收需在具备目标租户的环境执行。
 
 ## 2. 验收环境和范围
 
@@ -34,6 +34,7 @@ T01-T09、T11-T16 已完成验收，确认日期更新为 2026-09-14。T10 按�
 | T14 | Oracle 工具集统一 | 已通过 | 纯 Go 驱动公共工具、Direct/MCP/Agent、0044 迁移和专用前端已完成；见下方 T14 验收 |
 | T15 | RabbitMQ 工具集统一 | 已通过 | RabbitMQ 公共只读工具、Direct/MCP/Agent 适配、0045 迁移、连接测试和专用前端已完成；见下方 T15 验收 |
 | T16 | MinIO 工具集统一 | 已通过 | MinIO 公共只读工具、Direct/MCP/Agent 适配、0046/0047 迁移、连接测试和专用前端已完成；见下方 T16 验收 |
+| T17 | OceanBase 工具集统一 | 待验收 | MySQL/Oracle Direct/MCP/Agent、固定七项只读工具、MySQL Wire/TNS 协议预探测、迁移和专用前端流程已实现 |
 
 ## 8.6 T14 Oracle 工具集统一验收
 
@@ -275,6 +276,30 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - 当前环境未运行真实 MinIO 集群，因此真实存储桶、对象、版本和生命周期数据尚未执行；公共工具契约、MCP 路由、Direct/Agent 参数隔离和草稿连接测试已完成编译验证。
 
 ## 10. 用户确认和最终结论
+
+## 8.8 T17 OceanBase 工具集统一验收
+
+### 实施内容
+
+- 公共 `backend/tool/oceanbase` 固定提供七项只读工具：`oceanbase_health`、`oceanbase_status`、`oceanbase_performance`、`oceanbase_database_info`、`oceanbase_tables`、`oceanbase_table_columns`、`oceanbase_table_structure`。
+- Direct Provider、OceanBase MCP Server 和 Agent 参数注入共同调用该公共工具包；Agent 不向模型暴露连接配置或资源内嵌凭据。
+- MySQL 模式使用 MySQL Wire；Oracle 模式先探测端口，检测到 MySQL Wire 时使用 `obconnector-go` 的 `oboracle` 驱动，其他端口使用 `go-ora` Oracle TNS，并要求 Service Name。两条路径不自动回退。
+- 新增 0080 迁移更新 OceanBase 资源 Schema，并安装 OceanBase 内置只读 Skill；前端支持模式选择、Direct/Agent、草稿连接测试、编辑回填、总结核验和固定工具清单。
+
+### 自动化验证
+
+- `cd backend && go test ./...`：通过；覆盖 OceanBase 工具目录、模式校验、MySQL Wire 预探测、Direct Provider、MCP/Agent 参数隔离和迁移链。
+- `cd backend && go test ./migrations ./tool/oceanbase ./mcpserver/oceanbase/server ./connector ./mcp -run 'OceanBase|Probe|LoadOrders' -count=1`：通过。
+- `cd frontend && npm run check`：通过，Svelte 检查无错误和警告。
+- `cd frontend && npm run test -- --run`：通过，50 个测试通过。
+- `cd frontend && npm run build`：通过，Vite 生产构建完成。
+- `git diff --check`：通过。
+
+### 待进行的真实环境验收
+
+- 使用 OceanBase MySQL 模式租户验证 Direct 与 MCP 的固定工具。
+- 使用 OceanBase Oracle 模式的 MySQL Wire 端口验证 `obconnector-go` 路径。
+- 使用 OceanBase Oracle 模式的 TNS 端口验证 `go-ora` 路径与 Service Name 要求。
 
 Application T06、PostgreSQL T07、Redis T08 和 Nacos T09 验收通过；三项资源的专用前端创建/编辑、连接测试、总结核验和详情展示均已验证。Repository T10 的 local Bundle 和工具链已完成，但 S3 后端及标准 Git clone/pull 服务尚未完成，因此 T10 当前为部分完成，I004-R001 仍处于实施中。
 

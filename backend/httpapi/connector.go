@@ -45,6 +45,9 @@ type mysqlDraftConnectorService interface {
 type oracleDraftConnectorService interface {
 	TestOracleDraft(context.Context, connector.OracleDraftInput) (connector.OracleDraftCheck, error)
 }
+type oceanBaseDraftConnectorService interface {
+	TestOceanBaseDraft(context.Context, connector.OceanBaseDraftInput) (connector.OceanBaseDraftCheck, error)
+}
 type rabbitMQDraftConnectorService interface {
 	TestRabbitMQDraft(context.Context, connector.RabbitMQDraftInput) (connector.RabbitMQDraftCheck, error)
 }
@@ -197,6 +200,20 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				return
 			}
 			check, err := draft.TestOracleDraft(r.Context(), body)
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, check)
+		})
+	}
+	if draft, ok := service.(oceanBaseDraftConnectorService); ok {
+		router.With(guard(authorization.ResourceUpdate)).Post("/oceanbase/connection-tests", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.OceanBaseDraftInput
+			if !decodeRequest(w, r, &body) {
+				return
+			}
+			check, err := draft.TestOceanBaseDraft(r.Context(), body)
 			if err != nil {
 				writeConnectorError(w, r, err)
 				return

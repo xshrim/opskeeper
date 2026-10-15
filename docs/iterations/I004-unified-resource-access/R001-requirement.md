@@ -1,7 +1,7 @@
 # I004-R001 统一资源接入
 
 **迭代：** I004-unified-resource-access  
-**需求状态：** T16 MinIO 工具集统一已完成
+**需求状态：** T17 OceanBase 工具集统一已实现，待验收
 **设计文档：** [统一资源接入设计](../../design/resource-access.md)  
 **验收报告：** [R001-requirement-acceptance.md](R001-requirement-acceptance.md)
 
@@ -68,8 +68,17 @@
 | T14 | Oracle 工具集统一 | T01-T02、T11 | Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
 | T15 | RabbitMQ 工具集统一 | T01-T02、T12 | RabbitMQ Direct/Agent、Management API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
 | T16 | MinIO 工具集统一 | T01-T02、T15 | MinIO Direct/Agent、S3 API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
+| T17 | OceanBase 工具集统一 | T01-T02、T11、T14 | OceanBase MySQL/Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 自动化验收通过，待真实环境验收 |
 
 ## 6. 任务说明
+
+### T17 OceanBase 工具集统一
+
+OceanBase 必须支持 MySQL 和 Oracle 兼容模式，并让 Direct、项目内 MCP Server 与 Agent 资源使用同一套固定只读工具、输入 Schema 和输出 DTO。连接凭据仅作为资源内嵌密文保存；Agent 工具 Schema 不得向模型暴露主机、端口、模式、数据库、Service Name、账号或密码。
+
+Oracle 模式连接按以下唯一流程选择协议：先对目标端口预探测；检测到 MySQL Wire 初始握手时，仅使用 `obconnector-go` 的 `oboracle` 驱动和 `preset=oboracle`；未检测到 MySQL Wire 时，仅使用 `go-ora` 的 Oracle TNS 连接，此时必须提供 Service Name。不得因连接错误在两条路径之间自动回退或重复执行。
+
+固定工具只提供健康、状态、性能、数据库信息、表列表、列信息和表结构读取，不开放任意 SQL 或写操作。管理流程提供 MySQL/Oracle 模式选择、Direct/Agent 配置、草稿连接测试、编辑回填、总结核验和工具列表展示。
 
 ### T01 公共工具契约与执行基础
 
