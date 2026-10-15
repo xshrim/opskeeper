@@ -66,6 +66,30 @@ func TestOracleAgentArgumentsAndSchemaHideConnection(t *testing.T) {
 	}
 }
 
+func TestOceanBaseAgentArgumentsAndSchemaHideConnection(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	r := engine.ContextResource{Kind: "OceanBase", Subtype: "agent", Config: map[string]any{"host": "configured-ob", "port": float64(2881), "mode": "oracle", "service_name": "ORCL"}}
+	got, err := p.agentArguments(context.Background(), r, map[string]any{"host": "model-ob"})
+	if err != nil || got["host"] != "configured-ob" || got["mode"] != "oracle" {
+		t.Fatalf("arguments=%#v err=%v", got, err)
+	}
+	raw := json.RawMessage(`{"type":"object","required":["host","schema","table"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"schema":{"type":"string"},"table":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(oceanBaseAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	if _, ok := props["host"]; ok {
+		t.Fatal("host exposed")
+	}
+	if _, ok := props["password"]; ok {
+		t.Fatal("password exposed")
+	}
+	if _, ok := props["schema"]; !ok {
+		t.Fatal("business argument removed")
+	}
+}
+
 func TestRedisAgentArgumentsUseResourceConnection(t *testing.T) {
 	p := mcpContextProvider{service: &Service{}}
 	r := engine.ContextResource{Kind: "Redis", Subtype: "agent", Config: map[string]any{"host": "configured-redis", "port": float64(6379), "database": float64(2), "timeout_seconds": float64(9)}}

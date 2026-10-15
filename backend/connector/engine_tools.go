@@ -20,7 +20,7 @@ func (s *Service) EngineProvider() engine.ContextProvider {
 type connectorContextProvider struct{ service *Service }
 
 func (connectorContextProvider) Kinds() []string {
-	return []string{"Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Oracle", "Redis", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO"}
+	return []string{"Host", "Docker", "Kubernetes", "Nacos", "Repository", "Prometheus", "Loki", "PostgreSQL", "MySQL", "Oracle", "OceanBase", "Redis", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO"}
 }
 
 func (connectorContextProvider) AccessModes() []string {
@@ -88,6 +88,10 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 		}
 	case "Oracle":
 		if err := p.service.resolveOracleTools(ctx, resource, add); err != nil {
+			return nil, nil, err
+		}
+	case "OceanBase":
+		if err := p.service.resolveOceanBaseTools(ctx, resource, add); err != nil {
 			return nil, nil, err
 		}
 	case "RabbitMQ":

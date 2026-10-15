@@ -29,7 +29,7 @@
 
 | 需求 | 名称 | 任务 | 状态 | 需求文档 | 验收报告 |
 |---|---|---:|---|---|---|
-| R001 | 统一资源接入 | T01-T13 | 实施中 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
+| R001 | 统一资源接入 | T01-T17 | 实施中 | [R001-requirement.md](R001-requirement.md) | [R001-requirement-acceptance.md](R001-requirement-acceptance.md) |
 
 ## 4. 需求和任务总览
 
@@ -51,6 +51,7 @@
 | T14 | Oracle 工具集统一 | P1 | T01-T02、T11 | Oracle Direct/Agent、统一 Direct/MCP 只读工具集和专用管理流程 | 已完成 |
 | T15 | RabbitMQ 工具集统一 | P1 | T01-T02、T12 | RabbitMQ Direct/Agent、Management API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
 | T16 | MinIO 工具集统一 | P1 | T01-T02、T15 | MinIO Direct/Agent、S3 API Direct/MCP 统一只读工具集和专用管理流程 | 已完成 |
+| T17 | OceanBase 工具集统一 | P1 | T01-T02、T11、T14 | OceanBase MySQL/Oracle Direct/Agent、统一只读工具、端口预探测协议选择和专用前端流程 | 自动化验收通过，待真实环境验收 |
 
 ## 5. 进入条件
 
@@ -106,6 +107,13 @@
 - **验证证据：** `cd backend && go test ./tool/kafka ./mcpserver/kafka/server ./connector ./httpapi ./mcp ./migrations`、`cd frontend && npm run check && npm run build`、`git diff --check` 通过。
 - **迁移和文档：** 新增 0042 Kafka 资源 Schema 与内置 Skill 版本，不修改已应用历史迁移；Kafka Direct/Agent 创建、编辑、连接测试、详情工具列表和资源目录已接入。
 - **已知边界：** 本次验证未连接真实 Kafka 集群；真实 Broker、SASL 和 TLS 验证需在具备测试集群的环境执行。Kafka MCP Server 仍按 MCP 调用参数接收目标连接信息，由 Agent 资源侧按统一注入规则提供。
+
+### T17 实现记录
+
+- **实现日期：** 2026-10-15
+- **实现范围：** OceanBase MySQL/Oracle 两种兼容模式，Direct、独立 MCP Server 和 Agent 的固定只读工具集、资源 Schema、内置 Skill、草稿连接测试和专用创建/编辑流程。
+- **协议选择：** Oracle 模式先预探测目标端口；MySQL Wire 仅使用 `obconnector-go` 的 Oracle 预置，非 MySQL Wire 仅使用 `go-ora` Oracle TNS，后者要求 Service Name。
+- **待验收事项：** 以目标 OceanBase MySQL 与 Oracle 租户、只读账户分别验证七项只读工具和两种 Oracle 连接路径。
 
 ### T07 完成记录
 
