@@ -1485,6 +1485,20 @@ export const api = {
       'api/v1/oracle/connection-tests',
       json(body)
     ),
+  testDraftOceanBase: (body: {
+    host: string;
+    port: number;
+    mode: 'mysql' | 'oracle';
+    database?: string;
+    service_name?: string;
+    username: string;
+    password: string;
+    timeout_seconds?: number;
+  }) =>
+    request<{ status: string; message: string; latency_ms: number }>(
+      'api/v1/oceanbase/connection-tests',
+      json(body)
+    ),
   testDraftRabbitMQ: (body: {
     url: string;
     username?: string;
