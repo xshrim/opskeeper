@@ -567,10 +567,32 @@
         margin: auto;
       }
       .a .profile-section {
-        padding-inline: 18px;
+        padding: 8px 18px;
+        border-bottom: 0;
+      }
+      .a .profile-section:first-child {
+        padding-top: 14px;
+      }
+      .a .profile-section:last-child {
+        padding-bottom: 14px;
+      }
+      .a .preference-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .a .preference-row {
+        grid-template-columns: 1fr;
+        align-content: start;
+        gap: 5px;
+      }
+      .a .segmented {
+        width: 100%;
+      }
+      .a .segmented button {
+        flex: 1;
       }
       .a .section-head {
-        margin-bottom: 12px;
+        margin-bottom: 9px;
       }
       .a .section-head h3 {
         font-size: 12px;
@@ -1288,6 +1310,7 @@
               <div class="modal-bar">
                 <div class="modal-title">
                   <h2>个人中心</h2>
+                  <p>管理账户信息、登录密码与界面偏好</p>
                 </div>
                 <div class="inline-actions">
                   <button class="button">取消</button>

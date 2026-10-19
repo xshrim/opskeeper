@@ -158,6 +158,7 @@
   size="large"
   dialogClass="profile-dialog"
   title="个人中心"
+  description="管理账户信息、登录密码与界面偏好"
   confirmLabel="保存配置"
   busyLabel="正在保存"
   confirmForm="profile-dialog-form"

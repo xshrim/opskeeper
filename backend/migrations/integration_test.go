@@ -272,12 +272,18 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if applied != len(items)-1 {
 		t.Fatalf("migrations after rollback = %d, want %d", applied, len(items)-1)
 	}
-	var ruleScopeColumn, retiredAtColumn, routeGuardTrigger bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='notification_deliveries' AND column_name='rule_scope_id'), EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='notification_rule_routes' AND column_name='retired_at'), EXISTS(SELECT 1 FROM pg_trigger trigger_row JOIN pg_class table_row ON table_row.oid=trigger_row.tgrelid JOIN pg_namespace schema_row ON schema_row.oid=table_row.relnamespace WHERE schema_row.nspname=current_schema() AND trigger_row.tgname='notification_rule_routes_validate_child_sharing_insert' AND NOT trigger_row.tgisinternal)`).Scan(&ruleScopeColumn, &retiredAtColumn, &routeGuardTrigger); err != nil || !ruleScopeColumn || !retiredAtColumn || routeGuardTrigger {
-		t.Fatalf("latest migration down = rule_scope:%t route_history:%t route_guard:%t, %v", ruleScopeColumn, retiredAtColumn, routeGuardTrigger, err)
+	var oceanBaseSkill bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM skills skill JOIN skill_versions version ON version.skill_id = skill.id WHERE skill.identifier = 'oceanbase-health-diagnosis' AND version.version = 1 AND version.status = 'published')`).Scan(&oceanBaseSkill); err != nil || !oceanBaseSkill {
+		t.Fatalf("OceanBase Skill after latest migration rollback = %t, %v; want published version retained", oceanBaseSkill, err)
 	}
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("reapply latest migration before testing domain rollback: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback OceanBase tool unification migration: %v", err)
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback project application model migration: %v", err)
 	}
 	if err := RollbackLast(ctx, pool); err != nil {
 		t.Fatalf("rollback notification route sharing migration: %v", err)
@@ -309,12 +315,17 @@ func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations after domain rollback: %v", err)
 	}
-	if applied != len(items)-8 {
-		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-8)
+	if applied != len(items)-10 {
+		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-10)
 	}
 	var status string
 	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {
 		t.Fatalf("delivery status after rollback = %q, err %v; want failed", status, err)
+	}
+	// 0079 uses an unqualified DROP FUNCTION; shadow the public function again
+	// before replaying the historical migration in this temporary schema.
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION validate_application_runtime() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$`); err != nil {
+		t.Fatalf("restore isolated application runtime function: %v", err)
 	}
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("reapply baseline error = %v", err)
@@ -437,6 +448,12 @@ func integrationPool(t *testing.T) *pgxpool.Pool {
 	if _, err := adminPool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 		adminPool.Close()
 		t.Fatalf("create integration schema: %v", err)
+	}
+	// Keep unqualified DROP FUNCTION statements inside the temporary schema.
+	if _, err := adminPool.Exec(ctx, fmt.Sprintf(`CREATE FUNCTION %s.validate_application_runtime() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$`, schema)); err != nil {
+		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+		adminPool.Close()
+		t.Fatalf("create isolated application runtime function: %v", err)
 	}
 
 	config, err := pgxpool.ParseConfig(databaseURL)

@@ -1,12 +1,14 @@
 .profile-section {
-  padding: 17px 20px;
-  border-bottom: 1px solid var(--theme-divider);
+  padding: 8px 20px;
+}
+.profile-section:first-child {
+  padding-top: 14px;
 }
 .profile-section:last-child {
-  border-bottom: 0;
+  padding-bottom: 14px;
 }
 .profile-section h3 {
-  margin: 0 0 13px;
+  margin: 0 0 9px;
   color: var(--theme-fg-strong);
   font-size: 13px;
 }
@@ -46,9 +48,9 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 11px 12px;
 }
-.profile-fields :global(.form-field),
-.profile-preferences :global(.form-field),
-.profile-password-row :global(.form-field) {
+.profile-dialog .profile-fields .form-field,
+.profile-dialog .profile-preferences .form-field,
+.profile-dialog .profile-password-row .form-field {
   min-width: 0;
 }
 .profile-password-row {
@@ -61,10 +63,11 @@
   min-height: 36px;
   white-space: nowrap;
 }
-.profile-preferences :global(.segmented-control) {
+.profile-dialog .profile-preferences .segmented-control {
   width: 100%;
+  margin-top: 0;
 }
-.profile-preferences :global(.segmented-control button) {
+.profile-dialog .profile-preferences .segmented-control button {
   flex: 1;
   justify-content: center;
 }
@@ -116,7 +119,7 @@
 }
 @media (max-width: 720px) {
   .profile-section {
-    padding: 16px;
+    padding-inline: 16px;
   }
   .profile-fields,
   .profile-preferences,
