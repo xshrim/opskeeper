@@ -66,7 +66,11 @@ func (s *store) Start(ctx context.Context, input StartInput) (Session, error) {
 			return Session{}, mapStoreError(err)
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO diagnosis_messages (session_id, role, content) VALUES ($1::uuid, 'user', $2)`, id, input.Question); err != nil {
+	metadata, err := marshalMessageMetadata(AppendMessageInput{SkillID: input.SkillID, PersonaID: input.PersonaID, Links: input.Links, Attachments: input.Attachments})
+	if err != nil {
+		return Session{}, fmt.Errorf("encode diagnosis message metadata: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO diagnosis_messages (session_id, role, content, metadata) VALUES ($1::uuid, 'user', $2, $3::jsonb)`, id, input.Question, metadata); err != nil {
 		return Session{}, mapStoreError(err)
 	}
 	payload, _ := json.Marshal(map[string]any{"status": StatusQueued, "target_count": len(input.TargetResourceIDs)})
@@ -141,7 +145,7 @@ func (s *store) AddTarget(ctx context.Context, sessionID, resourceID string) (Ta
 }
 
 func (s *store) Messages(ctx context.Context, sessionID string, limit int) ([]Message, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, role, content, created_at FROM diagnosis_messages WHERE session_id = $1::uuid ORDER BY created_at DESC, id DESC LIMIT $2`, sessionID, limit)
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, role, content, metadata, created_at FROM diagnosis_messages WHERE session_id = $1::uuid ORDER BY created_at DESC, id DESC LIMIT $2`, sessionID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnosis messages: %w", err)
 	}
@@ -149,8 +153,12 @@ func (s *store) Messages(ctx context.Context, sessionID string, limit int) ([]Me
 	items := make([]Message, 0)
 	for rows.Next() {
 		var item Message
-		if err := rows.Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &item.CreatedAt); err != nil {
+		var metadata []byte
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &metadata, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan diagnosis message: %w", err)
+		}
+		if err := json.Unmarshal(metadata, &item); err != nil {
+			return nil, fmt.Errorf("decode diagnosis message metadata: %w", err)
 		}
 		items = append(items, item)
 	}
@@ -162,11 +170,25 @@ func (s *store) Messages(ctx context.Context, sessionID string, limit int) ([]Me
 
 func (s *store) AppendMessage(ctx context.Context, sessionID string, input AppendMessageInput) (Message, error) {
 	var item Message
-	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_messages (session_id, role, content) VALUES ($1::uuid, $2, $3) RETURNING id::text, session_id::text, role, content, created_at`, sessionID, input.Role, input.Content).Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &item.CreatedAt)
+	metadata, err := marshalMessageMetadata(input)
+	if err != nil {
+		return Message{}, fmt.Errorf("encode diagnosis message metadata: %w", err)
+	}
+	err = s.pool.QueryRow(ctx, `INSERT INTO diagnosis_messages (session_id, role, content, metadata) VALUES ($1::uuid, $2, $3, $4::jsonb) RETURNING id::text, session_id::text, role, content, metadata, created_at`, sessionID, input.Role, input.Content, metadata).Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &metadata, &item.CreatedAt)
 	if err != nil {
 		return Message{}, mapStoreError(err)
 	}
+	if err := json.Unmarshal(metadata, &item); err != nil {
+		return Message{}, fmt.Errorf("decode diagnosis message metadata: %w", err)
+	}
 	return item, nil
+}
+
+func marshalMessageMetadata(input AppendMessageInput) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"skill_id": input.SkillID, "persona_id": input.PersonaID,
+		"links": input.Links, "attachments": input.Attachments,
+	})
 }
 
 func (s *store) CreatePlan(ctx context.Context, sessionID, summary string, steps []PlanStep) (Plan, error) {

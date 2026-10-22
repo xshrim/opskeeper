@@ -868,6 +868,9 @@
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}
           onProjectDeleted={(project) => (projects = projects.filter((item) => item.id !== project.id))}
+          onResourceCreated={(resource) => {
+            resources = [resource, ...resources.filter((item) => item.id !== resource.id)];
+          }}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
           onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
@@ -954,6 +957,8 @@
           {resourceIcon}
           {resourceSchemaName}
           {scopeName}
+          {skills}
+          {personas}
         />
       {:else if view === 'persona'}
         <PersonasPage

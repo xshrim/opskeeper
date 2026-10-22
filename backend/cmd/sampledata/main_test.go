@@ -23,6 +23,33 @@ func TestSamplePasswordFromEnv(t *testing.T) {
 	})
 }
 
+func TestSampleSettingsFromEnv(t *testing.T) {
+	t.Setenv("OPSK_TEST_DOCKER_HOST_URL", "tcp://docker.example:2376")
+	t.Setenv("OPSK_TEST_HOST_ADDRESS", "host.example")
+	t.Setenv("OPSK_TEST_HOST_PORT", "2222")
+	t.Setenv("OPSK_TEST_HOST_USERNAME", "sample")
+	t.Setenv("OPSK_TEST_HOST_PASSWORD", "secret")
+	t.Setenv("OPSK_TEST_LLM_API_KEY", "llm-secret")
+	t.Setenv("OPSK_TEST_LLM_SCENARIO", "通用")
+
+	settings, err := sampleSettingsFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.dockerConfig["host"] != "tcp://docker.example:2376" || settings.dockerConfig["timeout"] != 10 || settings.dockerConfig["skip_tls_verify"] != false {
+		t.Errorf("Docker settings = %#v", settings.dockerConfig)
+	}
+	if settings.hostConfig["host"] != "host.example" || settings.hostConfig["port"] != 2222 || settings.hostConfig["auth_method"] != "password" {
+		t.Errorf("Host settings = %#v", settings.hostConfig)
+	}
+	if settings.hostCredential["password"] != "secret" || len(settings.hostCredential) != 1 || settings.llmAPIKey != "llm-secret" {
+		t.Errorf("Host/LLM credentials were not loaded")
+	}
+	if settings.llmScenario != "general" {
+		t.Errorf("LLM scenario = %q, want general", settings.llmScenario)
+	}
+}
+
 func TestEnsureLocalDatabase(t *testing.T) {
 	tests := []struct {
 		name        string

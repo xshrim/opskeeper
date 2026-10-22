@@ -90,7 +90,7 @@ func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string
 			if readErr != nil {
 				return Policy{}, readErr
 			}
-			if item.Status != resource.StatusActive || !allowsScope(ctx, item.ScopeID) {
+			if !allowsScope(ctx, item.ScopeID) {
 				return Policy{}, authorization.ErrForbidden
 			}
 		} else if err := s.validateResource(ctx, policy.ScopeID, policy.PersonaID, "Persona"); err != nil {
@@ -431,7 +431,7 @@ func (s *Service) validateResource(ctx context.Context, scopeID, id, kind string
 	if err != nil {
 		return err
 	}
-	if item.ScopeID != scopeID || item.Status != resource.StatusActive {
+	if item.ScopeID != scopeID {
 		return authorization.ErrForbidden
 	}
 	if kind != "" && item.Kind != kind {

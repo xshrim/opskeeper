@@ -43,7 +43,7 @@
 
 <Dialog
   className={backdropClass}
-  dialogClass={`modal-dialog modal-dialog-size-${size} ${dialogClass}`.trim()}
+  dialogClass={`modal-dialog modal-dialog-size-${size} ${autoHeight ? 'modal-dialog-auto-height' : ''} ${dialogClass}`.trim()}
   label={title}
   {modal}
   inertTarget={coverage === 'target' ? inertTarget : ''}
@@ -150,13 +150,9 @@
     color: var(--theme-fg);
     background: var(--theme-bg-surface);
   }
-  .modal-dialog-actions :global(button.danger-button) {
-    color: #fff;
-    background: #b84b38;
-    border-color: transparent;
-  }
   .modal-dialog-actions :global(button) { cursor: pointer; }
   .modal-dialog-content { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 11px 15px; }
+  :global(.dialog.modal-dialog-auto-height) > .modal-dialog-content { flex: 0 1 auto; }
   .modal-dialog-content :global(.stack-form) { padding: 0; }
   .modal-dialog-content-overflow-clip { overflow: hidden; }
   .modal-dialog-content-overflow-scroll { overflow: auto; }
@@ -167,7 +163,7 @@
   :global(.dialog.modal-dialog-size-medium) { width: min(680px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog-size-large) { width: min(900px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog-size-wide) { width: min(1100px, calc(100vw - 40px)); }
-  :global(.dialog.modal-dialog.application-wizard-dialog) { width: min(980px, calc(100vw - 40px)); }
+  :global(.dialog.modal-dialog.application-wizard-dialog) { width: min(820px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog.wide-dialog) { width: min(720px, calc(100vw - 40px)); }
   :global(.dialog.dialog-overflow-expand) {
     width: max-content;

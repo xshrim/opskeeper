@@ -1,7 +1,6 @@
 <script lang="ts">
   import PanelHeading from '../../components/PanelHeading.svelte';
   import EmptyState from '../../components/EmptyState.svelte';
-  import StatusBadge from '../../components/StatusBadge.svelte';
   import type { Resource } from '../../lib/api';
   import type { StatusRow } from '../../lib/health';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
@@ -31,6 +30,6 @@
   </section>
   <section class="panel recent-panel">
     <PanelHeading eyebrow="CATALOG" title="最近资源"><button slot="actions" class="text-button" on:click={onOpenResources}>查看全部 →</button></PanelHeading>
-    {#if visibleResources.length === 0}<EmptyState>当前作用域还没有资源。</EmptyState>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span><StatusBadge className="status-label" tone={resource.status}>{resource.status}</StatusBadge></button>{/each}</div>{/if}
+    {#if visibleResources.length === 0}<EmptyState>当前作用域还没有资源。</EmptyState>{:else}<div class="compact-list">{#each visibleResources.slice(0, 5) as resource}<button class="compact-row" on:click={() => onOpenResource(resource)}><span class="entity-summary"><span class="entity-icon resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span><span><strong>{resource.name}</strong><small>{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small></span></span></button>{/each}</div>{/if}
   </section>
 </section>

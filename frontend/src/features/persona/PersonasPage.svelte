@@ -280,7 +280,7 @@
         class="primary"
         type="button"
         on:click={startCreate}
-        disabled={profiles.length === 0}><Plus size={16} />创建专家</button
+        disabled={profiles.length === 0}><Plus size={16} />新增专家</button
       >
     </div>
   </header>
@@ -512,7 +512,7 @@
           ><Edit3 size={14} />编辑</button
         >
       </FormActions>
-      {#if editorOpen}<ModalDialog title="创建专家版本" description={`为“${selectedProfile.name}”创建新的专家版本草稿。`} confirmLabel="创建版本" confirmForm="persona-version-form" {busy} confirmDisabled={!selectedProfileId} onCancel={() => (editorOpen = false)}>
+      {#if editorOpen}<ModalDialog title="新增专家版本" description={`为“${selectedProfile.name}”创建新的专家版本草稿。`} confirmLabel="创建" confirmForm="persona-version-form" {busy} confirmDisabled={!selectedProfileId} onCancel={() => (editorOpen = false)}>
           <form
             id="persona-version-form"
             class="persona-editor-form"

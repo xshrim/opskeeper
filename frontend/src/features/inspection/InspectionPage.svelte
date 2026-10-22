@@ -3,6 +3,7 @@
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import TextArea from '../../components/TextArea.svelte';
   import {
     api,
     ApiError,
@@ -145,7 +146,7 @@
     <div class="panel-heading">
       <div>
         <p class="eyebrow">NEW POLICY</p>
-        <h2>创建巡检策略</h2>
+        <h2>新增巡检策略</h2>
       </div>
     </div>
     <form class="stack-form" on:submit|preventDefault={createPolicy}>
@@ -159,7 +160,7 @@
         <FormField label="Tool 预算"><TextInput type="number" min="1" max="100" bind:value={maxToolCalls} /></FormField>
         <FormField label="Token 预算"><TextInput type="number" min="1" max="200000" bind:value={maxTokens} /></FormField>
       </div>
-      <FormField label="标签选择器（JSON 对象）"><textarea rows="3" bind:value={targetLabels}></textarea></FormField>
+      <FormField label="标签选择器（JSON 对象）"><TextArea rows={3} bind:value={targetLabels} ariaLabel="标签选择器（JSON 对象）" /></FormField>
       <fieldset>
         <legend>目标资源</legend>
         <div class="check-grid">
@@ -179,7 +180,7 @@
         disabled={busy ||
           !policyName ||
           (targetIds.length === 0 && targetLabels.trim() === '{}')}
-        >创建策略</button
+        >新增策略</button
       >
     </form>
   </section>

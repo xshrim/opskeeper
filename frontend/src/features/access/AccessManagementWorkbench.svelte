@@ -9,6 +9,7 @@
     Plus,
     RefreshCw,
     Trash2,
+    UserX,
     UsersRound
   } from 'lucide-svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
@@ -299,8 +300,8 @@
           {#if accessCanCreateTeam}<button
               class="primary"
               type="button"
-              aria-label="添加团队"
-              on:click={onAddTeam}><Plus size={15} />添加团队</button
+              aria-label="新增团队"
+              on:click={onAddTeam}><Plus size={15} />新增团队</button
             >{/if}
         </div>
         {#if canViewPlatform && !selectedTeamId && !selectedProjectId}<button
@@ -429,11 +430,11 @@
               type="button"
               on:click={() => onDisable(selectedAccessUserIds)}
               disabled={selectedAccessUserIds.length === 0 || busy}
-              ><Trash2 size={14} />禁用用户</button
+              ><UserX size={14} />禁用用户</button
             >{#if accessCanCreateUser}<button
                 class="primary"
                 type="button"
-                on:click={onAddUser}><Plus size={15} />添加用户</button
+                on:click={onAddUser}><Plus size={15} />新增用户</button
               >{/if}
           </div>
         </div>
@@ -525,7 +526,7 @@
                           user.id === currentUser?.id}
                         on:click|stopPropagation={() =>
                           onDisable([user.id])}
-                        ><Trash2 size={15} /></button
+                        ><UserX size={15} /></button
                       >{:else}
                       <span class="read-only-label">
                         {user.id === currentUser?.id ? '当前账号' : '只读'}

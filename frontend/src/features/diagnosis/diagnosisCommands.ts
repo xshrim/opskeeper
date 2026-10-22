@@ -1,7 +1,8 @@
 import type {
   DiagnosisMessage,
   DiagnosisSession,
-  DiagnosisSnapshot
+  DiagnosisSnapshot,
+  DiagnosisAttachment
 } from '../../lib/api';
 
 type DiagnosisSessionActions = {
@@ -9,10 +10,13 @@ type DiagnosisSessionActions = {
     sessionID: string,
     resourceID: string
   ) => Promise<unknown>;
-  askDiagnosis: (
-    sessionID: string,
-    content: string
-  ) => Promise<DiagnosisMessage>;
+  askDiagnosis: (sessionID: string, body: {
+    content: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
+  }) => Promise<DiagnosisMessage>;
   deleteDiagnosis: (sessionID: string) => Promise<void>;
   deleteDiagnosisSessions: (sessionIDs: string[]) => Promise<unknown>;
   submit: <T>(
@@ -25,6 +29,10 @@ type DiagnosisSessionActions = {
     target_resource_ids: string[];
      provider_id?: string;
     model_name?: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
   }) => Promise<DiagnosisSession>;
   refresh: (sessionID?: string) => Promise<void>;
   open: (sessionID: string) => void;
@@ -40,6 +48,10 @@ export type DiagnosisCommandState = {
   selectedSessionID: string;
   snapshot: DiagnosisSnapshot | null;
   composerText: string;
+  skillID: string;
+  personaID: string;
+  links: string[];
+  attachments: DiagnosisAttachment[];
   targetIDs: string[];
   providerID: string;
   modelName: string;
@@ -98,8 +110,12 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
             application_id: state.applicationID || undefined,
             question: content,
             target_resource_ids: state.targetIDs,
-             provider_id: state.providerID || undefined,
-            model_name: state.modelName || undefined
+            provider_id: state.providerID || undefined,
+            model_name: state.modelName || undefined,
+            skill_id: state.skillID || undefined,
+            persona_id: state.personaID || undefined,
+            links: state.links,
+            attachments: state.attachments
           })
       );
       options.updateState({
@@ -122,7 +138,13 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     if (!state.selectedSessionID || !content) return;
     await options.runAction(async () => {
       const { result: created, stopRequested } = await options.session.submit(
-        () => options.session.askDiagnosis(state.selectedSessionID, content)
+        () => options.session.askDiagnosis(state.selectedSessionID, {
+          content,
+          skill_id: state.skillID || undefined,
+          persona_id: state.personaID || undefined,
+          links: state.links,
+          attachments: state.attachments
+        })
       );
       const current = options.getState();
       options.updateState({
@@ -151,8 +173,8 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     composerText: string,
     setComposerText: (value: string) => void
   ) {
-    const content = composerText.trim();
     const state = options.getState();
+    const content = composerText.trim() || (state.links.length || state.attachments.length ? '请分析提供的附件和链接。' : '');
     if (state.generating || !content) return;
     if (!state.selectedSessionID) {
       await startDiagnosis(content);
@@ -160,6 +182,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
       await sendDiagnosisFollowup(content);
     }
     setComposerText('');
+    options.updateState({ skillID: '', personaID: '', links: [], attachments: [] });
   }
 
   function toggleDiagnosisContext(resourceID: string) {
@@ -193,6 +216,10 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
       selectedSessionID: '',
       snapshot: null,
       composerText: '',
+      skillID: '',
+      personaID: '',
+      links: [],
+      attachments: [],
       targetIDs: [],
       interruptedReason: '',
       generating: false,
@@ -265,7 +292,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     const originalID = state.editingMessageID;
     await options.runAction(async () => {
       const { result: created, stopRequested } = await options.session.submit(
-        () => options.session.askDiagnosis(state.selectedSessionID, content)
+        () => options.session.askDiagnosis(state.selectedSessionID, { content })
       );
       const current = options.getState();
       const replacedMessageIDs = diagnosisMessageIDsReplacedByEdit(

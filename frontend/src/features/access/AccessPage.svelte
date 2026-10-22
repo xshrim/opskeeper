@@ -22,6 +22,7 @@
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import { formatLabels, parseLabels } from '../../lib/labels';
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import {
     api,
@@ -97,12 +98,15 @@
   export let teamName = '';
   export let teamDescription = '';
   export let teamIcon = 'lucide:UsersRound';
+  export let teamLabels = '';
+  export let teamOwnerIds: string[] = [];
   export let userDialogOpen = false;
   export let editingTeam: Team | null = null;
   export let editTeamName = '';
   export let editTeamDescription = '';
   export let editTeamIcon = '';
-  export let editTeamStatus = 'active';
+  export let editTeamLabels = '';
+  export let editTeamOwnerIds: string[] = [];
   export let editingUser: User | null = null;
   export let disableTarget: DisableTarget | null = null;
   let deletingTeam: Team | null = null;
@@ -154,6 +158,14 @@
   let newUserUsernameError = '';
   let newUserPasswordError = '';
   let editUserDisplayNameError = '';
+
+  $: ownerOptions = users
+    .filter((user) => user.status === 'active')
+    .map((user) => ({
+      value: user.id,
+      label: user.display_name || user.username,
+      description: user.display_name ? user.username : user.email || user.phone
+    }));
 
   $: organizationReadScopeIDs = scopeChoices
     .filter((scope) =>
@@ -785,7 +797,6 @@
     return resources.filter(
       (resource) =>
         resourceVisibleToScope(grant.scopeID, resource.scope_id) &&
-        resource.status === 'active' &&
         !resourceAlreadyGranted(grant, resource.id, currentIndex)
     );
   }
@@ -869,6 +880,8 @@
     teamName = '';
     teamDescription = '';
     teamIcon = 'lucide:UsersRound';
+    teamLabels = '';
+    teamOwnerIds = [];
     teamNameError = '';
     teamDialogOpen = true;
   }
@@ -877,7 +890,8 @@
     editTeamName = team.name;
     editTeamDescription = team.description;
     editTeamIcon = team.icon;
-    editTeamStatus = team.status;
+    editTeamLabels = formatLabels(team.labels);
+    editTeamOwnerIds = [...(team.owner_ids ?? [])];
     editTeamNameError = '';
   }
   function openEditUser(user: User) {
@@ -952,7 +966,8 @@
         name: teamName,
         description: teamDescription,
         icon: teamIcon,
-        labels: {}
+        labels: parseLabels(teamLabels),
+        owner_ids: teamOwnerIds
       });
       teams = [...teams, created];
       teamDialogOpen = false;
@@ -1007,7 +1022,8 @@
         name: editTeamName,
         description: editTeamDescription,
         icon: editTeamIcon,
-        status: editTeamStatus
+        labels: parseLabels(editTeamLabels),
+        owner_ids: editTeamOwnerIds
       });
       teams = teams.map((team) => (team.id === updated.id ? updated : team));
       editingTeam = null;
@@ -1369,7 +1385,7 @@
   </section>
 </section>
 {#if teamDialogOpen}
-  <ModalDialog title="新增团队" description="设置团队的名称、图标和描述。" confirmLabel="创建团队" confirmForm="create-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (teamDialogOpen = false)}>
+  <ModalDialog title="新增团队" description="设置团队的名称、图标、标签和描述。" confirmLabel="创建" confirmForm="create-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (teamDialogOpen = false)}>
       <form
         id="create-team-form"
         class="stack-form"
@@ -1380,10 +1396,14 @@
           <div class="team-icon-selection">
             <label><FieldLabel text="图标" /><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
           </div>
-          <FormField label="名称" required invalid={Boolean(teamNameError)} error={teamNameError}>
-            <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
-          </FormField>
+          <div class="team-name-owner-fields">
+            <FormField label="名称" required invalid={Boolean(teamNameError)} error={teamNameError}>
+              <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
+            </FormField>
+            <FormField label="负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={teamOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择团队负责人" /></FormField>
+          </div>
         </div>
+        <FormField label="团队标签" asLabel={false}><TextInput bind:value={teamLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
         <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
       </form>
   </ModalDialog>
@@ -1400,7 +1420,7 @@
   />
 {/if}
 {#if userDialogOpen || editingUser}
-  <ModalDialog dialogClass="wide-dialog" size="large" title={editingUser ? '编辑用户' : '新增用户'} description={editingUser ? '更新用户资料、密码和授权范围。' : '填写用户资料、登录方式和授权范围。'} confirmLabel={editingUser ? '保存用户与授权' : '创建用户并授权'} confirmForm="user-dialog-form" confirmDisabled={newUserGrants.length === 0 || newUserGrants.some((grant) => !grant.scopeID || !grant.roleID || grant.resourceGrants.some((resourceGrant) => !resourceGrant.resourceID || !resourceGrant.roleID))} {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => { userDialogOpen = false; editingUser = null; }}>
+  <ModalDialog dialogClass="wide-dialog" size="large" title={editingUser ? '编辑用户' : '新增用户'} description={editingUser ? '更新用户资料、密码和授权范围。' : '填写用户资料、登录方式和授权范围。'} confirmLabel={editingUser ? '保存' : '创建'} confirmForm="user-dialog-form" confirmDisabled={newUserGrants.length === 0 || newUserGrants.some((grant) => !grant.scopeID || !grant.roleID || grant.resourceGrants.some((resourceGrant) => !resourceGrant.resourceID || !resourceGrant.roleID))} {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => { userDialogOpen = false; editingUser = null; }}>
       <form
         id="user-dialog-form"
         class="stack-form"
@@ -1551,7 +1571,7 @@
                 manageableScopeChoices.length === 0 ||
                 manageableScopeChoices.every((scope) =>
                   scopeAlreadyGranted(scope.id)
-                )}><Plus size={15} aria-hidden="true" />添加授权</button
+                )}><Plus size={15} aria-hidden="true" />新增授权</button
             >
           </div>
           <div class="new-user-grant-header" aria-hidden="true">
@@ -1683,7 +1703,7 @@
                     type="button"
                     on:click={() => addNewUserResourceGrant(grantIndex)}
                     disabled={busy || newUserGrantResources(grant).length === 0}
-                    ><Plus size={14} aria-hidden="true" />添加资源权限</button
+                    ><Plus size={14} aria-hidden="true" />新增资源权限</button
                   >
                 </div>
               {/if}
@@ -1696,7 +1716,7 @@
   </ModalDialog>
 {/if}
 {#if editingTeam}
-  <ModalDialog title="编辑团队" description="更新团队的名称、图标、描述和状态。" confirmLabel="保存团队" confirmForm="edit-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (editingTeam = null)}>
+  <ModalDialog title="编辑团队" description="更新团队的名称、图标、标签和描述。" confirmLabel="保存" confirmForm="edit-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (editingTeam = null)}>
       <form
         id="edit-team-form"
         class="stack-form"
@@ -1709,12 +1729,15 @@
           <FieldLabel text="图标" /><IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
         </label>
           </div>
-          <FormField label="名称" required invalid={Boolean(editTeamNameError)} error={editTeamNameError}>
-            <TextInput bind:value={editTeamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }} />
-          </FormField>
+          <div class="team-name-owner-fields">
+            <FormField label="名称" required invalid={Boolean(editTeamNameError)} error={editTeamNameError}>
+              <TextInput bind:value={editTeamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }} />
+            </FormField>
+            <FormField label="负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editTeamOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择团队负责人" /></FormField>
+          </div>
         </div>
+        <FormField label="团队标签" asLabel={false}><TextInput bind:value={editTeamLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
         <FormField label="描述"><TextArea bind:value={editTeamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
-        <FormField label="状态"><DropdownSelect bind:value={editTeamStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '禁用' }]} ariaLabel="团队状态" /></FormField>
       </form>
   </ModalDialog>
 {/if}

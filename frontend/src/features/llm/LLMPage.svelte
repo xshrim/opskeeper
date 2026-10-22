@@ -1129,7 +1129,7 @@
         {#if canManageProvider}<button
             class="primary"
             type="button"
-            on:click={openNewProvider}><Plus size={14} />添加渠道</button
+            on:click={openNewProvider}><Plus size={14} />新增渠道</button
           >{/if}
       </div>
     </div>
@@ -1146,8 +1146,8 @@
                 class="icon-button"
                 type="button"
                 on:click={openNewProvider}
-                data-tooltip="添加渠道"
-                aria-label="添加渠道"><Plus size={14} /></button
+                data-tooltip="新增渠道"
+                aria-label="新增渠道"><Plus size={14} /></button
             >{/if}
             </span
           >
@@ -1439,7 +1439,7 @@
                   <div class="section-title">
                     <h3>模型能力</h3>
                     <button class="primary section-title-action" type="button" on:click={addModel}>
-                      <Plus size={13} />添加模型
+                      <Plus size={13} />新增模型
                     </button>
                   </div>
                 <div class="model-editor-list">

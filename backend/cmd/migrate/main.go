@@ -65,9 +65,7 @@ func run(ctx context.Context, direction string, cfg config.Config) error {
 	switch direction {
 	case "up":
 		return migrations.Apply(ctx, pool)
-	case "down":
-		return migrations.RollbackLast(ctx, pool)
 	default:
-		return fmt.Errorf("unknown migration direction %q; use up or down", direction)
+		return fmt.Errorf("unknown migration direction %q; use up", direction)
 	}
 }

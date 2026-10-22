@@ -33,11 +33,11 @@ func TestRoleInheritanceAndOrganizationFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam(B) error = %v", err)
 	}
-	projectA, err := organizationService.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamA.ID, Name: "Project A", Code: "project-a"})
+	projectA, err := organizationService.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamA.ID, Name: "Project A", Code: "project-a", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject(A) error = %v", err)
 	}
-	projectB, err := organizationService.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamB.ID, Name: "Project B", Code: "project-b"})
+	projectB, err := organizationService.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamB.ID, Name: "Project B", Code: "project-b", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject(B) error = %v", err)
 	}
@@ -153,7 +153,7 @@ func TestRoleSeedAndBindingScopeConstraint(t *testing.T) {
 func insertUser(t *testing.T, pool *pgxpool.Pool, email string) string {
 	t.Helper()
 	var userID string
-	if err := pool.QueryRow(context.Background(), "INSERT INTO users (email, display_name) VALUES ($1, $2) RETURNING id::text", email, email).Scan(&userID); err != nil {
+	if err := pool.QueryRow(context.Background(), "INSERT INTO users (email, display_name, password_hash, password_changed_at) VALUES ($1, $2, 'unused', now()) RETURNING id::text", email, email).Scan(&userID); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	return userID

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"opskeeper/backend/config"
 	"opskeeper/backend/identity"
+	"opskeeper/backend/secret"
 )
 
 const (
@@ -64,6 +66,14 @@ type binding struct {
 	scope string
 }
 
+type sampleSettings struct {
+	dockerConfig   map[string]any
+	hostConfig     map[string]any
+	hostCredential map[string]string
+	llmAPIKey      string
+	llmScenario    string
+}
+
 func main() {
 	if len(os.Args) != 2 || (os.Args[1] != "seed" && os.Args[1] != "clean") {
 		fmt.Fprintln(os.Stderr, "usage: sampledata seed|clean")
@@ -78,9 +88,14 @@ func main() {
 
 func run(action string) error {
 	var samplePassword string
+	var settings sampleSettings
 	if action == "seed" {
 		var err error
 		samplePassword, err = samplePasswordFromEnv()
+		if err != nil {
+			return err
+		}
+		settings, err = sampleSettingsFromEnv()
 		if err != nil {
 			return err
 		}
@@ -106,9 +121,99 @@ func run(action string) error {
 	}
 
 	if action == "seed" {
-		return seed(ctx, pool, samplePassword)
+		return seed(ctx, pool, samplePassword, settings)
 	}
 	return clean(ctx, pool)
+}
+
+func sampleSettingsFromEnv() (sampleSettings, error) {
+	hostPort, err := sampleInt("OPSK_TEST_HOST_PORT", 22)
+	if err != nil {
+		return sampleSettings{}, err
+	}
+	llmScenario, err := sampleLLMScenario(os.Getenv("OPSK_TEST_LLM_SCENARIO"))
+	if err != nil {
+		return sampleSettings{}, err
+	}
+	return sampleSettings{
+		dockerConfig: map[string]any{
+			"host":            sampleEnv("OPSK_TEST_DOCKER_HOST_URL", "unix:///var/run/docker.sock"),
+			"timeout":         10,
+			"skip_tls_verify": false,
+		},
+		hostConfig: map[string]any{
+			"host":        strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_ADDRESS")),
+			"port":        hostPort,
+			"username":    strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_USERNAME")),
+			"auth_method": "password",
+		},
+		hostCredential: nonEmptySampleSecrets(map[string]string{
+			"password": os.Getenv("OPSK_TEST_HOST_PASSWORD"),
+		}),
+		llmAPIKey:   os.Getenv("OPSK_TEST_LLM_API_KEY"),
+		llmScenario: llmScenario,
+	}, nil
+}
+
+func sampleLLMScenario(value string) (string, error) {
+	switch strings.TrimSpace(value) {
+	case "", "general", "通用":
+		return "general", nil
+	case "diagnosis", "inspection", "workflow":
+		return strings.TrimSpace(value), nil
+	default:
+		return "", errors.New("OPSK_TEST_LLM_SCENARIO must be general (通用), diagnosis, inspection, or workflow")
+	}
+}
+
+func sampleEnv(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func sampleInt(name string, fallback int) (int, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 || parsed > 65535 {
+		return 0, fmt.Errorf("%s must be an integer between 1 and 65535", name)
+	}
+	return parsed, nil
+}
+
+func nonEmptySampleSecrets(values map[string]string) map[string]string {
+	filtered := make(map[string]string, len(values))
+	for key, value := range values {
+		if strings.TrimSpace(value) != "" {
+			filtered[key] = value
+		}
+	}
+	return filtered
+}
+
+func encryptSampleSecrets(encryptor secret.Encryptor, values map[string]string) ([]byte, string, error) {
+	if len(values) == 0 {
+		return nil, "", nil
+	}
+	if encryptor == nil {
+		return nil, "", errors.New("credential encryptor is not configured")
+	}
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return nil, "", fmt.Errorf("encode credentials: %w", err)
+	}
+	return encryptor.Encrypt(payload)
+}
+
+func credentialPurpose(purpose string, ciphertext []byte) string {
+	if len(ciphertext) == 0 {
+		return ""
+	}
+	return purpose
 }
 
 func samplePasswordFromEnv() (string, error) {
@@ -142,10 +247,17 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error {
+func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string, settings sampleSettings) error {
 	hash, err := identity.HashPassword(samplePassword)
 	if err != nil {
 		return fmt.Errorf("hash sample password: %w", err)
+	}
+	var encryptor secret.Encryptor
+	if settings.llmAPIKey != "" || len(settings.hostCredential) > 0 {
+		encryptor, err = secret.FromEnvironment("development")
+		if err != nil {
+			return fmt.Errorf("configure sample credential encryption: %w", err)
+		}
 	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -164,22 +276,38 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		Scan(&platformID, &platformScopeID, &tenantID); err != nil {
 		return fmt.Errorf("find default platform: %w", err)
 	}
-	var dockerExists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM resources WHERE scope_id = $1::uuid AND kind = 'Docker' AND deleted_at IS NULL AND labels->>$2 = $3)`, platformScopeID, markerKey, markerValue).Scan(&dockerExists); err != nil {
+	var dockerID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM resources WHERE scope_id = $1::uuid AND kind = 'Docker' AND deleted_at IS NULL AND labels->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&dockerID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("check sample Docker resource: %w", err)
 	}
-	if !dockerExists {
+	if dockerID == "" {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config, status)
-			VALUES ($1::uuid, 'Docker', 'Direct', 1, 'docker', jsonb_build_object($2::text, $3::text), '{"host":"unix:///var/run/docker.sock"}'::jsonb, 'active')`, platformScopeID, markerKey, markerValue); err != nil {
+			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config)
+			VALUES ($1::uuid, 'Docker', 'Direct', 1, 'docker', jsonb_build_object($2::text, $3::text), $4::jsonb)`, platformScopeID, markerKey, markerValue, settings.dockerConfig); err != nil {
 			return fmt.Errorf("create sample Docker resource: %w", err)
 		}
 	}
-	var providerExists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM providers WHERE scope_id = $1::uuid AND deleted_at IS NULL AND config->>$2 = $3)`, platformScopeID, markerKey, markerValue).Scan(&providerExists); err != nil {
+
+	var hostID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM resources WHERE scope_id = $1::uuid AND kind = 'Host' AND deleted_at IS NULL AND labels->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&hostID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check sample Host resource: %w", err)
+	}
+	if hostID == "" {
+		hostCiphertext, hostKeyVersion, err := encryptSampleSecrets(encryptor, settings.hostCredential)
+		if err != nil {
+			return fmt.Errorf("encrypt sample Host credentials: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config, credential_ciphertext, credential_key_version, credential_purpose)
+			VALUES ($1::uuid, 'Host', 'Direct', 1, 'host', jsonb_build_object($2::text, $3::text), $4::jsonb, $5, $6, $7)`, platformScopeID, markerKey, markerValue, settings.hostConfig, hostCiphertext, hostKeyVersion, credentialPurpose("Host SSH credentials", hostCiphertext)); err != nil {
+			return fmt.Errorf("create sample Host resource: %w", err)
+		}
+	}
+	var providerID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM providers WHERE scope_id = $1::uuid AND deleted_at IS NULL AND config->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&providerID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("check sample GLM AI channel: %w", err)
 	}
-	if !providerExists {
+	if providerID == "" {
 		providerConfig, err := json.Marshal(map[string]any{
 			"provider_type":         "glm",
 			"protocol":              "chat_completions",
@@ -206,13 +334,23 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		if err != nil {
 			return fmt.Errorf("encode sample GLM provider config: %w", err)
 		}
-		var providerID string
+		var providerCiphertext []byte
+		var providerKeyVersion string
+		if settings.llmAPIKey != "" {
+			providerCiphertext, providerKeyVersion, err = encryptSampleSecrets(encryptor, map[string]string{"token": settings.llmAPIKey})
+			if err != nil {
+				return fmt.Errorf("encrypt sample GLM API key: %w", err)
+			}
+		}
 		if err := tx.QueryRow(ctx, `
-				INSERT INTO providers (id, scope_id, name, config, status)
-				VALUES (gen_random_uuid(), $1::uuid, 'GLM', $2::jsonb, 'active')
-				RETURNING id::text`, platformScopeID, providerConfig).Scan(&providerID); err != nil {
+				INSERT INTO providers (id, scope_id, name, config, status, credential_ciphertext, credential_key_version)
+				VALUES (gen_random_uuid(), $1::uuid, 'GLM', $2::jsonb, 'active', $3, $4)
+				RETURNING id::text`, platformScopeID, providerConfig, providerCiphertext, providerKeyVersion).Scan(&providerID); err != nil {
 			return fmt.Errorf("create sample GLM AI channel: %w", err)
 		}
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO provider_scope_bindings (scope_id, provider_id, tag) VALUES ($1::uuid, $2::uuid, $3) ON CONFLICT (scope_id, tag) DO NOTHING`, platformScopeID, providerID, settings.llmScenario); err != nil {
+		return fmt.Errorf("bind sample GLM channel to scenario %s: %w", settings.llmScenario, err)
 	}
 
 	teams := []team{
@@ -248,8 +386,8 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 					return fmt.Errorf("create project scope %s: %w", code, err)
 				}
 				if _, err := tx.Exec(ctx, `
-						INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels)
-						VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'lucide:FolderKanban', jsonb_build_object($6::text, $7::text))`, projectScopeID, platformID, teamID, projectItem.name, code, markerKey, markerValue); err != nil {
+						INSERT INTO projects (scope_id, platform_id, team_id, name, code, icon, labels, importance_level)
+						VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'lucide:FolderKanban', jsonb_build_object($6::text, $7::text), 'ITP4')`, projectScopeID, platformID, teamID, projectItem.name, code, markerKey, markerValue); err != nil {
 					return fmt.Errorf("create sample project %s: %w", code, err)
 				}
 			} else if err != nil {
@@ -276,11 +414,11 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 			continue
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
-			if err := tx.QueryRow(ctx, `INSERT INTO users (username, email, display_name) VALUES ($1, $2, $3) RETURNING id::text`, item.username, item.username+"@"+emailDomain, item.name).Scan(&userID); err != nil {
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO users (username, email, display_name, password_hash, must_change_password)
+				VALUES ($1, $2, $3, $4, false)
+				RETURNING id::text`, item.username, item.username+"@"+emailDomain, item.name, hash).Scan(&userID); err != nil {
 				return fmt.Errorf("create sample user %s: %w", item.username, err)
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO credentials (user_id, password_hash, must_change_password) VALUES ($1::uuid, $2, false)`, userID, hash); err != nil {
-				return fmt.Errorf("create credentials for %s: %w", item.username, err)
 			}
 			createdUsers = append(createdUsers, item.username)
 		} else if err != nil {
@@ -330,11 +468,27 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string) error 
 		return fmt.Errorf("commit sample seed: %w", err)
 	}
 	fmt.Println("Sample seed complete.")
+	fmt.Println("Imported sample content:")
+	fmt.Printf("  Teams: %d (云平台研发部, 基础设施运维部, 数据智能部)\n", len(teams))
+	projectCount := 0
+	for _, item := range teams {
+		projectCount += len(item.projects)
+	}
+	fmt.Printf("  Projects: %d\n", projectCount)
+	fmt.Printf("  Users: %d sample accounts with role bindings\n", len(userIDs))
+	fmt.Printf("  AI channel: GLM / GLM-4-Flash (scenario: %s)\n", settings.llmScenario)
+	fmt.Println("  Resources: Docker (Direct), Host (Direct)")
 	if len(createdUsers) > 0 {
 		fmt.Printf("Sample login password for newly created accounts: %s\n", samplePassword)
 		for _, username := range createdUsers {
 			fmt.Printf("  %-24s %s@%s\n", username, username, emailDomain)
 		}
+	}
+	if strings.TrimSpace(os.Getenv("OPSK_TEST_LLM_API_KEY")) == "" {
+		fmt.Println("  Manual setup required: enter the GLM AI channel credential in the page (OPSK_TEST_LLM_API_KEY is empty).")
+	}
+	if strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_PASSWORD")) == "" {
+		fmt.Println("  Manual setup required: enter the Host resource credential in the page (OPSK_TEST_HOST_PASSWORD is empty).")
 	}
 	return nil
 }
@@ -369,8 +523,8 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]), COALESCE(array_agg(scope_id::text), ARRAY[]::text[]) FROM projects WHERE labels->>$1 = $2`, markerKey, markerValue).Scan(&projectIDs, &projectScopeIDs); err != nil {
 		return fmt.Errorf("find sample projects: %w", err)
 	}
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) FROM resources WHERE kind = 'Docker' AND labels->>$1 = $2`, markerKey, markerValue).Scan(&resourceIDs); err != nil {
-		return fmt.Errorf("find sample Docker resources: %w", err)
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) FROM resources WHERE kind IN ('Docker', 'Host') AND labels->>$1 = $2`, markerKey, markerValue).Scan(&resourceIDs); err != nil {
+		return fmt.Errorf("find sample Docker and Host resources: %w", err)
 	}
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]) FROM providers WHERE config->>$1 = $2`, markerKey, markerValue).Scan(&providerIDs); err != nil {
 		return fmt.Errorf("find sample AI channels: %w", err)
@@ -382,7 +536,7 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("remove sample AI channels: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM resources WHERE id::text = ANY($1::text[])`, resourceIDs); err != nil {
-		return fmt.Errorf("remove sample Docker resources: %w", err)
+		return fmt.Errorf("remove sample Docker and Host resources: %w", err)
 	}
 	allScopeIDs := append(append([]string{}, teamScopeIDs...), projectScopeIDs...)
 	if _, err := tx.Exec(ctx, `DELETE FROM role_bindings WHERE (subject_type = 'user' AND subject_id::text = ANY($1::text[])) OR scope_id::text = ANY($2::text[])`, userIDs, allScopeIDs); err != nil {
@@ -390,9 +544,6 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id::text = ANY($1::text[])`, userIDs); err != nil {
 		return fmt.Errorf("remove sample sessions: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM credentials WHERE user_id::text = ANY($1::text[])`, userIDs); err != nil {
-		return fmt.Errorf("remove sample credentials: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id::text = ANY($1::text[])`, userIDs); err != nil {
 		return fmt.Errorf("remove sample users: %w", err)

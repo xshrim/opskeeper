@@ -114,10 +114,11 @@ func TestCreateProjectPreservesCustomIcon(t *testing.T) {
 	service := NewService(store)
 
 	if _, err := service.CreateProject(context.Background(), CreateProjectInput{
-		TeamID: testUUID,
-		Name:   "Checkout",
-		Code:   "checkout",
-		Icon:   "lucide:Rocket",
+		TeamID:          testUUID,
+		Name:            "Checkout",
+		Code:            "checkout",
+		Icon:            "lucide:Rocket",
+		ImportanceLevel: "ITP4",
 	}); err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
@@ -157,15 +158,53 @@ func TestCreateProjectDoesNotCarryRuntimeSource(t *testing.T) {
 	service := NewService(store)
 
 	_, err := service.CreateProject(context.Background(), CreateProjectInput{
-		TeamID: testUUID,
-		Name:   "Checkout",
-		Code:   "checkout",
+		TeamID:          testUUID,
+		Name:            "Checkout",
+		Code:            "checkout",
+		ImportanceLevel: "ITP4",
 	})
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
 	if store.createProjectInput.Name != "Checkout" {
 		t.Fatalf("project name = %q", store.createProjectInput.Name)
+	}
+}
+
+func TestResponsibleUsersKeepTheirDeclaredOrder(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+	backupID := "22222222-2222-4222-8222-222222222222"
+	if _, err := service.CreateProject(context.Background(), CreateProjectInput{
+		TeamID:             testUUID,
+		Name:               "Checkout",
+		Code:               "checkout",
+		ImportanceLevel:    "ITP4",
+		TechnicalOwnerIDs:  []string{testUUID, backupID},
+		OperationsOwnerIDs: []string{backupID, testUUID},
+	}); err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	if got := store.createProjectInput.TechnicalOwnerIDs; len(got) != 2 || got[0] != testUUID || got[1] != backupID {
+		t.Fatalf("technical owners = %#v, want ordered primary then backup", got)
+	}
+	if _, err := service.CreateTeam(context.Background(), CreateTeamInput{Name: "Payments", OwnerIDs: []string{testUUID, testUUID}}); err == nil {
+		t.Fatal("CreateTeam() accepted duplicate responsible users")
+	}
+}
+
+func TestCreateProjectRequiresImportanceLevel(t *testing.T) {
+	store := &stubStore{}
+	service := NewService(store)
+
+	_, err := service.CreateProject(context.Background(), CreateProjectInput{
+		TeamID: testUUID,
+		Name:   "Checkout",
+		Code:   "checkout",
+	})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("CreateProject() error = %v, want ValidationError", err)
 	}
 }
 

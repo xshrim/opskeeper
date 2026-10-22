@@ -41,11 +41,21 @@ type Target struct {
 }
 
 type Message struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"session_id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string       `json:"id"`
+	SessionID   string       `json:"session_id"`
+	Role        string       `json:"role"`
+	Content     string       `json:"content"`
+	SkillID     string       `json:"skill_id,omitempty"`
+	PersonaID   string       `json:"persona_id,omitempty"`
+	Links       []string     `json:"links,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
+type Attachment struct {
+	Name      string `json:"name"`
+	MediaType string `json:"media_type,omitempty"`
+	Content   string `json:"content"`
 }
 
 type Plan struct {
@@ -182,10 +192,16 @@ type StartInput struct {
 	ApplicationID                         string
 	ProviderID, ModelName                 string
 	TargetResourceIDs                     []string
+	SkillID, PersonaID                    string
+	Links                                 []string
+	Attachments                           []Attachment
 }
 
 type AppendMessageInput struct {
-	Role, Content string
+	Role, Content      string
+	SkillID, PersonaID string
+	Links              []string
+	Attachments        []Attachment
 }
 
 type CreateEventInput struct {

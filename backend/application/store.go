@@ -25,10 +25,10 @@ const appSelect = `SELECT a.id::text, a.project_id::text, p.scope_id::text,
        CASE
          WHEN a.status = 'disabled' THEN 'disabled'
          WHEN NOT EXISTS (SELECT 1 FROM application_instances missing_instance WHERE missing_instance.application_id = a.id) THEN 'unknown'
-         WHEN EXISTS (SELECT 1 FROM application_instances unhealthy_instance JOIN resources unhealthy_resource ON unhealthy_resource.id = unhealthy_instance.target_resource_id WHERE unhealthy_instance.application_id = a.id AND (unhealthy_resource.status <> 'active' OR unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up'))) THEN 'warning'
+         WHEN EXISTS (SELECT 1 FROM application_instances unhealthy_instance WHERE unhealthy_instance.application_id = a.id AND unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up')) THEN 'warning'
          ELSE 'active'
-       END, a.runtime_kind,
-       a.external_uid, a.labels, a.created_at, a.updated_at
+	       END, a.runtime_kind,
+	       a.external_uid, a.labels, a.critical, a.technical_owner_ids, a.operations_owner_ids, a.created_at, a.updated_at
   FROM applications a
   JOIN projects p ON p.id = a.project_id
   JOIN scopes s ON s.id = p.scope_id
@@ -41,7 +41,7 @@ func scanApp(row rowScanner) (Application, error) {
 	var labels []byte
 	if err := row.Scan(&item.ID, &item.ProjectID, &item.ProjectScopeID, &item.Name, &item.Code,
 		&item.Description, &item.Icon, &item.Status, &item.RuntimeKind, &item.ExternalUID,
-		&labels, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		&labels, &item.Critical, &item.TechnicalOwnerIDs, &item.OperationsOwnerIDs, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Application{}, ErrNotFound
 		}
@@ -89,14 +89,17 @@ func (s *store) Create(ctx context.Context, input CreateInput) (Application, err
 		return Application{}, fmt.Errorf("begin create application: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := validateActiveUsers(ctx, tx, input.TechnicalOwnerIDs, input.OperationsOwnerIDs); err != nil {
+		return Application{}, err
+	}
 	var id string
 	labels, err := json.Marshal(normalizeLabels(input.Labels))
 	if err != nil {
 		return Application{}, fmt.Errorf("encode application labels: %w", err)
 	}
-	if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels)
-VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`, input.ProjectID, input.Name, input.Code,
-		input.Description, input.Icon, input.RuntimeKind, input.ExternalUID, labels).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels,critical,technical_owner_ids,operations_owner_ids)
+VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11::uuid[]) RETURNING id::text`, input.ProjectID, input.Name, input.Code,
+		input.Description, input.Icon, input.RuntimeKind, input.ExternalUID, labels, input.Critical, input.TechnicalOwnerIDs, input.OperationsOwnerIDs).Scan(&id); err != nil {
 		return Application{}, mapStoreError(err)
 	}
 	if err := insertInstances(ctx, tx, id, input.Instances); err != nil {
@@ -166,16 +169,28 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	if input.Labels != nil {
 		current.Labels = normalizeLabels(*input.Labels)
 	}
+	if input.Critical != nil {
+		current.Critical = *input.Critical
+	}
+	if input.TechnicalOwnerIDs != nil {
+		current.TechnicalOwnerIDs = *input.TechnicalOwnerIDs
+	}
+	if input.OperationsOwnerIDs != nil {
+		current.OperationsOwnerIDs = *input.OperationsOwnerIDs
+	}
+	if err := validateActiveUsers(ctx, s.pool, current.TechnicalOwnerIDs, current.OperationsOwnerIDs); err != nil {
+		return Application{}, err
+	}
 	labels, err := json.Marshal(normalizeLabels(current.Labels))
 	if err != nil {
 		return Application{}, fmt.Errorf("encode application labels: %w", err)
 	}
-	args := []any{applicationID, current.Name, current.Description, current.Icon, current.Status, labels}
-	query := `UPDATE applications a SET name=$2,description=$3,icon=$4,status=$5,labels=$6,updated_at=now()
+	args := []any{applicationID, current.Name, current.Description, current.Icon, current.Status, labels, current.Critical, current.TechnicalOwnerIDs, current.OperationsOwnerIDs}
+	query := `UPDATE applications a SET name=$2,description=$3,icon=$4,status=$5,labels=$6,critical=$7,technical_owner_ids=$8::uuid[],operations_owner_ids=$9::uuid[],updated_at=now()
 WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 	if strings.TrimSpace(projectID) != "" {
 		args = append(args, projectID)
-		query += ` AND a.project_id=$7::uuid`
+		query += ` AND a.project_id=$10::uuid`
 	}
 	query, args = visibleApplications(query+` RETURNING a.id`, args, ctx)
 	var updatedID string
@@ -183,6 +198,35 @@ WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 		return Application{}, mapStoreError(err)
 	}
 	return s.Get(ctx, projectID, updatedID)
+}
+
+type activeUserQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func validateActiveUsers(ctx context.Context, db activeUserQuerier, ownerLists ...[]string) error {
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, owners := range ownerLists {
+		for _, id := range owners {
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var count int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = ANY($1::uuid[]) AND status = 'active' AND deleted_at IS NULL`, ids).Scan(&count); err != nil {
+		return fmt.Errorf("validate responsible users: %w", err)
+	}
+	if count != len(ids) {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func (s *store) Delete(ctx context.Context, projectID, applicationID string) error {
@@ -366,7 +410,7 @@ func (s *store) ContextResourceIDs(ctx context.Context, scopeID, applicationID s
     SELECT application_id, target_resource_id FROM application_dependencies
   ) relation ON relation.application_id=a.id
   JOIN resources r ON r.id=relation.target_resource_id
- WHERE a.id=$1::uuid AND p.scope_id=$2::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL AND r.status <> 'disabled'
+ WHERE a.id=$1::uuid AND p.scope_id=$2::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
  ORDER BY r.id`, []any{applicationID, scopeID}, ctx)
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -410,21 +454,21 @@ func (s *store) Workspace(ctx context.Context, projectID string) (Workspace, err
 
 func (s *store) workspaceResources(ctx context.Context, projectID string) ([]RelatedResource, error) {
 	rows, err := s.pool.Query(ctx, `WITH project_resources AS (
-  SELECT r.id,r.name,r.kind,r.status,'project'::text AS role
+  SELECT r.id,r.name,r.kind,'project'::text AS role
     FROM resources r JOIN projects p ON p.scope_id=r.scope_id
    WHERE p.id=$1::uuid AND r.deleted_at IS NULL
   UNION
-  SELECT r.id,r.name,r.kind,r.status,'instance'::text
+  SELECT r.id,r.name,r.kind,'instance'::text
     FROM resources r JOIN application_instances i ON i.target_resource_id=r.id
     JOIN applications a ON a.id=i.application_id
    WHERE a.project_id=$1::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
   UNION
-  SELECT r.id,r.name,r.kind,r.status,'dependency'::text
+  SELECT r.id,r.name,r.kind,'dependency'::text
     FROM resources r JOIN application_dependencies d ON d.target_resource_id=r.id
     JOIN applications a ON a.id=d.application_id
    WHERE a.project_id=$1::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
 )
-SELECT id::text,name,kind,status,role FROM project_resources ORDER BY name,id`, projectID)
+SELECT id::text,name,kind,role FROM project_resources ORDER BY name,id`, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project workspace resources: %w", err)
 	}
@@ -432,7 +476,7 @@ SELECT id::text,name,kind,status,role FROM project_resources ORDER BY name,id`, 
 	items := make([]RelatedResource, 0)
 	for rows.Next() {
 		var item RelatedResource
-		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.Status, &item.Role); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.Role); err != nil {
 			return nil, fmt.Errorf("scan project workspace resource: %w", err)
 		}
 		items = append(items, item)

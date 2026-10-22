@@ -7,12 +7,14 @@
   import TextArea from '../../components/TextArea.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import ModalDialog from '../../components/ModalDialog.svelte';
-  import type { Resource, Team } from '../../lib/api';
+  import { parseLabels } from '../../lib/labels';
+  import type { Resource, Team, User } from '../../lib/api';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
 
   export let teams: Team[] = [];
   export let resources: Resource[] = [];
+  export let users: User[] = [];
   export let defaultTeamId = '';
   export let onSave: (input: {
     teamId: string;
@@ -21,6 +23,9 @@
     icon: string;
     description: string;
     labels: Record<string, string>;
+    importanceLevel: 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4';
+    technicalOwnerIds: string[];
+    operationsOwnerIds: string[];
     applications: ApplicationDraft[];
   }) => Promise<void> | void;
   export let onCancel: () => void;
@@ -31,6 +36,10 @@
   let icon = 'lucide:FolderKanban';
   let description = '';
   let labels = '';
+  let importanceLevel: '' | 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4' = '';
+  let importanceLevelError = '';
+  let technicalOwnerIds: string[] = [];
+  let operationsOwnerIds: string[] = [];
   let applications: ApplicationDraft[] = [];
   let applicationWizardOpen = false;
   let saving = false;
@@ -42,6 +51,13 @@
     label: team.name,
     icon: team.icon || 'lucide:UsersRound'
   }));
+  $: ownerOptions = users
+    .filter((user) => user.status === 'active')
+    .map((user) => ({
+      value: user.id,
+      label: user.display_name || user.username,
+      description: user.display_name ? user.username : user.email || user.phone
+    }));
 
   function generateProjectCode() {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -56,22 +72,13 @@
     applicationWizardOpen = false;
   }
 
-  function parseLabels(value: string): Record<string, string> {
-    return Object.fromEntries(
-      value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((item) => {
-          const [key, ...rest] = item.split('=');
-          return [key.trim(), rest.join('=').trim()];
-        })
-        .filter(([key]) => key)
-    );
-  }
-
   async function save() {
     error = '';
+    importanceLevelError = '';
+    if (!importanceLevel) {
+      importanceLevelError = '请选择项目等级。';
+      return;
+    }
     if (!teamId || !name.trim() || !code.trim()) {
       error = '请选择所属团队并填写项目名称和项目编号。';
       return;
@@ -85,6 +92,9 @@
         icon,
         description: description.trim(),
         labels: parseLabels(labels),
+        importanceLevel,
+        technicalOwnerIds,
+        operationsOwnerIds,
         applications
       });
     } catch (cause) {
@@ -95,7 +105,7 @@
   }
 </script>
 
-<ModalDialog dialogClass="project-dialog project-create-dialog" size="large" title="新增项目" description="填写项目基本信息并添加应用。" confirmLabel="创建项目" busyLabel="创建中…" busy={saving} message={error} onCancel={onCancel} onConfirm={save}>
+<ModalDialog dialogClass="project-dialog project-create-dialog" size="large" title="新增项目" description="填写项目基本信息并新增应用。" confirmLabel="创建" busyLabel="创建中…" busy={saving} message={error} onCancel={onCancel} onConfirm={save}>
   <div class="project-dialog-content project-create-content">
       <section class="create-section">
         <div class="create-section-heading">
@@ -117,32 +127,41 @@
         </div>
         <div class="project-identity-row">
           <div class="project-icon-code-fields">
-            <FormField label="项目图标" className="project-icon-field"
-              ><IconPicker
+            <FormField label="项目图标" className="project-icon-field">
+              <IconPicker
                 value={icon}
                 onSelect={(value) => (icon = value)}
                 ariaLabel="选择项目图标"
-              /></FormField
-            ><FormField label="项目编号" required className="project-code-field"
-              ><TextInput
+              />
+            </FormField>
+            <FormField label="项目等级" required invalid={Boolean(importanceLevelError)} error={importanceLevelError} className="project-importance-field">
+              <DropdownSelect bind:value={importanceLevel} options={['ITP1', 'ITP2', 'ITP3', 'ITP4'].map((value) => ({ value, label: value }))} placeholder="选择项目等级" ariaLabel="项目等级" invalid={Boolean(importanceLevelError)} on:change={() => (importanceLevelError = '')} />
+            </FormField>
+            <FormField label="项目编号" required className="project-code-field">
+              <TextInput
                 bind:value={code}
                 required
                 placeholder="ABC1234"
-              /></FormField
-            >
+              />
+            </FormField>
           </div>
-          <FormField label="项目名称" required className="project-name-field"
-            ><TextInput
+          <FormField label="项目名称" required className="project-name-field">
+            <TextInput
               bind:value={name}
               required
               placeholder="支付结算平台"
-            /></FormField
-          >
+            />
+          </FormField>
         </div>
-        <FormField label="项目标签" className="project-labels-field full-field"
+        <div class="owner-fields-row">
+          <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" /></FormField>
+          <FormField label="运维负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={operationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" /></FormField>
+        </div>
+        <FormField label="项目标签" className="project-labels-field full-field" asLabel={false}
           ><TextInput
             bind:value={labels}
-            placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform"
+            tagged
+            placeholder="填写 key=value、key:value 或 key，按回车确认"
             autocomplete="off"
           /></FormField
         ><FormField label="项目描述" className="full-field"
@@ -157,13 +176,13 @@
         <div class="create-section-heading">
           <div>
             <h3>项目应用</h3>
-            <p>应用可在这里预先添加，也可以稍后从项目驾驶舱添加。</p>
+            <p>应用可在这里预先新增，也可以稍后从项目驾驶舱新增。</p>
           </div>
           <button
             class="secondary"
             type="button"
             on:click={() => (applicationWizardOpen = true)}
-            ><Plus size={14} />添加应用</button
+            ><Plus size={14} />新增应用</button
           >
         </div>
         {#if applications.length}<div class="project-draft-list">
@@ -197,7 +216,7 @@
               class="text-button"
               type="button"
               on:click={() => (applicationWizardOpen = true)}
-              >从应用向导添加</button
+              >从应用向导新增</button
             >
           </div>{/if}
       </section>
@@ -205,6 +224,7 @@
   </ModalDialog>
   {#if applicationWizardOpen}<ApplicationWizard
       {resources}
+      {users}
       onSave={addApplications}
       onCancel={() => (applicationWizardOpen = false)}
     />{/if}

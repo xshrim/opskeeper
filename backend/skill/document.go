@@ -235,6 +235,9 @@ func validateMetadata(metadata Metadata) error {
 	if strings.TrimSpace(metadata.Name) == "" || len([]rune(metadata.Name)) > 200 {
 		return invalid("Skill metadata.name is required and must be at most 200 characters")
 	}
+	if len(strings.Fields(metadata.Name)) != 1 {
+		return invalid("Skill metadata.name must not contain whitespace")
+	}
 	if !skillIdentifierPattern.MatchString(metadata.Identifier) {
 		return invalid("Skill metadata.identifier is invalid")
 	}

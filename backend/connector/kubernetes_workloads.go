@@ -34,7 +34,7 @@ func (s *Service) ListKubernetesWorkloads(ctx context.Context, resourceID, names
 	}
 	connection, err := s.kubernetesConnection(ctx, engine.ContextResource{
 		ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name,
-		Status: item.Status, Subtype: item.Subtype, AgentRef: item.AgentRef, Config: item.Config,
+		Subtype: item.Subtype, AgentRef: item.AgentRef, Config: item.Config,
 	})
 	if err != nil {
 		return WorkloadDiscovery{}, err

@@ -23,19 +23,23 @@
     type Project,
     type ProjectWorkspace,
     type Resource,
-    type Team
+    type Team,
+    type User
   } from '../../lib/api';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
   import FormField from '../../components/FormField.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
   import ScopeChip from '../../components/ScopeChip.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
+  import { formatLabels, parseLabels } from '../../lib/labels';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
+  import { onMount } from 'svelte';
 
   export let teams: Team[] = [];
   export let allProjects: Project[] = [];
@@ -58,6 +62,7 @@
     project: Project,
     application: Application
   ) => void = () => {};
+  export let onResourceCreated: (resource: Resource) => void = () => {};
 
   let workspace: ProjectWorkspace | null = null;
   let workspaceProjectId = '';
@@ -71,10 +76,30 @@
   let editingAppId = '';
   let editName = '';
   let editDescription = '';
+  let editLabels = '';
   let editIcon = 'lucide:AppWindow';
+  let editCritical = false;
+  let editTechnicalOwnerIds: string[] = [];
+  let editOperationsOwnerIds: string[] = [];
   let deletingProject: Project | null = null;
   let deletingApplication: Application | null = null;
   let selectedApplicationId = '';
+  let users: User[] = [];
+
+  onMount(async () => {
+    try {
+      users = await api.users();
+    } catch {
+      users = [];
+    }
+  });
+  $: ownerOptions = users
+    .filter((user) => user.status === 'active')
+    .map((user) => ({
+      value: user.id,
+      label: user.display_name || user.username,
+      description: user.display_name ? user.username : user.email || user.phone
+    }));
 
   $: selectedProject =
     visibleProjects.find((project) => project.id === selectedProjectId) ??
@@ -197,8 +222,12 @@
       code: draft.code,
       description: draft.description,
       icon: draft.icon,
+      labels: draft.labels,
       runtime_kind: draft.runtimeKind,
       external_uid: draft.externalUid,
+      critical: draft.critical,
+      technical_owner_ids: draft.technicalOwnerIds,
+      operations_owner_ids: draft.operationsOwnerIds,
       instances: draft.instances.map((instance) => ({
         name: instance.name,
         runtime_kind: draft.runtimeKind,
@@ -214,6 +243,9 @@
     icon: string;
     description: string;
     labels: Record<string, string>;
+    importanceLevel: 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4';
+    technicalOwnerIds: string[];
+    operationsOwnerIds: string[];
     applications: ApplicationDraft[];
   }) {
     const project = await api.createProject(input.teamId, {
@@ -222,6 +254,9 @@
       description: input.description,
       icon: input.icon,
       labels: input.labels,
+      importance_level: input.importanceLevel,
+      technical_owner_ids: input.technicalOwnerIds,
+      operations_owner_ids: input.operationsOwnerIds,
       applications: input.applications.map(applicationPayload)
     });
     projectCreateOpen = false;
@@ -235,20 +270,28 @@
       await api.createApplication(selectedProjectId, applicationPayload(draft));
     applicationWizardOpen = false;
     await loadWorkspace(selectedProjectId);
-    onNotice(`${drafts.length} 个应用已添加`);
+    onNotice(`${drafts.length} 个应用已新增`);
   }
   function beginEdit(app: Application) {
     editingAppId = app.id;
     editName = app.name;
     editDescription = app.description;
+    editLabels = formatLabels(app.labels);
     editIcon = app.icon;
+    editCritical = app.critical;
+    editTechnicalOwnerIds = [...app.technical_owner_ids];
+    editOperationsOwnerIds = [...app.operations_owner_ids];
   }
   async function saveEdit(app: Application) {
     try {
       await api.updateApplication(selectedProjectId, app.id, {
         name: editName,
         description: editDescription,
-        icon: editIcon
+        icon: editIcon,
+        labels: parseLabels(editLabels),
+        critical: editCritical,
+        technical_owner_ids: editTechnicalOwnerIds,
+        operations_owner_ids: editOperationsOwnerIds
       });
       editingAppId = '';
       await loadWorkspace(selectedProjectId);
@@ -328,7 +371,7 @@
         class="secondary team-filter-add"
         type="button"
         disabled={busy}
-        on:click={onOpenTeamDialog}><Plus size={14} />添加团队</button
+        on:click={onOpenTeamDialog}><Plus size={14} />新增团队</button
       >
     </nav>
     {#if normalizedProjectSearch && filteredProjects.length === 0}<div
@@ -536,7 +579,7 @@
               data-tooltip={selectedApplication ? `删除应用 ${selectedApplication.name}` : '请先展开要删除的应用'}
               on:click={() => selectedApplication && (deletingApplication = selectedApplication)}
               ><Trash2 size={15} />删除应用</button
-            ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />添加应用</button>
+            ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />新增应用</button>
           </div>
         </div>
         {#if loadingWorkspace}<div class="panel map-loading">
@@ -612,7 +655,7 @@
                     value={editIcon}
                     onSelect={(value) => (editIcon = value)}
                     ariaLabel="选择应用图标"
-                  /><FormField label="应用名称" required className="inline-edit-field"><TextInput bind:value={editName} required ariaLabel="应用名称" /></FormField><FormField label="应用描述" className="inline-edit-field"><TextInput bind:value={editDescription} placeholder="描述" ariaLabel="应用描述" /></FormField><button class="primary" type="submit">保存</button><button
+                  /><FormField label="应用名称" required className="inline-edit-field"><TextInput bind:value={editName} required ariaLabel="应用名称" /></FormField><FormField label="关键应用" className="inline-edit-field" asLabel={false}><DropdownSelect value={String(editCritical)} options={[{ value: 'false', label: '否' }, { value: 'true', label: '是' }]} ariaLabel="是否关键应用" on:change={(event) => (editCritical = event.detail === 'true')} /></FormField><FormField label="技术负责人" className="inline-edit-field" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editTechnicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" /></FormField><FormField label="运维负责人" className="inline-edit-field" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editOperationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" /></FormField><FormField label="应用标签" className="inline-edit-field" asLabel={false}><TextInput bind:value={editLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" ariaLabel="应用标签" /></FormField><FormField label="应用描述" className="inline-edit-field"><TextInput bind:value={editDescription} placeholder="描述" ariaLabel="应用描述" /></FormField><button class="primary" type="submit">保存</button><button
                     class="secondary"
                     type="button"
                     on:click={() => (editingAppId = '')}>取消</button
@@ -648,12 +691,12 @@
             </article>{/each}{:else}<div class="map-empty panel">
             <Network size={28} />
             <h3>还没有应用</h3>
-            <p>使用应用向导添加 Host、Docker 或 Kubernetes 应用。</p>
+            <p>使用应用向导新增 Host、Docker 或 Kubernetes 应用。</p>
             <button
               class="primary"
               type="button"
               on:click={() => (applicationWizardOpen = true)}
-              ><Plus size={15} />添加应用</button
+              ><Plus size={15} />新增应用</button
             >
           </div>{/if}
       </section>
@@ -673,7 +716,7 @@
                 ><strong>{resource.name}</strong><small
                   >{resource.role || '运行资源'}</small
                 ></span
-              ><StatusBadge className="status-label" tone={resource.status} label={statusLabel(resource.status)} />
+              >
             </div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}
         </section>
         <section class="panel topology-panel">
@@ -725,6 +768,7 @@
 {#if projectCreateOpen}<ProjectCreateForm
     {teams}
     resources={availableResources}
+    {users}
     defaultTeamId={teams.find((team) => team.scope.id === selectedScopeId)
       ?.id ??
       teams[0]?.id ??
@@ -734,7 +778,10 @@
   />{/if}
 {#if applicationWizardOpen}<ApplicationWizard
     resources={availableResources}
+    {users}
+    scopeId={selectedProject?.scope.id ?? selectedScopeId}
     onSave={saveApplications}
+    {onResourceCreated}
     onCancel={() => (applicationWizardOpen = false)}
   />{/if}
 {#if deletingProject}

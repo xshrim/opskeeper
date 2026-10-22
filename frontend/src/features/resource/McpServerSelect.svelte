@@ -17,7 +17,7 @@
       value: resource.id,
       label: `${resource.name} · ${String(resource.config?.url ?? '未设置地址')}`
     })),
-    ...(allowAdd ? [{ value: '__add_mcp_server__', label: '添加 MCPServer' }] : [])
+    ...(allowAdd ? [{ value: '__add_mcp_server__', label: '新增 MCPServer' }] : [])
   ];
 </script>
 

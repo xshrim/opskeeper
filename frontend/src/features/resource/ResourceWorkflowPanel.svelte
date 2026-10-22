@@ -71,7 +71,7 @@
 </script>
 
 <section class="resource-add-workflow">
-  <aside class="resource-add-steps" aria-label="添加资源步骤">
+  <aside class="resource-add-steps" aria-label="新增资源步骤">
     <button
       class:active={step === 1}
       class:done={step > 1}

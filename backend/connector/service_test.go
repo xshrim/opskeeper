@@ -67,7 +67,7 @@ func TestServiceConnectionTestPersistsSuccess(t *testing.T) {
 		t.Fatalf("Register() error = %v", err)
 	}
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
-		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
+		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1,
 	}, secret: []byte(`{"token":"secret"}`)}, checks, DefaultLimits())
 	service.now = func() time.Time { return time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC) }
 
@@ -102,7 +102,7 @@ func TestServiceConnectionTestPersistsSanitizedFailureAndRetriesTemporaryErrors(
 	limits := DefaultLimits()
 	limits.Retries = 1
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
-		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
+		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1,
 	}}, checks, limits)
 
 	check, err := service.Test(context.Background(), "", "resource-1")
@@ -132,7 +132,7 @@ func TestServiceDoesNotRetryPermanentFailure(t *testing.T) {
 		t.Fatalf("Register() error = %v", err)
 	}
 	service := NewService(registry, stubResourceReader{item: resource.Resource{
-		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1, Status: resource.StatusActive,
+		ID: "resource-1", Kind: "Prometheus", SchemaVersion: 1,
 	}}, &memoryCheckStore{}, DefaultLimits())
 	if _, err := service.Test(context.Background(), "", "resource-1"); err != nil {
 		t.Fatalf("Test() error = %v", err)

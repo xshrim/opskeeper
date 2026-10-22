@@ -279,9 +279,6 @@ func (s *Service) adapter(ctx context.Context, resourceID string) (resource.Reso
 }
 
 func (s *Service) prepare(ctx context.Context, item resource.Resource) (Adapter, error) {
-	if item.Status != resource.StatusActive {
-		return nil, connectorError(CategoryConfiguration, "prepare connector", false, errors.New("resource is not active"))
-	}
 	target := Target{Resource: item}
 	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if configured {

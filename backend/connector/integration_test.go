@@ -29,7 +29,7 @@ func TestConnectionCheckStorePersistsLatestResult(t *testing.T) {
 		t.Fatalf("create resource: %v", err)
 	}
 	var userID string
-	if err := pool.QueryRow(ctx, "INSERT INTO users (email, display_name) VALUES ('connector@example.com', 'Connector') RETURNING id::text").Scan(&userID); err != nil {
+	if err := pool.QueryRow(ctx, "INSERT INTO users (email, display_name, password_hash, password_changed_at) VALUES ('connector@example.com', 'Connector', 'unused', now()) RETURNING id::text").Scan(&userID); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 	store := connector.NewStore(pool)

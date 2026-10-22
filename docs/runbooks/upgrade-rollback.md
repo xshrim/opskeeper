@@ -6,4 +6,4 @@
 4. 迁移成功后验证 readiness、登录、只读资源、诊断和巡检流程。
 5. 应用失败时回滚到上一个与新 Schema 兼容的 digest：`helm rollback <release> <revision> --wait --timeout 10m`。
 
-不在生产回滚流程中执行 `migrate down`。若新 Schema 与旧应用不兼容，必须前滚修复；这类不兼容迁移本就不应通过 Expand/Contract 评审。
+不在生产回滚流程中执行数据库反向迁移。若新 Schema 与旧应用不兼容，必须前滚修复；这类不兼容迁移本就不应通过 Expand/Contract 评审。

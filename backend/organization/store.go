@@ -24,6 +24,7 @@ const platformSelect = `
 const teamSelect = `
 	SELECT t.id::text, t.platform_id::text, t.scope_id::text, s.scope_type,
 	       s.parent_scope_id::text, s.status, t.name, t.description, t.icon, t.labels,
+	       t.owner_ids,
 	       t.created_at, t.updated_at
 	  FROM teams t
 	  JOIN scopes s ON s.id = t.scope_id
@@ -32,7 +33,7 @@ const teamSelect = `
 const projectSelect = `
 	SELECT p.id::text, p.platform_id::text, p.team_id::text, p.scope_id::text,
 	       s.scope_type, s.parent_scope_id::text, s.status, p.name, p.code,
-	       p.description, p.icon, p.labels, p.created_at, p.updated_at,
+	       p.description, p.icon, p.labels, p.importance_level, p.technical_owner_ids, p.operations_owner_ids, p.created_at, p.updated_at,
        (SELECT count(*)::int
           FROM applications a
          WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS application_count,
@@ -41,8 +42,8 @@ const projectSelect = `
          WHERE a.project_id = p.id
            AND a.deleted_at IS NULL
            AND a.status IN ('active', 'healthy', 'normal', 'up')
-           AND EXISTS (SELECT 1 FROM application_instances healthy_instance JOIN resources healthy_resource ON healthy_resource.id = healthy_instance.target_resource_id WHERE healthy_instance.application_id = a.id AND healthy_resource.status = 'active')
-           AND NOT EXISTS (SELECT 1 FROM application_instances unhealthy_instance JOIN resources unhealthy_resource ON unhealthy_resource.id = unhealthy_instance.target_resource_id WHERE unhealthy_instance.application_id = a.id AND (unhealthy_resource.status <> 'active' OR unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up')))) AS healthy_application_count,
+           AND EXISTS (SELECT 1 FROM application_instances healthy_instance WHERE healthy_instance.application_id = a.id AND healthy_instance.status IN ('active', 'healthy', 'normal', 'up'))
+           AND NOT EXISTS (SELECT 1 FROM application_instances unhealthy_instance WHERE unhealthy_instance.application_id = a.id AND unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up'))) AS healthy_application_count,
        (SELECT count(DISTINCT r.id)::int
           FROM resources r
          WHERE r.deleted_at IS NULL
@@ -117,7 +118,6 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 		return Team{}, fmt.Errorf("begin create team: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
 	query, args := scopedQuery(platformSelect+" AND p.code = 'default'", "p", ctx)
 	platform, err := scanPlatform(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
@@ -125,6 +125,9 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	if platform.Scope.Status != StatusActive {
 		return Team{}, ErrParentInactive
+	}
+	if err := validateActiveUsers(ctx, tx, input.OwnerIDs); err != nil {
+		return Team{}, err
 	}
 
 	var scopeID string
@@ -143,9 +146,9 @@ func (s *store) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, er
 	}
 	var teamID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO teams (scope_id, platform_id, name, description, icon, labels)
-		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
-		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Description, input.Icon, labels).Scan(&teamID); err != nil {
+		INSERT INTO teams (scope_id, platform_id, name, description, icon, labels, owner_ids)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid[])
+		RETURNING id::text`, scopeID, platform.ID, input.Name, input.Description, input.Icon, labels, input.OwnerIDs).Scan(&teamID); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -226,6 +229,12 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 		current.Status = *input.Status
 		current.Scope.Status = *input.Status
 	}
+	if input.OwnerIDs != nil {
+		current.OwnerIDs = *input.OwnerIDs
+	}
+	if err := validateActiveUsers(ctx, tx, current.OwnerIDs); err != nil {
+		return Team{}, err
+	}
 
 	labels, err := json.Marshal(current.Labels)
 	if err != nil {
@@ -240,8 +249,8 @@ func (s *store) UpdateTeam(ctx context.Context, teamID string, input UpdateTeamI
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE teams
-		   SET name = $2, description = $3, icon = $4, labels = $5, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, current.Description, current.Icon, labels); err != nil {
+		   SET name = $2, description = $3, icon = $4, labels = $5, owner_ids = $6::uuid[], updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, teamID, current.Name, current.Description, current.Icon, labels, current.OwnerIDs); err != nil {
 		return Team{}, mapStoreError(err)
 	}
 
@@ -261,7 +270,6 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 		return Project{}, fmt.Errorf("begin create project: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
 	query, args := scopedQuery(teamSelect+" AND t.id = $1::uuid", "t", ctx, input.TeamID)
 	team, err := scanTeam(tx.QueryRow(ctx, query+" FOR UPDATE", args...))
 	if err != nil {
@@ -269,6 +277,14 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	}
 	if team.Scope.Status != StatusActive {
 		return Project{}, ErrParentInactive
+	}
+	if err := validateActiveUsers(ctx, tx, input.TechnicalOwnerIDs, input.OperationsOwnerIDs); err != nil {
+		return Project{}, err
+	}
+	for _, app := range input.Applications {
+		if err := validateActiveUsers(ctx, tx, app.TechnicalOwnerIDs, app.OperationsOwnerIDs); err != nil {
+			return Project{}, err
+		}
 	}
 
 	var scopeID string
@@ -287,9 +303,9 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 	}
 	var projectID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO projects (scope_id, platform_id, team_id, name, code, description, icon, labels)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
-		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Description, input.Icon, labels).Scan(&projectID); err != nil {
+		INSERT INTO projects (scope_id, platform_id, team_id, name, code, description, icon, labels, importance_level, technical_owner_ids, operations_owner_ids)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::uuid[], $11::uuid[])
+		RETURNING id::text`, scopeID, team.PlatformID, team.ID, input.Name, input.Code, input.Description, input.Icon, labels, input.ImportanceLevel, input.TechnicalOwnerIDs, input.OperationsOwnerIDs).Scan(&projectID); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 	for _, app := range input.Applications {
@@ -298,8 +314,8 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 			return Project{}, fmt.Errorf("encode application labels: %w", err)
 		}
 		var appID string
-		if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels)
-			VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`, projectID, app.Name, app.Code, app.Description, app.Icon, app.RuntimeKind, app.ExternalUID, appLabels).Scan(&appID); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels,critical,technical_owner_ids,operations_owner_ids)
+			VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11::uuid[]) RETURNING id::text`, projectID, app.Name, app.Code, app.Description, app.Icon, app.RuntimeKind, app.ExternalUID, appLabels, app.Critical, app.TechnicalOwnerIDs, app.OperationsOwnerIDs).Scan(&appID); err != nil {
 			return Project{}, mapStoreError(err)
 		}
 		for _, instance := range app.Instances {
@@ -395,6 +411,18 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 		current.Status = *input.Status
 		current.Scope.Status = *input.Status
 	}
+	if input.ImportanceLevel != nil {
+		current.ImportanceLevel = *input.ImportanceLevel
+	}
+	if input.TechnicalOwnerIDs != nil {
+		current.TechnicalOwnerIDs = *input.TechnicalOwnerIDs
+	}
+	if input.OperationsOwnerIDs != nil {
+		current.OperationsOwnerIDs = *input.OperationsOwnerIDs
+	}
+	if err := validateActiveUsers(ctx, tx, current.TechnicalOwnerIDs, current.OperationsOwnerIDs); err != nil {
+		return Project{}, err
+	}
 
 	labels, err := json.Marshal(current.Labels)
 	if err != nil {
@@ -409,8 +437,8 @@ func (s *store) UpdateProject(ctx context.Context, projectID string, input Updat
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE projects
-		   SET name = $2, description = $3, icon = $4, labels = $5, updated_at = now()
-		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, current.Description, current.Icon, labels); err != nil {
+		   SET name = $2, description = $3, icon = $4, labels = $5, importance_level = $6, technical_owner_ids = $7::uuid[], operations_owner_ids = $8::uuid[], updated_at = now()
+		 WHERE id = $1::uuid AND deleted_at IS NULL`, projectID, current.Name, current.Description, current.Icon, labels, current.ImportanceLevel, current.TechnicalOwnerIDs, current.OperationsOwnerIDs); err != nil {
 		return Project{}, mapStoreError(err)
 	}
 
@@ -608,6 +636,31 @@ type scanner interface {
 	Scan(...any) error
 }
 
+func validateActiveUsers(ctx context.Context, tx pgx.Tx, ownerLists ...[]string) error {
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, owners := range ownerLists {
+		for _, id := range owners {
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE id = ANY($1::uuid[]) AND status = 'active' AND deleted_at IS NULL`, ids).Scan(&count); err != nil {
+		return fmt.Errorf("validate responsible users: %w", err)
+	}
+	if count != len(ids) {
+		return invalid("responsible users must be active users")
+	}
+	return nil
+}
+
 func scanPlatform(row scanner) (Platform, error) {
 	var platform Platform
 	var parentID pgtype.Text
@@ -645,6 +698,7 @@ func scanTeam(row scanner) (Team, error) {
 		&team.Description,
 		&team.Icon,
 		&labels,
+		&team.OwnerIDs,
 		&team.CreatedAt,
 		&team.UpdatedAt,
 	); err != nil {
@@ -675,6 +729,9 @@ func scanProject(row scanner) (Project, error) {
 		&project.Description,
 		&project.Icon,
 		&labels,
+		&project.ImportanceLevel,
+		&project.TechnicalOwnerIDs,
+		&project.OperationsOwnerIDs,
 		&project.CreatedAt,
 		&project.UpdatedAt,
 		&project.Summary.Applications,

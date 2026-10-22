@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 
-	"github.com/docker/docker/api/types/filters"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	docker "opskeeper/backend/tool/docker"
 )
@@ -84,41 +83,3 @@ func RegisterTools(s *mcp.Server) {
 		return nil, output, err
 	})
 }
-
-// Compatibility wrappers keep the server package tests and external callers
-// source-compatible while the implementation lives in tool/docker.
-func dockerInfo(ctx context.Context, _ *mcp.CallToolRequest, input DockerInfoInput) (*mcp.CallToolResult, DockerInfoOutput, error) {
-	output, err := docker.Info(ctx, input)
-	return nil, output, err
-}
-func listImages(ctx context.Context, _ *mcp.CallToolRequest, input ListImagesInput) (*mcp.CallToolResult, ImagesOutput, error) {
-	output, err := docker.Images(ctx, input)
-	return nil, output, err
-}
-func listContainers(ctx context.Context, _ *mcp.CallToolRequest, input ListContainersInput) (*mcp.CallToolResult, ContainersOutput, error) {
-	output, err := docker.Containers(ctx, input)
-	return nil, output, err
-}
-func containerLogs(ctx context.Context, _ *mcp.CallToolRequest, input ContainerLogsInput) (*mcp.CallToolResult, LogsOutput, error) {
-	output, err := docker.ContainerLogs(ctx, input)
-	return nil, output, err
-}
-func containerInspect(ctx context.Context, _ *mcp.CallToolRequest, input ContainerInspectInput) (*mcp.CallToolResult, ContainerInspectDTO, error) {
-	output, err := docker.ContainerInspect(ctx, input)
-	return nil, output, err
-}
-func containerStats(ctx context.Context, _ *mcp.CallToolRequest, input ContainerStatsInput) (*mcp.CallToolResult, ContainerStatsDTO, error) {
-	output, err := docker.ContainerStats(ctx, input)
-	return nil, output, err
-}
-
-func toFilters(raw string) (filters.Args, error) { return docker.ParseFilters(raw) }
-func resolveContainerIdentifier(id, name string) (string, error) {
-	return docker.ResolveContainerIdentifier(id, name)
-}
-func filterLogLines(logs, keyword string) string       { return docker.FilterLogLines(logs, keyword) }
-func parseKeywordExpression(keyword string) [][]string { return docker.ParseKeywordExpression(keyword) }
-func matchesKeywordExpression(line string, clauses [][]string) bool {
-	return docker.MatchesKeywordExpression(line, clauses)
-}
-func limitLogLines(logs string, maxLines int) string { return docker.LimitLogLines(logs, maxLines) }

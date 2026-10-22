@@ -60,5 +60,5 @@
     </label>
     <label class="resource-basic-level"><FieldLabel text="资源级别" required invalid={basicConfigurationAttempted && !scopeSummary} /><TextInput value={scopeSummary} readonly invalid={basicConfigurationAttempted && !scopeSummary} invalidMode="bubble" invalidMessage="请选择资源范围" ariaLabel="资源级别" /></label>
   </div>
-  <label class="resource-basic-labels"><FieldLabel text="资源标签" /><TextInput bind:value={labels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" /></label>
+  <div class="resource-basic-labels"><FieldLabel text="资源标签" /><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></div>
 </div>

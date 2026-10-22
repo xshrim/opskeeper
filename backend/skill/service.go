@@ -41,6 +41,9 @@ func (s *Service) CreateVersion(ctx context.Context, actorID string, input Creat
 	if input.SkillID == "" || input.Manifest.Name == "" || input.Manifest.Instruction == "" {
 		return Version{}, invalid("skill_id, manifest.name and manifest.instruction are required")
 	}
+	if len(strings.Fields(input.Manifest.Name)) != 1 {
+		return Version{}, invalid("Skill manifest.name must not contain whitespace")
+	}
 	item, err := s.skill(ctx, input.SkillID)
 	if err != nil {
 		return Version{}, err

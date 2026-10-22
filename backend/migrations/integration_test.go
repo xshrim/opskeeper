@@ -140,11 +140,11 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 		SELECT count(*)
 		  FROM information_schema.tables
 		 WHERE table_schema = current_schema()
-		   AND table_name IN ('users', 'credentials', 'sessions')`).Scan(&identityTables); err != nil {
+		   AND table_name IN ('users', 'sessions')`).Scan(&identityTables); err != nil {
 		t.Fatalf("count identity tables: %v", err)
 	}
-	if identityTables != 3 {
-		t.Fatalf("identity tables = %d, want 3", identityTables)
+	if identityTables != 2 {
+		t.Fatalf("identity tables = %d, want 2", identityTables)
 	}
 	var resourceCredentialTables int
 	if err := pool.QueryRow(context.Background(), `
@@ -168,6 +168,36 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 	}
 	if resourceCredentialColumns != 3 {
 		t.Fatalf("resource credential columns = %d, want 3 embedded columns", resourceCredentialColumns)
+	}
+	var userCredentialTables int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.tables
+		 WHERE table_schema = current_schema()
+		   AND table_name = 'credentials'`).Scan(&userCredentialTables); err != nil {
+		t.Fatalf("count user credential tables: %v", err)
+	}
+	if userCredentialTables != 0 {
+		t.Fatalf("user credential tables = %d, want 0", userCredentialTables)
+	}
+	var userCredentialColumns int
+	if err := pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		  FROM information_schema.columns
+		 WHERE table_schema = current_schema()
+		   AND table_name = 'users'
+		   AND column_name IN ('password_hash', 'password_changed_at', 'must_change_password')`).Scan(&userCredentialColumns); err != nil {
+		t.Fatalf("count embedded user credential columns: %v", err)
+	}
+	if userCredentialColumns != 3 {
+		t.Fatalf("embedded user credential columns = %d, want 3", userCredentialColumns)
+	}
+	var resourceStatusColumns int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'resources' AND column_name = 'status'`).Scan(&resourceStatusColumns); err != nil {
+		t.Fatalf("count resource status columns: %v", err)
+	}
+	if resourceStatusColumns != 0 {
+		t.Fatalf("resource status columns = %d, want 0", resourceStatusColumns)
 	}
 	var notificationCredentialColumns int
 	if err := pool.QueryRow(context.Background(), `
@@ -236,108 +266,6 @@ func TestApplyRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
-func TestLatestMigrationRollsBackAndReapplies(t *testing.T) {
-	pool := integrationPool(t)
-	ctx := context.Background()
-	items, err := load()
-	if err != nil {
-		t.Fatalf("load migrations: %v", err)
-	}
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
-	var applied, grantedPermissions int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
-		t.Fatalf("count applied migrations: %v", err)
-	}
-	if applied != len(items) {
-		t.Fatalf("applied migrations = %d, want %d", applied, len(items))
-	}
-	var scopeID, channelID, deliveryID string
-	if err := pool.QueryRow(ctx, `SELECT id::text FROM scopes WHERE scope_type='platform' ORDER BY created_at LIMIT 1`).Scan(&scopeID); err != nil {
-		t.Fatalf("find platform Scope: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url) VALUES($1::uuid,'rollback-dead-letter','webhook','https://example.test') RETURNING id::text`, scopeID).Scan(&channelID); err != nil {
-		t.Fatalf("create notification channel: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO notification_deliveries(scope_id,rule_scope_id,channel_id,idempotency_key,status) VALUES($1::uuid,$1::uuid,$2::uuid,'rollback-dead-letter','dead_letter') RETURNING id::text`, scopeID, channelID).Scan(&deliveryID); err != nil {
-		t.Fatalf("create dead-letter delivery: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("RollbackLast() error = %v", err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
-		t.Fatalf("count migrations after rollback: %v", err)
-	}
-	if applied != len(items)-1 {
-		t.Fatalf("migrations after rollback = %d, want %d", applied, len(items)-1)
-	}
-	var oceanBaseSkill bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM skills skill JOIN skill_versions version ON version.skill_id = skill.id WHERE skill.identifier = 'oceanbase-health-diagnosis' AND version.version = 1 AND version.status = 'published')`).Scan(&oceanBaseSkill); err != nil || !oceanBaseSkill {
-		t.Fatalf("OceanBase Skill after latest migration rollback = %t, %v; want published version retained", oceanBaseSkill, err)
-	}
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("reapply latest migration before testing domain rollback: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback OceanBase tool unification migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback project application model migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification route sharing migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification Scope inheritance migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification rule route history migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification permissions migration: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM role_permissions WHERE permission LIKE 'notification:%'`).Scan(&grantedPermissions); err != nil || grantedPermissions != 0 {
-		t.Fatalf("notification permissions after permission migration down = %d, %v", grantedPermissions, err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification rule cooldown migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification template immutability migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification channel migration: %v", err)
-	}
-	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback notification domain migration: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
-		t.Fatalf("count migrations after domain rollback: %v", err)
-	}
-	if applied != len(items)-10 {
-		t.Fatalf("migrations after domain rollback = %d, want %d", applied, len(items)-10)
-	}
-	var status string
-	if err := pool.QueryRow(ctx, `SELECT status FROM notification_deliveries WHERE id=$1::uuid`, deliveryID).Scan(&status); err != nil || status != "failed" {
-		t.Fatalf("delivery status after rollback = %q, err %v; want failed", status, err)
-	}
-	// 0079 uses an unqualified DROP FUNCTION; shadow the public function again
-	// before replaying the historical migration in this temporary schema.
-	if _, err := pool.Exec(ctx, `CREATE FUNCTION validate_application_runtime() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$`); err != nil {
-		t.Fatalf("restore isolated application runtime function: %v", err)
-	}
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("reapply baseline error = %v", err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&applied); err != nil {
-		t.Fatalf("count migrations after reapply: %v", err)
-	}
-	if applied != len(items) {
-		t.Fatalf("migrations after reapply = %d, want %d", applied, len(items))
-	}
-}
-
 func TestPublishedNotificationTemplateVersionIsImmutable(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
@@ -362,73 +290,18 @@ func TestPublishedNotificationTemplateVersionIsImmutable(t *testing.T) {
 	}
 }
 
-func TestProjectMemberMigrationPreservesProjectAccess(t *testing.T) {
+func TestBaselineContainsProjectViewerRole(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := context.Background()
 	if err := Apply(ctx, pool); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
-	// The initial baseline now includes migration 6's final state. Restore the
-	// pre-migration role explicitly so this test can replay its data migration.
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO roles (name, scope_type, builtin)
-		VALUES ('ProjectMember', 'project', true)
-		ON CONFLICT (name) DO NOTHING`); err != nil {
-		t.Fatalf("restore pre-migration ProjectMember role: %v", err)
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM roles WHERE name = 'ProjectViewer' AND scope_type = 'project'`).Scan(&count); err != nil {
+		t.Fatalf("count ProjectViewer roles: %v", err)
 	}
-	if _, err := pool.Exec(ctx, "DELETE FROM schema_migrations WHERE version = 6"); err != nil {
-		t.Fatalf("make project viewer migration pending: %v", err)
-	}
-
-	var platformID, platformScopeID string
-	if err := pool.QueryRow(ctx, `SELECT id::text, scope_id::text FROM platforms WHERE code = 'default'`).Scan(&platformID, &platformScopeID); err != nil {
-		t.Fatalf("find default platform: %v", err)
-	}
-	var teamScopeID, teamID, projectScopeID string
-	if err := pool.QueryRow(ctx, `INSERT INTO scopes (scope_type, parent_scope_id) VALUES ('team', $1::uuid) RETURNING id::text`, platformScopeID).Scan(&teamScopeID); err != nil {
-		t.Fatalf("create team scope: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO teams (platform_id, scope_id, name) VALUES ($1::uuid, $2::uuid, 'Migration Team') RETURNING id::text`, platformID, teamScopeID).Scan(&teamID); err != nil {
-		t.Fatalf("create team: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO scopes (scope_type, parent_scope_id) VALUES ('project', $1::uuid) RETURNING id::text`, teamScopeID).Scan(&projectScopeID); err != nil {
-		t.Fatalf("create project scope: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO projects (platform_id, team_id, scope_id, name, code) VALUES ($1::uuid, $2::uuid, $3::uuid, 'Migration Project', 'migration-project')`, platformID, teamID, projectScopeID); err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	var userID string
-	if err := pool.QueryRow(ctx, `INSERT INTO users (username, email, display_name) VALUES ('migration-member', 'migration-member@example.test', 'Migration Member') RETURNING id::text`).Scan(&userID); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO role_bindings (subject_type, subject_id, role_id, scope_id)
-		SELECT 'user', $1::uuid, id, $2::uuid FROM roles WHERE name = 'ProjectMember'`, userID, projectScopeID); err != nil {
-		t.Fatalf("bind ProjectMember: %v", err)
-	}
-
-	if err := Apply(ctx, pool); err != nil {
-		t.Fatalf("reapply migration: %v", err)
-	}
-	var oldRoleCount, projectViewerBindingCount int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM roles WHERE name = 'ProjectMember'`).Scan(&oldRoleCount); err != nil {
-		t.Fatalf("count ProjectMember roles: %v", err)
-	}
-	if oldRoleCount != 0 {
-		t.Fatalf("ProjectMember roles = %d, want 0", oldRoleCount)
-	}
-	if err := pool.QueryRow(ctx, `
-		SELECT count(*)
-		  FROM role_bindings binding
-		  JOIN roles role ON role.id = binding.role_id
-		 WHERE binding.subject_type = 'user'
-		   AND binding.subject_id = $1::uuid
-		   AND binding.scope_id = $2::uuid
-		   AND role.name = 'ProjectViewer'`, userID, projectScopeID).Scan(&projectViewerBindingCount); err != nil {
-		t.Fatalf("count migrated ProjectViewer bindings: %v", err)
-	}
-	if projectViewerBindingCount != 1 {
-		t.Fatalf("migrated ProjectViewer bindings = %d, want 1", projectViewerBindingCount)
+	if count != 1 {
+		t.Fatalf("ProjectViewer roles = %d, want 1", count)
 	}
 }
 
@@ -449,13 +322,6 @@ func integrationPool(t *testing.T) *pgxpool.Pool {
 		adminPool.Close()
 		t.Fatalf("create integration schema: %v", err)
 	}
-	// Keep unqualified DROP FUNCTION statements inside the temporary schema.
-	if _, err := adminPool.Exec(ctx, fmt.Sprintf(`CREATE FUNCTION %s.validate_application_runtime() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$`, schema)); err != nil {
-		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
-		adminPool.Close()
-		t.Fatalf("create isolated application runtime function: %v", err)
-	}
-
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		adminPool.Close()

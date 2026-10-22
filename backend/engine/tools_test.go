@@ -113,7 +113,7 @@ func TestAuthorizeResourceUseUsesResourceAndScopeFilters(t *testing.T) {
 
 func TestNewContextToolingUsesResourceUsePolicy(t *testing.T) {
 	tooling := NewContextTooling(fakeContextResourceReader{resources: map[string]ContextResource{
-		"resource-1": {ID: "resource-1", ScopeID: "scope-1", Kind: "PostgreSQL", Status: "active"},
+		"resource-1": {ID: "resource-1", ScopeID: "scope-1", Kind: "PostgreSQL"},
 	}})
 	if tooling.Registry == nil || tooling.Gateway == nil || tooling.Resolver.Registry != tooling.Registry {
 		t.Fatal("context tooling was not composed with shared registry")
@@ -219,7 +219,8 @@ func (f fakeContextResourceReader) Get(_ context.Context, id string) (ContextRes
 
 type fakeContextProvider struct{}
 
-func (fakeContextProvider) Kinds() []string { return []string{"PostgreSQL"} }
+func (fakeContextProvider) Kinds() []string       { return []string{"PostgreSQL"} }
+func (fakeContextProvider) AccessModes() []string { return []string{"direct"} }
 func (fakeContextProvider) Resolve(_ context.Context, resource ContextResource) ([]Tool, []ContextFact, error) {
 	return []Tool{ToolFunc{Def: ToolDefinition{Name: "postgres.inspect", Source: "connector", ResourceID: resource.ID}}}, []ContextFact{{ResourceID: resource.ID, Kind: resource.Kind, Untrusted: true}}, nil
 }
@@ -227,7 +228,7 @@ func (fakeContextProvider) Resolve(_ context.Context, resource ContextResource) 
 func TestResourceContextResolverDeduplicatesAndAuthorizesResources(t *testing.T) {
 	registry := NewToolRegistry()
 	resolver := ResourceContextResolver{
-		Resources: fakeContextResourceReader{resources: map[string]ContextResource{"resource-1": {ID: "resource-1", ScopeID: "scope-1", Kind: "PostgreSQL", Status: "active"}}},
+		Resources: fakeContextResourceReader{resources: map[string]ContextResource{"resource-1": {ID: "resource-1", ScopeID: "scope-1", Kind: "PostgreSQL"}}},
 		Providers: []ContextProvider{fakeContextProvider{}},
 		Registry:  registry,
 		Authorize: func(_ context.Context, resource ContextResource) error {
@@ -249,13 +250,6 @@ func TestResourceContextResolverDeduplicatesAndAuthorizesResources(t *testing.T)
 	}
 }
 
-func TestResourceContextResolverRejectsInactiveResource(t *testing.T) {
-	resolver := ResourceContextResolver{Resources: fakeContextResourceReader{resources: map[string]ContextResource{"resource-1": {ID: "resource-1", Kind: "PostgreSQL", Status: "disabled"}}}}
-	if _, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"resource-1"}}); err == nil {
-		t.Fatal("inactive resource was accepted")
-	}
-}
-
 type accessModeContextProvider struct {
 	kinds []string
 	modes []string
@@ -270,8 +264,8 @@ func (p accessModeContextProvider) Resolve(_ context.Context, resource ContextRe
 func TestResourceContextResolverSelectsProviderByAccessMode(t *testing.T) {
 	serverID := "mcp-server-1"
 	resources := fakeContextResourceReader{resources: map[string]ContextResource{
-		"direct-1": {ID: "direct-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "direct", Status: "active"},
-		"agent-1":  {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID, Status: "active"},
+		"direct-1": {ID: "direct-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "direct"},
+		"agent-1":  {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID},
 	}}
 	direct := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"direct"}}
 	agent := accessModeContextProvider{kinds: []string{"Docker"}, modes: []string{"agent"}}
@@ -289,7 +283,7 @@ func TestResourceContextResolverDoesNotFallbackAgentToUnconstrainedProvider(t *t
 	serverID := "mcp-server-1"
 	resolver := ResourceContextResolver{
 		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
-			"agent-1": {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID, Status: "active"},
+			"agent-1": {ID: "agent-1", ScopeID: "scope-1", Kind: "Docker", Subtype: "agent", AgentRef: &serverID},
 		}},
 		Providers: []ContextProvider{fakeContextProvider{}},
 	}

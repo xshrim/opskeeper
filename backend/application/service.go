@@ -11,6 +11,7 @@ import (
 var ErrNotFound = errors.New("application not found")
 var ErrInvalid = errors.New("invalid application")
 var codePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$`)
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 const (
 	RuntimeHost       = "virtual_machine"
@@ -62,6 +63,26 @@ func validRuntimeKind(value string) bool {
 	return value == RuntimeHost || value == RuntimeDocker || value == RuntimeKubernetes
 }
 
+func normalizeOwnerIDs(ids []string) ([]string, error) {
+	if len(ids) > 20 {
+		return nil, ErrInvalid
+	}
+	seen := make(map[string]struct{}, len(ids))
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if !uuidPattern.MatchString(id) {
+			return nil, ErrInvalid
+		}
+		if _, exists := seen[id]; exists {
+			return nil, ErrInvalid
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result, nil
+}
+
 func validSelector(kind string, selector map[string]any) bool {
 	if selector == nil {
 		return false
@@ -101,6 +122,13 @@ func PrepareCreateInput(in CreateInput) (CreateInput, error) {
 	in.ExternalUID = strings.TrimSpace(in.ExternalUID)
 	in.RuntimeKind = strings.TrimSpace(in.RuntimeKind)
 	in.Icon = strings.TrimSpace(in.Icon)
+	var err error
+	if in.TechnicalOwnerIDs, err = normalizeOwnerIDs(in.TechnicalOwnerIDs); err != nil {
+		return CreateInput{}, err
+	}
+	if in.OperationsOwnerIDs, err = normalizeOwnerIDs(in.OperationsOwnerIDs); err != nil {
+		return CreateInput{}, err
+	}
 	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
 		in.Icon = "lucide:AppWindow"
 	}
@@ -129,7 +157,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
 		return Application{}, ErrInvalid
 	}
-	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.Labels == nil {
+	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil {
 		return Application{}, ErrInvalid
 	}
 	if in.Name != nil {
@@ -145,6 +173,20 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 			value = "lucide:AppWindow"
 		}
 		in.Icon = &value
+	}
+	if in.TechnicalOwnerIDs != nil {
+		owners, err := normalizeOwnerIDs(*in.TechnicalOwnerIDs)
+		if err != nil {
+			return Application{}, err
+		}
+		in.TechnicalOwnerIDs = &owners
+	}
+	if in.OperationsOwnerIDs != nil {
+		owners, err := normalizeOwnerIDs(*in.OperationsOwnerIDs)
+		if err != nil {
+			return Application{}, err
+		}
+		in.OperationsOwnerIDs = &owners
 	}
 	return s.store.Update(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id), in)
 }

@@ -20,8 +20,9 @@
 ```text
 scopes(id, tenant_id, scope_type, parent_scope_id, status)
 platforms(id, scope_id, name, code, icon)
-teams(id, scope_id, platform_id, name, description, icon, labels)
-projects(id, scope_id, platform_id, team_id, name, code, icon, labels, source)
+teams(id, scope_id, platform_id, name, description, icon, labels, owner_ids)
+projects(id, scope_id, platform_id, team_id, name, code, description, icon, labels, importance_level, technical_owner_ids, operations_owner_ids)
+applications(id, project_id, name, code, description, icon, runtime_kind, critical, technical_owner_ids, operations_owner_ids)
 ```
 
 `Scope` 是统一的权限和资源归属节点，平台、团队、项目是它的三种业务表现。资源、角色绑定、巡检策略、诊断会话和审计记录统一引用 `scope_id`，不再分别保存多态组织外键。
@@ -38,6 +39,8 @@ platform scope
 - 团队必须属于当前平台。
 - 项目必须属于一个团队，并冗余 `platform_id` 方便过滤和完整性校验。
 - 项目编码在团队内唯一。
+- 团队负责人、项目技术负责人和项目运维负责人均保存为有序的活动用户 ID 列表；第一个为主岗，后续为副岗或备岗。
+- 项目重要级别固定为 `ITP1` 至 `ITP4`，数字越小表示重要性越高；Application 的 `critical` 标记用于标识关键应用。
 - `scopes.status` 是组织启用状态的唯一持久化事实来源；组织 API 返回的 `status` 从对应 Scope 派生，不在组织表重复保存。
 - 停用父 Scope 后，其后代在授权和新建业务中视为无效，即使后代自身仍为 `active`；T04 实现完整的祖先状态判定。
 - 组织删除采用停用和软删除，不允许遗留无归属资源。
@@ -100,7 +103,7 @@ Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deploy
 | Prometheus | URL | Username、Password、Token |
 | Loki | URL、Tenant ID | Username、Password、Token |
 
-登录用户的 `credentials` 表与资源连接密文严格分开。前端使用类型化表单收集字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段加密后写入同一资源行；用户不需要手写配置 JSON。
+登录用户密码哈希直接保存在 `users.password_hash`；资源连接密文直接保存在所属 `resources` 行，两者都不使用独立凭据表。前端使用类型化表单收集资源字段，提交时由 API 将非敏感字段写入 `config`，将敏感字段加密后写入同一资源行；用户不需要手写配置 JSON。
 
 Connector 不是新的资源类型。它根据资源 `kind + schema_version` 解析适配器，读取资源配置和资源自身的连接密文，并声明该资源支持的查询能力。连接测试结果独立保存在 `resource_connection_checks`，资源本身仍是配置和授权的权威对象。
 

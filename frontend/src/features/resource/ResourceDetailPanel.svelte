@@ -71,7 +71,6 @@
       <button class="danger-button" on:click={onDelete} disabled={busy || resourceActionBusy || !selectedResourceCanDelete} data-tooltip={selectedResourceCanDelete ? '删除资源' : '继承资源仅可查看'}>删除</button>
     </div>
     <div class="detail-meta">
-      <span>状态 <strong>{selectedResource.status}</strong></span>
       <span>Schema v{selectedResource.schema_version}</span>
       <span>更新于 {formatDate(selectedResource.updated_at)}</span>
     </div>

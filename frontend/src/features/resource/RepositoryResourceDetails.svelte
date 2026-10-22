@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Resource } from '../../lib/api';
   import { appURL } from '../../lib/health';
+  import FilePicker from '../../components/FilePicker.svelte';
   export let resource: Resource;
   let file: File | null = null;
   let busy = false;
@@ -23,7 +24,7 @@
 <section class="resource-detail stack-form">
   <p><strong>接入方式：</strong>{resource.subtype ?? 'Git'}</p>
   {#if String(resource.subtype).toLowerCase() === 'bundle'}
-    <label>上传 Git Bundle<input type="file" accept=".bundle,application/octet-stream" on:change={(event) => (file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null)} /></label>
+    <FilePicker label="上传 Git Bundle" buttonLabel={file?.name || '选择 Git Bundle'} accept=".bundle,application/octet-stream" ariaLabel="选择 Git Bundle" onFileChange={(event) => (file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null)} />
     <button class="primary" type="button" disabled={!file || busy} on:click={() => void upload()}>{busy ? '上传中…' : '上传并更新分支'}</button>
     {#if message}<small>{message}</small>{/if}
     {#if branches.length}<small>当前分支：{branches.join('、')}</small>{/if}

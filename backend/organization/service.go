@@ -32,6 +32,10 @@ func (s *Service) CreateTeam(ctx context.Context, input CreateTeamInput) (Team, 
 		return Team{}, err
 	}
 	input.Labels = cloneLabels(input.Labels)
+	var err error
+	if input.OwnerIDs, err = normalizeOwnerIDs(input.OwnerIDs, "owner_ids"); err != nil {
+		return Team{}, err
+	}
 	return s.store.CreateTeam(ctx, input)
 }
 
@@ -54,7 +58,7 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 	if err := validateID(teamID, "team_id"); err != nil {
 		return Team{}, err
 	}
-	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil && input.OwnerIDs == nil {
 		return Team{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -88,6 +92,13 @@ func (s *Service) UpdateTeam(ctx context.Context, teamID string, input UpdateTea
 			return Team{}, err
 		}
 		input.Status = &status
+	}
+	if input.OwnerIDs != nil {
+		owners, err := normalizeOwnerIDs(*input.OwnerIDs, "owner_ids")
+		if err != nil {
+			return Team{}, err
+		}
+		input.OwnerIDs = &owners
 	}
 	return s.store.UpdateTeam(ctx, teamID, input)
 }
@@ -124,6 +135,20 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 		return Project{}, err
 	}
 	input.Labels = cloneLabels(input.Labels)
+	input.ImportanceLevel = strings.TrimSpace(input.ImportanceLevel)
+	if input.ImportanceLevel == "" {
+		return Project{}, invalid("importance_level is required")
+	}
+	if err := validateImportanceLevel(input.ImportanceLevel); err != nil {
+		return Project{}, err
+	}
+	var err error
+	if input.TechnicalOwnerIDs, err = normalizeOwnerIDs(input.TechnicalOwnerIDs, "technical_owner_ids"); err != nil {
+		return Project{}, err
+	}
+	if input.OperationsOwnerIDs, err = normalizeOwnerIDs(input.OperationsOwnerIDs, "operations_owner_ids"); err != nil {
+		return Project{}, err
+	}
 	for index, app := range input.Applications {
 		prepared, err := application.PrepareCreateInput(app)
 		if err != nil {
@@ -159,7 +184,7 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 	if err := validateID(projectID, "project_id"); err != nil {
 		return Project{}, err
 	}
-	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil {
+	if input.Name == nil && input.Description == nil && input.Icon == nil && input.Labels == nil && input.Status == nil && input.ImportanceLevel == nil && input.TechnicalOwnerIDs == nil && input.OperationsOwnerIDs == nil {
 		return Project{}, invalid("at least one field must be provided")
 	}
 	if input.Name != nil {
@@ -193,6 +218,27 @@ func (s *Service) UpdateProject(ctx context.Context, projectID string, input Upd
 			return Project{}, err
 		}
 		input.Status = &status
+	}
+	if input.ImportanceLevel != nil {
+		value := strings.TrimSpace(*input.ImportanceLevel)
+		if err := validateImportanceLevel(value); err != nil {
+			return Project{}, err
+		}
+		input.ImportanceLevel = &value
+	}
+	if input.TechnicalOwnerIDs != nil {
+		owners, err := normalizeOwnerIDs(*input.TechnicalOwnerIDs, "technical_owner_ids")
+		if err != nil {
+			return Project{}, err
+		}
+		input.TechnicalOwnerIDs = &owners
+	}
+	if input.OperationsOwnerIDs != nil {
+		owners, err := normalizeOwnerIDs(*input.OperationsOwnerIDs, "operations_owner_ids")
+		if err != nil {
+			return Project{}, err
+		}
+		input.OperationsOwnerIDs = &owners
 	}
 	return s.store.UpdateProject(ctx, projectID, input)
 }

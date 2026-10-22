@@ -680,7 +680,7 @@
           >
         </FormActions>
 
-        {#if editing}<ModalDialog title="创建 Skill 版本" description={`为“${selectedSkill.name}”创建并配置新的版本草稿。`} confirmLabel="创建版本" confirmForm="skill-version-form" {busy} confirmDisabled={!selectedSkillId} onCancel={cancelEdit}>
+        {#if editing}<ModalDialog title="新增 Skill 版本" description={`为“${selectedSkill.name}”创建并配置新的版本草稿。`} confirmLabel="创建" confirmForm="skill-version-form" {busy} confirmDisabled={!selectedSkillId} onCancel={cancelEdit}>
             <form
               id="skill-version-form"
               class="skill-editor-form"

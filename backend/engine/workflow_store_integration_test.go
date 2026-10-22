@@ -29,7 +29,7 @@ func TestPostgresWorkflowRunStorePersistsTransitionsAndSnapshots(t *testing.T) {
 	}
 	_ = pool.QueryRow(ctx, `SELECT id::text FROM users WHERE status='active' AND deleted_at IS NULL ORDER BY created_at LIMIT 1`).Scan(&userID)
 	config := `{"version":1,"enabled":true,"nodes":[{"id":"retrieve","type":"retrieval","name":"retrieve"}],"edges":[]}`
-	if err := pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,schema_version,name,config,status) VALUES($1::uuid,'Workflow',1,$2,$3::jsonb,'active') RETURNING id::text`, scopeID, "integration-workflow-"+time.Now().Format("150405.000000"), config).Scan(&workflowID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO resources(scope_id,kind,schema_version,name,config) VALUES($1::uuid,'Workflow',1,$2,$3::jsonb) RETURNING id::text`, scopeID, "integration-workflow-"+time.Now().Format("150405.000000"), config).Scan(&workflowID); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM resources WHERE id=$1::uuid`, workflowID) })

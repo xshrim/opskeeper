@@ -134,6 +134,9 @@ func (r PersonaResolver) Resolve(ctx context.Context, scopeID, personaID string)
 	if !allowsScope(ctx, item.ScopeID) {
 		return engine.Persona{}, authorization.ErrForbidden
 	}
+	if len(strings.Fields(item.Name)) != 1 {
+		return engine.Persona{}, invalid("Persona name must not contain whitespace")
+	}
 	configSource = item.Config
 	if item.Status != "active" {
 		return engine.Persona{}, invalid("Persona is not active")
@@ -237,6 +240,9 @@ func validatePersonaConfig(config personaConfig) error {
 func validatePersona(profile engine.Persona, scopeID string) error {
 	if strings.TrimSpace(profile.PersonaID) == "" || strings.TrimSpace(profile.Name) == "" {
 		return invalid("Persona persona_id and name are required")
+	}
+	if len(strings.Fields(profile.Name)) != 1 {
+		return invalid("Persona name must not contain whitespace")
 	}
 	if scopeID != "" && profile.ScopeID != "" && profile.ScopeID != scopeID {
 		return authorization.ErrForbidden

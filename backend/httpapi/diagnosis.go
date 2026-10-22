@@ -29,6 +29,10 @@ type diagnosisEventNotifier interface {
 	SubscribeEvents(context.Context, string) (<-chan struct{}, func())
 }
 
+type diagnosisMessageAsker interface {
+	AskMessage(context.Context, string, diagnosis.AppendMessageInput) (diagnosis.Message, error)
+}
+
 type diagnosisCanceller interface {
 	Cancel(context.Context, string) error
 }
@@ -43,20 +47,28 @@ type diagnosisHandler struct {
 }
 
 type startDiagnosisRequest struct {
-	ScopeID           string   `json:"scope_id"`
-	ApplicationID     string   `json:"application_id,omitempty"`
-	Title             string   `json:"title"`
-	Question          string   `json:"question"`
-	TargetResourceIDs []string `json:"target_resource_ids"`
-	ProviderID        string   `json:"provider_id,omitempty"`
-	ModelName         string   `json:"model_name,omitempty"`
+	ScopeID           string                 `json:"scope_id"`
+	ApplicationID     string                 `json:"application_id,omitempty"`
+	Title             string                 `json:"title"`
+	Question          string                 `json:"question"`
+	TargetResourceIDs []string               `json:"target_resource_ids"`
+	ProviderID        string                 `json:"provider_id,omitempty"`
+	ModelName         string                 `json:"model_name,omitempty"`
+	SkillID           string                 `json:"skill_id,omitempty"`
+	PersonaID         string                 `json:"persona_id,omitempty"`
+	Links             []string               `json:"links,omitempty"`
+	Attachments       []diagnosis.Attachment `json:"attachments,omitempty"`
 }
 
 type addDiagnosisTargetRequest struct {
 	ResourceID string `json:"resource_id"`
 }
 type askDiagnosisRequest struct {
-	Content string `json:"content"`
+	Content     string                 `json:"content"`
+	SkillID     string                 `json:"skill_id,omitempty"`
+	PersonaID   string                 `json:"persona_id,omitempty"`
+	Links       []string               `json:"links,omitempty"`
+	Attachments []diagnosis.Attachment `json:"attachments,omitempty"`
 }
 
 func registerDiagnosisRoutes(router chi.Router, service diagnosisService, auditor audit.Logger, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -113,7 +125,7 @@ func (h diagnosisHandler) start(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName})
+	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments})
 	if err != nil {
 		writeDiagnosisError(w, r, err)
 		return
@@ -165,7 +177,14 @@ func (h diagnosisHandler) ask(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.Ask(r.Context(), chi.URLParam(r, "sessionID"), body.Content)
+	input := diagnosis.AppendMessageInput{Content: body.Content, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments}
+	var item diagnosis.Message
+	var err error
+	if asker, ok := h.service.(diagnosisMessageAsker); ok {
+		item, err = asker.AskMessage(r.Context(), chi.URLParam(r, "sessionID"), input)
+	} else {
+		item, err = h.service.Ask(r.Context(), chi.URLParam(r, "sessionID"), body.Content)
+	}
 	if err != nil {
 		writeDiagnosisError(w, r, err)
 		return

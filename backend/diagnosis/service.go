@@ -42,6 +42,15 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
 	input.ProviderID = strings.TrimSpace(input.ProviderID)
 	input.ModelName = strings.TrimSpace(input.ModelName)
+	input.SkillID = strings.TrimSpace(input.SkillID)
+	input.PersonaID = strings.TrimSpace(input.PersonaID)
+	input.Links = distinctStrings(input.Links)
+	if len(input.Attachments) > 10 || len(input.Links) > 10 {
+		return Session{}, invalid("a message may include at most 10 links or attachments")
+	}
+	if err := validateMessageExtras(input.Attachments, input.Links); err != nil {
+		return Session{}, err
+	}
 	if input.ScopeID == "" || input.ActorUserID == "" || input.Question == "" {
 		return Session{}, invalid("scope_id, actor_user_id and question are required")
 	}
@@ -79,7 +88,7 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 				}
 				return Session{}, getErr
 			}
-			if item.Status == resource.StatusDisabled || item.ScopeID != input.ScopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
+			if item.ScopeID != input.ScopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
 				continue
 			}
 			visibleAssociated = append(visibleAssociated, resourceID)
@@ -206,6 +215,10 @@ func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (
 }
 
 func (s *Service) Ask(ctx context.Context, sessionID, content string) (Message, error) {
+	return s.AskMessage(ctx, sessionID, AppendMessageInput{Content: content})
+}
+
+func (s *Service) AskMessage(ctx context.Context, sessionID string, input AppendMessageInput) (Message, error) {
 	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
 		return Message{}, err
@@ -218,16 +231,62 @@ func (s *Service) Ask(ctx context.Context, sessionID, content string) (Message, 
 			return Message{}, err
 		}
 	}
-	content = strings.TrimSpace(content)
-	if content == "" || len([]rune(content)) > 16000 {
+	input.Content = strings.TrimSpace(input.Content)
+	input.SkillID = strings.TrimSpace(input.SkillID)
+	input.PersonaID = strings.TrimSpace(input.PersonaID)
+	input.Links = distinctStrings(input.Links)
+	if len(input.Attachments) > 10 || len(input.Links) > 10 {
+		return Message{}, invalid("a message may include at most 10 links or attachments")
+	}
+	if err := validateMessageExtras(input.Attachments, input.Links); err != nil {
+		return Message{}, err
+	}
+	if input.Content == "" || len([]rune(input.Content)) > 16000 {
 		return Message{}, invalid("message must contain 1 to 16000 characters")
 	}
-	item, err := s.store.AppendMessage(ctx, session.ID, AppendMessageInput{Role: "user", Content: content})
+	input.Role = "user"
+	item, err := s.store.AppendMessage(ctx, session.ID, input)
 	if err != nil {
 		return Message{}, err
 	}
 	s.appendEvent(ctx, session.ID, CreateEventInput{Type: "message.created", Payload: map[string]any{"message_id": item.ID, "role": item.Role}})
 	return item, nil
+}
+
+func validateMessageExtras(attachments []Attachment, links []string) error {
+	totalBytes := 0
+	for _, attachment := range attachments {
+		if strings.TrimSpace(attachment.Name) == "" || strings.TrimSpace(attachment.Content) == "" {
+			return invalid("attachment name and text content are required")
+		}
+		totalBytes += len(attachment.Content)
+	}
+	if totalBytes > 128*1024 {
+		return invalid("text attachments may not exceed 128 KiB per message")
+	}
+	for _, link := range links {
+		if !strings.HasPrefix(link, "https://") && !strings.HasPrefix(link, "http://") {
+			return invalid("links must use http or https")
+		}
+	}
+	return nil
+}
+
+func distinctStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 // appendEvent is shared by the user-facing Service mutations and the
@@ -321,9 +380,6 @@ func (s *Service) validateTarget(ctx context.Context, scopeID, resourceID string
 	item, err := s.resources.Get(ctx, resourceID)
 	if err != nil {
 		return err
-	}
-	if item.Status == resource.StatusDisabled {
-		return invalid("target resource is disabled")
 	}
 	if item.ScopeID != scopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
 		return authorization.ErrForbidden

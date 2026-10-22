@@ -23,9 +23,9 @@ func (r dockerResourceReader) RevealSecret(context.Context, string) ([]byte, err
 }
 
 func TestDockerDirectProviderRegistersStableToolSet(t *testing.T) {
-	item := resource.Resource{ID: "docker-1", Kind: "Docker", Status: resource.StatusActive, SchemaVersion: 1, Config: map[string]any{"host": "tcp://configured:2375"}}
+	item := resource.Resource{ID: "docker-1", Kind: "Docker", SchemaVersion: 1, Config: map[string]any{"host": "tcp://configured:2375"}}
 	service := NewService(nil, dockerResourceReader{item: item}, nil, nil, DefaultLimits())
-	tools, facts, err := service.EngineProvider().Resolve(context.Background(), engine.ContextResource{ID: item.ID, Kind: item.Kind, Subtype: "Direct", Status: item.Status, Config: item.Config})
+	tools, facts, err := service.EngineProvider().Resolve(context.Background(), engine.ContextResource{ID: item.ID, Kind: item.Kind, Subtype: "Direct", Config: item.Config})
 	if err != nil {
 		t.Fatalf("resolve Docker tools: %v", err)
 	}

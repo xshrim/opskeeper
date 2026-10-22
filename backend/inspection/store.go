@@ -127,7 +127,6 @@ func resolveTargets(ctx context.Context, db queryer, policy Policy) ([]string, e
 		SELECT resource.id::text
 		  FROM resources resource
 		 WHERE resource.scope_id=$1::uuid
-		   AND resource.status='active'
 		   AND resource.deleted_at IS NULL
 		   AND (($2::jsonb = '{}'::jsonb AND resource.id IN (
 		          SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid

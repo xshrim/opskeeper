@@ -31,5 +31,5 @@
     <FormField label="资源名称" required><TextInput bind:value={name} required /></FormField>
     <FormField label="资源级别"><TextInput value={scopeName(resource.scope_id)} readonly /></FormField>
   </div>
-  <FormField label="资源标签" className="resource-basic-labels"><TextInput bind:value={labels} placeholder="填写 key=value，多个标签用逗号分隔，例如 env=prod, owner=platform" autocomplete="off" /></FormField>
+  <FormField label="资源标签" className="resource-basic-labels" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
 </div>

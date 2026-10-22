@@ -163,7 +163,7 @@ resource_role_bindings(id, subject_type, subject_id, role_id, resource_id)
 
 ## 7. 凭据与敏感信息
 
-- 资源连接密文直接保存在所属 `resources` 行，使用 AES-GCM 加密；登录用户密码仍保存在身份认证 `credentials` 表中。
+- 资源连接密文直接保存在所属 `resources` 行，使用 AES-GCM 加密；登录用户密码哈希保存在 `users.password_hash` 中。
 - 用户只能通过资源权限使用连接密文，API 不返回资源密文或明文。
 - 资源连接密文不能跨资源共享或独立导出；资源更新与密文更新使用同一事务。
 - 日志、模型上下文和工具响应进入持久化前执行 Token、密码、连接串等脱敏。

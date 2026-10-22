@@ -1128,19 +1128,7 @@ func resolvedToolBinding(request Request, name string) toolBinding {
 			return binding
 		}
 	}
-	// A raw name remains addressable for backwards-compatible providers and
-	// unknown-tool diagnostics. Only choose it when it is not ambiguous.
-	var match toolBinding
-	for _, binding := range buildToolBindings(resolvedToolDefinitions(request)) {
-		if binding.definition.Name != name {
-			continue
-		}
-		if match.definition.Name != "" {
-			return toolBinding{}
-		}
-		match = binding
-	}
-	return match
+	return toolBinding{}
 }
 
 func resolvedToolDefinitions(request Request) []ToolDefinition {

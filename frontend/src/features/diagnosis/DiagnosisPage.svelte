@@ -25,7 +25,10 @@
     DiagnosisSession,
     DiagnosisSnapshot,
     Application,
-    Resource
+    Resource,
+    SkillCatalogItem,
+    PersonaCatalogItem,
+    DiagnosisAttachment
   } from '../../lib/api';
   import {
     api,
@@ -126,11 +129,22 @@
   let diagnosisStreamingStartedAt = 0;
   let diagnosisStreamingAssistantBaseline = 0;
   let diagnosisComposerText = '';
+  let diagnosisComposerMenu: 'skill' | 'persona' | '' = '';
+  let diagnosisComposerMenuSearch = '';
+  let diagnosisComposerTokenStart = -1;
+  let diagnosisComposerTextarea: HTMLTextAreaElement | null = null;
+  let diagnosisComposerFileInput: HTMLInputElement | null = null;
+  let diagnosisComposerSkillID = '';
+  let diagnosisComposerPersonaID = '';
+  let diagnosisComposerLinks: string[] = [];
+  let diagnosisComposerAttachments: DiagnosisAttachment[] = [];
   let diagnosisAvailableProviders: Provider[] = [];
   let selectedProviderId = '';
   let llmModelName = '';
   let selectedDiagnosisModel: Provider['models'][number] | undefined;
   export let onNotice: (message: string) => void;
+  export let skills: SkillCatalogItem[] = [];
+  export let personas: PersonaCatalogItem[] = [];
 
   let diagnosisContextTab: 'context' | 'evidence' = 'context';
   export let resourceIcon: (kind: string) => string;
@@ -215,6 +229,10 @@
       selectedSessionID: selectedDiagnosisId,
       snapshot: diagnosisSnapshot,
       composerText: diagnosisComposerText,
+      skillID: diagnosisComposerSkillID,
+      personaID: diagnosisComposerPersonaID,
+      links: diagnosisComposerLinks,
+      attachments: diagnosisComposerAttachments,
       targetIDs: diagnosisTargetIds,
       providerID: selectedProviderId,
       modelName: llmModelName,
@@ -233,6 +251,10 @@
     if (patch.selectedSessionID !== undefined) selectedDiagnosisId = patch.selectedSessionID;
     if ('snapshot' in patch) diagnosisSnapshot = patch.snapshot ?? null;
     if (patch.composerText !== undefined) diagnosisComposerText = patch.composerText;
+    if (patch.skillID !== undefined) diagnosisComposerSkillID = patch.skillID;
+    if (patch.personaID !== undefined) diagnosisComposerPersonaID = patch.personaID;
+    if (patch.links !== undefined) diagnosisComposerLinks = patch.links;
+    if (patch.attachments !== undefined) diagnosisComposerAttachments = patch.attachments;
     if (patch.targetIDs !== undefined) diagnosisTargetIds = patch.targetIDs;
     if (patch.providerID !== undefined) selectedProviderId = patch.providerID;
     if (patch.modelName !== undefined) llmModelName = patch.modelName;
@@ -286,7 +308,7 @@
       }
     } catch (error) {
       diagnosisAvailableProviders = [];
-      onError(describeError(error, '可用模型服务商加载失败'));
+      onError(describeError(error, '可用渠道加载失败'));
     }
     await loadDiagnosisSessions();
   }
@@ -346,7 +368,127 @@
     }
   }
 
+  function updateDiagnosisComposer(value: string, element: HTMLTextAreaElement) {
+    diagnosisComposerText = value;
+    const before = value.slice(0, element.selectionStart);
+    const match = before.match(/(?:^|\s)([\/@])([^\s]*)$/);
+    if (!match) {
+      diagnosisComposerMenu = '';
+      diagnosisComposerMenuSearch = '';
+      diagnosisComposerTokenStart = -1;
+      return;
+    }
+    diagnosisComposerMenu = match[1] === '/' ? 'skill' : 'persona';
+    diagnosisComposerMenuSearch = match[2];
+    diagnosisComposerTokenStart = before.length - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+  }
+
+  function chooseComposerItem(kind: 'skill' | 'persona', item: SkillCatalogItem | PersonaCatalogItem) {
+    const textarea = diagnosisComposerTextarea;
+    const start = diagnosisComposerTokenStart;
+    if (!textarea || start < 0) return;
+    const skill = kind === 'skill' ? item as SkillCatalogItem : null;
+    const persona = kind === 'persona' ? item as PersonaCatalogItem : null;
+    const tokenValue = skill?.identifier ?? persona?.name.replace(/\s+/g, '-') ?? '';
+    const token = `${kind === 'skill' ? '/' : '@'}${tokenValue}`;
+    const cursor = textarea.selectionStart;
+    const selectedID = kind === 'skill' ? diagnosisComposerSkillID : diagnosisComposerPersonaID;
+    const previous = kind === 'skill'
+      ? skills.find((candidate) => candidate.id === selectedID)
+      : personas.find((candidate) => candidate.id === selectedID);
+    const previousToken = kind === 'skill'
+      ? previous ? `/${(previous as SkillCatalogItem).identifier}` : ''
+      : previous ? `@${(previous as PersonaCatalogItem).name.replace(/\s+/g, '-')}` : '';
+    const currentSelected = selectedID === item.id;
+    let baseText = diagnosisComposerText;
+    let insertion = Math.max(0, start >= 0 ? start : cursor);
+    if (previousToken) {
+      const previousIndex = baseText.indexOf(previousToken);
+      if (previousIndex >= 0) {
+        baseText = `${baseText.slice(0, previousIndex)}${baseText.slice(previousIndex + previousToken.length)}`;
+        if (previousIndex < insertion) insertion -= previousToken.length;
+      }
+    }
+    if (start >= 0 && cursor >= start) {
+      const query = baseText.slice(start, cursor);
+      if (/^[/@]/.test(query)) {
+        baseText = `${baseText.slice(0, start)}${baseText.slice(cursor)}`;
+        insertion = start;
+      }
+    }
+    const nextText = baseText.replace(/\s{2,}/g, ' ').trimStart();
+    if (currentSelected) {
+      diagnosisComposerText = nextText;
+      if (kind === 'skill') diagnosisComposerSkillID = '';
+      else diagnosisComposerPersonaID = '';
+    } else {
+      const insertAt = Math.min(insertion, nextText.length);
+      diagnosisComposerText = `${nextText.slice(0, insertAt)}${token} ${nextText.slice(insertAt)}`;
+      if (kind === 'skill') diagnosisComposerSkillID = item.id;
+      else diagnosisComposerPersonaID = item.id;
+      diagnosisComposerTokenStart = insertAt + token.length + 1;
+    }
+    diagnosisComposerMenu = '';
+    diagnosisComposerMenuSearch = '';
+    requestAnimationFrame(() => {
+      if (!currentSelected) {
+        textarea.focus();
+        textarea.setSelectionRange(diagnosisComposerTokenStart, diagnosisComposerTokenStart);
+      }
+    });
+  }
+
+  function addDiagnosisLink() {
+    const value = window.prompt('输入链接地址');
+    if (!value?.trim()) return;
+    if (!/^https?:\/\//i.test(value.trim())) {
+      onError('链接地址必须以 http:// 或 https:// 开头。');
+      return;
+    }
+    diagnosisComposerLinks = [...diagnosisComposerLinks, value.trim()];
+  }
+
+  async function addDiagnosisAttachment(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    const accepted = /\.(txt|log|json|ya?ml|md|csv|xml|sql|toml|ini|conf)$/i;
+    const currentSize = diagnosisComposerAttachments.reduce((sum, item) => sum + item.content.length, 0);
+    if (diagnosisComposerAttachments.length + files.length > 10) {
+      onError('每条诊断消息最多添加 10 个附件。');
+      return;
+    }
+    let usedBytes = currentSize;
+    const additions: DiagnosisAttachment[] = [];
+    for (const file of files) {
+      if (!accepted.test(file.name)) {
+        onError(`${file.name} 不是支持的文本、日志或配置文件。`);
+        continue;
+      }
+      if (usedBytes + file.size > 128 * 1024) {
+        onError('文本附件总大小不能超过 128 KiB。');
+        break;
+      }
+      const content = await file.text();
+      usedBytes += content.length;
+      additions.push({ name: file.name, media_type: file.type, content });
+    }
+    diagnosisComposerAttachments = [...diagnosisComposerAttachments, ...additions];
+  }
+
+  function modelCapabilityTooltip() {
+    const labels: Record<string, string> = { text: '文本', stream: '流式', tool_calling: '工具调用', reasoning: '推理', embedding: '向量', audio: '音频', vision: '视觉', structured_output: '结构化输出' };
+    const tags: string[] = selectedDiagnosisModel?.capabilities ?? [];
+    return tags.length ? `模型能力：${tags.map((tag) => labels[tag] ?? tag).join('、')}` : '模型能力：未声明';
+  }
+
   function handleDiagnosisComposerKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && diagnosisComposerMenu) {
+      event.preventDefault();
+      diagnosisComposerMenu = '';
+      diagnosisComposerMenuSearch = '';
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void submitDiagnosisMessage();
@@ -490,7 +632,7 @@
     void loadDiagnosis();
   }
   $: diagnosisTargets = contextResources.filter(
-    (resource) => resource.status === 'active' && resourceInActiveWorkspace(resource) && !isDiagnosisContextExcluded(resource)
+    (resource) => resourceInActiveWorkspace(resource) && !isDiagnosisContextExcluded(resource)
   );
   $: {
     const usableResourceIDs = new Set(diagnosisTargets.map((resource) => resource.id));
@@ -517,6 +659,21 @@
   $: selectedDiagnosisModel = diagnosisAvailableProviders
     .find((item) => item.provider_id === selectedProviderId)
     ?.models.find((item) => item.name === llmModelName);
+  $: filteredComposerSkills = skills.filter((item) => {
+    const query = diagnosisComposerMenuSearch.trim().toLowerCase();
+    return !query || `${item.name} ${item.identifier}`.toLowerCase().includes(query);
+  });
+  $: filteredComposerPersonas = personas.filter((item) => {
+    const query = diagnosisComposerMenuSearch.trim().toLowerCase();
+    return !query || `${item.name} ${item.description}`.toLowerCase().includes(query);
+  });
+  function escapeComposerHTML(value: string) {
+    return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
+  }
+  $: composerMarkup = escapeComposerHTML(diagnosisComposerText)
+    .replace(/(^|\s)(\/[^\s]+)/g, '$1<span class="composer-skill-token">$2</span>')
+    .replace(/(^|\s)(@[^\s]+)/g, '$1<span class="composer-persona-token">$2</span>')
+    .replace(/\n/g, '<br>');
   $: diagnosisContextUsage = {
     used: Math.max(1, Math.ceil((
       diagnosisComposerText.length
@@ -799,69 +956,83 @@
       on:submit|preventDefault={() => void submitDiagnosisMessage()}
     >
       <div class="diagnosis-composer-shell">
+        <div class="diagnosis-composer-highlight" aria-hidden="true">{@html composerMarkup}</div>
         <textarea
+          bind:this={diagnosisComposerTextarea}
           value={diagnosisComposerText}
-          on:input={(event) =>
-            (diagnosisComposerText = (
-              event.currentTarget as HTMLTextAreaElement
-            ).value)}
+          on:input={(event) => updateDiagnosisComposer((event.currentTarget as HTMLTextAreaElement).value, event.currentTarget as HTMLTextAreaElement)}
           on:keydown={handleDiagnosisComposerKeydown}
-          placeholder="描述问题，或输入 / 调用 Skill…"
+          placeholder="描述问题，Enter 发送 · Shift + Enter 换行"
           aria-label="输入诊断问题"
           rows="3"
           maxlength="16000"
         ></textarea>
+        {#if diagnosisComposerMenu}<div class="diagnosis-composer-token-menu" role="listbox">
+          <SearchInput bind:value={diagnosisComposerMenuSearch} width="100%" height="28px" placeholder={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} ariaLabel={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} />
+          <div class="diagnosis-composer-token-list">
+            {#if diagnosisComposerMenu === 'skill'}
+              {#each filteredComposerSkills as item}<button type="button" role="option" aria-selected={diagnosisComposerSkillID === item.id} on:click={() => chooseComposerItem('skill', item)}><strong>/{item.identifier}</strong><span>{diagnosisComposerSkillID === item.id ? '已选择' : item.name}</span></button>{:else}<span>暂无可用技能</span>{/each}
+            {:else}
+              {#each filteredComposerPersonas as item}<button type="button" role="option" aria-selected={diagnosisComposerPersonaID === item.id} on:click={() => chooseComposerItem('persona', item)}><strong>@{item.name}</strong><span>{diagnosisComposerPersonaID === item.id ? '已选择' : item.description || '专家'}</span></button>{:else}<span>暂无可用专家</span>{/each}
+            {/if}
+          </div>
+        </div>{/if}
         <div class="diagnosis-composer-tools">
           <div>
+            <input bind:this={diagnosisComposerFileInput} class="diagnosis-hidden-file-input" type="file" multiple accept=".txt,.log,.json,.yaml,.yml,.md,.csv,.xml,.sql,.toml,.ini,.conf" on:change={addDiagnosisAttachment} />
             <button
               type="button"
               class="diagnosis-tool"
               data-tooltip="添加附件"
-              on:click={() => onNotice('附件入口已打开。')}
+              on:click={() => diagnosisComposerFileInput?.click()}
               ><Paperclip size={15} />附件</button
             ><button
               type="button"
               class="diagnosis-tool"
               data-tooltip="添加链接"
-              on:click={() => onNotice('链接入口已打开。')}
+              on:click={addDiagnosisLink}
               ><Link2 size={15} />链接</button
             ><button
               type="button"
               class="diagnosis-tool"
-              data-tooltip="选择 Skills"
-              on:click={() =>
-                onNotice('Skills：指标查询、日志查询、Kubernetes 只读查询。')}
-              ><Sparkles size={15} />Skills</button
+              data-tooltip="选择技能"
+              on:click={() => { diagnosisComposerMenu = diagnosisComposerMenu === 'skill' ? '' : 'skill'; diagnosisComposerMenuSearch = ''; diagnosisComposerTokenStart = diagnosisComposerTextarea?.selectionStart ?? diagnosisComposerText.length; }}
+              ><Sparkles size={15} />技能</button
             ><button
               type="button"
               class="diagnosis-tool"
-              data-tooltip="选择 Agent"
-              on:click={() => onNotice('Agent：故障定位 Agent。')}
-              ><Bot size={15} />Agent</button
+              data-tooltip="选择专家"
+              on:click={() => { diagnosisComposerMenu = diagnosisComposerMenu === 'persona' ? '' : 'persona'; diagnosisComposerMenuSearch = ''; diagnosisComposerTokenStart = diagnosisComposerTextarea?.selectionStart ?? diagnosisComposerText.length; }}
+              ><Bot size={15} />专家</button
             >
           </div>
+          {#if diagnosisComposerAttachments.length || diagnosisComposerLinks.length}<div class="diagnosis-composer-attached-items">
+            {#each diagnosisComposerAttachments as attachment, index}<span class="diagnosis-composer-attachment">{attachment.name}<button type="button" aria-label={`移除附件 ${attachment.name}`} on:click={() => diagnosisComposerAttachments = diagnosisComposerAttachments.filter((_, itemIndex) => itemIndex !== index)}>×</button></span>{/each}
+            {#each diagnosisComposerLinks as link, index}<span class="diagnosis-composer-attachment diagnosis-composer-link">{link}<button type="button" aria-label="移除链接" on:click={() => diagnosisComposerLinks = diagnosisComposerLinks.filter((_, itemIndex) => itemIndex !== index)}>×</button></span>{/each}
+          </div>{/if}
           <div class="diagnosis-model-picker">
             <button
               class="diagnosis-model-trigger"
               type="button"
-              aria-label="选择模型服务商和模型"
+              aria-label="选择渠道和模型"
               aria-haspopup="menu"
               aria-expanded={diagnosisModelMenuOpen}
+              data-tooltip={modelCapabilityTooltip()}
               disabled={diagnosisAvailableProviders.length === 0}
               on:click={toggleDiagnosisModelMenu}
               ><span
                 >{#if diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId)}{diagnosisAvailableProviders.find(
                     (item) => item.provider_id === selectedProviderId
-                  )?.name}{:else}暂无可用模型服务商{/if}{#if llmModelName}
+                  )?.name}{:else}暂无可用渠道{/if}{#if llmModelName}
                   · {llmModelName}{/if}</span
               ><ChevronDown size={13} aria-hidden="true" /></button
             >{#if diagnosisModelMenuOpen}<div
                 class="diagnosis-model-menu"
                 role="menu"
-                aria-label="模型服务商和模型"
+                aria-label="渠道和模型"
               >
                 <div class="diagnosis-model-provider-list">
-                  <small class="diagnosis-model-menu-heading">模型服务商</small
+                  <small class="diagnosis-model-menu-heading">渠道</small
                   >{#each diagnosisAvailableProviders as provider}<button
                       type="button"
                       role="menuitem"
@@ -874,7 +1045,7 @@
                         chooseDiagnosisModelProvider(
                           provider.provider_id
                         )}
-                      ><span>{provider.name}</span><ChevronRight
+                ><span>{provider.name}</span><ChevronRight
                         size={12}
                         aria-hidden="true"
                       /></button
@@ -906,7 +1077,7 @@
               class="primary diagnosis-send-button"
               type="button"
               disabled={busy ||
-                (!diagnosisComposerText.trim() && !diagnosisGenerating)}
+                (!diagnosisComposerText.trim() && !diagnosisComposerAttachments.length && !diagnosisComposerLinks.length && !diagnosisGenerating)}
               on:click={() =>
                 diagnosisGenerating
                   ? stopDiagnosisGeneration()
@@ -918,11 +1089,6 @@
             >
           </div>
         </div>
-        <small class="diagnosis-composer-note"
-          ><span>Enter 发送 · Shift + Enter 换行</span><span
-            >当前模型支持：文本、工具调用、流式输出</span
-          ></small
-        >
       </div>
     </form>
   </section>

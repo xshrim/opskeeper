@@ -18,7 +18,7 @@ func (fakeSnapshots) Save(_ context.Context, item Snapshot) (Snapshot, error) { 
 func (fakeSnapshots) List(context.Context, string, int) ([]Snapshot, error)   { return nil, nil }
 
 func TestServerRejectsMCPResourceOutsideResourceFilter(t *testing.T) {
-	service := NewService(fakeResources{item: resource.Resource{ID: "server", ScopeID: "scope", Kind: "MCPServer", Status: resource.StatusActive, Config: map[string]any{"transport": "streamable_http", "url": "https://example.com/mcp", "tool_allowlist": []string{"read"}}}}, fakeSnapshots{})
+	service := NewService(fakeResources{item: resource.Resource{ID: "server", ScopeID: "scope", Kind: "MCPServer", Config: map[string]any{"transport": "streamable_http", "url": "https://example.com/mcp", "tool_allowlist": []string{"read"}}}}, fakeSnapshots{})
 	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"other"}})
 	if _, _, err := service.server(ctx, "server"); err != authorization.ErrForbidden {
 		t.Fatalf("error=%v, want forbidden", err)

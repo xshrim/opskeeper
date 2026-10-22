@@ -27,6 +27,8 @@
   export let allLabel = '全部';
   export let allValue = '__all__';
   export let multiple = false;
+  export let taggedSelection = false;
+  export let reorderableSelection = false;
   export let variant: 'standard' | 'underline' | 'pill' | 'soft' = 'standard';
   export let menuClass = '';
 
@@ -37,9 +39,21 @@
   let root: HTMLDivElement;
   let customValue = '';
   let menuStyle = '';
+  let draggedValue = '';
+  let selectedValues: string[] = [];
 
-  $: selectedValues = multiple ? (Array.isArray(value) ? value : value ? [value] : []) : value ? [value] : [];
-  $: selectedOptions = options.filter((option) => selectedValues.includes(option.value));
+  $: selectedValues = multiple
+    ? Array.isArray(value)
+      ? value
+      : typeof value === 'string' && value
+        ? [value]
+        : []
+    : typeof value === 'string' && value
+      ? [value]
+      : [];
+  $: selectedOptions = selectedValues
+    .map((selectedValue) => options.find((option) => option.value === selectedValue))
+    .filter((option): option is DropdownOption => Boolean(option));
   $: selected = Array.isArray(value) ? selectedOptions[0] : options.find((option) => option.value === value) ?? null;
   $: displayValue = selectedValues.includes(allValue)
     ? allLabel
@@ -122,6 +136,52 @@
     customValue = '';
     dispatch('change', value);
   }
+
+  function removeSelected(selectedValue: string) {
+    if (!multiple) return;
+    value = selectedValues.filter((item) => item !== selectedValue);
+    dispatch('change', value);
+  }
+
+  function dragStart(event: DragEvent, selectedValue: string) {
+    if (!reorderableSelection || disabled) return;
+    draggedValue = selectedValue;
+    event.dataTransfer?.setData('text/plain', selectedValue);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function reorderSelected(targetValue: string, after = false) {
+    if (!reorderableSelection || !draggedValue || draggedValue === targetValue) return;
+    const next = [...selectedValues];
+    const from = next.indexOf(draggedValue);
+    if (from < 0) return;
+    next.splice(from, 1);
+    const target = next.indexOf(targetValue);
+    if (target < 0) return;
+    next.splice(target + (after ? 1 : 0), 0, draggedValue);
+    value = next;
+    dispatch('change', value);
+  }
+
+  function dragOverTag(event: DragEvent, targetValue: string) {
+    if (!reorderableSelection || !draggedValue || draggedValue === targetValue) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    reorderSelected(targetValue, event.clientX >= rect.left + rect.width / 2);
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  function appendDragged() {
+    if (!reorderableSelection || !draggedValue) return;
+    const next = selectedValues.filter((item) => item !== draggedValue);
+    next.push(draggedValue);
+    if (next.every((item, index) => item === selectedValues[index])) return;
+    value = next;
+    dispatch('change', value);
+  }
+
+  function finishDrag() {
+    draggedValue = '';
+  }
 </script>
 
 <svelte:window on:click={close} on:resize={handleViewportChange} on:scroll={handleViewportChange} />
@@ -138,6 +198,47 @@
         on:input={handleCustomInput}
       />
       {#if customValue}<button class="dropdown-select-clear" type="button" aria-label="清空" on:click|stopPropagation={clearCustom}><X size={13} /></button>{/if}
+    {:else if multiple && taggedSelection}
+      <div
+        class="dropdown-select-tags"
+        role="button"
+        tabindex={disabled ? -1 : 0}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        on:click|stopPropagation={toggle}
+        on:dragover|preventDefault={appendDragged}
+        on:drop|preventDefault={finishDrag}
+        on:keydown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggle();
+          }
+        }}
+      >
+        {#each selectedOptions as option}
+          <span
+            class="dropdown-select-tag"
+            class:dragging={draggedValue === option.value}
+            role="listitem"
+            draggable={reorderableSelection && !disabled}
+            on:dragstart={(event) => dragStart(event, option.value)}
+            on:dragend={finishDrag}
+            on:dragover|preventDefault|stopPropagation={(event) => dragOverTag(event, option.value)}
+            on:drop|preventDefault|stopPropagation={finishDrag}
+          >
+            <span>{option.label}</span>
+            <button
+              class="dropdown-select-tag-remove"
+              type="button"
+              aria-label={`移除 ${option.label}`}
+              on:click|stopPropagation={() => removeSelected(option.value)}
+            ><X size={12} /></button>
+          </span>
+        {:else}
+          <span class="dropdown-select-value placeholder">{placeholder}</span>
+        {/each}
+      </div>
     {:else}
       <button
         class="dropdown-select-button"
@@ -180,6 +281,13 @@
   .dropdown-select.bubble::after { position: absolute; z-index: 30; bottom: calc(100% + 7px); left: 0; max-width: min(280px, 90vw); padding: 6px 9px; color: var(--theme-danger); background: var(--theme-bg-danger-soft); border-radius: 4px; box-shadow: var(--theme-shadow-soft); content: attr(data-error); font-size: 11px; line-height: 1.35; white-space: normal; }
   .dropdown-select.bubble::before { position: absolute; z-index: 30; bottom: calc(100% + 1px); left: 12px; width: 0; height: 0; border: 6px solid transparent; border-top-color: var(--theme-bg-danger-soft); content: ''; }
   .dropdown-select-button { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 34px; padding: 0 9px; color: inherit; background: transparent; border: 0; text-align: left; }
+  .dropdown-select-tags { display: flex; align-items: center; flex: 1 1 0; flex-wrap: wrap; gap: 4px; min-width: 0; min-height: 34px; padding: 4px 7px; box-sizing: border-box; cursor: pointer; }
+  .dropdown-select-tag { position: relative; display: inline-flex; align-items: center; max-width: 100%; min-height: 22px; padding: 0 8px; color: var(--theme-fg); background: var(--theme-bg-selected); border-radius: 3px; font-size: 11px; line-height: 1; cursor: grab; }
+  .dropdown-select-tag > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dropdown-select-tag.dragging { opacity: .45; }
+  .dropdown-select-tag-remove { position: absolute; top: -6px; right: -6px; z-index: 1; display: grid; place-items: center; width: 13px; height: 13px; padding: 0; color: var(--theme-fg-muted); background: transparent; border: 0; border-radius: 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  .dropdown-select-tag:hover .dropdown-select-tag-remove, .dropdown-select-tag:focus-within .dropdown-select-tag-remove { opacity: 1; pointer-events: auto; }
+  .dropdown-select-tag-remove:hover, .dropdown-select-tag-remove:focus-visible { color: var(--theme-action); background: transparent; }
   .dropdown-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
   .dropdown-select-value.placeholder, .dropdown-select-input::placeholder, .dropdown-select-empty { color: var(--theme-fg-muted); }
   .dropdown-select-input { min-width: 0; flex: 1; height: 34px; padding: 0 9px; color: inherit; background: transparent; border: 0; outline: 0; font-size: 12px; }

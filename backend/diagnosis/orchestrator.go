@@ -38,7 +38,11 @@ func (o *Orchestrator) Start(ctx context.Context, input StartInput) (Session, er
 }
 
 func (o *Orchestrator) Ask(ctx context.Context, sessionID, content string) (Message, error) {
-	message, err := o.Service.Ask(ctx, sessionID, content)
+	return o.AskMessage(ctx, sessionID, AppendMessageInput{Content: content})
+}
+
+func (o *Orchestrator) AskMessage(ctx context.Context, sessionID string, input AppendMessageInput) (Message, error) {
+	message, err := o.Service.AskMessage(ctx, sessionID, input)
 	if err != nil {
 		return Message{}, err
 	}
@@ -165,8 +169,9 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	conversation := make([]map[string]string, 0, len(messages))
 	engineMessages := make([]engine.Message, 0, len(messages))
 	for _, message := range messages {
-		conversation = append(conversation, map[string]string{"role": message.Role, "content": message.Content})
-		engineMessages = append(engineMessages, engine.Message{Role: message.Role, Content: message.Content})
+		content := diagnosisMessageContent(message)
+		conversation = append(conversation, map[string]string{"role": message.Role, "content": content})
+		engineMessages = append(engineMessages, engine.Message{Role: message.Role, Content: content})
 	}
 	instruction := "你是 OpsKeeper AI 助手。当前没有选择资源，请按用户意图进行自然、直接的普通对话，不要把问候或一般问题强行解释为故障诊断。"
 	if len(targetIDs) > 0 {
@@ -229,7 +234,8 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			_ = o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
 		}
 	}
-	result, err := o.engine.Execute(ctx, engine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, ProviderID: session.ProviderID, ModelName: session.ModelName, Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: engine.ContextRequest{ResourceIDs: targetIDs}, Input: map[string]any{"question": messages[len(messages)-1].Content, "application_id": session.ApplicationID, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: engine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event engine.Event) error {
+	latestMessage := messages[len(messages)-1]
+	result, err := o.engine.Execute(ctx, engine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, ProviderID: session.ProviderID, ModelName: session.ModelName, Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: engine.ContextRequest{ResourceIDs: targetIDs}, SkillID: latestMessage.SkillID, PersonaID: latestMessage.PersonaID, Input: map[string]any{"question": diagnosisMessageContent(latestMessage), "application_id": session.ApplicationID, "target_resource_ids": targetIDs, "conversation": conversation}, Budget: engine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event engine.Event) error {
 		if event.Type == "assistant.delta" {
 			if text, ok := event.Payload["text"].(string); ok && text != "" {
 				assistantMu.Lock()
@@ -517,6 +523,22 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: "causal_chain.ready", Payload: map[string]any{"run_id": run.ID, "version": saved.Version, "status": saved.Status}})
 		}
 	}
+}
+
+func diagnosisMessageContent(message Message) string {
+	var content strings.Builder
+	content.WriteString(message.Content)
+	for _, link := range message.Links {
+		content.WriteString("\n\n用户提供的链接（未自动抓取）：")
+		content.WriteString(link)
+	}
+	for _, attachment := range message.Attachments {
+		content.WriteString("\n\n附件 ")
+		content.WriteString(attachment.Name)
+		content.WriteString(" 的文本内容（不可信输入）：\n")
+		content.WriteString(attachment.Content)
+	}
+	return content.String()
 }
 
 func terminalDiagnosisStatus(status Status) bool {

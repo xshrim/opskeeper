@@ -37,9 +37,10 @@ func TestOrganizationLifecycle(t *testing.T) {
 	}
 
 	project, err := service.CreateProject(context.Background(), organization.CreateProjectInput{
-		TeamID: team.ID,
-		Name:   "Checkout",
-		Code:   "checkout",
+		TeamID:          team.ID,
+		Name:            "Checkout",
+		Code:            "checkout",
+		ImportanceLevel: "ITP4",
 	})
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
@@ -57,9 +58,10 @@ func TestOrganizationLifecycle(t *testing.T) {
 		t.Fatalf("UpdateTeam() status = %q, scope status = %q", updatedTeam.Status, updatedTeam.Scope.Status)
 	}
 	_, err = service.CreateProject(context.Background(), organization.CreateProjectInput{
-		TeamID: team.ID,
-		Name:   "Ledger",
-		Code:   "ledger",
+		TeamID:          team.ID,
+		Name:            "Ledger",
+		Code:            "ledger",
+		ImportanceLevel: "ITP4",
 	})
 	if !errors.Is(err, organization.ErrParentInactive) {
 		t.Fatalf("CreateProject() error = %v, want ErrParentInactive", err)
@@ -106,20 +108,6 @@ func TestDatabaseRejectsIllegalScopeHierarchy(t *testing.T) {
 		VALUES ('project', $1::uuid)`, platform.Scope.ID)
 	if err == nil {
 		t.Fatal("illegal project scope parent was accepted")
-	}
-}
-
-func TestMigrationRollback(t *testing.T) {
-	pool := integrationPool(t)
-	if err := migrations.RollbackLast(context.Background(), pool); err != nil {
-		t.Fatalf("RollbackLast() baseline error = %v", err)
-	}
-	var scopesTable *string
-	if err := pool.QueryRow(context.Background(), "SELECT to_regclass(current_schema() || '.scopes')::text").Scan(&scopesTable); err != nil {
-		t.Fatalf("check scopes table: %v", err)
-	}
-	if scopesTable != nil {
-		t.Fatalf("scopes table still exists after rollback: %s", *scopesTable)
 	}
 }
 

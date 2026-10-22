@@ -1,7 +1,6 @@
 <script lang="ts">
   import { hostAccessModeLabel, type HostAccessMode } from './resourceWorkflow';
   export let resourceName = '';
-  export let resourceStatus = 'active';
   export let accessMode: HostAccessMode = 'direct';
   export let connectionOverride = false;
   export let host = '';
@@ -32,7 +31,7 @@
 >
   <div>
     <span>Host 资源</span><strong>{resourceName}</strong><small
-      >{resourceStatus === 'active' ? '已启用' : '已停用'} · {scopeSummary}</small
+      >{scopeSummary}</small
     >
   </div>
   <div>

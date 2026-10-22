@@ -41,23 +41,31 @@ type createTeamRequest struct {
 	Description string            `json:"description"`
 	Icon        string            `json:"icon"`
 	Labels      map[string]string `json:"labels"`
+	OwnerIDs    []string          `json:"owner_ids"`
 }
 
 type createProjectRequest struct {
-	Name         string                    `json:"name"`
-	Code         string                    `json:"code"`
-	Description  string                    `json:"description"`
-	Icon         string                    `json:"icon"`
-	Labels       map[string]string         `json:"labels"`
-	Applications []application.CreateInput `json:"applications"`
+	Name               string                    `json:"name"`
+	Code               string                    `json:"code"`
+	Description        string                    `json:"description"`
+	Icon               string                    `json:"icon"`
+	Labels             map[string]string         `json:"labels"`
+	ImportanceLevel    string                    `json:"importance_level"`
+	TechnicalOwnerIDs  []string                  `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string                  `json:"operations_owner_ids"`
+	Applications       []application.CreateInput `json:"applications"`
 }
 
 type updateOrganizationRequest struct {
-	Name        *string            `json:"name"`
-	Description *string            `json:"description"`
-	Icon        *string            `json:"icon"`
-	Labels      *map[string]string `json:"labels"`
-	Status      *string            `json:"status"`
+	Name               *string            `json:"name"`
+	Description        *string            `json:"description"`
+	Icon               *string            `json:"icon"`
+	Labels             *map[string]string `json:"labels"`
+	OwnerIDs           *[]string          `json:"owner_ids"`
+	ImportanceLevel    *string            `json:"importance_level"`
+	TechnicalOwnerIDs  *[]string          `json:"technical_owner_ids"`
+	OperationsOwnerIDs *[]string          `json:"operations_owner_ids"`
+	Status             *string            `json:"status"`
 }
 
 type deleteOrganizationRequest struct {
@@ -164,6 +172,7 @@ func (h organizationHandler) createTeam(writer http.ResponseWriter, request *htt
 		Description: body.Description,
 		Icon:        body.Icon,
 		Labels:      body.Labels,
+		OwnerIDs:    body.OwnerIDs,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)
@@ -205,6 +214,7 @@ func (h organizationHandler) updateTeam(writer http.ResponseWriter, request *htt
 		Description: body.Description,
 		Icon:        body.Icon,
 		Labels:      body.Labels,
+		OwnerIDs:    body.OwnerIDs,
 		Status:      body.Status,
 	})
 	if err != nil {
@@ -220,13 +230,16 @@ func (h organizationHandler) createProject(writer http.ResponseWriter, request *
 		return
 	}
 	project, err := h.service.CreateProject(request.Context(), organization.CreateProjectInput{
-		TeamID:       chi.URLParam(request, "teamID"),
-		Name:         body.Name,
-		Code:         body.Code,
-		Description:  body.Description,
-		Icon:         body.Icon,
-		Labels:       body.Labels,
-		Applications: body.Applications,
+		TeamID:             chi.URLParam(request, "teamID"),
+		Name:               body.Name,
+		Code:               body.Code,
+		Description:        body.Description,
+		Icon:               body.Icon,
+		Labels:             body.Labels,
+		ImportanceLevel:    body.ImportanceLevel,
+		TechnicalOwnerIDs:  body.TechnicalOwnerIDs,
+		OperationsOwnerIDs: body.OperationsOwnerIDs,
+		Applications:       body.Applications,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)
@@ -264,11 +277,14 @@ func (h organizationHandler) updateProject(writer http.ResponseWriter, request *
 		return
 	}
 	project, err := h.service.UpdateProject(request.Context(), chi.URLParam(request, "projectID"), organization.UpdateProjectInput{
-		Name:        body.Name,
-		Description: body.Description,
-		Icon:        body.Icon,
-		Labels:      body.Labels,
-		Status:      body.Status,
+		Name:               body.Name,
+		Description:        body.Description,
+		Icon:               body.Icon,
+		Labels:             body.Labels,
+		ImportanceLevel:    body.ImportanceLevel,
+		TechnicalOwnerIDs:  body.TechnicalOwnerIDs,
+		OperationsOwnerIDs: body.OperationsOwnerIDs,
+		Status:             body.Status,
 	})
 	if err != nil {
 		writeOrganizationError(writer, request, err)

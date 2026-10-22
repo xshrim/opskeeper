@@ -27,7 +27,7 @@ func TestIdentityLifecycle(t *testing.T) {
 		t.Fatalf("second BootstrapAdmin() error = %v, want ErrBootstrapComplete", err)
 	}
 	var passwordHash string
-	if err := pool.QueryRow(context.Background(), "SELECT password_hash FROM credentials WHERE user_id = $1::uuid", admin.ID).Scan(&passwordHash); err != nil {
+	if err := pool.QueryRow(context.Background(), "SELECT password_hash FROM users WHERE id = $1::uuid", admin.ID).Scan(&passwordHash); err != nil {
 		t.Fatalf("read password hash: %v", err)
 	}
 	if !strings.HasPrefix(passwordHash, "$argon2id$") || strings.Contains(passwordHash, integrationPassword) {

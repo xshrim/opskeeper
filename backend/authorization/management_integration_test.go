@@ -50,7 +50,7 @@ func TestGroupRoleBindingAndEscalationBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
-	project, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Managed Project", Code: "managed-project"})
+	project, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Managed Project", Code: "managed-project", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
@@ -153,7 +153,7 @@ func TestResourceRoleRequiresProjectAccessAndInvalidatesCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
-	project, err := organizations.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Resource Project", Code: "resource-project"})
+	project, err := organizations.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Resource Project", Code: "resource-project", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
@@ -302,7 +302,7 @@ func TestRoleGrantHierarchy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
-	project, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Hierarchy Project", Code: "hierarchy-project"})
+	project, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: team.ID, Name: "Hierarchy Project", Code: "hierarchy-project", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject() error = %v", err)
 	}
@@ -370,11 +370,11 @@ func TestReadableHierarchyIncludesAllRoleLevels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam(B) error = %v", err)
 	}
-	projectA, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamA.ID, Name: "Readable Project A", Code: "readable-project-a"})
+	projectA, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamA.ID, Name: "Readable Project A", Code: "readable-project-a", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject(A) error = %v", err)
 	}
-	projectB, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamB.ID, Name: "Readable Project B", Code: "readable-project-b"})
+	projectB, err := org.CreateProject(ctx, organization.CreateProjectInput{TeamID: teamB.ID, Name: "Readable Project B", Code: "readable-project-b", ImportanceLevel: "ITP4"})
 	if err != nil {
 		t.Fatalf("CreateProject(B) error = %v", err)
 	}

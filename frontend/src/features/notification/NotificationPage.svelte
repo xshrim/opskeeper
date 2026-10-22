@@ -758,7 +758,7 @@
                 disabled={busyAction === 'channel-create' || !channelKind}
                 ><Save size={13} />{busyAction === 'channel-create'
                   ? '创建中…'
-                  : '创建渠道'}</button
+                  : '创建'}</button
               >
             </FormActions>
           </form>
@@ -892,7 +892,7 @@
               class="primary compact"
               type="submit"
               disabled={busyAction === 'channel-create' || !channelKind}
-              ><Save size={13} />创建渠道</button
+              ><Save size={13} />创建</button
           >
           </FormActions>
         </form>
@@ -1021,7 +1021,7 @@
               class="primary compact"
               type="submit"
               disabled={busyAction === 'template-create'}
-              ><Plus size={13} />创建模板</button
+              ><Plus size={13} />创建</button
             >
           </FormActions>
         </form>
@@ -1091,7 +1091,7 @@
               class="primary compact"
               type="submit"
               disabled={busyAction === 'rule-create'}
-              ><Plus size={13} />创建规则</button
+              ><Plus size={13} />创建</button
             >
           </FormActions>
         </form>

@@ -2,7 +2,6 @@
   import type { KubernetesConnectionMode } from './resourceWorkflow';
 
   export let resourceName = '';
-  export let resourceStatus = 'active';
   export let isAgent = false;
   export let connectionOverride = false;
   export let connectionMode: KubernetesConnectionMode = 'kubeconfig';
@@ -21,7 +20,7 @@
 </script>
 
 <form id="kubernetes-review-form" class="provider-summary docker-summary" on:submit|preventDefault={onSubmit}>
-  <div><span>Kubernetes 资源</span><strong>{resourceName}</strong><small>{resourceStatus === 'active' ? '已启用' : '已停用'} · {scopeSummary}</small></div>
+  <div><span>Kubernetes 资源</span><strong>{resourceName}</strong><small>{scopeSummary}</small></div>
   <div><span>资源接入</span><strong>{isAgent ? 'Agent · MCP 代理' : 'Direct · 直接连接'}</strong><small>{isAgent ? `${mcpServerName || '未选择 MCPServer'}${connectionOverride ? ' · 自定义 Kubernetes 连接' : ''}` : '后端直接连接 Kubernetes API'}</small></div>
   <div><span>API 连接方式</span><strong>{!isAgent || connectionOverride ? connectionMode === 'kubeconfig' ? 'Kubeconfig' : 'Endpoint' : '由 MCPServer 管理'}</strong><small>{!isAgent || connectionOverride ? connectionMode === 'endpoint' ? server || '未设置 API Server' : 'API Server 由 kubeconfig 提供，资源密文以 Base64 加密保存' : '使用关联 MCPServer 的 Kubernetes 工具'}</small></div>
   <div><span>连接凭据</span><strong>{isAgent && !connectionOverride ? '由 MCPServer 管理' : credentialConfigured ? '已配置' : '使用环境或默认配置'}</strong></div>

@@ -8,8 +8,10 @@
   import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import ModalDialog from '../../components/ModalDialog.svelte';
-  import type { Resource } from '../../lib/api';
+  import { parseLabels } from '../../lib/labels';
+  import type { Resource, User } from '../../lib/api';
   import { api } from '../../lib/api';
+  import HostResourceCreateDialog from '../resource/HostResourceCreateDialog.svelte';
   import {
     resourcesForRuntime,
     runtimeLabel,
@@ -20,8 +22,11 @@
   } from './projectTypes';
 
   export let resources: Resource[] = [];
+  export let users: User[] = [];
+  export let scopeId = '';
   export let onSave: (applications: ApplicationDraft[]) => Promise<void> | void;
   export let onCancel: () => void;
+  export let onResourceCreated: (resource: Resource) => void = () => {};
 
   type Workload = {
     namespace: string;
@@ -39,7 +44,11 @@
   let code = '';
   let nameTouched = false;
   let description = '';
+  let labels = '';
   let icon = 'lucide:AppWindow';
+  let critical = false;
+  let technicalOwnerIds: string[] = [];
+  let operationsOwnerIds: string[] = [];
   let instances: ApplicationInstanceDraft[] = [];
   let kubernetesResourceId = '';
   let namespace = 'default';
@@ -50,12 +59,31 @@
   let loading = false;
   let saving = false;
   let error = '';
+  let createdResources: Resource[] = [];
+  let hostResourceDialogOpen = false;
+  let hostBindingInstanceID = '';
 
-  $: runtimeResources = resourcesForRuntime(resources, runtimeKind);
-  $: runtimeResourceOptions = runtimeResources.map((resource) => ({
-    value: resource.id,
-    label: resource.name
-  }));
+  $: availableResources = [...resources, ...createdResources].filter(
+    (resource, index, all) =>
+      all.findIndex((item) => item.id === resource.id) === index
+  );
+  $: runtimeResources = resourcesForRuntime(availableResources, runtimeKind);
+  $: ownerOptions = users
+    .filter((user) => user.status === 'active')
+    .map((user) => ({
+      value: user.id,
+      label: user.display_name || user.username,
+      description: user.display_name ? user.username : user.email || user.phone
+    }));
+  $: runtimeResourceOptions = [
+    ...runtimeResources.map((resource) => ({
+      value: resource.id,
+      label: resource.name
+    })),
+    ...(runtimeKind === 'virtual_machine'
+      ? [{ value: '__add_host_resource__', label: '新增 Host 资源' }]
+      : [])
+  ];
   $: if (
     runtimeKind !== 'cloud_native' &&
     instances.length === 0 &&
@@ -71,7 +99,7 @@
     return {
       id: crypto.randomUUID(),
       name: `instance-${instances.length + 1}`,
-      targetResourceId: resourcesForRuntime(resources, kind)[0]?.id ?? '',
+      targetResourceId: resourcesForRuntime(availableResources, kind)[0]?.id ?? '',
       selector: {}
     };
   }
@@ -107,6 +135,35 @@
   ) {
     instance.selector = { ...instance.selector, [key]: value };
     instances = [...instances];
+  }
+
+  function selectInstanceResource(
+    instance: ApplicationInstanceDraft,
+    value: string
+  ) {
+    if (value === '__add_host_resource__') {
+      hostBindingInstanceID = instance.id;
+      hostResourceDialogOpen = true;
+      return;
+    }
+    instance.targetResourceId = value;
+    instances = [...instances];
+  }
+
+  function handleResourceCreated(resource: Resource) {
+    createdResources = [
+      resource,
+      ...createdResources.filter((item) => item.id !== resource.id)
+    ];
+    onResourceCreated(resource);
+    if (resource.kind !== 'Host' || !hostBindingInstanceID) return;
+    const instance = instances.find((item) => item.id === hostBindingInstanceID);
+    if (instance) {
+      instance.targetResourceId = resource.id;
+      instances = [...instances];
+    }
+    hostBindingInstanceID = '';
+    hostResourceDialogOpen = false;
   }
 
   function workloadKey(workload: Workload) {
@@ -176,6 +233,7 @@
     }
     saving = true;
     try {
+      const applicationLabels = parseLabels(labels);
       if (runtimeKind === 'cloud_native') {
         const drafts = workloads
           .filter((workload) => selectedWorkloads.has(workloadKey(workload)))
@@ -191,8 +249,12 @@
                 .replace(/-$/, ''),
               description: `${workload.kind} · ${workload.namespace}`,
               icon: 'lucide:AppWindow',
+              labels: applicationLabels,
               runtimeKind,
               externalUid: `${kubernetesResourceId}:${key}`,
+              critical,
+              technicalOwnerIds,
+              operationsOwnerIds,
               instances: workload.pods.map((pod) => ({
                 id: crypto.randomUUID(),
                 name: pod.name,
@@ -214,7 +276,11 @@
             code: code.trim(),
             description: description.trim(),
             icon,
+            labels: applicationLabels,
             runtimeKind,
+            critical,
+            technicalOwnerIds,
+            operationsOwnerIds,
             instances
           }
         ]);
@@ -230,8 +296,8 @@
   }
 </script>
 
-<ModalDialog dialogClass="project-dialog application-wizard-dialog" size="wide" title="添加应用" description="选择运行时类型并填写应用信息。" confirmLabel={step === 0 ? '下一步' : '完成添加'} busyLabel="保存中…" busy={saving} message={error} onCancel={onCancel} onConfirm={step === 0 ? () => { step = 1; } : save}>
-    <nav class="application-steps" aria-label="添加应用步骤">
+<ModalDialog dialogClass="project-dialog application-wizard-dialog" size="wide" title="新增应用" description="选择运行时类型并填写应用信息。" confirmLabel={step === 0 ? '下一步' : '创建'} busyLabel="创建中…" busy={saving} message={error} onCancel={onCancel} onConfirm={step === 0 ? () => { step = 1; } : save}>
+    <nav class="application-steps" aria-label="新增应用步骤">
       <button
         class:active={step === 0}
         class:done={step > 0}
@@ -281,6 +347,7 @@
               placeholder="app.kubernetes.io/part-of=payments"
             /></FormField
           >
+          <FormField label="应用标签" className="full-field" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
         </div>
         <div class="discovery-toolbar">
           <span>工作负载列表</span><button
@@ -338,6 +405,9 @@
                   ariaLabel="选择应用图标"
                 /></FormField
               >
+              <FormField label="关键应用" className="application-critical-field" asLabel={false}
+                ><DropdownSelect value={String(critical)} options={[{ value: 'false', label: '否' }, { value: 'true', label: '是' }]} ariaLabel="是否为关键应用" on:change={(event) => (critical = event.detail === 'true')} /></FormField
+              >
               <FormField label="应用标识" required
                 ><TextInput
                   bind:value={code}
@@ -347,7 +417,7 @@
                 /></FormField
               >
             </div>
-            <FormField label="应用名称" required
+            <FormField label="应用名称" required className="application-name-field"
               ><TextInput
                 bind:value={name}
                 on:input={markNameTouched}
@@ -356,6 +426,11 @@
               /></FormField
             >
           </div>
+          <div class="owner-fields-row">
+            <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" /></FormField>
+            <FormField label="运维负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={operationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" /></FormField>
+          </div>
+          <FormField label="应用标签" className="full-field" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
           <FormField label="应用描述" className="full-field"
           ><TextArea
             bind:value={description}
@@ -370,7 +445,7 @@
               >每个实例绑定一个唯一的 {runtimeLabel(runtimeKind)} 资源</small
             ></span
           ><button class="secondary" type="button" on:click={addInstance}
-            ><Plus size={14} />添加实例</button
+            ><Plus size={14} />新增实例</button
           >
         </div>
         <div class="instance-draft-list">
@@ -383,10 +458,12 @@
                 /></FormField
               ><FormField label={`${runtimeLabel(runtimeKind)} 资源`} required
                 ><DropdownSelect
-                  bind:value={instance.targetResourceId}
+                  value={instance.targetResourceId}
                   options={runtimeResourceOptions}
                   placeholder="选择资源"
                   ariaLabel={`${runtimeLabel(runtimeKind)} 资源`}
+                  on:change={(event) =>
+                    selectInstanceResource(instance, String(event.detail))}
                 /></FormField
               ><FormField
                 label={runtimeKind === 'virtual_machine'
@@ -427,3 +504,15 @@
       {/if}
     </div>
 </ModalDialog>
+
+{#if hostResourceDialogOpen}
+  <HostResourceCreateDialog
+    {scopeId}
+    resources={availableResources}
+    onCreated={handleResourceCreated}
+    onCancel={() => {
+      hostResourceDialogOpen = false;
+      hostBindingInstanceID = '';
+    }}
+  />
+{/if}

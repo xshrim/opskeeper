@@ -63,6 +63,7 @@ export interface Team {
   description: string;
   icon: string;
   labels: Record<string, string>;
+  owner_ids: string[];
   status: string;
   created_at: string;
   updated_at: string;
@@ -78,6 +79,9 @@ export interface Project {
   description: string;
   icon: string;
   labels: Record<string, string>;
+  importance_level: 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4';
+  technical_owner_ids: string[];
+  operations_owner_ids: string[];
   summary: {
     applications: number;
     applications_healthy: number;
@@ -133,6 +137,9 @@ export interface Application {
   status: string;
   external_uid?: string;
   labels: Record<string, string>;
+  critical: boolean;
+  technical_owner_ids: string[];
+  operations_owner_ids: string[];
   instances: ApplicationInstance[];
   dependencies: ApplicationDependency[];
   created_at: string;
@@ -151,7 +158,6 @@ export interface ProjectWorkspace {
     id: string;
     name: string;
     kind: string;
-    status: string;
     role: string;
   }>;
   alerts: Array<{
@@ -182,7 +188,6 @@ export interface Resource {
   source_resource_id?: string;
   labels: Record<string, string>;
   config: Record<string, unknown>;
-  status: string;
   credential_configured?: boolean;
   application_count?: number;
   created_at: string;
@@ -588,7 +593,17 @@ export interface DiagnosisMessage {
   session_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  skill_id?: string;
+  persona_id?: string;
+  links?: string[];
+  attachments?: DiagnosisAttachment[];
   created_at: string;
+}
+
+export interface DiagnosisAttachment {
+  name: string;
+  media_type?: string;
+  content: string;
 }
 
 export interface DiagnosisPlanStep {
@@ -905,6 +920,7 @@ export const api = {
     description: string;
     icon: string;
     labels: Record<string, string>;
+    owner_ids?: string[];
   }) => request<Team>('api/v1/teams/', json(body)),
   updateTeam: (id: string, body: Record<string, unknown>) =>
     request<Team>(`api/v1/teams/${id}/`, patch(body)),
@@ -926,6 +942,9 @@ export const api = {
       description: string;
       icon: string;
       labels: Record<string, string>;
+      importance_level: 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4';
+      technical_owner_ids?: string[];
+      operations_owner_ids?: string[];
       applications?: Array<Record<string, unknown>>;
     }
   ) => request<Project>(`api/v1/teams/${teamId}/projects`, json(body)),
@@ -1223,16 +1242,26 @@ export const api = {
     target_resource_ids: string[];
     provider_id?: string;
     model_name?: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
   addDiagnosisTarget: (sessionId: string, resourceId: string) =>
     request<DiagnosisTarget>(
       `api/v1/diagnosis-sessions/${sessionId}/targets`,
       json({ resource_id: resourceId })
     ),
-  askDiagnosis: (sessionId: string, content: string) =>
+  askDiagnosis: (sessionId: string, body: {
+    content: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
+  }) =>
     request<DiagnosisMessage>(
       `api/v1/diagnosis-sessions/${sessionId}/messages`,
-      json({ content })
+      json(body)
     ),
   cancelDiagnosis: (sessionId: string) =>
     request<void>(`api/v1/diagnosis-sessions/${sessionId}/cancel`, {

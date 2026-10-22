@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"opskeeper/backend/mcpserver/docker/client"
+	docker "opskeeper/backend/tool/docker"
 )
 
 func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
@@ -54,37 +55,37 @@ func TestToolsUseDockerEngineReadOnlyEndpoints(t *testing.T) {
 	defer server.Close()
 
 	input := client.ConnectionInput{DockerHost: server.URL}
-	if _, output, err := dockerInfo(context.Background(), nil, DockerInfoInput{ConnectionInput: input}); err != nil || output.Info.ID == "" {
+	if output, err := docker.Info(context.Background(), DockerInfoInput{ConnectionInput: input}); err != nil || output.Info.ID == "" {
 		t.Fatalf("docker info: output=%v err=%v", output, err)
 	}
-	if _, output, err := listImages(context.Background(), nil, ListImagesInput{ConnectionInput: input}); err != nil || len(output.Images) != 1 {
+	if output, err := docker.Images(context.Background(), ListImagesInput{ConnectionInput: input}); err != nil || len(output.Images) != 1 {
 		t.Fatalf("docker images: output=%v err=%v", output, err)
 	}
-	if _, output, err := listContainers(context.Background(), nil, ListContainersInput{ConnectionInput: input}); err != nil || len(output.Containers) != 1 {
+	if output, err := docker.Containers(context.Background(), ListContainersInput{ConnectionInput: input}); err != nil || len(output.Containers) != 1 {
 		t.Fatalf("docker containers: output=%v err=%v", output, err)
 	}
-	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
+	if output, err := docker.ContainerLogs(context.Background(), ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
 		t.Fatalf("docker logs: output=%+v err=%v", output, err)
 	}
 	if logsQuery["tail"] != "1000" || logsQuery["since"] != "" || logsQuery["until"] != "" {
 		t.Fatalf("unexpected default log query: %#v", logsQuery)
 	}
-	if _, output, err := containerLogs(context.Background(), nil, ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id", Since: "2h", Until: "1h", Tail: "20", Keyword: "ERROR"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
+	if output, err := docker.ContainerLogs(context.Background(), ContainerLogsInput{ConnectionInput: input, ContainerName: "container-id", Since: "2h", Until: "1h", Tail: "20", Keyword: "ERROR"}); err != nil || output.Logs != "INFO hello from docker\nERROR failed request\ninfo healthy\n" {
 		t.Fatalf("filtered docker logs: output=%+v err=%v", output, err)
 	}
 	if logsQuery["tail"] != "20" || logsQuery["since"] == "" || logsQuery["until"] == "" {
 		t.Fatalf("unexpected bounded log query: %#v", logsQuery)
 	}
-	if _, output, err := containerInspect(context.Background(), nil, ContainerInspectInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.ID != "container-id" || output.Config == nil || len(output.Config.EnvNames) != 2 || output.Config.EnvNames[0] != "PASSWORD" {
+	if output, err := docker.ContainerInspect(context.Background(), ContainerInspectInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.ID != "container-id" || output.Config == nil || len(output.Config.EnvNames) != 2 || output.Config.EnvNames[0] != "PASSWORD" {
 		t.Fatalf("docker inspect: output=%v err=%v", output, err)
 	}
-	if _, output, err := containerStats(context.Background(), nil, ContainerStatsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.ID != "container-id" {
+	if output, err := docker.ContainerStats(context.Background(), ContainerStatsInput{ConnectionInput: input, ContainerName: "container-id"}); err != nil || output.ID != "container-id" {
 		t.Fatalf("docker stats: output=%+v err=%v", output, err)
 	}
 }
 
 func TestToFiltersParsesKeyValueString(t *testing.T) {
-	args, err := toFilters(" label=com.example.env=prod, reference:nginx:latest, status=running ")
+	args, err := docker.ParseFilters(" label=com.example.env=prod, reference:nginx:latest, status=running ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +101,7 @@ func TestToFiltersParsesKeyValueString(t *testing.T) {
 }
 
 func TestToFiltersAcceptsEmptyString(t *testing.T) {
-	args, err := toFilters("")
+	args, err := docker.ParseFilters("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +113,7 @@ func TestToFiltersAcceptsEmptyString(t *testing.T) {
 func TestToFiltersRejectsMalformedItems(t *testing.T) {
 	for _, raw := range []string{"label", ":value", "key:", "key:value,,other:value"} {
 		t.Run(raw, func(t *testing.T) {
-			if _, err := toFilters(raw); err == nil {
+			if _, err := docker.ParseFilters(raw); err == nil {
 				t.Fatalf("toFilters(%q) unexpectedly succeeded", raw)
 			}
 		})
@@ -120,35 +121,35 @@ func TestToFiltersRejectsMalformedItems(t *testing.T) {
 }
 
 func TestResolveContainerIdentifier(t *testing.T) {
-	if got, err := resolveContainerIdentifier(" id ", "name"); err != nil || got != "id" {
+	if got, err := docker.ResolveContainerIdentifier(" id ", "name"); err != nil || got != "id" {
 		t.Fatalf("ID should take precedence: got %q, err=%v", got, err)
 	}
-	if got, err := resolveContainerIdentifier("", " name "); err != nil || got != "name" {
+	if got, err := docker.ResolveContainerIdentifier("", " name "); err != nil || got != "name" {
 		t.Fatalf("name fallback failed: got %q, err=%v", got, err)
 	}
-	if _, err := resolveContainerIdentifier(" ", " "); err == nil {
+	if _, err := docker.ResolveContainerIdentifier(" ", " "); err == nil {
 		t.Fatal("expected missing identifier error")
 	}
 }
 
 func TestFilterLogLines(t *testing.T) {
 	logs := "INFO ready\nerror: failed\nwarning pending\n"
-	if got := filterLogLines(logs, "ERROR"); got != logs {
+	if got := docker.FilterLogLines(logs, "ERROR"); got != logs {
 		t.Fatalf("case-insensitive keyword filter = %q", got)
 	}
-	if got := filterLogLines(logs, " "); got != logs {
+	if got := docker.FilterLogLines(logs, " "); got != logs {
 		t.Fatalf("empty keyword changed logs: %q", got)
 	}
-	if got := filterLogLines("one\ntwo\nthree\nfour\nfive\nsix\nseven\n", "four"); got != "one\ntwo\nthree\nfour\nfive\nsix\nseven\n" {
+	if got := docker.FilterLogLines("one\ntwo\nthree\nfour\nfive\nsix\nseven\n", "four"); got != "one\ntwo\nthree\nfour\nfive\nsix\nseven\n" {
 		t.Fatalf("keyword context filter did not include surrounding lines: %q", got)
 	}
-	if got := filterLogLines("0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n", "match"); got != "0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n" {
+	if got := docker.FilterLogLines("0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n", "match"); got != "0\n1\n2\nMATCH A\n4\n5\n6\n7\nMATCH B\n9\n10\n11\n" {
 		t.Fatalf("overlapping keyword contexts were not merged: %q", got)
 	}
 }
 
 func TestParseKeywordExpression(t *testing.T) {
-	got := parseKeywordExpression(" error & timeout | fatal ")
+	got := docker.ParseKeywordExpression(" error & timeout | fatal ")
 	want := [][]string{{"error", "timeout"}, {"fatal"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parsed keyword expression = %#v, want %#v", got, want)
@@ -170,22 +171,22 @@ func TestMatchesKeywordExpression(t *testing.T) {
 		{line: "ERROR only", expression: "error&timeout|fatal", want: false},
 	}
 	for _, test := range tests {
-		clauses := parseKeywordExpression(test.expression)
-		if got := matchesKeywordExpression(strings.ToLower(test.line), clauses); got != test.want {
+		clauses := docker.ParseKeywordExpression(test.expression)
+		if got := docker.MatchesKeywordExpression(strings.ToLower(test.line), clauses); got != test.want {
 			t.Errorf("matchesKeywordExpression(%q, %q) = %v, want %v", test.line, test.expression, got, test.want)
 		}
 	}
 }
 
 func TestLimitLogLinesKeepsMostRecentLines(t *testing.T) {
-	if got := limitLogLines("1\n2\n3\n4\n5\n", 3); got != "3\n4\n5\n" {
+	if got := docker.LimitLogLines("1\n2\n3\n4\n5\n", 3); got != "3\n4\n5\n" {
 		t.Fatalf("limited logs = %q, want most recent lines", got)
 	}
 }
 
 func TestKeywordFilteringHappensBeforeFinalLineLimit(t *testing.T) {
 	logs := strings.Repeat("MATCH\n", 205)
-	got := limitLogLines(filterLogLines(logs, "match"), maxOutputLogLines)
+	got := docker.LimitLogLines(docker.FilterLogLines(logs, "match"), maxOutputLogLines)
 	if lines := strings.Count(got, "\n"); lines != maxOutputLogLines {
 		t.Fatalf("final filtered log lines = %d, want %d", lines, maxOutputLogLines)
 	}

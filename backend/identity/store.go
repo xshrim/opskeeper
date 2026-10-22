@@ -42,11 +42,8 @@ func (s *store) BootstrapAdmin(ctx context.Context, username, email, phone, disp
 		return User{}, ErrBootstrapComplete
 	}
 
-	user, err := insertUser(ctx, tx, username, email, phone, displayName)
+	user, err := insertUser(ctx, tx, username, email, phone, displayName, passwordHash, false)
 	if err != nil {
-		return User{}, mapBootstrapStoreError(err)
-	}
-	if _, err := tx.Exec(ctx, "INSERT INTO credentials (user_id, password_hash, must_change_password) VALUES ($1::uuid, $2, false)", user.ID, passwordHash); err != nil {
 		return User{}, mapBootstrapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -59,9 +56,8 @@ func (s *store) FindByIdentifier(ctx context.Context, identifier, phone string) 
 	var user User
 	var passwordHash string
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id::text, u.username, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.display_name, u.status, c.must_change_password, u.created_at, u.updated_at, c.password_hash
+		SELECT u.id::text, u.username, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.display_name, u.status, u.must_change_password, u.created_at, u.updated_at, u.password_hash
 		  FROM users u
-		  JOIN credentials c ON c.user_id = u.id
 		 WHERE u.deleted_at IS NULL AND (lower(u.username) = lower($1) OR lower(u.email) = lower($1) OR ($2 <> '' AND u.phone = $2))
 		 ORDER BY CASE WHEN lower(u.username) = lower($1) THEN 0 WHEN lower(u.email) = lower($1) THEN 1 ELSE 2 END
 		 LIMIT 1`, identifier, phone).
@@ -77,9 +73,9 @@ func (s *store) FindByIdentifier(ctx context.Context, identifier, phone string) 
 
 func (s *store) UpdatePasswordHash(ctx context.Context, userID, previousHash, newHash string) error {
 	command, err := s.pool.Exec(ctx, `
-		UPDATE credentials
+		UPDATE users
 		   SET password_hash = $3, password_changed_at = now(), updated_at = now()
-		 WHERE user_id = $1::uuid AND password_hash = $2`, userID, previousHash, newHash)
+		 WHERE id = $1::uuid AND password_hash = $2`, userID, previousHash, newHash)
 	if err != nil {
 		return fmt.Errorf("upgrade password hash: %w", err)
 	}
@@ -91,7 +87,7 @@ func (s *store) UpdatePasswordHash(ctx context.Context, userID, previousHash, ne
 
 func (s *store) ChangePassword(ctx context.Context, userID, currentPassword, newHash string) error {
 	var currentHash string
-	if err := s.pool.QueryRow(ctx, `SELECT password_hash FROM credentials WHERE user_id = $1::uuid`, userID).Scan(&currentHash); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1::uuid AND deleted_at IS NULL`, userID).Scan(&currentHash); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInvalidCredentials
 		}
@@ -100,7 +96,7 @@ func (s *store) ChangePassword(ctx context.Context, userID, currentPassword, new
 	if !verifyPassword(currentHash, currentPassword) {
 		return ErrInvalidCredentials
 	}
-	command, err := s.pool.Exec(ctx, `UPDATE credentials SET password_hash = $2, password_changed_at = now(), must_change_password = false, updated_at = now() WHERE user_id = $1::uuid`, userID, newHash)
+	command, err := s.pool.Exec(ctx, `UPDATE users SET password_hash = $2, password_changed_at = now(), must_change_password = false, updated_at = now() WHERE id = $1::uuid AND deleted_at IS NULL`, userID, newHash)
 	if err != nil {
 		return fmt.Errorf("change password: %w", err)
 	}
@@ -112,9 +108,9 @@ func (s *store) ChangePassword(ctx context.Context, userID, currentPassword, new
 
 func (s *store) ChangeOneTimePassword(ctx context.Context, userID, newHash string) error {
 	command, err := s.pool.Exec(ctx, `
-		UPDATE credentials
+		UPDATE users
 		   SET password_hash = $2, password_changed_at = now(), must_change_password = false, updated_at = now()
-		 WHERE user_id = $1::uuid AND must_change_password = true`, userID, newHash)
+		 WHERE id = $1::uuid AND deleted_at IS NULL AND must_change_password = true`, userID, newHash)
 	if err != nil {
 		return fmt.Errorf("change one-time password: %w", err)
 	}
@@ -125,7 +121,7 @@ func (s *store) ChangeOneTimePassword(ctx context.Context, userID, newHash strin
 }
 
 func (s *store) ResetPassword(ctx context.Context, userID, newHash string) error {
-	command, err := s.pool.Exec(ctx, `UPDATE credentials SET password_hash = $2, password_changed_at = now(), must_change_password = true, updated_at = now() WHERE user_id = $1::uuid`, userID, newHash)
+	command, err := s.pool.Exec(ctx, `UPDATE users SET password_hash = $2, password_changed_at = now(), must_change_password = true, updated_at = now() WHERE id = $1::uuid AND deleted_at IS NULL`, userID, newHash)
 	if err != nil {
 		return fmt.Errorf("reset password: %w", err)
 	}
@@ -168,7 +164,7 @@ func (s *store) RotateSession(ctx context.Context, oldRefreshHash, accessHash, r
 		   AND session.refresh_expires_at > $4
 		   AND usr.status = 'active'
 		   AND usr.deleted_at IS NULL
-		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, (SELECT c.must_change_password FROM credentials c WHERE c.user_id = usr.id), usr.created_at, usr.updated_at`,
+		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, usr.must_change_password, usr.created_at, usr.updated_at`,
 		oldRefreshHash, accessHash, refreshHash, now, accessExpiresAt, refreshExpiresAt, lastSeenAt, metadata.UserAgent, metadata.ClientIP).
 		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
@@ -192,7 +188,7 @@ func (s *store) Authenticate(ctx context.Context, accessHash []byte, now time.Ti
 		   AND session.access_expires_at > $2
 		   AND usr.status = 'active'
 		   AND usr.deleted_at IS NULL
-		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, (SELECT c.must_change_password FROM credentials c WHERE c.user_id = usr.id), usr.created_at, usr.updated_at`,
+		RETURNING usr.id::text, usr.username, COALESCE(usr.email, ''), COALESCE(usr.phone, ''), usr.display_name, usr.status, usr.must_change_password, usr.created_at, usr.updated_at`,
 		accessHash, now).
 		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
@@ -251,11 +247,8 @@ func (s *store) CreateUser(ctx context.Context, username, email, phone, displayN
 		return User{}, fmt.Errorf("begin create user: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	user, err := insertUser(ctx, tx, username, email, phone, displayName)
+	user, err := insertUser(ctx, tx, username, email, phone, displayName, passwordHash, true)
 	if err != nil {
-		return User{}, mapStoreError(err)
-	}
-	if _, err := tx.Exec(ctx, "INSERT INTO credentials (user_id, password_hash, must_change_password) VALUES ($1::uuid, $2, true)", user.ID, passwordHash); err != nil {
 		return User{}, mapStoreError(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -384,12 +377,12 @@ type queryer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func insertUser(ctx context.Context, query queryer, username, email, phone, displayName string) (User, error) {
+func insertUser(ctx context.Context, query queryer, username, email, phone, displayName, passwordHash string, mustChangePassword bool) (User, error) {
 	var user User
 	err := query.QueryRow(ctx, `
-		INSERT INTO users (username, email, phone, display_name)
-		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4)
-		RETURNING id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at`, username, email, phone, displayName).
+		INSERT INTO users (username, email, phone, display_name, password_hash, must_change_password)
+		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, $6)
+		RETURNING id::text, username, COALESCE(email, ''), COALESCE(phone, ''), display_name, status, created_at, updated_at`, username, email, phone, displayName, passwordHash, mustChangePassword).
 		Scan(&user.ID, &user.Username, &user.Email, &user.Phone, &user.DisplayName, &user.Status, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }

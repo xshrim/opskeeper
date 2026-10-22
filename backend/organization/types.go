@@ -36,25 +36,29 @@ type Team struct {
 	Description string            `json:"description"`
 	Icon        string            `json:"icon"`
 	Labels      map[string]string `json:"labels"`
+	OwnerIDs    []string          `json:"owner_ids"`
 	Status      string            `json:"status"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 type Project struct {
-	ID          string            `json:"id"`
-	PlatformID  string            `json:"platform_id"`
-	TeamID      string            `json:"team_id"`
-	Scope       Scope             `json:"scope"`
-	Name        string            `json:"name"`
-	Code        string            `json:"code"`
-	Description string            `json:"description"`
-	Icon        string            `json:"icon"`
-	Labels      map[string]string `json:"labels"`
-	Summary     ProjectSummary    `json:"summary"`
-	Status      string            `json:"status"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID                 string            `json:"id"`
+	PlatformID         string            `json:"platform_id"`
+	TeamID             string            `json:"team_id"`
+	Scope              Scope             `json:"scope"`
+	Name               string            `json:"name"`
+	Code               string            `json:"code"`
+	Description        string            `json:"description"`
+	Icon               string            `json:"icon"`
+	Labels             map[string]string `json:"labels"`
+	ImportanceLevel    string            `json:"importance_level"`
+	TechnicalOwnerIDs  []string          `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string          `json:"operations_owner_ids"`
+	Summary            ProjectSummary    `json:"summary"`
+	Status             string            `json:"status"`
+	CreatedAt          time.Time         `json:"created_at"`
+	UpdatedAt          time.Time         `json:"updated_at"`
 }
 
 type ProjectSummary struct {
@@ -86,6 +90,7 @@ type CreateTeamInput struct {
 	Description string
 	Icon        string
 	Labels      map[string]string
+	OwnerIDs    []string
 }
 
 type UpdateTeamInput struct {
@@ -93,25 +98,32 @@ type UpdateTeamInput struct {
 	Description *string
 	Icon        *string
 	Labels      *map[string]string
+	OwnerIDs    *[]string
 	Status      *string
 }
 
 type CreateProjectInput struct {
-	TeamID       string
-	Name         string
-	Code         string
-	Description  string
-	Icon         string
-	Labels       map[string]string
-	Applications []application.CreateInput
+	TeamID             string
+	Name               string
+	Code               string
+	Description        string
+	Icon               string
+	Labels             map[string]string
+	ImportanceLevel    string
+	TechnicalOwnerIDs  []string
+	OperationsOwnerIDs []string
+	Applications       []application.CreateInput
 }
 
 type UpdateProjectInput struct {
-	Name        *string
-	Description *string
-	Icon        *string
-	Labels      *map[string]string
-	Status      *string
+	Name               *string
+	Description        *string
+	Icon               *string
+	Labels             *map[string]string
+	ImportanceLevel    *string
+	TechnicalOwnerIDs  *[]string
+	OperationsOwnerIDs *[]string
+	Status             *string
 }
 
 // DeleteInput keeps destructive operations explicit. Resources are deliberately

@@ -24,21 +24,27 @@ type applicationHandler struct {
 	apiBasePath string
 }
 type createApplicationRequest struct {
-	Name        string                            `json:"name"`
-	Code        string                            `json:"code"`
-	Description string                            `json:"description"`
-	Icon        string                            `json:"icon"`
-	ExternalUID string                            `json:"external_uid"`
-	RuntimeKind string                            `json:"runtime_kind"`
-	Labels      map[string]string                 `json:"labels"`
-	Instances   []application.CreateInstanceInput `json:"instances"`
+	Name               string                            `json:"name"`
+	Code               string                            `json:"code"`
+	Description        string                            `json:"description"`
+	Icon               string                            `json:"icon"`
+	ExternalUID        string                            `json:"external_uid"`
+	RuntimeKind        string                            `json:"runtime_kind"`
+	Labels             map[string]string                 `json:"labels"`
+	Critical           bool                              `json:"critical"`
+	TechnicalOwnerIDs  []string                          `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string                          `json:"operations_owner_ids"`
+	Instances          []application.CreateInstanceInput `json:"instances"`
 }
 type updateApplicationRequest struct {
-	Name        *string            `json:"name"`
-	Description *string            `json:"description"`
-	Icon        *string            `json:"icon"`
-	Status      *string            `json:"status"`
-	Labels      *map[string]string `json:"labels"`
+	Name               *string            `json:"name"`
+	Description        *string            `json:"description"`
+	Icon               *string            `json:"icon"`
+	Status             *string            `json:"status"`
+	Labels             *map[string]string `json:"labels"`
+	Critical           *bool              `json:"critical"`
+	TechnicalOwnerIDs  *[]string          `json:"technical_owner_ids"`
+	OperationsOwnerIDs *[]string          `json:"operations_owner_ids"`
 }
 type createInstanceRequest struct {
 	Name             string         `json:"name"`
@@ -87,7 +93,7 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Instances: b.Instances})
+	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -108,7 +114,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

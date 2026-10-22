@@ -46,7 +46,6 @@ make start
 | `make obs-logs`                 | 持续查看本地监控组件日志                                                  |
 | `make obs-down`                 | 停止本地监控组件                                                          |
 | `make migrate`                  | 应用待执行迁移                                                           |
-| `make migrate-down`             | 回滚最近一条迁移，仅用于开发和测试                                       |
 | `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
 | `make api-stop`                 | 按 `.env` 中的 `OPSK_HTTP_ADDRESS` 端口强制停止已监听的 API 进程       |
 | `make api-run`                  | 停止旧 API 后临时运行 API                                                |
@@ -318,19 +317,16 @@ make migrate
 
 没有新迁移时，日常重启应用无需重复执行。长期运行的应用进程永不自动迁移数据库。
 
-当前迁移基线位于 `backend/migrations/sql/0001_initial.sql`，对应回滚脚本为 `0001_initial.down.sql`。历史版本 SQL 保存在 `backend/migrations/sql/archive/`，仅用于追溯和生成新的基线，不会被迁移器加载。
+当前迁移基线位于 `backend/migrations/sql/0001_initial.sql`。历史增量 SQL 保存在 `backend/migrations/sql/archive/`，仅供追溯，不会被迁移器加载。
 
 ```text
 0001_initial.sql
-0001_initial.down.sql
 archive/                 # 历史迁移，仅供追溯
 ```
 
-当前基线文件作为已审核的迁移输入直接维护；如需重新整合归档 SQL，必须在变更中重新生成并审查顶层 `0001_initial.sql` 和 `0001_initial.down.sql`，不能依赖运行时脚本。
+当前基线是从完整迁移链应用后的 PostgreSQL schema 和内置种子数据导出的纯 SQL。更新数据库结构时，先在隔离数据库验证变更，再重建并审查该文件；不要把归档 SQL 加入运行时加载路径。
 
-迁移器通过 `go:embed` 将顶层 SQL 编译进 `opskeeper-migrate`，不会读取 `archive/` 子目录。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，校验已执行版本的名称和前滚 SQL SHA-256，按版本顺序跳过已执行项，并在独立事务中执行每条待处理迁移和版本记录。失败会回滚当前迁移并返回非零状态；数据库存在当前二进制未知版本或历史迁移名称时立即失败。当前基线只有 `0001_initial`，历史 `0001`-`0019` 数据库需要按环境执行重建或专门的数据迁移，不能依赖 `archive/` 自动升级。
-
-执行 `make migrate-down` 时，迁移器使用同一把锁，在一个事务中回滚最新版本并删除其版本记录。生产发布回滚应用时不得自动执行 `down`；自动化发布流程见[自动化发布](delivery.md)。
+迁移器通过 `go:embed` 只嵌入顶层 SQL，不会读取 `archive/` 子目录。执行 `up` 时，它获取固定数据库连接和 PostgreSQL session advisory lock，创建或复用 `schema_migrations`，校验基线名称和前滚 SQL SHA-256，并在独立事务中执行基线和版本记录。基线为单一、不可逆初始化操作，不提供 `down` 命令；已有历史增量迁移数据库需要按环境执行受控重建或专项数据迁移，不能依赖 `archive/` 自动升级。
 
 ## 7. 检查与制品
 

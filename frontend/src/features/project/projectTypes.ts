@@ -14,8 +14,12 @@ export type ApplicationDraft = {
   code: string;
   description: string;
   icon: string;
+  labels: Record<string, string>;
   runtimeKind: ApplicationRuntimeKind;
   externalUid?: string;
+  critical: boolean;
+  technicalOwnerIds: string[];
+  operationsOwnerIds: string[];
   instances: ApplicationInstanceDraft[];
 };
 
@@ -31,4 +35,4 @@ export const slugify = (value: string) => {
 };
 
 export const resourcesForRuntime = (resources: Resource[], kind: ApplicationRuntimeKind) =>
-  resources.filter((resource) => resource.kind === runtimeResourceKind(kind) && resource.status !== 'disabled');
+  resources.filter((resource) => resource.kind === runtimeResourceKind(kind));

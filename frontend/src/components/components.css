@@ -577,8 +577,8 @@
   border-color: var(--theme-border-focus);
 }
 .danger-button {
-  color: #fff;
-  background: #b84b38;
+  color: var(--theme-accent-contrast);
+  background: var(--theme-danger-action);
   border-color: transparent;
 }
 .full {
@@ -965,7 +965,7 @@
   border-color: var(--theme-border-focus);
 }
 .danger-button:hover {
-  color: #fff;
-  background: #9f3d2d;
+  color: var(--theme-accent-contrast);
+  background: var(--theme-danger-action-hover);
   border-color: transparent;
 }

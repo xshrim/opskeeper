@@ -1261,6 +1261,8 @@
   align-items: start;
   gap: 6px;
 }
+.team-name-owner-fields { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: start; gap: 10px; }
+@media (max-width: 620px) { .team-name-owner-fields { grid-template-columns: 1fr; } }
 .team-icon-selection {
   display: grid;
   justify-items: start;
@@ -1591,13 +1593,13 @@
   white-space: nowrap;
 }
 .permission-card.permission-role-admin {
-  --permission-role-color: #b14d4d;
+  --permission-role-color: var(--theme-role-admin);
 }
 .permission-card.permission-role-operator {
-  --permission-role-color: #b56a1f;
+  --permission-role-color: var(--theme-role-operator);
 }
 .permission-card.permission-role-viewer {
-  --permission-role-color: #5b6c7c;
+  --permission-role-color: var(--theme-role-viewer);
 }
 .permission-card[class*='permission-role-'] {
   background: color-mix(in srgb, var(--permission-role-color) 11%, var(--theme-bg-surface));
@@ -1613,25 +1615,13 @@
   color: var(--permission-role-color);
 }
 .permission-card.permission-platform .permission-card-object small {
-  color: #167b8a;
+  color: var(--theme-scope-platform-fg);
 }
 .permission-card.permission-team .permission-card-object small {
   color: var(--theme-scope-team-fg);
 }
 .permission-card.permission-project .permission-card-object small {
   color: var(--theme-scope-project-fg);
-}
-:root[data-theme='dark'] .permission-card.permission-role-admin {
-  --permission-role-color: #f09a9a;
-}
-:root[data-theme='dark'] .permission-card.permission-role-operator {
-  --permission-role-color: #f0b36d;
-}
-:root[data-theme='dark'] .permission-card.permission-role-viewer {
-  --permission-role-color: #a9c7df;
-}
-:root[data-theme='dark'] .permission-card.permission-platform .permission-card-object small {
-  color: #78d3df;
 }
 @media (max-width: 1050px) {
   .access-member-table {

@@ -224,7 +224,7 @@ func (s *Service) server(ctx context.Context, resourceID string) (resource.Resou
 	if err != nil {
 		return resource.Resource{}, Config{}, err
 	}
-	if server.Kind != "MCPServer" || server.Status != resource.StatusActive || !allows(ctx, server.ScopeID, server.ID) {
+	if server.Kind != "MCPServer" || !allows(ctx, server.ScopeID, server.ID) {
 		return resource.Resource{}, Config{}, authorization.ErrForbidden
 	}
 	config, err := configFromWithSecurity(server.Config, s.enhancedSecurity)

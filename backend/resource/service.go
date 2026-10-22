@@ -95,12 +95,6 @@ func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, req
 	if !allowsExactScope(ctx, input.ScopeID) {
 		return CreateInput{}, authorization.ErrForbidden
 	}
-	if input.Status == "" {
-		input.Status = StatusActive
-	}
-	if err := validateStatus(input.Status); err != nil {
-		return CreateInput{}, err
-	}
 	if err := validateLabels(input.Labels); err != nil {
 		return CreateInput{}, err
 	}
@@ -243,13 +237,6 @@ func (s *Service) prepareUpdate(ctx context.Context, id string, input UpdateInpu
 		}
 		input.Name = &value
 	}
-	if input.Status != nil {
-		value := strings.TrimSpace(*input.Status)
-		if err := validateStatus(value); err != nil {
-			return Resource{}, UpdateInput{}, err
-		}
-		input.Status = &value
-	}
 	if input.Subtype != nil {
 		value := strings.TrimSpace(*input.Subtype)
 		if err := validateResourceSubtype(current.Kind, value); err != nil {
@@ -315,7 +302,7 @@ func (s *Service) prepareUpdate(ctx context.Context, id string, input UpdateInpu
 		}
 		input.AgentRef = &normalizedAgentRef
 	}
-	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Status == nil && input.Credential == nil && !input.ClearCredential && input.Subtype == nil && input.AgentRef == nil {
+	if input.ScopeID == nil && input.Name == nil && input.ExternalUID == nil && input.SourceResourceID == nil && input.Labels == nil && input.Config == nil && input.Credential == nil && !input.ClearCredential && input.Subtype == nil && input.AgentRef == nil {
 		return Resource{}, UpdateInput{}, invalid("at least one field must be provided")
 	}
 	return current, input, nil
@@ -348,9 +335,6 @@ func (s *Service) normalizeAccess(ctx context.Context, resourceID, kind, subtype
 	}
 	if linked.Kind != "MCPServer" {
 		return "", nil, invalid("agent_ref must reference an MCPServer resource")
-	}
-	if linked.Status != StatusActive {
-		return "", nil, invalid("linked MCPServer must be active")
 	}
 	if !allowsResource(ctx, linked.ScopeID, linked.ID) {
 		return "", nil, authorization.ErrForbidden
@@ -683,13 +667,6 @@ func validateResourceSubtype(kind, subtype string) error {
 	}
 	if subtype != "Direct" && subtype != "Agent" {
 		return invalid(fmt.Sprintf("%s subtype must be Direct or Agent", kind))
-	}
-	return nil
-}
-
-func validateStatus(status string) error {
-	if status != StatusActive && status != StatusDisabled && status != StatusUnknown {
-		return invalid("status must be active, disabled or unknown")
 	}
 	return nil
 }

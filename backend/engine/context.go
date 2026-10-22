@@ -11,7 +11,6 @@ type ContextResource struct {
 	ScopeID  string         `json:"scope_id"`
 	Kind     string         `json:"kind"`
 	Name     string         `json:"name"`
-	Status   string         `json:"status"`
 	Subtype  string         `json:"subtype,omitempty"`
 	AgentRef *string        `json:"agent_ref,omitempty"`
 	Config   map[string]any `json:"-"`
@@ -37,6 +36,7 @@ type ContextResourceReader interface {
 
 type ContextProvider interface {
 	Kinds() []string
+	AccessModes() []string
 	Resolve(context.Context, ContextResource) ([]Tool, []ContextFact, error)
 }
 
@@ -84,9 +84,6 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 				return ResolvedContext{}, fmt.Errorf("authorize context resource %s: %w", id, err)
 			}
 		}
-		if resource.Status != "" && resource.Status != "active" {
-			return ResolvedContext{}, fmt.Errorf("context resource %s is not active", id)
-		}
 		resolved.Resources = append(resolved.Resources, resource)
 		provider, ok := providerFor(r.Providers, resource)
 		if !ok {
@@ -116,14 +113,6 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 	return resolved, nil
 }
 
-// ContextProviderAccessModes is optional for backwards compatibility with
-// small providers. Providers that implement it are selected only for the
-// declared resource access mode, preventing an Agent resource from falling
-// through to a direct connector.
-type ContextProviderAccessModes interface {
-	AccessModes() []string
-}
-
 func providerFor(providers []ContextProvider, resource ContextResource) (ContextProvider, bool) {
 	for _, provider := range providers {
 		for _, supported := range provider.Kinds() {
@@ -131,8 +120,7 @@ func providerFor(providers []ContextProvider, resource ContextResource) (Context
 				continue
 			}
 			if mode := strings.ToLower(strings.TrimSpace(resource.Subtype)); mode != "" {
-				modeProvider, constrained := provider.(ContextProviderAccessModes)
-				if !constrained || !containsFold(modeProvider.AccessModes(), mode) {
+				if !containsFold(provider.AccessModes(), mode) {
 					continue
 				}
 			}

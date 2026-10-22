@@ -8,19 +8,22 @@ type Application struct {
 	// ProjectScopeID is used internally by authorization and diagnosis. It is
 	// deliberately omitted from the public representation because applications
 	// are always addressed through their project.
-	ProjectScopeID string            `json:"-"`
-	Name           string            `json:"name"`
-	Code           string            `json:"code"`
-	Description    string            `json:"description"`
-	Icon           string            `json:"icon"`
-	RuntimeKind    string            `json:"runtime_kind"`
-	Status         string            `json:"status"`
-	ExternalUID    string            `json:"external_uid,omitempty"`
-	Labels         map[string]string `json:"labels"`
-	Instances      []Instance        `json:"instances"`
-	Dependencies   []Dependency      `json:"dependencies"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ProjectScopeID     string            `json:"-"`
+	Name               string            `json:"name"`
+	Code               string            `json:"code"`
+	Description        string            `json:"description"`
+	Icon               string            `json:"icon"`
+	RuntimeKind        string            `json:"runtime_kind"`
+	Status             string            `json:"status"`
+	ExternalUID        string            `json:"external_uid,omitempty"`
+	Labels             map[string]string `json:"labels"`
+	Critical           bool              `json:"critical"`
+	TechnicalOwnerIDs  []string          `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string          `json:"operations_owner_ids"`
+	Instances          []Instance        `json:"instances"`
+	Dependencies       []Dependency      `json:"dependencies"`
+	CreatedAt          time.Time         `json:"created_at"`
+	UpdatedAt          time.Time         `json:"updated_at"`
 }
 
 type Instance struct {
@@ -65,11 +68,10 @@ type Workspace struct {
 }
 
 type RelatedResource struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Kind   string `json:"kind"`
-	Status string `json:"status"`
-	Role   string `json:"role"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Role string `json:"role"`
 }
 type Alert struct {
 	ID       string `json:"id"`
@@ -79,19 +81,25 @@ type Alert struct {
 }
 
 type CreateInput struct {
-	ProjectID   string                `json:"project_id,omitempty"`
-	Name        string                `json:"name"`
-	Code        string                `json:"code"`
-	Description string                `json:"description"`
-	Icon        string                `json:"icon"`
-	RuntimeKind string                `json:"runtime_kind"`
-	ExternalUID string                `json:"external_uid,omitempty"`
-	Labels      map[string]string     `json:"labels"`
-	Instances   []CreateInstanceInput `json:"instances"`
+	ProjectID          string                `json:"project_id,omitempty"`
+	Name               string                `json:"name"`
+	Code               string                `json:"code"`
+	Description        string                `json:"description"`
+	Icon               string                `json:"icon"`
+	RuntimeKind        string                `json:"runtime_kind"`
+	ExternalUID        string                `json:"external_uid,omitempty"`
+	Labels             map[string]string     `json:"labels"`
+	Critical           bool                  `json:"critical"`
+	TechnicalOwnerIDs  []string              `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string              `json:"operations_owner_ids"`
+	Instances          []CreateInstanceInput `json:"instances"`
 }
 type UpdateInput struct {
 	Name, Description, Icon, Status *string
 	Labels                          *map[string]string
+	Critical                        *bool
+	TechnicalOwnerIDs               *[]string
+	OperationsOwnerIDs              *[]string
 }
 type CreateInstanceInput struct {
 	ApplicationID    string         `json:"application_id,omitempty"`

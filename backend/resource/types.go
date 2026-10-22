@@ -3,9 +3,6 @@ package resource
 import "time"
 
 const (
-	StatusActive     = "active"
-	StatusDisabled   = "disabled"
-	StatusUnknown    = "unknown"
 	AccessModeDirect = "direct"
 	AccessModeAgent  = "agent"
 )
@@ -22,7 +19,6 @@ type Resource struct {
 	SourceResourceID     string            `json:"source_resource_id,omitempty"`
 	Labels               map[string]string `json:"labels"`
 	Config               map[string]any    `json:"config"`
-	Status               string            `json:"status"`
 	CredentialConfigured bool              `json:"credential_configured"`
 	ApplicationCount     int               `json:"application_count"`
 	CreatedAt            time.Time         `json:"created_at"`
@@ -92,7 +88,6 @@ type CreateInput struct {
 	SourceResourceID string
 	Labels           map[string]string
 	Config           map[string]any
-	Status           string
 	Credential       *CredentialInput
 }
 
@@ -107,7 +102,6 @@ type UpdateInput struct {
 	SourceResourceID *string
 	Labels           *map[string]string
 	Config           *map[string]any
-	Status           *string
 	Credential       *CredentialPatch
 	ClearCredential  bool
 }

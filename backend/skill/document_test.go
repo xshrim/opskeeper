@@ -9,7 +9,7 @@ const testDocumentBody = `
 api_version: opskeeper.skill/v1
 kind: Skill
 metadata:
-  name: PostgreSQL health
+  name: PostgreSQL-health
   identifier: postgresql-health
   version: 1.2.3
   category: diagnosis
@@ -29,12 +29,12 @@ spec:
 
 func TestParseDocumentNormalizesJSONYAMLAndMarkdown(t *testing.T) {
 	yamlSource := []byte(testDocumentBody)
-	jsonSource := []byte(`{"api_version":"opskeeper.skill/v1","kind":"Skill","metadata":{"name":"PostgreSQL health","identifier":"postgresql-health","version":"1.2.3","category":"diagnosis","tags":["database","readonly"],"maintainer":"user-123"},"spec":{"description":"Inspect PostgreSQL health without changing the resource.","input_schema":{"type":"object","properties":{"target_resource_id":{"type":"string"}}},"output_schema":{"type":"object","required":["findings"]},"body":"Inspect the resource and report evidence."}}`)
+	jsonSource := []byte(`{"api_version":"opskeeper.skill/v1","kind":"Skill","metadata":{"name":"PostgreSQL-health","identifier":"postgresql-health","version":"1.2.3","category":"diagnosis","tags":["database","readonly"],"maintainer":"user-123"},"spec":{"description":"Inspect PostgreSQL health without changing the resource.","input_schema":{"type":"object","properties":{"target_resource_id":{"type":"string"}}},"output_schema":{"type":"object","required":["findings"]},"body":"Inspect the resource and report evidence."}}`)
 	markdownSource := []byte(`---
 api_version: opskeeper.skill/v1
 kind: Skill
 metadata:
-  name: PostgreSQL health
+  name: PostgreSQL-health
   identifier: postgresql-health
   version: 1.2.3
   category: diagnosis
@@ -84,6 +84,7 @@ func TestParseDocumentRejectsInvalidBoundary(t *testing.T) {
 		{"non object root", BodyFormatJSON, []byte(`[1,2,3]`)},
 		{"invalid category", BodyFormatYAML, bytes.Replace(valid, []byte("category: diagnosis"), []byte("category: unknown"), 1)},
 		{"invalid identifier", BodyFormatYAML, bytes.Replace(valid, []byte("identifier: postgresql-health"), []byte("identifier: Team/Postgres"), 1)},
+		{"whitespace name", BodyFormatYAML, bytes.Replace(valid, []byte("name: PostgreSQL-health"), []byte("name: PostgreSQL health"), 1)},
 		{"unknown field", BodyFormatYAML, append(valid, []byte("unexpected: true\n")...)},
 	}
 	for _, test := range tests {

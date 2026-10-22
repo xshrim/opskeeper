@@ -48,7 +48,6 @@ type createResourceRequest struct {
 	SourceResourceID string                     `json:"source_resource_id,omitempty"`
 	Labels           map[string]string          `json:"labels"`
 	Config           map[string]any             `json:"config"`
-	Status           string                     `json:"status,omitempty"`
 	Credential       *resourceCredentialRequest `json:"credential,omitempty"`
 }
 
@@ -61,7 +60,6 @@ type updateResourceRequest struct {
 	SourceResourceID *string                 `json:"source_resource_id"`
 	Labels           *map[string]string      `json:"labels"`
 	Config           *map[string]any         `json:"config"`
-	Status           *string                 `json:"status"`
 	Credential       nullableCredentialPatch `json:"credential"`
 }
 
@@ -161,7 +159,7 @@ func (h resourceHandler) createResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	input := resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AgentRef: body.AgentRef, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status}
+	input := resource.CreateInput{ScopeID: body.ScopeID, Kind: body.Kind, Subtype: body.Subtype, AgentRef: body.AgentRef, SchemaVersion: body.SchemaVersion, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config}
 	if body.Credential != nil {
 		input.Credential = &resource.CredentialInput{Purpose: valueOrEmpty(body.Credential.Purpose), Secret: body.Credential.Secret}
 	}
@@ -198,7 +196,7 @@ func (h resourceHandler) updateResource(writer http.ResponseWriter, request *htt
 	if !decodeRequest(writer, request, &body) {
 		return
 	}
-	input := resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AgentRef: body.AgentRef, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config, Status: body.Status}
+	input := resource.UpdateInput{ScopeID: body.ScopeID, Subtype: body.Subtype, AgentRef: body.AgentRef, Name: body.Name, ExternalUID: body.ExternalUID, SourceResourceID: body.SourceResourceID, Labels: body.Labels, Config: body.Config}
 	if body.Credential.Set {
 		if body.Credential.Value == nil {
 			input.ClearCredential = true

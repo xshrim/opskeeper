@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,7 +31,6 @@ type migration struct {
 	name     string
 	checksum string
 	sql      string
-	downSQL  string
 }
 
 func Apply(ctx context.Context, pool *pgxpool.Pool) error {
@@ -77,58 +75,6 @@ func apply(ctx context.Context, conn *pgxpool.Conn) error {
 		}
 	}
 
-	return nil
-}
-
-func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
-	return withMigrationLock(ctx, pool, rollbackLast)
-}
-
-func rollbackLast(ctx context.Context, conn *pgxpool.Conn) error {
-	migrations, err := load()
-	if err != nil {
-		return err
-	}
-	if _, err := prepareMigrationHistory(ctx, conn, migrations); err != nil {
-		return err
-	}
-
-	var version int64
-	var name string
-	if err := conn.QueryRow(ctx,
-		"SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1",
-	).Scan(&version, &name); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		return fmt.Errorf("find latest migration: %w", err)
-	}
-
-	var selected *migration
-	for index := range migrations {
-		if migrations[index].version == version {
-			selected = &migrations[index]
-			break
-		}
-	}
-	if selected == nil || selected.name != name {
-		return fmt.Errorf("migration %d (%s) is not embedded in this binary", version, name)
-	}
-
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin rollback %d: %w", version, err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, selected.downSQL); err != nil {
-		return fmt.Errorf("rollback migration %d (%s): %w", version, name, err)
-	}
-	if _, err := tx.Exec(ctx, "DELETE FROM schema_migrations WHERE version = $1", version); err != nil {
-		return fmt.Errorf("remove migration record %d: %w", version, err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit rollback %d: %w", version, err)
-	}
 	return nil
 }
 
@@ -280,20 +226,11 @@ func load() ([]migration, error) {
 		if len(strings.TrimSpace(string(content))) == 0 {
 			return nil, errors.New("migration " + entry.Name() + " is empty")
 		}
-		downName := strings.TrimSuffix(entry.Name(), ".sql") + ".down.sql"
-		downContent, err := migrationFiles.ReadFile("sql/" + downName)
-		if err != nil {
-			return nil, fmt.Errorf("read rollback migration %q: %w", downName, err)
-		}
-		if len(strings.TrimSpace(string(downContent))) == 0 {
-			return nil, errors.New("rollback migration " + downName + " is empty")
-		}
 		items = append(items, migration{
 			version:  version,
 			name:     parts[1],
 			checksum: migrationChecksum(content),
 			sql:      string(content),
-			downSQL:  string(downContent),
 		})
 	}
 

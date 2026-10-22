@@ -14,8 +14,8 @@ import (
 func TestServiceStartRequiresAuthorizedSameScopeTarget(t *testing.T) {
 	store := &memoryStore{}
 	resources := fakeResources{items: map[string]resource.Resource{
-		"target-1": {ID: "target-1", ScopeID: "scope-1", Status: resource.StatusActive},
-		"target-2": {ID: "target-2", ScopeID: "scope-2", Status: resource.StatusActive},
+		"target-1": {ID: "target-1", ScopeID: "scope-1"},
+		"target-2": {ID: "target-2", ScopeID: "scope-2"},
 	}}
 	service := NewService(store, resources, nil)
 	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"scope-1"}, ResourceIDs: []string{"target-1"}})
@@ -38,10 +38,27 @@ func TestServiceAskReopensCompletedSession(t *testing.T) {
 	}
 }
 
+func TestServiceAskMessagePersistsComposerMetadata(t *testing.T) {
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
+	service := NewService(store, fakeResources{}, nil)
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	input := AppendMessageInput{
+		Content:     "investigate",
+		SkillID:     "skill-1",
+		PersonaID:   "persona-1",
+		Links:       []string{"https://example.test/runbook"},
+		Attachments: []Attachment{{Name: "app.log", MediaType: "text/plain", Content: "failed to connect"}},
+	}
+	message, err := service.AskMessage(ctx, "session-1", input)
+	if err != nil || message.Content != input.Content || store.appended.SkillID != input.SkillID || store.appended.PersonaID != input.PersonaID || len(store.appended.Links) != 1 || len(store.appended.Attachments) != 1 {
+		t.Fatalf("AskMessage() = %#v, %v; stored=%#v", message, err, store.appended)
+	}
+}
+
 func TestServiceAddTargetReopensCompletedSession(t *testing.T) {
 	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
 	resources := fakeResources{items: map[string]resource.Resource{
-		"host-1": {ID: "host-1", ScopeID: "scope-1", Status: resource.StatusActive},
+		"host-1": {ID: "host-1", ScopeID: "scope-1"},
 	}}
 	service := NewService(store, resources, nil)
 	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
@@ -53,9 +70,9 @@ func TestServiceAddTargetReopensCompletedSession(t *testing.T) {
 func TestServiceStartAddsApplicationContextResources(t *testing.T) {
 	store := &memoryStore{}
 	resources := fakeResources{items: map[string]resource.Resource{
-		"runtime-1":  {ID: "runtime-1", ScopeID: "scope-1", Status: resource.StatusActive},
-		"database-1": {ID: "database-1", ScopeID: "scope-1", Status: resource.StatusActive},
-		"explicit-1": {ID: "explicit-1", ScopeID: "scope-1", Status: resource.StatusActive},
+		"runtime-1":  {ID: "runtime-1", ScopeID: "scope-1"},
+		"database-1": {ID: "database-1", ScopeID: "scope-1"},
+		"explicit-1": {ID: "explicit-1", ScopeID: "scope-1"},
 	}}
 	applications := fakeApplications{
 		item:      appdomain.Application{ID: "app-1", ProjectScopeID: "scope-1", Status: "active"},
@@ -103,6 +120,7 @@ func (f fakeApplications) ContextResourceIDs(context.Context, string, string) ([
 type memoryStore struct {
 	session  Session
 	started  StartInput
+	appended AppendMessageInput
 	reopened bool
 }
 
@@ -119,7 +137,8 @@ func (*memoryStore) Delete(context.Context, string) error                      {
 func (*memoryStore) Targets(context.Context, string) ([]Target, error)         { return nil, nil }
 func (*memoryStore) AddTarget(context.Context, string, string) (Target, error) { return Target{}, nil }
 func (*memoryStore) Messages(context.Context, string, int) ([]Message, error)  { return nil, nil }
-func (*memoryStore) AppendMessage(_ context.Context, id string, input AppendMessageInput) (Message, error) {
+func (m *memoryStore) AppendMessage(_ context.Context, id string, input AppendMessageInput) (Message, error) {
+	m.appended = input
 	return Message{ID: "message-1", SessionID: id, Role: input.Role, Content: input.Content, CreatedAt: time.Now()}, nil
 }
 func (*memoryStore) CreatePlan(context.Context, string, string, []PlanStep) (Plan, error) {

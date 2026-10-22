@@ -23,7 +23,7 @@ func (f fakePersonaCatalog) ListPersonas(context.Context, string) ([]Persona, er
 
 func TestPersonaResolverValidatesAndReturnsContract(t *testing.T) {
 	catalog := fakePersonaCatalog{items: map[string]Persona{
-		"profile-1": {ID: "profile-1", ScopeID: "scope-1", Status: "active", Name: "PostgreSQL expert", Config: map[string]any{
+		"profile-1": {ID: "profile-1", ScopeID: "scope-1", Status: "active", Name: "PostgreSQL-expert", Config: map[string]any{
 			"version": 2, "instruction": "Inspect database evidence and explain the findings.",
 			"description": "Database specialist", "capabilities": []any{"text", "tool_calling"},
 			"allowed_tools": []any{"connector_postgresql_inspect"}, "enabled": true,
@@ -34,8 +34,17 @@ func TestPersonaResolverValidatesAndReturnsContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if profile.Name != "PostgreSQL expert" || profile.Version != 2 || len(profile.AllowedTools) != 1 {
+	if profile.Name != "PostgreSQL-expert" || profile.Version != 2 || len(profile.AllowedTools) != 1 {
 		t.Fatalf("profile = %+v", profile)
+	}
+}
+
+func TestPersonaResolverRejectsWhitespaceName(t *testing.T) {
+	catalog := fakePersonaCatalog{items: map[string]Persona{
+		"profile-1": {ID: "profile-1", ScopeID: "scope-1", Status: "active", Name: "PostgreSQL expert", Config: map[string]any{"version": 1, "instruction": "x", "enabled": true}},
+	}}
+	if _, err := NewResolver(catalog, nil).Resolve(context.Background(), "scope-1", "profile-1"); err == nil || !strings.Contains(err.Error(), "must not contain whitespace") {
+		t.Fatalf("whitespace persona name error = %v", err)
 	}
 }
 
@@ -56,7 +65,7 @@ func TestPersonaResolverRejectsUnauthorizedAndDisabledProfiles(t *testing.T) {
 
 func TestPersonaResolverRejectsInvalidContract(t *testing.T) {
 	catalog := fakePersonaCatalog{items: map[string]Persona{
-		"profile-1": {ID: "profile-1", ScopeID: "scope-1", Status: "active", Config: map[string]any{"version": 1, "instruction": "x", "allowed_tools": []any{"bad tool"}, "enabled": true}},
+		"profile-1": {ID: "profile-1", ScopeID: "scope-1", Status: "active", Name: "expert", Config: map[string]any{"version": 1, "instruction": "x", "allowed_tools": []any{"bad tool"}, "enabled": true}},
 	}}
 	_, err := NewResolver(catalog, nil).Resolve(context.Background(), "scope-1", "profile-1")
 	if err == nil || !strings.Contains(err.Error(), "invalid allowed tool") {

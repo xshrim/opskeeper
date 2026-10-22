@@ -2,7 +2,8 @@ import type {
   DiagnosisMessage,
   DiagnosisSession,
   DiagnosisSnapshot,
-  DiagnosisTarget
+  DiagnosisTarget,
+  DiagnosisAttachment
 } from '../../lib/api';
 import {
   appendDiagnosisEvent,
@@ -25,8 +26,18 @@ type DiagnosisSessionAPI = {
     target_resource_ids: string[];
      provider_id?: string;
     model_name?: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
   }) => Promise<DiagnosisSession>;
-  askDiagnosis: (id: string, content: string) => Promise<DiagnosisMessage>;
+  askDiagnosis: (id: string, body: {
+    content: string;
+    skill_id?: string;
+    persona_id?: string;
+    links?: string[];
+    attachments?: DiagnosisAttachment[];
+  }) => Promise<DiagnosisMessage>;
   addDiagnosisTarget: (
     sessionID: string,
     resourceID: string
@@ -429,8 +440,8 @@ export function createDiagnosisSessionController(
     return options.api.diagnosisSession(sessionID);
   }
 
-  function askDiagnosis(sessionID: string, content: string) {
-    return options.api.askDiagnosis(sessionID, content);
+  function askDiagnosis(sessionID: string, body: Parameters<DiagnosisSessionAPI['askDiagnosis']>[1]) {
+    return options.api.askDiagnosis(sessionID, body);
   }
 
   function addDiagnosisTarget(sessionID: string, resourceID: string) {

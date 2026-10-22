@@ -382,19 +382,6 @@ export function dockerCredentialForSave(
   );
 }
 
-export function parseResourceLabels(value: string): Record<string, string> {
-  return Object.fromEntries(
-    value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => {
-        const [key, ...rest] = item.split('=');
-        return [key.trim(), rest.join('=').trim()];
-      })
-  );
-}
-
 export function mcpTransportForSubtype(subtype: string) {
   return subtype
     .trim()

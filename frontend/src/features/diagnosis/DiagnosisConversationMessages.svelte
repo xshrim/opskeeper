@@ -239,6 +239,12 @@
               {/if}
               <div class="diagnosis-bubble-f">
                 {#if message.content}<div class="diagnosis-markdown">{@html renderMarkdown(message.content)}</div>{/if}
+                {#if message.role === 'user' && ((message.attachments?.length ?? 0) || (message.links?.length ?? 0))}
+                  <div class="diagnosis-message-attachments">
+                    {#each message.attachments ?? [] as attachment}<span>{attachment.name}</span>{/each}
+                    {#each message.links ?? [] as link}<a href={link} target="_blank" rel="noreferrer">{link}</a>{/each}
+                  </div>
+                {/if}
                 {#if diagnosisInterruptedReason && isStreaming}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}
               </div>
               {#if message.role === 'user'}

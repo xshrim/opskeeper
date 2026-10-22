@@ -9,6 +9,7 @@ const (
 	defaultPageSize = 20
 	maxPageSize     = 100
 	maxLabels       = 50
+	maxOwnerIDs     = 20
 )
 
 var (
@@ -97,4 +98,33 @@ func cloneLabels(labels map[string]string) map[string]string {
 		copy[key] = value
 	}
 	return copy
+}
+
+func normalizeOwnerIDs(ids []string, field string) ([]string, error) {
+	if len(ids) > maxOwnerIDs {
+		return nil, invalid(field + " must not contain more than 20 users")
+	}
+	seen := make(map[string]struct{}, len(ids))
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if err := validateID(id, field); err != nil {
+			return nil, err
+		}
+		if _, exists := seen[id]; exists {
+			return nil, invalid(field + " must not contain duplicate users")
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result, nil
+}
+
+func validateImportanceLevel(value string) error {
+	switch value {
+	case "ITP1", "ITP2", "ITP3", "ITP4":
+		return nil
+	default:
+		return invalid("importance_level must be ITP1, ITP2, ITP3, or ITP4")
+	}
 }

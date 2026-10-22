@@ -24,7 +24,9 @@ func (mcpContextProvider) Kinds() []string {
 	return []string{"MCPServer", "Host", "Docker", "Kubernetes", "Nacos", "Repository", "Redis", "PostgreSQL", "Kafka", "RabbitMQ", "Elasticsearch", "MinIO", "OceanBase", "Oracle", "MySQL", "TongRDS", "Prometheus", "Loki"}
 }
 
-func (mcpContextProvider) AccessModes() []string { return []string{"agent"} }
+func (mcpContextProvider) AccessModes() []string {
+	return []string{"agent", "streamhttp", "streamable_http", "sse"}
+}
 
 func (p mcpContextProvider) Resolve(ctx context.Context, resource engine.ContextResource) ([]engine.Tool, []engine.ContextFact, error) {
 	if p.service == nil {
