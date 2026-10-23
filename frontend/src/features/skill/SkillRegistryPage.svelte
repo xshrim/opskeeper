@@ -31,6 +31,7 @@
   import FormField from '../../components/FormField.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import TagList from '../../components/TagList.svelte';
 
   type SkillToolOption = {
     name: string;
@@ -470,11 +471,8 @@
               ><BookOpen size={15} aria-hidden="true" /></span
             >
             <div>
-              <strong>{skill.name}</strong><small
-                >{skill.identifier} · {skill.tags
-                  .slice(0, 3)
-                  .join(' · ')}</small
-              >
+              <strong>{skill.name}</strong><small>{skill.identifier}</small>
+              <TagList tags={skill.tags.slice(0, 3)} className="skill-row-tags" textMode="ellipsis" maxWidth="180px" wrap={false} />
             </div>
           </div>
           <span
@@ -490,7 +488,7 @@
           <span class="skill-token-cost">—</span>
           <span><span class="skill-risk safe">safe</span></span>
           <span class="skill-description"
-            >{skill.tags.slice(0, 2).join(' · ') || '声明式能力'}</span
+            ><TagList tags={skill.tags.slice(0, 2)} className="skill-description" textMode="ellipsis" maxWidth="120px" emptyText="声明式能力" /></span
           >
           <span class="skill-row-actions"
             ><button
@@ -590,11 +588,7 @@
             </section>
             <section class="skill-detail-section">
               <h3>标签</h3>
-              <div class="skill-tags">
-                {#each selectedSkill.tags as tag}<span>{tag}</span>{:else}<em
-                    >暂无标签</em
-                  >{/each}
-              </div>
+              <TagList tags={selectedSkill.tags} className="skill-tag-list" emptyText="暂无标签" />
             </section>
             <section class="skill-detail-section">
               <div class="skill-section-title">

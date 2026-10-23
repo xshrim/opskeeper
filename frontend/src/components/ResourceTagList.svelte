@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import Tag from './Tag.svelte';
 
   export let tags: string[] = [];
   export let emptyText = '未设置标签';
@@ -51,12 +52,12 @@
   {#if tags.length}
     <span bind:this={container} class="resource-tags" aria-label="资源标签">
       {#each tags.slice(0, visibleCount) as tag (tag)}
-        <span class="resource-tag" title={tag}>{tag}</span>
+        <Tag value={tag} className="resource-tag" textMode="ellipsis" maxWidth="180px" />
       {/each}
-      {#if visibleCount < tags.length}<span class="resource-tag resource-tag-overflow">+{tags.length - visibleCount}</span>{/if}
+      {#if visibleCount < tags.length}<Tag value="+{tags.length - visibleCount}" className="resource-tag-overflow" overflow distinguishKeyOnly={false} />{/if}
     </span>
     <span bind:this={measurement} class="resource-tags-measure" aria-hidden="true">
-      {#each tags as tag (tag)}<span class="resource-tag" data-tag-measure>{tag}</span>{/each}
+      {#each tags as tag (tag)}<Tag value={tag} className="resource-tag" textMode="ellipsis" maxWidth="180px" measure />{/each}
       <span class="resource-tag resource-tag-overflow" data-tag-overflow>+0</span>
     </span>
   {:else}

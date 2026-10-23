@@ -313,7 +313,6 @@
 .resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td {
   min-height: 58px;
   padding: 8px 12px;
-  background: var(--theme-bg-raised);
   border-bottom: 1px solid var(--theme-divider);
 }
 .resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td:first-child {
@@ -353,11 +352,6 @@
 }
 .resource-expandable-table .expandable-table tbody > tr.resource-catalog-row > td:last-child {
   border-radius: 0;
-}
-.resource-expandable-table .expandable-table tbody > tr.resource-catalog-row:hover > td,
-.resource-expandable-table .expandable-table tbody > tr.resource-catalog-row.selected > td {
-  background: var(--theme-bg-hover);
-  border-color: var(--theme-border-strong);
 }
 .resource-expandable-table .expandable-table tbody > tr.expandable-table-details-row > td {
   padding: 0;
@@ -462,32 +456,25 @@
   justify-content: flex-start;
   width: 100%;
 }
-.resource-tag {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  min-height: 24px;
-  max-width: 180px;
-  padding: 0 7px;
-  overflow: hidden;
-  color: var(--theme-action);
-  background: var(--theme-bg-accent-soft);
-  border: 1px solid var(--theme-border-focus);
-  border-radius: 4px;
-  font-size: 10px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .provider-capability-tag {
   color: var(--theme-accent);
   background: var(--theme-bg-selected);
 }
 .resource-tag-overflow {
-  max-width: none;
   color: var(--theme-fg-muted);
   background: var(--theme-bg-subtle);
   border-color: var(--theme-border);
+}
+.resource-tags-measure .resource-tag-overflow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 .resource-tags-measure {
   position: absolute;
@@ -2356,11 +2343,6 @@
 :root[data-theme='dark'] .resource-row-details strong {
   color: var(--theme-fg-strong);
 }
-:root[data-theme='dark'] .resource-expandable-table .resource-catalog-row:hover > td,
-:root[data-theme='dark'] .resource-expandable-table .resource-catalog-row.selected > td {
-  background: var(--theme-bg-surface);
-  border-color: var(--theme-border-strong);
-}
 :root[data-theme='dark'] .resource-icon {
   color: var(--theme-teal);
   background: var(--theme-bg-selected);
@@ -2380,11 +2362,6 @@
   color: var(--theme-scope-project-fg);
   background: var(--theme-scope-project-bg);
   border-color: var(--theme-scope-project-border);
-}
-:root[data-theme='dark'] .resource-tag {
-  color: var(--theme-action);
-  background: var(--theme-bg-accent-soft);
-  border-color: var(--theme-border-focus);
 }
 :root[data-theme='dark'] .resource-tag-overflow {
   color: var(--theme-fg-muted);

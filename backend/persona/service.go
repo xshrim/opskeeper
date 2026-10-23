@@ -26,8 +26,10 @@ type PersonaService struct {
 type Persona struct {
 	ID          string         `json:"id"`
 	ScopeID     string         `json:"scope_id"`
+	Identifier  string         `json:"identifier"`
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
+	Tags        []string       `json:"tags"`
 	Config      map[string]any `json:"config"`
 	Status      string         `json:"status"`
 }

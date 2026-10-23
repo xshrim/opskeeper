@@ -7,14 +7,15 @@
   import TextArea from '../../components/TextArea.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import ModalDialog from '../../components/ModalDialog.svelte';
-  import { parseLabels } from '../../lib/labels';
-  import type { Resource, Team, User } from '../../lib/api';
+  import { formatLabels, parseLabels } from '../../lib/labels';
+  import type { Project, Resource, Team, User } from '../../lib/api';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
 
   export let teams: Team[] = [];
   export let resources: Resource[] = [];
   export let users: User[] = [];
+  export let initialProject: Project | null = null;
   export let defaultTeamId = '';
   export let onSave: (input: {
     teamId: string;
@@ -30,16 +31,16 @@
   }) => Promise<void> | void;
   export let onCancel: () => void;
 
-  let teamId = defaultTeamId || teams[0]?.id || '';
-  let name = '';
-  let code = generateProjectCode();
-  let icon = 'lucide:FolderKanban';
-  let description = '';
-  let labels = '';
-  let importanceLevel: '' | 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4' = '';
+  let teamId = initialProject?.team_id || defaultTeamId || teams[0]?.id || '';
+  let name = initialProject?.name || '';
+  let code = initialProject?.code || generateProjectCode();
+  let icon = initialProject?.icon || 'lucide:FolderKanban';
+  let description = initialProject?.description || '';
+  let labels = formatLabels(initialProject?.labels);
+  let importanceLevel: '' | 'ITP1' | 'ITP2' | 'ITP3' | 'ITP4' = initialProject?.importance_level || '';
   let importanceLevelError = '';
-  let technicalOwnerIds: string[] = [];
-  let operationsOwnerIds: string[] = [];
+  let technicalOwnerIds: string[] = initialProject?.technical_owner_ids || [];
+  let operationsOwnerIds: string[] = initialProject?.operations_owner_ids || [];
   let applications: ApplicationDraft[] = [];
   let applicationWizardOpen = false;
   let saving = false;
@@ -105,7 +106,7 @@
   }
 </script>
 
-<ModalDialog dialogClass="project-dialog project-create-dialog" size="large" title="新增项目" description="填写项目基本信息并新增应用。" confirmLabel="创建" busyLabel="创建中…" busy={saving} message={error} onCancel={onCancel} onConfirm={save}>
+<ModalDialog dialogClass="project-dialog project-create-dialog" size="large" title={initialProject ? '编辑项目' : '新增项目'} description={initialProject ? '更新项目基本信息。' : '填写项目基本信息并新增应用。'} confirmLabel={initialProject ? '保存' : '创建'} busyLabel={initialProject ? '保存中…' : '创建中…'} busy={saving} message={error} onCancel={onCancel} onConfirm={save}>
   <div class="project-dialog-content project-create-content">
       <section class="create-section">
         <div class="create-section-heading">
@@ -113,7 +114,7 @@
             <h3>项目基本信息</h3>
             <p>名称、编号和说明用于识别项目。</p>
           </div>
-          <FormField label="所属团队" required className="project-team-picker"
+          {#if !initialProject}<FormField label="所属团队" required className="project-team-picker"
             ><DropdownSelect
               options={teamOptions}
               value={teamId}
@@ -122,8 +123,7 @@
               placeholder="选择团队"
               ariaLabel="所属团队"
               on:change={(event) => (teamId = String(event.detail))}
-            /></FormField
-          >
+            /></FormField>{/if}
         </div>
         <div class="project-identity-row">
           <div class="project-icon-code-fields">
@@ -172,7 +172,7 @@
           /></FormField
         >
       </section>
-      <section class="create-section">
+      {#if !initialProject}<section class="create-section">
         <div class="create-section-heading">
           <div>
             <h3>项目应用</h3>
@@ -219,7 +219,7 @@
               >从应用向导新增</button
             >
           </div>{/if}
-      </section>
+      </section>{/if}
   </div>
   </ModalDialog>
   {#if applicationWizardOpen}<ApplicationWizard

@@ -120,6 +120,8 @@
     z-index: 1;
     width: min(420px, calc(100% - 160px));
     transform: translate(-50%, -50%);
+    cursor: auto;
+    user-select: text;
   }
   .modal-dialog-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
   .modal-dialog-actions :global(button) {

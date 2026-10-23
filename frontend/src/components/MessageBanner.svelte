@@ -9,6 +9,6 @@
 </script>
 
 <div class={`message-banner ${tone}`} role={tone === 'error' ? 'alert' : 'status'} aria-live="polite">
-  <svelte:component this={Icon} size={15} strokeWidth={2} aria-hidden="true" />
+  <svelte:component this={Icon} size={13} strokeWidth={1.8} aria-hidden="true" />
   <span>{message}</span>
 </div>

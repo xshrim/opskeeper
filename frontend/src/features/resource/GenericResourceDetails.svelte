@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import TagList from '../../components/TagList.svelte';
+  import { labelTags } from '../../lib/labels';
   import { resourceEndpointFor } from './resourceCatalog';
   export let resource: Resource;
   export let selectedResourceId = '';
@@ -9,6 +11,7 @@
   export let resourceCanManage: (resource: Resource, permission: string) => boolean;
 
   $: isAgent = String(resource.subtype ?? '').toLowerCase() === 'agent';
+  $: tags = labelTags(resource.labels);
 </script>
 
 <div class="resource-row-details">
@@ -18,7 +21,7 @@
   <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
   <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置' : '未配置'}</strong></div>
   <div><span>传输凭据</span><strong>未配置</strong></div>
-  <div><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
+  <div><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
   <div>
     <span>状态</span>
     <strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? `正常·${connectionCheck.latency_ms}ms` : '异常' : '尚未测试'}</strong>

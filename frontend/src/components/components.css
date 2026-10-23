@@ -18,7 +18,7 @@
 }
 .edit-action { color: var(--theme-fg-muted) !important; }
 .delete-action { color: var(--theme-danger) !important; }
-.edit-action:hover { color: var(--theme-teal) !important; background: var(--theme-bg-hover) !important; }
+.edit-action:hover { color: var(--theme-teal) !important; background: var(--theme-teal-soft) !important; }
 .delete-action:hover { color: var(--theme-danger) !important; background: var(--theme-bg-danger-soft) !important; border-color: var(--theme-danger) !important; }
 :root[data-theme='dark'] .edit-action { color: var(--theme-teal) !important; }
 .wide-dialog { width: min(720px, 100%); }
@@ -636,18 +636,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 32px;
+  gap: 6px;
+  min-height: 26px;
   max-width: 100%;
-  padding: 6px 12px;
-  color: var(--theme-fg);
-  background: var(--theme-bg-raised);
-  border: 1px solid var(--theme-border-strong);
-  border-left: 3px solid var(--theme-accent);
-  border-radius: 5px;
-  box-shadow: var(--theme-shadow-soft);
-  font-size: 12px;
-  font-weight: 650;
+  padding: 4px 8px;
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 400;
   line-height: 1.35;
   text-align: center;
 }
@@ -657,24 +656,18 @@
   white-space: pre-wrap;
 }
 .message-banner.success {
-  color: var(--theme-success);
   background: var(--theme-bg-success-soft);
-  border-left-color: var(--theme-success);
 }
 .message-banner.error {
-  color: var(--theme-danger);
   background: var(--theme-bg-danger-soft);
-  border-left-color: var(--theme-danger);
 }
 .message-banner.warning {
-  color: var(--theme-warning);
   background: var(--theme-bg-warning-soft);
-  border-left-color: var(--theme-warning);
 }
-.message-banner.info {
-  color: var(--theme-accent);
-  border-left-color: var(--theme-accent);
-}
+.message-banner.success svg { color: var(--theme-success); }
+.message-banner.error svg { color: var(--theme-danger); }
+.message-banner.warning svg { color: var(--theme-warning); }
+.message-banner.info svg { color: var(--theme-info); }
 .loading-screen {
   min-height: 100vh;
   min-height: 100dvh;

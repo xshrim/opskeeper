@@ -353,9 +353,3 @@ export function resourceEndpointFor(resource: ResourceShape) {
       '未设置端点'
   );
 }
-
-export function resourceLabelsText(resource: Resource) {
-  return Object.entries(resource.labels ?? {})
-    .map(([key, value]) => (value ? `${key}=${value}` : key))
-    .join(', ');
-}

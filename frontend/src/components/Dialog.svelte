@@ -121,7 +121,7 @@
     const target = event.target as HTMLElement | null;
     if (!target || target.closest('.dialog-resize-handle')) return;
     const header = target.closest('.modal-dialog-header');
-    if (!header || target.closest('button, a, input, select, textarea, [data-dialog-no-drag]')) return;
+    if (!header || target.closest('button, a, input, select, textarea, .message-banner, [data-dialog-no-drag]')) return;
     const rect = dialogElement.getBoundingClientRect();
     interaction = {
       kind: 'drag',

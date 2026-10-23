@@ -867,7 +867,9 @@
           onSelectProject={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedTeamId = project.team_id; }}
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}
+          onProjectUpdated={(project) => (projects = projects.map((item) => item.id === project.id ? project : item))}
           onProjectDeleted={(project) => (projects = projects.filter((item) => item.id !== project.id))}
+          canManageProject={(project) => isPlatformAdmin || actorPermissionsAtScope(project.scope.id).includes('project:manage')}
           onResourceCreated={(resource) => {
             resources = [resource, ...resources.filter((item) => item.id !== resource.id)];
           }}

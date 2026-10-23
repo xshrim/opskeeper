@@ -146,6 +146,11 @@
 .access-audit-head { min-height: 36px; color: var(--theme-fg-muted); background: var(--theme-bg-subtle); font-size: 10px; font-weight: 700; }
 .access-audit-details { color: var(--theme-fg-muted); }
 .access-audit-content .access-state { min-height: 90px; }
+.access-member-table .status-label.active { color: var(--theme-access-status-active); }
+.access-member-table .status-label.disabled,
+.access-member-table .status-label.locked { color: var(--theme-access-status-disabled); }
+.access-audit-row:not(.access-audit-head) .status-label.active { color: var(--theme-access-audit-success); }
+.access-audit-row:not(.access-audit-head) .status-label.disabled { color: var(--theme-access-audit-failure); }
 .access-role-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px 17px 17px; }
 .role-catalog-item { display: grid; gap: 10px; min-width: 0; padding: 13px; background: var(--theme-bg-surface); border: 1px solid var(--theme-border); border-radius: 6px; }
 .role-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

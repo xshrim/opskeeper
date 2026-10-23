@@ -224,6 +224,7 @@
 
   .expandable-table tbody > tr:not(.expandable-table-details-row) > td {
     min-height: 56px;
+    background: var(--theme-bg-surface);
     border-bottom: 1px solid var(--theme-divider);
   }
 

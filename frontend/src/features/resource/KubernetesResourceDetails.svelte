@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import TagList from '../../components/TagList.svelte';
+  import { labelTags } from '../../lib/labels';
 
   export let resource: Resource;
   export let resourceCheck: ConnectionCheck | null | undefined;
@@ -31,6 +33,7 @@
   $: connectionStatus = resourceCheck
     ? resourceCheck.status === 'succeeded' ? `正常·${resourceCheck.latency_ms}ms` : '异常'
     : '尚未测试';
+  $: tags = labelTags(resource.labels);
 </script>
 
 <div class="provider-resource-details docker-resource-details">
@@ -41,7 +44,7 @@
     <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
     <div><span>连接凭据</span><strong>{connectionCredential}</strong></div>
     <div><span>传输凭据</span><strong>{transportCredential}</strong></div>
-    <div class="provider-resource-labels"><span>标签</span><strong>{Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key).join(', ') || '未设置标签'}</strong></div>
+    <div class="provider-resource-labels"><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
     <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus}</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
   </div>
 </div>

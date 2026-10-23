@@ -5,6 +5,7 @@
     ArrowRight,
     CheckCircle2,
     ChevronDown,
+    ChevronUp,
     Clock3,
     Map,
     Network,
@@ -35,11 +36,12 @@
   import ScopeChip from '../../components/ScopeChip.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
-  import { formatLabels, parseLabels } from '../../lib/labels';
+  import { formatLabels, labelTags, parseLabels } from '../../lib/labels';
+  import TagList from '../../components/TagList.svelte';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
   import { runtimeLabel, type ApplicationDraft } from './projectTypes';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   export let teams: Team[] = [];
   export let allProjects: Project[] = [];
@@ -54,7 +56,12 @@
   export let onSelectProject: (project: Project) => void;
   export let onOpenTeamDialog: () => void;
   export let onProjectCreated: (project: Project) => void;
+  export let onProjectUpdated: (project: Project) => void = () => {};
   export let onProjectDeleted: (project: Project) => void = () => {};
+  export let canManageProject: (
+    project: Project,
+    action: 'update' | 'delete'
+  ) => boolean = () => false;
   export let onNotice: (message: string) => void;
   export let onError: (message: string) => void;
   export let onOpenDiagnosis: (project: Project) => void;
@@ -70,8 +77,15 @@
   let expanded = new Set<string>();
   let collapsedTeams = new Set<string>();
   let initializedTeamKey = '';
+  let teamFilterElement: HTMLElement;
+  let teamFilterMeasureElement: HTMLElement;
+  let teamFilterExpanded = false;
+  let visibleTeamCount = 0;
+  let teamFilterHasOverflow = false;
+  let measuredTeamFilterKey = '';
   let projectSearch = '';
   let projectCreateOpen = false;
+  let editingProject: Project | null = null;
   let applicationWizardOpen = false;
   let editingAppId = '';
   let editName = '';
@@ -86,12 +100,11 @@
   let selectedApplicationId = '';
   let users: User[] = [];
 
-  onMount(async () => {
-    try {
-      users = await api.users();
-    } catch {
-      users = [];
-    }
+  onMount(() => {
+    const resizeObserver = new ResizeObserver(() => void measureTeamFilter());
+    if (teamFilterElement) resizeObserver.observe(teamFilterElement);
+    void api.users().then((result) => (users = result)).catch(() => (users = []));
+    return () => resizeObserver.disconnect();
   });
   $: ownerOptions = users
     .filter((user) => user.status === 'active')
@@ -118,6 +131,11 @@
     projects: filteredProjects.filter((project) => project.team_id === team.id)
   }));
   $: teamKey = teams.map((team) => team.id).join(',');
+  $: teamFilterKey = `${teamKey}:${allProjects.map((project) => `${project.team_id}:${project.id}`).join(',')}:${teams.map((team) => team.name).join('|')}:${teamFilterExpanded}`;
+  $: if (teamFilterKey !== measuredTeamFilterKey) {
+    measuredTeamFilterKey = teamFilterKey;
+    void measureTeamFilter();
+  }
   $: if (teamKey !== initializedTeamKey) {
     initializedTeamKey = teamKey;
     collapsedTeams = new Set(teams.slice(3).map((team) => team.id));
@@ -135,6 +153,36 @@
   $: selectedApplication =
     workspace?.applications.find((application) => application.id === selectedApplicationId) ??
     null;
+
+  async function measureTeamFilter() {
+    await tick();
+    if (!teamFilterElement || !teamFilterMeasureElement) return;
+    if (teamFilterExpanded) {
+      visibleTeamCount = teams.length;
+      return;
+    }
+    const allChip = teamFilterElement.querySelector<HTMLElement>('.scope-chip');
+    const addButton = teamFilterElement.querySelector<HTMLElement>('.team-filter-add');
+    const teamChips = Array.from(teamFilterMeasureElement.querySelectorAll<HTMLElement>('.scope-chip'));
+    const moreProbe = teamFilterMeasureElement.querySelector<HTMLElement>('.team-filter-more-probe');
+    if (!allChip || !addButton || !moreProbe) return;
+    const gap = Number.parseFloat(getComputedStyle(teamFilterElement).columnGap) || 0;
+    const fixedWidth = allChip.getBoundingClientRect().width + addButton.getBoundingClientRect().width;
+    const availableWidth = teamFilterElement.clientWidth;
+    for (let count = teams.length; count >= 0; count -= 1) {
+      const hiddenCount = teams.length - count;
+      const moreWidth = hiddenCount ? moreProbe.getBoundingClientRect().width : 0;
+      const itemCount = count + 2 + (hiddenCount ? 1 : 0);
+      const teamsWidth = teamChips.slice(0, count).reduce((sum, chip) => sum + chip.getBoundingClientRect().width, 0);
+      if (fixedWidth + teamsWidth + moreWidth + gap * Math.max(itemCount - 1, 0) <= availableWidth) {
+        visibleTeamCount = count;
+        teamFilterHasOverflow = hiddenCount > 0;
+        return;
+      }
+    }
+    visibleTeamCount = 0;
+    teamFilterHasOverflow = teams.length > 0;
+  }
 
   function describeError(error: unknown, fallback: string) {
     return error instanceof ApiError
@@ -169,13 +217,6 @@
         ? 'disabled'
         : 'warning';
   }
-  function projectHealthSummary(project: Project) {
-    if (project.summary.alerts) return `${project.summary.alerts} 条告警待处理`;
-    if (project.status === 'disabled') return '暂无可用运行数据';
-    if (project.status === 'warning') return '请检查项目健康信号';
-    if (project.status === 'unknown') return '等待健康检查结果';
-    return '暂无告警';
-  }
   function projectUpdatedLabel(value: string) {
     const timestamp = Date.parse(value);
     if (!Number.isFinite(timestamp)) return '更新时间未知';
@@ -187,13 +228,7 @@
         : `${Math.floor(minutes / 60)} 小时前更新`;
   }
   function projectTags(project: Project) {
-    return Object.entries(project.labels ?? {})
-      .filter(
-        ([key, value]) =>
-          key !== 'description' && !key.startsWith('opskeeper.') && value.trim()
-      )
-      .map(([, value]) => value.trim())
-      .slice(0, 3);
+    return labelTags(project.labels);
   }
   function toggleTeam(id: string) {
     const next = new Set(collapsedTeams);
@@ -248,6 +283,21 @@
     operationsOwnerIds: string[];
     applications: ApplicationDraft[];
   }) {
+    if (editingProject) {
+      const project = await api.updateProject(editingProject.id, {
+        name: input.name,
+        description: input.description,
+        icon: input.icon,
+        labels: input.labels,
+        importance_level: input.importanceLevel,
+        technical_owner_ids: input.technicalOwnerIds,
+        operations_owner_ids: input.operationsOwnerIds
+      });
+      editingProject = null;
+      onProjectUpdated(project);
+      onNotice(`项目“${project.name}”已更新`);
+      return;
+    }
     const project = await api.createProject(input.teamId, {
       name: input.name,
       code: input.code,
@@ -355,24 +405,37 @@
         >
       </div>
     </header>
-    <nav class="team-filter" aria-label="团队筛选">
+    <nav class:expanded={teamFilterExpanded} class="team-filter" aria-label="团队筛选" bind:this={teamFilterElement}>
       <ScopeChip
         label="全部团队"
         count={allProjects.length}
         active={allTeamsSelected}
         on:click={onSelectAllTeams}
-      />{#each teams as team}<ScopeChip
+      />{#each (teamFilterExpanded ? teams : teams.slice(0, visibleTeamCount)) as team}<ScopeChip
           label={team.name}
           count={allProjects.filter((project) => project.team_id === team.id)
             .length}
           active={selectedScopeId === team.scope.id}
           on:click={() => onSelectTeam(team)}
-        />{/each}<button
+        />{/each}{#if teamFilterHasOverflow}<button
+        class="team-filter-expand"
+        type="button"
+        aria-label={teamFilterExpanded ? '收起团队列表' : `展开其余 ${teams.length - visibleTeamCount} 个团队`}
+        aria-expanded={teamFilterExpanded}
+        data-tooltip={teamFilterExpanded ? '收起团队' : `展开其余 ${teams.length - visibleTeamCount} 个团队`}
+        on:click={() => (teamFilterExpanded = !teamFilterExpanded)}
+      >{#if teamFilterExpanded}<ChevronUp size={14} />{:else}<span>+{teams.length - visibleTeamCount}</span><ChevronDown size={14} />{/if}</button>{/if}<button
         class="secondary team-filter-add"
         type="button"
         disabled={busy}
         on:click={onOpenTeamDialog}><Plus size={14} />新增团队</button
       >
+      <div class="team-filter-measure" aria-hidden="true" inert bind:this={teamFilterMeasureElement}>
+        {#each teams as team}<ScopeChip
+            label={team.name}
+            count={allProjects.filter((project) => project.team_id === team.id).length}
+          />{/each}<button class="team-filter-expand team-filter-more-probe" type="button"><span>+{teams.length}</span><ChevronDown size={14} /></button>
+      </div>
     </nav>
     {#if normalizedProjectSearch && filteredProjects.length === 0}<div
         class="map-empty project-search-empty"
@@ -417,74 +480,45 @@
                   ></span
                 ></button
               >{#if !teamCollapsed}<div class="project-card-grid">
-                  {#each group.projects as project}<button
-                      class="project-map-card"
-                      type="button"
-                      on:click={() => onSelectProject(project)}
-                      ><span class="project-card-top"
-                        ><EntityBrandIcon
-                          kind="Project"
-                          fallback={project.icon || 'lucide:FolderKanban'}
-                          size={20}
-                          className="project-card-icon"
-                        /><span class="project-card-identity"
-                          ><strong>{project.name}</strong><small
-                            >{project.code}</small
-                          ></span
-                        ><span class="project-card-arrow"
-                          ><ArrowRight size={17} /></span
-                        ></span
-                      ><span class="project-card-middle"
-                        ><span class="project-card-primary"
-                          ><span class="project-card-application-health"
-                            ><strong
-                              >{project.summary.applications_healthy} / {project
-                                .summary.applications}</strong
-                            ><small>正常应用</small></span
-                          ><span class="project-card-tags" aria-label="项目标签"
-                            >{#each projectTags(project) as tag}<span
-                                class="project-card-tag">{tag}</span
-                              >{/each}</span
-                          ></span
-                        ><span
-                          class="project-card-secondary-metrics"
-                          aria-label="项目运行统计"
-                          ><span
-                            ><small>关联资源</small><strong
-                              >{project.summary.resources}</strong
-                            ></span
-                          ><span
-                            ><small>服务依赖</small><strong
-                              >{project.summary.dependencies}</strong
-                            ></span
-                          ><span
-                            ><small>项目告警</small><strong
-                              class:warning={project.summary.alerts > 0}
-                              >{project.summary.alerts}</strong
-                            ></span
-                          ></span
-                        ></span
-                      ><span class="project-card-footer"
-                        ><span
-                          class="project-card-health-summary"
-                          data-tooltip={projectHealthSummary(project)}
-                          ><StatusBadge
-                            className="status-label"
-                            tone={projectHealthTone(project)}
-                            label={projectStatus(project)} />
-                          ><span
-                            class="project-health-separator"
-                            aria-hidden="true">·</span
-                          ><span class="project-health-copy"
-                            >{projectHealthSummary(project)}</span
-                          ></span
-                        ><span class="project-card-updated"
-                          ><Clock3 size={12} />{projectUpdatedLabel(
-                            project.updated_at
-                          )}</span
-                        ></span
-                      ></button
-                    >{:else}<div class="map-empty compact">
+                  {#each group.projects as project}<article class="project-map-card" role="group" aria-label={project.name}>
+                        <button class="project-card-open" type="button" aria-label={`打开项目 ${project.name}`} on:click={() => onSelectProject(project)}></button>
+                        <div class="project-card-top">
+                          <EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={20} className="project-card-icon" />
+                          <div class="project-card-identity">
+                            <div class="project-card-title">
+                              <strong>{project.name}</strong>
+                              <span class={`project-importance-tag ${project.importance_level.toLowerCase()}`}>{project.importance_level}</span>
+                            </div>
+                            <small>{project.code}</small>
+                          </div>
+                          <span class="project-card-arrow"><ArrowRight size={17} /></span>
+                        </div>
+                        <div class="project-card-middle">
+                          <div class="project-card-primary">
+                            <div class="project-card-application-health">
+                              <strong>{project.summary.applications_healthy} / {project.summary.applications}</strong>
+                              <small>正常应用</small>
+                            </div>
+                            <TagList tags={projectTags(project)} className="project-card-tags" ariaLabel="项目标签" maxItems={2} distinguishKeyOnly={false} wrap={false} />
+                          </div>
+                          <div class="project-card-secondary-metrics" aria-label="项目运行统计">
+                            <span><small>关联资源</small><strong>{project.summary.resources}</strong></span>
+                            <span><small>服务依赖</small><strong>{project.summary.dependencies}</strong></span>
+                            <span><small>项目告警</small><strong class:warning={project.summary.alerts > 0}>{project.summary.alerts}</strong></span>
+                          </div>
+                        </div>
+                        <div class="project-card-footer">
+                          <span class="project-card-health-summary">
+                            <StatusBadge className="status-label" tone={projectHealthTone(project)} label={projectStatus(project)} />
+                            <span class="project-health-separator" aria-hidden="true">·</span>
+                            <span class="project-card-updated"><Clock3 size={12} />{projectUpdatedLabel(project.updated_at)}</span>
+                          </span>
+                          <span class="project-card-actions">
+                            {#if canManageProject(project, 'update')}<button class="icon-button edit-action" type="button" data-tooltip="编辑项目" aria-label={`编辑项目 ${project.name}`} on:click={() => (editingProject = project)}><Pencil size={14} aria-hidden="true" /></button>{/if}
+                            {#if canManageProject(project, 'delete')}<button class="icon-button danger-action delete-action" type="button" data-tooltip="删除项目" aria-label={`删除项目 ${project.name}`} on:click={() => (deletingProject = project)}><Trash2 size={14} aria-hidden="true" /></button>{/if}
+                          </span>
+                        </div>
+                      </article>{:else}<div class="map-empty compact">
                       <Network size={20} /><span>该团队还没有项目</span><button
                         type="button"
                         class="text-button"
@@ -765,16 +799,17 @@
   {/if}
 </section>
 
-{#if projectCreateOpen}<ProjectCreateForm
+{#if projectCreateOpen || editingProject}<ProjectCreateForm
     {teams}
     resources={availableResources}
     {users}
+    initialProject={editingProject}
     defaultTeamId={teams.find((team) => team.scope.id === selectedScopeId)
       ?.id ??
       teams[0]?.id ??
       ''}
     onSave={saveProject}
-    onCancel={() => (projectCreateOpen = false)}
+    onCancel={() => { projectCreateOpen = false; editingProject = null; }}
   />{/if}
 {#if applicationWizardOpen}<ApplicationWizard
     resources={availableResources}

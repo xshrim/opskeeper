@@ -353,8 +353,10 @@ export interface SkillCatalogItem {
 export interface PersonaCatalogItem {
   id: string;
   scope_id: string;
+  identifier: string;
   name: string;
   description: string;
+  tags: string[];
   config: Record<string, unknown>;
   status: string;
 }

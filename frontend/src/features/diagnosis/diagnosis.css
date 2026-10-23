@@ -730,7 +730,7 @@
 .diagnosis-conversation-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 12px;
   min-height: 64px;
   padding: 11px 19px;
@@ -755,23 +755,16 @@
 }
 .diagnosis-loaded-context {
   display: flex;
-  align-self: start;
+  grid-column: 2;
+  align-self: center;
   width: max-content;
   max-width: min(52vw, 560px);
   min-width: 0;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-self: center;
-  gap: 4px;
-  padding-top: 1px;
+  gap: 0;
   overflow: visible;
-}
-.diagnosis-loaded-context-label {
-  flex: 0 0 auto;
-  color: var(--diagnosis-subtle);
-  font-size: 9px;
-  line-height: 1.2;
-  text-align: center;
 }
 .diagnosis-context-resources {
   display: flex;
@@ -807,8 +800,10 @@
 }
 .diagnosis-head-actions {
   display: flex;
+  grid-column: 3;
   align-items: center;
   justify-content: flex-end;
+  justify-self: end;
   gap: 8px;
   min-width: 0;
 }
@@ -1891,13 +1886,14 @@
 .diagnosis-context-budget-head span,
 .diagnosis-context-section-title small { color: var(--diagnosis-subtle); font-size: 9px; }
 .diagnosis-context-budget-track {
-  height: 5px;
+  height: 7px;
   margin-top: 8px;
   overflow: hidden;
-  background: var(--diagnosis-surface-2);
+  background: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border-strong);
   border-radius: 99px;
 }
-.diagnosis-context-budget-track span { display: block; height: 100%; background: var(--diagnosis-teal); border-radius: inherit; transition: width 160ms ease; }
+.diagnosis-context-budget-track span { display: block; height: 100%; background: var(--theme-action); border-radius: inherit; transition: width 160ms ease; }
 .diagnosis-context-section { margin-bottom: 14px; }
 .diagnosis-context-section-title { margin-bottom: 6px; color: var(--diagnosis-muted); font-size: 10px; }
 .diagnosis-resource-list-f,
@@ -1919,6 +1915,10 @@
 .diagnosis-resource-list-f label.selected {
   background: var(--diagnosis-surface);
   border-color: var(--diagnosis-line);
+}
+.diagnosis-resource-list-f label:hover input:not(:disabled) {
+  border-color: var(--theme-action);
+  box-shadow: 0 0 0 2px var(--theme-focus);
 }
 .diagnosis-resource-list-f label input {
   width: 15px;
@@ -2482,6 +2482,10 @@
     justify-self: center;
     justify-content: center;
     max-width: min(100%, 560px);
+  }
+  .diagnosis-head-actions {
+    grid-column: 2;
+    grid-row: 1;
   }
   .diagnosis-head-status {
     display: none;

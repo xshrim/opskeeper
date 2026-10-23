@@ -84,6 +84,7 @@
     [];
   let selectedEngineId = '';
   let selectedProviderId = '';
+  let providerBeforeCreateId = '';
   let drawerOpen = false;
   let editingProvider = false;
   let editingEngine = false;
@@ -475,12 +476,14 @@
     };
   }
   function openNewProvider() {
+    if (editingProvider && !providerDraft.id) return;
+    providerBeforeCreateId = selectedProviderId;
+    selectedProviderId = '';
     providerDraft = { ...emptyProvider(), scopeId };
     providerErrors = {};
     clearProviderEditorMessage();
     editingProvider = true;
     drawerOpen = true;
-    selectedProviderId = '';
   }
   function openEditProvider() {
     if (selectedProvider) {
@@ -495,6 +498,10 @@
     providerErrors = {};
     clearProviderEditorMessage();
     editingProvider = false;
+    if (!providerDraft.id) {
+      selectedProviderId = providerBeforeCreateId;
+      providerBeforeCreateId = '';
+    }
     if (selectedProvider) providerDraft = toDraft(selectedProvider);
     else drawerOpen = false;
   }
@@ -761,6 +768,7 @@
       );
       const refreshedProviders = await reloadProviders();
       selectedProviderId = saved.id;
+      providerBeforeCreateId = '';
       providerDraft = toDraft(
         refreshedProviders.find((item) => item.id === saved.id) ?? saved
       );
@@ -1287,7 +1295,7 @@
                   type="button"
                   on:click={cancelProviderEdit}><X size={14} />取消</button
                 ><button class="primary" type="submit" form="provider-editor" disabled={busy}
-                  ><Save size={14} />保存</button
+                  ><Save size={14} />{providerDraft.id ? '保存' : '创建'}</button
                 >
               </div>{:else if selectedProvider}<div class="drawer-heading-actions">
                 {#if canManageProvider}<button
@@ -2090,7 +2098,7 @@
     gap: 12px;
     width: 100%;
     min-height: 0;
-    padding: 13px 12px;
+    padding: 13px 12px 5px;
     color: var(--theme-fg);
     background: var(--theme-bg-surface);
     border: 1px solid var(--theme-border);
@@ -2311,10 +2319,10 @@
     align-items: center;
     flex-wrap: nowrap;
     gap: 5px;
-    height: 31px;
+    min-height: 0;
     min-width: 0;
-    overflow: hidden;
-    padding-top: 8px;
+    overflow: visible;
+    padding-top: 5px;
     border-top: 1px solid var(--theme-divider);
   }
   .provider-row-models .model-chip {

@@ -133,6 +133,7 @@
   let diagnosisComposerMenuSearch = '';
   let diagnosisComposerTokenStart = -1;
   let diagnosisComposerTextarea: HTMLTextAreaElement | null = null;
+  let diagnosisComposerMenuElement: HTMLDivElement | null = null;
   let diagnosisComposerFileInput: HTMLInputElement | null = null;
   let diagnosisComposerSkillID = '';
   let diagnosisComposerPersonaID = '';
@@ -389,16 +390,17 @@
     if (!textarea || start < 0) return;
     const skill = kind === 'skill' ? item as SkillCatalogItem : null;
     const persona = kind === 'persona' ? item as PersonaCatalogItem : null;
-    const tokenValue = skill?.identifier ?? persona?.name.replace(/\s+/g, '-') ?? '';
-    const token = `${kind === 'skill' ? '/' : '@'}${tokenValue}`;
+    const tokenValue = skill?.identifier ?? persona?.identifier ?? '';
+    const tokenName = skill?.name ?? persona?.name ?? '';
+    const token = `${kind === 'skill' ? '/' : '@'}${tokenValue}(${tokenName})`;
     const cursor = textarea.selectionStart;
     const selectedID = kind === 'skill' ? diagnosisComposerSkillID : diagnosisComposerPersonaID;
     const previous = kind === 'skill'
       ? skills.find((candidate) => candidate.id === selectedID)
       : personas.find((candidate) => candidate.id === selectedID);
     const previousToken = kind === 'skill'
-      ? previous ? `/${(previous as SkillCatalogItem).identifier}` : ''
-      : previous ? `@${(previous as PersonaCatalogItem).name.replace(/\s+/g, '-')}` : '';
+      ? previous ? `/${(previous as SkillCatalogItem).identifier}(${(previous as SkillCatalogItem).name})` : ''
+      : previous ? `@${(previous as PersonaCatalogItem).identifier}(${(previous as PersonaCatalogItem).name})` : '';
     const currentSelected = selectedID === item.id;
     let baseText = diagnosisComposerText;
     let insertion = Math.max(0, start >= 0 ? start : cursor);
@@ -659,14 +661,17 @@
   $: selectedDiagnosisModel = diagnosisAvailableProviders
     .find((item) => item.provider_id === selectedProviderId)
     ?.models.find((item) => item.name === llmModelName);
-  $: filteredComposerSkills = skills.filter((item) => {
-    const query = diagnosisComposerMenuSearch.trim().toLowerCase();
-    return !query || `${item.name} ${item.identifier}`.toLowerCase().includes(query);
-  });
-  $: filteredComposerPersonas = personas.filter((item) => {
-    const query = diagnosisComposerMenuSearch.trim().toLowerCase();
-    return !query || `${item.name} ${item.description}`.toLowerCase().includes(query);
-  });
+  function composerReferenceMatches(identifier: string, name: string, tags: string[], query: string) {
+    const parts = query.trim().toLowerCase().replace(/^[/@]/, '').split('(').filter(Boolean);
+    const searchable = [identifier, name, ...tags].join(' ').toLowerCase();
+    return !parts.length || parts.some((part) => searchable.includes(part));
+  }
+  $: filteredComposerSkills = skills.filter((item) =>
+    composerReferenceMatches(item.identifier, item.name, item.tags, diagnosisComposerMenuSearch)
+  );
+  $: filteredComposerPersonas = personas.filter((item) =>
+    composerReferenceMatches(item.identifier, item.name, item.tags, diagnosisComposerMenuSearch)
+  );
   function escapeComposerHTML(value: string) {
     return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
   }
@@ -722,11 +727,28 @@
   let diagnosisModelMenuProviderId = '';
 
   onMount(() => {
-    return installDiagnosisDocumentListeners({
+    const cleanupDocumentListeners = installDiagnosisDocumentListeners({
       isModelMenuOpen: () => diagnosisModelMenuOpen,
       closeModelMenu: () => (diagnosisModelMenuOpen = false),
       copyCode: copyDiagnosisCode
     });
+    const closeComposerMenuOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        diagnosisComposerMenu &&
+        target instanceof Node &&
+        !diagnosisComposerMenuElement?.contains(target) &&
+        !diagnosisComposerTextarea?.contains(target)
+      ) {
+        diagnosisComposerMenu = '';
+        diagnosisComposerMenuSearch = '';
+      }
+    };
+    document.addEventListener('pointerdown', closeComposerMenuOnOutsideClick);
+    return () => {
+      cleanupDocumentListeners();
+      document.removeEventListener('pointerdown', closeComposerMenuOnOutsideClick);
+    };
   });
 
   function toggleDiagnosisModelMenu() {
@@ -891,8 +913,7 @@
         <h1>{diagnosisSnapshot?.session.title || '新建诊断会话'}</h1>
         <small>{scopeLabel} · 只读证据链</small>
       </div>
-      <div class="diagnosis-loaded-context">
-        <span class="diagnosis-loaded-context-label">已加载上下文</span>
+      {#if diagnosisTargetIds.length > 0}<div class="diagnosis-loaded-context">
         <div class="diagnosis-context-resources">
           {#each diagnosisTargets
             .filter((resource) => diagnosisTargetIds.includes(resource.id))
@@ -901,11 +922,9 @@
             >{/each}{#if diagnosisTargetIds.length > 3}<span
               class="diagnosis-context-chip accent"
               >+{diagnosisTargetIds.length - 3}</span
-            >{/if}{#if diagnosisTargetIds.length === 0}<span
-              class="diagnosis-context-chip muted">未选择</span
             >{/if}
         </div>
-      </div>
+      </div>{/if}
       <div class="diagnosis-head-actions">
         <span class="diagnosis-head-status"
           ><i class:running={diagnosisGenerating}></i>{diagnosisGenerating
@@ -967,13 +986,13 @@
           rows="3"
           maxlength="16000"
         ></textarea>
-        {#if diagnosisComposerMenu}<div class="diagnosis-composer-token-menu" role="listbox">
+        {#if diagnosisComposerMenu}<div class="diagnosis-composer-token-menu" role="listbox" bind:this={diagnosisComposerMenuElement}>
           <SearchInput bind:value={diagnosisComposerMenuSearch} width="100%" height="28px" placeholder={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} ariaLabel={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} />
           <div class="diagnosis-composer-token-list">
             {#if diagnosisComposerMenu === 'skill'}
-              {#each filteredComposerSkills as item}<button type="button" role="option" aria-selected={diagnosisComposerSkillID === item.id} on:click={() => chooseComposerItem('skill', item)}><strong>/{item.identifier}</strong><span>{diagnosisComposerSkillID === item.id ? '已选择' : item.name}</span></button>{:else}<span>暂无可用技能</span>{/each}
+              {#each filteredComposerSkills as item}<button type="button" role="option" aria-selected={diagnosisComposerSkillID === item.id} on:click={() => chooseComposerItem('skill', item)}><strong>/{item.identifier}({item.name})</strong><span>{diagnosisComposerSkillID === item.id ? '已选择' : item.category}</span></button>{:else}<span>暂无可用技能</span>{/each}
             {:else}
-              {#each filteredComposerPersonas as item}<button type="button" role="option" aria-selected={diagnosisComposerPersonaID === item.id} on:click={() => chooseComposerItem('persona', item)}><strong>@{item.name}</strong><span>{diagnosisComposerPersonaID === item.id ? '已选择' : item.description || '专家'}</span></button>{:else}<span>暂无可用专家</span>{/each}
+              {#each filteredComposerPersonas as item}<button type="button" role="option" aria-selected={diagnosisComposerPersonaID === item.id} on:click={() => chooseComposerItem('persona', item)}><strong>@{item.identifier}({item.name})</strong><span>{diagnosisComposerPersonaID === item.id ? '已选择' : item.description || '专家'}</span></button>{:else}<span>暂无可用专家</span>{/each}
             {/if}
           </div>
         </div>{/if}

@@ -26,6 +26,7 @@
   import FormField from '../../components/FormField.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import TagList from '../../components/TagList.svelte';
 
   export let profiles: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
@@ -50,7 +51,7 @@
   let favoriteIds: string[] = [];
 
   $: filteredProfiles = profiles.filter((profile) =>
-    `${profile.name} ${profile.description} ${profile.status} ${scopeName(profile.scope_id)}`
+    `${profile.identifier} ${profile.name} ${profile.tags.join(' ')} ${profile.description} ${profile.status} ${scopeName(profile.scope_id)}`
       .toLowerCase()
       .includes(query.trim().toLowerCase())
   );
@@ -354,6 +355,7 @@
                     >{profileCapabilitiesText(profile)}</span
                   >{/if}
               </div>
+              {#if profile.tags.length}<TagList tags={profile.tags} className="persona-label-tags" />{/if}
               <div class="persona-card-facts">
                 <div>
                   <span>执行引擎</span><strong>{profileEngine(profile)}</strong>

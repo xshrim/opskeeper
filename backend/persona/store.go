@@ -41,9 +41,9 @@ func NewPersonaCatalog(pool *pgxpool.Pool) PersonaCatalog { return &personaCatal
 
 func (s *personaCatalog) GetPersona(ctx context.Context, id string) (Persona, error) {
 	var item Persona
-	var encoded []byte
-	err := s.pool.QueryRow(ctx, `SELECT id::text, scope_id::text, name, description, config, status FROM personas WHERE id = $1::uuid AND deleted_at IS NULL`, id).
-		Scan(&item.ID, &item.ScopeID, &item.Name, &item.Description, &encoded, &item.Status)
+	var encoded, tags []byte
+	err := s.pool.QueryRow(ctx, `SELECT id::text, scope_id::text, identifier, name, description, tags, config, status FROM personas WHERE id = $1::uuid AND deleted_at IS NULL`, id).
+		Scan(&item.ID, &item.ScopeID, &item.Identifier, &item.Name, &item.Description, &tags, &encoded, &item.Status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Persona{}, ErrNotFound
 	}
@@ -53,11 +53,14 @@ func (s *personaCatalog) GetPersona(ctx context.Context, id string) (Persona, er
 	if err := json.Unmarshal(encoded, &item.Config); err != nil {
 		return Persona{}, fmt.Errorf("decode persona config: %w", err)
 	}
+	if err := json.Unmarshal(tags, &item.Tags); err != nil {
+		return Persona{}, fmt.Errorf("decode persona tags: %w", err)
+	}
 	return item, nil
 }
 
 func (s *personaCatalog) ListPersonas(ctx context.Context, scopeID string) ([]Persona, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, scope_id::text, name, description, config, status FROM personas WHERE scope_id = $1::uuid AND deleted_at IS NULL ORDER BY name`, scopeID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text, scope_id::text, identifier, name, description, tags, config, status FROM personas WHERE scope_id = $1::uuid AND deleted_at IS NULL ORDER BY name`, scopeID)
 	if err != nil {
 		return nil, fmt.Errorf("list personas: %w", err)
 	}
@@ -65,12 +68,15 @@ func (s *personaCatalog) ListPersonas(ctx context.Context, scopeID string) ([]Pe
 	items := make([]Persona, 0)
 	for rows.Next() {
 		var item Persona
-		var encoded []byte
-		if err := rows.Scan(&item.ID, &item.ScopeID, &item.Name, &item.Description, &encoded, &item.Status); err != nil {
+		var encoded, tags []byte
+		if err := rows.Scan(&item.ID, &item.ScopeID, &item.Identifier, &item.Name, &item.Description, &tags, &encoded, &item.Status); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(encoded, &item.Config); err != nil {
 			return nil, fmt.Errorf("decode persona config: %w", err)
+		}
+		if err := json.Unmarshal(tags, &item.Tags); err != nil {
+			return nil, fmt.Errorf("decode persona tags: %w", err)
 		}
 		items = append(items, item)
 	}

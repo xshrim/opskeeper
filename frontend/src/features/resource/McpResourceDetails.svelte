@@ -1,11 +1,14 @@
 <script lang="ts">
   import type { MCPSnapshot, Resource } from '../../lib/api';
-  import { resourceEndpointFor, resourceLabelsText } from './resourceCatalog';
+  import TagList from '../../components/TagList.svelte';
+  import { labelTags } from '../../lib/labels';
+  import { resourceEndpointFor } from './resourceCatalog';
   export let resource: Resource;
   export let snapshots: MCPSnapshot[] = [];
   export let formatDate: (value: string) => string;
 
   $: config = resource.config ?? {};
+  $: tags = labelTags(resource.labels);
   $: snapshot = snapshots[0];
   $: connectionStatus = snapshot ? snapshot.status === 'succeeded' ? `正常·${snapshot.latency_ms ?? 0}ms` : '异常' : '尚未测试';
 </script>
@@ -22,7 +25,7 @@
     <div><span>工具白名单</span><strong>{Array.isArray(config.tool_allowlist) && config.tool_allowlist.length ? `${config.tool_allowlist.length} 条规则` : '不限制'}</strong></div>
     <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置 Token / Header' : '未配置'}</strong></div>
     <div><span>传输凭据</span><strong>{resource.credential_configured ? '随连接凭据保存' : '未配置'}</strong></div>
-    <div class="provider-resource-labels"><span>标签</span><strong>{resourceLabelsText(resource) || '未设置标签'}</strong></div>
+    <div class="provider-resource-labels"><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
     <div><span>状态</span><strong>{connectionStatus}</strong></div>
   </div>
 </div>

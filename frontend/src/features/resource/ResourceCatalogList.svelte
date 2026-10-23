@@ -6,6 +6,7 @@
   import { Pencil, Trash2 } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import ResourceTagList from '../../components/ResourceTagList.svelte';
+  import { labelTags } from '../../lib/labels';
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
   import { relativeConnectionTime, resourceCategoryFor, resourceEndpointFor, resourceSubtypeFor } from './resourceCatalog';
@@ -82,7 +83,7 @@
     {:else if column.key === 'scope'}
       <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>
     {:else if column.key === 'labels'}
-      <ResourceTagList tags={Object.entries(resource.labels ?? {}).map(([key, value]) => value ? `${key}=${value}` : key)} />
+      <ResourceTagList tags={labelTags(resource.labels)} />
     {:else if column.key === 'application'}
       <span class="resource-cell resource-application-cell">{resource.application_count ?? 0}</span>
     {:else if column.key === 'connection'}
