@@ -27,6 +27,7 @@
   import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import TagList from '../../components/TagList.svelte';
+  import DropdownSelect from '../../components/DropdownSelect.svelte';
 
   export let profiles: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
@@ -42,6 +43,10 @@
   let profileInstruction = '';
   let profileCapabilities = 'text, tool_calling, stream';
   let profileAllowedTools = '';
+  let profileRole = 'worker';
+  let profileDomainValue = '';
+  let profileWorkerPersonaIds: string[] = [];
+  let profileMaxDispatch = '3';
   let profileInputSchema = '{"type":"object","additionalProperties":true}';
   let profileOutputSchema = '{"type":"object","additionalProperties":true}';
   let detailTab: 'overview' | 'versions' | 'contract' = 'overview';
@@ -65,9 +70,7 @@
       title: '职能层 · Manager',
       icon: Bot,
       description: '理解运维问题，自主拆解并分派资源专家，汇总因果结论。',
-      items: filteredProfiles.filter((profile) =>
-        /manager|管理|协同|审计/i.test(`${profile.name} ${profile.description}`)
-      )
+      items: filteredProfiles.filter((profile) => profileType(profile) === 'Manager')
     },
     {
       key: 'worker',
@@ -76,9 +79,7 @@
       description: '掌握域内诊断技能，执行单资源深度诊断分析。',
       items: filteredProfiles.filter(
         (profile) =>
-          !/manager|管理|协同|审计/i.test(
-            `${profile.name} ${profile.description}`
-          )
+          profileType(profile) !== 'Manager'
       )
     }
   ];
@@ -104,6 +105,9 @@
     return Array.isArray(value) ? value.join(', ') : String(value ?? fallback);
   }
   function profileType(profile: PersonaCatalogItem) {
+    const role = String(profile.config?.role ?? '').toLowerCase();
+    if (role === 'manager') return 'Manager';
+    if (role === 'worker') return 'Worker';
     return /manager|管理|协同|审计/i.test(
       `${profile.name} ${profile.description}`
     )
@@ -126,7 +130,8 @@
   }
   function profileLimits(profile: PersonaCatalogItem) {
     return String(
-      profile.config?.dispatch_limit ??
+      profile.config?.max_dispatch ??
+        profile.config?.dispatch_limit ??
         profile.config?.max_concurrency ??
         (profileType(profile) === 'Manager' ? '5' : '—')
     );
@@ -185,6 +190,14 @@
     profileAllowedTools = Array.isArray(config.allowed_tools)
       ? config.allowed_tools.join(', ')
       : String(config.allowed_tools ?? '');
+    profileRole = String(
+      config.role ?? (selectedProfile && profileType(selectedProfile) === 'Manager' ? 'manager' : 'worker')
+    );
+    profileDomainValue = String(config.domain ?? config.resource_kind ?? '');
+    profileWorkerPersonaIds = Array.isArray(config.worker_persona_ids)
+      ? config.worker_persona_ids.map(String)
+      : [];
+    profileMaxDispatch = String(config.max_dispatch ?? 3);
     profileInputSchema = JSON.stringify(
       config.input_schema ?? { type: 'object', additionalProperties: true },
       null,
@@ -218,10 +231,17 @@
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean),
-        allowed_tools: profileAllowedTools
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        allowed_tools:
+          profileRole === 'worker'
+            ? profileAllowedTools.split(',').map((item) => item.trim()).filter(Boolean)
+            : [],
+        role: profileRole,
+        domain: profileRole === 'worker' ? profileDomainValue.trim() : '',
+        worker_persona_ids:
+          profileRole === 'manager'
+            ? profileWorkerPersonaIds
+            : [],
+        max_dispatch: profileRole === 'manager' ? Number(profileMaxDispatch) : 0,
         input_schema: JSON.parse(profileInputSchema),
         output_schema: JSON.parse(profileOutputSchema),
         enabled: true
@@ -522,8 +542,18 @@
           >
             <FormField label="专家指令" required><TextArea bind:value={profileInstruction} rows={9} required placeholder="描述诊断范围、判断原则和输出要求" /></FormField>
             <div class="persona-editor-grid">
-              <FormField label="模型能力"><TextInput bind:value={profileCapabilities} placeholder="text, tool_calling, stream" ariaLabel="模型能力" /></FormField><FormField label="允许工具"><TextInput bind:value={profileAllowedTools} placeholder="connector_postgresql_inspect" ariaLabel="允许工具" /></FormField>
+              <FormField label="模型能力"><TextInput bind:value={profileCapabilities} placeholder="text, tool_calling, stream" ariaLabel="模型能力" /></FormField>{#if profileRole === 'worker'}<FormField label="允许工具"><TextInput bind:value={profileAllowedTools} placeholder="connector_postgresql_inspect" ariaLabel="允许工具" /></FormField>{/if}
             </div>
+            <div class="persona-editor-grid">
+              <FormField label="专家职责"><DropdownSelect bind:value={profileRole} options={[{ value: 'worker', label: '资源专家 · Worker' }, { value: 'manager', label: '职能专家 · Manager' }]} ariaLabel="专家职责" /></FormField>
+              {#if profileRole === 'worker'}<FormField label="资源领域" required><TextInput bind:value={profileDomainValue} required placeholder="PostgreSQL、Redis、Kubernetes" ariaLabel="资源领域" /></FormField>{/if}
+            </div>
+            {#if profileRole === 'manager'}
+              <div class="persona-editor-grid">
+                <FormField label="可委派资源专家"><DropdownSelect bind:value={profileWorkerPersonaIds} options={profiles.filter((profile) => profile.id !== selectedProfileId && profile.status === 'active' && profileType(profile) === 'Worker' && Boolean(profile.config?.domain ?? profile.config?.resource_kind)).map((profile) => ({ value: profile.id, label: `${profile.name}（${profile.identifier}） · ${profileDomain(profile)}` }))} multiple taggedSelection searchable placeholder="选择已配置领域的资源专家" ariaLabel="可委派资源专家" /></FormField>
+                <FormField label="最大委派次数"><TextInput bind:value={profileMaxDispatch} required type="number" min="1" max="5" ariaLabel="最大委派次数" /></FormField>
+              </div>
+            {/if}
             <div class="persona-editor-grid">
               <FormField label="输入 Schema"><TextArea bind:value={profileInputSchema} rows={7} spellcheck={false} /></FormField><FormField label="输出 Schema"><TextArea bind:value={profileOutputSchema} rows={7} spellcheck={false} /></FormField>
             </div>

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -172,6 +173,7 @@ func TestRuntimeStreamRejectsUnavailableRunner(t *testing.T) {
 type fakeRuntimeContextResolver struct {
 	resolved ResolvedContext
 	err      error
+	request  *ContextRequest
 }
 
 type fakeEventStore struct{ events []Event }
@@ -215,7 +217,10 @@ func TestRuntimeDoesNotCompleteWhenEventPersistenceFails(t *testing.T) {
 	}
 }
 
-func (f fakeRuntimeContextResolver) Resolve(context.Context, ContextRequest) (ResolvedContext, error) {
+func (f fakeRuntimeContextResolver) Resolve(_ context.Context, request ContextRequest) (ResolvedContext, error) {
+	if f.request != nil {
+		*f.request = request
+	}
 	return f.resolved, f.err
 }
 
@@ -276,10 +281,79 @@ func TestRuntimeResolvesPersonaBeforeRunner(t *testing.T) {
 	}
 }
 
+func TestManagerDelegatesOnlyMatchingSelectedResourcesToWorker(t *testing.T) {
+	manager := Persona{PersonaID: "manager", ScopeID: "scope-1", Name: "Operations Lead", Enabled: true, Role: "manager", WorkerPersonaIDs: []string{"postgres-worker"}, MaxDispatch: 2}
+	worker := Persona{PersonaID: "postgres-worker", ScopeID: "scope-1", Name: "PostgreSQL Expert", Enabled: true, Role: "worker", Domain: "postgresql", Instruction: "Inspect PostgreSQL."}
+	var lastContextRequest ContextRequest
+	contextResolver := fakeRuntimeContextResolver{request: &lastContextRequest, resolved: ResolvedContext{Resources: []ContextResource{
+		{ID: "db-1", ScopeID: "scope-1", Kind: "postgres", Name: "orders"},
+		{ID: "cache-1", ScopeID: "scope-1", Kind: "redis", Name: "cache"},
+	}, Tools: []ToolDefinition{
+		{Name: "postgres_inspect", ResourceID: "db-1"},
+		{Name: "redis_inspect", ResourceID: "cache-1"},
+	}, Facts: []ContextFact{
+		{ResourceID: "db-1", Kind: "postgres"},
+		{ResourceID: "cache-1", Kind: "redis"},
+	}}}
+	var workerRequest Request
+	runtime := NewWithContext(fakeRunner{run: func(ctx context.Context, request Request) (Result, error) {
+		if request.PersonaID == worker.PersonaID {
+			workerRequest = request
+			return Result{Output: "database report", Status: StatusSucceeded}, nil
+		}
+		if len(request.Context.ResourceIDs) != 0 || len(request.ResolvedContext.Resources) != 0 || len(request.ResolvedContext.Tools) != 0 || !strings.Contains(request.Instruction, "职能专家约束") {
+			t.Fatalf("manager received raw resources or missed its role contract: %+v", request)
+		}
+		if len(request.InternalTools) != 1 {
+			t.Fatalf("manager got %d internal tools, want one matching worker", len(request.InternalTools))
+		}
+		output, err := request.InternalTools[0].Invoke(ctx, map[string]any{"question": "check database availability"})
+		if err != nil {
+			t.Fatalf("invoke delegation: %v", err)
+		}
+		if output.Output == nil {
+			t.Fatal("delegation returned no worker report")
+		}
+		return Result{Output: "summary", Status: StatusSucceeded}, nil
+	}}, contextResolver, nil).WithPersonaResolver(personaMapResolver{profiles: map[string]Persona{
+		manager.PersonaID: manager,
+		worker.PersonaID:  worker,
+	}})
+	_, err := runtime.Execute(context.Background(), Request{
+		ExecutionID: "manager-exec", ScopeID: "scope-1", PersonaID: manager.PersonaID,
+		Task: "diagnose selected resources", Context: ContextRequest{ResourceIDs: []string{"db-1", "cache-1"}},
+	})
+	if err != nil {
+		t.Fatalf("manager execution: %v", err)
+	}
+	if workerRequest.PersonaID != worker.PersonaID || workerRequest.Task != "check database availability" {
+		t.Fatalf("worker request did not use configured Persona/task: %+v", workerRequest)
+	}
+	if len(workerRequest.Context.ResourceIDs) != 1 || workerRequest.Context.ResourceIDs[0] != "db-1" {
+		t.Fatalf("worker received resources outside its domain: %+v", workerRequest.Context.ResourceIDs)
+	}
+	if len(workerRequest.ResolvedContext.Resources) != 1 || len(workerRequest.ResolvedContext.Tools) != 1 || workerRequest.ResolvedContext.Tools[0].ResourceID != "db-1" || len(workerRequest.ResolvedContext.Facts) != 1 {
+		t.Fatalf("worker received non-domain context: %+v", workerRequest.ResolvedContext)
+	}
+	if !lastContextRequest.RestrictKinds || len(lastContextRequest.AllowedKinds) != 1 || lastContextRequest.AllowedKinds[0] != "postgresql" {
+		t.Fatalf("worker domain was not applied before resource providers: %+v", lastContextRequest)
+	}
+}
+
 type fakePersonaResolver struct{ profile Persona }
 
 func (f fakePersonaResolver) Resolve(context.Context, string, string) (Persona, error) {
 	return f.profile, nil
+}
+
+type personaMapResolver struct{ profiles map[string]Persona }
+
+func (r personaMapResolver) Resolve(_ context.Context, _ string, id string) (Persona, error) {
+	profile, ok := r.profiles[id]
+	if !ok {
+		return Persona{}, errors.New("persona not found")
+	}
+	return profile, nil
 }
 
 func TestRuntimeFailsWhenContextResolutionFails(t *testing.T) {

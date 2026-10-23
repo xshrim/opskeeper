@@ -84,7 +84,22 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 				return ResolvedContext{}, fmt.Errorf("authorize context resource %s: %w", id, err)
 			}
 		}
+		if request.RestrictKinds {
+			matches := false
+			for _, kind := range request.AllowedKinds {
+				if personaDomainMatches(kind, resource.Kind) {
+					matches = true
+					break
+				}
+			}
+			if !matches {
+				continue
+			}
+		}
 		resolved.Resources = append(resolved.Resources, resource)
+		if request.MetadataOnly {
+			continue
+		}
 		provider, ok := providerFor(r.Providers, resource)
 		if !ok {
 			if strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {

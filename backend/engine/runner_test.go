@@ -8,6 +8,7 @@ import (
 	"iter"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ type outputCapModel struct {
 	mu       sync.Mutex
 	requests []*model.LLMRequest
 }
+
+type internalDelegationModel struct{ turns int }
 
 type streamedCanonicalModel struct{}
 
@@ -127,6 +130,68 @@ func TestAgentRunnerNeverExceedsProviderOutputCap(t *testing.T) {
 	}
 	if modelClient.requests[0].Config.Temperature == nil || *modelClient.requests[0].Config.Temperature != 0.65 {
 		t.Fatalf("Temperature = %v, want provider model temperature 0.65", modelClient.requests[0].Config.Temperature)
+	}
+}
+
+func (m *internalDelegationModel) Name() string { return "internal-delegation-model" }
+
+func (m *internalDelegationModel) GenerateContent(_ context.Context, request *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		m.turns++
+		if m.turns == 1 {
+			found := false
+			if request.Config != nil {
+				for _, group := range request.Config.Tools {
+					if group == nil {
+						continue
+					}
+					for _, declaration := range group.FunctionDeclarations {
+						if declaration != nil && declaration.Name == "delegate_postgres" {
+							found = true
+						}
+					}
+				}
+			}
+			if !found {
+				yield(nil, errors.New("internal delegation tool was not registered"))
+				return
+			}
+			yield(&model.LLMResponse{Content: &genai.Content{Role: genai.RoleModel, Parts: []*genai.Part{{FunctionCall: &genai.FunctionCall{ID: "delegate-call", Name: "delegate_postgres", Args: map[string]any{"question": "inspect database"}}}}}}, nil)
+			return
+		}
+		yield(&model.LLMResponse{Content: genai.NewContentFromText("worker report summarized", genai.RoleModel)}, nil)
+	}
+}
+
+func TestAgentRunnerRunsInternalDelegationWithoutResourceGateway(t *testing.T) {
+	modelClient := &internalDelegationModel{}
+	var invoked atomic.Int64
+	var events []Event
+	runner := NewAgentRunner(func(context.Context, string, string, string, Purpose) (ModelBuildResult, error) {
+		return ModelBuildResult{Client: modelClient, Capabilities: []string{"text", "tool_calling"}}, nil
+	})
+	result, err := runner.Run(context.Background(), Request{
+		ExecutionID: "manager-execution", ActorID: "actor-1", ScopeID: "scope-1", Task: "diagnose",
+		Budget: Budget{MaxIterations: 3, MaxToolCalls: 3, MaxTokens: 1000, MaxOutputBytes: 4096},
+		EventSink: func(event Event) error {
+			events = append(events, event)
+			return nil
+		},
+		InternalTools: []Tool{ToolFunc{Def: ToolDefinition{Name: "delegate_postgres", Source: "persona-delegation", ReadOnly: true}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
+			invoked.Add(1)
+			return ToolResult{Output: map[string]any{"status": "succeeded", "report": "database healthy"}}, nil
+		}}},
+	})
+	if err != nil || result.Output != "worker report summarized" || invoked.Load() != 1 {
+		t.Fatalf("result=%+v invoked=%d err=%v", result, invoked.Load(), err)
+	}
+	requested, completed := false, false
+	for _, event := range events {
+		requested = requested || event.Type == "tool.requested" && event.Payload["tool"] == "delegate_postgres"
+		completed = completed || event.Type == "tool.completed" && event.Payload["tool"] == "delegate_postgres"
+	}
+	if !requested || !completed {
+		t.Fatalf("internal tool lifecycle events missing: %+v", events)
 	}
 }
 

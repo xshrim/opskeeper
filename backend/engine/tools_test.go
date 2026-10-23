@@ -250,6 +250,41 @@ func TestResourceContextResolverDeduplicatesAndAuthorizesResources(t *testing.T)
 	}
 }
 
+func TestResourceContextResolverRestrictsWorkerDomainBeforeResolvingTools(t *testing.T) {
+	resolver := ResourceContextResolver{
+		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
+			"database": {ID: "database", ScopeID: "scope-1", Kind: "PostgreSQL"},
+			"cache":    {ID: "cache", ScopeID: "scope-1", Kind: "Redis"},
+		}},
+		Providers: []ContextProvider{fakeContextProvider{}},
+	}
+	resolved, err := resolver.Resolve(context.Background(), ContextRequest{
+		ResourceIDs: []string{"database", "cache"}, AllowedKinds: []string{"postgresql"}, RestrictKinds: true,
+	})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(resolved.Resources) != 1 || resolved.Resources[0].ID != "database" || len(resolved.Tools) != 1 || resolved.Tools[0].ResourceID != "database" {
+		t.Fatalf("worker context escaped its resource domain: %+v", resolved)
+	}
+}
+
+func TestResourceContextResolverMetadataOnlySkipsProviderResolution(t *testing.T) {
+	resolver := ResourceContextResolver{
+		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
+			"database": {ID: "database", ScopeID: "scope-1", Kind: "PostgreSQL"},
+		}},
+		Providers: []ContextProvider{fakeContextProvider{}},
+	}
+	resolved, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"database"}, MetadataOnly: true})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(resolved.Resources) != 1 || len(resolved.Tools) != 0 || len(resolved.Facts) != 0 {
+		t.Fatalf("metadata-only resolution invoked resource providers: %+v", resolved)
+	}
+}
+
 type accessModeContextProvider struct {
 	kinds []string
 	modes []string

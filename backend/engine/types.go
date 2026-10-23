@@ -61,6 +61,9 @@ type Message struct {
 type ContextRequest struct {
 	ResourceIDs      []string `json:"resource_ids,omitempty"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
+	AllowedKinds     []string `json:"-"`
+	RestrictKinds    bool     `json:"-"`
+	MetadataOnly     bool     `json:"-"`
 }
 
 // ToolDeclaration is the provider-neutral tool contract supplied by an
@@ -98,17 +101,21 @@ type PlanResolver interface {
 // narrows the tools and model capabilities an execution may use; it never
 // carries provider credentials or an upstream URL.
 type Persona struct {
-	PersonaID    string          `json:"persona_id"`
-	ScopeID      string          `json:"scope_id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description,omitempty"`
-	Version      int             `json:"version"`
-	Instruction  string          `json:"instruction"`
-	Capabilities []string        `json:"capabilities,omitempty"`
-	AllowedTools []string        `json:"allowed_tools,omitempty"`
-	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
-	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
-	Enabled      bool            `json:"enabled"`
+	PersonaID        string          `json:"persona_id"`
+	ScopeID          string          `json:"scope_id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description,omitempty"`
+	Version          int             `json:"version"`
+	Instruction      string          `json:"instruction"`
+	Capabilities     []string        `json:"capabilities,omitempty"`
+	AllowedTools     []string        `json:"allowed_tools,omitempty"`
+	InputSchema      json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema     json.RawMessage `json:"output_schema,omitempty"`
+	Enabled          bool            `json:"enabled"`
+	Role             string          `json:"role,omitempty"`
+	Domain           string          `json:"domain,omitempty"`
+	WorkerPersonaIDs []string        `json:"worker_persona_ids,omitempty"`
+	MaxDispatch      int             `json:"max_dispatch,omitempty"`
 }
 
 // PersonaResolver resolves and authorizes a persona for an execution
@@ -171,6 +178,8 @@ type Request struct {
 	ResolvedContext *ResolvedContext      `json:"-"`
 	ToolGateway     *PolicyGateway        `json:"-"`
 	ResolvedPersona *Persona              `json:"-"`
+	InternalTools   []Tool                `json:"-"`
+	DelegationDepth int                   `json:"-"`
 	ObservationSink func(ToolObservation) `json:"-"`
 }
 

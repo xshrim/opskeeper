@@ -60,7 +60,17 @@ func (s *personaCatalog) GetPersona(ctx context.Context, id string) (Persona, er
 }
 
 func (s *personaCatalog) ListPersonas(ctx context.Context, scopeID string) ([]Persona, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, scope_id::text, identifier, name, description, tags, config, status FROM personas WHERE scope_id = $1::uuid AND deleted_at IS NULL ORDER BY name`, scopeID)
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id::text, p.scope_id::text, p.identifier, p.name, p.description, p.tags,
+			COALESCE(published.config, p.config), p.status
+		FROM personas p
+		LEFT JOIN LATERAL (
+			SELECT config FROM persona_versions
+			WHERE persona_id = p.id AND status = 'published'
+			ORDER BY version DESC LIMIT 1
+		) published ON true
+		WHERE p.scope_id = $1::uuid AND p.deleted_at IS NULL
+		ORDER BY p.name`, scopeID)
 	if err != nil {
 		return nil, fmt.Errorf("list personas: %w", err)
 	}

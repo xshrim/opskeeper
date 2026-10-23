@@ -163,6 +163,11 @@ func (r PersonaResolver) Resolve(ctx context.Context, scopeID, personaID string)
 	if err := json.Unmarshal(encoded, &config); err != nil {
 		return engine.Persona{}, invalid("Persona config is invalid")
 	}
+	config.Role = strings.ToLower(strings.TrimSpace(config.Role))
+	config.Domain = strings.TrimSpace(config.Domain)
+	for index := range config.WorkerPersonaIDs {
+		config.WorkerPersonaIDs[index] = strings.TrimSpace(config.WorkerPersonaIDs[index])
+	}
 	if err := validatePersonaConfig(config); err != nil {
 		return engine.Persona{}, err
 	}
@@ -172,6 +177,11 @@ func (r PersonaResolver) Resolve(ctx context.Context, scopeID, personaID string)
 		Instruction: config.Instruction, Capabilities: config.Capabilities,
 		AllowedTools: config.AllowedTools, InputSchema: config.InputSchema,
 		OutputSchema: config.OutputSchema, Enabled: config.Enabled,
+		Role: config.Role, Domain: config.Domain,
+		WorkerPersonaIDs: config.WorkerPersonaIDs, MaxDispatch: config.MaxDispatch,
+	}
+	if profile.Role == "" {
+		profile.Role = "worker"
 	}
 	if publishedVersion > 0 {
 		profile.Version = publishedVersion
@@ -180,14 +190,18 @@ func (r PersonaResolver) Resolve(ctx context.Context, scopeID, personaID string)
 }
 
 type personaConfig struct {
-	Description  string          `json:"description"`
-	Version      int             `json:"version"`
-	Instruction  string          `json:"instruction"`
-	Capabilities []string        `json:"capabilities"`
-	AllowedTools []string        `json:"allowed_tools"`
-	InputSchema  json.RawMessage `json:"input_schema"`
-	OutputSchema json.RawMessage `json:"output_schema"`
-	Enabled      bool            `json:"enabled"`
+	Description      string          `json:"description"`
+	Version          int             `json:"version"`
+	Instruction      string          `json:"instruction"`
+	Capabilities     []string        `json:"capabilities"`
+	AllowedTools     []string        `json:"allowed_tools"`
+	InputSchema      json.RawMessage `json:"input_schema"`
+	OutputSchema     json.RawMessage `json:"output_schema"`
+	Enabled          bool            `json:"enabled"`
+	Role             string          `json:"role"`
+	Domain           string          `json:"domain"`
+	WorkerPersonaIDs []string        `json:"worker_persona_ids"`
+	MaxDispatch      int             `json:"max_dispatch"`
 }
 
 var personaToolNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$`)
@@ -236,6 +250,46 @@ func validatePersonaConfig(config personaConfig) error {
 	if !config.Enabled {
 		return invalid("Persona is disabled")
 	}
+	role := strings.TrimSpace(config.Role)
+	explicitRole := role != ""
+	if role == "" {
+		role = "worker"
+	}
+	config.Role = role
+	if role != "worker" && role != "manager" {
+		return invalid("Persona role must be worker or manager")
+	}
+	if role == "worker" && explicitRole && strings.TrimSpace(config.Domain) == "" {
+		return invalid("worker Persona domain is required")
+	}
+	if role == "worker" && (len(config.WorkerPersonaIDs) > 0 || config.MaxDispatch != 0) {
+		return invalid("worker Persona cannot configure dispatch")
+	}
+	if len(config.Domain) > 100 {
+		return invalid("Persona domain is too long")
+	}
+	if role == "manager" {
+		if len(config.AllowedTools) > 0 {
+			return invalid("manager Persona cannot directly allow resource tools")
+		}
+		if len(config.WorkerPersonaIDs) == 0 || len(config.WorkerPersonaIDs) > 10 {
+			return invalid("manager Persona must configure between 1 and 10 worker personas")
+		}
+		if config.MaxDispatch < 1 || config.MaxDispatch > 5 {
+			return invalid("manager Persona max_dispatch must be between 1 and 5")
+		}
+		seenWorkers := make(map[string]struct{}, len(config.WorkerPersonaIDs))
+		for _, id := range config.WorkerPersonaIDs {
+			id = strings.TrimSpace(id)
+			if id == "" || len(id) > 128 {
+				return invalid("manager Persona worker persona id is required")
+			}
+			if _, exists := seenWorkers[id]; exists {
+				return invalid("manager Persona worker personas must be unique")
+			}
+			seenWorkers[id] = struct{}{}
+		}
+	}
 	return nil
 }
 
@@ -253,6 +307,8 @@ func validatePersona(profile engine.Persona, scopeID string) error {
 		Description: profile.Description, Version: profile.Version, Instruction: profile.Instruction,
 		Capabilities: profile.Capabilities, AllowedTools: profile.AllowedTools,
 		InputSchema: profile.InputSchema, OutputSchema: profile.OutputSchema, Enabled: profile.Enabled,
+		Role: profile.Role, Domain: profile.Domain,
+		WorkerPersonaIDs: profile.WorkerPersonaIDs, MaxDispatch: profile.MaxDispatch,
 	})
 }
 

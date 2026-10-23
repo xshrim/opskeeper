@@ -872,132 +872,195 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 
 func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, iteration *atomic.Int64, stop context.CancelFunc, budgetExceeded *atomic.Bool, startedToolCalls *sync.Map, state *executionState) ([]tool.Tool, error) {
 	result := make([]tool.Tool, 0)
-	if request.ResolvedContext == nil || request.ToolGateway == nil {
-		return result, nil
-	}
 	// A controlled paging tool lets the model retrieve large observations only
 	// when needed, keeping the normal context compact.
-	readTool, _ := functiontool.New(functiontool.Config{Name: "read_observation", Description: "按 observation_id、offset、limit 分页读取之前工具结果"}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
-		count := calls.Add(1)
-		if count > int64(request.Budget.MaxToolCalls) {
-			if budgetExceeded != nil {
-				budgetExceeded.Store(true)
+	if request.ResolvedContext != nil && request.ToolGateway != nil && len(request.ResolvedContext.Tools) > 0 {
+		readTool, _ := functiontool.New(functiontool.Config{Name: "read_observation", Description: "按 observation_id、offset、limit 分页读取之前工具结果"}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
+			count := calls.Add(1)
+			if count > int64(request.Budget.MaxToolCalls) {
+				if budgetExceeded != nil {
+					budgetExceeded.Store(true)
+				}
+				if stop != nil {
+					stop()
+				}
+				return map[string]any{"error": "tool call budget exceeded", "error_code": "tool_budget"}, nil
 			}
-			if stop != nil {
-				stop()
-			}
-			return map[string]any{"error": "tool call budget exceeded", "error_code": "tool_budget"}, nil
-		}
-		if request.EventSink != nil {
-			_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: map[string]any{"tool": "read_observation", "call_id": toolCtx.FunctionCallID(), "iteration": iteration.Load()}})
-		}
-		id, _ := args["observation_id"].(string)
-		number := func(key string) int {
-			switch value := args[key].(type) {
-			case int:
-				return value
-			case int64:
-				return int(value)
-			case float64:
-				return int(value)
-			case json.Number:
-				n, _ := value.Int64()
-				return int(n)
-			}
-			return 0
-		}
-		offset, limit := number("offset"), number("limit")
-		value, ok := state.read(id, offset, limit)
-		if !ok {
 			if request.EventSink != nil {
-				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": "read_observation", "error": "observation not found", "error_code": "observation_not_found", "iteration": iteration.Load()}})
+				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: map[string]any{"tool": "read_observation", "call_id": toolCtx.FunctionCallID(), "iteration": iteration.Load()}})
 			}
-			return map[string]any{"error": "observation not found"}, nil
+			id, _ := args["observation_id"].(string)
+			number := func(key string) int {
+				switch value := args[key].(type) {
+				case int:
+					return value
+				case int64:
+					return int(value)
+				case float64:
+					return int(value)
+				case json.Number:
+					n, _ := value.Int64()
+					return int(n)
+				}
+				return 0
+			}
+			offset, limit := number("offset"), number("limit")
+			value, ok := state.read(id, offset, limit)
+			if !ok {
+				if request.EventSink != nil {
+					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: map[string]any{"tool": "read_observation", "error": "observation not found", "error_code": "observation_not_found", "iteration": iteration.Load()}})
+				}
+				return map[string]any{"error": "observation not found"}, nil
+			}
+			if request.EventSink != nil {
+				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.completed", Status: StatusSucceeded, Payload: map[string]any{"tool": "read_observation", "call_id": toolCtx.FunctionCallID(), "iteration": iteration.Load(), "output": value}})
+			}
+			return map[string]any{"output": value, "engine_observation": true}, nil
+		})
+		if readTool != nil && state != nil {
+			result = append(result, readTool)
 		}
-		if request.EventSink != nil {
-			_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.completed", Status: StatusSucceeded, Payload: map[string]any{"tool": "read_observation", "call_id": toolCtx.FunctionCallID(), "iteration": iteration.Load(), "output": value}})
-		}
-		return map[string]any{"output": value, "engine_observation": true}, nil
-	})
-	if readTool != nil && state != nil {
-		result = append(result, readTool)
 	}
-	for _, binding := range buildToolBindings(request.ResolvedContext.Tools) {
-		definition := binding.definition
-		modelToolName := binding.modelName
-		if definition.Name == "" || definition.ResourceID == "" {
-			continue
+	if request.ResolvedContext != nil && request.ToolGateway != nil {
+		for _, binding := range buildToolBindings(request.ResolvedContext.Tools) {
+			definition := binding.definition
+			modelToolName := binding.modelName
+			if definition.Name == "" || definition.ResourceID == "" {
+				continue
+			}
+			if !agentToolAllowed(request.ResolvedPersona, request.AllowedTools, request.RestrictTools, definition.Name) {
+				continue
+			}
+			var inputSchema *adkjsonschema.Schema
+			if len(definition.InputSchema) > 0 {
+				var parsed adkjsonschema.Schema
+				if err := json.Unmarshal(definition.InputSchema, &parsed); err != nil {
+					return nil, fmt.Errorf("tool %s has invalid input schema: %w", definition.Name, err)
+				}
+				inputSchema = &parsed
+			}
+			item, err := functiontool.New(functiontool.Config{Name: modelToolName, Description: definition.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
+				count := calls.Add(1)
+				call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ModelToolName: modelToolName, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: toolCtx.FunctionCallID(), EventSink: request.EventSink}
+				if startedToolCalls != nil && call.CallID != "" {
+					startedToolCalls.Store(call.CallID, struct{}{})
+				}
+				if count > int64(request.Budget.MaxToolCalls) {
+					message := "tool call budget exceeded"
+					completedAt := time.Now().UTC()
+					request.ToolGateway.recordToolCall(ToolCallRecord{
+						ExecutionID: call.ExecutionID, Sequence: call.Sequence,
+						ProviderID: call.ProviderID, ModelName: call.ModelName,
+						ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments,
+						Status: StatusFailed, ErrorCode: "tool_budget", Error: message,
+						StartedAt: completedAt, CompletedAt: completedAt,
+					})
+					if request.EventSink != nil {
+						_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(args)})})
+						_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{
+							"arguments":   redactValue(args),
+							"error":       message,
+							"error_code":  "tool_budget",
+							"output":      map[string]any{"error": message},
+							"duration_ms": int64(0),
+						})})
+					}
+					if budgetExceeded != nil && budgetExceeded.CompareAndSwap(false, true) {
+						if request.EventSink != nil {
+							_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": "工具调用预算已用尽", "reason": "tool_budget", "iteration": iteration.Load(), "tool_call_count": count}})
+						}
+					}
+					if stop != nil {
+						stop()
+					}
+					return nil, ErrToolLimited
+				}
+				// Preserve ADK's per-call cancellation/deadline and invocation values
+				// when entering the gateway. The outer loop context remains the hard
+				// execution budget, while toolCtx carries any tool-specific cancellation.
+				toolResult, invokeErr := request.ToolGateway.Invoke(toolCtx, call)
+				if invokeErr != nil {
+					// Return a structured, sanitized observation instead of exposing the
+					// raw provider error through ADK's function-response path. ADK will
+					// still continue the loop and let the model choose a correction.
+					observation := map[string]any{"error": publicError(invokeErr), "untrusted": true, "engine_observation": true}
+					return observation, nil
+				}
+				if request.ObservationSink != nil {
+					request.ObservationSink(ToolObservation{ToolName: definition.Name, ResourceID: definition.ResourceID, Iteration: call.Iteration, CallID: call.CallID, Result: toolResult})
+				}
+				observation := summarizeObservation(toolResult.Output)
+				// The replay store is still bounded by execution lifetime, but stores
+				// the complete recursively redacted value so paging never reintroduces
+				// credentials that were removed from the model-facing summary.
+				observationID := state.save(scrubObservationText(redactValue(toolResult.Output)))
+				state.observe(definition.Name, observationID, toolResult.Output)
+				// Preserve the original result for Evidence/audit sinks, but pass only
+				// the bounded, recursively redacted observation to the model.
+				return map[string]any{"output": map[string]any{"observation_id": observationID, "summary": observation, "read_tool": "read_observation"}, "untrusted": toolResult.Untrusted, "truncated": toolResult.Truncated, "engine_observation": true}, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, item)
 		}
-		if !agentToolAllowed(request.ResolvedPersona, request.AllowedTools, request.RestrictTools, definition.Name) {
+	}
+	for _, internal := range request.InternalTools {
+		definition := internal.Definition()
+		if definition.Name == "" || !definition.ReadOnly || strings.TrimSpace(definition.Source) != "persona-delegation" {
 			continue
 		}
 		var inputSchema *adkjsonschema.Schema
 		if len(definition.InputSchema) > 0 {
 			var parsed adkjsonschema.Schema
 			if err := json.Unmarshal(definition.InputSchema, &parsed); err != nil {
-				return nil, fmt.Errorf("tool %s has invalid input schema: %w", definition.Name, err)
+				return nil, fmt.Errorf("internal tool %s has invalid input schema: %w", definition.Name, err)
 			}
 			inputSchema = &parsed
 		}
-		item, err := functiontool.New(functiontool.Config{Name: modelToolName, Description: definition.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
+		def, toolImpl := definition, internal
+		item, err := functiontool.New(functiontool.Config{Name: def.Name, Description: def.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
+			callID := toolCtx.FunctionCallID()
 			count := calls.Add(1)
-			call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ModelToolName: modelToolName, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: toolCtx.FunctionCallID(), EventSink: request.EventSink}
-			if startedToolCalls != nil && call.CallID != "" {
-				startedToolCalls.Store(call.CallID, struct{}{})
+			call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, Name: def.Name, ModelToolName: def.Name, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: callID}
+			if startedToolCalls != nil && callID != "" {
+				startedToolCalls.Store(callID, struct{}{})
 			}
 			if count > int64(request.Budget.MaxToolCalls) {
-				message := "tool call budget exceeded"
-				completedAt := time.Now().UTC()
-				request.ToolGateway.recordToolCall(ToolCallRecord{
-					ExecutionID: call.ExecutionID, Sequence: call.Sequence,
-					ProviderID: call.ProviderID, ModelName: call.ModelName,
-					ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments,
-					Status: StatusFailed, ErrorCode: "tool_budget", Error: message,
-					StartedAt: completedAt, CompletedAt: completedAt,
-				})
-				if request.EventSink != nil {
-					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, definition.Name, map[string]any{"arguments": redactValue(args)})})
-					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, definition.Name, map[string]any{
-						"arguments":   redactValue(args),
-						"error":       message,
-						"error_code":  "tool_budget",
-						"output":      map[string]any{"error": message},
-						"duration_ms": int64(0),
-					})})
+				if budgetExceeded != nil {
+					budgetExceeded.Store(true)
 				}
-				if budgetExceeded != nil && budgetExceeded.CompareAndSwap(false, true) {
-					if request.EventSink != nil {
-						_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": "工具调用预算已用尽", "reason": "tool_budget", "iteration": iteration.Load(), "tool_call_count": count}})
-					}
+				if request.EventSink != nil {
+					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, def.Name, map[string]any{"arguments": redactValue(args)})})
+					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, def.Name, map[string]any{"error": "tool call budget exceeded", "error_code": "tool_budget", "duration_ms": int64(0)})})
 				}
 				if stop != nil {
 					stop()
 				}
-				return nil, ErrToolLimited
+				return map[string]any{"error": "tool call budget exceeded", "error_code": "tool_budget"}, nil
 			}
-			// Preserve ADK's per-call cancellation/deadline and invocation values
-			// when entering the gateway. The outer loop context remains the hard
-			// execution budget, while toolCtx carries any tool-specific cancellation.
-			toolResult, invokeErr := request.ToolGateway.Invoke(toolCtx, call)
+			if request.EventSink != nil {
+				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, def.Name, map[string]any{"arguments": redactValue(args)})})
+			}
+			started := time.Now()
+			toolResult, invokeErr := toolImpl.Invoke(toolCtx, args)
 			if invokeErr != nil {
-				// Return a structured, sanitized observation instead of exposing the
-				// raw provider error through ADK's function-response path. ADK will
-				// still continue the loop and let the model choose a correction.
-				observation := map[string]any{"error": publicError(invokeErr), "untrusted": true, "engine_observation": true}
-				return observation, nil
+				message := publicError(invokeErr)
+				if request.EventSink != nil {
+					_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, def.Name, map[string]any{"error": message, "output": map[string]any{"error": message}, "duration_ms": time.Since(started).Milliseconds()})})
+				}
+				return map[string]any{"error": message, "untrusted": true}, nil
 			}
-			if request.ObservationSink != nil {
-				request.ObservationSink(ToolObservation{ToolName: definition.Name, ResourceID: definition.ResourceID, Iteration: call.Iteration, CallID: call.CallID, Result: toolResult})
+			output := summarizeObservation(toolResult.Output)
+			if encoded, marshalErr := json.Marshal(output); marshalErr == nil {
+				if len(encoded) > 12000 {
+					output = map[string]any{"summary": truncateBytesUTF8(string(encoded), 12000), "truncated": true}
+				}
 			}
-			observation := summarizeObservation(toolResult.Output)
-			// The replay store is still bounded by execution lifetime, but stores
-			// the complete recursively redacted value so paging never reintroduces
-			// credentials that were removed from the model-facing summary.
-			observationID := state.save(scrubObservationText(redactValue(toolResult.Output)))
-			state.observe(definition.Name, observationID, toolResult.Output)
-			// Preserve the original result for Evidence/audit sinks, but pass only
-			// the bounded, recursively redacted observation to the model.
-			return map[string]any{"output": map[string]any{"observation_id": observationID, "summary": observation, "read_tool": "read_observation"}, "untrusted": toolResult.Untrusted, "truncated": toolResult.Truncated, "engine_observation": true}, nil
+			if request.EventSink != nil {
+				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.completed", Status: StatusSucceeded, Payload: toolEventPayload(call, def.Name, map[string]any{"output": output, "duration_ms": time.Since(started).Milliseconds()})})
+			}
+			return map[string]any{"output": output, "untrusted": true, "engine_observation": true}, nil
 		})
 		if err != nil {
 			return nil, err
