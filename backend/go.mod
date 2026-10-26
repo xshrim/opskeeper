@@ -5,6 +5,7 @@ go 1.26.5
 require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/helingjun/obconnector-go v0.4.2
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/redis/go-redis/v9 v9.12.1
@@ -71,7 +72,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gregdel/pushover v1.4.0 // indirect
-	github.com/helingjun/obconnector-go v0.4.2 // indirect
 	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible // indirect
 	github.com/kevinburke/go-types v0.0.0-20240719050749-165e75e768f7 // indirect
 	github.com/kevinburke/rest v0.0.0-20250718180114-1a15e4f2364f // indirect

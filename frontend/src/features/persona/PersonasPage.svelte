@@ -13,23 +13,24 @@
     Shield,
     ShieldCheck,
     Star,
-    Wrench,
     X
   } from 'lucide-svelte';
   import {
     api,
-    ApiError,
     type PersonaCatalogItem,
     type PersonaVersion
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import SearchInput from '../../components/SearchInput.svelte';
   import FormField from '../../components/FormField.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
   import TagList from '../../components/TagList.svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import { resourceDomainKinds } from '../../lib/resources';
 
   export let profiles: PersonaCatalogItem[] = [];
+  export let scopeId = '';
   export let scopeName: (id: string) => string;
   export let formatDate: (value: string) => string;
   export let onReload: () => void | Promise<void> = () => {};
@@ -45,8 +46,8 @@
   let profileAllowedTools = '';
   let profileRole = 'worker';
   let profileDomainValue = '';
+  let profileTags = '';
   let profileWorkerPersonaIds: string[] = [];
-  let profileMaxDispatch = '3';
   let profileInputSchema = '{"type":"object","additionalProperties":true}';
   let profileOutputSchema = '{"type":"object","additionalProperties":true}';
   let detailTab: 'overview' | 'versions' | 'contract' = 'overview';
@@ -54,44 +55,38 @@
   let busy = false;
   let loading = false;
   let favoriteIds: string[] = [];
+  let personaFilter: 'all' | 'manager' | 'worker' = 'all';
+  let createPersonaOpen = false;
+  let createPersonaBusy = false;
+  let createIdentifier = '';
+  let createName = '';
+  let createDescription = '';
+  let createTags = '';
+  let createRole: 'worker' | 'manager' = 'worker';
+  let createDomain = '';
+  let createWorkerPersonaIds: string[] = [];
+  let createInstruction = '';
+  const domainSuggestions = [...resourceDomainKinds];
+  const personaTagSuggestions = ['内置', '只读', '跨域', '数据库', '基础设施', '巡检', '安全', '性能', '容量', '可委派'];
 
   $: filteredProfiles = profiles.filter((profile) =>
     `${profile.identifier} ${profile.name} ${profile.tags.join(' ')} ${profile.description} ${profile.status} ${scopeName(profile.scope_id)}`
       .toLowerCase()
       .includes(query.trim().toLowerCase())
   );
+  $: visibleProfiles = filteredProfiles.filter(
+    (profile) => personaFilter === 'all' || profileType(profile).toLowerCase() === personaFilter
+  );
   $: selectedProfile =
     profiles.find((profile) => profile.id === selectedProfileId) ?? null;
   $: selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? null;
-  $: groupedProfiles = [
-    {
-      key: 'manager',
-      title: '职能层 · Manager',
-      icon: Bot,
-      description: '理解运维问题，自主拆解并分派资源专家，汇总因果结论。',
-      items: filteredProfiles.filter((profile) => profileType(profile) === 'Manager')
-    },
-    {
-      key: 'worker',
-      title: '资源层 · Worker',
-      icon: Wrench,
-      description: '掌握域内诊断技能，执行单资源深度诊断分析。',
-      items: filteredProfiles.filter(
-        (profile) =>
-          profileType(profile) !== 'Manager'
-      )
-    }
-  ];
-
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError) {
-      if (error.status === 403) return '当前账号没有执行此操作的权限。';
-      if (error.status === 401) return '会话已过期，请重新登录。';
-      return error.message || fallback;
-    }
-    if (error instanceof SyntaxError) return '配置必须是有效的 JSON 对象。';
-    return error instanceof Error ? error.message || fallback : fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前账号没有执行此操作的权限。',
+      unauthorized: '会话已过期，请重新登录。',
+      invalidJson: '配置必须是有效的 JSON 对象。'
+    });
   }
   function selectedConfig(key: string, fallback: unknown = '') {
     return (
@@ -128,20 +123,21 @@
         (profile.name.replace(/专家|协同|审计|诊断|优化/g, '').trim() || '通用')
     );
   }
-  function profileLimits(profile: PersonaCatalogItem) {
-    return String(
-      profile.config?.max_dispatch ??
-        profile.config?.dispatch_limit ??
-        profile.config?.max_concurrency ??
-        (profileType(profile) === 'Manager' ? '5' : '—')
-    );
-  }
   function profileCapabilitiesText(profile: PersonaCatalogItem) {
     return String(
       profile.config?.capabilities ??
         profile.config?.skills ??
         (profileType(profile) === 'Manager' ? '理解 · 分派 · 汇总' : '资源诊断')
     );
+  }
+  function profileDisplayTags(profile: PersonaCatalogItem) {
+    const tags = [...profile.tags];
+    if (profile.status === 'active' && !tags.includes('内置')) tags.unshift('内置');
+    return tags;
+  }
+  function profileVersionLabel(profile: PersonaCatalogItem) {
+    const version = profile.config?.version;
+    return version === undefined || version === null || version === '' ? '版本待定' : `v${version}`;
   }
   function toggleFavorite(id: string) {
     favoriteIds = favoriteIds.includes(id)
@@ -194,10 +190,10 @@
       config.role ?? (selectedProfile && profileType(selectedProfile) === 'Manager' ? 'manager' : 'worker')
     );
     profileDomainValue = String(config.domain ?? config.resource_kind ?? '');
+    profileTags = selectedProfile?.tags?.join(', ') ?? '';
     profileWorkerPersonaIds = Array.isArray(config.worker_persona_ids)
       ? config.worker_persona_ids.map(String)
       : [];
-    profileMaxDispatch = String(config.max_dispatch ?? 3);
     profileInputSchema = JSON.stringify(
       config.input_schema ?? { type: 'object', additionalProperties: true },
       null,
@@ -210,10 +206,53 @@
     );
   }
   function startCreate() {
-    if (!selectedProfile && filteredProfiles[0])
-      selectProfile(filteredProfiles[0]);
-    resetEditor();
-    editorOpen = true;
+    createIdentifier = '';
+    createName = '';
+    createDescription = '';
+    createTags = '';
+    createRole = personaFilter === 'manager' ? 'manager' : 'worker';
+    createDomain = '';
+    createWorkerPersonaIds = [];
+    createInstruction = '';
+    createPersonaOpen = true;
+  }
+  async function createPersona() {
+    if (!scopeId || !createIdentifier.trim() || !createName.trim() || !createInstruction.trim()) return;
+    createPersonaBusy = true;
+    onError('');
+    try {
+      const config = {
+        description: createDescription.trim(),
+        version: 1,
+        instruction: createInstruction.trim(),
+        capabilities: ['text', 'tool_calling', 'stream'],
+        allowed_tools: [],
+        role: createRole,
+        domain: createRole === 'worker' ? createDomain.trim() : '',
+        worker_persona_ids: createRole === 'manager' ? createWorkerPersonaIds : [],
+        input_schema: { type: 'object', additionalProperties: true },
+        output_schema: { type: 'object', additionalProperties: true },
+        enabled: true
+      };
+      const item = await api.createPersona({
+        scope_id: scopeId,
+        identifier: createIdentifier.trim(),
+        name: createName.trim(),
+        description: createDescription.trim(),
+        tags: createTags.split(',').map((item) => item.trim()).filter(Boolean),
+        config,
+        status: 'active'
+      });
+      createPersonaOpen = false;
+      await onReload();
+      selectedProfileId = item.id;
+      await loadVersions(item.id, true);
+      onNotice(`专家“${item.name}”已创建`);
+    } catch (error) {
+      onError(describeError(error, '新增专家失败'));
+    } finally {
+      createPersonaBusy = false;
+    }
   }
   function startEdit() {
     resetEditor();
@@ -241,15 +280,21 @@
           profileRole === 'manager'
             ? profileWorkerPersonaIds
             : [],
-        max_dispatch: profileRole === 'manager' ? Number(profileMaxDispatch) : 0,
         input_schema: JSON.parse(profileInputSchema),
         output_schema: JSON.parse(profileOutputSchema),
         enabled: true
       };
+      if (selectedProfile) {
+        await api.updatePersona(selectedProfile.id, {
+          description: selectedProfile.description,
+          tags: profileTags.split(',').map((item) => item.trim()).filter(Boolean)
+        });
+      }
       const version = await api.createPersonaVersion(selectedProfileId, config);
       selectedVersionId = version.id;
       versions = [version, ...versions];
       editorOpen = false;
+      await onReload();
       onNotice(`专家 v${version.version} 草稿已创建`);
     } catch (error) {
       onError(describeError(error, '创建专家版本失败'));
@@ -301,7 +346,7 @@
         class="primary"
         type="button"
         on:click={startCreate}
-        disabled={profiles.length === 0}><Plus size={16} />新增专家</button
+        ><Plus size={16} />新增专家</button
       >
     </div>
   </header>
@@ -312,32 +357,50 @@
       height="40px"
       placeholder="搜索名称 / 领域 / 提示词"
       ariaLabel="搜索专家"
-    /><span class="persona-toolbar-count"
-      >{favoriteIds.length} 个收藏 · {profiles.length} 个专家</span
-    >
+    />
+    <div class="persona-type-filters" aria-label="专家类型">
+      <button class:active={personaFilter === 'all'} type="button" on:click={() => (personaFilter = 'all')}>全部</button>
+      <button class:active={personaFilter === 'manager'} type="button" on:click={() => (personaFilter = 'manager')}>职能专家</button>
+      <button class:active={personaFilter === 'worker'} type="button" on:click={() => (personaFilter = 'worker')}>资源专家</button>
+    </div>
+    <span class="persona-toolbar-count">{favoriteIds.length} 个收藏 · {visibleProfiles.length} / {profiles.length} 个专家</span>
   </div>
-  {#if filteredProfiles.length === 0}<div class="persona-empty panel">
+  {#if createPersonaOpen}
+    <ModalDialog
+      title="新增专家"
+      description="创建一个可用于诊断编排的职能专家或资源专家。"
+      confirmLabel="创建"
+      confirmForm="create-persona-form"
+      busy={createPersonaBusy}
+      confirmDisabled={!scopeId || !createIdentifier.trim() || !createName.trim() || !createInstruction.trim() || (createRole === 'worker' && !createDomain.trim()) || (createRole === 'manager' && createWorkerPersonaIds.length === 0)}
+      onCancel={() => (createPersonaOpen = false)}
+    >
+      <form id="create-persona-form" class="persona-editor-form" on:submit|preventDefault={createPersona}>
+        <div class="persona-editor-grid">
+          <FormField label="唯一标识" required><TextInput bind:value={createIdentifier} required placeholder="如 postgres-health" ariaLabel="专家唯一标识" /></FormField>
+          <FormField label="专家名称" required><TextInput bind:value={createName} required placeholder="如 PostgreSQL诊断" ariaLabel="专家名称" /></FormField>
+        </div>
+        <div class="persona-editor-grid">
+          <FormField label="专家职责" required asLabel={false}><DropdownSelect bind:value={createRole} options={[{ value: 'worker', label: '资源专家 · Worker' }, { value: 'manager', label: '职能专家 · Manager' }]} ariaLabel="专家职责" /></FormField>
+          {#if createRole === 'worker'}<FormField label="资源领域" required asLabel={false}><TextInput bind:value={createDomain} tagged tagSeparators={[',']} suggestions={domainSuggestions} required placeholder="选择或输入资源领域，回车确认" ariaLabel="资源领域" /></FormField>{:else}<FormField label="可委派资源专家" required asLabel={false}><DropdownSelect bind:value={createWorkerPersonaIds} options={profiles.filter((profile) => profile.status === 'active' && profileType(profile) === 'Worker').map((profile) => ({ value: profile.id, label: `${profile.name}（${profile.identifier}） · ${profileDomain(profile)}` }))} multiple taggedSelection reorderableSelection searchable placeholder="选择资源专家" ariaLabel="可委派资源专家" /></FormField>{/if}
+        </div>
+        <FormField label="专家标签" asLabel={false}><TextInput bind:value={createTags} tagged tagSeparators={[',']} suggestions={personaTagSuggestions} placeholder="选择或输入标签，回车确认" ariaLabel="专家标签" /></FormField>
+        <FormField label="专家说明"><TextArea bind:value={createDescription} rows={3} placeholder="说明职责范围和使用场景" /></FormField>
+        <FormField label="专家指令" required><TextArea bind:value={createInstruction} rows={6} required placeholder="描述诊断范围、判断原则和输出要求" /></FormField>
+      </form>
+    </ModalDialog>
+  {/if}
+  {#if visibleProfiles.length === 0}<div class="persona-empty panel">
       <Bot size={28} /><strong>没有匹配的专家</strong><span
         >请调整搜索条件，或选择一个已有专家创建版本。</span
       >
     </div>{/if}
-  {#each groupedProfiles as group}
-    {#if group.items.length > 0}<section class="persona-group">
-        <div class="persona-group-heading">
-          <div class="persona-group-title">
-            <svelte:component
-              this={group.icon}
-              size={16}
-              aria-hidden="true"
-            /><strong>{group.title}</strong><span>{group.description}</span>
-          </div>
-        </div>
-        <div class="persona-card-grid">
-          {#each group.items as profile}
+  {#if visibleProfiles.length > 0}<div class="persona-card-grid">
+          {#each visibleProfiles as profile}
             <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions a11y_no_noninteractive_element_to_interactive_role -->
             <article
               class:selected={selectedProfileId === profile.id}
-              class="persona-card"
+              class="persona-card persona-band-card"
               on:click={() => selectProfile(profile)}
               role="button"
               tabindex="0"
@@ -345,78 +408,54 @@
                 (event.key === 'Enter' || event.key === ' ') &&
                 selectProfile(profile)}
             >
-              <div class="persona-card-top">
-                <div class="persona-card-name">
-                  <Bot size={17} aria-hidden="true" />
-                  <h2>{profile.name}</h2>
-                  <span class="persona-built-in"
-                    >{profile.status === 'active'
-                      ? '内置'
-                      : profile.status}</span
+              <div class="persona-card-band">
+                <div class="persona-card-band-main">
+                  <Bot size={16} aria-hidden="true" />
+                  <div class="persona-card-name">
+                    <h2>{profile.name}</h2>
+                    <small>{profile.identifier}</small>
+                  </div>
+                </div>
+                <div class="persona-card-band-meta">
+                  <span class={`persona-card-type ${profileType(profile).toLowerCase()}`}>{profileType(profile) === 'Manager' ? '职能专家' : '资源专家'}</span>
+                  <button
+                    class="icon-button"
+                    type="button"
+                    aria-label="收藏专家"
+                    on:click|stopPropagation={() => toggleFavorite(profile.id)}
+                    ><Star
+                      size={15}
+                      fill={favoriteIds.includes(profile.id)
+                        ? 'currentColor'
+                        : 'none'}
+                    /></button
                   >
                 </div>
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="收藏专家"
-                  on:click|stopPropagation={() => toggleFavorite(profile.id)}
-                  ><Star
-                    size={17}
-                    fill={favoriteIds.includes(profile.id)
-                      ? 'currentColor'
-                      : 'none'}
-                  /></button
-                >
               </div>
-              <div class="persona-card-tags">
-                <span>{profileType(profile)}</span><span
-                  >{profileDomain(profile)}</span
-                >{#if profileCapabilitiesText(profile)}<span
-                    >{profileCapabilitiesText(profile)}</span
-                  >{/if}
+              <div class="persona-card-body">
+                <div class="persona-card-domain"><span>资源领域</span><strong>{profileDomain(profile)}</strong></div>
+                <TagList tags={profileDisplayTags(profile)} className="persona-card-tags" ariaLabel="专家标签" maxItems={4} />
+                <p class="persona-card-description">{profile.description || (profileType(profile) === 'Manager' ? '负责拆解问题、委派资源专家并汇总诊断结论。' : '负责指定资源领域的只读诊断与证据分析。')}</p>
               </div>
-              {#if profile.tags.length}<TagList tags={profile.tags} className="persona-label-tags" />{/if}
-              <div class="persona-card-facts">
-                <div>
-                  <span>执行引擎</span><strong>{profileEngine(profile)}</strong>
-                </div>
-                <div>
-                  <span
-                    >{profileType(profile) === 'Manager'
-                      ? '可分派专家'
-                      : '已启用技能'}</span
-                  ><strong
-                    >{profileType(profile) === 'Manager'
-                      ? 'pg / redis / k8s'
-                      : '全部（默认）'}</strong
+              <div class="persona-card-footer">
+                <div class="persona-card-status"><span class:active={profile.status === 'active'}>{profile.status === 'active' ? '已启用' : profile.status}</span><small>{profileVersionLabel(profile)}</small></div>
+                <div class="persona-card-actions">
+                  <button
+                    class="primary"
+                    type="button"
+                    on:click|stopPropagation={() =>
+                      onNotice(`已选择专家：${profile.name}`)}
+                    ><Bot size={14} />使用</button
+                  ><button
+                    class="secondary"
+                    type="button"
+                    on:click|stopPropagation={() => openEdit(profile)}
+                    ><Edit3 size={14} />编辑</button
                   >
                 </div>
-                <div>
-                  <span>调度上限</span><strong>{profileLimits(profile)}</strong>
-                </div>
-              </div>
-              <div class="persona-prompt">
-                <small>系统提示词</small>
-                <p>{profile.description || '该专家尚未填写说明。'}</p>
-              </div>
-              <div class="persona-card-actions">
-                <button
-                  class="primary"
-                  type="button"
-                  on:click|stopPropagation={() =>
-                    onNotice(`已选择专家：${profile.name}`)}
-                  ><Bot size={15} />使用专家</button
-                ><button
-                  class="secondary"
-                  type="button"
-                  on:click|stopPropagation={() => openEdit(profile)}
-                  ><Edit3 size={15} />编辑</button
-                >
               </div>
             </article>{/each}
-        </div>
-      </section>{/if}
-  {/each}
+        </div>{/if}
   {#if selectedProfile}<aside class="persona-detail-panel panel">
       <div class="persona-detail-header">
         <div>
@@ -545,15 +584,10 @@
               <FormField label="模型能力"><TextInput bind:value={profileCapabilities} placeholder="text, tool_calling, stream" ariaLabel="模型能力" /></FormField>{#if profileRole === 'worker'}<FormField label="允许工具"><TextInput bind:value={profileAllowedTools} placeholder="connector_postgresql_inspect" ariaLabel="允许工具" /></FormField>{/if}
             </div>
             <div class="persona-editor-grid">
-              <FormField label="专家职责"><DropdownSelect bind:value={profileRole} options={[{ value: 'worker', label: '资源专家 · Worker' }, { value: 'manager', label: '职能专家 · Manager' }]} ariaLabel="专家职责" /></FormField>
-              {#if profileRole === 'worker'}<FormField label="资源领域" required><TextInput bind:value={profileDomainValue} required placeholder="PostgreSQL、Redis、Kubernetes" ariaLabel="资源领域" /></FormField>{/if}
+              <FormField label="专家职责" asLabel={false}><DropdownSelect bind:value={profileRole} options={[{ value: 'worker', label: '资源专家 · Worker' }, { value: 'manager', label: '职能专家 · Manager' }]} ariaLabel="专家职责" /></FormField>
+              {#if profileRole === 'worker'}<FormField label="资源领域" required asLabel={false}><TextInput bind:value={profileDomainValue} tagged tagSeparators={[',']} suggestions={domainSuggestions} required placeholder="选择或输入资源领域，回车确认" ariaLabel="资源领域" /></FormField>{:else}<FormField label="可委派资源专家" required asLabel={false}><DropdownSelect bind:value={profileWorkerPersonaIds} options={profiles.filter((profile) => profile.id !== selectedProfileId && profile.status === 'active' && profileType(profile) === 'Worker' && Boolean(profile.config?.domain ?? profile.config?.resource_kind)).map((profile) => ({ value: profile.id, label: `${profile.name}（${profile.identifier}） · ${profileDomain(profile)}` }))} multiple taggedSelection searchable placeholder="选择资源专家" ariaLabel="可委派资源专家" /></FormField>{/if}
             </div>
-            {#if profileRole === 'manager'}
-              <div class="persona-editor-grid">
-                <FormField label="可委派资源专家"><DropdownSelect bind:value={profileWorkerPersonaIds} options={profiles.filter((profile) => profile.id !== selectedProfileId && profile.status === 'active' && profileType(profile) === 'Worker' && Boolean(profile.config?.domain ?? profile.config?.resource_kind)).map((profile) => ({ value: profile.id, label: `${profile.name}（${profile.identifier}） · ${profileDomain(profile)}` }))} multiple taggedSelection searchable placeholder="选择已配置领域的资源专家" ariaLabel="可委派资源专家" /></FormField>
-                <FormField label="最大委派次数"><TextInput bind:value={profileMaxDispatch} required type="number" min="1" max="5" ariaLabel="最大委派次数" /></FormField>
-              </div>
-            {/if}
+            <FormField label="专家标签" asLabel={false}><TextInput bind:value={profileTags} tagged tagSeparators={[',']} suggestions={personaTagSuggestions} placeholder="选择或输入标签，回车确认" ariaLabel="专家标签" /></FormField>
             <div class="persona-editor-grid">
               <FormField label="输入 Schema"><TextArea bind:value={profileInputSchema} rows={7} spellcheck={false} /></FormField><FormField label="输出 Schema"><TextArea bind:value={profileOutputSchema} rows={7} spellcheck={false} /></FormField>
             </div>

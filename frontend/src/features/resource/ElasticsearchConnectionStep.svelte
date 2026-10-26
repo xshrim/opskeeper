@@ -15,6 +15,6 @@
     <div class="checkbox-field"><span>跳过 TLS 证书校验</span><Switch bind:checked={tlsInsecure} ariaLabel="跳过 TLS 证书校验" on:change={onConfigurationChange} /></div>
     <FormField label="超时时间（秒）"><TextInput type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></FormField>
   {:else}
-    <FormField label="关联 MCPServer" required invalid={configurationAttempted&&!mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted&&!mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
+    <FormField label="关联 MCPServer" required asLabel={false} invalid={configurationAttempted&&!mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted&&!mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
   {/if}
 </div>

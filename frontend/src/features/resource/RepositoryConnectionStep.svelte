@@ -29,7 +29,7 @@
     <FormField label="默认分支"><TextInput bind:value={defaultBranch} placeholder="main" /></FormField>
     <p class="muted">Git 仓库按需实时读取；认证信息会随资源加密保存。</p>
   {:else}
-    <FormField label="Bundle 存储后端"><DropdownSelect bind:value={storageBackend} options={storageOptions} ariaLabel="Bundle 存储后端" /></FormField>
+    <FormField label="Bundle 存储后端" asLabel={false}><DropdownSelect bind:value={storageBackend} options={storageOptions} ariaLabel="Bundle 存储后端" /></FormField>
     {#if storageBackend === 'local'}
       <FormField label="本地目录（可选）"><TextInput bind:value={localRoot} placeholder="由服务端默认目录管理" /></FormField>
     {:else if storageBackend === 's3'}

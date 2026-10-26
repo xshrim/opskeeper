@@ -9,7 +9,7 @@
   $: mcpServerOptions = mcpServers.map((server) => ({ value: server.id, label: server.name }));
 </script>
 {#if accessMode === 'agent'}
-  <FormField label="关联 MCPServer" required invalid={configurationAttempted && !mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
+  <FormField label="关联 MCPServer" required asLabel={false} invalid={configurationAttempted && !mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
   <p class="docker-field-help">MySQL Agent 通过关联 MCPServer 提供统一只读工具。</p>
 {:else}
   <div class="docker-form-grid">

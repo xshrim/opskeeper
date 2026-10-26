@@ -56,6 +56,8 @@ type skillService interface {
 
 type personaService interface {
 	ListPersonas(context.Context, string) ([]persona.Persona, error)
+	CreatePersona(context.Context, persona.PersonaInput) (persona.Persona, error)
+	UpdatePersona(context.Context, string, persona.PersonaPatch) (persona.Persona, error)
 	CreateVersion(context.Context, string, string, map[string]any) (persona.PersonaVersion, error)
 	ListVersions(context.Context, string) ([]persona.PersonaVersion, error)
 	PublishVersion(context.Context, string, string) (persona.PersonaVersion, error)
@@ -115,6 +117,19 @@ type setSkillDefaultRequest struct {
 }
 type createPersonaVersionRequest struct {
 	Config map[string]any `json:"config"`
+}
+type createPersonaRequest struct {
+	ScopeID     string         `json:"scope_id"`
+	Identifier  string         `json:"identifier"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Tags        []string       `json:"tags"`
+	Config      map[string]any `json:"config"`
+	Status      string         `json:"status"`
+}
+type updatePersonaRequest struct {
+	Description *string   `json:"description"`
+	Tags        *[]string `json:"tags"`
 }
 
 func registerAIRoutes(router chi.Router, llms llmService, skills skillService, personas personaService, authorizer authorizationService, auditor audit.Logger, checks connectionCheckRecorder, requirePermission func(authorization.Permission) func(http.Handler) http.Handler) {
@@ -193,6 +208,8 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, p
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"items": items})
 		})
+		router.With(guard(authorization.PersonaManage)).Post("/personas", h.createPersona)
+		router.With(guard(authorization.PersonaManage)).Patch("/personas/{personaID}", h.updatePersona)
 	}
 	if llms != nil {
 		router.With(guard(authorization.ProviderUse)).Post("/providers/{providerID}/test", h.testProvider)
@@ -212,6 +229,40 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, p
 		router.With(guard(authorization.PersonaManage)).Post("/personas/{personaID}/versions/{versionID}/publish", h.publishPersonaVersion)
 		router.With(guard(authorization.PersonaManage)).Post("/personas/{personaID}/versions/{versionID}/disable", h.disablePersonaVersion)
 	}
+}
+
+func (h aiHandler) createPersona(w http.ResponseWriter, r *http.Request) {
+	var body createPersonaRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := h.personas.CreatePersona(r.Context(), persona.PersonaInput{
+		ScopeID: body.ScopeID, Identifier: body.Identifier, Name: body.Name,
+		Description: body.Description, Tags: body.Tags, Config: body.Config, Status: body.Status,
+	})
+	if err != nil {
+		writeAIError(w, r, err)
+		return
+	}
+	h.record(r, "persona.create", "persona", item.ID, item.ScopeID)
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (h aiHandler) updatePersona(w http.ResponseWriter, r *http.Request) {
+	var body updatePersonaRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := h.personas.UpdatePersona(r.Context(), chi.URLParam(r, "personaID"), persona.PersonaPatch{
+		Description: body.Description,
+		Tags:        body.Tags,
+	})
+	if err != nil {
+		writeAIError(w, r, err)
+		return
+	}
+	h.record(r, "persona.update", "persona", item.ID, item.ScopeID)
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (h aiHandler) createPersonaVersion(w http.ResponseWriter, r *http.Request) {

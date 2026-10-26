@@ -39,6 +39,27 @@ type PersonaCatalog interface {
 	ListPersonas(context.Context, string) ([]Persona, error)
 }
 
+type PersonaInput struct {
+	ScopeID     string
+	Identifier  string
+	Name        string
+	Description string
+	Tags        []string
+	Config      map[string]any
+	Status      string
+}
+
+type PersonaPatch struct {
+	Description *string
+	Tags        *[]string
+}
+
+type PersonaCatalogWriter interface {
+	PersonaCatalog
+	CreatePersona(context.Context, PersonaInput) (Persona, error)
+	UpdatePersona(context.Context, string, PersonaPatch) (Persona, error)
+}
+
 func NewService(versions PersonaVersionStore, catalog PersonaCatalog) *PersonaService {
 	return &PersonaService{Versions: versions, Catalog: catalog}
 }
@@ -48,6 +69,93 @@ func (s *PersonaService) ListPersonas(ctx context.Context, scopeID string) ([]Pe
 		return nil, authorization.ErrForbidden
 	}
 	return s.Catalog.ListPersonas(ctx, strings.TrimSpace(scopeID))
+}
+
+func (s *PersonaService) CreatePersona(ctx context.Context, input PersonaInput) (Persona, error) {
+	writer, ok := s.Catalog.(PersonaCatalogWriter)
+	if !ok {
+		return Persona{}, invalid("Persona catalog is read-only")
+	}
+	input.ScopeID = strings.TrimSpace(input.ScopeID)
+	input.Identifier = strings.TrimSpace(input.Identifier)
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	input.Status = strings.TrimSpace(input.Status)
+	if input.Status == "" {
+		input.Status = "active"
+	}
+	if input.ScopeID == "" || input.Identifier == "" || input.Name == "" {
+		return Persona{}, invalid("scope_id, identifier and name are required")
+	}
+	if len(strings.Fields(input.Identifier)) != 1 || len(strings.Fields(input.Name)) != 1 {
+		return Persona{}, invalid("Persona identifier and name must not contain whitespace")
+	}
+	if input.Status != "active" && input.Status != "disabled" {
+		return Persona{}, invalid("Persona status is invalid")
+	}
+	if input.Config == nil {
+		input.Config = map[string]any{}
+	}
+	encoded, err := json.Marshal(input.Config)
+	if err != nil {
+		return Persona{}, invalid("Persona config is invalid")
+	}
+	var config personaConfig
+	if err := json.Unmarshal(encoded, &config); err != nil {
+		return Persona{}, invalid("Persona config is invalid")
+	}
+	if err := validatePersonaConfig(config); err != nil {
+		return Persona{}, err
+	}
+	if !allowsScope(ctx, input.ScopeID) {
+		return Persona{}, authorization.ErrForbidden
+	}
+	return writer.CreatePersona(ctx, input)
+}
+
+func (s *PersonaService) UpdatePersona(ctx context.Context, id string, patch PersonaPatch) (Persona, error) {
+	writer, ok := s.Catalog.(PersonaCatalogWriter)
+	if !ok {
+		return Persona{}, invalid("Persona catalog is read-only")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Persona{}, invalid("persona_id is required")
+	}
+	item, err := s.persona(ctx, id)
+	if err != nil {
+		return Persona{}, err
+	}
+	if patch.Description != nil {
+		value := strings.TrimSpace(*patch.Description)
+		if len(value) > 2000 {
+			return Persona{}, invalid("Persona description is too long")
+		}
+		patch.Description = &value
+	}
+	if patch.Tags != nil {
+		tags := make([]string, 0, len(*patch.Tags))
+		seen := make(map[string]struct{}, len(*patch.Tags))
+		for _, raw := range *patch.Tags {
+			tag := strings.TrimSpace(raw)
+			if tag == "" {
+				continue
+			}
+			if len(tag) > 100 {
+				return Persona{}, invalid("Persona tag is too long")
+			}
+			if _, exists := seen[tag]; exists {
+				continue
+			}
+			seen[tag] = struct{}{}
+			tags = append(tags, tag)
+		}
+		patch.Tags = &tags
+	}
+	if patch.Description == nil && patch.Tags == nil {
+		return item, nil
+	}
+	return writer.UpdatePersona(ctx, id, patch)
 }
 
 func (s *PersonaService) persona(ctx context.Context, id string) (Persona, error) {
@@ -178,7 +286,7 @@ func (r PersonaResolver) Resolve(ctx context.Context, scopeID, personaID string)
 		AllowedTools: config.AllowedTools, InputSchema: config.InputSchema,
 		OutputSchema: config.OutputSchema, Enabled: config.Enabled,
 		Role: config.Role, Domain: config.Domain,
-		WorkerPersonaIDs: config.WorkerPersonaIDs, MaxDispatch: config.MaxDispatch,
+		WorkerPersonaIDs: config.WorkerPersonaIDs,
 	}
 	if profile.Role == "" {
 		profile.Role = "worker"
@@ -201,7 +309,6 @@ type personaConfig struct {
 	Role             string          `json:"role"`
 	Domain           string          `json:"domain"`
 	WorkerPersonaIDs []string        `json:"worker_persona_ids"`
-	MaxDispatch      int             `json:"max_dispatch"`
 }
 
 var personaToolNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$`)
@@ -262,7 +369,7 @@ func validatePersonaConfig(config personaConfig) error {
 	if role == "worker" && explicitRole && strings.TrimSpace(config.Domain) == "" {
 		return invalid("worker Persona domain is required")
 	}
-	if role == "worker" && (len(config.WorkerPersonaIDs) > 0 || config.MaxDispatch != 0) {
+	if role == "worker" && len(config.WorkerPersonaIDs) > 0 {
 		return invalid("worker Persona cannot configure dispatch")
 	}
 	if len(config.Domain) > 100 {
@@ -274,9 +381,6 @@ func validatePersonaConfig(config personaConfig) error {
 		}
 		if len(config.WorkerPersonaIDs) == 0 || len(config.WorkerPersonaIDs) > 10 {
 			return invalid("manager Persona must configure between 1 and 10 worker personas")
-		}
-		if config.MaxDispatch < 1 || config.MaxDispatch > 5 {
-			return invalid("manager Persona max_dispatch must be between 1 and 5")
 		}
 		seenWorkers := make(map[string]struct{}, len(config.WorkerPersonaIDs))
 		for _, id := range config.WorkerPersonaIDs {
@@ -308,7 +412,7 @@ func validatePersona(profile engine.Persona, scopeID string) error {
 		Capabilities: profile.Capabilities, AllowedTools: profile.AllowedTools,
 		InputSchema: profile.InputSchema, OutputSchema: profile.OutputSchema, Enabled: profile.Enabled,
 		Role: profile.Role, Domain: profile.Domain,
-		WorkerPersonaIDs: profile.WorkerPersonaIDs, MaxDispatch: profile.MaxDispatch,
+		WorkerPersonaIDs: profile.WorkerPersonaIDs,
 	})
 }
 

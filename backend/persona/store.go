@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -91,6 +92,59 @@ func (s *personaCatalog) ListPersonas(ctx context.Context, scopeID string) ([]Pe
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *personaCatalog) CreatePersona(ctx context.Context, input PersonaInput) (Persona, error) {
+	tags, err := json.Marshal(input.Tags)
+	if err != nil {
+		return Persona{}, fmt.Errorf("encode persona tags: %w", err)
+	}
+	config, err := json.Marshal(input.Config)
+	if err != nil {
+		return Persona{}, fmt.Errorf("encode persona config: %w", err)
+	}
+	var id string
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO personas (id, scope_id, identifier, name, description, tags, config, status)
+		VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+		RETURNING id::text`, input.ScopeID, input.Identifier, input.Name, input.Description, tags, config, input.Status).Scan(&id)
+	if err != nil {
+		return Persona{}, mapStoreError(err)
+	}
+	return s.GetPersona(ctx, id)
+}
+
+func (s *personaCatalog) UpdatePersona(ctx context.Context, id string, patch PersonaPatch) (Persona, error) {
+	set := make([]string, 0, 2)
+	args := make([]any, 0, 3)
+	arg := 1
+	if patch.Description != nil {
+		set = append(set, fmt.Sprintf("description = $%d", arg))
+		args = append(args, *patch.Description)
+		arg++
+	}
+	if patch.Tags != nil {
+		encoded, err := json.Marshal(*patch.Tags)
+		if err != nil {
+			return Persona{}, fmt.Errorf("encode persona tags: %w", err)
+		}
+		set = append(set, fmt.Sprintf("tags = $%d::jsonb", arg))
+		args = append(args, encoded)
+		arg++
+	}
+	if len(set) == 0 {
+		return s.GetPersona(ctx, id)
+	}
+	args = append(args, id)
+	query := `UPDATE personas SET ` + strings.Join(set, ", ") + `, updated_at = now() WHERE id = $` + fmt.Sprint(arg) + `::uuid AND deleted_at IS NULL`
+	result, err := s.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return Persona{}, mapStoreError(err)
+	}
+	if result.RowsAffected() == 0 {
+		return Persona{}, ErrNotFound
+	}
+	return s.GetPersona(ctx, id)
 }
 
 func NewPersonaVersionStore(pool *pgxpool.Pool) PersonaVersionStore {

@@ -64,6 +64,11 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 	if request.ExecutionID == "" {
 		request.ExecutionID = fmt.Sprintf("exec-%d", time.Now().UnixNano())
 	}
+	budget := executionBudgetFromContext(parent)
+	if budget == nil {
+		budget = newExecutionBudget(request.Budget)
+	}
+	parent = context.WithValue(parent, executionBudgetContextKey{}, budget)
 	ctx, cancel := context.WithTimeout(parent, request.Budget.Timeout)
 	if _, loaded := r.active.LoadOrStore(request.ExecutionID, activeExecution{cancel: cancel}); loaded {
 		cancel()
@@ -355,16 +360,11 @@ func (r *Runtime) personaDelegationTools(parent context.Context, request Request
 	if manager == nil || r.personaResolver == nil || request.ResolvedContext == nil {
 		return nil, nil
 	}
-	limit := manager.MaxDispatch
-	if limit < 1 || limit > 5 {
-		return nil, fmt.Errorf("manager Persona has invalid dispatch limit")
-	}
 	resources := append([]ContextResource(nil), request.ResolvedContext.Resources...)
 	usedNames := make(map[string]struct{})
 	for _, binding := range buildToolBindings(request.ResolvedContext.Tools) {
 		usedNames[binding.modelName] = struct{}{}
 	}
-	var dispatched atomic.Int64
 	tools := make([]Tool, 0, len(manager.WorkerPersonaIDs))
 	for index, workerID := range manager.WorkerPersonaIDs {
 		worker, err := r.personaResolver.Resolve(parent, request.ScopeID, workerID)
@@ -397,37 +397,23 @@ func (r *Runtime) personaDelegationTools(parent context.Context, request Request
 		workerProfile := worker
 		workerResourceIDs := append([]string(nil), resourceIDs...)
 		workerResourceNames := append([]string(nil), resourceNames...)
+		var dispatchSequence atomic.Int64
 		def := ToolDefinition{
 			Name: name, Source: "persona-delegation", ReadOnly: true,
 			Description: fmt.Sprintf("委派给%s（%s领域）检查已选且已授权资源：%s。传入具体诊断问题。", worker.Name, worker.Domain, strings.Join(resourceNames, "、")),
 			InputSchema: json.RawMessage(`{"type":"object","required":["question"],"properties":{"question":{"type":"string","minLength":1,"maxLength":4000}},"additionalProperties":false}`),
 		}
 		tools = append(tools, ToolFunc{Def: def, Fn: func(toolCtx context.Context, args map[string]any) (ToolResult, error) {
-			if dispatched.Add(1) > int64(limit) {
-				return ToolResult{Output: map[string]any{"status": "rejected", "reason": "manager dispatch limit reached"}}, nil
-			}
 			question, _ := args["question"].(string)
 			question = strings.TrimSpace(question)
 			if question == "" {
 				return ToolResult{Output: map[string]any{"status": "rejected", "reason": "question is required"}}, nil
 			}
-			childID := request.ExecutionID + ":worker:" + sanitizeToolNamePart(workerProfile.PersonaID) + ":" + fmt.Sprint(dispatched.Load())
+			childID := request.ExecutionID + ":worker:" + sanitizeToolNamePart(workerProfile.PersonaID) + ":" + fmt.Sprint(dispatchSequence.Add(1))
 			if err := sink(Event{ExecutionID: request.ExecutionID, Type: "persona.delegation.started", Status: StatusRunning, Payload: map[string]any{"persona_id": workerProfile.PersonaID, "persona_name": workerProfile.Name, "domain": workerProfile.Domain, "resource_ids": workerResourceIDs, "child_execution_id": childID}}); err != nil {
 				return ToolResult{}, err
 			}
 			childBudget := request.Budget
-			if childBudget.MaxIterations > 20 {
-				childBudget.MaxIterations = 20
-			}
-			if childBudget.MaxToolCalls > 20 {
-				childBudget.MaxToolCalls = 20
-			}
-			if childBudget.MaxTokens > 100000 {
-				childBudget.MaxTokens = 100000
-			}
-			if childBudget.Timeout > 5*time.Minute {
-				childBudget.Timeout = 5 * time.Minute
-			}
 			if childBudget.MaxOutputTokens > 8192 {
 				childBudget.MaxOutputTokens = 8192
 			}
@@ -482,7 +468,12 @@ func personaDomainMatches(domain, kind string) bool {
 			return value
 		}
 	}
-	return normalize(domain) == normalize(kind)
+	for _, candidate := range strings.FieldsFunc(domain, func(r rune) bool { return r == ',' || r == ';' || r == '|' }) {
+		if normalize(candidate) == normalize(kind) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runtime) Stream(ctx context.Context, request Request) (<-chan Event, error) {

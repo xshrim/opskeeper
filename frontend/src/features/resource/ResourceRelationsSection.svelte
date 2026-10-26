@@ -27,7 +27,7 @@
 <div class="relation-section">
   <div class="subheading"><h3>关系与拓扑</h3><span>{relations.length} 条关系 · {topology.length} 个节点</span></div>
   <form class="relation-form" on:submit|preventDefault={onCreate}>
-    <FormField label="目标资源" required><DropdownSelect bind:value={target} options={targetOptions} placeholder="选择目标资源" ariaLabel="目标资源" /></FormField>
+    <FormField label="目标资源" required asLabel={false}><DropdownSelect bind:value={target} options={targetOptions} placeholder="选择目标资源" ariaLabel="目标资源" /></FormField>
     <DropdownSelect bind:value={relationType} options={relationOptions} ariaLabel="关系类型" />
     <button class="secondary" disabled={busy || relationBusy}>建立关系</button>
   </form>

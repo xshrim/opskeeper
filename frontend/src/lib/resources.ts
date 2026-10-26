@@ -21,6 +21,27 @@ export const endpointResourceKinds = [
   'Kafka'
 ] as const;
 
+// Resource kinds with diagnostic context providers. Keep this list aligned with
+// the connector and MCP engine providers so Persona domain suggestions are usable.
+export const resourceDomainKinds = [
+  'Host',
+  'Docker',
+  'Kubernetes',
+  'Nacos',
+  'Repository',
+  'Prometheus',
+  'Loki',
+  'PostgreSQL',
+  'MySQL',
+  'Oracle',
+  'OceanBase',
+  'Redis',
+  'Kafka',
+  'RabbitMQ',
+  'Elasticsearch',
+  'MinIO'
+] as const;
+
 export function resourceSupportsEndpointTimeout(kind: string) {
   return (endpointResourceKinds as readonly string[]).includes(kind);
 }

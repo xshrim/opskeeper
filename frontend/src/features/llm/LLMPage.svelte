@@ -27,13 +27,13 @@
   import { providerBrandIconValue } from '../../lib/iconifyIcons';
   import {
     api,
-    ApiError,
     type EngineCatalogItem,
     type Provider,
     type ProviderConfig,
     type ProviderModel,
     type AIConnectionResult
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import type { ScopeChoice } from '../../lib/scope';
 
   export let providers: Provider[] = [];
@@ -390,11 +390,9 @@
     return result.items;
   }
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError)
-      return error.status === 403
-        ? '当前账号没有管理权限。'
-        : error.message || fallback;
-    return error instanceof Error ? error.message || fallback : fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前账号没有管理权限。'
+    });
   }
   function clearProviderEditorMessage() {
     if (providerEditorMessageTimer !== null) {

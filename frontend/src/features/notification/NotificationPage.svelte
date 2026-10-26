@@ -22,7 +22,6 @@
   import TextInput from '../../components/TextInput.svelte';
   import {
     api,
-    ApiError,
     type InspectionPolicy,
     type NotificationChannel,
     type NotificationDelivery,
@@ -31,6 +30,7 @@
     type NotificationTemplate,
     type NotificationTemplateVersion
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
 
   type Tab = 'overview' | 'channels' | 'templates' | 'rules' | 'deliveries';
 
@@ -155,13 +155,10 @@
   }
 
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError) {
-      if (error.status === 403) return '当前范围没有通知查看权限。';
-      if (error.status === 401) return '会话已过期，请重新登录。';
-      return error.message || fallback;
-    }
-    if (error instanceof Error) return error.message || fallback;
-    return fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前范围没有通知查看权限。',
+      unauthorized: '会话已过期，请重新登录。'
+    });
   }
 
   async function loadData(targetScopeId = scopeId, silent = false) {
@@ -1013,7 +1010,7 @@
           </div>
           <FormField label="模板名称" required><TextInput bind:value={templateName} required maxlength={120} placeholder="例如：事故通知" ariaLabel="模板名称" /></FormField>
           <div class="notification-form-grid">
-            <FormField label="格式"><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><FormField label="共享范围"><DropdownSelect value={templateShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="模板共享范围" on:change={(event) => (templateShare = event.detail === 'shared')} /></FormField>
+            <FormField label="格式" asLabel={false}><DropdownSelect bind:value={templateFormat} options={[{ value: 'text', label: '文本' }, { value: 'markdown', label: 'Markdown' }, { value: 'json', label: 'JSON' }]} ariaLabel="模板格式" /></FormField><FormField label="共享范围" asLabel={false}><DropdownSelect value={templateShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="模板共享范围" on:change={(event) => (templateShare = event.detail === 'shared')} /></FormField>
           </div>
           <FormField label="标题模板"><TextInput bind:value={templateTitle} placeholder="例如：严重级别与规则名称" ariaLabel="标题模板" /></FormField><FormField label="正文模板"><TextArea rows={5} bind:value={templateBody} /></FormField>
           <FormActions className="notification-form-actions">
@@ -1078,13 +1075,13 @@
           </div>
           <FormField label="规则名称" required><TextInput bind:value={ruleName} required maxlength={120} placeholder="例如：核心链路异常" ariaLabel="规则名称" /></FormField>
           <div class="notification-form-grid">
-            <FormField label="事件"><DropdownSelect bind:value={ruleEvent} options={[{ value: 'finding.opened', label: 'Finding 新建' }, { value: 'finding.reopened', label: 'Finding 恢复后再次打开' }, { value: 'finding.severity_changed', label: '严重级别变化' }, { value: 'finding.resolved', label: 'Finding 已恢复' }, { value: 'inspection.failed', label: '巡检失败' }, { value: 'inspection.degraded', label: '巡检降级' }]} searchable ariaLabel="通知事件" /></FormField><FormField label="最低级别"><DropdownSelect bind:value={ruleSeverity} options={[{ value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'critical', label: 'Critical' }]} ariaLabel="最低级别" /></FormField>
+            <FormField label="事件" asLabel={false}><DropdownSelect bind:value={ruleEvent} options={[{ value: 'finding.opened', label: 'Finding 新建' }, { value: 'finding.reopened', label: 'Finding 恢复后再次打开' }, { value: 'finding.severity_changed', label: '严重级别变化' }, { value: 'finding.resolved', label: 'Finding 已恢复' }, { value: 'inspection.failed', label: '巡检失败' }, { value: 'inspection.degraded', label: '巡检降级' }]} searchable ariaLabel="通知事件" /></FormField><FormField label="最低级别" asLabel={false}><DropdownSelect bind:value={ruleSeverity} options={[{ value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'critical', label: 'Critical' }]} ariaLabel="最低级别" /></FormField>
             >
           </div>
-          <FormField label="投递渠道"><DropdownSelect bind:value={ruleChannelId} options={[{ value: '', label: '先不配置' }, ...channels.filter((channel) => channel.status === 'active').map((channel) => ({ value: channel.id, label: channel.name }))]} ariaLabel="投递渠道" /></FormField>
-          <FormField label="已发布模板"><DropdownSelect bind:value={ruleTemplateVersionId} options={[{ value: '', label: '先不配置' }, ...templates.flatMap((template) => template.versions.filter((version) => version.status === 'published').map((version) => ({ value: version.id, label: `${template.name} · v${version.version}` })))]} ariaLabel="已发布模板" /></FormField>
+          <FormField label="投递渠道" asLabel={false}><DropdownSelect bind:value={ruleChannelId} options={[{ value: '', label: '先不配置' }, ...channels.filter((channel) => channel.status === 'active').map((channel) => ({ value: channel.id, label: channel.name }))]} ariaLabel="投递渠道" /></FormField>
+          <FormField label="已发布模板" asLabel={false}><DropdownSelect bind:value={ruleTemplateVersionId} options={[{ value: '', label: '先不配置' }, ...templates.flatMap((template) => template.versions.filter((version) => version.status === 'published').map((version) => ({ value: version.id, label: `${template.name} · v${version.version}` })))]} ariaLabel="已发布模板" /></FormField>
           <div class="notification-form-grid">
-            <FormField label="状态"><DropdownSelect bind:value={ruleStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '停用' }]} ariaLabel="规则状态" /></FormField><FormField label="共享范围"><DropdownSelect value={ruleShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="规则共享范围" on:change={(event) => (ruleShare = event.detail === 'shared')} /></FormField>
+            <FormField label="状态" asLabel={false}><DropdownSelect bind:value={ruleStatus} options={[{ value: 'active', label: '启用' }, { value: 'disabled', label: '停用' }]} ariaLabel="规则状态" /></FormField><FormField label="共享范围" asLabel={false}><DropdownSelect value={ruleShare ? 'shared' : 'local'} options={[{ value: 'local', label: '仅当前范围' }, { value: 'shared', label: '对子 Scope 可用' }]} ariaLabel="规则共享范围" on:change={(event) => (ruleShare = event.detail === 'shared')} /></FormField>
           </div>
           <FormActions className="notification-form-actions">
             <small>无完整路由时会以停用状态保存。</small><button
@@ -1104,7 +1101,7 @@
             <ShieldCheck size={17} />
           </div>
           <div class="notification-form-grid">
-            <FormField label="巡检策略"><DropdownSelect options={[{ value: '', label: '选择策略' }, ...policies.map((policy) => ({ value: policy.id, label: policy.name }))]} value={selectedPolicyId} ariaLabel="巡检策略" on:change={(event) => loadPolicyRules(String(event.detail))} /></FormField>
+            <FormField label="巡检策略" asLabel={false}><DropdownSelect options={[{ value: '', label: '选择策略' }, ...policies.map((policy) => ({ value: policy.id, label: policy.name }))]} value={selectedPolicyId} ariaLabel="巡检策略" on:change={(event) => loadPolicyRules(String(event.detail))} /></FormField>
             <div class="notification-policy-actions">
               <button
                 class="secondary compact"

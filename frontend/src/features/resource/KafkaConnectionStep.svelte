@@ -23,7 +23,7 @@
 </script>
 
 {#if accessMode === 'agent'}
-  <FormField label="关联 MCPServer" required invalid={configurationAttempted && !mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
+  <FormField label="关联 MCPServer" required asLabel={false} invalid={configurationAttempted && !mcpServerResourceId}><DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} /></FormField>
 {:else}
   <div class="docker-form-grid">
     <FormField label="Broker 地址" required invalid={configurationAttempted && !brokers.trim()}><TextArea bind:value={brokers} rows={3} placeholder="每行一个 broker，例如 kafka-1:9092" on:input={onConfigurationChange} /></FormField>

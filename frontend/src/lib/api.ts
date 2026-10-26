@@ -1208,6 +1208,20 @@ export const api = {
     request<{ items: PersonaCatalogItem[] }>(
       `api/v1/personas?scope_id=${encodeURIComponent(scopeId)}`
     ),
+  createPersona: (body: {
+    scope_id: string;
+    identifier: string;
+    name: string;
+    description?: string;
+    tags?: string[];
+    config: Record<string, unknown>;
+    status?: string;
+  }) => request<PersonaCatalogItem>('api/v1/personas', json(body)),
+  updatePersona: (personaId: string, body: { description?: string; tags?: string[] }) =>
+    request<PersonaCatalogItem>(`api/v1/personas/${encodeURIComponent(personaId)}`, {
+      ...json(body),
+      method: 'PATCH'
+    }),
   personaVersions: (personaId: string) =>
     request<PersonaVersion[]>(`api/v1/personas/${personaId}/versions`),
   createPersonaVersion: (personaId: string, config: Record<string, unknown>) =>

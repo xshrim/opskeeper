@@ -58,9 +58,9 @@
   import AccessPage from './features/access/AccessPage.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
-  import {
-    api,
-    ApiError,
+import {
+  api,
+  ApiError,
     type ConnectionCheck,
     type ConnectorCapability,
     type Group,
@@ -80,7 +80,8 @@
     type User,
     type UserPreferences,
     type Provider
-  } from './lib/api';
+} from './lib/api';
+import { errorMessage as formatErrorMessage } from './lib/errorMessage';
 
   type View =
     | 'overview'
@@ -541,20 +542,18 @@
   }
 
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError) {
-      if (error.status === 403) return '当前账号没有执行此操作的权限。';
-      if (error.status === 401) return '会话已过期，请重新登录。';
-      if (
-        error.status === 409 &&
-        error.message === 'Resource conflicts with existing data'
-      ) {
-        return '当前级别下已有同名 AI 接入或凭据冲突，请更换名称后重试。';
-      }
-      return error.message || fallback;
+    if (
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.message === 'Resource conflicts with existing data'
+    ) {
+      return '当前级别下已有同名 AI 接入或凭据冲突，请更换名称后重试。';
     }
-    if (error instanceof SyntaxError) return '配置必须是有效的 JSON 对象。';
-    if (error instanceof Error) return error.message || fallback;
-    return fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前账号没有执行此操作的权限。',
+      unauthorized: '会话已过期，请重新登录。',
+      invalidJson: '配置必须是有效的 JSON 对象。'
+    });
   }
 
   const viewTitle = (currentView: View) => getViewTitle(currentView, accessTab);
@@ -965,6 +964,7 @@
       {:else if view === 'persona'}
         <PersonasPage
           profiles={personas}
+          scopeId={selectedScopeId}
           {scopeName}
           {formatDate}
           onReload={() => loadDomainCatalogs(selectedScopeId)}

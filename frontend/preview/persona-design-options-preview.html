@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>专家卡片 · 10 种静态预览</title>
+    <style>
+      :root {
+        --page: #f8fafc; --surface: #fffdfa; --raised: #ffffff; --subtle: #f5efec;
+        --hover: #fff0e9; --selected: #fff0e8; --input: #ffffff;
+        --fg: #3a3431; --strong: #423934; --muted: #6f625b; --faint: #a0958f;
+        --border: #eadfd9; --border-strong: #dfc8ba; --divider: #eadfd9;
+        --accent: #e7601b; --accent-soft: #fff0e8; --action: #e7601b; --action-hover: #d95716;
+        --manager: #3979b9; --manager-soft: #eaf2fb; --worker: #2f7956; --worker-soft: #edf7f0;
+        --warning: #a46719; --warning-soft: #fff4dc; --shadow: 0 8px 24px rgb(47 41 38 / .08);
+        --focus: rgb(231 96 27 / .18);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--fg); background: var(--page); font-synthesis: none; text-rendering: optimizeLegibility;
+      }
+      :root[data-theme="dark"] {
+        --page: #211e1c; --surface: #2a2623; --raised: #342e2a; --subtle: #3a3430;
+        --hover: #342e2a; --selected: #173e35; --input: #272320;
+        --fg: #eee4df; --strong: #f1e8e3; --muted: #bfb3ac; --faint: #9d8f87;
+        --border: #473e39; --border-strong: #514740; --divider: #473e39;
+        --accent: #2c8d72; --accent-soft: #173e35; --action: #18a27d; --action-hover: #158c6c;
+        --manager: #99c6f2; --manager-soft: #24374d; --worker: #9fe4cf; --worker-soft: #173e35;
+        --warning: #f4d18a; --warning-soft: #46371e; --shadow: 0 8px 24px rgb(0 0 0 / .28);
+        --focus: rgb(24 162 125 / .22);
+      }
+      * { box-sizing: border-box; }
+      body { min-width: 320px; margin: 0; background: var(--page); }
+      button, input, textarea, select { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+      h1, h2, h3, p { margin: 0; letter-spacing: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 66px; padding: 12px clamp(18px, 5vw, 64px); background: color-mix(in srgb, var(--surface) 94%, transparent); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); }
+      .brand { display: flex; align-items: center; gap: 10px; }
+      .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; color: var(--action); background: var(--accent-soft); border: 1px solid var(--border); border-radius: 7px; font-weight: 850; }
+      .brand-copy strong, .brand-copy small { display: block; }
+      .brand-copy strong { color: var(--strong); font-size: 14px; }
+      .brand-copy small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+      .top-actions { display: flex; align-items: center; gap: 8px; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 0 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 5px; font-size: 11px; font-weight: 650; }
+      .btn:hover { color: var(--accent); background: var(--hover); border-color: var(--accent); }
+      .btn.primary { color: #fff; background: var(--action); border-color: var(--action); }
+      .btn.primary:hover { color: #fff; background: var(--action-hover); }
+      main { width: min(1400px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 62px; }
+      .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+      .eyebrow { margin-bottom: 7px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+      h1 { color: var(--strong); font-size: clamp(24px, 3vw, 31px); line-height: 1.18; }
+      .intro-copy { max-width: 780px; margin-top: 9px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+      .note { max-width: 330px; padding: 12px 14px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 11px; line-height: 1.55; }
+      .note strong { color: var(--strong); }
+      .filter-bar { display: flex; align-items: center; gap: 7px; margin-bottom: 24px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; }
+      .filter-label { margin-right: 3px; color: var(--muted); font-size: 10px; }
+      .filter { min-height: 28px; padding: 0 10px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 4px; font-size: 10px; }
+      .filter:hover, .filter.active { color: var(--accent); background: var(--accent-soft); border-color: var(--border); }
+      .filter-count { margin-left: auto; color: var(--faint); font-size: 10px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 18px; }
+      .caption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px 9px; }
+      .caption h2 { color: var(--strong); font-size: 14px; }
+      .caption small { color: var(--faint); font-size: 10px; white-space: nowrap; }
+      .caption p { margin-top: 4px; color: var(--muted); font-size: 10px; }
+      .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .82fr); min-height: 300px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: var(--shadow); }
+      .display, .create { min-width: 0; padding: 14px; }
+      .display { border-right: 1px solid var(--divider); }
+      .create { background: color-mix(in srgb, var(--subtle) 48%, var(--surface)); }
+      .pane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 11px; color: var(--muted); font-size: 10px; font-weight: 750; }
+      .pane-head small { color: var(--faint); font-weight: 500; }
+      .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .card { position: relative; display: grid; gap: 8px; min-width: 0; padding: 11px; color: var(--fg); background: var(--raised); border: 1px solid var(--border); border-radius: 6px; }
+      .card:hover { border-color: var(--accent); background: var(--hover); }
+      .card-top, .card-meta, .card-footer { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      .card-top { justify-content: space-between; }
+      .avatar { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--border); border-radius: 5px; font-size: 11px; font-weight: 800; }
+      .identity { min-width: 0; flex: 1; }
+      .identity strong, .identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .identity strong { color: var(--strong); font-size: 11px; }
+      .identity small { margin-top: 3px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
+      .type { display: inline-flex; align-items: center; flex: none; min-height: 20px; padding: 0 6px; border: 1px solid; border-radius: 4px; font-size: 9px; white-space: nowrap; }
+      .type.manager { color: var(--manager); background: var(--manager-soft); border-color: color-mix(in srgb, var(--manager) 35%, var(--border)); }
+      .type.worker { color: var(--worker); background: var(--worker-soft); border-color: color-mix(in srgb, var(--worker) 35%, var(--border)); }
+      .domain { color: var(--muted); font-size: 9px; }
+      .domain b { color: var(--strong); font-weight: 650; }
+      .tags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
+      .tag { display: inline-flex; align-items: center; min-height: 19px; padding: 0 6px; color: var(--muted); background: var(--subtle); border: 1px solid var(--border); border-radius: 4px; font-size: 9px; white-space: nowrap; }
+      .tag.builtin { color: var(--accent); background: var(--accent-soft); }
+      .tag.readonly { color: var(--worker); background: var(--worker-soft); }
+      .tag.cross { color: var(--manager); background: var(--manager-soft); }
+      .card-footer { justify-content: space-between; padding-top: 6px; color: var(--faint); border-top: 1px solid var(--divider); font-size: 9px; }
+      .status { color: var(--worker); }
+      .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .field { display: grid; gap: 5px; min-width: 0; }
+      .field.full { grid-column: 1 / -1; }
+      .field label { color: var(--muted); font-size: 10px; }
+      .field em { margin-left: 3px; color: var(--warning); font-style: normal; }
+      input, textarea, select { width: 100%; min-height: 31px; padding: 6px 8px; color: var(--fg); background: var(--input); border: 1px solid var(--border-strong); border-radius: 4px; outline: 0; font-size: 10px; }
+      textarea { min-height: 54px; resize: vertical; line-height: 1.4; }
+      input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus); }
+      .create-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+      .create-actions .btn { min-height: 30px; font-size: 10px; }
+      .helper { margin-top: 8px; color: var(--faint); font-size: 9px; line-height: 1.5; }
+      .helper b { color: var(--muted); }
+
+      /* Each preview below is a new card composition. */
+      .s1 .display { background: linear-gradient(135deg, var(--surface), var(--subtle)); }
+      .s1 .card { box-shadow: var(--shadow); }
+      .s1 .cards { grid-template-columns: 1fr; }
+      .s1 .card-top { padding-bottom: 2px; border-bottom: 2px solid var(--accent); }
+
+      .s2 .cards { display: grid; grid-template-columns: 1fr; gap: 0; }
+      .s2 .card { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 11px; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
+      .s2 .card:last-child { border-bottom: 0; }
+      .s2 .card-meta, .s2 .card-footer { grid-column: 2 / -1; }
+      .s2 .card-footer { padding-top: 0; border: 0; }
+
+      .s3 .display { padding: 0; }
+      .s3 .pane-head { margin: 0; padding: 11px 13px; border-bottom: 1px solid var(--divider); }
+      .s3 .cards { display: block; }
+      .s3 .card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 10px; padding: 10px 13px; border-width: 0 0 1px; border-radius: 0; }
+      .s3 .card-top { grid-column: 1 / -1; }
+      .s3 .card-meta { grid-column: 2; }
+      .s3 .card-footer { grid-column: 2; padding-top: 0; border: 0; }
+
+      .s4 .card { border-left: 4px solid var(--worker); }
+      .s4 .card:has(.type.manager) { border-left-color: var(--manager); }
+      .s4 .card-top { align-items: start; }
+      .s4 .avatar { border-radius: 50%; }
+
+      .s5 .display { background: var(--subtle); }
+      .s5 .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .s5 .card { border-radius: 12px; padding: 13px; }
+      .s5 .type { border-radius: 12px; }
+      .s5 .tag { border-radius: 12px; }
+
+      .s6 .cards { grid-template-columns: 1fr; }
+      .s6 .card { grid-template-columns: 56px minmax(0, 1fr); gap: 8px 11px; padding: 12px; }
+      .s6 .avatar { width: 50px; height: 50px; font-size: 16px; border-radius: 8px; }
+      .s6 .card-top { grid-column: 1 / -1; }
+      .s6 .card-meta { grid-column: 2; }
+      .s6 .card-footer { grid-column: 2; padding-top: 0; border: 0; }
+
+      .s7 .display { background: var(--page); }
+      .s7 .card { background: var(--surface); border-radius: 3px; box-shadow: 0 3px 0 var(--border); }
+      .s7 .card-top { align-items: start; }
+      .s7 .card::before { position: absolute; top: 0; right: 0; width: 26px; height: 26px; background: var(--accent-soft); border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0 5px 0 10px; content: ""; }
+
+      .s8 .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .s8 .card { display: block; padding: 0; overflow: hidden; }
+      .s8 .card-top { padding: 10px; background: var(--subtle); }
+      .s8 .card-meta, .s8 .tags, .s8 .card-footer { margin: 0 10px; }
+      .s8 .card-meta { padding: 9px 0 0; }
+      .s8 .tags { padding: 7px 0; }
+      .s8 .card-footer { padding: 7px 0 9px; }
+
+      .s9 .cards { grid-template-columns: 1fr; gap: 6px; }
+      .s9 .card { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 8px 10px; border-style: dashed; }
+      .s9 .card-meta, .s9 .tags, .s9 .card-footer { display: none; }
+      .s9 .avatar { width: 24px; height: 24px; border-radius: 50%; }
+
+      .s10 .display { background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface)); }
+      .s10 .cards { grid-template-columns: 1fr; gap: 8px; }
+      .s10 .card { grid-template-columns: auto minmax(0, 1fr); padding: 10px; border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+      .s10 .card-top { grid-column: 1 / -1; }
+      .s10 .card-meta { grid-column: 2; }
+      .s10 .card-footer { grid-column: 2; padding-top: 0; border: 0; }
+      .s10 .card:nth-child(2) { transform: translateX(14px); }
+
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+      @media (max-width: 700px) {
+        .topbar, .intro { align-items: flex-start; flex-direction: column; }
+        .top-actions { width: 100%; justify-content: flex-end; }
+        .filter-bar { flex-wrap: wrap; }
+        .filter-count { width: 100%; margin: 2px 0 0; }
+        .workspace { grid-template-columns: 1fr; }
+        .display { border-right: 0; border-bottom: 1px solid var(--divider); }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">O</span><span class="brand-copy"><strong>OpsKeeper</strong><small>专家库设计预览</small></span></div>
+      <div class="top-actions"><span style="color:var(--faint);font-size:10px">卡片化专家目录 · 静态预览</span><button class="btn" id="theme-toggle" type="button">切换深色主题</button></div>
+    </header>
+    <main>
+      <section class="intro">
+        <div><div class="eyebrow">PERSONA CATALOG · CARD EXPLORATION</div><h1>专家卡片展示与创建的 10 种方案</h1><p class="intro-copy">职能专家和资源专家在同一目录中展示，通过页面顶部筛选按钮区分。每张卡片固定呈现唯一标识、名称、标签、类型和资源领域；“内置”“只读”“跨域”等通用标签用于快速识别专家能力边界。</p></div>
+        <div class="note"><strong>预览规则</strong><br />顶部筛选会同步更新所有方案。点击“全部 / 职能专家 / 资源专家”即可观察两类专家如何在同一页面中区分；右侧是对应的创建表单。</div>
+      </section>
+      <div class="filter-bar"><span class="filter-label">专家类型</span><button class="filter active" data-filter="all" type="button">全部专家</button><button class="filter" data-filter="manager" type="button">职能专家 · Manager</button><button class="filter" data-filter="worker" type="button">资源专家 · Worker</button><span class="filter-count" id="filter-count">显示 4 位专家</span></div>
+
+      <section class="grid">
+        <article class="design"><div class="caption"><div><h2>01 · 双层重点卡</h2><p>以职责类型作为卡片顶部的主视觉分层。</p></div><small>重点信息先行</small></div><div class="workspace s1"><div class="display"><div class="pane-head"><span>专家卡片</span><small>Manager 与 Worker 混排</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>双层重点</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>02 · 紧凑目录卡</h2><p>用单行卡片承载高密度专家目录。</p></div><small>数量较多时</small></div><div class="workspace s2"><div class="display"><div class="pane-head"><span>专家目录</span><small>标识 · 类型 · 领域</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>紧凑目录</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>03 · 左标识卡</h2><p>把唯一标识放在视觉左侧，名称和职责紧随其后。</p></div><small>适合识别标识</small></div><div class="workspace s3"><div class="display"><div class="pane-head"><span>专家清单</span><small>按标识定位</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>左标识</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>04 · 色带类型卡</h2><p>用左侧色带表达 Manager / Worker，主体保持克制。</p></div><small>类型辨识最快</small></div><div class="workspace s4"><div class="display"><div class="pane-head"><span>专家卡片</span><small>色带区分职责</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>色带类型</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>05 · 柔和标签卡</h2><p>圆角标签突出内置、只读和领域信息，视觉更轻。</p></div><small>偏友好风格</small></div><div class="workspace s5"><div class="display"><div class="pane-head"><span>专家卡片</span><small>通用标签优先</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>柔和标签</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>06 · 大头像档案卡</h2><p>放大专家标识，适合查看职责和领域档案。</p></div><small>强调专家身份</small></div><div class="workspace s6"><div class="display"><div class="pane-head"><span>专家档案</span><small>头像与身份</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>档案创建</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>07 · 角标契约卡</h2><p>右上角角标暗示已配置契约，卡片信息仍保持完整。</p></div><small>适合版本管理</small></div><div class="workspace s7"><div class="display"><div class="pane-head"><span>专家契约</span><small>版本 / 状态</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>契约角标</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>08 · 信息带卡</h2><p>将类型和领域放在标题带中，正文展示标签与状态。</p></div><small>结构清晰</small></div><div class="workspace s8"><div class="display"><div class="pane-head"><span>专家卡片</span><small>标题带布局</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>信息带</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>09 · 虚线轻卡</h2><p>轻量边框和短信息，适合嵌入更长的管理页面。</p></div><small>节省垂直空间</small></div><div class="workspace s9"><div class="display"><div class="pane-head"><span>专家速览</span><small>轻量列表</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>快速新增</span><small>轻表单</small></div><div class="form-grid"></div></div></div></article>
+        <article class="design"><div class="caption"><div><h2>10 · 叠层领域卡</h2><p>用轻微错位表现专家之间的领域覆盖关系。</p></div><small>适合领域协同</small></div><div class="workspace s10"><div class="display"><div class="pane-head"><span>领域专家</span><small>覆盖关系</small></div><div class="cards"></div></div><div class="create"><div class="pane-head"><span>新增专家</span><small>领域协同</small></div><div class="form-grid"></div></div></div></article>
+      </section>
+      <p style="margin-top:26px;color:var(--faint);font-size:10px;line-height:1.6">所有方案都保留同一组核心信息：唯一标识、名称、标签、类型、资源领域、状态和版本。创建表单中的职责切换可动态决定是否出现资源领域或可委派专家字段。实现时可直接复用项目已有的 `TagList`、`DropdownSelect`、`FormField`、`ModalDialog` 和 `SectionHeading`。</p>
+    </main>
+    <script>
+      const personas = [
+        { id: 'inspection-manager', name: '巡检协同专家', type: 'manager', domain: '跨资源', tags: [['内置', 'builtin'], ['跨域', 'cross'], ['可委派', '']], state: '已发布', version: 'v3' },
+        { id: 'postgres-health', name: 'PostgreSQL 诊断', type: 'worker', domain: 'PostgreSQL', tags: [['内置', 'builtin'], ['只读', 'readonly'], ['数据库', '']], state: '已发布', version: 'v4' },
+        { id: 'k8s-health', name: 'Kubernetes 诊断', type: 'worker', domain: 'Kubernetes', tags: [['内置', 'builtin'], ['只读', 'readonly'], ['集群', '']], state: '草稿', version: 'v2' },
+        { id: 'host-health', name: 'Host 诊断', type: 'worker', domain: 'Host', tags: [['只读', 'readonly'], ['SSH', ''], ['基础设施', '']], state: '已发布', version: 'v1' }
+      ];
+      const root = document.documentElement;
+      const tagMarkup = (item) => item.tags.map(([text, tone]) => `<span class="tag ${tone}">${text}</span>`).join('');
+      const cardMarkup = (item) => `<article class="card" data-type="${item.type}"><div class="card-top"><span class="avatar">${item.type === 'manager' ? 'M' : 'W'}</span><span class="identity"><strong>${item.name}</strong><small>${item.id}</small></span><span class="type ${item.type}">${item.type === 'manager' ? 'Manager · 职能' : 'Worker · 资源'}</span></div><div class="card-meta"><span class="domain">资源领域：<b>${item.domain}</b></span></div><div class="tags">${tagMarkup(item)}</div><div class="card-footer"><span class="status">${item.state}</span><span>${item.version}</span></div></article>`;
+      const formMarkup = (seed) => `<div class="field"><label>唯一标识<em>*</em></label><input value="${seed.id}" /></div><div class="field"><label>专家名称<em>*</em></label><input value="${seed.name}" /></div><div class="field"><label>专家类型<em>*</em></label><select><option>${seed.type === 'manager' ? '职能专家 · Manager' : '资源专家 · Worker'}</option><option>${seed.type === 'manager' ? '资源专家 · Worker' : '职能专家 · Manager'}</option></select></div><div class="field"><label>资源领域${seed.type === 'worker' ? '<em>*</em>' : ''}</label><input value="${seed.domain}" /></div><div class="field full"><label>通用标签</label><input value="${seed.tags.map(([text]) => text).join(', ')}" /></div><div class="field full"><label>专家指令<em>*</em></label><textarea>定义专家的诊断范围、判断原则和输出要求。</textarea></div><div class="create-actions"><button class="btn">取消</button><button class="btn primary">创建专家</button></div><p class="helper"><b>提示：</b>内置标签可与自定义标签并存；Manager 创建后配置可委派 Worker。</p>`;
+      function render(filter = 'all') {
+        document.querySelectorAll('.cards').forEach((container) => {
+          container.innerHTML = personas.filter((item) => filter === 'all' || item.type === filter).map(cardMarkup).join('') || '<p style="color:var(--faint);font-size:10px">当前筛选没有专家</p>';
+        });
+        document.querySelectorAll('.form-grid').forEach((container) => { container.innerHTML = formMarkup(personas.find((item) => item.type === (filter === 'manager' ? 'manager' : 'worker')) || personas[0]); });
+        document.querySelector('#filter-count').textContent = `显示 ${personas.filter((item) => filter === 'all' || item.type === filter).length} 位专家`;
+      }
+      document.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.filter').forEach((item) => item.classList.toggle('active', item === button)); render(button.dataset.filter); }));
+      document.querySelector('#theme-toggle').addEventListener('click', (event) => { const dark = root.dataset.theme === 'dark'; root.dataset.theme = dark ? 'light' : 'dark'; event.currentTarget.textContent = dark ? '切换深色主题' : '切换浅色主题'; });
+      render();
+    </script>
+  </body>
+</html>

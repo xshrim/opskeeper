@@ -83,15 +83,11 @@ func prepareMigrationHistory(ctx context.Context, conn *pgxpool.Conn, migrations
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version bigint PRIMARY KEY,
 			name text NOT NULL,
-			checksum text,
+			checksum text NOT NULL,
 			applied_at timestamptz NOT NULL DEFAULT now()
 		)`); err != nil {
 		return nil, fmt.Errorf("create schema migrations table: %w", err)
 	}
-	if _, err := conn.Exec(ctx, "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS checksum text"); err != nil {
-		return nil, fmt.Errorf("add migration checksum column: %w", err)
-	}
-
 	embedded := make(map[int64]migration, len(migrations))
 	for _, item := range migrations {
 		embedded[item.version] = item
@@ -102,11 +98,9 @@ func prepareMigrationHistory(ctx context.Context, conn *pgxpool.Conn, migrations
 		return nil, fmt.Errorf("read migration history: %w", err)
 	}
 	applied := make(map[int64]struct{})
-	backfill := make([]migration, 0)
 	for rows.Next() {
 		var version int64
-		var name string
-		var checksum *string
+		var name, checksum string
 		if err := rows.Scan(&version, &name, &checksum); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan migration history: %w", err)
@@ -120,9 +114,7 @@ func prepareMigrationHistory(ctx context.Context, conn *pgxpool.Conn, migrations
 			rows.Close()
 			return nil, fmt.Errorf("applied migration %d name is %q, embedded name is %q", version, name, item.name)
 		}
-		if checksum == nil {
-			backfill = append(backfill, item)
-		} else if *checksum != item.checksum {
+		if checksum != item.checksum {
 			rows.Close()
 			return nil, fmt.Errorf("applied migration %d (%s) checksum does not match embedded SQL", version, name)
 		}
@@ -134,18 +126,6 @@ func prepareMigrationHistory(ctx context.Context, conn *pgxpool.Conn, migrations
 	}
 	rows.Close()
 
-	for _, item := range backfill {
-		if _, err := conn.Exec(ctx,
-			"UPDATE schema_migrations SET checksum = $2 WHERE version = $1 AND checksum IS NULL",
-			item.version,
-			item.checksum,
-		); err != nil {
-			return nil, fmt.Errorf("backfill migration %d checksum: %w", item.version, err)
-		}
-	}
-	if _, err := conn.Exec(ctx, "ALTER TABLE schema_migrations ALTER COLUMN checksum SET NOT NULL"); err != nil {
-		return nil, fmt.Errorf("require migration checksums: %w", err)
-	}
 	return applied, nil
 }
 

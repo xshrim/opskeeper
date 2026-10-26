@@ -23,8 +23,12 @@
   export let step: number | 'any' | undefined = undefined;
   export let tagged = false;
   export let tagSeparators: string[] = [',', ' '];
+  export let suggestions: string[] = [];
+  export let suggestionPlaceholder = '选择或输入';
 
-  const dispatch = createEventDispatcher<{ input: Event; change: Event }>();
+  const dispatch = createEventDispatcher<{ value: string | number; input: Event; change: Event }>();
+  let root: HTMLElement;
+  let suggestionsOpen = false;
   let tags: string[] = [];
   let tagDraft = '';
   let lastPublishedTags = '';
@@ -33,6 +37,9 @@
     tags = splitTags(value);
     lastPublishedTags = serializeTags(tags);
   }
+  $: filteredSuggestions = suggestions.filter((suggestion) =>
+    suggestion.toLocaleLowerCase().includes(tagDraft.trim().toLocaleLowerCase()) && !tags.includes(suggestion)
+  );
 
   function splitTags(input: string) {
     const separators = tagSeparators.filter(Boolean).map(escapeRegExp);
@@ -56,6 +63,7 @@
     const next = serializeTags(tags);
     lastPublishedTags = next;
     value = next;
+    dispatch('value', value);
     dispatch('input', event);
     dispatch('change', event);
   }
@@ -68,7 +76,21 @@
       publishTags(event);
       return;
     }
+    dispatch('value', value);
     dispatch('change', event);
+    suggestionsOpen = false;
+  }
+
+  function selectSuggestion(suggestion: string, event: Event) {
+    if (disabled || readonly || tags.includes(suggestion)) return;
+    tags = [...tags, suggestion];
+    tagDraft = '';
+    publishTags(event);
+    suggestionsOpen = true;
+  }
+
+  function closeSuggestions(event: MouseEvent) {
+    if (root && !root.contains(event.target as Node)) suggestionsOpen = false;
   }
 
   function removeTag(index: number) {
@@ -85,17 +107,20 @@
   function handleInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     value = type === 'number' && input.value !== '' ? input.valueAsNumber : input.value;
+    dispatch('value', value);
     dispatch('input', event);
   }
 
   function handleChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     value = type === 'number' && input.value !== '' ? input.valueAsNumber : input.value;
+    dispatch('value', value);
     dispatch('change', event);
   }
 </script>
 
-<span class={`text-input-wrap ${className}`.trim()} class:invalid class:bubble={invalid && invalidMode === 'bubble'} style={`--text-input-width:${width};--text-input-max-width:${maxWidth}`} data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined}>
+<svelte:window on:click={closeSuggestions} />
+<span class={`text-input-wrap ${className}`.trim()} class:invalid class:bubble={invalid && invalidMode === 'bubble'} style={`--text-input-width:${width};--text-input-max-width:${maxWidth}`} data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined} bind:this={root}>
   {#if tagged}
     <span class="text-input-tag-control" class:disabled class:readonly>
       {#each tags as tag, index}
@@ -115,6 +140,7 @@
         {maxlength}
         aria-label={ariaLabel || undefined}
         aria-invalid={invalid || undefined}
+        on:focus={() => { suggestionsOpen = suggestions.length > 0; }}
         on:input={(event) => dispatch('input', event)}
         on:keydown={(event) => {
           if (event.key === 'Enter') {
@@ -125,6 +151,13 @@
         on:blur={commitTags}
       />
     </span>
+    {#if suggestionsOpen && suggestions.length > 0 && filteredSuggestions.length > 0}
+      <span class="text-input-suggestions" role="listbox" aria-label={suggestionPlaceholder}>
+        {#each filteredSuggestions as suggestion}
+          <button type="button" role="option" aria-selected="false" on:mousedown|preventDefault={(event) => selectSuggestion(suggestion, event)}>{suggestion}</button>
+        {/each}
+      </span>
+    {/if}
   {:else}
     <input
       {value}
@@ -206,6 +239,37 @@
     box-shadow: none;
   }
   .text-input-tag-control input:focus-visible { border: 0; box-shadow: none; }
+  .text-input-suggestions {
+    position: absolute;
+    z-index: 1000;
+    top: calc(100% + 5px);
+    left: 0;
+    display: grid;
+    width: 100%;
+    max-height: 190px;
+    padding: 5px;
+    overflow: auto;
+    background: var(--theme-bg-raised);
+    border: 1px solid var(--theme-border-strong);
+    border-radius: 5px;
+    box-shadow: var(--theme-shadow);
+  }
+  .text-input-suggestions button {
+    min-height: 30px;
+    padding: 5px 8px;
+    color: var(--theme-fg);
+    background: transparent;
+    border: 0;
+    border-radius: 3px;
+    text-align: left;
+    font-size: 11px;
+  }
+  .text-input-suggestions button:hover,
+  .text-input-suggestions button:focus-visible {
+    color: var(--theme-fg-strong);
+    background: var(--theme-bg-selected);
+    outline: 0;
+  }
   .text-input-tag {
     position: relative;
     display: inline-flex;

@@ -115,7 +115,6 @@ type Persona struct {
 	Role             string          `json:"role,omitempty"`
 	Domain           string          `json:"domain,omitempty"`
 	WorkerPersonaIDs []string        `json:"worker_persona_ids,omitempty"`
-	MaxDispatch      int             `json:"max_dispatch,omitempty"`
 }
 
 // PersonaResolver resolves and authorizes a persona for an execution

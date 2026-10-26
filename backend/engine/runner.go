@@ -362,6 +362,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	var modelIteration atomic.Int64
 	var toolBudgetExceeded atomic.Bool
 	var startedToolCalls sync.Map
+	sharedBudget := executionBudgetFromContext(ctx)
 	state := newExecutionState()
 	tools, err := r.agentTools(ctx, request, &toolCalls, &modelIteration, loopCancel, &toolBudgetExceeded, &startedToolCalls, state)
 	if err != nil {
@@ -411,6 +412,9 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		count := int64(toolCalls.Load())
 		if !handled {
 			count = toolCalls.Add(1)
+			if sharedBudget != nil {
+				sharedBudget.addToolCall()
+			}
 		}
 		call := ToolCall{
 			ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID,
@@ -424,7 +428,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 			message = "工具参数校验失败"
 		}
 		code := classifyToolResponseError(message)
-		if !handled && count > int64(request.Budget.MaxToolCalls) {
+		if !handled && (count > int64(request.Budget.MaxToolCalls) || sharedBudget != nil && sharedBudget.exceededToolCalls()) {
 			message = "tool call budget exceeded"
 			code = "tool_budget"
 			toolBudgetExceeded.Store(true)
@@ -558,6 +562,9 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	}
 	startModelTurn := func() bool {
 		iterations++
+		if sharedBudget != nil {
+			sharedBudget.addIteration()
+		}
 		turnText.Reset()
 		turnPartialText.Reset()
 		turnStreamText.Reset()
@@ -567,7 +574,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		turnUsageFinal = false
 		modelIteration.Store(int64(iterations))
 		modelTurnOpen = true
-		if iterations > request.Budget.MaxIterations {
+		if iterations > request.Budget.MaxIterations || sharedBudget != nil && sharedBudget.exceededIterations() {
 			if sink != nil {
 				_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": "模型回合预算已用尽", "iteration": iterations, "reason": "iteration_budget"}})
 			}
@@ -582,7 +589,14 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 		if turnUsage != nil {
 			promptTokens += int64(turnUsage.PromptTokenCount)
 			completionTokens += int64(turnUsage.CandidatesTokenCount)
-			totalTokens += int64(turnUsage.TotalTokenCount)
+			turnTokens := int64(turnUsage.TotalTokenCount)
+			if turnTokens <= 0 {
+				turnTokens = int64(turnUsage.PromptTokenCount + turnUsage.CandidatesTokenCount)
+			}
+			totalTokens += turnTokens
+			if sharedBudget != nil {
+				sharedBudget.addTokens(turnTokens)
+			}
 		}
 		turnUsage = nil
 		turnUsageFinal = false
@@ -726,12 +740,15 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 						ProviderID:    request.ProviderID,
 						ModelName:     request.ModelName,
 					}
+					if sharedBudget != nil {
+						sharedBudget.addToolCall()
+					}
 					message := publicError(fmt.Errorf("%v", response["error"]))
 					if message == "" {
 						message = "工具调用失败"
 					}
 					code := classifyToolResponseError(message)
-					if int64(call.Sequence) > int64(request.Budget.MaxToolCalls) {
+					if int64(call.Sequence) > int64(request.Budget.MaxToolCalls) || sharedBudget != nil && sharedBudget.exceededToolCalls() {
 						message = "tool call budget exceeded"
 						code = "tool_budget"
 						toolBudgetExceeded.Store(true)
@@ -805,10 +822,14 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 			commitTurnUsage()
 			modelTurnOpen = false
 		}
-		if totalTokens > request.Budget.MaxTokens {
-			budgetDetail := fmt.Sprintf("模型累计 Token 预算已用尽（已使用 %d / %d；输入上下文 %d，模型输出 %d）", totalTokens, request.Budget.MaxTokens, promptTokens, completionTokens)
+		if totalTokens > request.Budget.MaxTokens || sharedBudget != nil && sharedBudget.exceededTokens() {
+			usedTokens, maxTokens := totalTokens, request.Budget.MaxTokens
+			if sharedBudget != nil {
+				usedTokens, maxTokens = sharedBudget.tokens.Load(), sharedBudget.maxTokens
+			}
+			budgetDetail := fmt.Sprintf("模型累计 Token 预算已用尽（已使用 %d / %d；当前执行输入 %d，模型输出 %d）", usedTokens, maxTokens, promptTokens, completionTokens)
 			if sink != nil {
-				_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": budgetDetail, "reason": "token_budget", "iteration": iterations, "used_tokens": totalTokens, "max_tokens": request.Budget.MaxTokens, "prompt_tokens": promptTokens, "completion_tokens": completionTokens}})
+				_ = sink(Event{ExecutionID: request.ExecutionID, Type: "phase.changed", Status: StatusFailed, Payload: map[string]any{"phase": "budget_exceeded", "detail": budgetDetail, "reason": "token_budget", "iteration": iterations, "used_tokens": usedTokens, "max_tokens": maxTokens, "prompt_tokens": promptTokens, "completion_tokens": completionTokens}})
 			}
 			return Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "token_budget", ErrorMessage: budgetDetail, ToolCallCount: int(toolCalls.Load())}, errors.New(budgetDetail)
 		}
@@ -872,12 +893,16 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 
 func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, iteration *atomic.Int64, stop context.CancelFunc, budgetExceeded *atomic.Bool, startedToolCalls *sync.Map, state *executionState) ([]tool.Tool, error) {
 	result := make([]tool.Tool, 0)
+	sharedBudget := executionBudgetFromContext(ctx)
 	// A controlled paging tool lets the model retrieve large observations only
 	// when needed, keeping the normal context compact.
 	if request.ResolvedContext != nil && request.ToolGateway != nil && len(request.ResolvedContext.Tools) > 0 {
 		readTool, _ := functiontool.New(functiontool.Config{Name: "read_observation", Description: "按 observation_id、offset、limit 分页读取之前工具结果"}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
 			count := calls.Add(1)
-			if count > int64(request.Budget.MaxToolCalls) {
+			if sharedBudget != nil {
+				sharedBudget.addToolCall()
+			}
+			if count > int64(request.Budget.MaxToolCalls) || sharedBudget != nil && sharedBudget.exceededToolCalls() {
 				if budgetExceeded != nil {
 					budgetExceeded.Store(true)
 				}
@@ -941,11 +966,14 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 			}
 			item, err := functiontool.New(functiontool.Config{Name: modelToolName, Description: definition.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
 				count := calls.Add(1)
+				if sharedBudget != nil {
+					sharedBudget.addToolCall()
+				}
 				call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ModelToolName: modelToolName, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: toolCtx.FunctionCallID(), EventSink: request.EventSink}
 				if startedToolCalls != nil && call.CallID != "" {
 					startedToolCalls.Store(call.CallID, struct{}{})
 				}
-				if count > int64(request.Budget.MaxToolCalls) {
+				if count > int64(request.Budget.MaxToolCalls) || sharedBudget != nil && sharedBudget.exceededToolCalls() {
 					message := "tool call budget exceeded"
 					completedAt := time.Now().UTC()
 					request.ToolGateway.recordToolCall(ToolCallRecord{
@@ -1022,11 +1050,14 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 		item, err := functiontool.New(functiontool.Config{Name: def.Name, Description: def.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
 			callID := toolCtx.FunctionCallID()
 			count := calls.Add(1)
+			if sharedBudget != nil {
+				sharedBudget.addToolCall()
+			}
 			call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, Name: def.Name, ModelToolName: def.Name, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: callID}
 			if startedToolCalls != nil && callID != "" {
 				startedToolCalls.Store(callID, struct{}{})
 			}
-			if count > int64(request.Budget.MaxToolCalls) {
+			if count > int64(request.Budget.MaxToolCalls) || sharedBudget != nil && sharedBudget.exceededToolCalls() {
 				if budgetExceeded != nil {
 					budgetExceeded.Store(true)
 				}

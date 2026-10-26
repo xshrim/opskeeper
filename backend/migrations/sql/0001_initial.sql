@@ -1834,15 +1834,20 @@ CREATE TABLE personas (
     tenant_id text DEFAULT 'default'::text NOT NULL,
     scope_id uuid NOT NULL,
     name text NOT NULL,
+    identifier text NOT NULL,
     description text DEFAULT ''::text NOT NULL,
     config jsonb DEFAULT '{}'::jsonb NOT NULL,
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
     CONSTRAINT personas_config_check CHECK ((jsonb_typeof(config) = 'object'::text)),
+    CONSTRAINT personas_identifier_check CHECK (((length(btrim(identifier)) >= 1) AND (length(btrim(identifier)) <= 200))),
+    CONSTRAINT personas_identifier_no_whitespace CHECK ((identifier !~ '[[:space:]]'::text)),
     CONSTRAINT personas_name_check CHECK (((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 200))),
     CONSTRAINT personas_name_no_whitespace CHECK ((name !~ '[[:space:]]'::text)),
+    CONSTRAINT personas_tags_check CHECK ((jsonb_typeof(tags) = 'array'::text)),
     CONSTRAINT personas_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'unknown'::text])))
 );
 
@@ -4479,6 +4484,13 @@ CREATE UNIQUE INDEX personas_scope_name_unique ON personas USING btree (scope_id
 
 
 --
+-- Name: personas_scope_identifier_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX personas_scope_identifier_unique ON personas USING btree (scope_id, lower(identifier)) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: projects_platform_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4679,6 +4691,13 @@ CREATE INDEX skill_versions_skill_idx ON skill_versions USING btree (skill_id, v
 --
 
 CREATE UNIQUE INDEX skills_scope_identifier_unique ON skills USING btree (scope_id, lower(identifier)) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: skills_scope_name_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX skills_scope_name_unique ON skills USING btree (scope_id, lower(name)) WHERE (deleted_at IS NULL);
 
 
 --

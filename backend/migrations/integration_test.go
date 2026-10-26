@@ -110,7 +110,7 @@ func TestConcurrentApplyIsIdempotent(t *testing.T) {
 		t.Fatalf("PlatformAdmin notification permissions = %d, %v", grantedPermissions, err)
 	}
 	var checksummed int
-	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations WHERE checksum IS NOT NULL").Scan(&checksummed); err != nil {
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM schema_migrations WHERE checksum ~ '^[0-9a-f]{64}$'").Scan(&checksummed); err != nil {
 		t.Fatalf("count checksummed migrations: %v", err)
 	}
 	if checksummed != len(items) {

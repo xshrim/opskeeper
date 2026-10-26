@@ -108,7 +108,7 @@ Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应
 迁移器使用 PostgreSQL session advisory lock 保护整个迁移过程：
 
 1. 获取一条固定连接并等待项目迁移锁。
-2. 创建或复用 `schema_migrations`，校验已执行迁移的名称和前滚 SQL SHA-256。
+2. 创建或复用 `schema_migrations`，校验已执行迁移的名称和前滚 SQL SHA-256；checksum 缺失或不匹配都会失败，不做自动回填。
 3. 按版本升序跳过已执行且校验一致的迁移。
 4. 在独立事务中执行每条待处理 SQL 和版本记录。
 5. 失败时回滚当前事务并返回非零状态。

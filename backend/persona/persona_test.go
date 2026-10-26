@@ -87,26 +87,26 @@ func TestPersonaResolverUsesPublishedVersion(t *testing.T) {
 	}
 }
 
-func TestPersonaResolverReturnsManagerDispatchContract(t *testing.T) {
+func TestPersonaResolverReturnsManagerDelegationContract(t *testing.T) {
 	catalog := fakePersonaCatalog{items: map[string]Persona{
 		"manager": {ID: "manager", ScopeID: "scope-1", Status: "active", Name: "OperationsLead", Config: map[string]any{
 			"version": 1, "instruction": "Delegate diagnosis and summarize.", "enabled": true,
-			"role": "manager", "worker_persona_ids": []any{"worker-1"}, "max_dispatch": 3,
+			"role": "manager", "worker_persona_ids": []any{"worker-1"},
 		}},
 	}}
 	profile, err := NewResolver(catalog, nil).Resolve(context.Background(), "scope-1", "manager")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if profile.Role != "manager" || profile.MaxDispatch != 3 || len(profile.WorkerPersonaIDs) != 1 || profile.WorkerPersonaIDs[0] != "worker-1" {
+	if profile.Role != "manager" || len(profile.WorkerPersonaIDs) != 1 || profile.WorkerPersonaIDs[0] != "worker-1" {
 		t.Fatalf("resolved manager contract = %+v", profile)
 	}
 }
 
 func TestPersonaResolverRejectsManagerResourceToolsAndDuplicateWorkers(t *testing.T) {
 	for name, config := range map[string]map[string]any{
-		"resource tools":        {"version": 1, "instruction": "x", "enabled": true, "role": "manager", "worker_persona_ids": []any{"worker-1"}, "max_dispatch": 1, "allowed_tools": []any{"connector_postgresql_inspect"}},
-		"duplicate workers":     {"version": 1, "instruction": "x", "enabled": true, "role": "manager", "worker_persona_ids": []any{"worker-1", "worker-1"}, "max_dispatch": 1},
+		"resource tools":        {"version": 1, "instruction": "x", "enabled": true, "role": "manager", "worker_persona_ids": []any{"worker-1"}, "allowed_tools": []any{"connector_postgresql_inspect"}},
+		"duplicate workers":     {"version": 1, "instruction": "x", "enabled": true, "role": "manager", "worker_persona_ids": []any{"worker-1", "worker-1"}},
 		"worker without domain": {"version": 1, "instruction": "x", "enabled": true, "role": "worker"},
 	} {
 		t.Run(name, func(t *testing.T) {

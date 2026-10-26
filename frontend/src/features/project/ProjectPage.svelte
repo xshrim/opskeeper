@@ -19,7 +19,6 @@
   } from 'lucide-svelte';
   import {
     api,
-    ApiError,
     type Application,
     type Project,
     type ProjectWorkspace,
@@ -27,6 +26,7 @@
     type Team,
     type User
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
   import FormField from '../../components/FormField.svelte';
@@ -185,11 +185,7 @@
   }
 
   function describeError(error: unknown, fallback: string) {
-    return error instanceof ApiError
-      ? error.message || fallback
-      : error instanceof Error
-        ? error.message || fallback
-        : fallback;
+    return formatErrorMessage(error, fallback);
   }
   function teamName(id: string) {
     return teams.find((team) => team.id === id)?.name ?? '未分配团队';
@@ -499,7 +495,7 @@
                               <strong>{project.summary.applications_healthy} / {project.summary.applications}</strong>
                               <small>正常应用</small>
                             </div>
-                            <TagList tags={projectTags(project)} className="project-card-tags" ariaLabel="项目标签" maxItems={2} distinguishKeyOnly={false} wrap={false} />
+                            <TagList tags={projectTags(project)} className="project-card-tags" ariaLabel="项目标签" distinguishKeyOnly={false} fit wrap={false} />
                           </div>
                           <div class="project-card-secondary-metrics" aria-label="项目运行统计">
                             <span><small>关联资源</small><strong>{project.summary.resources}</strong></span>

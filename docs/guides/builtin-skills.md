@@ -17,7 +17,7 @@ Connector 返回的是固定的结构化诊断快照。确定性规则负责将�
 | Redis 健康诊断 | `Redis` | `redis_health`、`redis_memory`、`redis_clients`、`redis_replication`、`redis_slowlog`、`redis_database_info` | 健康、内存、客户端、复制、慢命令和数据库信息；不扫描全量 Key |
 | Kafka 健康诊断 | `Kafka` | `kafka_inspect` | Broker、Topic、分区、ISR、离线副本、消费组成员与累计积压 |
 
-迁移在默认平台安装内置 Skill，并以已发布 v2 作为当前版本；为保证版本内容不可变，初始 v1 会保留为已禁用的历史版本。管理员可将已发布版本设为 Scope 默认；运行时仍必须验证目标资源类型、Scope 和资源权限。
+全新数据库的初始 Schema 会安装内置 Skill，并以已发布版本作为当前版本。管理员可将已发布版本设为 Scope 默认；运行时仍必须验证目标资源类型、Scope 和资源权限。历史 Skill 版本只用于升级历史，不会由运行时代码自动重建。
 
 每个内置版本强制模型返回 JSON，顶层固定为 `facts`、`findings`、`evidence`、`hypotheses`、`confidence`（0–1）和 `recommendations`。Connector 证据与确定性 Finding 先产生，模型只能在此基础上解释、归因和给出不执行的建议。
 

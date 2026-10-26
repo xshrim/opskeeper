@@ -32,7 +32,7 @@
   export let variant: 'standard' | 'underline' | 'pill' | 'soft' = 'standard';
   export let menuClass = '';
 
-  const dispatch = createEventDispatcher<{ change: string | string[] }>();
+  const dispatch = createEventDispatcher<{ value: string | string[]; change: string | string[] }>();
 
   let open = false;
   let query = '';
@@ -71,17 +71,20 @@
       value = current.includes(next)
         ? current.filter((item) => item !== next)
         : [...current.filter((item) => item !== allValue), next];
+      dispatch('value', value);
       dispatch('change', value);
       return;
     }
     value = next;
     customValue = next;
+    dispatch('value', value);
     dispatch('change', value);
   }
 
   function select(next: string) {
     if (multiple && next === allValue) {
       value = selectedValues.includes(allValue) ? [] : [allValue];
+      dispatch('value', value);
       dispatch('change', value);
       query = '';
       return;
@@ -134,12 +137,14 @@
   function clearCustom() {
     value = '';
     customValue = '';
+    dispatch('value', value);
     dispatch('change', value);
   }
 
   function removeSelected(selectedValue: string) {
     if (!multiple) return;
     value = selectedValues.filter((item) => item !== selectedValue);
+    dispatch('value', value);
     dispatch('change', value);
   }
 
@@ -160,6 +165,7 @@
     if (target < 0) return;
     next.splice(target + (after ? 1 : 0), 0, draggedValue);
     value = next;
+    dispatch('value', value);
     dispatch('change', value);
   }
 
@@ -176,6 +182,7 @@
     next.push(draggedValue);
     if (next.every((item, index) => item === selectedValues[index])) return;
     value = next;
+    dispatch('value', value);
     dispatch('change', value);
   }
 

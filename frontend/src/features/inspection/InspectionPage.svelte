@@ -6,13 +6,13 @@
   import TextArea from '../../components/TextArea.svelte';
   import {
     api,
-    ApiError,
     type InspectionFinding,
     type InspectionPolicy,
     type InspectionRun,
     type PersonaCatalogItem,
     type Resource
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
 
   export let scopeId = '';
   export let executableTargets: Resource[] = [];
@@ -49,14 +49,11 @@
   }
 
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError) {
-      if (error.status === 403) return '当前账号没有执行此操作的权限。';
-      if (error.status === 401) return '会话已过期，请重新登录。';
-      return error.message || fallback;
-    }
-    if (error instanceof SyntaxError) return '配置必须是有效的 JSON 对象。';
-    if (error instanceof Error) return error.message || fallback;
-    return fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前账号没有执行此操作的权限。',
+      unauthorized: '会话已过期，请重新登录。',
+      invalidJson: '配置必须是有效的 JSON 对象。'
+    });
   }
 
   async function loadInspection(targetScopeId = scopeId) {
@@ -174,7 +171,7 @@
             >{/each}
         </div>
       </fieldset>
-      <FormField label="解释 Persona（可选）"><DropdownSelect bind:value={personaId} options={personaOptions} placeholder="使用内置巡检解释 Persona" ariaLabel="解释 Persona" /></FormField>
+      <FormField label="解释 Persona（可选）" asLabel={false}><DropdownSelect bind:value={personaId} options={personaOptions} placeholder="使用内置巡检解释 Persona" ariaLabel="解释 Persona" /></FormField>
       <button
         class="primary"
         disabled={busy ||

@@ -26,7 +26,6 @@
   import AccessManagementWorkbench from './AccessManagementWorkbench.svelte';
   import {
     api,
-    ApiError,
     type AuditEvent,
     type Group,
     type Project,
@@ -38,6 +37,7 @@
     type Team,
     type User
   } from '../../lib/api';
+  import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import {
     actorPermissionsAtScope as getActorPermissionsAtScope,
     organizationScopeVisible,
@@ -277,12 +277,10 @@
   );
 
   function describeError(error: unknown, fallback: string) {
-    if (error instanceof ApiError) {
-      if (error.status === 403) return '当前账号没有执行此操作的权限。';
-      if (error.status === 401) return '会话已过期，请重新登录。';
-      return error.message || fallback;
-    }
-    return error instanceof Error ? error.message || fallback : fallback;
+    return formatErrorMessage(error, fallback, {
+      forbidden: '当前账号没有执行此操作的权限。',
+      unauthorized: '会话已过期，请重新登录。'
+    });
   }
   async function action(operation: () => Promise<void>) {
     busy = true;

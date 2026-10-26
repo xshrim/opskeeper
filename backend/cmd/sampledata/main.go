@@ -34,15 +34,6 @@ var sampleUsernames = []string{
 	"sunmin",
 }
 
-var legacySampleUsernames = []string{
-	"sample_platform",
-	"sample_team_admin",
-	"sample_team_ops",
-	"sample_project_mix",
-	"sample_project_gamma",
-	"sample_project_viewer",
-}
-
 type team struct {
 	key      string
 	name     string
@@ -512,9 +503,8 @@ func clean(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := tx.QueryRow(ctx, `
 		SELECT COALESCE(array_agg(id::text), ARRAY[]::text[])
 		  FROM users
-		 WHERE (username = ANY($1::text[]) AND email LIKE $2)
-		    OR (username = ANY($3::text[]) AND email LIKE $4)`,
-		sampleUsernames, "%@"+emailDomain, legacySampleUsernames, "%@sample.opskeeper.invalid").Scan(&userIDs); err != nil {
+		 WHERE username = ANY($1::text[]) AND email LIKE $2`,
+		sampleUsernames, "%@"+emailDomain).Scan(&userIDs); err != nil {
 		return fmt.Errorf("find sample users: %w", err)
 	}
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id::text), ARRAY[]::text[]), COALESCE(array_agg(scope_id::text), ARRAY[]::text[]) FROM teams WHERE labels->>$1 = $2`, markerKey, markerValue).Scan(&teamIDs, &teamScopeIDs); err != nil {

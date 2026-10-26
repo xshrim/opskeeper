@@ -12,6 +12,40 @@ type fakeRunner struct {
 	run func(context.Context, Request) (Result, error)
 }
 
+func TestRuntimeSharesExecutionBudgetsWithNestedRuns(t *testing.T) {
+	var runtime *Runtime
+	var rootBudget *executionBudget
+	runtime = New(fakeRunner{run: func(ctx context.Context, request Request) (Result, error) {
+		budget := executionBudgetFromContext(ctx)
+		if request.ExecutionID == "root-budget" {
+			rootBudget = budget
+			budget.addIteration()
+			budget.addToolCall()
+			_, err := runtime.Execute(ctx, Request{ExecutionID: "child-budget", ScopeID: request.ScopeID, Task: "child"})
+			return Result{}, err
+		}
+		if budget != rootBudget {
+			t.Fatal("nested execution did not inherit its parent's budget")
+		}
+		budget.addIteration()
+		budget.addToolCall()
+		budget.addTokens(17)
+		return Result{Status: StatusSucceeded}, nil
+	}})
+	if _, err := runtime.Execute(context.Background(), Request{ExecutionID: "root-budget", ScopeID: "scope-1", Task: "root"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := rootBudget.iterations.Load(); got != 2 {
+		t.Fatalf("shared iterations = %d, want 2", got)
+	}
+	if got := rootBudget.toolCalls.Load(); got != 2 {
+		t.Fatalf("shared tool calls = %d, want 2", got)
+	}
+	if got := rootBudget.tokens.Load(); got != 17 {
+		t.Fatalf("shared tokens = %d, want 17", got)
+	}
+}
+
 type fakePlanResolver struct{ calls int }
 
 func (f *fakePlanResolver) ResolvePlan(context.Context, string, string, string) (ExecutionPlan, error) {
@@ -282,7 +316,7 @@ func TestRuntimeResolvesPersonaBeforeRunner(t *testing.T) {
 }
 
 func TestManagerDelegatesOnlyMatchingSelectedResourcesToWorker(t *testing.T) {
-	manager := Persona{PersonaID: "manager", ScopeID: "scope-1", Name: "Operations Lead", Enabled: true, Role: "manager", WorkerPersonaIDs: []string{"postgres-worker"}, MaxDispatch: 2}
+	manager := Persona{PersonaID: "manager", ScopeID: "scope-1", Name: "Operations Lead", Enabled: true, Role: "manager", WorkerPersonaIDs: []string{"postgres-worker"}}
 	worker := Persona{PersonaID: "postgres-worker", ScopeID: "scope-1", Name: "PostgreSQL Expert", Enabled: true, Role: "worker", Domain: "postgresql", Instruction: "Inspect PostgreSQL."}
 	var lastContextRequest ContextRequest
 	contextResolver := fakeRuntimeContextResolver{request: &lastContextRequest, resolved: ResolvedContext{Resources: []ContextResource{
