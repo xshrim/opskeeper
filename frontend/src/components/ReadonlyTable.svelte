@@ -9,7 +9,7 @@
 
 <script lang="ts">
   export let columns: ReadonlyTableColumn[] = [];
-  export let rows: unknown[] = [];
+  export let rows: any[] = [];
   export let emptyText = '';
 </script>
 

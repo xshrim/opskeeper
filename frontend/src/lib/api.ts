@@ -1007,6 +1007,10 @@ export const api = {
     request<{ items: Array<{ namespace: string; name: string; kind: string; ready: boolean; phase?: string; restarts?: number; labels?: Record<string, string>; pods: Array<{ namespace: string; name: string; containers?: string[] }> }>; count: number }>(
       `api/v1/resources/${resourceId}/kubernetes/workloads?namespace=${encodeURIComponent(params.namespace)}&filters=${encodeURIComponent(params.filters ?? '')}&limit=${params.limit ?? 100}`
     ),
+  applicationBindingPreview: (resourceId: string, runtimeKind: string, keyword: string) =>
+    request<{ items: Array<{ id: string; name: string; detail?: string; status?: string }>; count: number }>(
+      `api/v1/resources/${resourceId}/application-bindings/preview?runtime_kind=${encodeURIComponent(runtimeKind)}&keyword=${encodeURIComponent(keyword)}`
+    ),
   contextResources: () =>
     request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),

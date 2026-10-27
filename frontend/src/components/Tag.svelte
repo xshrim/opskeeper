@@ -20,7 +20,7 @@
   class:tag-overflow={overflow}
   data-tag-measure={measure ? '' : undefined}
   style={`--tag-max-width: ${maxWidth || '100%'}`}
-  title={textMode === 'ellipsis' && tooltipOnTruncate ? value : undefined}
+  data-tooltip={textMode === 'ellipsis' && tooltipOnTruncate ? value : undefined}
   aria-label={value}>{value}</span
 >
 

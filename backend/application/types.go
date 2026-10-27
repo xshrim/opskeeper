@@ -100,6 +100,7 @@ type UpdateInput struct {
 	Critical                        *bool
 	TechnicalOwnerIDs               *[]string
 	OperationsOwnerIDs              *[]string
+	Instances                       *[]CreateInstanceInput
 }
 type CreateInstanceInput struct {
 	ApplicationID    string         `json:"application_id,omitempty"`

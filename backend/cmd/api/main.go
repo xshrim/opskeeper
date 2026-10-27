@@ -166,6 +166,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, connector.NewStore(pool), connectorLimits)
 	connectorService.SetPostgresPool(pool)
+	applicationService.SetBindingValidator(connectorService)
 	llmService := llm.NewService(llm.NewStore(pool), llm.NewProviderStore(pool, credentialEncryptor))
 	skillStore := skill.NewStore(pool)
 	skillService := skill.NewService(skillStore, skill.NewCatalog(pool), resourceService)

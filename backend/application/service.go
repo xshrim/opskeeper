@@ -33,9 +33,19 @@ type Store interface {
 	Workspace(context.Context, string) (Workspace, error)
 }
 
-type Service struct{ store Store }
+type BindingValidator interface {
+	ValidateApplicationBinding(context.Context, string, string, map[string]any) error
+}
+
+type Service struct {
+	store            Store
+	bindingValidator BindingValidator
+}
 
 func NewService(store Store) *Service { return &Service{store: store} }
+func (s *Service) SetBindingValidator(validator BindingValidator) {
+	s.bindingValidator = validator
+}
 func validateCreate(in CreateInput) error {
 	if strings.TrimSpace(in.Name) == "" || !codePattern.MatchString(strings.TrimSpace(in.Code)) {
 		return ErrInvalid
@@ -111,7 +121,25 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Application, erro
 	if err != nil {
 		return Application{}, err
 	}
+	for _, instance := range in.Instances {
+		if err := s.validateBinding(ctx, instance.RuntimeKind, instance.TargetResourceID, instance.Selector); err != nil {
+			return Application{}, err
+		}
+	}
 	return s.store.Create(ctx, in)
+}
+
+func (s *Service) validateBinding(ctx context.Context, runtimeKind, resourceID string, selector map[string]any) error {
+	if runtimeKind == RuntimeKubernetes {
+		return nil
+	}
+	if s.bindingValidator == nil {
+		return fmt.Errorf("%w: application binding validation is unavailable", ErrInvalid)
+	}
+	if err := s.bindingValidator.ValidateApplicationBinding(ctx, runtimeKind, resourceID, selector); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return nil
 }
 
 func PrepareCreateInput(in CreateInput) (CreateInput, error) {
@@ -157,7 +185,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
 		return Application{}, ErrInvalid
 	}
-	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil {
+	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil {
 		return Application{}, ErrInvalid
 	}
 	if in.Name != nil {
@@ -188,6 +216,32 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 		}
 		in.OperationsOwnerIDs = &owners
 	}
+	if in.Instances != nil {
+		current, err := s.store.Get(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id))
+		if err != nil {
+			return Application{}, err
+		}
+		if current.RuntimeKind != RuntimeKubernetes && len(*in.Instances) == 0 {
+			return Application{}, ErrInvalid
+		}
+		seen := make(map[string]struct{}, len(*in.Instances))
+		for index := range *in.Instances {
+			instance := &(*in.Instances)[index]
+			instance.Name = strings.TrimSpace(instance.Name)
+			instance.TargetResourceID = strings.TrimSpace(instance.TargetResourceID)
+			instance.RuntimeKind = current.RuntimeKind
+			if instance.Name == "" || instance.TargetResourceID == "" || !validSelector(current.RuntimeKind, instance.Selector) {
+				return Application{}, ErrInvalid
+			}
+			if _, exists := seen[instance.Name]; exists {
+				return Application{}, ErrInvalid
+			}
+			seen[instance.Name] = struct{}{}
+			if err := s.validateBinding(ctx, current.RuntimeKind, instance.TargetResourceID, instance.Selector); err != nil {
+				return Application{}, err
+			}
+		}
+	}
 	return s.store.Update(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id), in)
 }
 func (s *Service) DeleteInProject(ctx context.Context, projectID, id string) error {
@@ -215,6 +269,9 @@ func (s *Service) CreateInstanceInProject(ctx context.Context, projectID, applic
 	}
 	if app.RuntimeKind != in.RuntimeKind || !validSelector(in.RuntimeKind, in.Selector) {
 		return Instance{}, ErrInvalid
+	}
+	if err := s.validateBinding(ctx, in.RuntimeKind, in.TargetResourceID, in.Selector); err != nil {
+		return Instance{}, err
 	}
 	in.ApplicationID = applicationID
 	return s.store.CreateInstance(ctx, strings.TrimSpace(projectID), strings.TrimSpace(applicationID), in)

@@ -29,6 +29,7 @@
   export let widthTargetRatio = 0;
   export let overflowMode: DialogOverflow = 'scroll';
   export let autoHeight = true;
+  export let initialCenterRatio = 0.42;
   export let onCancel: () => void = () => {};
   export let onBack: () => void | Promise<void> = () => {};
   export let onConfirm: () => void | Promise<void> = () => {};
@@ -52,6 +53,7 @@
   {widthTargetRatio}
   {overflowMode}
   {autoHeight}
+  {initialCenterRatio}
   {closeOnBackdrop}
   onBackdrop={onCancel}
 >
@@ -165,7 +167,12 @@
   :global(.dialog.modal-dialog-size-medium) { width: min(680px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog-size-large) { width: min(900px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog-size-wide) { width: min(1100px, calc(100vw - 40px)); }
-  :global(.dialog.modal-dialog.application-wizard-dialog) { width: min(820px, calc(100vw - 40px)); }
+  :global(.dialog.modal-dialog.application-wizard-dialog) {
+    width: min(820px, calc(100vw - 40px));
+    max-height: none;
+    overflow: visible;
+  }
+  :global(.dialog.modal-dialog.application-wizard-dialog) > .modal-dialog-content { overflow: visible; }
   :global(.dialog.modal-dialog.wide-dialog) { width: min(720px, calc(100vw - 40px)); }
   :global(.dialog.dialog-overflow-expand) {
     width: max-content;

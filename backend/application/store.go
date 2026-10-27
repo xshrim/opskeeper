@@ -193,9 +193,25 @@ WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 		query += ` AND a.project_id=$10::uuid`
 	}
 	query, args = visibleApplications(query+` RETURNING a.id`, args, ctx)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Application{}, fmt.Errorf("begin update application: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var updatedID string
-	if err := s.pool.QueryRow(ctx, query, args...).Scan(&updatedID); err != nil {
+	if err := tx.QueryRow(ctx, query, args...).Scan(&updatedID); err != nil {
 		return Application{}, mapStoreError(err)
+	}
+	if input.Instances != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id=$1::uuid`, updatedID); err != nil {
+			return Application{}, fmt.Errorf("replace application instances: %w", err)
+		}
+		if err := insertInstances(ctx, tx, updatedID, *input.Instances); err != nil {
+			return Application{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Application{}, fmt.Errorf("commit update application: %w", err)
 	}
 	return s.Get(ctx, projectID, updatedID)
 }

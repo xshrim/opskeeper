@@ -7,6 +7,7 @@ export type ApplicationInstanceDraft = {
   name: string;
   targetResourceId: string;
   selector: Record<string, unknown>;
+  status?: string;
 };
 
 export type ApplicationDraft = {

@@ -27,16 +27,15 @@
     type User
   } from '../../lib/api';
   import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
-  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
-  import StatusBadge from '../../components/StatusBadge.svelte';
-  import FormField from '../../components/FormField.svelte';
-  import IconPicker from '../../components/IconPicker.svelte';
-  import DropdownSelect from '../../components/DropdownSelect.svelte';
-  import SearchInput from '../../components/SearchInput.svelte';
-  import ScopeChip from '../../components/ScopeChip.svelte';
-  import TextInput from '../../components/TextInput.svelte';
+import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+import StatusBadge from '../../components/StatusBadge.svelte';
+import ExpandableTable from '../../components/ExpandableTable.svelte';
+import ReadonlyTable from '../../components/ReadonlyTable.svelte';
+import type { ReadonlyTableColumn } from '../../components/ReadonlyTable.svelte';
+import SearchInput from '../../components/SearchInput.svelte';
+import ScopeChip from '../../components/ScopeChip.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
-  import { formatLabels, labelTags, parseLabels } from '../../lib/labels';
+import { labelTags } from '../../lib/labels';
   import TagList from '../../components/TagList.svelte';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
@@ -74,7 +73,6 @@
   let workspace: ProjectWorkspace | null = null;
   let workspaceProjectId = '';
   let loadingWorkspace = false;
-  let expanded = new Set<string>();
   let collapsedTeams = new Set<string>();
   let initializedTeamKey = '';
   let teamFilterElement: HTMLElement;
@@ -87,18 +85,25 @@
   let projectCreateOpen = false;
   let editingProject: Project | null = null;
   let applicationWizardOpen = false;
-  let editingAppId = '';
-  let editName = '';
-  let editDescription = '';
-  let editLabels = '';
-  let editIcon = 'lucide:AppWindow';
-  let editCritical = false;
-  let editTechnicalOwnerIds: string[] = [];
-  let editOperationsOwnerIds: string[] = [];
+  let editingApplication: Application | null = null;
   let deletingProject: Project | null = null;
-  let deletingApplication: Application | null = null;
-  let selectedApplicationId = '';
+  let deletingApplications: Application[] = [];
+  let selectedApplicationIds: string[] = [];
   let users: User[] = [];
+
+  const applicationColumns: ReadonlyTableColumn[] = [
+    { key: 'application', label: '应用', width: '42%' },
+    { key: 'instances', label: '实例', width: '14%' },
+    { key: 'status', label: '状态', width: '16%' },
+    { key: 'actions', label: '操作', width: '28%' }
+  ];
+  const applicationInstanceColumns: ReadonlyTableColumn[] = [
+    { key: 'name', label: '实例', width: '22%' },
+    { key: 'runtime', label: '运行时', width: '14%' },
+    { key: 'resource', label: '运行资源', width: '24%' },
+    { key: 'selector', label: '定位条件', width: '28%' },
+    { key: 'status', label: '状态', width: '12%' }
+  ];
 
   onMount(() => {
     const resizeObserver = new ResizeObserver(() => void measureTeamFilter());
@@ -118,6 +123,7 @@
     visibleProjects.find((project) => project.id === selectedProjectId) ??
     allProjects.find((project) => project.id === selectedProjectId) ??
     null;
+  $: selectedApplications = workspace?.applications.filter((application) => selectedApplicationIds.includes(application.id)) ?? [];
   $: normalizedProjectSearch = projectSearch.trim().toLocaleLowerCase();
   $: filteredProjects = normalizedProjectSearch
     ? visibleProjects.filter((project) =>
@@ -141,18 +147,14 @@
     collapsedTeams = new Set(teams.slice(3).map((team) => team.id));
   }
   $: if (selectedProjectId && selectedProjectId !== workspaceProjectId) {
-    selectedApplicationId = '';
+    selectedApplicationIds = [];
     void loadWorkspace(selectedProjectId);
   }
   $: if (!selectedProjectId) {
     workspace = null;
     workspaceProjectId = '';
-    expanded = new Set<string>();
-    selectedApplicationId = '';
+    selectedApplicationIds = [];
   }
-  $: selectedApplication =
-    workspace?.applications.find((application) => application.id === selectedApplicationId) ??
-    null;
 
   async function measureTeamFilter() {
     await tick();
@@ -231,10 +233,23 @@
     next.has(id) ? next.delete(id) : next.add(id);
     collapsedTeams = next;
   }
-  function toggle(app: Application) {
-    selectedApplicationId = app.id;
-    const next = new Set(expanded);
-    next.has(app.id) ? next.delete(app.id) : next.add(app.id);
+  function applicationInstanceRows(application: Application) {
+    return application.instances.map((instance) => ({
+      name: instance.name,
+      runtime: runtimeLabel(instance.runtime_kind as 'virtual_machine' | 'containerized' | 'cloud_native'),
+      resource: instance.target_resource_name || instance.target_resource_id,
+      selector: Object.entries(instance.selector)
+        .filter(([, value]) => typeof value === 'string' && value)
+        .map(([key, value]) => key + '=' + value)
+        .join(' · ') || '—',
+      status: statusLabel(instance.status),
+      tone: instance.status
+    }));
+  }
+
+  function ownerLabel(ids: string[]) {
+    const names = ids.map((id) => ownerOptions.find((option) => option.value === id)?.label || id);
+    return names.length ? names.join('、') : '未配置';
   }
   async function loadWorkspace(id: string) {
     loadingWorkspace = true;
@@ -263,7 +278,8 @@
         name: instance.name,
         runtime_kind: draft.runtimeKind,
         target_resource_id: instance.targetResourceId,
-        selector: instance.selector
+        selector: instance.selector,
+        status: instance.status
       }))
     };
   }
@@ -318,32 +334,23 @@
     await loadWorkspace(selectedProjectId);
     onNotice(`${drafts.length} 个应用已新增`);
   }
-  function beginEdit(app: Application) {
-    editingAppId = app.id;
-    editName = app.name;
-    editDescription = app.description;
-    editLabels = formatLabels(app.labels);
-    editIcon = app.icon;
-    editCritical = app.critical;
-    editTechnicalOwnerIds = [...app.technical_owner_ids];
-    editOperationsOwnerIds = [...app.operations_owner_ids];
-  }
-  async function saveEdit(app: Application) {
+  async function updateApplication(app: Application, draft: ApplicationDraft) {
     try {
       await api.updateApplication(selectedProjectId, app.id, {
-        name: editName,
-        description: editDescription,
-        icon: editIcon,
-        labels: parseLabels(editLabels),
-        critical: editCritical,
-        technical_owner_ids: editTechnicalOwnerIds,
-        operations_owner_ids: editOperationsOwnerIds
+        name: draft.name,
+        description: draft.description,
+        icon: draft.icon,
+        labels: draft.labels,
+        critical: draft.critical,
+        technical_owner_ids: draft.technicalOwnerIds,
+        operations_owner_ids: draft.operationsOwnerIds,
+        instances: applicationPayload(draft).instances
       });
-      editingAppId = '';
+      editingApplication = null;
       await loadWorkspace(selectedProjectId);
       onNotice('应用已更新');
     } catch (error) {
-      onError(describeError(error, '更新应用失败'));
+      throw new Error(describeError(error, '更新应用失败'));
     }
   }
   async function confirmProjectDelete() {
@@ -360,14 +367,14 @@
     }
   }
   async function confirmApplicationDelete() {
-    if (!deletingApplication || !selectedProjectId) return;
-    const application = deletingApplication;
+    if (!deletingApplications.length || !selectedProjectId) return;
     try {
-      await api.deleteApplication(selectedProjectId, application.id);
-      deletingApplication = null;
-      if (selectedApplicationId === application.id) selectedApplicationId = '';
+      await Promise.all(deletingApplications.map((application) => api.deleteApplication(selectedProjectId, application.id)));
+      const deletedCount = deletingApplications.length;
+      deletingApplications = [];
+      selectedApplicationIds = [];
       await loadWorkspace(selectedProjectId);
-      onNotice(`应用“${application.name}”已删除，关联资源未受影响`);
+      onNotice(String(deletedCount) + ' 个应用已删除，关联资源未受影响');
     } catch (error) {
       onError(describeError(error, '删除应用失败'));
     }
@@ -588,6 +595,7 @@
     </div>
     <div class="resource-map-columns">
       <section class="map-main-column">
+        <section class="panel project-applications-panel">
         <div class="section-heading">
           <div>
             <h2>项目应用</h2>
@@ -605,120 +613,59 @@
             ><button
               class="danger-button workspace-action"
               type="button"
-              disabled={!selectedApplication}
-              data-tooltip={selectedApplication ? `删除应用 ${selectedApplication.name}` : '请先展开要删除的应用'}
-              on:click={() => selectedApplication && (deletingApplication = selectedApplication)}
+              disabled={!selectedApplications.length}
+              data-tooltip={selectedApplications.length ? `删除所选 ${selectedApplications.length} 个应用` : '请先选择应用'}
+              on:click={() => (deletingApplications = selectedApplications)}
               ><Trash2 size={15} />删除应用</button
             ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />新增应用</button>
           </div>
         </div>
-        {#if loadingWorkspace}<div class="panel map-loading">
-            正在加载项目驾驶舱...
-          </div>{:else if workspace?.applications.length}{#each workspace.applications as app}<article
-              class:selected={selectedApplicationId === app.id}
-              class="application-map-card panel"
-              class:expanded={expanded.has(app.id)}
-            >
-              <div class="application-card-head">
-                <button
-                  class="application-toggle"
-                  type="button"
-                  on:click={() => toggle(app)}
-                  ><EntityBrandIcon
-                    kind="Application"
-                    fallback={app.icon || 'lucide:AppWindow'}
-                    size={19}
-                    className="application-icon"
-                  /><span class="application-title"
-                    ><strong>{app.name}</strong><small
-                      >{app.code} · {runtimeLabel(
-                        app.runtime_kind as
-                          'virtual_machine' | 'containerized' | 'cloud_native'
-                      )}</small
-                    ></span
-                  ></button
-                >
-                <div class="application-card-meta">
-                  <span>{app.instances.length} 实例</span><StatusBadge
-                    className="status-label"
-                    tone={app.status}
-                    label={statusLabel(app.status)} />
-                  ><button
-                    class="icon-button edit-action"
-                    type="button"
-                    data-tooltip="AI 诊断"
-                    aria-label="AI 诊断"
-                    on:click|stopPropagation={() =>
-                      onOpenApplicationDiagnosis(selectedProject, app)}
-                    ><Sparkles size={14} /></button
-                  ><button
-                    class="icon-button"
-                    type="button"
-                    data-tooltip="编辑应用"
-                    aria-label="编辑应用"
-                    on:click|stopPropagation={() => beginEdit(app)}
-                    ><Pencil size={14} /></button
-                  ><button
-                    class="icon-button danger-action delete-action"
-                    type="button"
-                    data-tooltip="删除应用"
-                    aria-label={`删除应用 ${app.name}`}
-                    on:click|stopPropagation={() => (deletingApplication = app)}
-                    ><Trash2 size={14} /></button
-                  ><button
-                    class="icon-button"
-                    type="button"
-                    data-tooltip="展开详情"
-                    aria-label="展开详情"
-                    on:click={() => toggle(app)}
-                    ><span class:rotate={expanded.has(app.id)}
-                      ><ChevronDown size={18} /></span
-                    ></button
-                  >
+        {#if loadingWorkspace}<div class="map-loading">正在加载项目驾驶舱...</div>
+        {:else if workspace?.applications.length}
+          <ExpandableTable
+            columns={applicationColumns}
+            rows={workspace.applications}
+            rowKey={(application) => application.id}
+            expandable
+            selectable
+            selectedIds={selectedApplicationIds}
+            onSelectionChange={(ids) => (selectedApplicationIds = ids)}
+            emptyText="当前项目暂无应用"
+          >
+            <svelte:fragment slot="cell" let:row let:column>
+              {#if column.key === 'application'}
+                <span class="application-table-name"><EntityBrandIcon kind="Application" fallback={row.icon || 'lucide:AppWindow'} size={17} /><span><strong>{row.name}</strong><small>{row.code} · {runtimeLabel(row.runtime_kind)}</small></span></span>
+              {:else if column.key === 'instances'}{row.instances.length} 个实例
+              {:else if column.key === 'status'}<StatusBadge className="status-label" tone={row.status} label={statusLabel(row.status)} />
+              {:else if column.key === 'actions'}
+                <span class="application-table-actions">
+                  <button class="icon-button edit-action" type="button" data-tooltip="AI 诊断" aria-label="AI 诊断" on:click|stopPropagation={() => onOpenApplicationDiagnosis(selectedProject, row)}><Sparkles size={14} /></button>
+                  <button class="icon-button" type="button" data-tooltip="编辑应用" aria-label="编辑应用" on:click|stopPropagation={() => (editingApplication = row)}><Pencil size={14} /></button>
+                  <button class="icon-button danger-action delete-action" type="button" data-tooltip="删除应用" aria-label={`删除应用 ${row.name}`} on:click|stopPropagation={() => (deletingApplications = [row])}><Trash2 size={14} /></button>
+                </span>
+              {/if}
+            </svelte:fragment>
+            <svelte:fragment slot="details" let:row>
+              <div class="application-detail-grid">
+                <div class="application-detail-fields">
+                  <div><small>应用名称</small><strong>{row.name}</strong></div>
+                  <div><small>应用标识</small><strong>{row.code}</strong></div>
+                  <div><small>运行时</small><strong>{runtimeLabel(row.runtime_kind)}</strong></div>
+                  <div><small>关键应用</small><strong>{row.critical ? '是' : '否'}</strong></div>
+                  <div><small>技术负责人</small><strong>{ownerLabel(row.technical_owner_ids)}</strong></div>
+                  <div><small>运维负责人</small><strong>{ownerLabel(row.operations_owner_ids)}</strong></div>
+                  <div><small>标签</small><TagList tags={labelTags(row.labels)} /></div>
+                  <div><small>描述</small><strong>{row.description || '—'}</strong></div>
                 </div>
+                <ReadonlyTable columns={applicationInstanceColumns} rows={applicationInstanceRows(row)} emptyText="未绑定运行实例">
+                  <svelte:fragment slot="cell" let:row={instance} let:column>
+                    {#if column.key === 'status'}<StatusBadge className="status-label" tone={instance.tone} label={instance.status} />{:else}{instance[column.key]}{/if}
+                  </svelte:fragment>
+                </ReadonlyTable>
               </div>
-              {#if editingAppId === app.id}<form
-                  class="inline-edit"
-                  on:submit|preventDefault={() => saveEdit(app)}
-                >
-                  <IconPicker
-                    value={editIcon}
-                    onSelect={(value) => (editIcon = value)}
-                    ariaLabel="选择应用图标"
-                  /><FormField label="应用名称" required className="inline-edit-field"><TextInput bind:value={editName} required ariaLabel="应用名称" /></FormField><FormField label="关键应用" className="inline-edit-field" asLabel={false}><DropdownSelect value={String(editCritical)} options={[{ value: 'false', label: '否' }, { value: 'true', label: '是' }]} ariaLabel="是否关键应用" on:change={(event) => (editCritical = event.detail === 'true')} /></FormField><FormField label="技术负责人" className="inline-edit-field" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editTechnicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" /></FormField><FormField label="运维负责人" className="inline-edit-field" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editOperationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" /></FormField><FormField label="应用标签" className="inline-edit-field" asLabel={false}><TextInput bind:value={editLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" ariaLabel="应用标签" /></FormField><FormField label="应用描述" className="inline-edit-field"><TextInput bind:value={editDescription} placeholder="描述" ariaLabel="应用描述" /></FormField><button class="primary" type="submit">保存</button><button
-                    class="secondary"
-                    type="button"
-                    on:click={() => (editingAppId = '')}>取消</button
-                  >
-                </form>{/if}{#if expanded.has(app.id)}<div
-                  class="application-detail-grid"
-                >
-                  <section class="detail-block">
-                    <div class="detail-heading"><h3>运行实例</h3></div>
-                    {#each app.instances as instance}<div class="instance-row">
-                        <span class="runtime-badge"
-                          >{runtimeLabel(
-                            instance.runtime_kind as
-                              | 'virtual_machine'
-                              | 'containerized'
-                              | 'cloud_native'
-                          )}</span
-                        ><span
-                          ><strong>{instance.name}</strong><small
-                            >{instance.target_resource_name ||
-                              instance.target_resource_id}</small
-                          ></span
-                        ><StatusBadge className="status-label" tone={instance.status} label={statusLabel(instance.status)} />
-                      </div>{:else}<div class="detail-empty">
-                        <AlertTriangle size={14} />未绑定运行资源
-                      </div>{/each}
-                  </section>
-                  <section class="detail-block">
-                    <div class="detail-heading"><h3>服务依赖</h3></div>
-                    <div class="detail-empty">当前阶段暂不配置服务依赖</div>
-                  </section>
-                </div>{/if}
-            </article>{/each}{:else}<div class="map-empty panel">
+            </svelte:fragment>
+          </ExpandableTable>
+        {:else}<div class="map-empty">
             <Network size={28} />
             <h3>还没有应用</h3>
             <p>使用应用向导新增 Host、Docker 或 Kubernetes 应用。</p>
@@ -729,6 +676,7 @@
               ><Plus size={15} />新增应用</button
             >
           </div>{/if}
+        </section>
       </section>
       <aside class="map-side-column">
         <section class="panel map-side-panel">
@@ -807,13 +755,15 @@
     onSave={saveProject}
     onCancel={() => { projectCreateOpen = false; editingProject = null; }}
   />{/if}
-{#if applicationWizardOpen}<ApplicationWizard
+{#if applicationWizardOpen || editingApplication}<ApplicationWizard
     resources={availableResources}
     {users}
+    initialApplication={editingApplication}
     scopeId={selectedProject?.scope.id ?? selectedScopeId}
     onSave={saveApplications}
+    onUpdate={updateApplication}
     {onResourceCreated}
-    onCancel={() => (applicationWizardOpen = false)}
+    onCancel={() => { applicationWizardOpen = false; editingApplication = null; }}
   />{/if}
 {#if deletingProject}
   <DeleteConfirmationDialog
@@ -826,14 +776,14 @@
     onConfirm={confirmProjectDelete}
   />
 {/if}
-{#if deletingApplication}
+{#if deletingApplications.length}
   <DeleteConfirmationDialog
-    title={`删除应用“${deletingApplication.name}”？`}
-    name={deletingApplication.name}
-    description="将删除该应用及其运行实例和资源绑定。关联资源、项目、用户和历史审计记录不会被删除。"
+    title={`删除 ${deletingApplications.length} 个应用？`}
+    name={deletingApplications.map((application) => application.name).join('、')}
+    description="将删除所选应用及其实例和资源绑定。关联资源、项目、用户和历史审计记录不会被删除。"
     impact="此操作不可撤销。"
     {busy}
-    onCancel={() => (deletingApplication = null)}
+    onCancel={() => (deletingApplications = [])}
     onConfirm={confirmApplicationDelete}
   />
 {/if}

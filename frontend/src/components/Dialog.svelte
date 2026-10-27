@@ -13,6 +13,7 @@
   export let widthTargetRatio = 0;
   export let overflowMode: 'clip' | 'scroll' | 'expand' = 'scroll';
   export let autoHeight = false;
+  export let initialCenterRatio = 0.42;
   export let onBackdrop: () => void = () => {};
 
   let dialogElement: HTMLDialogElement;
@@ -104,7 +105,7 @@
         : (window.innerWidth - expandedRect.width) / 2;
     const top = preservePosition
       ? currentRect.top
-      : (window.innerHeight - expandedRect.height) / 2;
+      : window.innerHeight * initialCenterRatio - expandedRect.height / 2;
     setGeometry(
       left,
       top,

@@ -37,14 +37,15 @@ type createApplicationRequest struct {
 	Instances          []application.CreateInstanceInput `json:"instances"`
 }
 type updateApplicationRequest struct {
-	Name               *string            `json:"name"`
-	Description        *string            `json:"description"`
-	Icon               *string            `json:"icon"`
-	Status             *string            `json:"status"`
-	Labels             *map[string]string `json:"labels"`
-	Critical           *bool              `json:"critical"`
-	TechnicalOwnerIDs  *[]string          `json:"technical_owner_ids"`
-	OperationsOwnerIDs *[]string          `json:"operations_owner_ids"`
+	Name               *string                            `json:"name"`
+	Description        *string                            `json:"description"`
+	Icon               *string                            `json:"icon"`
+	Status             *string                            `json:"status"`
+	Labels             *map[string]string                 `json:"labels"`
+	Critical           *bool                              `json:"critical"`
+	TechnicalOwnerIDs  *[]string                          `json:"technical_owner_ids"`
+	OperationsOwnerIDs *[]string                          `json:"operations_owner_ids"`
+	Instances          *[]application.CreateInstanceInput `json:"instances"`
 }
 type createInstanceRequest struct {
 	Name             string         `json:"name"`
@@ -114,7 +115,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

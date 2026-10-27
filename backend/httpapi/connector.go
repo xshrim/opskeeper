@@ -21,6 +21,9 @@ type connectorService interface {
 type kubernetesWorkloadService interface {
 	ListKubernetesWorkloads(context.Context, string, string, string, int) (connector.WorkloadDiscovery, error)
 }
+type applicationBindingPreviewService interface {
+	PreviewApplicationBinding(context.Context, string, string, map[string]any) (connector.ApplicationBindingPreview, error)
+}
 type dockerDraftConnectorService interface {
 	TestDockerDraft(context.Context, connector.DockerDraftInput) (connector.DockerDraftCheck, error)
 }
@@ -92,6 +95,21 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 				return
 			}
 			writeJSON(w, http.StatusOK, items)
+		})
+	}
+	if bindings, ok := service.(applicationBindingPreviewService); ok {
+		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-bindings/preview", func(w http.ResponseWriter, r *http.Request) {
+			runtimeKind := r.URL.Query().Get("runtime_kind")
+			selectorKey := "process_keyword"
+			if runtimeKind == "containerized" {
+				selectorKey = "container_name"
+			}
+			preview, err := bindings.PreviewApplicationBinding(r.Context(), runtimeKind, chi.URLParam(r, "resourceID"), map[string]any{selectorKey: r.URL.Query().Get("keyword")})
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, preview)
 		})
 	}
 	router.With(guard(authorization.ResourceUse)).Post("/resources/{resourceID}/connection-tests", handler.test)
