@@ -256,7 +256,8 @@
 .runtime-choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .runtime-choice-grid button { display: grid; gap: 9px; min-height: 150px; padding: 20px; text-align: left; color: var(--theme-fg); background: var(--theme-bg-surface); border: 1px solid var(--theme-border); border-radius: 6px; }
 .runtime-choice-grid button:hover, .runtime-choice-grid button.selected { border-color: var(--theme-border-focus); background: var(--theme-bg-selected); }
-.runtime-choice-grid strong { font-size: 16px; }
+.runtime-choice-grid strong { display: flex; align-items: baseline; gap: 8px; font-size: 16px; }
+.runtime-choice-grid .runtime-choice-kind { font-size: 12px; font-weight: 400; }
 .runtime-choice-grid small, .discovery-toolbar small { color: var(--theme-fg-muted); font-size: 12px; }
 .wizard-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .application-form-grid { display: grid; gap: 16px; }
@@ -291,13 +292,13 @@
 .workload-row small, .project-draft-row small, .instance-row small { color: var(--theme-fg-muted); font-size: 12px; }
 .workload-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: 1px solid var(--theme-border); border-radius: 5px; }
 .workload-name { max-width: 220px; }
-.instance-draft-head, .instance-draft-row { display: grid; grid-template-columns: 24px minmax(100px, 1fr) minmax(130px, 1fr) minmax(140px, 1.2fr) max-content 28px; gap: 10px; align-items: center; }
+.instance-draft-head, .instance-draft-row { display: grid; grid-template-columns: 24px minmax(100px, 1fr) minmax(130px, 1fr) minmax(140px, 1.2fr) max-content 32px; gap: 10px; align-items: center; }
 .instance-draft-head { min-height: 28px; padding: 0 12px; color: var(--theme-fg-subtle); background: var(--theme-bg-subtle); border-bottom: 1px solid var(--theme-divider); font-size: 10px; font-weight: 600; }
 .instance-draft-row { padding: 8px 12px; background: transparent; border: 0; border-radius: 0; }
 .instance-draft-entry { display: grid; gap: 0; overflow: hidden; background: var(--theme-bg-surface); border: 1px solid var(--theme-border); border-radius: 5px; }
 .instance-draft-entry.preview-open .instance-draft-row { border-bottom: 1px solid var(--theme-divider); }
 .instance-cell { min-width: 0; }
-.binding-preview-button { flex: none; align-self: center; white-space: nowrap; }
+.binding-preview-button { width: 32px; height: 32px; flex: none; align-self: center; padding: 0; background: transparent; border: 0; border-radius: 6px; white-space: nowrap; }
 .binding-preview-state { --binding-preview-accent: var(--theme-fg-subtle); display: grid; place-items: center; width: 24px; height: 36px; padding: 0; color: var(--binding-preview-accent); background: transparent; border: 0; border-radius: 4px; cursor: pointer; }
 .binding-preview-state:hover { background: transparent; }
 .binding-preview-state svg { color: var(--binding-preview-accent) !important; stroke: var(--binding-preview-accent) !important; }
@@ -995,6 +996,10 @@
   gap: 8px;
 }
 
+.application-table-name {
+  max-width: 100%;
+}
+
 .application-table-name > span {
   display: grid;
   min-width: 0;
@@ -1004,8 +1009,8 @@
 .application-table-name strong {
   overflow: hidden;
   color: var(--theme-fg-strong);
-  font-size: 12px;
-  font-weight: 550;
+  font-size: 13px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1015,8 +1020,62 @@
   font-size: 10px;
 }
 
+.application-table-value {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.application-table-value strong {
+  overflow: hidden;
+  color: var(--theme-fg);
+  font-size: 12px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-table-value small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
+
+.application-table-count {
+  color: var(--theme-fg);
+  white-space: nowrap;
+}
+
+.application-table-tags {
+  width: 100%;
+  overflow: hidden;
+}
+
+.expandable-table th.application-actions-column {
+  text-align: right;
+}
+
+.expandable-table td.application-actions-column {
+  text-align: left;
+}
+
 .application-table-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 5px;
+}
+
+.application-table-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.application-table-actions .icon-button:not(.edit-action):not(.danger-action):hover {
+  color: var(--color-primary);
+  background: var(--theme-bg-hover);
 }
 
 .application-card-head {

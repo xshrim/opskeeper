@@ -52,3 +52,11 @@ export function scopeContains(scopes: ScopeChoice[], ancestorId: string, scopeId
   }
   return false;
 }
+
+export function scopesInWorkspace(scopes: ScopeChoice[], workspaceId: string) {
+  return scopes.filter((scope) =>
+    scope.id === workspaceId ||
+    scopeContains(scopes, workspaceId, scope.id) ||
+    scopeContains(scopes, scope.id, workspaceId)
+  );
+}

@@ -166,6 +166,9 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	if input.Status != nil {
 		current.Status = *input.Status
 	}
+	if input.RuntimeKind != nil {
+		current.RuntimeKind = *input.RuntimeKind
+	}
 	if input.Labels != nil {
 		current.Labels = normalizeLabels(*input.Labels)
 	}
@@ -185,12 +188,12 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	if err != nil {
 		return Application{}, fmt.Errorf("encode application labels: %w", err)
 	}
-	args := []any{applicationID, current.Name, current.Description, current.Icon, current.Status, labels, current.Critical, current.TechnicalOwnerIDs, current.OperationsOwnerIDs}
-	query := `UPDATE applications a SET name=$2,description=$3,icon=$4,status=$5,labels=$6,critical=$7,technical_owner_ids=$8::uuid[],operations_owner_ids=$9::uuid[],updated_at=now()
+	args := []any{applicationID, current.Name, current.Description, current.Icon, current.Status, current.RuntimeKind, labels, current.Critical, current.TechnicalOwnerIDs, current.OperationsOwnerIDs}
+	query := `UPDATE applications a SET name=$2,description=$3,icon=$4,status=$5,runtime_kind=$6,labels=$7,critical=$8,technical_owner_ids=$9::uuid[],operations_owner_ids=$10::uuid[],updated_at=now()
 WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 	if strings.TrimSpace(projectID) != "" {
 		args = append(args, projectID)
-		query += ` AND a.project_id=$10::uuid`
+		query += ` AND a.project_id=$11::uuid`
 	}
 	query, args = visibleApplications(query+` RETURNING a.id`, args, ctx)
 	tx, err := s.pool.Begin(ctx)

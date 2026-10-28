@@ -51,6 +51,19 @@ func TestCreateValidatesProjectAndCode(t *testing.T) {
 	}
 }
 
+func TestCreateAllowsApplicationWithoutInstances(t *testing.T) {
+	for _, runtimeKind := range []string{RuntimeHost, RuntimeDocker, RuntimeKubernetes} {
+		store := &testStore{}
+		s := NewService(store)
+		if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: runtimeKind}); err != nil {
+			t.Fatalf("Create(%s) without instances error = %v", runtimeKind, err)
+		}
+		if len(store.input.Instances) != 0 {
+			t.Fatalf("Create(%s) instances = %#v, want none", runtimeKind, store.input.Instances)
+		}
+	}
+}
+
 func TestCreatePreservesResponsibleUserOrder(t *testing.T) {
 	store := &testStore{}
 	s := NewService(store)
@@ -96,5 +109,28 @@ func TestUpdateAllowsReplacingInstanceBindings(t *testing.T) {
 	}
 	if store.update.Instances == nil || len(*store.update.Instances) != 1 || (*store.update.Instances)[0].RuntimeKind != RuntimeHost {
 		t.Fatalf("updated instances = %#v, want normalized Host binding", store.update.Instances)
+	}
+}
+
+func TestUpdateAllowsRemovingAllInstancesAndChangingRuntime(t *testing.T) {
+	store := &testStore{app: Application{ID: "application-1", RuntimeKind: RuntimeHost, Instances: []Instance{{ID: "instance-1"}}}}
+	s := NewService(store)
+	runtimeKind := RuntimeDocker
+	instances := []CreateInstanceInput{}
+	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{RuntimeKind: &runtimeKind, Instances: &instances}); err != nil {
+		t.Fatalf("UpdateInProject() error = %v", err)
+	}
+	if store.update.RuntimeKind == nil || *store.update.RuntimeKind != RuntimeDocker || store.update.Instances == nil || len(*store.update.Instances) != 0 {
+		t.Fatalf("UpdateInProject() update = %#v, want Docker runtime and no instances", store.update)
+	}
+}
+
+func TestUpdateRejectsChangingRuntimeWhileInstancesRemain(t *testing.T) {
+	store := &testStore{app: Application{ID: "application-1", RuntimeKind: RuntimeHost, Instances: []Instance{{ID: "instance-1"}}}}
+	s := NewService(store)
+	runtimeKind := RuntimeDocker
+	instances := []CreateInstanceInput{{Name: "primary", TargetResourceID: "docker-1", Selector: map[string]any{"container_name": "orders"}}}
+	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{RuntimeKind: &runtimeKind, Instances: &instances}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("UpdateInProject() error = %v, want invalid runtime change", err)
 	}
 }

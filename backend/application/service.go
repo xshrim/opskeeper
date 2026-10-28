@@ -50,7 +50,7 @@ func validateCreate(in CreateInput) error {
 	if strings.TrimSpace(in.Name) == "" || !codePattern.MatchString(strings.TrimSpace(in.Code)) {
 		return ErrInvalid
 	}
-	if !validRuntimeKind(in.RuntimeKind) || (in.RuntimeKind != RuntimeKubernetes && len(in.Instances) == 0) {
+	if !validRuntimeKind(in.RuntimeKind) {
 		return ErrInvalid
 	}
 	seen := make(map[string]struct{}, len(in.Instances))
@@ -185,7 +185,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
 		return Application{}, ErrInvalid
 	}
-	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil {
+	if in.Name == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.RuntimeKind == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil {
 		return Application{}, ErrInvalid
 	}
 	if in.Name != nil {
@@ -216,12 +216,23 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 		}
 		in.OperationsOwnerIDs = &owners
 	}
-	if in.Instances != nil {
+	if in.RuntimeKind != nil || in.Instances != nil {
 		current, err := s.store.Get(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id))
 		if err != nil {
 			return Application{}, err
 		}
-		if current.RuntimeKind != RuntimeKubernetes && len(*in.Instances) == 0 {
+		runtimeKind := current.RuntimeKind
+		if in.RuntimeKind != nil {
+			runtimeKind = strings.TrimSpace(*in.RuntimeKind)
+			if !validRuntimeKind(runtimeKind) || (runtimeKind != current.RuntimeKind && len(current.Instances) > 0 && (in.Instances == nil || len(*in.Instances) > 0)) {
+				return Application{}, ErrInvalid
+			}
+			in.RuntimeKind = &runtimeKind
+		}
+		if in.Instances == nil {
+			return s.store.Update(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id), in)
+		}
+		if runtimeKind == "" {
 			return Application{}, ErrInvalid
 		}
 		seen := make(map[string]struct{}, len(*in.Instances))
@@ -229,15 +240,15 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 			instance := &(*in.Instances)[index]
 			instance.Name = strings.TrimSpace(instance.Name)
 			instance.TargetResourceID = strings.TrimSpace(instance.TargetResourceID)
-			instance.RuntimeKind = current.RuntimeKind
-			if instance.Name == "" || instance.TargetResourceID == "" || !validSelector(current.RuntimeKind, instance.Selector) {
+			instance.RuntimeKind = runtimeKind
+			if instance.Name == "" || instance.TargetResourceID == "" || !validSelector(runtimeKind, instance.Selector) {
 				return Application{}, ErrInvalid
 			}
 			if _, exists := seen[instance.Name]; exists {
 				return Application{}, ErrInvalid
 			}
 			seen[instance.Name] = struct{}{}
-			if err := s.validateBinding(ctx, current.RuntimeKind, instance.TargetResourceID, instance.Selector); err != nil {
+			if err := s.validateBinding(ctx, runtimeKind, instance.TargetResourceID, instance.Selector); err != nil {
 				return Application{}, err
 			}
 		}

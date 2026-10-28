@@ -3,6 +3,11 @@
   min-width: 0;
 }
 
+.resources-layout.workflow-only > :not(.resource-workspace),
+.resources-layout.workflow-only .resource-workspace > :not(.modal-dialog-backdrop) {
+  display: none !important;
+}
+
 .resource-workspace {
   min-width: 0;
 }

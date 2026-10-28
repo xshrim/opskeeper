@@ -2,6 +2,21 @@ import type { Resource } from '../../lib/api';
 
 export type ApplicationRuntimeKind = 'virtual_machine' | 'containerized' | 'cloud_native';
 
+export type RuntimeResourceKind = 'Host' | 'Docker' | 'Kubernetes';
+
+export type ApplicationResourceCreationRequest = {
+  id: string;
+  kind: RuntimeResourceKind;
+  scopeId: string;
+  instanceId?: string;
+};
+
+export type ApplicationResourceCreationResult = {
+  requestId: string;
+  instanceId?: string;
+  resource: Resource;
+};
+
 export type ApplicationInstanceDraft = {
   id: string;
   name: string;

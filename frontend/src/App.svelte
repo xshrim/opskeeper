@@ -28,7 +28,7 @@
   import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import { resourceHasConnector, resourceIcon as getResourceIcon, resourceSchemaName as getResourceSchemaName } from './lib/resources';
   import { loadResourceConnectionChecks as loadResourceConnectionChecksData } from './features/resource/resourceData';
-  import { buildScopeChoices, scopeName as getScopeName, scopeType as getScopeType, type ScopeChoice } from './lib/scope';
+import { buildScopeChoices, scopesInWorkspace, scopeName as getScopeName, scopeType as getScopeType, type ScopeChoice } from './lib/scope';
   import { viewBreadcrumb as getViewBreadcrumb, viewTitle as getViewTitle } from './lib/navigation';
   import {
     projectSelection,
@@ -82,6 +82,10 @@ import {
     type Provider
 } from './lib/api';
 import { errorMessage as formatErrorMessage } from './lib/errorMessage';
+import type {
+  ApplicationResourceCreationRequest,
+  ApplicationResourceCreationResult
+} from './features/project/projectTypes';
 
   type View =
     | 'overview'
@@ -152,6 +156,8 @@ import { errorMessage as formatErrorMessage } from './lib/errorMessage';
   let resourceRoleBindings: ResourceRoleBinding[] = [];
   let accessTab: AccessTab = 'teams';
   let openCreateTeamRequest = 0;
+  let applicationResourceRequest: ApplicationResourceCreationRequest | null = null;
+  let applicationResourceResult: ApplicationResourceCreationResult | null = null;
 
   $: scopeChoices = buildScopeChoices(platform, teams, projects);
   $: activeScope =
@@ -562,6 +568,30 @@ import { errorMessage as formatErrorMessage } from './lib/errorMessage';
   const scopeName = (id: string) => getScopeName(scopeChoices, id);
   const scopeType = (id: string) => getScopeType(scopeChoices, id);
 
+  function resourceCreateScopeChoices(
+    workspaceScopeId: string,
+    scopes: ScopeChoice[],
+    platformAdmin: boolean,
+    userId: string | undefined,
+    roleList: RoleDefinition[],
+    groupList: Group[],
+    memberships: Record<string, string[]>,
+    roleBindings: RoleBinding[]
+  ): ScopeChoice[] {
+    if (!workspaceScopeId) return [];
+    return scopesInWorkspace(scopes, workspaceScopeId).filter((scope) => {
+      const canCreate = platformAdmin || getActorPermissionsAtScope(
+        scope.id, userId, platformAdmin, roleList, groupList, memberships, roleBindings, scopes
+      ).includes('resource:create');
+      return canCreate;
+    });
+  }
+
+  $: resourceCreateScopeOptions = resourceCreateScopeChoices(
+    selectedScopeId, scopeChoices, isPlatformAdmin, currentUser?.id,
+    roles, groups, groupMembers, bindings
+  );
+
   function resourceCanManage(resource: Resource, permission: string) {
     return canManageResource(
       resource,
@@ -872,11 +902,56 @@ import { errorMessage as formatErrorMessage } from './lib/errorMessage';
           onResourceCreated={(resource) => {
             resources = [resource, ...resources.filter((item) => item.id !== resource.id)];
           }}
+          onRequestResourceCreate={(request) => {
+            applicationResourceResult = null;
+            applicationResourceRequest = { ...request, id: crypto.randomUUID() };
+          }}
+          resourceCreationResult={applicationResourceResult}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
           onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
           onOpenApplicationDiagnosis={(project, application) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = application.id; chooseView('diagnosis'); }}
         />
+        {#if applicationResourceRequest}
+          <ResourcePage
+            {visibleResources}
+            bind:selectedResourceId
+            bind:childSurfaceActive={resourceChildSurfaceActive}
+            bind:busy
+            onSelectResourceScope={(scopeId) => {
+              selectedScopeId = scopeId;
+              const project = projects.find((item) => item.scope.id === scopeId);
+              const team = teams.find((item) => item.scope.id === scopeId);
+              selectedTeamId = project?.team_id ?? team?.id ?? '';
+              selectedProjectId = project?.id ?? '';
+            }}
+            onWorkspaceReload={loadWorkspace}
+            {resourceCanManage}
+            {resourcePermissionLabel}
+            {scopeType}
+            resourceCreateScopeOptions={resourceCreateScopeOptions}
+            {formatDate}
+            {resourceIcon}
+            {selectedScopeId}
+            {scopeName}
+            onNotice={(message) => (notice = message)}
+            onError={(message) => (errorMessage = message)}
+            bind:resources
+            {schemas}
+            {activeMessage}
+            {activeMessageTone}
+            workflowOnly
+            workflowRequest={applicationResourceRequest}
+            onWorkflowComplete={(requestId, resource) => {
+              const request = applicationResourceRequest;
+              if (!request || request.id !== requestId) return;
+              applicationResourceResult = resource
+                ? { requestId, instanceId: request.instanceId, resource }
+                : null;
+              applicationResourceRequest = null;
+            }}
+          />
+        {/if}
       {:else if view === 'resource'}
         <ResourcePage
           {visibleResources}
@@ -896,6 +971,7 @@ import { errorMessage as formatErrorMessage } from './lib/errorMessage';
           {resourceCanManage}
           {resourcePermissionLabel}
           {scopeType}
+          resourceCreateScopeOptions={resourceCreateScopeOptions}
           {formatDate}
           {resourceIcon}
           {selectedResource}

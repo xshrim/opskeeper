@@ -1,34 +1,39 @@
 <script lang="ts">
-  import { CircleCheck, CircleHelp, CircleX, Plus, Search, Server, TriangleAlert, X } from 'lucide-svelte';
+  import { CircleCheck, CircleHelp, CircleX, Plus, ScanSearch, Server, TriangleAlert, X } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import FormField from '../../components/FormField.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
-  import TextInput from '../../components/TextInput.svelte';
+import TextInput from '../../components/TextInput.svelte';
 import TextArea from '../../components/TextArea.svelte';
 import ModalDialog from '../../components/ModalDialog.svelte';
   import { formatLabels, parseLabels } from '../../lib/labels';
 import type { Application, Resource, User } from '../../lib/api';
   import { api } from '../../lib/api';
-  import HostResourceCreateDialog from '../resource/HostResourceCreateDialog.svelte';
   import {
     resourcesForRuntime,
     runtimeLabel,
     slugify,
+    type ApplicationResourceCreationResult,
     type ApplicationDraft,
     type ApplicationInstanceDraft,
-    type ApplicationRuntimeKind
+    type ApplicationRuntimeKind,
+    type RuntimeResourceKind
   } from './projectTypes';
 
   export let resources: Resource[] = [];
   export let users: User[] = [];
-  export let scopeId = '';
   export let initialApplication: Application | null = null;
   export let onSave: (applications: ApplicationDraft[]) => Promise<void> | void;
   export let onUpdate: (application: Application, draft: ApplicationDraft) => Promise<void> | void = () => {};
   export let onCancel: () => void;
   export let onResourceCreated: (resource: Resource) => void = () => {};
+  export let onRequestResourceCreate: (
+    kind: RuntimeResourceKind,
+    instanceId?: string
+  ) => void = () => {};
+  export let resourceCreationResult: ApplicationResourceCreationResult | null = null;
 
   type Workload = {
     namespace: string;
@@ -51,6 +56,8 @@ import type { Application, Resource, User } from '../../lib/api';
 
   let step = 0;
   let runtimeKind: ApplicationRuntimeKind = 'virtual_machine';
+  let runtimeChosen = false;
+  let manualKubernetesApplication = false;
   let name = '';
   let code = '';
   let nameTouched = false;
@@ -75,8 +82,7 @@ import type { Application, Resource, User } from '../../lib/api';
   let submitAttempted = false;
   let error = '';
   let createdResources: Resource[] = [];
-  let hostResourceDialogOpen = false;
-  let hostBindingInstanceID = '';
+  let handledResourceCreationRequestId = '';
   let editInitialized = false;
 
   $: availableResources = [...resources, ...createdResources].filter(
@@ -101,7 +107,9 @@ import type { Application, Resource, User } from '../../lib/api';
       selector: instance.selector,
       status: instance.status
     }));
-    step = 1;
+    runtimeChosen = instances.length > 0;
+    manualKubernetesApplication = true;
+    step = instances.length > 0 ? 1 : 0;
     editInitialized = true;
   }
   $: runtimeResources = resourcesForRuntime(availableResources, runtimeKind);
@@ -117,16 +125,17 @@ import type { Application, Resource, User } from '../../lib/api';
       value: resource.id,
       label: resource.name
     })),
-    ...(runtimeKind === 'virtual_machine'
-      ? [{ value: '__add_host_resource__', label: '新增 Host 资源' }]
-      : [])
+    {
+      value: '__add_runtime_resource__',
+      label: `新增 ${runtimeLabel(runtimeKind)} 资源`
+    }
   ];
   $: if (
-    runtimeKind !== 'cloud_native' &&
-    instances.length === 0 &&
-    runtimeResources.length
+    resourceCreationResult &&
+    resourceCreationResult.requestId !== handledResourceCreationRequestId
   ) {
-    instances = [newInstance()];
+    handledResourceCreationRequestId = resourceCreationResult.requestId;
+    handleResourceCreated(resourceCreationResult.resource, resourceCreationResult.instanceId);
   }
   $: if (runtimeKind === 'cloud_native' && !kubernetesResourceId) {
     kubernetesResourceId = runtimeResources[0]?.id ?? '';
@@ -142,10 +151,10 @@ import type { Application, Resource, User } from '../../lib/api';
 
   function applicationCreateBlockReason() {
     if (!name.trim() || !code.trim()) return '请填写应用名称和应用标识。';
-    if (runtimeKind === 'cloud_native' && !initialApplication) {
+    if (!runtimeChosen) return '请先选择运行时类型。';
+    if (runtimeKind === 'cloud_native' && !initialApplication && !manualKubernetesApplication) {
       return selectedWorkloads.size ? '' : '请至少选择一个 Kubernetes 工作负载。';
     }
-    if (!instances.length) return '请至少新增一个实例。';
     for (const instance of instances) {
       if (!instance.name.trim()) return '请填写所有实例名称。';
       if (!instance.targetResourceId) return '请为所有实例选择运行资源。';
@@ -192,9 +201,11 @@ import type { Application, Resource, User } from '../../lib/api';
 
   function changeRuntime(next: ApplicationRuntimeKind) {
     runtimeKind = next;
+    runtimeChosen = true;
     step = 1;
     error = '';
-    instances = next === 'cloud_native' ? [] : [newInstance(next)];
+    instances = [];
+    manualKubernetesApplication = Boolean(initialApplication);
     bindingPreviews = {};
     expandedBindingPreviews = {};
     if (next !== 'cloud_native') kubernetesResourceId = '';
@@ -210,6 +221,15 @@ import type { Application, Resource, User } from '../../lib/api';
 
   function addInstance() {
     instances = [...instances, newInstance()];
+  }
+
+  function continueFromRuntimeStep() {
+    if (!runtimeChosen) {
+      error = '请先选择运行时类型。';
+      return;
+    }
+    error = '';
+    step = 1;
   }
 
   function removeInstance(id: string) {
@@ -236,9 +256,8 @@ import type { Application, Resource, User } from '../../lib/api';
     instance: ApplicationInstanceDraft,
     value: string
   ) {
-    if (value === '__add_host_resource__') {
-      hostBindingInstanceID = instance.id;
-      hostResourceDialogOpen = true;
+    if (value === '__add_runtime_resource__') {
+      onRequestResourceCreate(runtimeLabel(runtimeKind) as RuntimeResourceKind, instance.id);
       return;
     }
     instance.targetResourceId = value;
@@ -351,14 +370,18 @@ import type { Application, Resource, User } from '../../lib/api';
     );
   }
 
-  function handleResourceCreated(resource: Resource) {
+  function handleResourceCreated(resource: Resource, instanceId?: string) {
     createdResources = [
       resource,
       ...createdResources.filter((item) => item.id !== resource.id)
     ];
     onResourceCreated(resource);
-    if (resource.kind !== 'Host' || !hostBindingInstanceID) return;
-    const instance = instances.find((item) => item.id === hostBindingInstanceID);
+    if (runtimeKind === 'cloud_native' && resource.kind === 'Kubernetes') {
+      kubernetesResourceId = resource.id;
+      return;
+    }
+    if (resource.kind !== runtimeLabel(runtimeKind) || !instanceId) return;
+    const instance = instances.find((item) => item.id === instanceId);
     if (instance) {
       instance.targetResourceId = resource.id;
       delete bindingPreviews[instance.id];
@@ -366,8 +389,14 @@ import type { Application, Resource, User } from '../../lib/api';
       expandedBindingPreviews = { ...expandedBindingPreviews, [instance.id]: false };
       instances = [...instances];
     }
-    hostBindingInstanceID = '';
-    hostResourceDialogOpen = false;
+  }
+
+  function selectKubernetesResource(value: string) {
+    if (value === '__add_runtime_resource__') {
+      onRequestResourceCreate('Kubernetes');
+      return;
+    }
+    kubernetesResourceId = value;
   }
 
   function workloadKey(workload: Workload) {
@@ -437,7 +466,7 @@ import type { Application, Resource, User } from '../../lib/api';
           operationsOwnerIds,
           instances
         });
-      } else if (runtimeKind === 'cloud_native') {
+      } else if (runtimeKind === 'cloud_native' && !manualKubernetesApplication) {
         const drafts = workloads
           .filter((workload) => selectedWorkloads.has(workloadKey(workload)))
           .map((workload) => {
@@ -500,48 +529,50 @@ import type { Application, Resource, User } from '../../lib/api';
   }
 </script>
 
-<ModalDialog dialogClass="project-dialog application-wizard-dialog" size="wide" overflowMode="expand" initialCenterRatio={0.38} title={initialApplication ? '编辑应用' : '新增应用'} description={initialApplication ? '更新应用信息与实例绑定。' : '选择运行时类型并填写应用信息。'} confirmLabel={step === 0 ? '下一步' : initialApplication ? '保存' : '创建'} busyLabel={initialApplication ? '保存中…' : '创建中…'} busy={saving || reconfirming} message={error} onCancel={onCancel} onConfirm={step === 0 ? () => { step = 1; } : save}>
-    {#if !initialApplication}
+<ModalDialog dialogClass="project-dialog application-wizard-dialog" size="wide" overflowMode="expand" initialCenterRatio={0.38} title={initialApplication ? '编辑应用' : '新增应用'} description={initialApplication ? '更新应用信息与实例绑定。' : '选择运行时类型并填写应用信息。'} confirmLabel={step === 0 ? '下一步' : initialApplication ? '保存' : '创建'} busyLabel={initialApplication ? '保存中…' : '创建中…'} busy={saving || reconfirming} message={error} onCancel={onCancel} onConfirm={step === 0 ? continueFromRuntimeStep : save}>
     <nav class="application-steps" aria-label="新增应用步骤">
       <button
         class:active={step === 0}
         class:done={step > 0}
         type="button"
-        on:click={() => (step = 0)}><span>1</span>运行时类型</button
+        disabled={instances.length > 0}
+        on:click={() => instances.length === 0 && (step = 0)}><span>1</span>运行时类型</button
       >
       <button
         class:active={step === 1}
         type="button"
-        on:click={() => (step = 1)}><span>2</span>应用与实例</button
+        disabled={!runtimeChosen}
+        on:click={() => runtimeChosen && (step = 1)}><span>2</span>应用与实例</button
       >
     </nav>
-    {/if}
     <div class="project-dialog-content">
       {#if step === 0}
         <div class="runtime-choice-grid">
-          {#each [['virtual_machine', 'Host', '逐个绑定主机实例'], ['containerized', 'Docker', '逐个绑定容器实例'], ['cloud_native', 'Kubernetes', '批量发现工作负载和实例']] as option}
+          {#each [['virtual_machine', 'Host', '虚拟机', '逐个绑定主机实例'], ['containerized', 'Docker', '容器化', '逐个绑定容器实例'], ['cloud_native', 'Kubernetes', '云原生', '批量发现工作负载和实例']] as option}
             <button
-              class:selected={runtimeKind === option[0]}
+              class:selected={runtimeChosen && runtimeKind === option[0]}
+              disabled={instances.length > 0}
               type="button"
               on:click={() =>
                 changeRuntime(option[0] as ApplicationRuntimeKind)}
             >
               <ResourceBrandIcon resource={{ kind: option[1] }} size={26} />
-              <strong>{option[1]}</strong><small>{option[2]}</small>
+              <strong>{option[1]}<small class="runtime-choice-kind">{option[2]}</small></strong><small>{option[3]}</small>
             </button>
           {/each}
         </div>
-      {:else if runtimeKind === 'cloud_native' && !initialApplication}
+      {:else if runtimeKind === 'cloud_native' && !initialApplication && !manualKubernetesApplication}
         <div class="wizard-form-grid">
           <FormField label="运行资源" required
             ><DropdownSelect
-              bind:value={kubernetesResourceId}
+              value={kubernetesResourceId}
               options={runtimeResourceOptions}
               placeholder="选择 Kubernetes 资源"
               ariaLabel="运行资源"
               invalid={submitAttempted && !kubernetesResourceId}
               invalidMode="bubble"
               invalidMessage="请选择 Kubernetes 运行资源"
+              on:change={(event) => selectKubernetesResource(String(event.detail))}
             /></FormField
           >
           <FormField label="命名空间" required
@@ -558,6 +589,7 @@ import type { Application, Resource, User } from '../../lib/api';
           >
           <FormField label="应用标签" className="full-field" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
         </div>
+        <div class="discovery-toolbar"><span>也可以先创建未绑定工作负载的应用</span><button class="secondary" type="button" on:click={() => (manualKubernetesApplication = true)}>手动创建应用</button></div>
         {#if !initialApplication}<div class="discovery-toolbar">
           <span>工作负载列表</span><button
             class="secondary"
@@ -716,19 +748,20 @@ import type { Application, Resource, User } from '../../lib/api';
                       String(event.detail)
                     )}
                 /></div
-              >{#if !initialApplication && runtimeKind !== 'cloud_native'}<button
-                class="secondary binding-preview-button"
+              >{#if runtimeKind !== 'cloud_native'}<button
+                class="icon-button edit-action binding-preview-button"
                 type="button"
                 data-binding-preview-id={instance.id}
+                data-tooltip={bindingPreviews[instance.id]?.loading ? '正在预览匹配' : '预览匹配'}
+                aria-label={bindingPreviews[instance.id]?.loading ? '正在预览匹配' : '预览匹配'}
                 disabled={bindingPreviews[instance.id]?.loading}
                 on:click={() => previewBinding(instance)}
-              ><Search size={14} />{bindingPreviews[instance.id]?.loading ? '匹配中…' : '预览匹配'}</button>{:else}<span></span>{/if}
+              ><ScanSearch size={15} /></button>{:else}<span></span>{/if}
               <button
-                class="icon-button"
+                class="icon-button danger-action delete-action"
                 type="button"
                 aria-label="移除实例"
                 data-tooltip="移除实例"
-                disabled={instances.length === 1}
                 on:click={() => removeInstance(instance.id)}
                 ><X size={15} /></button
               >
@@ -760,15 +793,3 @@ import type { Application, Resource, User } from '../../lib/api';
       {/if}
     </div>
 </ModalDialog>
-
-{#if hostResourceDialogOpen}
-  <HostResourceCreateDialog
-    {scopeId}
-    resources={availableResources}
-    onCreated={handleResourceCreated}
-    onCancel={() => {
-      hostResourceDialogOpen = false;
-      hostBindingInstanceID = '';
-    }}
-  />
-{/if}

@@ -127,6 +127,7 @@
     ResourceSchema,
     TopologyNode
   } from '../../lib/api';
+  import type { ApplicationResourceCreationRequest } from '../project/projectTypes';
 
   type MCPServerReturnContext = {
     kind: 'Docker' | 'Kubernetes' | 'Host';
@@ -176,6 +177,12 @@
   };
 
   export let visibleResources: Resource[] = [];
+  export let workflowOnly = false;
+  export let workflowRequest: ApplicationResourceCreationRequest | null = null;
+  export let onWorkflowComplete: (
+    requestId: string,
+    resource: Resource | null
+  ) => void = () => {};
   export let selectedResourceId = '';
   export let resourceConnectionChecks: Record<string, ConnectionCheck | null> =
     {};
@@ -186,6 +193,7 @@
     resource: Resource,
     permission: string
   ) => boolean;
+  export let resourceCreateScopeOptions: Array<{ id: string; type: string; name: string }> = [];
   export let resourcePermissionLabel: (resource: Resource) => string = () =>
     '可查看';
   export let onSelectResourceScope: (scopeId: string) => void = () => {};
@@ -209,12 +217,14 @@
   let connectionBusyResourceIds: string[] = [];
   let autoSummaryTestKey = '';
   let resourceAddMenuOpen = false;
+  let handledWorkflowRequestId = '';
   let resourceRefreshBusy = false;
   let resourceEditorOpen = false;
   let resourceKind = '';
   let resourceAddStep = 1;
   let resourceAddCategory = '';
   let resourceAddSubtype = '';
+  let resourceCreateScopeId = '';
   let resourceName = '';
   let resourceLabels = '';
   let resourceConfig = '{}';
@@ -341,6 +351,15 @@
   $: resourceAddSubtypeOptions = resourceAddCategory
     ? (resourceCategoryOptions[resourceAddCategory] ?? [])
     : [];
+  $: if (
+    resourceAddMenuOpen &&
+    !resourceWorkflowEditing() &&
+    !resourceCreateScopeOptions.some((scope) => scope.id === resourceCreateScopeId)
+  ) {
+    resourceCreateScopeId = resourceCreateScopeOptions.some((scope) => scope.id === selectedScopeId)
+      ? selectedScopeId
+      : '';
+  }
   $: dockerMCPServers = resources
     .filter(
       (resource) =>
@@ -349,6 +368,10 @@
     .sort((left, right) => left.name.localeCompare(right.name));
   $: kubernetesMCPServers = dockerMCPServers;
   $: childSurfaceActive = resourceAddMenuOpen || resourceEditorOpen;
+  $: if (workflowRequest && workflowRequest.id !== handledWorkflowRequestId) {
+    handledWorkflowRequestId = workflowRequest.id;
+    openRequestedResourceWorkflow(workflowRequest);
+  }
   $: if (
     !resourceAddMenuOpen ||
     !(
@@ -424,6 +447,37 @@
     return schema && resourceCategoryFor(schema) === category
       ? schema.kind
       : category;
+  }
+
+  function openRequestedResourceWorkflow(
+    request: ApplicationResourceCreationRequest
+  ) {
+    onSelectResourceScope(request.scopeId);
+    selectedScopeId = request.scopeId;
+    resourceCreateScopeId = resourceCreateScopeOptions.some((scope) => scope.id === request.scopeId)
+      ? request.scopeId
+      : '';
+    mcpServerReturnContext = null;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resetResourceConfig();
+    resetDockerDraft();
+    resetKubernetesDraft();
+    resetHostDraft();
+    resourceName = '';
+    resourceLabels = '';
+    resourceTypeSelectionAttempted = false;
+    resourceBasicConfigurationAttempted = false;
+    chooseResourceAddSubtype(request.kind, 'Direct');
+    resourceAddCategory = request.kind;
+    resourceAddSubtype = 'Direct';
+    resourceAddSubtypeOptions = resourceCategoryOptions[request.kind] ?? ['Direct', 'Agent'];
+  }
+
+  function completeRequestedWorkflow(resource: Resource | null = null) {
+    if (workflowRequest) onWorkflowComplete(workflowRequest.id, resource);
   }
 
   async function loadResourceDetails(id: string) {
@@ -507,8 +561,9 @@
       team: '团队级',
       project: '项目级'
     };
-    const type = scopeType(selectedScopeId);
-    return `${labels[type] ?? '当前级别'} · ${scopeName(selectedScopeId) || '平台'}`;
+    const scopeId = resourceWorkflowEditing() ? selectedScopeId : resourceCreateScopeId || selectedScopeId;
+    const type = scopeType(scopeId);
+    return `${labels[type] ?? '当前级别'} · ${scopeName(scopeId) || '平台'}`;
   }
 
   function syncDockerEditor(resource: Resource) {
@@ -928,6 +983,7 @@
     editingKubernetesResourceId = '';
     editingHostResourceId = '';
     editingOceanBaseResourceId = '';
+    completeRequestedWorkflow();
   }
 
   function resourceWorkflowEditing() {
@@ -1002,6 +1058,7 @@
     resourceAddCategory = category;
     resourceAddSubtype = '';
     const firstSubtype = resourceCategoryOptions[category]?.[0] ?? '';
+    resourceAddSubtypeOptions = resourceCategoryOptions[category] ?? [];
     resourceKind = resourceKindForSelection(category, firstSubtype);
     if (resourceKind === 'MCPServer')
       mcpTransport = mcpTransportForSubtype(firstSubtype);
@@ -1058,6 +1115,7 @@
     const schema = resourceSchemaForSelection(category, subtype);
     resourceAddCategory = category;
     resourceAddSubtype = subtype;
+    resourceAddSubtypeOptions = resourceCategoryOptions[category] ?? [];
     resourceKind = schema?.kind ?? '';
     if (resourceKind === 'MCPServer')
       mcpTransport = mcpTransportForSubtype(subtype);
@@ -1191,6 +1249,7 @@
       if (!resourceAddCategory) issues.push('资源类型');
       if (!resourceAddSubtype) issues.push('资源子类型');
       if (!resourceName.trim()) issues.push('资源名称');
+      if (!resourceCreateScopeId) issues.push('有权限的资源级别');
       return issues.length ? `请填写：${issues.join('、')}。` : '';
     }
     if (
@@ -1353,7 +1412,7 @@
       resourceAddCategory &&
       resourceAddSubtype &&
       resourceName.trim() &&
-      selectedScopeId
+      resourceCreateScopeId
     );
   }
 
@@ -1934,7 +1993,7 @@
         resourceSensitiveValues
       );
       const created = await createResourceRecord({
-        scope_id: selectedScopeId,
+        scope_id: resourceCreateScopeId,
         kind: resourceKind,
         subtype:
           resourceAddSubtype ||
@@ -1963,6 +2022,7 @@
   }
 
   async function createKubernetesFromWorkflow() {
+    let createdForWorkflow: Resource | null = null;
     await runResourceAction(async () => {
       if (!resourceBasicConfigurationComplete()) {
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
@@ -1977,7 +2037,7 @@
         ? await createKubernetesCredential()
         : '';
       const created = await createResourceRecord({
-        scope_id: selectedScopeId,
+        scope_id: resourceCreateScopeId,
         kind: 'Kubernetes',
         subtype: draft.isAgent ? 'Agent' : 'Direct',
         agent_ref: draft.isAgent ? kubernetesMCPServerResourceId : undefined,
@@ -1996,10 +2056,13 @@
       onNotice(`资源“${created.name}”已创建`);
       void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
+      createdForWorkflow = created;
     });
+    if (createdForWorkflow) completeRequestedWorkflow(createdForWorkflow);
   }
 
   async function createDockerFromWorkflow() {
+    let createdForWorkflow: Resource | null = null;
     await runResourceAction(async () => {
       if (!resourceBasicConfigurationComplete())
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
@@ -2015,7 +2078,7 @@
           ? await createDockerCredential()
           : '';
       const created = await createResourceRecord({
-        scope_id: selectedScopeId,
+        scope_id: resourceCreateScopeId,
         kind: 'Docker',
         subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
         agent_ref:
@@ -2035,10 +2098,13 @@
       onNotice(`资源“${created.name}”已创建`);
       void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
+      createdForWorkflow = created;
     });
+    if (createdForWorkflow) completeRequestedWorkflow(createdForWorkflow);
   }
 
   async function createHostFromWorkflow() {
+    let createdForWorkflow: Resource | null = null;
     await runResourceAction(async () => {
       if (!resourceBasicConfigurationComplete())
         throw new Error('请先完成基础配置中的资源类型、资源子类型和资源名称。');
@@ -2054,7 +2120,7 @@
         ? await createHostCredential()
         : '';
       const created = await createResourceRecord({
-        scope_id: selectedScopeId,
+        scope_id: resourceCreateScopeId,
         kind: 'Host',
         subtype: draft.accessMode === 'agent' ? 'Agent' : 'Direct',
         agent_ref:
@@ -2074,7 +2140,9 @@
       onNotice(`Host 资源“${created.name}”已创建`);
       void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
+      createdForWorkflow = created;
     });
+    if (createdForWorkflow) completeRequestedWorkflow(createdForWorkflow);
   }
 
   async function runResourceAction(operation: () => Promise<void>) {
@@ -2118,7 +2186,7 @@
               resourceSensitiveValues
             );
       const created = await createResourceRecord({
-        scope_id: selectedScopeId,
+        scope_id: resourceCreateScopeId,
         kind: resourceKind,
         subtype:
           resourceAddSubtype ||
@@ -2310,7 +2378,7 @@
     }
     if (postgresqlAccessMode === 'agent') credentialDraft = null;
     const body: Record<string, unknown> = { name: resourceName.trim(), subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null, labels: parseLabels(resourceLabels), credential: credentialDraft, config: postgresqlAccessMode === 'agent' ? {} : { host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), timeout_seconds: Number(postgresqlTimeoutSeconds) } };
-    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
+    if (!existing) { const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
     else { const updated = await updateResourceRecord(existing.id, body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`PostgreSQL 资源“${updated.name}”已更新`); }
     resourceAddMenuOpen=false; editingPostgreSQLResourceId=''; resourceAddStep=1;
   }
@@ -2331,7 +2399,7 @@
     if (minIOAccessMode === 'agent') credentialDraft = null;
     const body: Record<string, unknown> = { name: resourceName.trim(), subtype: minIOAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: minIOAccessMode === 'agent' ? minIOMCPServerResourceId : null, labels: parseLabels(resourceLabels), credential: credentialDraft, config: minIOAccessMode === 'agent' ? {} : { endpoint: minIOEndpoint.trim(), region: minIORegion.trim(), secure: minIOSecure, timeout_seconds: Number(minIOTimeoutSeconds) } };
     if (!existing) {
-      const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'MinIO', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string, string>, config: body.config as Record<string, unknown> });
+      const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'MinIO', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string, string>, config: body.config as Record<string, unknown> });
       resources = [created, ...resources]; selectedResourceId = created.id; onNotice(`MinIO 资源“${created.name}”已创建`);
     } else {
       const updated = await updateResourceRecord(existing.id, body); resources = resources.map((r) => r.id === updated.id ? updated : r); selectedResourceId = updated.id; onNotice(`MinIO 资源“${updated.name}”已更新`);
@@ -2358,7 +2426,7 @@
     const config = resourceAddSubtype === 'Git' ? { url: repositoryURL.trim(), default_branch: repositoryDefaultBranch.trim() || 'main' } : { storage_backend: repositoryStorageBackend, path: repositoryLocalRoot.trim(), s3_endpoint: repositoryS3Endpoint.trim(), s3_bucket: repositoryS3Bucket.trim(), s3_prefix: repositoryS3Prefix.trim() || 'repositories' };
     const existing = resources.find((r) => r.id === editingRepositoryResourceId);
     const body: Record<string, unknown> = { name: resourceName.trim(), subtype: resourceAddSubtype, labels: parseLabels(resourceLabels), config };
-    if (!existing) { const created = await createResourceRecord({ scope_id: selectedScopeId, kind: 'Repository', subtype: resourceAddSubtype, name: resourceName.trim(), labels: body.labels as Record<string,string>, config }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`Repository“${created.name}”已创建`); } else { const updated=await updateResourceRecord(existing.id,body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`Repository“${updated.name}”已更新`); }
+    if (!existing) { const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'Repository', subtype: resourceAddSubtype, name: resourceName.trim(), labels: body.labels as Record<string,string>, config }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`Repository“${created.name}”已创建`); } else { const updated=await updateResourceRecord(existing.id,body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`Repository“${updated.name}”已更新`); }
     resourceAddMenuOpen=false; editingRepositoryResourceId=''; resourceAddStep=1; repositoryConfigurationAttempted=false;
   }
 
@@ -2650,7 +2718,7 @@
   }
 </script>
 
-<section class="resources-layout">
+<section class="resources-layout" class:workflow-only={workflowOnly}>
   <ResourceCatalogRail
     resources={visibleResources}
     category={resourceCategory}
@@ -2754,10 +2822,10 @@
     {#if resourceAddMenuOpen}
       <ModalDialog
         title={resourceWorkflowEditing() ? '编辑资源' : '新增资源'}
-        coverage="target"
-        inertTarget=".resource-catalog-panel"
-        positionTarget=".resource-catalog-panel"
-        widthTargetRatio={0.9}
+        coverage={workflowOnly ? 'page' : 'target'}
+        inertTarget={workflowOnly ? '' : '.resource-catalog-panel'}
+        positionTarget={workflowOnly ? '' : '.resource-catalog-panel'}
+        widthTargetRatio={workflowOnly ? 0 : 0.9}
         description={resourceWorkflowEditing()
           ? `修改${resourceAddCategory}${resourceAddSubtype ? ` · ${resourceAddSubtype}` : ''}的连接配置、凭据和资源属性。`
           : '配置资源范围、连接信息和访问凭据。'}
@@ -2881,6 +2949,8 @@
             bind:subtype={resourceAddSubtype}
             bind:name={resourceName}
             bind:labels={resourceLabels}
+            scopeId={resourceCreateScopeId}
+            scopeOptions={resourceCreateScopeOptions}
             categoryOptions={resourceCategoryOptions}
             subtypeOptions={resourceAddSubtypeOptions}
             bind:typeSelectionAttempted={resourceTypeSelectionAttempted}
@@ -2926,6 +2996,7 @@
               if (resourceKind === 'RabbitMQ') rabbitMQAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
               if (resourceKind === 'MinIO') minIOAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
             }}
+            onSelectScope={(scopeId) => (resourceCreateScopeId = scopeId)}
           />
         {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
           <form

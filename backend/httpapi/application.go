@@ -41,6 +41,7 @@ type updateApplicationRequest struct {
 	Description        *string                            `json:"description"`
 	Icon               *string                            `json:"icon"`
 	Status             *string                            `json:"status"`
+	RuntimeKind        *string                            `json:"runtime_kind"`
 	Labels             *map[string]string                 `json:"labels"`
 	Critical           *bool                              `json:"critical"`
 	TechnicalOwnerIDs  *[]string                          `json:"technical_owner_ids"`
@@ -115,7 +116,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

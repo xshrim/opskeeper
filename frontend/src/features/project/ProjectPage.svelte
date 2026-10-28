@@ -39,7 +39,13 @@ import { labelTags } from '../../lib/labels';
   import TagList from '../../components/TagList.svelte';
   import ApplicationWizard from './ApplicationWizard.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
-  import { runtimeLabel, type ApplicationDraft } from './projectTypes';
+import {
+  runtimeLabel,
+  type ApplicationDraft,
+  type ApplicationResourceCreationRequest,
+  type ApplicationResourceCreationResult,
+  type RuntimeResourceKind
+} from './projectTypes';
   import { onMount, tick } from 'svelte';
 
   export let teams: Team[] = [];
@@ -69,6 +75,10 @@ import { labelTags } from '../../lib/labels';
     application: Application
   ) => void = () => {};
   export let onResourceCreated: (resource: Resource) => void = () => {};
+  export let onRequestResourceCreate: (
+    request: Omit<ApplicationResourceCreationRequest, 'id'>
+  ) => void = () => {};
+  export let resourceCreationResult: ApplicationResourceCreationResult | null = null;
 
   let workspace: ProjectWorkspace | null = null;
   let workspaceProjectId = '';
@@ -92,10 +102,13 @@ import { labelTags } from '../../lib/labels';
   let users: User[] = [];
 
   const applicationColumns: ReadonlyTableColumn[] = [
-    { key: 'application', label: '应用', width: '42%' },
-    { key: 'instances', label: '实例', width: '14%' },
-    { key: 'status', label: '状态', width: '16%' },
-    { key: 'actions', label: '操作', width: '28%' }
+    { key: 'application', label: '应用', width: '22%' },
+    { key: 'runtime', label: '运行时', width: '13%' },
+    { key: 'instances', label: '实例', width: '10%' },
+    { key: 'resources', label: '资源', width: '10%' },
+    { key: 'labels', label: '标签', width: '19%' },
+    { key: 'status', label: '状态', width: '10%' },
+    { key: 'actions', label: '操作', width: '12%', className: 'application-actions-column' }
   ];
   const applicationInstanceColumns: ReadonlyTableColumn[] = [
     { key: 'name', label: '实例', width: '22%' },
@@ -247,6 +260,20 @@ import { labelTags } from '../../lib/labels';
     }));
   }
 
+  function applicationRuntimeResourceNames(application: Application) {
+    if (!application.instances.length) return '未知';
+    return [...new Set(application.instances
+      .map((instance) => instance.target_resource_name || instance.target_resource_id)
+      .filter(Boolean))].join('、') || '—';
+  }
+
+  function applicationResourceCount(application: Application) {
+    return new Set([
+      ...application.instances.map((instance) => instance.target_resource_id),
+      ...(application.dependencies ?? []).map((dependency) => dependency.target_resource_id)
+    ].filter(Boolean)).size;
+  }
+
   function ownerLabel(ids: string[]) {
     const names = ids.map((id) => ownerOptions.find((option) => option.value === id)?.label || id);
     return names.length ? names.join('、') : '未配置';
@@ -340,6 +367,7 @@ import { labelTags } from '../../lib/labels';
         name: draft.name,
         description: draft.description,
         icon: draft.icon,
+        runtime_kind: draft.runtimeKind,
         labels: draft.labels,
         critical: draft.critical,
         technical_owner_ids: draft.technicalOwnerIds,
@@ -634,13 +662,17 @@ import { labelTags } from '../../lib/labels';
           >
             <svelte:fragment slot="cell" let:row let:column>
               {#if column.key === 'application'}
-                <span class="application-table-name"><EntityBrandIcon kind="Application" fallback={row.icon || 'lucide:AppWindow'} size={17} /><span><strong>{row.name}</strong><small>{row.code} · {runtimeLabel(row.runtime_kind)}</small></span></span>
-              {:else if column.key === 'instances'}{row.instances.length} 个实例
+                <span class="application-table-name"><EntityBrandIcon kind="Application" fallback={row.icon || 'lucide:AppWindow'} size={17} /><span><strong>{row.name}</strong><small>{row.code}</small></span></span>
+              {:else if column.key === 'runtime'}
+                <span class="application-table-value" data-tooltip={applicationRuntimeResourceNames(row)}><strong>{applicationRuntimeResourceNames(row)}</strong><small>{row.instances.length ? row.runtime_kind === 'virtual_machine' ? '虚拟机' : row.runtime_kind === 'containerized' ? '容器化' : '云原生' : '未绑定运行时'}</small></span>
+              {:else if column.key === 'instances'}<span class="application-table-count">{row.instances.length} 个实例</span>
+              {:else if column.key === 'resources'}<span class="application-table-count">{applicationResourceCount(row)} 个资源</span>
+              {:else if column.key === 'labels'}<TagList className="application-table-tags" tags={labelTags(row.labels)} fit wrap={false} colorScheme="independent" maxWidth="130px" emptyText="—" />
               {:else if column.key === 'status'}<StatusBadge className="status-label" tone={row.status} label={statusLabel(row.status)} />
               {:else if column.key === 'actions'}
                 <span class="application-table-actions">
                   <button class="icon-button edit-action" type="button" data-tooltip="AI 诊断" aria-label="AI 诊断" on:click|stopPropagation={() => onOpenApplicationDiagnosis(selectedProject, row)}><Sparkles size={14} /></button>
-                  <button class="icon-button" type="button" data-tooltip="编辑应用" aria-label="编辑应用" on:click|stopPropagation={() => (editingApplication = row)}><Pencil size={14} /></button>
+                  <button class="icon-button edit-action" type="button" data-tooltip="编辑应用" aria-label="编辑应用" on:click|stopPropagation={() => (editingApplication = row)}><Pencil size={15} /></button>
                   <button class="icon-button danger-action delete-action" type="button" data-tooltip="删除应用" aria-label={`删除应用 ${row.name}`} on:click|stopPropagation={() => (deletingApplications = [row])}><Trash2 size={14} /></button>
                 </span>
               {/if}
@@ -650,7 +682,7 @@ import { labelTags } from '../../lib/labels';
                 <div class="application-detail-fields">
                   <div><small>应用名称</small><strong>{row.name}</strong></div>
                   <div><small>应用标识</small><strong>{row.code}</strong></div>
-                  <div><small>运行时</small><strong>{runtimeLabel(row.runtime_kind)}</strong></div>
+                  <div><small>运行时</small><strong>{row.instances.length ? runtimeLabel(row.runtime_kind) : '未知'}</strong></div>
                   <div><small>关键应用</small><strong>{row.critical ? '是' : '否'}</strong></div>
                   <div><small>技术负责人</small><strong>{ownerLabel(row.technical_owner_ids)}</strong></div>
                   <div><small>运维负责人</small><strong>{ownerLabel(row.operations_owner_ids)}</strong></div>
@@ -759,10 +791,16 @@ import { labelTags } from '../../lib/labels';
     resources={availableResources}
     {users}
     initialApplication={editingApplication}
-    scopeId={selectedProject?.scope.id ?? selectedScopeId}
     onSave={saveApplications}
     onUpdate={updateApplication}
     {onResourceCreated}
+    onRequestResourceCreate={(kind: RuntimeResourceKind, instanceId?: string) =>
+      onRequestResourceCreate({
+        kind,
+        scopeId: selectedProject?.scope.id ?? selectedScopeId,
+        ...(instanceId ? { instanceId } : {})
+      })}
+    {resourceCreationResult}
     onCancel={() => { applicationWizardOpen = false; editingApplication = null; }}
   />{/if}
 {#if deletingProject}

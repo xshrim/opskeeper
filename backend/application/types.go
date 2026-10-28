@@ -96,6 +96,7 @@ type CreateInput struct {
 }
 type UpdateInput struct {
 	Name, Description, Icon, Status *string
+	RuntimeKind                     *string
 	Labels                          *map[string]string
 	Critical                        *bool
 	TechnicalOwnerIDs               *[]string
