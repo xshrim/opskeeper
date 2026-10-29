@@ -21,6 +21,81 @@ func TestPostgreSQLAgentArgumentsUseResourceConnection(t *testing.T) {
 	}
 }
 
+func TestAgentToolNamesMatchSupportedResourceToolkits(t *testing.T) {
+	for kind, names := range map[string][]string{
+		"PostgreSQL": {"postgresql_health", "postgresql_table_columns"},
+		"Kubernetes": {"kubernetes_cluster_info", "kubernetes_resource_search", "kubernetes_health"},
+	} {
+		for _, name := range names {
+			if _, ok := agentToolNames(kind)[name]; ok {
+				continue
+			}
+			t.Errorf("Agent tool allowlist is missing %q", name)
+		}
+	}
+	if _, ok := agentToolNames("PostgreSQL")["drop_database"]; ok {
+		t.Fatal("Agent tool allowlist must reject tools outside the Direct toolkit")
+	}
+	if len(agentToolNames("TongRDS")) != 0 {
+		t.Fatal("resource kinds without a Direct toolkit must not expose arbitrary Agent tools")
+	}
+}
+
+func TestRepositoryAgentSchemaHidesStorageConnectionFields(t *testing.T) {
+	var schema map[string]any
+	if err := json.Unmarshal(repositoryAgentSchema([]byte(`{"type":"object","required":["path","query"],"properties":{"path":{"type":"string"},"url":{"type":"string"},"branch":{"type":"string"},"timeout_seconds":{"type":"integer"},"storage_backend":{"type":"string"},"storage_key":{"type":"string"},"s3_endpoint":{"type":"string"},"s3_bucket":{"type":"string"},"s3_prefix":{"type":"string"},"query":{"type":"string"}}}`)), &schema); err != nil {
+		t.Fatal(err)
+	}
+	properties := schema["properties"].(map[string]any)
+	for _, key := range []string{"path", "url", "timeout_seconds", "storage_backend", "storage_key", "s3_endpoint", "s3_bucket", "s3_prefix"} {
+		if _, ok := properties[key]; ok {
+			t.Errorf("Repository Agent schema must hide connection field %q", key)
+		}
+	}
+	if _, ok := properties["query"]; !ok {
+		t.Fatal("Repository Agent schema must keep operation arguments")
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"query"}) {
+		t.Fatalf("required=%#v; only operation fields should remain required", schema["required"])
+	}
+}
+
+func TestKubernetesAgentContextArgumentOverridesResourceDefault(t *testing.T) {
+	p := mcpContextProvider{service: &Service{}}
+	resource := engine.ContextResource{Kind: "Kubernetes", Subtype: "agent", Config: map[string]any{"context": "resource-default", "connection_mode": "kubeconfig"}}
+	got, err := p.agentArguments(context.Background(), resource, map[string]any{"context": " alternate "})
+	if err != nil || got["context"] != "alternate" {
+		t.Fatalf("explicit context arguments=%#v err=%v", got, err)
+	}
+	got, err = p.agentArguments(context.Background(), resource, map[string]any{})
+	if err != nil || got["context"] != "resource-default" {
+		t.Fatalf("default context arguments=%#v err=%v", got, err)
+	}
+}
+
+func TestKubernetesAgentSchemaHidesConnectionAndKeepsContext(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["kubeconfig","context","namespace"],"properties":{"kubeconfig":{"type":"string"},"context":{"type":"string"},"server":{"type":"string"},"token":{"type":"string"},"namespace":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(kubernetesAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	properties := schema["properties"].(map[string]any)
+	for _, key := range []string{"kubeconfig", "server", "token"} {
+		if _, ok := properties[key]; ok {
+			t.Errorf("connection field %q exposed to model", key)
+		}
+	}
+	if _, ok := properties["context"]; !ok {
+		t.Fatal("context not exposed")
+	}
+	if _, ok := properties["namespace"]; !ok {
+		t.Fatal("tool argument namespace was removed")
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"namespace"}) {
+		t.Fatalf("required=%#v", schema["required"])
+	}
+}
+
 func TestPostgreSQLAgentSchemaHidesConnectionFields(t *testing.T) {
 	raw := json.RawMessage(`{"type":"object","required":["host","schema","table"],"properties":{"host":{"type":"string"},"password":{"type":"string"},"schema":{"type":"string"},"table":{"type":"string"}}}`)
 	var schema map[string]any
@@ -37,8 +112,8 @@ func TestPostgreSQLAgentSchemaHidesConnectionFields(t *testing.T) {
 	if _, ok := properties["schema"]; !ok {
 		t.Fatal("table schema argument must remain available")
 	}
-	if _, ok := schema["required"]; ok {
-		t.Fatal("resource-owned connection requirements must be removed")
+	if !reflect.DeepEqual(schema["required"], []any{"schema", "table"}) {
+		t.Fatalf("required=%#v; business arguments must remain required", schema["required"])
 	}
 }
 
@@ -64,6 +139,9 @@ func TestOracleAgentArgumentsAndSchemaHideConnection(t *testing.T) {
 	if _, ok := props["schema"]; !ok {
 		t.Fatal("business argument removed")
 	}
+	if !reflect.DeepEqual(schema["required"], []any{"schema", "table"}) {
+		t.Fatalf("required=%#v; business arguments must remain required", schema["required"])
+	}
 }
 
 func TestOceanBaseAgentArgumentsAndSchemaHideConnection(t *testing.T) {
@@ -87,6 +165,9 @@ func TestOceanBaseAgentArgumentsAndSchemaHideConnection(t *testing.T) {
 	}
 	if _, ok := props["schema"]; !ok {
 		t.Fatal("business argument removed")
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"schema", "table"}) {
+		t.Fatalf("required=%#v; business arguments must remain required", schema["required"])
 	}
 }
 
@@ -159,6 +240,43 @@ func TestMinIOAgentSchemaHidesConnectionFields(t *testing.T) {
 	}
 	if _, ok := props["bucket"]; !ok {
 		t.Fatal("bucket argument removed")
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"bucket"}) {
+		t.Fatalf("required=%#v; bucket must remain required", schema["required"])
+	}
+}
+
+func TestDockerAgentSchemaHidesConnectionFieldsAndKeepsOperationRequirements(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["host","container_id","path"],"properties":{"host":{"type":"string"},"timeout":{"type":"integer"},"tls_ca":{"type":"string"},"tls_cert":{"type":"string"},"tls_key":{"type":"string"},"skip_tls_verify":{"type":"boolean"},"container_id":{"type":"string"},"path":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(dockerAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	for _, key := range []string{"host", "timeout", "tls_ca", "tls_cert", "tls_key", "skip_tls_verify"} {
+		if _, ok := props[key]; ok {
+			t.Errorf("connection field %q exposed", key)
+		}
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"container_id", "path"}) {
+		t.Fatalf("required=%#v; Docker operation arguments must remain required", schema["required"])
+	}
+}
+
+func TestElasticsearchAgentSchemaKeepsOperationRequirements(t *testing.T) {
+	raw := json.RawMessage(`{"type":"object","required":["url","index"],"properties":{"url":{"type":"string"},"username":{"type":"string"},"password":{"type":"string"},"tls_insecure":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"index":{"type":"string"}}}`)
+	var schema map[string]any
+	if err := json.Unmarshal(elasticsearchAgentSchema(raw), &schema); err != nil {
+		t.Fatal(err)
+	}
+	props := schema["properties"].(map[string]any)
+	for _, key := range []string{"url", "username", "password", "tls_insecure", "timeout_seconds"} {
+		if _, ok := props[key]; ok {
+			t.Errorf("connection field %q exposed", key)
+		}
+	}
+	if !reflect.DeepEqual(schema["required"], []any{"index"}) {
+		t.Fatalf("required=%#v; index must remain required", schema["required"])
 	}
 }
 

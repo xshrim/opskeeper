@@ -40,7 +40,8 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 	}
 	tools := make([]engine.Tool, 0, 4)
 	add := func(name, description string, schema json.RawMessage, fn func(context.Context, map[string]any) (engine.ToolResult, error)) {
-		tools = append(tools, engine.ToolFunc{Def: engine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
+		readOnly := !(strings.EqualFold(resource.Kind, "Repository") && name == "repository_checkout")
+		tools = append(tools, engine.ToolFunc{Def: engine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: readOnly}, Fn: fn})
 	}
 	switch resource.Kind {
 	case "Host":
