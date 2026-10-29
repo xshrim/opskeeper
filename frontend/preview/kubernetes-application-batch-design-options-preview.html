@@ -1,0 +1,1552 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kubernetes 应用批量配置 · 10 种方案</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f6f7f8;
+        --surface: #fffdfa;
+        --raised: #ffffff;
+        --subtle: #f3efec;
+        --text: #37322f;
+        --muted: #746b65;
+        --faint: #9a9089;
+        --border: #e8ded8;
+        --border-strong: #d8c9c0;
+        --accent: #e7601b;
+        --accent-soft: #fff0e8;
+        --green: #286f50;
+        --green-soft: #e9f4ed;
+        --amber: #94601d;
+        --amber-soft: #fff4dc;
+        --red: #a84036;
+        --red-soft: #f9eae7;
+        --blue: #315f87;
+        --blue-soft: #eaf1f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--text);
+        background: var(--page);
+        font:
+          13px/1.45 Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+      button {
+        color: inherit;
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent);
+        outline-offset: 2px;
+      }
+      .topbar {
+        position: sticky;
+        z-index: 20;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 56px;
+        padding: 10px max(18px, calc((100vw - 1440px) / 2));
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+      }
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        color: white;
+        background: #39483f;
+        border-radius: 6px;
+        font-weight: 800;
+      }
+      .brand strong,
+      .brand small {
+        display: block;
+      }
+      .brand strong {
+        font-size: 12px;
+      }
+      .brand small {
+        margin-top: 1px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .top-actions small {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-height: 30px;
+        padding: 0 9px;
+        color: var(--text);
+        background: var(--raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 5px;
+        font-size: 10px;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+      .button:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .button.primary {
+        color: #fff;
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .button.primary:hover {
+        background: #d95716;
+      }
+      .button.small {
+        min-height: 25px;
+        padding: 0 7px;
+        font-size: 9px;
+      }
+      main {
+        width: min(1440px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 25px 0 54px;
+      }
+      .intro {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 17px;
+      }
+      .eyebrow {
+        margin: 0 0 5px;
+        color: var(--accent);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.2;
+      }
+      .intro p:last-child {
+        max-width: 800px;
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+      .selection-note {
+        max-width: 290px;
+        padding: 9px 11px;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 5px;
+        font-size: 10px;
+      }
+      .selection-note strong {
+        color: var(--text);
+      }
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 7px;
+        margin: 0 0 14px;
+      }
+      .scheme-button {
+        min-height: 67px;
+        padding: 8px 9px;
+        color: var(--muted);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        text-align: left;
+      }
+      .scheme-button:hover {
+        border-color: var(--border-strong);
+        background: var(--surface);
+      }
+      .scheme-button[aria-pressed='true'] {
+        color: var(--text);
+        background: var(--surface);
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px var(--accent);
+      }
+      .scheme-button b {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+      }
+      .scheme-button .letter {
+        display: grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        color: #98400f;
+        background: var(--accent-soft);
+        border-radius: 4px;
+        font-size: 9px;
+      }
+      .scheme-button small {
+        display: block;
+        margin: 5px 0 0 24px;
+        font-size: 9px;
+        line-height: 1.3;
+      }
+      .review-note {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 12px;
+        padding: 10px 13px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+      }
+      .review-note h2 {
+        margin: 0;
+        font-size: 12px;
+      }
+      .review-note p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .tradeoffs {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: end;
+        gap: 6px;
+      }
+      .tradeoffs span {
+        padding: 4px 6px;
+        color: var(--muted);
+        background: var(--subtle);
+        border-radius: 4px;
+        font-size: 9px;
+      }
+      .tradeoffs b {
+        color: var(--text);
+      }
+      .preview-frame {
+        overflow: hidden;
+        min-height: 500px;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgb(48 40 35 / 5%);
+      }
+      .frame-caption {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 36px;
+        padding: 0 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+      .frame-caption strong {
+        font-size: 10px;
+      }
+      .frame-caption span {
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .mock-app {
+        position: relative;
+        min-height: 520px;
+        background: #f7f8f9;
+      }
+      .app-sidebar {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 170px;
+        padding: 14px 10px;
+        color: #e7e2df;
+        background: #242724;
+      }
+      .side-brand {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 1px 7px 14px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .side-logo {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        color: #fff;
+        background: #40564a;
+        border-radius: 5px;
+        font-size: 10px;
+      }
+      .side-label {
+        margin: 13px 8px 5px;
+        color: #a19b95;
+        font-size: 8px;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+      }
+      .side-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 29px;
+        margin: 1px 0;
+        padding: 0 8px;
+        color: #c9c2bc;
+        border-radius: 4px;
+        font-size: 9px;
+      }
+      .side-item.active {
+        color: #fff;
+        background: #3a3d38;
+      }
+      .side-glyph {
+        width: 12px;
+        color: #c2b5ab;
+        text-align: center;
+      }
+      .app-content {
+        min-width: 0;
+        margin-left: 170px;
+      }
+      .app-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 40px;
+        padding: 0 16px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .app-actor {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .actor-avatar {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        color: white;
+        background: #55746b;
+        border-radius: 50%;
+        font-size: 8px;
+      }
+      .content-area {
+        padding: 15px 18px 20px;
+      }
+      .page-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 11px;
+      }
+      .page-heading h2 {
+        margin: 0;
+        font-size: 15px;
+      }
+      .page-heading p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .ghost-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+        margin-top: 13px;
+      }
+      .ghost-panel {
+        min-height: 84px;
+        padding: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+      }
+      .ghost-panel b {
+        font-size: 9px;
+      }
+      .ghost-line {
+        width: 67%;
+        height: 6px;
+        margin-top: 10px;
+        background: #eeebe8;
+        border-radius: 4px;
+      }
+      .ghost-line.short {
+        width: 40%;
+      }
+      .shade {
+        position: absolute;
+        z-index: 1;
+        inset: 0 0 0 170px;
+        background: rgb(38 33 30 / 25%);
+      }
+      .wizard {
+        position: absolute;
+        z-index: 2;
+        top: 20px;
+        right: 19px;
+        bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        width: min(920px, calc(100% - 200px));
+        min-width: 0;
+        overflow: hidden;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        box-shadow: 0 8px 22px rgb(42 34 30 / 15%);
+      }
+      .wizard-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 50px;
+        padding: 8px 13px;
+        border-bottom: 1px solid var(--border);
+      }
+      .wizard-title h3 {
+        margin: 0;
+        font-size: 13px;
+      }
+      .wizard-title p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .wizard-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .wizard-body {
+        min-height: 0;
+        flex: 1;
+        overflow: auto;
+        padding: 12px 13px 18px;
+      }
+      .wizard-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 45px;
+        padding: 6px 13px;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+      }
+      .wizard-footer small {
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .stepbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 12px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .step {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 7px;
+        border-radius: 4px;
+      }
+      .step.active {
+        color: var(--text);
+        background: var(--accent-soft);
+        font-weight: 700;
+      }
+      .step-num {
+        display: grid;
+        place-items: center;
+        width: 16px;
+        height: 16px;
+        background: var(--subtle);
+        border-radius: 50%;
+        font-size: 8px;
+      }
+      .step.active .step-num {
+        color: white;
+        background: var(--accent);
+      }
+      .step-line {
+        width: 30px;
+        height: 1px;
+        background: var(--border-strong);
+      }
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px 10px;
+      }
+      .field {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+        min-width: 0;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .field.full {
+        grid-column: 1 / -1;
+      }
+      .field.span2 {
+        grid-column: span 2;
+      }
+      .field label {
+        overflow: hidden;
+        font-size: 9px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .req {
+        color: var(--red);
+      }
+      .field input,
+      .field select,
+      .field textarea {
+        width: 100%;
+        min-width: 0;
+        min-height: 28px;
+        padding: 4px 7px;
+        color: var(--text);
+        background: var(--raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 4px;
+        font-size: 9px;
+      }
+      .field textarea {
+        min-height: 42px;
+        resize: vertical;
+      }
+      .helper {
+        color: var(--faint);
+        font-size: 8px;
+      }
+      .section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 12px 0 7px;
+      }
+      .section-heading h4 {
+        margin: 0;
+        font-size: 10px;
+      }
+      .section-heading small {
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .resource-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 8px;
+        background: #f8f6f4;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .resource-strip strong {
+        font-size: 9px;
+      }
+      .resource-strip span {
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        width: max-content;
+        min-height: 18px;
+        padding: 1px 6px;
+        color: var(--muted);
+        background: var(--subtle);
+        border-radius: 3px;
+        font-size: 8px;
+        white-space: nowrap;
+      }
+      .status.ok {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+      .status.warn {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+      .status.bad {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+      .status.info {
+        color: var(--blue);
+        background: var(--blue-soft);
+      }
+      .workload-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      .workload-table th {
+        padding: 6px 5px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        font-size: 8px;
+        font-weight: 600;
+      }
+      .workload-table td {
+        padding: 6px 5px;
+        border-bottom: 1px solid #f0eae6;
+        vertical-align: middle;
+        font-size: 8px;
+      }
+      .workload-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .workload-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .workload-name input[type='checkbox'] {
+        width: 13px;
+        height: 13px;
+        accent-color: var(--accent);
+      }
+      .kind-mark {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+        color: #345847;
+        background: #e8f2eb;
+        border-radius: 5px;
+        font-size: 8px;
+        font-weight: 800;
+      }
+      .workload-copy {
+        min-width: 0;
+      }
+      .workload-copy strong,
+      .workload-copy small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .workload-copy strong {
+        font-size: 8px;
+      }
+      .workload-copy small {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 7px;
+      }
+      .workload-table input:not([type='checkbox']),
+      .workload-table select {
+        width: 100%;
+        min-width: 0;
+        height: 26px;
+        padding: 2px 5px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .workload-table textarea {
+        width: 100%;
+        min-width: 0;
+        min-height: 31px;
+        padding: 3px 5px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        resize: vertical;
+        font-size: 8px;
+      }
+      .check-cell {
+        text-align: center !important;
+      }
+      .mini-avatar {
+        display: inline-grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        margin-right: 2px;
+        color: #46544b;
+        background: #e7ece8;
+        border-radius: 50%;
+        font-size: 7px;
+      }
+      .bulk-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 6px 7px;
+        margin: 0 0 7px;
+        background: #fbf8f5;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .bulk-bar strong {
+        margin-right: auto;
+        font-size: 8px;
+      }
+      .bulk-bar input,
+      .bulk-bar select {
+        min-height: 23px;
+        padding: 2px 5px;
+        background: var(--raised);
+        border: 1px solid var(--border-strong);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .bulk-bar input {
+        width: 120px;
+      }
+      .workload-card-list {
+        display: grid;
+        gap: 6px;
+      }
+      .workload-card {
+        display: grid;
+        grid-template-columns:
+          minmax(130px, 0.7fr) repeat(3, minmax(90px, 1fr))
+          auto;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        padding: 6px 7px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .workload-card.selected {
+        border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+        background: #fffaf7;
+      }
+      .workload-card .workload-name {
+        min-width: 0;
+      }
+      .workload-card input:not([type='checkbox']),
+      .workload-card select {
+        width: 100%;
+        min-width: 0;
+        height: 25px;
+        padding: 2px 5px;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .checklist {
+        display: grid;
+        gap: 6px;
+      }
+      .check-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 9px;
+        padding: 7px 8px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .check-item > div {
+        min-width: 0;
+      }
+      .check-item strong,
+      .check-item small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .check-item strong {
+        font-size: 9px;
+      }
+      .check-item small {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .side-by-side {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(170px, 0.72fr);
+        gap: 9px;
+      }
+      .aux-panel {
+        min-width: 0;
+        padding: 8px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .aux-panel h4 {
+        margin: 0 0 6px;
+        font-size: 9px;
+      }
+      .aux-panel p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 7px;
+        padding: 5px 0;
+        border-top: 1px solid var(--border);
+        font-size: 8px;
+      }
+      .summary-row:first-of-type {
+        border-top: 0;
+      }
+      .step-pair {
+        display: grid;
+        grid-template-columns: minmax(160px, 0.78fr) minmax(0, 1.22fr);
+        gap: 9px;
+      }
+      .select-list {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+        padding: 7px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .select-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        padding: 5px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .select-row.active {
+        border-color: var(--accent);
+        background: #fffaf7;
+      }
+      .select-row span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .detail-pane {
+        padding: 8px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .detail-pane > header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding-bottom: 6px;
+        margin-bottom: 7px;
+        border-bottom: 1px solid var(--border);
+      }
+      .detail-pane > header strong {
+        font-size: 9px;
+      }
+      .diff {
+        color: var(--blue);
+        font-weight: 700;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .inline-code {
+        padding: 2px 4px;
+        color: #3e5e4b;
+        background: #eef4ef;
+        border-radius: 3px;
+        font:
+          8px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .template-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 8px;
+        margin-bottom: 7px;
+        background: var(--blue-soft);
+        border: 1px solid color-mix(in srgb, var(--blue) 20%, var(--border));
+        border-radius: 4px;
+      }
+      .template-banner strong {
+        font-size: 8px;
+      }
+      .template-banner small {
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      .metric {
+        padding: 8px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .metric small,
+      .metric strong {
+        display: block;
+      }
+      .metric small {
+        color: var(--muted);
+        font-size: 8px;
+      }
+      .metric strong {
+        margin-top: 4px;
+        font-size: 12px;
+      }
+      .form-stack {
+        display: grid;
+        gap: 7px;
+      }
+      .form-stack .field {
+        gap: 4px;
+      }
+      .app-list {
+        display: grid;
+        gap: 6px;
+      }
+      .app-list-row {
+        display: grid;
+        grid-template-columns:
+          22px minmax(100px, 0.8fr) minmax(110px, 1fr)
+          minmax(130px, 1.4fr) auto;
+        align-items: center;
+        gap: 7px;
+        padding: 7px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .app-list-row input,
+      .app-list-row select {
+        width: 100%;
+        min-width: 0;
+        min-height: 26px;
+        padding: 3px 5px;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .review-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        padding: 7px;
+        margin-top: 8px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .review-strip span {
+        padding: 3px 6px;
+        background: var(--raised);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        font-size: 8px;
+      }
+      .review-strip .error {
+        color: var(--red);
+        background: var(--red-soft);
+        border-color: color-mix(in srgb, var(--red) 25%, var(--border));
+      }
+      .row-note {
+        color: var(--faint);
+        font-size: 8px;
+      }
+      .nested-panels {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+      }
+      .nested-panel {
+        padding: 7px;
+        background: #faf8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .nested-panel h4 {
+        margin: 0 0 6px;
+        font-size: 9px;
+      }
+      .nested-panel .field-grid {
+        grid-template-columns: 1fr;
+      }
+      .status-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 5px 0;
+        border-top: 1px solid var(--border);
+        font-size: 8px;
+      }
+      .status-line:first-of-type {
+        border-top: 0;
+      }
+      .footer-note {
+        margin: 11px 2px 0;
+        color: var(--muted);
+        font-size: 9px;
+      }
+      @media (max-width: 1050px) {
+        .gallery {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .wizard {
+          right: 10px;
+          width: calc(100% - 185px);
+        }
+        .app-sidebar {
+          width: 150px;
+        }
+        .app-content {
+          margin-left: 150px;
+        }
+        .shade {
+          left: 150px;
+        }
+        .field-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 720px) {
+        .topbar {
+          align-items: flex-start;
+        }
+        .top-actions small {
+          display: none;
+        }
+        main {
+          width: calc(100% - 22px);
+          padding-top: 18px;
+        }
+        .intro {
+          display: grid;
+          gap: 10px;
+        }
+        h1 {
+          font-size: 21px;
+        }
+        .selection-note {
+          max-width: none;
+        }
+        .gallery {
+          grid-template-columns: 1fr 1fr;
+          gap: 5px;
+        }
+        .scheme-button {
+          min-height: 62px;
+          padding: 7px;
+        }
+        .review-note {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .tradeoffs {
+          justify-content: start;
+        }
+        .preview-frame {
+          min-height: 500px;
+        }
+        .mock-app {
+          min-height: 540px;
+        }
+        .app-sidebar {
+          display: none;
+        }
+        .app-content {
+          margin-left: 0;
+        }
+        .shade {
+          inset: 0;
+        }
+        .wizard {
+          top: 8px;
+          right: 8px;
+          bottom: 8px;
+          width: calc(100% - 16px);
+        }
+        .wizard-header {
+          min-height: 46px;
+          padding-inline: 9px;
+        }
+        .wizard-body {
+          padding: 9px;
+        }
+        .wizard-footer {
+          padding-inline: 9px;
+        }
+        .field-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .field.span2,
+        .field.full {
+          grid-column: 1 / -1;
+        }
+        .workload-table {
+          min-width: 600px;
+        }
+        .table-scroll {
+          overflow-x: auto;
+        }
+        .workload-card {
+          grid-template-columns:
+            minmax(100px, 1fr) minmax(78px, 1fr) minmax(78px, 1fr)
+            auto;
+        }
+        .workload-card > :nth-child(4) {
+          display: none;
+        }
+        .step-pair,
+        .side-by-side {
+          grid-template-columns: 1fr;
+        }
+        .nested-panels {
+          grid-template-columns: 1fr;
+        }
+        .app-list-row {
+          grid-template-columns: 18px 1fr 1fr;
+        }
+        .app-list-row > :nth-child(4) {
+          grid-column: 2 / -1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">O</span>
+        <div>
+          <strong>OpsKeeper · 设计评审</strong
+          ><small>Kubernetes 应用批量配置</small>
+        </div>
+      </div>
+      <div class="top-actions">
+        <small>静态预览 · 数据仅用于设计展示</small
+        ><button class="button" id="toggle-density" type="button">
+          切换预览尺寸
+        </button>
+      </div>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">PROJECT / APPLICATION / KUBERNETES</p>
+          <h1>批量选择工作负载后的应用配置</h1>
+          <p>
+            在现有两步应用向导、Kubernetes
+            资源选择和工作负载发现的基础上，探索多工作负载场景下的应用信息复用、差异填写、负责人分配和实例生成方式。10
+            种方案共享相同的工作负载样本，便于横向比较。
+          </p>
+        </div>
+        <aside class="selection-note">
+          <strong>设计边界</strong><br />每个已选工作负载生成一个独立应用；Pod
+          列表生成该应用的实例。应用图标、关键标记、标识、名称、描述、标签和负责人属于可编辑字段。
+        </aside>
+      </section>
+      <nav
+        class="gallery"
+        id="scheme-gallery"
+        aria-label="选择 Kubernetes 应用配置方案"
+      ></nav>
+      <section
+        class="review-note"
+        id="review-note"
+        aria-live="polite"
+      ></section>
+      <section
+        class="preview-frame"
+        aria-label="Kubernetes 应用批量配置方案详情"
+      >
+        <div class="frame-caption">
+          <strong id="frame-title">方案 A · 选择与配置分步</strong
+          ><span
+            >运行时：Kubernetes　·　选择工作负载：3 个　·　Pod 实例：7 个</span
+          >
+        </div>
+        <div id="mock-app" class="mock-app variant-a"></div>
+      </section>
+      <p class="footer-note">
+        所有控件均为静态原型，不调用
+        API、不保存数据。选择方案后查看完整布局；确认方案后再进入正式实现和交互验收。
+      </p>
+    </main>
+    <template id="app-shell-template">
+      <aside class="app-sidebar" aria-hidden="true">
+        <div class="side-brand"><span class="side-logo">O</span>OpsKeeper</div>
+        <div class="side-label">WORKSPACE</div>
+        <div class="side-item"><span class="side-glyph">⌂</span>平台总览</div>
+        <div class="side-item active">
+          <span class="side-glyph">▣</span>项目管理
+        </div>
+        <div class="side-item"><span class="side-glyph">◈</span>资源目录</div>
+        <div class="side-item"><span class="side-glyph">⌘</span>诊断工作台</div>
+        <div class="side-label">MANAGEMENT</div>
+        <div class="side-item"><span class="side-glyph">◷</span>通知中心</div>
+        <div class="side-item"><span class="side-glyph">⚙</span>权限</div>
+      </aside>
+      <div class="app-content">
+        <header class="app-top">
+          <span>平台 / 团队 / 项目 / 运行与实例</span
+          ><span class="app-actor"
+            ><span class="actor-avatar">林</span>林晓</span
+          >
+        </header>
+        <div class="content-area">
+          <div class="page-heading">
+            <div>
+              <h2>支付平台 · 运行与实例</h2>
+              <p>管理项目应用、运行时和部署实例。</p>
+            </div>
+            <button class="button">＋ 添加应用</button>
+          </div>
+          <div class="ghost-grid">
+            <div class="ghost-panel">
+              <b>应用总数</b>
+              <div class="ghost-line"></div>
+              <div class="ghost-line short"></div>
+            </div>
+            <div class="ghost-panel">
+              <b>运行实例</b>
+              <div class="ghost-line"></div>
+              <div class="ghost-line short"></div>
+            </div>
+            <div class="ghost-panel">
+              <b>健康状态</b>
+              <div class="ghost-line"></div>
+              <div class="ghost-line short"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="shade"></div>
+      <section class="wizard" aria-label="新增 Kubernetes 应用向导">
+        <header class="wizard-header">
+          <div class="wizard-title">
+            <h3>新增云原生应用</h3>
+            <p>从 Kubernetes 工作负载生成应用和实例</p>
+          </div>
+          <div class="wizard-actions">
+            <button class="button small">取消</button
+            ><button class="button primary small">创建 3 个应用</button>
+          </div>
+        </header>
+        <div class="wizard-body" data-wizard-body></div>
+        <footer class="wizard-footer">
+          <small>已选 3 个工作负载，将生成 3 个应用和 7 个 Pod 实例</small>
+          <div>
+            <button class="button small">返回</button>
+            <button class="button primary small">创建 3 个应用</button>
+          </div>
+        </footer>
+      </section>
+    </template>
+    <script>
+      const workloads = [
+        {
+          name: 'payments-api',
+          ns: 'payments',
+          kind: 'Deployment',
+          pods: 3,
+          image: 'registry.local/payments/api:v2.4.1',
+          status: '运行中',
+          initials: 'PA'
+        },
+        {
+          name: 'payments-worker',
+          ns: 'payments',
+          kind: 'Deployment',
+          pods: 2,
+          image: 'registry.local/payments/worker:v2.4.1',
+          status: '运行中',
+          initials: 'PW'
+        },
+        {
+          name: 'payments-migrate',
+          ns: 'payments',
+          kind: 'Job',
+          pods: 2,
+          image: 'registry.local/payments/migrate:v2.4.1',
+          status: '已完成',
+          initials: 'PM'
+        }
+      ];
+      const schemes = [
+        {
+          id: 'a',
+          name: '分步批量编辑',
+          subtitle: '先选工作负载，再集中填写应用',
+          title: 'A · 选择与配置分步',
+          description:
+            '把发现和应用字段分离：先整理工作负载清单，再进入统一批量编辑表。',
+          tradeoffs: ['选择结果先确认', '字段集中编辑', '适合多选后逐项核对']
+        },
+        {
+          id: 'b',
+          name: '表格批量编辑',
+          subtitle: '一行一个应用，横向扫描差异',
+          title: 'B · 应用字段表格',
+          description:
+            '把应用名称、标识、负责人和关键标记放在同一张矩阵中，便于比较并快速修订。',
+          tradeoffs: ['高密度', '差异一眼可见', '描述可行内展开']
+        },
+        {
+          id: 'c',
+          name: '应用母版继承',
+          subtitle: '共性默认一次填，单项再覆盖',
+          title: 'C · 母版与逐项覆盖',
+          description:
+            '先填写共同标签、负责人、图标和关键级别；每个工作负载继承默认值，仅编辑名称、标识和必要差异。',
+          tradeoffs: ['重复输入最少', '覆盖来源明确', '需要清晰显示继承状态']
+        },
+        {
+          id: 'd',
+          name: '分组批量操作',
+          subtitle: '按 Namespace / Kind 分组应用默认值',
+          title: 'D · 分组配置工作台',
+          description:
+            '先按命名空间和工作负载类型分组，负责人、标签等可按组统一应用，再在组内完成逐应用字段。',
+          tradeoffs: ['适合跨命名空间选择', '批量操作有作用域', '组内字段清楚']
+        },
+        {
+          id: 'e',
+          name: '卡片队列编辑',
+          subtitle: '清单导航 + 当前应用详情',
+          title: 'E · 队列与详情面板',
+          description:
+            '左侧选择待配置应用，右侧只显示当前工作负载的完整字段与 Pod 实例，避免一次铺开太多输入框。',
+          tradeoffs: ['单项编辑专注', '进度明确', '大量项目需切换']
+        },
+        {
+          id: 'f',
+          name: '共性与差异双栏',
+          subtitle: '共同字段与每个应用字段并列',
+          title: 'F · 默认值与差异对照',
+          description:
+            '页面并排展示全局默认字段和应用差异字段，帮助用户判断哪些值会继承、哪些需分别填写。',
+          tradeoffs: ['继承关系透明', '复核容易', '横向空间要求高']
+        },
+        {
+          id: 'g',
+          name: '差异审阅模式',
+          subtitle: '先批量预填，再突出未完成和异常',
+          title: 'G · 差异与校验优先',
+          description:
+            '字段完成状态、重复标识和缺少负责人等问题集中提示；常规继承值弱化，异常项醒目定位。',
+          tradeoffs: ['适合提交前检查', '阻塞项定位快', '编辑区需保持可见']
+        },
+        {
+          id: 'h',
+          name: '逐应用向导',
+          subtitle: '每次专注一个应用，自动前后切换',
+          title: 'H · 单应用连续填写',
+          description:
+            '顶部显示批量进度，主体只编辑当前应用。保存当前草稿后自动进入下一项，最终统一确认。',
+          tradeoffs: ['一步一件事', '窄屏友好', '不便跨应用比较']
+        },
+        {
+          id: 'i',
+          name: '分屏选择与字段表',
+          subtitle: '左侧工作负载，右侧批量字段网格',
+          title: 'I · 发现清单与配置表分屏',
+          description:
+            '保持工作负载选择结果可见，右侧即时编辑选中项的主要字段；适合选择和编辑交替发生。',
+          tradeoffs: ['选择始终可见', '操作路径短', '小屏需切换面板']
+        },
+        {
+          id: 'j',
+          name: '创建前总览',
+          subtitle: '字段配置后，以清单核对所有生成对象',
+          title: 'J · 配置与创建审阅',
+          description:
+            '配置阶段尽量简洁，提交前汇总应用、标识、负责人、标签及对应 Pod 数，阻止漏项和重复标识。',
+          tradeoffs: ['最终结果确定', '适合批量导入', '需额外审阅一步']
+        }
+      ];
+      const optionButtons = document.getElementById('scheme-gallery');
+      const note = document.getElementById('review-note');
+      const mock = document.getElementById('mock-app');
+      const frameTitle = document.getElementById('frame-title');
+      let activeScheme = 'a';
+      let compactPreview = false;
+
+      function workloadRows({
+        fields = 'name',
+        selected = true,
+        showCheckbox = true
+      } = {}) {
+        return workloads
+          .map(
+            (w, i) =>
+              `<tr><td class="check-cell">${showCheckbox ? `<input type="checkbox" ${selected ? 'checked' : ''} aria-label="选择 ${w.name}">` : i + 1}</td><td><div class="workload-name"><span class="kind-mark">${w.kind === 'Job' ? 'J' : 'D'}</span><span class="workload-copy"><strong>${w.name}</strong><small>${w.kind} · ${w.ns} · ${w.pods} Pods</small></span></div></td>${fields.includes('app') ? `<td><input value="${w.name.replace('payments-', '支付 ')}" aria-label="${w.name} 应用名称"></td>` : ''}${fields.includes('code') ? `<td><input value="${w.name}" aria-label="${w.name} 应用标识"></td>` : ''}${fields.includes('owner') ? `<td><select aria-label="${w.name} 技术负责人"><option>林晓 · 技术</option><option>陈越 · 技术</option></select></td>` : ''}${fields.includes('ops') ? `<td><select aria-label="${w.name} 运维负责人"><option>周宁 · 运维</option><option>林晓 · 运维</option></select></td>` : ''}${fields.includes('critical') ? `<td><select aria-label="${w.name} 关键应用"><option>${i === 0 ? '是' : '否'}</option><option>${i === 0 ? '否' : '是'}</option></select></td>` : ''}${fields.includes('labels') ? `<td><input value="team=payments, env=prod" aria-label="${w.name} 标签"></td>` : ''}${fields.includes('pods') ? `<td><span class="status info">${w.pods} 个实例</span></td>` : ''}${fields.includes('status') ? `<td><span class="status ${i === 2 ? 'warn' : 'ok'}">${w.status}</span></td>` : ''}</tr>`
+          )
+          .join('');
+      }
+      function table({
+        fields = 'name code owner ops critical',
+        headers = '应用名称,应用标识,技术负责人,运维负责人,关键应用',
+        selected = true
+      } = {}) {
+        const labels = headers.split(',');
+        return `<div class="table-scroll"><table class="workload-table"><thead><tr><th class="check-cell">${selected ? '✓' : '#'}</th><th>工作负载 / 实例</th>${labels.map((label) => `<th>${label}</th>`).join('')}</tr></thead><tbody>${workloadRows({ fields, selected, showCheckbox: selected })}</tbody></table></div>`;
+      }
+      function fields({
+        description = true,
+        common = false,
+        labels = true
+      } = {}) {
+        return `<div class="field-grid"><label class="field"><span>应用图标</span><select><option>应用窗口</option><option>服务</option></select></label><label class="field"><span>关键应用</span><select><option>按工作负载预设</option><option>是</option><option>否</option></select></label><label class="field span2"><span>应用标识 <i class="req">*</i></span><input value="payments-api" placeholder="例如 payments-api"></label><label class="field span2"><span>应用名称 <i class="req">*</i></span><input value="支付 API" placeholder="例如 支付 API"></label><label class="field span2"><span>技术负责人</span><select><option>林晓 · 技术负责人</option><option>陈越 · 技术负责人</option></select></label><label class="field span2"><span>运维负责人</span><select><option>周宁 · 运维负责人</option><option>林晓 · 运维负责人</option></select></label>${labels ? `<label class="field full"><span>应用标签 ${common ? '<small class="helper">· 从批量默认继承，可单项调整</small>' : ''}</span><input value="team=payments, env=prod" placeholder="选择或填写应用标签"></label>` : ''}${description ? `<label class="field full"><span>应用描述</span><textarea placeholder="应用职责和运行边界">处理支付请求与订单扣款。</textarea></label>` : ''}</div>`;
+      }
+      function podSummary(w) {
+        return `<span class="status info">${w.pods} 个 Pod 实例 · ${w.ns}/${w.kind}/${w.name}</span>`;
+      }
+      function bodyFor(id) {
+        const resource = `<div class="resource-strip"><strong>Kubernetes 资源</strong><span>k8s-prod-shanghai</span><span>·</span><span>Context: prod-cluster</span><span class="status ok">连接正常</span></div>`;
+        if (id === 'a')
+          return `<div class="stepbar"><span class="step"><i class="step-num">1</i> 运行时类型</span><span class="step-line"></span><span class="step active"><i class="step-num">2</i> 工作负载与应用配置</span></div>${resource}<div class="field-grid" style="margin-top:8px"><label class="field"><span>命名空间</span><input value="payments"></label><label class="field span2"><span>标签选择器</span><input value="app.kubernetes.io/part-of=payments"></label></div><div class="section-heading"><h4>已选择工作负载</h4><small>3 个工作负载 · 7 个 Pod</small></div>${table({ fields: 'pods status', headers: 'Pod 实例,状态' })}<div class="section-heading"><h4>逐个配置应用</h4><small>共性标签和负责人可继续沿用默认值</small></div>${table({ fields: 'app code owner ops critical', headers: '应用名称,应用标识,技术负责人,运维负责人,关键', selected: false })}`;
+        if (id === 'b')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">1</i> 运行时类型</span><span class="step-line"></span><span class="step active"><i class="step-num">2</i> 应用与实例</span><span class="status info">3 个工作负载已选</span></div>${resource}<div class="field-grid" style="margin-top:8px"><label class="field span2"><span>命名空间</span><input value="payments"></label><label class="field span2"><span>标签选择器</span><input value="app.kubernetes.io/part-of=payments"></label></div><div class="section-heading"><h4>应用字段批量编辑</h4><small>在表格中直接修改；标签和描述可展开</small></div>${table({ fields: 'app code owner ops critical pods', headers: '应用名称,应用标识,技术负责人,运维负责人,关键应用,Pod' })}<div class="section-heading"><h4>批量设置</h4><small>选择行后统一应用</small></div><div class="bulk-bar"><strong>已选择 3 个应用</strong><select><option>批量设置技术负责人</option></select><select><option>批量设置运维负责人</option></select><select><option>关键应用：不变</option></select><button class="button small">批量设置标签</button></div>`;
+        if (id === 'c')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">1</i> 批量默认</span><span class="step-line"></span><span class="step active"><i class="step-num">2</i> 应用差异</span><span class="step-line"></span><span class="step"><i class="step-num">3</i> 确认</span></div>${resource}<div class="section-heading"><h4>批量默认值</h4><small>新生成的应用均继承这些设置</small></div><div class="template-banner"><div><strong>共性配置 · 支付生产服务</strong><br><small>负责人、标签、图标和关键级别将作为初始值</small></div><button class="button small">保存为模板</button></div><div class="field-grid">${fields({ description: false, common: true })}</div><div class="section-heading"><h4>逐项差异</h4><small>名称和标识自动生成，可按需改写</small></div>${table({ fields: 'app code critical pods', headers: '应用名称,应用标识,关键级别,实例数' })}`;
+        if (id === 'd')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">1</i> 发现</span><span class="step active"><i class="step-num">2</i> 分组设置</span><span class="step active"><i class="step-num">3</i> 应用字段</span></div>${resource}<div class="section-heading"><h4>命名空间与类型分组</h4><small>分组设置仅影响当前组</small></div><div class="nested-panels"><div class="nested-panel"><h4>payments · Deployment · 2 项</h4><div class="field-grid"><label class="field"><span>负责人</span><select><option>林晓 · 技术</option></select></label><label class="field"><span>标签</span><input value="env=prod"></label></div></div><div class="nested-panel"><h4>payments · Job · 1 项</h4><div class="field-grid"><label class="field"><span>负责人</span><select><option>陈越 · 技术</option></select></label><label class="field"><span>标签</span><input value="env=maintenance"></label></div></div><div class="nested-panel"><h4>作用范围</h4><p>应用默认值可全局继承，也可按命名空间与 Kind 单独覆盖。分组不同不会自动改写 Kubernetes 资源配置。</p></div></div><div class="section-heading"><h4>组内应用字段</h4><small>应用名称、标识和关键级别逐项确认</small></div>${table({ fields: 'app code critical pods', headers: '应用名称,应用标识,关键,Pod 实例' })}`;
+        if (id === 'e')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">2</i> 应用配置</span><span class="status info">第 1 / 3 个</span><span class="step-line"></span><span class="muted">其余 2 个待配置</span></div><div class="side-by-side"><div>${resource}<div class="section-heading"><h4>待配置应用</h4><small>点击切换，字段草稿自动保留</small></div><div class="checklist">${workloads.map((w, i) => `<div class="check-item"><div><strong>${w.name}</strong><small>${w.kind} · ${w.ns} · ${w.pods} Pods</small></div><span class="status ${i === 0 ? 'info' : 'neutral'}">${i === 0 ? '正在编辑' : i === 2 ? '未开始' : '待配置'}</span></div>`).join('')}</div></div><div class="detail-pane"><header><strong>Deployment · payments-api</strong><span class="status ok">工作负载正常</span></header>${fields({ description: true })}<div class="section-heading"><h4>自动生成实例</h4><small>3 个 Pod</small></div><p class="helper">${podSummary(workloads[0])}</p></div></div>`;
+        if (id === 'f')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">2</i> 应用与实例</span><span class="status info">默认值继承已开启</span></div>${resource}<div class="side-by-side" style="margin-top:8px"><div><div class="section-heading"><h4>批量共性字段</h4><small>每个应用继承，可单项解除</small></div><div class="field-grid">${fields({ description: false, common: true })}</div></div><aside class="aux-panel"><h4>应用差异与来源</h4><div class="summary-row"><span>名称 / 标识</span><b>每项独立</b></div><div class="summary-row"><span>关键级别</span><b>继承默认</b></div><div class="summary-row"><span>技术 / 运维负责人</span><b>继承默认</b></div><div class="summary-row"><span>标签</span><b>默认 + 覆盖</b></div><p style="margin-top:8px">解除继承后只影响当前应用。变更默认值时可选择是否同步已有草稿。</p></aside></div><div class="section-heading"><h4>差异编辑区</h4><small>名称由工作负载生成，均可覆盖</small></div>${table({ fields: 'app code pods', headers: '应用名称,应用标识,实例数' })}`;
+        if (id === 'g')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">2</i> 配置</span><span class="status warn">仍有 2 项待确认</span><span class="step-line"></span><span>3 个应用 · 7 个实例</span></div>${resource}<div class="metric-grid" style="margin-top:8px"><div class="metric"><small>应用名称</small><strong>3 / 3</strong></div><div class="metric"><small>唯一标识</small><strong>2 / 3 <span class="diff">需修正</span></strong></div><div class="metric"><small>负责人</small><strong>3 / 3</strong></div></div><div class="section-heading"><h4>需要处理的问题</h4><small>点击问题定位到对应字段</small></div><div class="review-strip"><span class="error">payments-api · 应用标识重复</span><span class="error">payments-migrate · 描述为空</span><span>payments-worker · 已完成</span></div><div class="section-heading"><h4>应用字段</h4><small>问题字段保持醒目，其他值折叠到摘要</small></div>${table({ fields: 'app code owner critical status', headers: '应用名称,应用标识,技术负责人,关键级别,校验状态' })}<div class="field-grid" style="margin-top:8px"><label class="field full"><span>应用描述 · payments-migrate</span><textarea placeholder="请说明 Job 的用途与运行边界">批量迁移支付数据。</textarea></label></div>`;
+        if (id === 'h')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">1</i> 运行时</span><span class="step active"><i class="step-num">2</i> 应用字段</span><span class="status info">1 / 3 · 33%</span></div>${resource}<div class="section-heading"><h4>正在配置：1 / 3</h4><small>离开前自动保留草稿</small></div><div class="metric-grid"><div class="metric"><small>工作负载</small><strong>payments-api</strong></div><div class="metric"><small>类型 / 命名空间</small><strong>Deployment · payments</strong></div><div class="metric"><small>将生成实例</small><strong>3 个 Pod</strong></div></div><div class="section-heading"><h4>应用信息</h4><small>应用标识须在项目中唯一</small></div><div class="form-stack">${fields({ description: true })}</div><div class="review-strip"><span class="status ok">必填已完成</span><span class="status info">下一项：payments-worker</span><span class="row-note">键盘快捷键：Enter 下一项</span></div>`;
+        if (id === 'i')
+          return `<div class="stepbar"><span class="step active"><i class="step-num">2</i> 选择与配置</span><span class="status info">3 项已选中</span></div>${resource}<div class="section-heading"><h4>工作负载与应用配置</h4><small>切换左侧选择，右侧编辑当前应用</small></div><div class="step-pair"><div class="select-list">${workloads.map((w, i) => `<div class="select-row ${i === 0 ? 'active' : ''}"><input type="checkbox" checked aria-label="选择 ${w.name}"><span class="kind-mark">${w.kind === 'Job' ? 'J' : 'D'}</span><span><b>${w.name}</b><br><small>${w.kind} · ${w.pods} Pods</small></span></div>`).join('')}<button class="button small">全选 / 清空</button></div><div class="detail-pane"><header><strong>payments-api · 应用字段</strong><span class="status ok">3 Pods</span></header>${fields({ description: true })}</div></div>`;
+        return `<div class="stepbar"><span class="step active"><i class="step-num">1</i> 选择</span><span class="step active"><i class="step-num">2</i> 配置</span><span class="step active"><i class="step-num">3</i> 审阅</span></div>${resource}<div class="section-heading"><h4>创建结果预览</h4><small>检查生成数量、字段差异和实例来源</small></div><div class="metric-grid"><div class="metric"><small>应用</small><strong>3 个</strong></div><div class="metric"><small>Pod 实例</small><strong>7 个</strong></div><div class="metric"><small>阻塞项</small><strong>1 项 <span class="diff">待修正</span></strong></div></div><div class="section-heading"><h4>应用与实例映射</h4><small>展开可查看完整实例 selector</small></div><div class="app-list">${workloads.map((w, i) => `<div class="app-list-row"><span class="kind-mark">${w.kind === 'Job' ? 'J' : 'D'}</span><span class="workload-copy"><strong>${w.name}</strong><small>${w.kind} · ${w.pods} Pods</small></span><input value="${w.name.replace('payments-', '支付 ')}" aria-label="应用名称"><input value="${w.name}${i === 2 ? '' : ''}" aria-label="应用标识"><span class="status ${i === 2 ? 'bad' : 'ok'}">${i === 2 ? '需补描述' : '信息完整'}</span></div>`).join('')}</div><div class="review-strip"><span class="error">payments-migrate · 描述不能为空</span><span>技术负责人继承：林晓</span><span>运维负责人继承：周宁</span><span>应用标签：team=payments · env=prod</span></div>`;
+      }
+      function render() {
+        optionButtons.innerHTML = schemes
+          .map(
+            (scheme, index) =>
+              `<button class="scheme-button" type="button" data-scheme="${scheme.id}" aria-pressed="${activeScheme === scheme.id}"><b><span class="letter">${String.fromCharCode(65 + index)}</span>${scheme.name}</b><small>${scheme.subtitle}</small></button>`
+          )
+          .join('');
+        const scheme = schemes.find((item) => item.id === activeScheme);
+        frameTitle.textContent = `方案 ${scheme.id.toUpperCase()} · ${scheme.title.split(' · ')[1]}`;
+        note.innerHTML = `<div><h2>${scheme.title}</h2><p>${scheme.description}</p></div><div class="tradeoffs">${scheme.tradeoffs.map((item) => `<span><b>${item.split('：')[0]}</b>${item.includes('：') ? `：${item.split('：').slice(1).join('：')}` : ''}</span>`).join('')}</div>`;
+        mock.className = `mock-app variant-${activeScheme}${compactPreview ? ' compact-preview' : ''}`;
+        const shell = document
+          .getElementById('app-shell-template')
+          .content.cloneNode(true);
+        shell.querySelector('[data-wizard-body]').innerHTML =
+          bodyFor(activeScheme);
+        mock.replaceChildren(shell);
+      }
+      optionButtons.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-scheme]');
+        if (!button) return;
+        activeScheme = button.dataset.scheme;
+        render();
+      });
+      document
+        .getElementById('toggle-density')
+        .addEventListener('click', (event) => {
+          compactPreview = !compactPreview;
+          event.currentTarget.textContent = compactPreview
+            ? '恢复预览尺寸'
+            : '切换预览尺寸';
+          mock.classList.toggle('compact-preview', compactPreview);
+        });
+      render();
+    </script>
+  </body>
+</html>
