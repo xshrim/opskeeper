@@ -19,6 +19,9 @@ type applicationService interface {
 	DeleteInstanceInProject(context.Context, string, string, string) error
 	Workspace(context.Context, string) (application.Workspace, error)
 }
+type applicationBatchService interface {
+	CreateMany(context.Context, []application.CreateInput) ([]application.Application, error)
+}
 type applicationHandler struct {
 	service     applicationService
 	apiBasePath string
@@ -36,12 +39,17 @@ type createApplicationRequest struct {
 	OperationsOwnerIDs []string                          `json:"operations_owner_ids"`
 	Instances          []application.CreateInstanceInput `json:"instances"`
 }
+type createApplicationBatchRequest struct {
+	Items []createApplicationRequest `json:"items"`
+}
 type updateApplicationRequest struct {
 	Name               *string                            `json:"name"`
+	Code               *string                            `json:"code"`
 	Description        *string                            `json:"description"`
 	Icon               *string                            `json:"icon"`
 	Status             *string                            `json:"status"`
 	RuntimeKind        *string                            `json:"runtime_kind"`
+	ExternalUID        *string                            `json:"external_uid"`
 	Labels             *map[string]string                 `json:"labels"`
 	Critical           *bool                              `json:"critical"`
 	TechnicalOwnerIDs  *[]string                          `json:"technical_owner_ids"`
@@ -68,6 +76,9 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/workspace", h.workspace)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
+	if _, ok := service.(applicationBatchService); ok {
+		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/batch", h.createBatch)
+	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications/{applicationID}/", h.get)
 	router.With(guard(authorization.ProjectManage)).Patch("/projects/{projectID}/applications/{applicationID}/", h.update)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/", h.delete)
@@ -103,6 +114,33 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", h.apiBasePath+"/projects/"+chi.URLParam(r, "projectID")+"/applications/"+v.ID)
 	writeJSON(w, http.StatusCreated, v)
 }
+func (h applicationHandler) createBatch(w http.ResponseWriter, r *http.Request) {
+	var body createApplicationBatchRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	service, ok := h.service.(applicationBatchService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	inputs := make([]application.CreateInput, 0, len(body.Items))
+	for _, item := range body.Items {
+		inputs = append(inputs, application.CreateInput{
+			ProjectID: chi.URLParam(r, "projectID"), Name: item.Name, Code: item.Code,
+			Description: item.Description, Icon: item.Icon, RuntimeKind: item.RuntimeKind,
+			ExternalUID: item.ExternalUID, Labels: item.Labels, Critical: item.Critical,
+			TechnicalOwnerIDs: item.TechnicalOwnerIDs, OperationsOwnerIDs: item.OperationsOwnerIDs,
+			Instances: item.Instances,
+		})
+	}
+	created, err := service.CreateMany(r.Context(), inputs)
+	if err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"items": created})
+}
 func (h applicationHandler) get(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.GetInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"))
 	if e != nil {
@@ -116,7 +154,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

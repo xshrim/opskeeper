@@ -45,9 +45,10 @@ type MetricsInput struct {
 }
 type ProcessesInput struct {
 	ConnectionInput
-	PID     int    `json:"pid,omitempty"`
-	Keyword string `json:"keyword,omitempty"`
-	Limit   int    `json:"limit,omitempty"`
+	PID         int    `json:"pid,omitempty"`
+	Keyword     string `json:"keyword,omitempty"`
+	CommandLine string `json:"command_line,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
 }
 type FileLogsInput struct {
 	ConnectionInput

@@ -19,9 +19,11 @@ export type ApplicationResourceCreationResult = {
 
 export type ApplicationInstanceDraft = {
   id: string;
+  persistedId?: string;
   name: string;
   targetResourceId: string;
   selector: Record<string, unknown>;
+  logBinding?: Record<string, unknown>;
   status?: string;
 };
 

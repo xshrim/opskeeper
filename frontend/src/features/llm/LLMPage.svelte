@@ -6,7 +6,6 @@
     Plus,
     Pencil,
     X,
-    ChevronDown,
     RefreshCw,
     Save,
     Trash2
@@ -41,6 +40,7 @@
   export let scopeName: (id: string) => string;
   export let scopeType: (id: string) => string = () => 'platform';
   export let scopeChoices: ScopeChoice[] = [];
+  export let providerManageScopeOptions: ScopeChoice[] = [];
   export let canManageProvider = false;
   export let canManageEngine = false;
   export let providerPermissionLabel: (provider: Provider) => string = () => '可查看';
@@ -84,7 +84,6 @@
     [];
   let selectedEngineId = '';
   let selectedProviderId = '';
-  let providerBeforeCreateId = '';
   let drawerOpen = false;
   let editingProvider = false;
   let editingEngine = false;
@@ -315,22 +314,14 @@
   function scopeBadgeClass(type: string) {
     return ({ platform: 'scope-platform', team: 'scope-team', project: 'scope-project' } as Record<string, string>)[type] ?? 'scope-platform';
   }
-  function providerScopeOptions(currentScopeId: string, includeScopeId = '') {
-    const options: ScopeChoice[] = [];
-    const seen = new Set<string>();
-    let current = scopeChoices.find((item) => item.id === currentScopeId);
-    while (current && !seen.has(current.id)) {
-      options.unshift(current);
-      seen.add(current.id);
-      current = current.parentId
-        ? scopeChoices.find((item) => item.id === current?.parentId)
-        : undefined;
-    }
-    if (includeScopeId && !seen.has(includeScopeId)) {
-      const existing = scopeChoices.find((item) => item.id === includeScopeId);
-      if (existing) options.unshift(existing);
-    }
-    return options;
+  function providerScopeDropdownOptions(currentScopeId: string) {
+    const scopes = providerManageScopeOptions.some((item) => item.id === currentScopeId)
+      ? providerManageScopeOptions
+      : [...providerManageScopeOptions, ...scopeChoices.filter((item) => item.id === currentScopeId)];
+    return scopes.map((scope) => ({
+      value: scope.id,
+      label: `${scopeLevelLabel(scope.type)}级 · ${scope.name}`
+    }));
   }
   $: if (providers !== sourceProviders) {
     sourceProviders = providers;
@@ -475,8 +466,6 @@
   }
   function openNewProvider() {
     if (editingProvider && !providerDraft.id) return;
-    providerBeforeCreateId = selectedProviderId;
-    selectedProviderId = '';
     providerDraft = { ...emptyProvider(), scopeId };
     providerErrors = {};
     clearProviderEditorMessage();
@@ -496,10 +485,6 @@
     providerErrors = {};
     clearProviderEditorMessage();
     editingProvider = false;
-    if (!providerDraft.id) {
-      selectedProviderId = providerBeforeCreateId;
-      providerBeforeCreateId = '';
-    }
     if (selectedProvider) providerDraft = toDraft(selectedProvider);
     else drawerOpen = false;
   }
@@ -743,11 +728,9 @@
     }
     busy = true;
     try {
-      const existingTags = providerDraft.id
-        ? [...(selectedProvider?.tags ?? [])]
-        : [];
       const selectedTags = [...providerDraft.tags];
       const body = {
+        scope_id: providerDraft.scopeId || scopeId,
         name: providerDraft.name.trim(),
         status: providerDraft.status,
         config: providerConfig(),
@@ -757,16 +740,14 @@
       };
       const saved = providerDraft.id
         ? await api.updateProvider(providerDraft.id, body)
-        : await api.createProvider({ scope_id: providerDraft.scopeId || scopeId, ...body });
+        : await api.createProvider(body);
       await syncProviderBindings(
         saved.id,
-        existingTags,
         providerDraft.status === 'active' ? selectedTags : [],
         providerDraft.scopeId || scopeId
       );
       const refreshedProviders = await reloadProviders();
       selectedProviderId = saved.id;
-      providerBeforeCreateId = '';
       providerDraft = toDraft(
         refreshedProviders.find((item) => item.id === saved.id) ?? saved
       );
@@ -817,15 +798,15 @@
   }
   async function syncProviderBindings(
     providerId: string,
-    existingTags: string[],
     selectedTags: string[],
     bindingScopeId: string
   ) {
     const selected = new Set(selectedTags);
+    const localBindings = await api.providerBindings(bindingScopeId);
     for (const tag of scenarioTags) {
       if (selected.has(tag.value)) {
         await api.setProviderBinding(bindingScopeId, tag.value, providerId);
-      } else if (existingTags.includes(tag.value)) {
+      } else if (localBindings.some((item) => item.tag === tag.value && item.provider_id === providerId)) {
         await api.removeProviderBinding(bindingScopeId, tag.value);
       }
     }
@@ -1326,14 +1307,13 @@
                   </div>
                   <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
                   <label class="provider-level-field"
-                    ><FieldLabel text="级别" /><span class="scope-select-wrap"
-                      ><select
-                        bind:value={providerDraft.scopeId}
-                        disabled={Boolean(providerDraft.id)}
-                        aria-label="渠道级别"
-                      >{#each providerScopeOptions(scopeId, providerDraft.scopeId) as option}<option value={option.id}>{scopeLevelLabel(option.type)}</option>{/each}</select
-                      ><ChevronDown size={13} aria-hidden="true" /></span
-                    ></label
+                    ><FieldLabel text="级别" /><DropdownSelect
+                      bind:value={providerDraft.scopeId}
+                      options={providerScopeDropdownOptions(providerDraft.scopeId || scopeId)}
+                      placeholder="请选择级别"
+                      ariaLabel="渠道级别"
+                      disabled={!canManageProvider || busy}
+                    /></label
                   >
                   </div>
                   <div class="provider-identity-secondary">
@@ -1546,7 +1526,7 @@
                 <div class="provider-preview-field provider-preview-level-field">
                   <FieldLabel text="级别" /><strong
                     class="provider-preview-value provider-preview-plain"
-                    >{scopeLevelLabel(scopeType(selectedProvider.scope_id))}</strong
+                    >{scopeLevelLabel(scopeType(selectedProvider.scope_id))}级 · {scopeName(selectedProvider.scope_id)}</strong
                   >
                 </div>
                 <div class="provider-preview-field provider-preview-tags">
@@ -2473,8 +2453,7 @@
   .full {
     grid-column: 1 / -1;
   }
-  label input,
-  label select {
+  label input {
     width: 100%;
     min-height: 35px;
     padding: 7px 9px;
@@ -2496,7 +2475,7 @@
   }
   .provider-identity-row {
     display: grid;
-    grid-template-columns: auto minmax(140px, 3fr) 65px minmax(0, 1fr) 80px 46px;
+    grid-template-columns: auto minmax(140px, 3fr) minmax(140px, 1.5fr) minmax(0, 1fr) 80px 46px;
     align-items: start;
     column-gap: 10px;
     row-gap: 12px;
@@ -2511,7 +2490,7 @@
   }
   .provider-preview-identity-row {
     display: grid;
-    grid-template-columns: auto minmax(140px, 3fr) 65px minmax(0, 1fr) 80px 46px;
+    grid-template-columns: auto minmax(140px, 3fr) minmax(140px, 1.5fr) minmax(0, 1fr) 80px 46px;
     align-items: start;
     column-gap: 10px;
     row-gap: 12px;
@@ -2699,50 +2678,11 @@
     justify-self: start;
   }
   .provider-level-field {
-    width: 65px;
-    min-width: 65px;
-  }
-  .provider-level-field .scope-select-wrap {
-    justify-self: start;
+    width: 150px;
+    min-width: 150px;
   }
   .provider-level-field :global(.field-label) {
     text-align: left;
-  }
-  .scope-select-wrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    width: 65px;
-    min-width: 65px;
-  }
-  .scope-select-wrap select {
-    width: 65px;
-    min-width: 65px;
-    height: 35px;
-    min-height: 35px;
-    padding: 7px 25px 7px 9px;
-    color: var(--theme-fg);
-    background: var(--theme-bg-input);
-    border: 1px solid var(--theme-border);
-    border-radius: 4px;
-    font: inherit;
-    font-size: 11px;
-    appearance: none;
-  }
-  .scope-select-wrap select:hover {
-    background: var(--theme-bg-input);
-    border-color: var(--theme-border);
-  }
-  .scope-select-wrap select:focus {
-    border-color: var(--theme-border-focus);
-    outline: none;
-    box-shadow: 0 0 0 2px var(--theme-focus);
-  }
-  .scope-select-wrap :global(svg) {
-    position: absolute;
-    right: 8px;
-    pointer-events: none;
-    color: var(--theme-fg-muted);
   }
   .provider-status-switch :global(.switch-control) {
     align-self: center;

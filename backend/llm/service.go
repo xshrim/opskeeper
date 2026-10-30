@@ -108,6 +108,13 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, patch ProviderP
 	if !allowsExactScope(ctx, current.ScopeID) {
 		return Provider{}, authorization.ErrForbidden
 	}
+	if patch.ScopeID != nil {
+		scopeID := strings.TrimSpace(*patch.ScopeID)
+		if scopeID == "" || !allowsExactScope(ctx, scopeID) {
+			return Provider{}, authorization.ErrForbidden
+		}
+		patch.ScopeID = &scopeID
+	}
 	if patch.Name != nil {
 		value := strings.TrimSpace(*patch.Name)
 		if value == "" {

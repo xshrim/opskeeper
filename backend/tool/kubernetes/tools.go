@@ -75,15 +75,17 @@ func AvailableTools() []ToolInfo {
 }
 
 type ResourceItem struct {
-	Namespace string            `json:"namespace,omitempty"`
-	Name      string            `json:"name"`
-	Kind      string            `json:"kind,omitempty"`
-	Phase     string            `json:"phase,omitempty"`
-	Ready     bool              `json:"ready,omitempty"`
-	Restarts  int32             `json:"restarts,omitempty"`
-	Node      string            `json:"node,omitempty"`
-	Age       string            `json:"age,omitempty"`
-	Labels    map[string]string `json:"labels,omitempty"`
+	Namespace     string            `json:"namespace,omitempty"`
+	Name          string            `json:"name"`
+	Kind          string            `json:"kind,omitempty"`
+	Replicas      int64             `json:"replicas"`
+	ReadyReplicas int64             `json:"ready_replicas"`
+	Phase         string            `json:"phase,omitempty"`
+	Ready         bool              `json:"ready,omitempty"`
+	Restarts      int32             `json:"restarts,omitempty"`
+	Node          string            `json:"node,omitempty"`
+	Age           string            `json:"age,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
 }
 
 type ListOutput struct {
@@ -483,6 +485,9 @@ func labelsFromString(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
+	if selector, err := labels.Parse(raw); err == nil {
+		return selector.String(), nil
+	}
 	parts := strings.Split(raw, ",")
 	labels := make([]string, 0, len(parts))
 	for _, item := range parts {
@@ -506,14 +511,19 @@ func labelsFromString(raw string) (string, error) {
 func Workloads(ctx context.Context, input client.ConnectionInput, namespace, filters, continuation string, limit int) (ListOutput, error) {
 	var all []ResourceItem
 	var next string
+	truncated := false
 	for _, name := range []string{"deployments", "statefulsets", "daemonsets", "jobs", "cronjobs"} {
 		out, err := List(ctx, input, name, namespace, filters, continuation, limit)
 		if err != nil {
 			return ListOutput{}, err
 		}
-		all, next = append(all, out.Items...), out.Continue
+		all = append(all, out.Items...)
+		if next == "" {
+			next = out.Continue
+		}
+		truncated = truncated || out.Truncated
 	}
-	return ListOutput{Items: all, Count: len(all), Continue: next}, nil
+	return ListOutput{Items: all, Count: len(all), Truncated: truncated, Continue: next}, nil
 }
 
 func Get(ctx context.Context, input client.ConnectionInput, resource, namespace, name string) (map[string]any, error) {
@@ -966,6 +976,16 @@ func Health(ctx context.Context, input client.ConnectionInput) (map[string]any, 
 
 func toResourceItem(kind string, o unstructured.Unstructured) ResourceItem {
 	item := ResourceItem{Namespace: o.GetNamespace(), Name: o.GetName(), Kind: kind, Labels: o.GetLabels(), Age: o.GetCreationTimestamp().Time.Format(time.RFC3339)}
+	if replicas, found, _ := unstructured.NestedInt64(o.Object, "spec", "replicas"); found {
+		item.Replicas = replicas
+	} else if parallelism, found, _ := unstructured.NestedInt64(o.Object, "spec", "parallelism"); found {
+		item.Replicas = parallelism
+	}
+	if ready, found, _ := unstructured.NestedInt64(o.Object, "status", "readyReplicas"); found {
+		item.ReadyReplicas = ready
+	} else if ready, found, _ := unstructured.NestedInt64(o.Object, "status", "numberReady"); found {
+		item.ReadyReplicas = ready
+	}
 	item.Phase, _, _ = unstructured.NestedString(o.Object, "status", "phase")
 	item.Node, _, _ = unstructured.NestedString(o.Object, "spec", "nodeName")
 	if kind == "Pod" {

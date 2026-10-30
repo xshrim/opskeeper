@@ -281,8 +281,8 @@ BEGIN
      OR (app_runtime = 'cloud_native' AND resource_kind <> 'Kubernetes') THEN
     RAISE EXCEPTION 'application instance resource kind does not match application runtime kind' USING ERRCODE = '23514';
   END IF;
-  IF app_runtime = 'virtual_machine' AND COALESCE(NEW.selector->>'process_keyword', '') = '' THEN
-    RAISE EXCEPTION 'Host instances require selector.process_keyword' USING ERRCODE = '23514';
+  IF app_runtime = 'virtual_machine' AND COALESCE(NEW.selector->>'process_command_line', '') = '' THEN
+    RAISE EXCEPTION 'Host instances require selector.process_command_line' USING ERRCODE = '23514';
   END IF;
   IF app_runtime = 'containerized' AND COALESCE(NEW.selector->>'container_name', '') = '' THEN
     RAISE EXCEPTION 'Docker instances require selector.container_name' USING ERRCODE = '23514';

@@ -25,8 +25,12 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 		return ProcessesOutput{}, fmt.Errorf("%w: pid must be positive", ErrInvalidArgument)
 	}
 	keyword := strings.TrimSpace(input.Keyword)
+	commandLine := strings.TrimSpace(input.CommandLine)
 	if keyword != "" && len([]rune(keyword)) > 128 {
 		return ProcessesOutput{}, fmt.Errorf("%w: keyword is too long", ErrInvalidArgument)
+	}
+	if len([]rune(commandLine)) > 8192 {
+		return ProcessesOutput{}, fmt.Errorf("%w: command line is too long", ErrInvalidArgument)
 	}
 	expression, err := parseKeywordExpression(keyword)
 	if err != nil {
@@ -38,7 +42,7 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 	if input.Limit < 1 || input.Limit > MaxProcessLimit {
 		return ProcessesOutput{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidArgument, MaxProcessLimit)
 	}
-	if input.PID <= 0 && keyword == "" {
+	if input.PID <= 0 && keyword == "" && commandLine == "" {
 		_, target, resolveErr := resolveInput(input.ConnectionInput)
 		if resolveErr != nil {
 			return ProcessesOutput{}, resolveErr
@@ -57,7 +61,8 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 			passwd, _ := readLimited(ctx, src, "/etc/passwd")
 			output := ProcessesOutput{SchemaVersion: 1, CollectedAt: time.Now().UTC(), Target: target, Processes: make([]ProcessInfo, 0, input.Limit)}
 			for _, process := range parsePSProcesses(raw, output.CollectedAt, passwd) {
-				if keyword != "" && !expression.Match(processSearchText(process)) {
+				if (keyword != "" && !expression.Match(processSearchText(process))) ||
+					(commandLine != "" && process.CommandLine != commandLine) {
 					continue
 				}
 				output.MatchCount++
@@ -115,7 +120,8 @@ func Processes(ctx context.Context, input ProcessesInput) (ProcessesOutput, erro
 			}
 			continue
 		}
-		if keyword != "" && !expression.Match(processSearchText(process)) {
+		if (keyword != "" && !expression.Match(processSearchText(process))) ||
+			(commandLine != "" && process.CommandLine != commandLine) {
 			continue
 		}
 		output.MatchCount++

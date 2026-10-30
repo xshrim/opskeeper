@@ -968,6 +968,11 @@ export const api = {
       `api/v1/projects/${projectId}/applications`,
       json(body)
     ),
+  createApplications: (projectId: string, items: Array<Record<string, unknown>>) =>
+    request<{ items: Application[] }>(
+      `api/v1/projects/${projectId}/applications/batch`,
+      json({ items })
+    ),
   updateApplication: (
     projectId: string,
     id: string,
@@ -1003,14 +1008,48 @@ export const api = {
     request<Page<Resource>>(
       `api/v1/resources?page=1&page_size=100${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`
     ),
-  kubernetesWorkloads: (resourceId: string, params: { namespace: string; filters?: string; limit?: number }) =>
-    request<{ items: Array<{ namespace: string; name: string; kind: string; ready: boolean; phase?: string; restarts?: number; labels?: Record<string, string>; pods: Array<{ namespace: string; name: string; containers?: string[] }> }>; count: number }>(
-      `api/v1/resources/${resourceId}/kubernetes/workloads?namespace=${encodeURIComponent(params.namespace)}&filters=${encodeURIComponent(params.filters ?? '')}&limit=${params.limit ?? 100}`
+  kubernetesContexts: (resourceId: string) =>
+    request<{ items: Array<{ name: string; current: boolean }> }>(
+      `api/v1/resources/${resourceId}/kubernetes/contexts`
     ),
-  applicationBindingPreview: (resourceId: string, runtimeKind: string, keyword: string) =>
-    request<{ items: Array<{ id: string; name: string; detail?: string; status?: string }>; count: number }>(
-      `api/v1/resources/${resourceId}/application-bindings/preview?runtime_kind=${encodeURIComponent(runtimeKind)}&keyword=${encodeURIComponent(keyword)}`
+  kubernetesNamespaces: (resourceId: string, context?: string) =>
+    request<{ items: Array<{ name: string }> }>(
+      `api/v1/resources/${resourceId}/kubernetes/namespaces${context?.trim() ? `?context=${encodeURIComponent(context.trim())}` : ''}`
     ),
+  kubernetesWorkloads: (resourceId: string, params: { context?: string; namespace: string; filters?: string; limit?: number }) =>
+    request<{ items: Array<{ namespace: string; name: string; kind: string; replicas: number; ready_replicas: number; ready: boolean; phase?: string; restarts?: number; labels?: Record<string, string>; pods: Array<{ namespace: string; name: string; containers?: string[] }> }>; count: number }>(
+      `api/v1/resources/${resourceId}/kubernetes/workloads?${params.context?.trim() ? `context=${encodeURIComponent(params.context.trim())}&` : ''}namespace=${encodeURIComponent(params.namespace)}&filters=${encodeURIComponent(params.filters ?? '')}&limit=${params.limit ?? 100}`
+    ),
+  applicationCandidates: (body: {
+    runtime_kind: string;
+    resource_ids: string[];
+    keyword?: string;
+    exact_identity?: string;
+    namespace?: string;
+    filters?: string;
+  }) =>
+    request<{
+      items: Array<{
+        key: string;
+        identity: string;
+        runtime_kind: string;
+        name: string;
+        detail?: string;
+        kind?: string;
+        namespace?: string;
+        replicas: number;
+        ready_replicas?: number;
+        ambiguous?: boolean;
+        instances: Array<{
+          name: string;
+          target_resource_id: string;
+          selector: Record<string, unknown>;
+          status?: string;
+        }>;
+      }>;
+      count: number;
+      truncated?: boolean;
+    }>('api/v1/application-candidates', json(body)),
   contextResources: () =>
     request<Page<Resource>>('api/v1/resources/context?page=1&page_size=100'),
   resource: (id: string) => request<Resource>(`api/v1/resources/${id}/`),
@@ -1139,6 +1178,7 @@ export const api = {
   updateProvider: (
     id: string,
     body: {
+      scope_id?: string;
       name?: string;
       status?: string;
       config?: ProviderConfig;

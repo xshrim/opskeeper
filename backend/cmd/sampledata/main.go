@@ -59,8 +59,10 @@ type binding struct {
 
 type sampleSettings struct {
 	dockerConfig   map[string]any
+	hostAddress    string
 	hostConfig     map[string]any
 	hostCredential map[string]string
+	llmBaseURL     string
 	llmAPIKey      string
 	llmScenario    string
 }
@@ -122,6 +124,7 @@ func sampleSettingsFromEnv() (sampleSettings, error) {
 	if err != nil {
 		return sampleSettings{}, err
 	}
+	hostAddress := strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_ADDRESS"))
 	llmScenario, err := sampleLLMScenario(os.Getenv("OPSK_TEST_LLM_SCENARIO"))
 	if err != nil {
 		return sampleSettings{}, err
@@ -132,8 +135,9 @@ func sampleSettingsFromEnv() (sampleSettings, error) {
 			"timeout":         10,
 			"skip_tls_verify": false,
 		},
+		hostAddress: hostAddress,
 		hostConfig: map[string]any{
-			"host":        strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_ADDRESS")),
+			"host":        hostAddress,
 			"port":        hostPort,
 			"username":    strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_USERNAME")),
 			"auth_method": "password",
@@ -141,6 +145,7 @@ func sampleSettingsFromEnv() (sampleSettings, error) {
 		hostCredential: nonEmptySampleSecrets(map[string]string{
 			"password": os.Getenv("OPSK_TEST_HOST_PASSWORD"),
 		}),
+		llmBaseURL:  strings.TrimSpace(os.Getenv("OPSK_TEST_LLM_BASE_URL")),
 		llmAPIKey:   os.Getenv("OPSK_TEST_LLM_API_KEY"),
 		llmScenario: llmScenario,
 	}, nil
@@ -244,7 +249,7 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string, settin
 		return fmt.Errorf("hash sample password: %w", err)
 	}
 	var encryptor secret.Encryptor
-	if settings.llmAPIKey != "" || len(settings.hostCredential) > 0 {
+	if (settings.llmBaseURL != "" && settings.llmAPIKey != "") || (settings.hostAddress != "" && len(settings.hostCredential) > 0) {
 		encryptor, err = secret.FromEnvironment("development")
 		if err != nil {
 			return fmt.Errorf("configure sample credential encryption: %w", err)
@@ -279,69 +284,84 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string, settin
 		}
 	}
 
-	var hostID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM resources WHERE scope_id = $1::uuid AND kind = 'Host' AND deleted_at IS NULL AND labels->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&hostID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("check sample Host resource: %w", err)
-	}
-	if hostID == "" {
-		hostCiphertext, hostKeyVersion, err := encryptSampleSecrets(encryptor, settings.hostCredential)
-		if err != nil {
-			return fmt.Errorf("encrypt sample Host credentials: %w", err)
+	if settings.hostAddress != "" {
+		var hostID string
+		if err := tx.QueryRow(ctx, `SELECT id::text FROM resources WHERE scope_id = $1::uuid AND kind = 'Host' AND name = 'host' AND deleted_at IS NULL AND labels->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&hostID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("check sample Host resource: %w", err)
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config, credential_ciphertext, credential_key_version, credential_purpose)
-			VALUES ($1::uuid, 'Host', 'Direct', 1, 'host', jsonb_build_object($2::text, $3::text), $4::jsonb, $5, $6, $7)`, platformScopeID, markerKey, markerValue, settings.hostConfig, hostCiphertext, hostKeyVersion, credentialPurpose("Host SSH credentials", hostCiphertext)); err != nil {
-			return fmt.Errorf("create sample Host resource: %w", err)
-		}
-	}
-	var providerID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM providers WHERE scope_id = $1::uuid AND deleted_at IS NULL AND config->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&providerID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("check sample GLM AI channel: %w", err)
-	}
-	if providerID == "" {
-		providerConfig, err := json.Marshal(map[string]any{
-			"provider_type":         "glm",
-			"protocol":              "chat_completions",
-			"base_url":              "https://open.bigmodel.cn/api/paas/v4",
-			"timeout_seconds":       60,
-			"max_concurrency":       5,
-			"rate_limit_per_minute": 0,
-			"enabled":               true,
-			"default_model":         "GLM-4-Flash",
-			"icon":                  "lucide:Bot",
-			"models": []map[string]any{{
-				"name":                  "GLM-4-Flash",
-				"context_window_tokens": 128000,
-				"max_output_tokens":     128000,
-				"temperature":           0.2,
-				"temperature_mutable":   true,
-				"tags":                  []string{"text", "stream", "tool_calling"},
-				"capabilities":          []string{"text", "stream", "tool_calling"},
-				"enabled":               true,
-				"priority":              1,
-			}},
-			markerKey: markerValue,
-		})
-		if err != nil {
-			return fmt.Errorf("encode sample GLM provider config: %w", err)
-		}
-		var providerCiphertext []byte
-		var providerKeyVersion string
-		if settings.llmAPIKey != "" {
-			providerCiphertext, providerKeyVersion, err = encryptSampleSecrets(encryptor, map[string]string{"token": settings.llmAPIKey})
+		if hostID == "" {
+			hostCiphertext, hostKeyVersion, err := encryptSampleSecrets(encryptor, settings.hostCredential)
 			if err != nil {
-				return fmt.Errorf("encrypt sample GLM API key: %w", err)
+				return fmt.Errorf("encrypt sample Host credentials: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config, credential_ciphertext, credential_key_version, credential_purpose)
+				VALUES ($1::uuid, 'Host', 'Direct', 1, 'host', jsonb_build_object($2::text, $3::text), $4::jsonb, $5, $6, $7)`, platformScopeID, markerKey, markerValue, settings.hostConfig, hostCiphertext, hostKeyVersion, credentialPurpose("Host SSH credentials", hostCiphertext)); err != nil {
+				return fmt.Errorf("create sample Host resource: %w", err)
 			}
 		}
-		if err := tx.QueryRow(ctx, `
+	}
+	var localHostID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM resources WHERE scope_id = $1::uuid AND kind = 'Host' AND name = 'local' AND deleted_at IS NULL AND labels->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&localHostID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check sample local Host resource: %w", err)
+	}
+	if localHostID == "" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO resources (scope_id, kind, subtype, schema_version, name, labels, config)
+			VALUES ($1::uuid, 'Host', 'Direct', 1, 'local', jsonb_build_object($2::text, $3::text), '{"host":""}'::jsonb)`, platformScopeID, markerKey, markerValue); err != nil {
+			return fmt.Errorf("create sample local Host resource: %w", err)
+		}
+	}
+	if settings.llmBaseURL != "" {
+		var providerID string
+		if err := tx.QueryRow(ctx, `SELECT id::text FROM providers WHERE scope_id = $1::uuid AND deleted_at IS NULL AND config->>$2 = $3`, platformScopeID, markerKey, markerValue).Scan(&providerID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("check sample GLM AI channel: %w", err)
+		}
+		if providerID == "" {
+			providerConfig, err := json.Marshal(map[string]any{
+				"provider_type":         "glm",
+				"protocol":              "chat_completions",
+				"base_url":              settings.llmBaseURL,
+				"timeout_seconds":       60,
+				"max_concurrency":       5,
+				"rate_limit_per_minute": 0,
+				"enabled":               true,
+				"default_model":         "GLM-4-Flash",
+				"icon":                  "lucide:Bot",
+				"models": []map[string]any{{
+					"name":                  "GLM-4-Flash",
+					"context_window_tokens": 128000,
+					"max_output_tokens":     128000,
+					"temperature":           0.2,
+					"temperature_mutable":   true,
+					"tags":                  []string{"text", "stream", "tool_calling"},
+					"capabilities":          []string{"text", "stream", "tool_calling"},
+					"enabled":               true,
+					"priority":              1,
+				}},
+				markerKey: markerValue,
+			})
+			if err != nil {
+				return fmt.Errorf("encode sample GLM provider config: %w", err)
+			}
+			var providerCiphertext []byte
+			var providerKeyVersion string
+			if settings.llmAPIKey != "" {
+				providerCiphertext, providerKeyVersion, err = encryptSampleSecrets(encryptor, map[string]string{"token": settings.llmAPIKey})
+				if err != nil {
+					return fmt.Errorf("encrypt sample GLM API key: %w", err)
+				}
+			}
+			if err := tx.QueryRow(ctx, `
 				INSERT INTO providers (id, scope_id, name, config, status, credential_ciphertext, credential_key_version)
 				VALUES (gen_random_uuid(), $1::uuid, 'GLM', $2::jsonb, 'active', $3, $4)
 				RETURNING id::text`, platformScopeID, providerConfig, providerCiphertext, providerKeyVersion).Scan(&providerID); err != nil {
-			return fmt.Errorf("create sample GLM AI channel: %w", err)
+				return fmt.Errorf("create sample GLM AI channel: %w", err)
+			}
 		}
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO provider_scope_bindings (scope_id, provider_id, tag) VALUES ($1::uuid, $2::uuid, $3) ON CONFLICT (scope_id, tag) DO NOTHING`, platformScopeID, providerID, settings.llmScenario); err != nil {
-		return fmt.Errorf("bind sample GLM channel to scenario %s: %w", settings.llmScenario, err)
+		if _, err := tx.Exec(ctx, `INSERT INTO provider_scope_bindings (scope_id, provider_id, tag) VALUES ($1::uuid, $2::uuid, $3) ON CONFLICT (scope_id, tag) DO NOTHING`, platformScopeID, providerID, settings.llmScenario); err != nil {
+			return fmt.Errorf("bind sample GLM channel to scenario %s: %w", settings.llmScenario, err)
+		}
 	}
 
 	teams := []team{
@@ -467,18 +487,26 @@ func seed(ctx context.Context, pool *pgxpool.Pool, samplePassword string, settin
 	}
 	fmt.Printf("  Projects: %d\n", projectCount)
 	fmt.Printf("  Users: %d sample accounts with role bindings\n", len(userIDs))
-	fmt.Printf("  AI channel: GLM / GLM-4-Flash (scenario: %s)\n", settings.llmScenario)
-	fmt.Println("  Resources: Docker (Direct), Host (Direct)")
+	if settings.llmBaseURL == "" {
+		fmt.Println("  AI channel: skipped (OPSK_TEST_LLM_BASE_URL is empty)")
+	} else {
+		fmt.Printf("  AI channel: GLM / GLM-4-Flash (scenario: %s)\n", settings.llmScenario)
+	}
+	if settings.hostAddress == "" {
+		fmt.Println("  Resources: Docker (Direct), Host (Direct: local; remote Host skipped)")
+	} else {
+		fmt.Println("  Resources: Docker (Direct), Host (Direct: host and local)")
+	}
 	if len(createdUsers) > 0 {
 		fmt.Printf("Sample login password for newly created accounts: %s\n", samplePassword)
 		for _, username := range createdUsers {
 			fmt.Printf("  %-24s %s@%s\n", username, username, emailDomain)
 		}
 	}
-	if strings.TrimSpace(os.Getenv("OPSK_TEST_LLM_API_KEY")) == "" {
+	if settings.llmBaseURL != "" && strings.TrimSpace(os.Getenv("OPSK_TEST_LLM_API_KEY")) == "" {
 		fmt.Println("  Manual setup required: enter the GLM AI channel credential in the page (OPSK_TEST_LLM_API_KEY is empty).")
 	}
-	if strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_PASSWORD")) == "" {
+	if settings.hostAddress != "" && strings.TrimSpace(os.Getenv("OPSK_TEST_HOST_PASSWORD")) == "" {
 		fmt.Println("  Manual setup required: enter the Host resource credential in the page (OPSK_TEST_HOST_PASSWORD is empty).")
 	}
 	return nil

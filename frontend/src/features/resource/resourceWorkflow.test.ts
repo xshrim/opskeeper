@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildResourceSchemaConfig,
+  databaseCredentialComplete,
   dockerConfigForSave,
   dockerConnectionConfigurationValid,
   dockerCredentialForSave,
@@ -18,6 +19,15 @@ import {
 } from './resourceWorkflow';
 
 describe('resource workflow helpers', () => {
+  it('allows keeping existing database credentials or replacing them as a pair', () => {
+    expect(databaseCredentialComplete('', '', true, true)).toBe(true);
+    expect(databaseCredentialComplete('user', 'secret', true, true)).toBe(true);
+    expect(databaseCredentialComplete('user', '', true, true)).toBe(false);
+    expect(databaseCredentialComplete('', 'secret', true, true)).toBe(false);
+    expect(databaseCredentialComplete('', '', false, true)).toBe(false);
+    expect(databaseCredentialComplete('user', 'secret', false, false)).toBe(true);
+  });
+
   it('keeps sensitive schema values out of the resource config', () => {
     expect(
       buildResourceSchemaConfig(

@@ -19,60 +19,74 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.Contex
 	if err != nil {
 		return err
 	}
-	register := func(name, description string, extra map[string]any, fn func(context.Context, map[string]any) (any, error)) {
+	register := func(name, description string, extra map[string]any, fn func(context.Context, kclient.ConnectionInput, map[string]any) (any, error)) {
 		add(name, description, directKubernetesSchema(extra), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
-			out, callErr := fn(runCtx, args)
+			out, callErr := fn(runCtx, kubernetesToolConnection(connection, args), args)
 			if callErr != nil {
 				return engine.ToolResult{}, callErr
 			}
 			return engine.ToolResult{Output: out, Untrusted: true}, nil
 		})
 	}
-	register("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.ClusterInfo(c, connection) })
-	register("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.APIResources(c, connection) })
-	register("kubernetes_resource_search", "Search Kubernetes resource names by keyword.", kt.SearchInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_cluster_info", "Read Kubernetes version and connection information.", nil, func(c context.Context, connection kclient.ConnectionInput, _ map[string]any) (any, error) {
+		return kt.ClusterInfo(c, connection)
+	})
+	register("kubernetes_api_resources", "List API resources supported by the connected cluster.", nil, func(c context.Context, connection kclient.ConnectionInput, _ map[string]any) (any, error) {
+		return kt.APIResources(c, connection)
+	})
+	register("kubernetes_resource_search", "Search Kubernetes resource names by keyword.", kt.SearchInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.Search(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "keyword"), int(int64Arg(a, "limit")))
 	})
 	for _, tool := range kt.ListTools() {
 		item := tool
-		register(item.Name, item.Description, kt.ListInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+		register(item.Name, item.Description, kt.ListInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 			return kt.List(c, connection, item.Resource, stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 		})
 	}
-	register("kubernetes_workloads", "List Kubernetes workloads.", kt.ListInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_workloads", "List Kubernetes workloads.", kt.ListInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.Workloads(c, connection, stringArg(a, "namespace"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})
-	register("kubernetes_workload_pods", "Resolve the running Pods for one Kubernetes workload.", kt.WorkloadPodsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_workload_pods", "Resolve the running Pods for one Kubernetes workload.", kt.WorkloadPodsInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.WorkloadPods(c, connection, stringArg(a, "workload_kind"), stringArg(a, "namespace"), stringArg(a, "workload_name"), int(int64Arg(a, "limit")))
 	})
-	register("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", kt.PodStatsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_pod_stat", "Read current pod CPU and memory usage from the Kubernetes Metrics API.", kt.PodStatsInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.PodStats(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})
-	register("kubernetes_node_stat", "Read current node CPU and memory usage from the Kubernetes Metrics API.", kt.NodeStatsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_node_stat", "Read current node CPU and memory usage from the Kubernetes Metrics API.", kt.NodeStatsInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.NodeStats(c, connection, stringArg(a, "node"), stringArg(a, "filters"), stringArg(a, "continue"), int(int64Arg(a, "limit")))
 	})
-	register("kubernetes_pod_logs", "Read bounded, non-following pod logs.", kt.PodLogsInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_pod_logs", "Read bounded, non-following pod logs.", kt.PodLogsInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.PodLogs(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), int64Arg(a, "tail"), boolArg(a, "timestamps", false))
 	})
-	register("kubernetes_pod_file", "Read a bounded regular file from a Kubernetes pod.", kt.PodFileInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_pod_file", "Read a bounded regular file from a Kubernetes pod.", kt.PodFileInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.PodFile(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), stringArg(a, "path"))
 	})
-	register("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(c context.Context, a map[string]any) (any, error) {
+	register("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
 		return kt.Get(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "name"))
 	})
-	register("kubernetes_health", "Check Kubernetes API health.", nil, func(c context.Context, _ map[string]any) (any, error) { return kt.Health(c, connection) })
+	register("kubernetes_health", "Check Kubernetes API health.", nil, func(c context.Context, connection kclient.ConnectionInput, _ map[string]any) (any, error) {
+		return kt.Health(c, connection)
+	})
 	return nil
 }
 
 func directKubernetesSchema(extra map[string]any) json.RawMessage {
 	schema := kt.InputSchema(extra)
 	if p, ok := schema["properties"].(map[string]any); ok {
-		for _, k := range []string{"kubeconfig", "connection_mode", "context", "profile", "server", "ca", "token", "client_cert", "client_key", "skip_tls_verify"} {
+		for _, k := range []string{"kubeconfig", "connection_mode", "profile", "server", "ca", "token", "client_cert", "client_key", "skip_tls_verify"} {
 			delete(p, k)
 		}
+		p["context"] = map[string]any{"type": "string", "description": "Kubeconfig context for this call; defaults to the resource context or kubeconfig current-context."}
 	}
 	b, _ := json.Marshal(schema)
 	return b
+}
+
+func kubernetesToolConnection(base kclient.ConnectionInput, arguments map[string]any) kclient.ConnectionInput {
+	if requested, ok := arguments["context"].(string); ok && strings.TrimSpace(requested) != "" {
+		base.Context = strings.TrimSpace(requested)
+	}
+	return base
 }
 
 func (s *Service) kubernetesConnection(ctx context.Context, item engine.ContextResource) (kclient.ConnectionInput, error) {

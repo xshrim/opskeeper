@@ -46,6 +46,28 @@ func TestToolKubeconfigUsesExplicitContext(t *testing.T) {
 	}
 }
 
+func TestContextsReturnsSortedOptionsAndMarksConfiguredContext(t *testing.T) {
+	kubeconfig := []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: first\n  cluster:\n    server: https://first.example:6443\n- name: second\n  cluster:\n    server: https://second.example:6443\ncontexts:\n- name: z-context\n  context:\n    cluster: first\n    user: test\n- name: a-context\n  context:\n    cluster: second\n    user: test\ncurrent-context: z-context\nusers:\n- name: test\n  user: {}\n")
+	options, err := Contexts(ConnectionInput{Kubeconfig: base64.StdEncoding.EncodeToString(kubeconfig), Context: "a-context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 2 || options[0].Name != "a-context" || !options[0].Current || options[1].Name != "z-context" || options[1].Current {
+		t.Fatalf("contexts = %#v", options)
+	}
+}
+
+func TestContextsEndpointModeReturnsOnlyConfiguredEndpointContext(t *testing.T) {
+	t.Setenv("KUBERNETES_MCP_KUBECONFIG", "")
+	options, err := Contexts(ConnectionInput{ConnectionMode: "endpoint"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 1 || options[0].Name != "default" || !options[0].Current {
+		t.Fatalf("contexts = %#v", options)
+	}
+}
+
 func TestEndpointTLSMaterialsAcceptBase64PEM(t *testing.T) {
 	pem := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----"
 	encoded := base64.StdEncoding.EncodeToString([]byte(pem))

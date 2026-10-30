@@ -69,10 +69,11 @@ type ProviderInput struct {
 }
 
 type ProviderPatch struct {
-	Name   *string
-	Status *string
-	Config *ProviderConfig
-	APIKey *string
+	ScopeID *string
+	Name    *string
+	Status  *string
+	Config  *ProviderConfig
+	APIKey  *string
 }
 
 type ScopeProviderBinding struct {

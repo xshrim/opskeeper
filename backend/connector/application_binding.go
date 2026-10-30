@@ -10,6 +10,7 @@ import (
 	"opskeeper/backend/engine"
 	docker "opskeeper/backend/tool/docker"
 	host "opskeeper/backend/tool/host"
+	kt "opskeeper/backend/tool/kubernetes"
 )
 
 type ApplicationBindingItem struct {
@@ -20,8 +21,9 @@ type ApplicationBindingItem struct {
 }
 
 type ApplicationBindingPreview struct {
-	Items []ApplicationBindingItem `json:"items"`
-	Count int                      `json:"count"`
+	Items     []ApplicationBindingItem `json:"items"`
+	Count     int                      `json:"count"`
+	Truncated bool                     `json:"truncated,omitempty"`
 }
 
 func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, resourceID string, selector map[string]any) (ApplicationBindingPreview, error) {
@@ -50,17 +52,20 @@ func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, re
 			}
 		}
 		keyword, _ := selector["process_keyword"].(string)
-		if strings.TrimSpace(keyword) == "" {
+		commandLine, _ := selector["command_line"].(string)
+		if strings.TrimSpace(commandLine) != "" {
+			keyword = ""
+		} else if strings.TrimSpace(keyword) == "" {
 			return ApplicationBindingPreview{}, invalid("process_keyword is required")
 		}
-		output, err := host.Processes(ctx, host.ProcessesInput{ConnectionInput: connection, Keyword: keyword, Limit: host.MaxProcessLimit})
+		output, err := host.Processes(ctx, host.ProcessesInput{ConnectionInput: connection, Keyword: keyword, CommandLine: commandLine, Limit: host.MaxProcessLimit})
 		if err != nil {
 			if errors.Is(err, host.ErrInvalidArgument) {
 				return ApplicationBindingPreview{}, invalid(err.Error())
 			}
 			return ApplicationBindingPreview{}, err
 		}
-		result := ApplicationBindingPreview{Count: output.MatchCount, Items: make([]ApplicationBindingItem, 0, len(output.Processes))}
+		result := ApplicationBindingPreview{Count: output.MatchCount, Truncated: output.Truncated, Items: make([]ApplicationBindingItem, 0, len(output.Processes))}
 		for _, process := range output.Processes {
 			result.Items = append(result.Items, ApplicationBindingItem{
 				ID: fmt.Sprint(process.PID), Name: process.Name,
@@ -74,9 +79,7 @@ func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, re
 		}
 		keyword, _ := selector["container_name"].(string)
 		terms := bindingTerms(keyword)
-		if len(terms) == 0 {
-			return ApplicationBindingPreview{}, invalid("container_name is required")
-		}
+		exact, _ := selector["exact"].(bool)
 		connection, err := s.dockerConnection(ctx, engine.ContextResource{
 			ID: item.ID, ScopeID: item.ScopeID, Kind: item.Kind, Name: item.Name,
 			Subtype: item.Subtype, AgentRef: item.AgentRef, Config: item.Config,
@@ -91,14 +94,14 @@ func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, re
 		result := ApplicationBindingPreview{Items: make([]ApplicationBindingItem, 0)}
 		for _, container := range output.Containers {
 			name := strings.TrimPrefix(firstString(container.Names), "/")
-			searchText := strings.ToLower(strings.Join(append(append([]string{}, container.Names...), container.ID, container.Image), " "))
-			if !containsAll(searchText, terms) {
+			if exact && name != strings.TrimSpace(keyword) {
+				continue
+			}
+			if !exact && len(terms) > 0 && !containsAll(strings.ToLower(name), terms) {
 				continue
 			}
 			result.Count++
-			if len(result.Items) < 50 {
-				result.Items = append(result.Items, ApplicationBindingItem{ID: container.ID, Name: name, Detail: container.Image, Status: container.Status})
-			}
+			result.Items = append(result.Items, ApplicationBindingItem{ID: container.ID, Name: name, Detail: container.Image, Status: container.Status})
 		}
 		return result, nil
 	default:
@@ -107,12 +110,46 @@ func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, re
 }
 
 func (s *Service) ValidateApplicationBinding(ctx context.Context, runtimeKind, resourceID string, selector map[string]any) error {
-	preview, err := s.PreviewApplicationBinding(ctx, runtimeKind, resourceID, selector)
+	if runtimeKind == "cloud_native" {
+		return s.validateKubernetesApplicationBinding(ctx, resourceID, selector)
+	}
+	precise := make(map[string]any, len(selector)+1)
+	for key, value := range selector {
+		precise[key] = value
+	}
+	switch runtimeKind {
+	case "virtual_machine":
+		precise["command_line"] = selector["process_command_line"]
+	case "containerized":
+		precise["exact"] = true
+	}
+	preview, err := s.PreviewApplicationBinding(ctx, runtimeKind, resourceID, precise)
 	if err != nil {
 		return err
 	}
 	if preview.Count != 1 {
 		return invalid(fmt.Sprintf("application binding must match exactly one target; found %d", preview.Count))
+	}
+	return nil
+}
+
+func (s *Service) validateKubernetesApplicationBinding(ctx context.Context, resourceID string, selector map[string]any) error {
+	namespace, _ := selector["namespace"].(string)
+	kind, _ := selector["workload_kind"].(string)
+	name, _ := selector["workload_name"].(string)
+	resourceKind := map[string]string{
+		"Deployment": "deployments", "StatefulSet": "statefulsets", "DaemonSet": "daemonsets",
+		"Job": "jobs", "CronJob": "cronjobs",
+	}[strings.TrimSpace(kind)]
+	if resourceKind == "" || strings.TrimSpace(namespace) == "" || strings.TrimSpace(name) == "" {
+		return invalid("Kubernetes binding requires a valid namespace, workload kind and workload name")
+	}
+	connection, err := s.kubernetesResourceConnection(ctx, resourceID)
+	if err != nil {
+		return err
+	}
+	if _, err := kt.Get(ctx, connection, resourceKind, strings.TrimSpace(namespace), strings.TrimSpace(name)); err != nil {
+		return invalid(fmt.Sprintf("Kubernetes workload %s/%s/%s could not be read: %v", strings.TrimSpace(namespace), strings.TrimSpace(kind), strings.TrimSpace(name), err))
 	}
 	return nil
 }

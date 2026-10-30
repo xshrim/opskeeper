@@ -4,6 +4,7 @@
   import FormField from '../../components/FormField.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
+  import { databaseCredentialComplete } from './resourceWorkflow';
 
   export let accessMode: 'direct' | 'agent' = 'direct';
   export let mode: 'mysql' | 'oracle' = 'mysql';
@@ -17,7 +18,10 @@
   export let mcpServerResourceId = '';
   export let mcpServers: Resource[] = [];
   export let configurationAttempted = false;
+  export let credentialConfigured = false;
+  export let editing = false;
   export let onConfigurationChange: () => void = () => {};
+  $: credentialInvalid = configurationAttempted && !databaseCredentialComplete(username, password, credentialConfigured, editing);
 
   $: mcpServerOptions = mcpServers.map((server) => ({ value: server.id, label: server.name }));
 </script>
@@ -40,8 +44,8 @@
       <FormField label="数据库名"><TextInput bind:value={database} on:input={onConfigurationChange} placeholder="MySQL Wire 端口可选" /></FormField>
       <FormField label="Service Name"><TextInput bind:value={serviceName} on:input={onConfigurationChange} placeholder="非 MySQL Wire 端口必填" /></FormField>
     {/if}
-    <FormField label="用户名" required invalid={configurationAttempted && !username.trim()}><TextInput bind:value={username} required invalid={configurationAttempted && !username.trim()} on:input={onConfigurationChange} /></FormField>
-    <FormField label="密码" required invalid={configurationAttempted && !password.trim()}><PasswordInput bind:value={password} required on:input={onConfigurationChange} ariaLabel="密码" /></FormField>
+    <FormField label="用户名" required invalid={credentialInvalid}><TextInput bind:value={username} required={!editing || !credentialConfigured} invalid={credentialInvalid} placeholder={editing && credentialConfigured ? '留空以保留已配置凭据' : ''} on:input={onConfigurationChange} /></FormField>
+    <FormField label="密码" required invalid={credentialInvalid}><PasswordInput bind:value={password} required={!editing || !credentialConfigured} placeholder={editing && credentialConfigured ? '留空以保留已配置凭据' : ''} on:input={onConfigurationChange} ariaLabel="密码" /></FormField>
     <FormField label="超时时间（秒）"><TextInput type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></FormField>
   </div>
   {#if mode === 'oracle'}<p class="docker-field-help">Oracle 模式会先探测目标端口：MySQL Wire 使用 OceanBase Oracle 驱动；其他端口使用 Oracle TNS，并要求填写 Service Name。</p>{/if}

@@ -9,6 +9,7 @@ import (
 
 type testStore struct {
 	input  CreateInput
+	inputs []CreateInput
 	app    Application
 	update UpdateInput
 }
@@ -21,6 +22,13 @@ func (v testBindingValidator) ValidateApplicationBinding(context.Context, string
 func (s *testStore) Create(_ context.Context, input CreateInput) (Application, error) {
 	s.input = input
 	return Application{}, nil
+}
+func (s *testStore) CreateMany(_ context.Context, inputs []CreateInput) ([]Application, error) {
+	s.inputs = inputs
+	if len(inputs) != 0 {
+		s.input = inputs[0]
+	}
+	return make([]Application, len(inputs)), nil
 }
 func (s *testStore) Get(context.Context, string, string) (Application, error) {
 	return s.app, nil
@@ -46,7 +54,7 @@ func TestCreateValidatesProjectAndCode(t *testing.T) {
 	if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "Bad Code"}); err == nil {
 		t.Fatal("invalid code accepted")
 	}
-	if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost, Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_keyword": "orders"}}}}); err != nil {
+	if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost, Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}}}); err != nil {
 		t.Fatalf("valid application rejected: %v", err)
 	}
 }
@@ -64,6 +72,29 @@ func TestCreateAllowsApplicationWithoutInstances(t *testing.T) {
 	}
 }
 
+func TestCreateManyValidatesWholeBatchBeforeStore(t *testing.T) {
+	store := &testStore{}
+	s := NewService(store)
+	inputs := []CreateInput{
+		{ProjectID: "project-1", Name: "API", Code: "api", RuntimeKind: RuntimeKubernetes},
+		{ProjectID: "project-1", Name: "Worker", Code: "worker", RuntimeKind: RuntimeKubernetes},
+	}
+	if _, err := s.CreateMany(context.Background(), inputs); err != nil {
+		t.Fatalf("CreateMany() error = %v", err)
+	}
+	if len(store.inputs) != 2 {
+		t.Fatalf("stored applications = %d, want 2", len(store.inputs))
+	}
+	store.inputs = nil
+	inputs[1].Code = "api"
+	if _, err := s.CreateMany(context.Background(), inputs); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("duplicate code error = %v, want invalid", err)
+	}
+	if len(store.inputs) != 0 {
+		t.Fatalf("invalid batch reached store: %#v", store.inputs)
+	}
+}
+
 func TestCreatePreservesResponsibleUserOrder(t *testing.T) {
 	store := &testStore{}
 	s := NewService(store)
@@ -77,7 +108,7 @@ func TestCreatePreservesResponsibleUserOrder(t *testing.T) {
 		RuntimeKind:        RuntimeHost,
 		TechnicalOwnerIDs:  []string{first, second},
 		OperationsOwnerIDs: []string{second, first},
-		Instances:          []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_keyword": "orders"}}},
+		Instances:          []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -92,7 +123,7 @@ func TestCreateRejectsInvalidRuntimeBinding(t *testing.T) {
 	s.SetBindingValidator(testBindingValidator{err: fmt.Errorf("found 2 matches")})
 	_, err := s.Create(context.Background(), CreateInput{
 		ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost,
-		Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_keyword": "orders"}}},
+		Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}},
 	})
 	if err == nil || !errors.Is(err, ErrInvalid) {
 		t.Fatalf("Create() error = %v, want invalid binding", err)
@@ -103,12 +134,28 @@ func TestUpdateAllowsReplacingInstanceBindings(t *testing.T) {
 	store := &testStore{app: Application{ID: "application-1", RuntimeKind: RuntimeHost}}
 	s := NewService(store)
 	s.SetBindingValidator(testBindingValidator{})
-	instances := []CreateInstanceInput{{Name: "primary", TargetResourceID: "host-2", Selector: map[string]any{"process_keyword": "orders-api"}}}
+	instances := []CreateInstanceInput{{Name: "primary", TargetResourceID: "host-2", Selector: map[string]any{"process_command_line": "orders-api"}}}
 	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{Instances: &instances}); err != nil {
 		t.Fatalf("UpdateInProject() error = %v", err)
 	}
 	if store.update.Instances == nil || len(*store.update.Instances) != 1 || (*store.update.Instances)[0].RuntimeKind != RuntimeHost {
 		t.Fatalf("updated instances = %#v, want normalized Host binding", store.update.Instances)
+	}
+}
+
+func TestUpdateValidatesAndTrimsApplicationCode(t *testing.T) {
+	store := &testStore{app: Application{ID: "application-1", RuntimeKind: RuntimeKubernetes}}
+	s := NewService(store)
+	code := " orders-api "
+	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{Code: &code}); err != nil {
+		t.Fatalf("UpdateInProject() error = %v", err)
+	}
+	if store.update.Code == nil || *store.update.Code != "orders-api" {
+		t.Fatalf("updated code = %#v, want trimmed value", store.update.Code)
+	}
+	invalid := "Bad Code"
+	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{Code: &invalid}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("UpdateInProject() error = %v, want invalid code", err)
 	}
 }
 

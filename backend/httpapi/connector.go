@@ -11,6 +11,7 @@ import (
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/connector"
+	kclient "opskeeper/backend/mcpserver/kubernetes/client"
 	"opskeeper/backend/resource"
 )
 
@@ -19,10 +20,12 @@ type connectorService interface {
 	Latest(context.Context, string) (connector.Check, error)
 }
 type kubernetesWorkloadService interface {
-	ListKubernetesWorkloads(context.Context, string, string, string, int) (connector.WorkloadDiscovery, error)
+	ListKubernetesContexts(context.Context, string) ([]kclient.ContextOption, error)
+	ListKubernetesNamespaces(context.Context, string, string) ([]connector.KubernetesNamespace, error)
+	ListKubernetesWorkloads(context.Context, string, string, string, string, int) (connector.WorkloadDiscovery, error)
 }
-type applicationBindingPreviewService interface {
-	PreviewApplicationBinding(context.Context, string, string, map[string]any) (connector.ApplicationBindingPreview, error)
+type applicationCandidateDiscoveryService interface {
+	DiscoverApplicationCandidates(context.Context, connector.ApplicationCandidateRequest) (connector.ApplicationCandidateDiscovery, error)
 }
 type dockerDraftConnectorService interface {
 	TestDockerDraft(context.Context, connector.DockerDraftInput) (connector.DockerDraftCheck, error)
@@ -80,8 +83,25 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 		return requirePermission(permission)
 	}
 	if workloads, ok := service.(kubernetesWorkloadService); ok {
+		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/kubernetes/contexts", func(w http.ResponseWriter, r *http.Request) {
+			items, err := workloads.ListKubernetesContexts(r.Context(), chi.URLParam(r, "resourceID"))
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
+		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/kubernetes/namespaces", func(w http.ResponseWriter, r *http.Request) {
+			items, err := workloads.ListKubernetesNamespaces(r.Context(), chi.URLParam(r, "resourceID"), r.URL.Query().Get("context"))
+			if err != nil {
+				writeConnectorError(w, r, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		})
 		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/kubernetes/workloads", func(w http.ResponseWriter, r *http.Request) {
 			namespace := r.URL.Query().Get("namespace")
+			contextName := r.URL.Query().Get("context")
 			filters := r.URL.Query().Get("filters")
 			limit := 100
 			if raw := r.URL.Query().Get("limit"); raw != "" {
@@ -89,7 +109,7 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 					limit = parsed
 				}
 			}
-			items, err := workloads.ListKubernetesWorkloads(r.Context(), chi.URLParam(r, "resourceID"), namespace, filters, limit)
+			items, err := workloads.ListKubernetesWorkloads(r.Context(), chi.URLParam(r, "resourceID"), contextName, namespace, filters, limit)
 			if err != nil {
 				writeConnectorError(w, r, err)
 				return
@@ -97,19 +117,18 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 			writeJSON(w, http.StatusOK, items)
 		})
 	}
-	if bindings, ok := service.(applicationBindingPreviewService); ok {
-		router.With(guard(authorization.ResourceUse)).Get("/resources/{resourceID}/application-bindings/preview", func(w http.ResponseWriter, r *http.Request) {
-			runtimeKind := r.URL.Query().Get("runtime_kind")
-			selectorKey := "process_keyword"
-			if runtimeKind == "containerized" {
-				selectorKey = "container_name"
+	if candidates, ok := service.(applicationCandidateDiscoveryService); ok {
+		router.With(guard(authorization.ResourceUse)).Post("/application-candidates", func(w http.ResponseWriter, r *http.Request) {
+			var body connector.ApplicationCandidateRequest
+			if !decodeRequest(w, r, &body) {
+				return
 			}
-			preview, err := bindings.PreviewApplicationBinding(r.Context(), runtimeKind, chi.URLParam(r, "resourceID"), map[string]any{selectorKey: r.URL.Query().Get("keyword")})
+			result, err := candidates.DiscoverApplicationCandidates(r.Context(), body)
 			if err != nil {
 				writeConnectorError(w, r, err)
 				return
 			}
-			writeJSON(w, http.StatusOK, preview)
+			writeJSON(w, http.StatusOK, result)
 		})
 	}
 	router.With(guard(authorization.ResourceUse)).Post("/resources/{resourceID}/connection-tests", handler.test)

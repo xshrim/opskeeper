@@ -123,4 +123,55 @@ describe('request', () => {
     );
     document.querySelector('base')?.remove();
   });
+
+  it('uses Kubernetes discovery and atomic application batch endpoints', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+
+    await api.kubernetesContexts('resource-1');
+    await api.kubernetesNamespaces('resource-1', 'prod/context');
+    await api.kubernetesWorkloads('resource-1', {
+      context: 'prod/context',
+      namespace: 'payments',
+      filters: 'app in (api,worker)'
+    });
+    await api.createApplications('project-1', [{ name: 'API' }]);
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/kubernetes/contexts'
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/kubernetes/namespaces?context=prod%2Fcontext'
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/kubernetes/workloads?context=prod%2Fcontext&namespace=payments&filters=app%20in%20(api%2Cworker)&limit=100'
+    );
+    expect(String(fetchMock.mock.calls[3][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/projects/project-1/applications/batch'
+    );
+    expect(fetchMock.mock.calls[3][1]).toEqual(
+      expect.objectContaining({ method: 'POST' })
+    );
+    document.querySelector('base')?.remove();
+  });
+
+  it('omits an unset Kubernetes context instead of sending "undefined"', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+
+    await api.kubernetesNamespaces('resource-1', undefined);
+    await api.kubernetesWorkloads('resource-1', {
+      namespace: 'default'
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/kubernetes/namespaces'
+    );
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'http://localhost:5173/opskeeper/api/v1/resources/resource-1/kubernetes/workloads?namespace=default&filters=&limit=100'
+    );
+    document.querySelector('base')?.remove();
+  });
 });

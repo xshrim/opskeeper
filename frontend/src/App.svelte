@@ -592,6 +592,12 @@ import type {
     roles, groups, groupMembers, bindings
   );
 
+  $: providerManageScopeOptions = scopesInWorkspace(scopeChoices, selectedScopeId).filter((scope) =>
+    isPlatformAdmin || getActorPermissionsAtScope(
+      scope.id, currentUser?.id, isPlatformAdmin, roles, groups, groupMembers, bindings, scopeChoices
+    ).includes('provider:manage')
+  );
+
   function resourceCanManage(resource: Resource, permission: string) {
     return canManageResource(
       resource,
@@ -994,6 +1000,7 @@ import type {
           {scopeName}
           {scopeType}
           {scopeChoices}
+          providerManageScopeOptions={providerManageScopeOptions}
           canManageProvider={providerManage}
           canManageEngine={aiEngineManage}
           {providerPermissionLabel}

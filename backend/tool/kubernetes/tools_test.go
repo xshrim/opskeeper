@@ -37,6 +37,31 @@ func TestSelectorFromJobFallsBackToName(t *testing.T) {
 	}
 }
 
+func TestToResourceItemIncludesWorkloadReplicas(t *testing.T) {
+	item := toResourceItem("Deployment", unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"namespace": "apps", "name": "api"},
+		"spec":     map[string]any{"replicas": int64(4)},
+		"status":   map[string]any{"readyReplicas": int64(3)},
+	}})
+	if item.Replicas != 4 || item.ReadyReplicas != 3 {
+		t.Fatalf("workload replicas = %d/%d", item.ReadyReplicas, item.Replicas)
+	}
+}
+
+func TestLabelsFromStringSupportsKubernetesSelectorSyntax(t *testing.T) {
+	got, err := labelsFromString("app in (api,worker),tier!=frontend,enabled")
+	if err != nil {
+		t.Fatalf("labelsFromString() error = %v", err)
+	}
+	if got != "app in (api,worker),enabled,tier!=frontend" {
+		t.Fatalf("selector = %q", got)
+	}
+	legacy, err := labelsFromString("app:api")
+	if err != nil || legacy != "app=api" {
+		t.Fatalf("legacy selector = %q, %v", legacy, err)
+	}
+}
+
 func TestModernJobSelector(t *testing.T) {
 	if got := modernJobSelector("controller-uid=uid-1"); got != "batch.kubernetes.io/controller-uid=uid-1" {
 		t.Fatalf("modern controller selector = %q", got)

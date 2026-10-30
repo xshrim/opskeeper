@@ -169,6 +169,9 @@ func (s *ProviderStore) UpdateProvider(ctx context.Context, id string, patch Pro
 	if err != nil {
 		return Provider{}, err
 	}
+	if patch.ScopeID != nil {
+		current.ScopeID = strings.TrimSpace(*patch.ScopeID)
+	}
 	if patch.Name != nil {
 		current.Name = strings.TrimSpace(*patch.Name)
 	}
@@ -182,6 +185,11 @@ func (s *ProviderStore) UpdateProvider(ctx context.Context, id string, patch Pro
 	if err != nil {
 		return Provider{}, err
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Provider{}, err
+	}
+	defer tx.Rollback(ctx)
 	if patch.APIKey != nil && strings.TrimSpace(*patch.APIKey) != "" {
 		if s.encryptor == nil {
 			return Provider{}, fmt.Errorf("provider credential encryptor is unavailable")
@@ -191,12 +199,18 @@ func (s *ProviderStore) UpdateProvider(ctx context.Context, id string, patch Pro
 		if encryptErr != nil {
 			return Provider{}, encryptErr
 		}
-		_, err = s.pool.Exec(ctx, `UPDATE providers SET name=$2,status=$3,config=$4,credential_ciphertext=$5,credential_key_version=$6,updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, id, current.Name, current.Status, encoded, ciphertext, keyVersion)
+		_, err = tx.Exec(ctx, `UPDATE providers SET scope_id=$2::uuid,name=$3,status=$4,config=$5,credential_ciphertext=$6,credential_key_version=$7,updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, id, current.ScopeID, current.Name, current.Status, encoded, ciphertext, keyVersion)
 	} else {
-		_, err = s.pool.Exec(ctx, `UPDATE providers SET name=$2,status=$3,config=$4,updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, id, current.Name, current.Status, encoded)
+		_, err = tx.Exec(ctx, `UPDATE providers SET scope_id=$2::uuid,name=$3,status=$4,config=$5,updated_at=now() WHERE id=$1::uuid AND deleted_at IS NULL`, id, current.ScopeID, current.Name, current.Status, encoded)
 	}
 	if err != nil {
 		return Provider{}, mapStoreError(err)
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM provider_scope_bindings WHERE provider_id=$1::uuid AND NOT resource_scope_contains($2::uuid, scope_id)`, id, current.ScopeID); err != nil {
+		return Provider{}, mapStoreError(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Provider{}, err
 	}
 	return s.GetProvider(ctx, id)
 }

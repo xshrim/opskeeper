@@ -29,6 +29,7 @@ func TestSampleSettingsFromEnv(t *testing.T) {
 	t.Setenv("OPSK_TEST_HOST_PORT", "2222")
 	t.Setenv("OPSK_TEST_HOST_USERNAME", "sample")
 	t.Setenv("OPSK_TEST_HOST_PASSWORD", "secret")
+	t.Setenv("OPSK_TEST_LLM_BASE_URL", "https://glm.example/v4")
 	t.Setenv("OPSK_TEST_LLM_API_KEY", "llm-secret")
 	t.Setenv("OPSK_TEST_LLM_SCENARIO", "通用")
 
@@ -42,12 +43,24 @@ func TestSampleSettingsFromEnv(t *testing.T) {
 	if settings.hostConfig["host"] != "host.example" || settings.hostConfig["port"] != 2222 || settings.hostConfig["auth_method"] != "password" {
 		t.Errorf("Host settings = %#v", settings.hostConfig)
 	}
-	if settings.hostCredential["password"] != "secret" || len(settings.hostCredential) != 1 || settings.llmAPIKey != "llm-secret" {
+	if settings.hostCredential["password"] != "secret" || len(settings.hostCredential) != 1 || settings.llmBaseURL != "https://glm.example/v4" || settings.llmAPIKey != "llm-secret" {
 		t.Errorf("Host/LLM credentials were not loaded")
 	}
 	if settings.llmScenario != "general" {
 		t.Errorf("LLM scenario = %q, want general", settings.llmScenario)
 	}
+
+	t.Run("empty integration addresses stay empty", func(t *testing.T) {
+		t.Setenv("OPSK_TEST_HOST_ADDRESS", " ")
+		t.Setenv("OPSK_TEST_LLM_BASE_URL", " ")
+		settings, err := sampleSettingsFromEnv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if settings.hostAddress != "" || settings.llmBaseURL != "" {
+			t.Fatalf("empty integration addresses = (%q, %q), want both empty", settings.hostAddress, settings.llmBaseURL)
+		}
+	})
 }
 
 func TestEnsureLocalDatabase(t *testing.T) {

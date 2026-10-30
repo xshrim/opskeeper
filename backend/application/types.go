@@ -95,13 +95,14 @@ type CreateInput struct {
 	Instances          []CreateInstanceInput `json:"instances"`
 }
 type UpdateInput struct {
-	Name, Description, Icon, Status *string
-	RuntimeKind                     *string
-	Labels                          *map[string]string
-	Critical                        *bool
-	TechnicalOwnerIDs               *[]string
-	OperationsOwnerIDs              *[]string
-	Instances                       *[]CreateInstanceInput
+	Name, Code, Description, Icon, Status *string
+	RuntimeKind                           *string
+	ExternalUID                           *string
+	Labels                                *map[string]string
+	Critical                              *bool
+	TechnicalOwnerIDs                     *[]string
+	OperationsOwnerIDs                    *[]string
+	Instances                             *[]CreateInstanceInput
 }
 type CreateInstanceInput struct {
 	ApplicationID    string         `json:"application_id,omitempty"`

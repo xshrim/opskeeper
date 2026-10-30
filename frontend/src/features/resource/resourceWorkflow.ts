@@ -391,6 +391,18 @@ export function mcpTransportForSubtype(subtype: string) {
     : 'streamable_http';
 }
 
+export function databaseCredentialComplete(
+  username: string,
+  password: string,
+  credentialConfigured: boolean,
+  editing: boolean
+) {
+  const hasUsername = Boolean(username.trim());
+  const hasPassword = Boolean(password);
+  return (editing && credentialConfigured && !hasUsername && !hasPassword) ||
+    (hasUsername && hasPassword);
+}
+
 export function normalizeResourceFieldValue(
   value: string,
   type?: string

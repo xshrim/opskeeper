@@ -81,34 +81,63 @@ func (s *store) projectExists(ctx context.Context, projectID string) error {
 }
 
 func (s *store) Create(ctx context.Context, input CreateInput) (Application, error) {
-	if err := s.projectExists(ctx, input.ProjectID); err != nil {
+	applications, err := s.CreateMany(ctx, []CreateInput{input})
+	if err != nil {
 		return Application{}, err
+	}
+	return applications[0], nil
+}
+
+func (s *store) CreateMany(ctx context.Context, inputs []CreateInput) ([]Application, error) {
+	if len(inputs) == 0 {
+		return nil, ErrInvalid
+	}
+	projectID := inputs[0].ProjectID
+	for _, input := range inputs {
+		if input.ProjectID != projectID {
+			return nil, ErrInvalid
+		}
+	}
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return nil, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return Application{}, fmt.Errorf("begin create application: %w", err)
+		return nil, fmt.Errorf("begin create applications: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := validateActiveUsers(ctx, tx, input.TechnicalOwnerIDs, input.OperationsOwnerIDs); err != nil {
-		return Application{}, err
-	}
-	var id string
-	labels, err := json.Marshal(normalizeLabels(input.Labels))
-	if err != nil {
-		return Application{}, fmt.Errorf("encode application labels: %w", err)
-	}
-	if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels,critical,technical_owner_ids,operations_owner_ids)
+	ids := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		if err := validateActiveUsers(ctx, tx, input.TechnicalOwnerIDs, input.OperationsOwnerIDs); err != nil {
+			return nil, err
+		}
+		labels, err := json.Marshal(normalizeLabels(input.Labels))
+		if err != nil {
+			return nil, fmt.Errorf("encode application labels: %w", err)
+		}
+		var id string
+		if err := tx.QueryRow(ctx, `INSERT INTO applications(project_id,name,code,description,icon,runtime_kind,external_uid,labels,critical,technical_owner_ids,operations_owner_ids)
 VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11::uuid[]) RETURNING id::text`, input.ProjectID, input.Name, input.Code,
-		input.Description, input.Icon, input.RuntimeKind, input.ExternalUID, labels, input.Critical, input.TechnicalOwnerIDs, input.OperationsOwnerIDs).Scan(&id); err != nil {
-		return Application{}, mapStoreError(err)
-	}
-	if err := insertInstances(ctx, tx, id, input.Instances); err != nil {
-		return Application{}, err
+			input.Description, input.Icon, input.RuntimeKind, input.ExternalUID, labels, input.Critical, input.TechnicalOwnerIDs, input.OperationsOwnerIDs).Scan(&id); err != nil {
+			return nil, mapStoreError(err)
+		}
+		if err := insertInstances(ctx, tx, id, input.Instances); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return Application{}, fmt.Errorf("commit create application: %w", err)
+		return nil, fmt.Errorf("commit create applications: %w", err)
 	}
-	return s.Get(ctx, input.ProjectID, id)
+	applications := make([]Application, 0, len(ids))
+	for _, id := range ids {
+		item, err := s.Get(ctx, projectID, id)
+		if err != nil {
+			return nil, err
+		}
+		applications = append(applications, item)
+	}
+	return applications, nil
 }
 
 func (s *store) Get(ctx context.Context, projectID, applicationID string) (Application, error) {
@@ -157,6 +186,9 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	if input.Name != nil {
 		current.Name = *input.Name
 	}
+	if input.Code != nil {
+		current.Code = *input.Code
+	}
 	if input.Description != nil {
 		current.Description = *input.Description
 	}
@@ -168,6 +200,9 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	}
 	if input.RuntimeKind != nil {
 		current.RuntimeKind = *input.RuntimeKind
+	}
+	if input.ExternalUID != nil {
+		current.ExternalUID = *input.ExternalUID
 	}
 	if input.Labels != nil {
 		current.Labels = normalizeLabels(*input.Labels)
@@ -188,12 +223,12 @@ func (s *store) Update(ctx context.Context, projectID, applicationID string, inp
 	if err != nil {
 		return Application{}, fmt.Errorf("encode application labels: %w", err)
 	}
-	args := []any{applicationID, current.Name, current.Description, current.Icon, current.Status, current.RuntimeKind, labels, current.Critical, current.TechnicalOwnerIDs, current.OperationsOwnerIDs}
-	query := `UPDATE applications a SET name=$2,description=$3,icon=$4,status=$5,runtime_kind=$6,labels=$7,critical=$8,technical_owner_ids=$9::uuid[],operations_owner_ids=$10::uuid[],updated_at=now()
+	args := []any{applicationID, current.Name, current.Code, current.Description, current.Icon, current.Status, current.RuntimeKind, current.ExternalUID, labels, current.Critical, current.TechnicalOwnerIDs, current.OperationsOwnerIDs}
+	query := `UPDATE applications a SET name=$2,code=$3,description=$4,icon=$5,status=$6,runtime_kind=$7,external_uid=$8,labels=$9,critical=$10,technical_owner_ids=$11::uuid[],operations_owner_ids=$12::uuid[],updated_at=now()
 WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 	if strings.TrimSpace(projectID) != "" {
 		args = append(args, projectID)
-		query += ` AND a.project_id=$11::uuid`
+		query += ` AND a.project_id=$13::uuid`
 	}
 	query, args = visibleApplications(query+` RETURNING a.id`, args, ctx)
 	tx, err := s.pool.Begin(ctx)

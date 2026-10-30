@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/yaml"
 )
 
@@ -83,6 +85,84 @@ func Open(ctx context.Context, input ConnectionInput) (*Connection, error) {
 		return nil, fmt.Errorf("create Kubernetes typed client: %w", err)
 	}
 	return &Connection{Dynamic: dynamicClient, Kubernetes: typedClient, Discovery: discoveryClient, RESTConfig: config, Profile: profileName}, nil
+}
+
+type ContextOption struct {
+	Name    string `json:"name"`
+	Current bool   `json:"current"`
+}
+
+func Contexts(input ConnectionInput) ([]ContextOption, error) {
+	input.Kubeconfig = strings.TrimSpace(input.Kubeconfig)
+	input.Profile = strings.TrimSpace(input.Profile)
+	mode := strings.TrimSpace(input.ConnectionMode)
+	if mode == "" {
+		mode = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_MODE"))
+	}
+	if input.Profile == "" {
+		input.Profile = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_DEFAULT_PROFILE"))
+	}
+	if input.Profile != "" {
+		p, err := loadProfile(input.Profile)
+		if err != nil {
+			return nil, err
+		}
+		if input.Kubeconfig == "" {
+			input.Kubeconfig = strings.TrimSpace(p.Kubeconfig)
+		}
+		if mode == "" {
+			mode = strings.TrimSpace(p.Mode)
+		}
+		if strings.TrimSpace(input.Context) == "" {
+			input.Context = strings.TrimSpace(p.Context)
+		}
+	}
+	if input.Kubeconfig == "" && (strings.EqualFold(mode, "endpoint") || strings.EqualFold(mode, "in_cluster") || strings.EqualFold(mode, "in-cluster")) {
+		name := strings.TrimSpace(input.Context)
+		if name == "" {
+			name = "default"
+		}
+		return []ContextOption{{Name: name, Current: true}}, nil
+	}
+	if input.Kubeconfig == "" {
+		input.Kubeconfig = strings.TrimSpace(os.Getenv("KUBERNETES_MCP_KUBECONFIG"))
+	}
+	var config *clientcmdapi.Config
+	var err error
+	if input.Kubeconfig != "" {
+		var data []byte
+		data, err = base64.StdEncoding.DecodeString(input.Kubeconfig)
+		if err != nil {
+			return nil, fmt.Errorf("decode kubeconfig: %w", err)
+		}
+		config, err = clientcmd.Load(data)
+	} else {
+		config, err = clientcmd.NewDefaultClientConfigLoadingRules().Load()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig contexts: %w", err)
+	}
+	if config == nil || len(config.Contexts) == 0 {
+		name := strings.TrimSpace(input.Context)
+		if name == "" {
+			name = "default"
+		}
+		return []ContextOption{{Name: name, Current: true}}, nil
+	}
+	current := strings.TrimSpace(input.Context)
+	if current == "" {
+		current = strings.TrimSpace(config.CurrentContext)
+	}
+	names := make([]string, 0, len(config.Contexts))
+	for name := range config.Contexts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	options := make([]ContextOption, 0, len(names))
+	for _, name := range names {
+		options = append(options, ContextOption{Name: name, Current: name == current})
+	}
+	return options, nil
 }
 
 func resolveRESTConfig(input ConnectionInput) (*rest.Config, string, error) {

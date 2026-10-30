@@ -119,7 +119,7 @@
                 class="expandable-table-toggle"
                 aria-label={`${expanded ? '折叠' : '展开'} ${row.name ?? id}`}
                 aria-expanded={expanded}
-                on:click={() => toggleExpanded(row)}
+                on:click|stopPropagation={() => toggleExpanded(row)}
               >
                 {#if expanded}<ChevronDown size={15} aria-hidden="true" />{:else}<ChevronRight size={15} aria-hidden="true" />{/if}
               </button>

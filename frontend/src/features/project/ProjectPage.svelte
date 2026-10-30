@@ -306,6 +306,7 @@ import {
         runtime_kind: draft.runtimeKind,
         target_resource_id: instance.targetResourceId,
         selector: instance.selector,
+        log_binding: instance.logBinding,
         status: instance.status
       }))
     };
@@ -355,8 +356,7 @@ import {
   }
   async function saveApplications(drafts: ApplicationDraft[]) {
     if (!selectedProjectId) return;
-    for (const draft of drafts)
-      await api.createApplication(selectedProjectId, applicationPayload(draft));
+    await api.createApplications(selectedProjectId, drafts.map(applicationPayload));
     applicationWizardOpen = false;
     await loadWorkspace(selectedProjectId);
     onNotice(`${drafts.length} 个应用已新增`);
@@ -365,9 +365,11 @@ import {
     try {
       await api.updateApplication(selectedProjectId, app.id, {
         name: draft.name,
+        code: draft.code,
         description: draft.description,
         icon: draft.icon,
         runtime_kind: draft.runtimeKind,
+        external_uid: draft.externalUid,
         labels: draft.labels,
         critical: draft.critical,
         technical_owner_ids: draft.technicalOwnerIds,

@@ -98,10 +98,11 @@ type createProviderRequest struct {
 	APIKey  *string            `json:"api_key"`
 }
 type updateProviderRequest struct {
-	Name   *string             `json:"name"`
-	Status *string             `json:"status"`
-	Config *llm.ProviderConfig `json:"config"`
-	APIKey *string             `json:"api_key"`
+	ScopeID *string             `json:"scope_id"`
+	Name    *string             `json:"name"`
+	Status  *string             `json:"status"`
+	Config  *llm.ProviderConfig `json:"config"`
+	APIKey  *string             `json:"api_key"`
 }
 type createSkillVersionRequest struct {
 	Manifest     skill.Manifest   `json:"manifest"`
@@ -173,7 +174,7 @@ func registerAIRoutes(router chi.Router, llms llmService, skills skillService, p
 				if !decodeRequest(w, r, &body) {
 					return
 				}
-				item, err := writer.UpdateProvider(r.Context(), chi.URLParam(r, "providerID"), llm.ProviderPatch{Name: body.Name, Status: body.Status, Config: body.Config, APIKey: body.APIKey})
+				item, err := writer.UpdateProvider(r.Context(), chi.URLParam(r, "providerID"), llm.ProviderPatch{ScopeID: body.ScopeID, Name: body.Name, Status: body.Status, Config: body.Config, APIKey: body.APIKey})
 				if err != nil {
 					writeAIError(w, r, err)
 					return

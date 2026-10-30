@@ -1,14 +1,6 @@
 <script lang="ts">
-  import {
-    CircleCheck,
-    CircleHelp,
-    CircleX,
-    Plus,
-    ScanSearch,
-    Server,
-    TriangleAlert,
-    X
-  } from 'lucide-svelte';
+  import { ArrowRight, Server } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import FormField from '../../components/FormField.svelte';
@@ -48,761 +40,565 @@
   export let resourceCreationResult: ApplicationResourceCreationResult | null =
     null;
 
-  type Workload = {
-    namespace: string;
+  type CandidateInstance = {
     name: string;
-    kind: string;
-    ready: boolean;
-    phase?: string;
-    restarts?: number;
-    pods: Array<{ namespace: string; name: string; containers?: string[] }>;
+    target_resource_id: string;
+    selector: Record<string, unknown>;
+    log_binding?: Record<string, unknown>;
+    status?: string;
   };
-  type KubernetesApplicationDraft = {
+  type Candidate = {
+    key: string;
+    identity: string;
+    runtime_kind: string;
+    name: string;
+    detail?: string;
+    kind?: string;
+    namespace?: string;
+    replicas: number;
+    ready_replicas?: number;
+    ambiguous?: boolean;
+    instances: CandidateInstance[];
+  };
+  type CandidateDraft = {
     name: string;
     code: string;
     description: string;
-    labels: string;
     icon: string;
+    labels: string;
     critical: boolean;
     technicalOwnerIds: string[];
     operationsOwnerIds: string[];
   };
-  type BindingPreview = {
-    resourceId: string;
-    keyword: string;
-    count: number;
-    items: Array<{
-      id: string;
-      name: string;
-      detail?: string;
-      status?: string;
-    }>;
-    error?: string;
-    loading?: boolean;
-  };
-  type BindingPreviewStatus = 'unknown' | 'success' | 'multiple' | 'none';
+  const runtimeChoices: Array<{
+    kind: ApplicationRuntimeKind;
+    label: string;
+    subtitle: string;
+    description: string;
+  }> = [
+    { kind: 'virtual_machine', label: 'Host', subtitle: '虚拟机', description: '按进程关键字初筛' },
+    { kind: 'containerized', label: 'Docker', subtitle: '容器化', description: '按容器名称初筛' },
+    { kind: 'cloud_native', label: 'Kubernetes', subtitle: '云原生', description: '按命名空间和标签筛选' }
+  ];
 
   let step = 0;
   let runtimeKind: ApplicationRuntimeKind = 'virtual_machine';
   let runtimeChosen = false;
-  let manualKubernetesApplication = false;
-  let name = '';
-  let code = '';
-  let nameTouched = false;
-  let description = '';
-  let labels = '';
-  let icon = 'lucide:AppWindow';
-  let critical = false;
-  let technicalOwnerIds: string[] = [];
-  let operationsOwnerIds: string[] = [];
-  let instances: ApplicationInstanceDraft[] = [];
-  let bindingPreviews: Record<string, BindingPreview> = {};
-  let expandedBindingPreviews: Record<string, boolean> = {};
-  let kubernetesResourceId = '';
-  let namespace = 'default';
-  let filters = '';
-  let workloads: Workload[] = [];
-  let selectedWorkloads = new Set<string>();
-  let activeWorkloadKey = '';
-  let kubernetesApplicationDrafts: Record<string, KubernetesApplicationDraft> =
-    {};
+  let runtimeResourceIds: string[] = [];
+  let processKeyword = '';
+  let containerKeyword = '';
+  let namespace = '';
+  let namespaceOptions: Array<{ value: string; label: string }> = [];
+  let namespaceLoading = false;
+  let labelSelector = '';
+  let discoveredWorkloads: Candidate[] = [];
+  let selectedCandidateKeys: string[] = [];
+  let candidates: Candidate[] = [];
+  let candidateDrafts: Record<string, CandidateDraft> = {};
+  let activeCandidateKey = '';
   let loading = false;
-  let workloadDiscoveryTimer: ReturnType<typeof setTimeout> | undefined;
-  let workloadDiscoveryRequestId = 0;
   let saving = false;
-  let reconfirming = false;
   let submitAttempted = false;
   let error = '';
   let createdResources: Resource[] = [];
   let handledResourceCreationRequestId = '';
   let editInitialized = false;
+  let bindingsCleared = false;
+  let namespaceRequestId = 0;
+  let discoveryRequestId = 0;
+  let workloadRequestId = 0;
+  let workloadTimer: ReturnType<typeof setTimeout> | undefined;
 
   $: availableResources = [...resources, ...createdResources].filter(
-    (resource, index, all) =>
-      all.findIndex((item) => item.id === resource.id) === index
+    (resource, index, all) => all.findIndex((item) => item.id === resource.id) === index
   );
-  $: if (initialApplication && !editInitialized) {
-    runtimeKind = initialApplication.runtime_kind as ApplicationRuntimeKind;
-    name = initialApplication.name;
-    code = initialApplication.code;
-    nameTouched = true;
-    description = initialApplication.description;
-    labels = formatLabels(initialApplication.labels);
-    icon = initialApplication.icon || 'lucide:AppWindow';
-    critical = initialApplication.critical;
-    technicalOwnerIds = [...initialApplication.technical_owner_ids];
-    operationsOwnerIds = [...initialApplication.operations_owner_ids];
-    instances = initialApplication.instances.map((instance) => ({
-      id: instance.id,
-      name: instance.name,
-      targetResourceId: instance.target_resource_id,
-      selector: instance.selector,
-      status: instance.status
-    }));
-    runtimeChosen = instances.length > 0;
-    manualKubernetesApplication = true;
-    step = instances.length > 0 ? 1 : 0;
-    editInitialized = true;
-  }
   $: runtimeResources = resourcesForRuntime(availableResources, runtimeKind);
-  $: ownerOptions = users
-    .filter((user) => user.status === 'active')
-    .map((user) => ({
-      value: user.id,
-      label: user.display_name || user.username,
-      description: user.display_name ? user.username : user.email || user.phone
-    }));
   $: runtimeResourceOptions = [
-    ...runtimeResources.map((resource) => ({
-      value: resource.id,
-      label: resource.name
-    })),
-    {
-      value: '__add_runtime_resource__',
-      label: `新增 ${runtimeLabel(runtimeKind)} 资源`
-    }
+    ...runtimeResources.map((resource) => ({ value: resource.id, label: resource.name })),
+    { value: '__add_runtime_resource__', label: `新增 ${runtimeLabel(runtimeKind)} 资源` }
   ];
-  $: if (
-    resourceCreationResult &&
-    resourceCreationResult.requestId !== handledResourceCreationRequestId
-  ) {
+  $: namespaceDropdownOptions = namespaceOptions;
+  $: ownerOptions = users.filter((user) => user.status === 'active').map((user) => ({
+    value: user.id,
+    label: user.display_name || user.username,
+    description: user.display_name ? user.username : user.email || user.phone
+  }));
+  $: activeCandidate = candidates.find((candidate) => candidate.key === activeCandidateKey);
+  $: activeDraft = activeCandidate ? candidateDrafts[activeCandidate.key] : undefined;
+  $: runtimeLocked = Boolean(
+    initialApplication?.instances.length
+  ) && !bindingsCleared;
+
+  $: if (initialApplication && !editInitialized) initializeEdit(initialApplication);
+  $: if (resourceCreationResult && resourceCreationResult.requestId !== handledResourceCreationRequestId) {
     handledResourceCreationRequestId = resourceCreationResult.requestId;
-    handleResourceCreated(
-      resourceCreationResult.resource,
-      resourceCreationResult.instanceId
-    );
+    handleResourceCreated(resourceCreationResult.resource);
   }
-  $: if (runtimeKind === 'cloud_native' && !kubernetesResourceId) {
-    kubernetesResourceId = runtimeResources[0]?.id ?? '';
-    if (kubernetesResourceId && step === 1 && !manualKubernetesApplication) {
-      queueWorkloadDiscovery();
+
+  onDestroy(() => {
+    clearTimeout(workloadTimer);
+    namespaceRequestId++;
+    discoveryRequestId++;
+    workloadRequestId++;
+  });
+
+  function initializeEdit(application: Application) {
+    editInitialized = true;
+    runtimeKind = application.runtime_kind as ApplicationRuntimeKind;
+    const externalWorkload = runtimeKind === 'cloud_native'
+      ? parseExternalWorkloadIdentity(application.external_uid)
+      : null;
+    runtimeChosen = application.instances.length > 0;
+    step = runtimeChosen ? 1 : 0;
+    const first = application.instances[0];
+    runtimeResourceIds = [...new Set(application.instances.map((instance) => instance.target_resource_id))];
+    if (runtimeResourceIds.length === 0 && externalWorkload) runtimeResourceIds = [externalWorkload.resourceId];
+    if (runtimeKind === 'virtual_machine') {
+      const stored = String(first?.selector.process_command_line ?? '');
+      processKeyword = stored.trim().split(/\s+/)[0]?.slice(0, 128) ?? '';
+    } else if (runtimeKind === 'containerized') {
+      containerKeyword = String(first?.selector.container_name ?? '');
+    } else if (runtimeKind === 'cloud_native' && (first || externalWorkload)) {
+      namespace = String(first?.selector.namespace ?? externalWorkload?.namespace ?? '');
+      void loadNamespaces(first?.target_resource_id ?? externalWorkload!.resourceId, true);
     }
+    if (application.instances.length === 0) setUnboundCandidate(application);
+    else setEditCandidate(application, externalWorkload);
   }
-  function newInstance(kind = runtimeKind): ApplicationInstanceDraft {
+
+  function setEditCandidate(application: Application, externalWorkload: ReturnType<typeof parseExternalWorkloadIdentity>) {
+    const first = application.instances[0];
+    const candidate: Candidate = {
+      key: 'edit-application', identity: existingIdentity(application), runtime_kind: runtimeKind,
+      name: application.name,
+      kind: runtimeKind === 'cloud_native' ? String(first?.selector.workload_kind ?? externalWorkload?.kind ?? '') : undefined,
+      namespace: runtimeKind === 'cloud_native' ? String(first?.selector.namespace ?? externalWorkload?.namespace ?? '') : undefined,
+      replicas: application.instances.length,
+      instances: application.instances.map((instance) => ({
+        name: instance.name, target_resource_id: instance.target_resource_id,
+        selector: instance.selector, log_binding: instance.log_binding, status: instance.status
+      }))
+    };
+    candidates = [candidate];
+    selectedCandidateKeys = [candidate.key];
+    activeCandidateKey = candidate.key;
+    candidateDrafts = { ...candidateDrafts, [candidate.key]: draftFromApplication(application) };
+  }
+
+  function draftFromApplication(application: Application): CandidateDraft {
     return {
-      id: crypto.randomUUID(),
-      name: `instance-${instances.length + 1}`,
-      targetResourceId:
-        resourcesForRuntime(availableResources, kind)[0]?.id ?? '',
-      selector: {}
+      name: application.name,
+      code: application.code,
+      description: application.description,
+      icon: application.icon || 'lucide:AppWindow',
+      labels: formatLabels(application.labels),
+      critical: application.critical,
+      technicalOwnerIds: [...application.technical_owner_ids],
+      operationsOwnerIds: [...application.operations_owner_ids]
     };
   }
 
-  function applicationCreateBlockReason() {
-    const kubernetesBatch =
-      runtimeKind === 'cloud_native' &&
-      !initialApplication &&
-      !manualKubernetesApplication;
-    if (!kubernetesBatch && (!name.trim() || !code.trim()))
-      return '请填写应用名称和应用标识。';
-    if (!runtimeChosen) return '请先选择运行时类型。';
-    if (
-      runtimeKind === 'cloud_native' &&
-      !initialApplication &&
-      !manualKubernetesApplication
-    ) {
-      const selected = workloads.filter((workload) =>
-        selectedWorkloads.has(workloadKey(workload))
-      );
-      if (!selected.length) return '请至少选择一个 Kubernetes 工作负载。';
-      const drafts = selected.map(
-        (workload) => kubernetesApplicationDrafts[workloadKey(workload)]
-      );
-      if (drafts.some((draft) => !draft?.name.trim() || !draft.code.trim())) {
-        return '请填写所有已选工作负载对应的应用名称和应用标识。';
+  function setUnboundCandidate(application: Application) {
+    const key = 'unbound-application';
+    candidates = [{ key, identity: key, runtime_kind: runtimeKind, name: application.name, replicas: 0, instances: [] }];
+    selectedCandidateKeys = [key];
+    activeCandidateKey = key;
+    candidateDrafts = { ...candidateDrafts, [key]: draftFromApplication(application) };
+  }
+
+  function setNewUnboundCandidate() {
+    const key = 'unbound-new-application';
+    candidates = [{ key, identity: key, runtime_kind: runtimeKind, name: '未命名应用', replicas: 0, instances: [] }];
+    selectedCandidateKeys = [key];
+    activeCandidateKey = key;
+    candidateDrafts = {
+      ...candidateDrafts,
+      [key]: candidateDrafts[key] ?? {
+        name: '',
+        code: '',
+        description: '',
+        icon: 'lucide:AppWindow',
+        labels: '',
+        critical: false,
+        technicalOwnerIds: [],
+        operationsOwnerIds: []
       }
-      const codes = drafts.map((draft) =>
-        draft.code.trim().toLocaleLowerCase()
-      );
-      if (new Set(codes).size !== codes.length) return '应用标识不能重复。';
-      return '';
-    }
-    for (const instance of instances) {
-      if (!instance.name.trim()) return '请填写所有实例名称。';
-      if (!instance.targetResourceId) return '请为所有实例选择运行资源。';
-      if (runtimeKind === 'cloud_native') {
-        if (!validSelector('cloud_native', instance.selector))
-          return '请填写 Kubernetes 实例的命名空间、工作负载类型和名称。';
-      } else {
-        const selectorKey =
-          runtimeKind === 'virtual_machine'
-            ? 'process_keyword'
-            : 'container_name';
-        const selectorLabel =
-          runtimeKind === 'virtual_machine' ? '进程关键字' : '容器名称';
-        const keyword = String(instance.selector[selectorKey] ?? '').trim();
-        if (!keyword) return '请填写所有实例的' + selectorLabel + '。';
-        if (!initialApplication) {
-          const preview = bindingPreviews[instance.id];
-          if (
-            !preview ||
-            preview.resourceId !== instance.targetResourceId ||
-            preview.keyword !== keyword
-          )
-            return '请重新预览所有实例的匹配结果。';
-          if (preview.loading) return '正在匹配实例，请稍候。';
-          if (preview.error) return '存在匹配失败的实例，请检查后重新预览。';
-          if (preview.count !== 1) return '每个实例都必须恰好匹配一个对象。';
-        }
-      }
-    }
-    return '';
+    };
   }
 
-  function instanceBindingIssue(instance: ApplicationInstanceDraft) {
-    if (!instance.name.trim()) return '请填写实例名称';
-    if (!instance.targetResourceId) return '请选择运行资源';
-    if (runtimeKind === 'cloud_native')
-      return validSelector(runtimeKind, instance.selector)
-        ? ''
-        : '请填写 Kubernetes 命名空间、工作负载类型和名称';
-    const selectorKey =
-      runtimeKind === 'virtual_machine' ? 'process_keyword' : 'container_name';
-    const keyword = String(instance.selector[selectorKey] ?? '').trim();
-    if (!keyword)
-      return runtimeKind === 'virtual_machine'
-        ? '请填写进程关键字'
-        : '请填写容器名称';
-    const preview = bindingPreviews[instance.id];
-    if (
-      !preview ||
-      preview.resourceId !== instance.targetResourceId ||
-      preview.keyword !== keyword
-    ) {
-      return '请预览匹配结果';
-    }
-    if (preview.loading) return '正在匹配，请稍候';
-    if (preview.error) return '匹配失败，请检查条件后重试';
-    if (preview.count !== 1) return '必须恰好匹配一个对象';
-    return '';
-  }
-
-  function validSelector(
-    kind: ApplicationRuntimeKind,
-    selector: Record<string, unknown>
-  ) {
-    const required =
-      kind === 'virtual_machine'
-        ? ['process_keyword']
-        : kind === 'containerized'
-          ? ['container_name']
-          : ['namespace', 'workload_kind', 'workload_name'];
-    return required.every((key) => String(selector[key] ?? '').trim());
-  }
-
-  function changeRuntime(next: ApplicationRuntimeKind) {
-    runtimeKind = next;
-    runtimeChosen = true;
-    step = 1;
+  function clearExistingBindings() {
+    if (!initialApplication) return;
+    clearTimeout(workloadTimer);
+    workloadRequestId++;
+    namespaceRequestId++;
+    discoveryRequestId++;
+    loading = false;
+    namespaceLoading = false;
+    bindingsCleared = true;
+    runtimeChosen = false;
+    runtimeResourceIds = [];
+    namespace = '';
+    namespaceOptions = [];
+    discoveredWorkloads = [];
+    selectedCandidateKeys = [];
+    candidates = [];
+    activeCandidateKey = '';
     error = '';
-    instances = [];
-    manualKubernetesApplication = Boolean(initialApplication);
-    bindingPreviews = {};
-    expandedBindingPreviews = {};
-    if (next !== 'cloud_native') {
-      kubernetesResourceId = '';
-      clearTimeout(workloadDiscoveryTimer);
-      workloadDiscoveryRequestId += 1;
-      loading = false;
+    step = 0;
+  }
+
+  function selectRuntime(kind: ApplicationRuntimeKind) {
+    if (runtimeLocked) return;
+    const changed = !runtimeChosen || kind !== runtimeKind;
+    runtimeKind = kind;
+    runtimeChosen = true;
+    error = '';
+    if (!changed) return;
+    clearTimeout(workloadTimer);
+    workloadRequestId++;
+    namespaceRequestId++;
+    loading = false;
+    namespaceLoading = false;
+    runtimeResourceIds = [];
+    const first = resourcesForRuntime(availableResources, kind)[0];
+    if (first) runtimeResourceIds = [first.id];
+    processKeyword = '';
+    containerKeyword = '';
+    namespace = '';
+    labelSelector = '';
+    namespaceOptions = [];
+    selectedCandidateKeys = [];
+    candidates = [];
+    activeCandidateKey = '';
+    if (initialApplication) {
+      setUnboundCandidate(initialApplication);
     } else {
-      kubernetesResourceId =
-        resourcesForRuntime(availableResources, next)[0]?.id ?? '';
-      if (!initialApplication) queueWorkloadDiscovery();
+      candidateDrafts = {};
+    }
+    if (kind === 'cloud_native' && first) void loadNamespaces(first.id, false);
+  }
+
+  function changeRuntimeResources(value: string | string[]) {
+    const selected = Array.isArray(value) ? value : value ? [value] : [];
+    if (selected.includes('__add_runtime_resource__')) {
+      onRequestResourceCreate(runtimeLabel(runtimeKind) as RuntimeResourceKind);
+      return;
+    }
+    if (initialApplication && selected.length === 0) bindingsCleared = true;
+    runtimeResourceIds = selected;
+    if (runtimeKind === 'cloud_native') {
+      const id = selected[0] ?? '';
+      if (id) void loadNamespaces(id, false);
+      else {
+        clearTimeout(workloadTimer);
+        workloadRequestId++;
+        namespaceRequestId++;
+        loading = false;
+        namespaceLoading = false;
+        namespaceOptions = [];
+        namespace = '';
+      }
+    }
+    error = '';
+  }
+
+  function handleResourceCreated(resource: Resource) {
+    createdResources = [resource, ...createdResources.filter((item) => item.id !== resource.id)];
+    onResourceCreated(resource);
+    if (resource.kind !== runtimeLabel(runtimeKind)) return;
+    runtimeResourceIds = runtimeKind === 'cloud_native'
+      ? [resource.id]
+      : [...new Set([...runtimeResourceIds, resource.id])];
+    if (runtimeKind === 'cloud_native') void loadNamespaces(resource.id, false);
+  }
+
+  async function loadNamespaces(resourceId: string, preserve: boolean) {
+    const requestId = ++namespaceRequestId;
+    namespaceLoading = true;
+    namespaceOptions = [];
+    try {
+      const result = await api.kubernetesNamespaces(resourceId);
+      if (requestId !== namespaceRequestId) return;
+      namespaceOptions = result.items.map((item) => ({ value: item.name, label: item.name }));
+      const names = namespaceOptions.map((item) => item.value);
+      namespace = preserve && names.includes(namespace)
+        ? namespace
+        : names.includes('default') ? 'default' : names[0] ?? '';
+      if (namespace) queueWorkloadDiscovery();
+    } catch (cause) {
+      if (requestId === namespaceRequestId) error = cause instanceof Error ? cause.message : '读取 Kubernetes 命名空间失败。';
+    } finally {
+      if (requestId === namespaceRequestId) namespaceLoading = false;
     }
   }
 
-  function syncNameWithIdentifier() {
-    if (!nameTouched) name = code;
+  function queueWorkloadDiscovery() {
+    clearTimeout(workloadTimer);
+    const requestId = ++workloadRequestId;
+    const resourceId = runtimeResourceIds[0] ?? '';
+    const selectedNamespace = namespace.trim();
+    discoveredWorkloads = [];
+    selectedCandidateKeys = [];
+    if (!resourceId || !selectedNamespace) return;
+    loading = true;
+    error = '';
+    workloadTimer = setTimeout(() => {
+      void discoverKubernetesWorkloads(resourceId, selectedNamespace, labelSelector.trim(), requestId);
+    }, 250);
   }
 
-  function markNameTouched() {
-    nameTouched = true;
+  async function discoverKubernetesWorkloads(resourceId: string, selectedNamespace: string, filters: string, requestId: number) {
+    try {
+      const result = await api.applicationCandidates({
+        runtime_kind: 'cloud_native', resource_ids: [resourceId], namespace: selectedNamespace, filters,
+        ...(initialApplication && runtimeLocked ? { exact_identity: existingIdentity(initialApplication) } : {})
+      });
+      if (requestId !== workloadRequestId) return;
+      if (result.truncated) {
+        error = '工作负载数量超过读取上限，请缩小筛选范围。';
+        return;
+      }
+      discoveredWorkloads = result.items;
+      if (initialApplication && runtimeLocked) {
+        const identity = existingIdentity(initialApplication);
+        selectedCandidateKeys = result.items.filter((item) => item.identity === identity).map((item) => item.key);
+      } else {
+        selectedCandidateKeys = result.items.map((item) => item.key);
+      }
+      ensureDrafts(result.items);
+    } catch (cause) {
+      if (requestId === workloadRequestId) error = cause instanceof Error ? cause.message : '工作负载读取失败。';
+    } finally {
+      if (requestId === workloadRequestId) loading = false;
+    }
   }
 
-  function addInstance() {
-    instances = [...instances, newInstance()];
+  function kubernetesIdentity(namespaceValue: string, kind: string, name: string) {
+    return namespaceValue && kind && name ? `${namespaceValue}/${kind}/${name}` : '';
   }
 
-  function continueFromRuntimeStep() {
+  function existingIdentity(application: Application) {
+    const instance = application.instances[0];
+    if (!instance) return parseExternalWorkloadIdentity(application.external_uid)?.identity ?? '';
+    if (application.runtime_kind === 'virtual_machine') return String(instance.selector.process_command_line ?? '');
+    if (application.runtime_kind === 'containerized') return String(instance.selector.container_name ?? '');
+    return kubernetesIdentity(String(instance.selector.namespace ?? ''), String(instance.selector.workload_kind ?? ''), String(instance.selector.workload_name ?? ''));
+  }
+
+  function parseExternalWorkloadIdentity(value = '') {
+    const separator = value.indexOf(':');
+    if (separator <= 0) return null;
+    const resourceId = value.slice(0, separator).trim();
+    const identity = value.slice(separator + 1).trim();
+    const [namespaceValue, kind, name] = identity.split('/');
+    if (!resourceId || !namespaceValue || !kind || !name) return null;
+    return { resourceId, identity, namespace: namespaceValue, kind };
+  }
+
+  function ensureDrafts(items: Candidate[]) {
+    const next = { ...candidateDrafts };
+    items.forEach((candidate, index) => {
+      if (next[candidate.key]) return;
+      if (initialApplication && (
+        candidate.identity === existingIdentity(initialApplication) || items.length === 1
+      )) {
+        next[candidate.key] = draftFromApplication(initialApplication);
+      } else {
+        const suffix = items.length > 1 ? `-${index + 1}` : '';
+        const stem = slugify(candidate.name).slice(0, 63 - suffix.length).replace(/-$/, '');
+        next[candidate.key] = {
+          name: candidate.name,
+          code: `${stem}${suffix}`,
+          description: '',
+          icon: 'lucide:AppWindow',
+          labels: '',
+          critical: false,
+          technicalOwnerIds: [],
+          operationsOwnerIds: []
+        };
+      }
+    });
+    candidateDrafts = next;
+  }
+
+  function updateDraft(key: string, field: keyof CandidateDraft, value: string | boolean | string[]) {
+    const current = candidateDrafts[key];
+    if (current) candidateDrafts = { ...candidateDrafts, [key]: { ...current, [field]: value } };
+  }
+
+  function toggleCandidate(key: string) {
+    const selected = new Set(selectedCandidateKeys);
+    if (selected.has(key)) selected.delete(key);
+    else selected.add(key);
+    selectedCandidateKeys = [...selected];
+  }
+
+  async function continueFromRuntimeStep() {
+    submitAttempted = true;
+    error = '';
     if (!runtimeChosen) {
       error = '请先选择运行时类型。';
       return;
     }
-    error = '';
+    if (runtimeResourceIds.length === 0) {
+      if (initialApplication) setUnboundCandidate(initialApplication);
+      else setNewUnboundCandidate();
+      step = 1;
+      return;
+    }
+    if (runtimeKind === 'virtual_machine' && !runtimeLocked && !processKeyword.trim()) {
+      error = '请填写 Host 进程初筛关键字。';
+      return;
+    }
+    if (runtimeKind === 'cloud_native') {
+      if (!namespace.trim()) {
+        error = '请选择 Kubernetes 命名空间。';
+        return;
+      }
+      if (namespaceLoading || loading) {
+        error = '正在读取 Kubernetes 工作负载，请稍候。';
+        return;
+      }
+    }
+
+    // Kubernetes workload discovery already applied the namespace and label
+    // filters. Keep only the workloads the user selected instead of querying
+    // the full list again and silently replacing that selection.
+    if (runtimeKind === 'cloud_native') {
+      const selected = discoveredWorkloads.filter((candidate) =>
+        selectedCandidateKeys.includes(candidate.key) ||
+        (runtimeLocked && candidate.identity === existingIdentity(initialApplication!))
+      );
+      candidates = selected;
+      ensureDrafts(candidates);
+      if (candidates.length === 0) {
+        if (initialApplication && runtimeLocked) {
+          error = '当前筛选条件没有找到已绑定的工作负载。';
+          return;
+        }
+        if (initialApplication) setUnboundCandidate(initialApplication);
+        else setNewUnboundCandidate();
+      }
+      activeCandidateKey = chooseActiveCandidate(candidates);
+      step = 1;
+      return;
+    }
+
+    await discoverRuntimeCandidates();
+    if (error) return;
+    activeCandidateKey = chooseActiveCandidate(candidates);
     step = 1;
-    if (
-      runtimeKind === 'cloud_native' &&
-      !initialApplication &&
-      !manualKubernetesApplication
-    ) {
-      queueWorkloadDiscovery();
-    }
   }
 
-  function removeInstance(id: string) {
-    instances = instances.filter((instance) => instance.id !== id);
-    delete bindingPreviews[id];
-    delete expandedBindingPreviews[id];
-    bindingPreviews = { ...bindingPreviews };
-    expandedBindingPreviews = { ...expandedBindingPreviews };
-  }
-
-  function updateSelector(
-    instance: ApplicationInstanceDraft,
-    key: string,
-    value: string
-  ) {
-    instance.selector = { ...instance.selector, [key]: value };
-    delete bindingPreviews[instance.id];
-    bindingPreviews = { ...bindingPreviews };
-    expandedBindingPreviews = {
-      ...expandedBindingPreviews,
-      [instance.id]: false
-    };
-    instances = [...instances];
-  }
-
-  function selectInstanceResource(
-    instance: ApplicationInstanceDraft,
-    value: string
-  ) {
-    if (value === '__add_runtime_resource__') {
-      onRequestResourceCreate(
-        runtimeLabel(runtimeKind) as RuntimeResourceKind,
-        instance.id
-      );
-      return;
-    }
-    instance.targetResourceId = value;
-    delete bindingPreviews[instance.id];
-    bindingPreviews = { ...bindingPreviews };
-    expandedBindingPreviews = {
-      ...expandedBindingPreviews,
-      [instance.id]: false
-    };
-    instances = [...instances];
-  }
-
-  function bindingPreviewStatus(
-    preview: BindingPreview | undefined,
-    instance: ApplicationInstanceDraft
-  ): BindingPreviewStatus {
-    const selectorKey =
-      runtimeKind === 'virtual_machine'
-        ? 'process_keyword'
-        : runtimeKind === 'containerized'
-          ? 'container_name'
-          : 'workload_name';
-    if (
-      !preview ||
-      preview.resourceId !== instance.targetResourceId ||
-      preview.keyword !== String(instance.selector[selectorKey] ?? '').trim()
-    ) {
-      return ['active', 'healthy', 'normal', 'up'].includes(
-        instance.status ?? ''
-      )
-        ? 'success'
-        : ['warning', 'disabled', 'down', 'error'].includes(
-              instance.status ?? ''
-            )
-          ? 'none'
-          : 'unknown';
-    }
-    if (preview.loading) return 'unknown';
-    if (preview.error || preview.count === 0) return 'none';
-    return preview.count === 1 ? 'success' : 'multiple';
-  }
-
-  function bindingPreviewAccent(status: BindingPreviewStatus) {
-    if (status === 'success') return 'var(--theme-success)';
-    if (status === 'multiple') return 'var(--theme-warning)';
-    if (status === 'none') return 'var(--theme-danger)';
-    return 'var(--theme-fg-subtle)';
-  }
-
-  function toggleBindingPreview(instance: ApplicationInstanceDraft) {
-    expandedBindingPreviews = {
-      ...expandedBindingPreviews,
-      [instance.id]: !expandedBindingPreviews[instance.id]
-    };
-  }
-
-  function bindingPreviewTooltip(
-    preview: BindingPreview | undefined,
-    status: BindingPreviewStatus,
-    instance: ApplicationInstanceDraft
-  ) {
-    if (!preview) {
-      if (['active', 'healthy', 'normal', 'up'].includes(instance.status ?? ''))
-        return '当前实例状态：正常';
-      if (
-        ['warning', 'disabled', 'down', 'error'].includes(instance.status ?? '')
-      )
-        return '当前实例状态：需关注';
-      return '当前实例状态：未知';
-    }
-    if (status === 'unknown')
-      return preview.loading ? '正在读取匹配对象…' : '尚未预览匹配';
-    if (preview.error) return `匹配失败：${preview.error}`;
-    const summary =
-      preview.count === 1
-        ? '匹配到 1 个对象'
-        : preview.count === 0
-          ? '匹配到 0 个对象，必须恰好匹配一个对象才可创建应用'
-          : `匹配到 ${preview.count} 个对象，必须恰好匹配一个对象才可创建应用`;
-    return [
-      summary,
-      ...preview.items.map(
-        (item) => `${item.name}${item.detail ? ` · ${item.detail}` : ''}`
-      )
-    ].join('\n');
-  }
-
-  async function previewBinding(
-    instance: ApplicationInstanceDraft,
-    silent = false
-  ) {
-    const selectorKey =
-      runtimeKind === 'virtual_machine'
-        ? 'process_keyword'
-        : runtimeKind === 'containerized'
-          ? 'container_name'
-          : 'workload_name';
-    const keyword = String(instance.selector[selectorKey] ?? '').trim();
-    const resourceId = instance.targetResourceId;
-    if (!resourceId || !keyword) {
-      bindingPreviews = {
-        ...bindingPreviews,
-        [instance.id]: {
-          resourceId,
-          keyword,
-          count: 0,
-          items: [],
-          error: '请先选择资源并填写定位关键字。'
-        }
-      };
-      expandedBindingPreviews = {
-        ...expandedBindingPreviews,
-        [instance.id]: true
-      };
-      return;
-    }
-    if (!silent) {
-      bindingPreviews = {
-        ...bindingPreviews,
-        [instance.id]: {
-          resourceId,
-          keyword,
-          count: 0,
-          items: [],
-          loading: true
-        }
-      };
-      expandedBindingPreviews = {
-        ...expandedBindingPreviews,
-        [instance.id]: true
-      };
-    }
+  async function discoverRuntimeCandidates() {
+    const requestId = ++discoveryRequestId;
+    loading = true;
+    candidates = [];
+    activeCandidateKey = '';
     try {
-      const result = await api.applicationBindingPreview(
-        resourceId,
-        runtimeKind,
-        keyword
-      );
-      if (
-        instance.targetResourceId !== resourceId ||
-        String(instance.selector[selectorKey] ?? '').trim() !== keyword
-      )
-        return;
-      bindingPreviews = {
-        ...bindingPreviews,
-        [instance.id]: {
-          resourceId,
-          keyword,
-          count: result.count,
-          items: result.items
-        }
+      const body = {
+        runtime_kind: runtimeKind,
+        resource_ids: runtimeResourceIds,
+        keyword: runtimeKind === 'virtual_machine' ? processKeyword.trim() : containerKeyword.trim(),
+        ...(runtimeKind === 'cloud_native' ? { namespace: namespace.trim(), filters: labelSelector.trim() } : {}),
+        ...(initialApplication && runtimeLocked ? { exact_identity: existingIdentity(initialApplication) } : {})
       };
-      if (silent && result.count !== 1) {
-        expandedBindingPreviews = {
-          ...expandedBindingPreviews,
-          [instance.id]: true
-        };
+      const result = await api.applicationCandidates(body);
+      if (requestId !== discoveryRequestId) return;
+      if (result.truncated) {
+        error = '匹配结果过多，无法保证完整筛选；请缩小初筛条件后重试。';
+        return;
+      }
+      candidates = result.items;
+      selectedCandidateKeys = candidates.map((candidate) => candidate.key);
+      ensureDrafts(candidates);
+      if (candidates.length === 0) {
+        if (initialApplication && runtimeLocked) error = '当前筛选条件没有找到已绑定的运行目标。';
+        else if (initialApplication) setUnboundCandidate(initialApplication);
+        else setNewUnboundCandidate();
       }
     } catch (cause) {
-      if (
-        instance.targetResourceId !== resourceId ||
-        String(instance.selector[selectorKey] ?? '').trim() !== keyword
-      )
-        return;
-      bindingPreviews = {
-        ...bindingPreviews,
-        [instance.id]: {
-          resourceId,
-          keyword,
-          count: 0,
-          items: [],
-          error: cause instanceof Error ? cause.message : '匹配预览失败。'
-        }
-      };
-      if (silent)
-        expandedBindingPreviews = {
-          ...expandedBindingPreviews,
-          [instance.id]: true
-        };
-    }
-  }
-
-  async function previewAllBindings() {
-    await Promise.all(
-      instances.map((instance) =>
-        previewBinding(
-          instance,
-          bindingPreviewStatus(bindingPreviews[instance.id], instance) ===
-            'success'
-        )
-      )
-    );
-  }
-
-  function handleResourceCreated(resource: Resource, instanceId?: string) {
-    createdResources = [
-      resource,
-      ...createdResources.filter((item) => item.id !== resource.id)
-    ];
-    onResourceCreated(resource);
-    if (runtimeKind === 'cloud_native' && resource.kind === 'Kubernetes') {
-      kubernetesResourceId = resource.id;
-      queueWorkloadDiscovery();
-      return;
-    }
-    if (resource.kind !== runtimeLabel(runtimeKind) || !instanceId) return;
-    const instance = instances.find((item) => item.id === instanceId);
-    if (instance) {
-      instance.targetResourceId = resource.id;
-      delete bindingPreviews[instance.id];
-      bindingPreviews = { ...bindingPreviews };
-      expandedBindingPreviews = {
-        ...expandedBindingPreviews,
-        [instance.id]: false
-      };
-      instances = [...instances];
-    }
-  }
-
-  function selectKubernetesResource(value: string) {
-    if (value === '__add_runtime_resource__') {
-      onRequestResourceCreate('Kubernetes');
-      return;
-    }
-    kubernetesResourceId = value;
-    queueWorkloadDiscovery();
-  }
-
-  function workloadKey(workload: Workload) {
-    return `${workload.namespace}/${workload.kind}/${workload.name}`;
-  }
-
-  function ensureKubernetesDrafts(items: Workload[]) {
-    const next = { ...kubernetesApplicationDrafts };
-    for (const workload of items) {
-      const key = workloadKey(workload);
-      next[key] ??= {
-        name: workload.name,
-        code: slugify(`${workload.name}-${workload.namespace}-${workload.kind}`)
-          .slice(0, 64)
-          .replace(/-$/, ''),
-        description: `${workload.kind} · ${workload.namespace}`,
-        labels,
-        icon,
-        critical,
-        technicalOwnerIds: [...technicalOwnerIds],
-        operationsOwnerIds: [...operationsOwnerIds]
-      };
-    }
-    kubernetesApplicationDrafts = next;
-  }
-
-  function queueWorkloadDiscovery() {
-    clearTimeout(workloadDiscoveryTimer);
-    const requestId = ++workloadDiscoveryRequestId;
-    const resourceId = kubernetesResourceId;
-    const selectedNamespace = namespace.trim();
-    const selectedFilters = filters.trim();
-    if (!resourceId || !selectedNamespace) {
-      workloads = [];
-      selectedWorkloads = new Set();
-      activeWorkloadKey = '';
-      loading = false;
-      return;
-    }
-    workloads = [];
-    selectedWorkloads = new Set();
-    activeWorkloadKey = '';
-    loading = true;
-    error = '';
-    workloadDiscoveryTimer = setTimeout(() => {
-      void discoverWorkloads(
-        resourceId,
-        selectedNamespace,
-        selectedFilters,
-        requestId
-      );
-    }, 250);
-  }
-
-  async function discoverWorkloads(
-    resourceId: string,
-    selectedNamespace: string,
-    selectedFilters: string,
-    requestId: number
-  ) {
-    loading = true;
-    try {
-      const result = await api.kubernetesWorkloads(resourceId, {
-        namespace: selectedNamespace,
-        filters: selectedFilters
-      });
-      if (requestId !== workloadDiscoveryRequestId) return;
-      workloads = result.items;
-      selectedWorkloads = new Set(workloads.map(workloadKey));
-      ensureKubernetesDrafts(workloads);
-      activeWorkloadKey = workloads.some(
-        (workload) => workloadKey(workload) === activeWorkloadKey
-      )
-        ? activeWorkloadKey
-        : workloads[0]
-          ? workloadKey(workloads[0])
-          : '';
-    } catch (cause) {
-      if (requestId === workloadDiscoveryRequestId) {
-        error =
-          cause instanceof Error
-            ? cause.message
-            : '工作负载读取失败，请检查资源连接和定位条件。';
-      }
+      if (requestId === discoveryRequestId) error = cause instanceof Error ? cause.message : '应用候选读取失败。';
     } finally {
-      if (requestId === workloadDiscoveryRequestId) loading = false;
+      if (requestId === discoveryRequestId) loading = false;
     }
   }
 
-  function toggleWorkload(key: string) {
-    const next = new Set(selectedWorkloads);
-    next.has(key) ? next.delete(key) : next.add(key);
-    selectedWorkloads = next;
-    if (!activeWorkloadKey || !next.has(activeWorkloadKey))
-      activeWorkloadKey = key;
+  function chooseActiveCandidate(items: Candidate[]) {
+    if (initialApplication) {
+      const match = items.find((item) => item.identity === existingIdentity(initialApplication!));
+      if (match) return match.key;
+      if (items.length === 1) return items[0].key;
+    }
+    return items[0]?.key ?? '';
   }
 
-  function updateKubernetesDraft(
-    key: string,
-    field: keyof KubernetesApplicationDraft,
-    value: string | boolean | string[]
-  ) {
-    const draft = kubernetesApplicationDrafts[key];
-    if (!draft) return;
-    kubernetesApplicationDrafts = {
-      ...kubernetesApplicationDrafts,
-      [key]: { ...draft, [field]: value }
+  function runtimeCandidateDraft(candidate: Candidate): ApplicationDraft {
+    const draft = candidateDrafts[candidate.key];
+    const instances: ApplicationInstanceDraft[] = candidate.instances.map((instance, index) => ({
+      id: crypto.randomUUID(),
+      name: instance.name || `instance-${index + 1}`,
+      targetResourceId: instance.target_resource_id,
+      selector: instance.selector,
+      ...(instance.log_binding ? { logBinding: instance.log_binding } : {}),
+      ...(instance.status ? { status: instance.status } : {})
+    }));
+    if (initialApplication) {
+      for (const instance of instances) {
+        const prior = initialApplication.instances.find((item) =>
+          item.target_resource_id === instance.targetResourceId &&
+          Object.keys(instance.selector).every((key) => String(item.selector[key] ?? '') === String(instance.selector[key] ?? ''))
+        );
+        if (prior?.status) instance.status = prior.status;
+        if (prior?.log_binding) instance.logBinding = prior.log_binding;
+      }
+    }
+    return {
+      name: draft.name.trim(),
+      code: draft.code.trim(),
+      description: draft.description.trim(),
+      icon: draft.icon,
+      labels: parseLabels(draft.labels),
+      runtimeKind,
+      externalUid: runtimeKind === 'cloud_native' && candidate.kind
+        ? `${runtimeResourceIds[0]}:${candidate.identity}`
+        : '',
+      critical: draft.critical,
+      technicalOwnerIds: draft.technicalOwnerIds,
+      operationsOwnerIds: draft.operationsOwnerIds,
+      instances
     };
   }
 
-  function validate() {
-    return !applicationCreateBlockReason();
+  function validateDrafts() {
+    const selected = initialApplication
+      ? candidates.filter((candidate) => candidate.key === activeCandidateKey)
+      : candidates.filter((candidate) => selectedCandidateKeys.includes(candidate.key));
+    if (selected.length === 0) return '没有可保存的应用候选。';
+    if (selected.some((candidate) => !candidateDrafts[candidate.key]?.name.trim() || !candidateDrafts[candidate.key]?.code.trim())) return '请填写应用名称和应用标识。';
+    const codes = selected.map((candidate) => candidateDrafts[candidate.key].code.trim().toLowerCase());
+    if (new Set(codes).size !== codes.length) return '应用标识不能重复。';
+    return '';
   }
 
   async function save() {
     submitAttempted = true;
-    error = '';
-    reconfirming =
-      !initialApplication &&
-      runtimeKind !== 'cloud_native' &&
-      instances.length > 0 &&
-      instances.every(
-        (instance) =>
-          bindingPreviewStatus(bindingPreviews[instance.id], instance) ===
-          'success'
-      );
-    if (!initialApplication && runtimeKind !== 'cloud_native')
-      await previewAllBindings();
-    if (!validate()) {
-      reconfirming = false;
-      return;
-    }
+    error = validateDrafts();
+    if (error) return;
     saving = true;
     try {
-      const applicationLabels = parseLabels(labels);
       if (initialApplication) {
-        await onUpdate(initialApplication, {
-          name: name.trim(),
-          code: code.trim(),
-          description: description.trim(),
-          icon,
-          labels: applicationLabels,
-          runtimeKind,
-          critical,
-          technicalOwnerIds,
-          operationsOwnerIds,
-          instances
-        });
-      } else if (
-        runtimeKind === 'cloud_native' &&
-        !manualKubernetesApplication
-      ) {
-        const drafts = workloads
-          .filter((workload) => selectedWorkloads.has(workloadKey(workload)))
-          .map((workload) => {
-            const key = workloadKey(workload);
-            const application = kubernetesApplicationDrafts[key];
-            return {
-              name: application.name.trim(),
-              code: application.code.trim(),
-              description: application.description.trim(),
-              icon: application.icon,
-              labels: parseLabels(application.labels),
-              runtimeKind,
-              externalUid: `${kubernetesResourceId}:${key}`,
-              critical: application.critical,
-              technicalOwnerIds: application.technicalOwnerIds,
-              operationsOwnerIds: application.operationsOwnerIds,
-              instances: workload.pods.map((pod) => ({
-                id: crypto.randomUUID(),
-                name: pod.name,
-                targetResourceId: kubernetesResourceId,
-                selector: {
-                  namespace: workload.namespace,
-                  workload_kind: workload.kind,
-                  workload_name: workload.name,
-                  pod_name: pod.name
-                }
-              }))
-            } satisfies ApplicationDraft;
-          });
-        await onSave(drafts);
+        const candidate = candidates.find((item) => item.key === activeCandidateKey);
+        if (!candidate) throw new Error('没有找到可编辑的应用候选。');
+        await onUpdate(initialApplication, runtimeCandidateDraft(candidate));
       } else {
-        await onSave([
-          {
-            name: name.trim(),
-            code: code.trim(),
-            description: description.trim(),
-            icon,
-            labels: applicationLabels,
-            runtimeKind,
-            critical,
-            technicalOwnerIds,
-            operationsOwnerIds,
-            instances
-          }
-        ]);
+        const selected = candidates.filter((candidate) => selectedCandidateKeys.includes(candidate.key));
+        await onSave(selected.map(runtimeCandidateDraft));
       }
     } catch (cause) {
-      error =
-        cause instanceof Error
-          ? cause.message
-          : '保存应用失败，请检查表单内容。';
+      error = cause instanceof Error ? cause.message : '保存应用失败，请检查表单内容。';
     } finally {
       saving = false;
-      reconfirming = false;
     }
   }
 </script>
@@ -813,673 +609,119 @@
   overflowMode="expand"
   initialCenterRatio={0.38}
   title={initialApplication ? '编辑应用' : '新增应用'}
-  description={initialApplication
-    ? '更新应用信息与实例绑定。'
-    : '选择运行时类型并填写应用信息。'}
+  description={initialApplication ? '调整应用配置与运行实例。' : '选择运行时并批量配置匹配到的应用。'}
   confirmLabel={step === 0 ? '下一步' : initialApplication ? '保存' : '创建'}
   busyLabel={initialApplication ? '保存中…' : '创建中…'}
-  busy={saving || reconfirming}
+  busy={saving || loading}
   message={error}
   {onCancel}
   onConfirm={step === 0 ? continueFromRuntimeStep : save}
 >
   <nav class="application-steps" aria-label="新增应用步骤">
-    <button
-      class:active={step === 0}
-      class:done={step > 0}
-      type="button"
-      disabled={instances.length > 0}
-      on:click={() => instances.length === 0 && (step = 0)}
-      ><span>1</span>运行时类型</button
-    >
-    <button
-      class:active={step === 1}
-      type="button"
-      disabled={!runtimeChosen}
-      on:click={() => runtimeChosen && (step = 1)}
-      ><span>2</span>应用与实例</button
-    >
+    <button class:active={step === 0} class:done={step > 0} type="button" on:click={() => (step = 0)}><span>1</span>运行时类型</button>
+    <button class:active={step === 1} type="button" disabled={!runtimeChosen} on:click={() => runtimeChosen && (step = 1)}><span>2</span>应用与实例</button>
   </nav>
+
   <div class="project-dialog-content">
     {#if step === 0}
       <div class="runtime-choice-grid">
-        {#each [['virtual_machine', 'Host', '虚拟机', '逐个绑定主机实例'], ['containerized', 'Docker', '容器化', '逐个绑定容器实例'], ['cloud_native', 'Kubernetes', '云原生', '批量发现工作负载和实例']] as option}
-          <button
-            class:selected={runtimeChosen && runtimeKind === option[0]}
-            disabled={instances.length > 0}
-            type="button"
-            on:click={() => changeRuntime(option[0] as ApplicationRuntimeKind)}
-          >
-            <ResourceBrandIcon resource={{ kind: option[1] }} size={26} />
-            <strong
-              >{option[1]}<small class="runtime-choice-kind">{option[2]}</small
-              ></strong
-            ><small>{option[3]}</small>
+        {#each runtimeChoices as option}
+          <button class:selected={runtimeChosen && runtimeKind === option.kind} class:locked={runtimeLocked} type="button" disabled={runtimeLocked} on:click={() => selectRuntime(option.kind)}>
+            <ResourceBrandIcon resource={{ kind: option.label }} size={26} />
+            <strong>{option.label}<small class="runtime-choice-kind">{option.subtitle}</small></strong>
+            <small>{option.description}</small>
           </button>
         {/each}
       </div>
-    {:else if runtimeKind === 'cloud_native' && !initialApplication && !manualKubernetesApplication}
-      <div class="kubernetes-runtime-fields">
-        <FormField label="运行资源" required
-          ><DropdownSelect
-            value={kubernetesResourceId}
-            options={runtimeResourceOptions}
-            placeholder="选择 Kubernetes 资源"
-            ariaLabel="运行资源"
-            invalid={submitAttempted && !kubernetesResourceId}
-            invalidMode="bubble"
-            invalidMessage="请选择 Kubernetes 运行资源"
-            on:change={(event) =>
-              selectKubernetesResource(String(event.detail))}
-          /></FormField
-        >
-        <FormField label="命名空间" required
-          ><TextInput
-            value={namespace}
-            placeholder="default"
-            on:value={(event) => {
-              namespace = String(event.detail);
-              queueWorkloadDiscovery();
-            }}
-          /></FormField
-        >
-        <FormField label="标签选择器" className="kubernetes-filter-field"
-          ><TextInput
-            value={filters}
-            placeholder="app.kubernetes.io/part-of=payments"
-            on:value={(event) => {
-              filters = String(event.detail);
-              queueWorkloadDiscovery();
-            }}
-          /></FormField
-        >
-      </div>
-      <div class="kubernetes-batch-toolbar">
-        <div>
-          <strong>工作负载与应用配置</strong><small
-            >勾选决定创建范围；选择名称编辑对应应用</small
-          >
-        </div>
-        <span class="kubernetes-discovery-status" aria-live="polite"
-          >{loading
-            ? '正在同步工作负载…'
-            : `${workloads.length} 个工作负载 · ${selectedWorkloads.size} 个将创建`}</span
-        >
-      </div>
-      {#if error}<p class="kubernetes-discovery-error" role="alert">
-          {error}
-        </p>{/if}
-      {#if workloads.length}
-        <div class="kubernetes-batch-layout">
-          <aside
-            class="kubernetes-workload-pane"
-            class:invalid={submitAttempted && selectedWorkloads.size === 0}
-            aria-label="工作负载列表"
-          >
-            <div class="kubernetes-workload-pane-heading">
-              <strong>工作负载</strong><span
-                >{selectedWorkloads.size}/{workloads.length}</span
-              >
-            </div>
-            <div class="kubernetes-workload-list">
-              {#each workloads as workload}{@const key = workloadKey(workload)}
-                <div
-                  class="kubernetes-workload-item"
-                  class:active={activeWorkloadKey === key}
-                  class:checked={selectedWorkloads.has(key)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedWorkloads.has(key)}
-                    aria-label={`将 ${workload.name} 纳入创建`}
-                    on:change={() => toggleWorkload(key)}
-                  />
-                  <button
-                    class="kubernetes-workload-focus"
-                    type="button"
-                    aria-current={activeWorkloadKey === key
-                      ? 'true'
-                      : undefined}
-                    on:click={() => (activeWorkloadKey = key)}
-                  >
-                    <span class="workload-icon"
-                      ><EntityBrandIcon
-                        kind="Application"
-                        fallback="lucide:AppWindow"
-                        size={16}
-                      /></span
-                    >
-                    <span class="kubernetes-workload-copy"
-                      ><strong>{workload.name}</strong><small
-                        >{workload.kind} · {workload.namespace}</small
-                      ><small>{workload.pods.length} 个 Pod 实例</small></span
-                    >
-                  </button>
-                </div>
-              {/each}
-            </div>
-          </aside>
-          <section
-            class="kubernetes-application-pane"
-            aria-label="当前工作负载对应的应用配置"
-          >
-            {#if activeWorkloadKey && workloads.find((workload) => workloadKey(workload) === activeWorkloadKey)}
-              {@const activeWorkload = workloads.find(
-                (workload) => workloadKey(workload) === activeWorkloadKey
-              )!}
-              {@const application =
-                kubernetesApplicationDrafts[activeWorkloadKey]}
-              <div class="kubernetes-application-heading">
-                <div>
-                  <h3>{application?.name || activeWorkload.name}</h3>
-                  <p>
-                    {activeWorkload.kind} · {activeWorkload.namespace} · 自动关联
-                    {activeWorkload.pods.length} 个 Pod 实例
-                  </p>
-                </div>
-                <span
-                  class:included={selectedWorkloads.has(activeWorkloadKey)}
-                  class="kubernetes-inclusion-state"
-                  >{selectedWorkloads.has(activeWorkloadKey)
-                    ? '将创建应用'
-                    : '未纳入创建'}</span
-                >
-              </div>
-              {#if application}
-                <div class="application-form-grid">
-                  <div class="application-identity-row">
-                    <div class="application-icon-code-fields">
-                      <FormField label="应用图标"
-                        ><IconPicker
-                          value={application.icon}
-                          onSelect={(value) =>
-                            updateKubernetesDraft(
-                              activeWorkloadKey,
-                              'icon',
-                              value
-                            )}
-                          ariaLabel="选择应用图标"
-                        /></FormField
-                      >
-                      <FormField
-                        label="关键应用"
-                        className="application-critical-field"
-                        asLabel={false}
-                        ><DropdownSelect
-                          value={String(application.critical)}
-                          options={[
-                            { value: 'false', label: '否' },
-                            { value: 'true', label: '是' }
-                          ]}
-                          ariaLabel="是否为关键应用"
-                          on:change={(event) =>
-                            updateKubernetesDraft(
-                              activeWorkloadKey,
-                              'critical',
-                              event.detail === 'true'
-                            )}
-                        /></FormField
-                      >
-                      <FormField label="应用标识" required
-                        ><TextInput
-                          value={application.code}
-                          on:value={(event) =>
-                            updateKubernetesDraft(
-                              activeWorkloadKey,
-                              'code',
-                              String(event.detail)
-                            )}
-                          required
-                          placeholder="payments-api"
-                          invalid={submitAttempted && !application.code.trim()}
-                          invalidMode="bubble"
-                          invalidMessage="请填写应用标识"
-                        /></FormField
-                      >
-                    </div>
-                    <FormField
-                      label="应用名称"
-                      required
-                      className="application-name-field"
-                      ><TextInput
-                        value={application.name}
-                        on:value={(event) =>
-                          updateKubernetesDraft(
-                            activeWorkloadKey,
-                            'name',
-                            String(event.detail)
-                          )}
-                        required
-                        placeholder="支付 API"
-                        invalid={submitAttempted && !application.name.trim()}
-                        invalidMode="bubble"
-                        invalidMessage="请填写应用名称"
-                      /></FormField
-                    >
-                  </div>
-                  <div class="owner-fields-row">
-                    <FormField label="技术负责人" asLabel={false}
-                      ><DropdownSelect
-                        options={ownerOptions}
-                        value={application.technicalOwnerIds}
-                        multiple
-                        taggedSelection
-                        reorderableSelection
-                        searchable
-                        placeholder="选择负责人(主备排序)"
-                        ariaLabel="选择技术负责人"
-                        on:change={(event) =>
-                          updateKubernetesDraft(
-                            activeWorkloadKey,
-                            'technicalOwnerIds',
-                            event.detail
-                          )}
-                      /></FormField
-                    >
-                    <FormField label="运维负责人" asLabel={false}
-                      ><DropdownSelect
-                        options={ownerOptions}
-                        value={application.operationsOwnerIds}
-                        multiple
-                        taggedSelection
-                        reorderableSelection
-                        searchable
-                        placeholder="选择负责人(主备排序)"
-                        ariaLabel="选择运维负责人"
-                        on:change={(event) =>
-                          updateKubernetesDraft(
-                            activeWorkloadKey,
-                            'operationsOwnerIds',
-                            event.detail
-                          )}
-                      /></FormField
-                    >
-                  </div>
-                  <FormField
-                    label="应用标签"
-                    className="full-field"
-                    asLabel={false}
-                    ><TextInput
-                      value={application.labels}
-                      on:value={(event) =>
-                        updateKubernetesDraft(
-                          activeWorkloadKey,
-                          'labels',
-                          String(event.detail)
-                        )}
-                      tagged
-                      placeholder="填写 key=value、key:value 或 key，按回车确认"
-                      autocomplete="off"
-                    /></FormField
-                  >
-                  <FormField label="应用描述" className="full-field"
-                    ><TextArea
-                      bind:value={application.description}
-                      on:input={() =>
-                        updateKubernetesDraft(
-                          activeWorkloadKey,
-                          'description',
-                          application.description
-                        )}
-                      rows={2}
-                      placeholder="应用职责和运行边界"
-                    /></FormField
-                  >
-                </div>
+
+      {#if runtimeChosen}
+        <div class="runtime-binding-fields">
+          <div class="runtime-binding-fields-grid">
+            {#if runtimeKind !== 'cloud_native'}
+              <FormField label="运行资源" required>
+                <DropdownSelect value={runtimeResourceIds} options={runtimeResourceOptions} multiple taggedSelection searchable placeholder={`选择 ${runtimeLabel(runtimeKind)} 资源`} ariaLabel="运行资源" invalid={submitAttempted && runtimeResourceIds.length === 0} invalidMode="bubble" invalidMessage="请至少选择一个运行资源" on:change={(event) => changeRuntimeResources(event.detail)} />
+              </FormField>
+              {#if runtimeKind === 'virtual_machine'}
+                <FormField label="初筛关键字" required>
+                  <TextInput bind:value={processKeyword} placeholder="多个关键字以逗号分隔，如：java,pay.jar" invalid={submitAttempted && !processKeyword.trim()} invalidMode="bubble" invalidMessage="请填写 Host 进程初筛关键字" />
+              </FormField>
+            {:else}
+                <FormField label="初筛关键字"><TextInput bind:value={containerKeyword} placeholder="可选，如：payments-api" /></FormField>
               {/if}
             {:else}
-              <div class="kubernetes-application-empty">
-                <CircleHelp size={18} /><span
-                  >选择一个工作负载查看并编辑对应的应用配置。</span
-                >
-              </div>
+              <FormField label="运行资源" required>
+                <DropdownSelect value={runtimeResourceIds[0] ?? ''} options={runtimeResourceOptions} searchable disabled={runtimeLocked} placeholder="选择 Kubernetes 资源" ariaLabel="Kubernetes 运行资源" invalid={submitAttempted && runtimeResourceIds.length !== 1} invalidMode="bubble" invalidMessage="请选择一个 Kubernetes 运行资源" on:change={(event) => changeRuntimeResources(String(event.detail))} />
+              </FormField>
+              <FormField label="命名空间" required>
+                <DropdownSelect value={namespace} options={namespaceDropdownOptions} searchable disabled={namespaceLoading || !runtimeResourceIds[0] || runtimeLocked} placeholder={namespaceLoading ? '读取命名空间…' : '选择命名空间'} ariaLabel="Kubernetes 命名空间" invalid={submitAttempted && !namespace} invalidMode="bubble" invalidMessage="请选择 Kubernetes 命名空间" on:change={(event) => { namespace = String(event.detail); queueWorkloadDiscovery(); }} />
+              </FormField>
+              <FormField label="标签选择器">
+                <TextInput bind:value={labelSelector} disabled={runtimeLocked} placeholder="可选，如：app.kubernetes.io/part-of=payments" on:value={queueWorkloadDiscovery} />
+              </FormField>
             {/if}
-          </section>
-        </div>
-        {#if submitAttempted && selectedWorkloads.size === 0}<p
-            class="application-validation-bubble"
-            role="alert"
-          >
-            请至少选择一个工作负载
-          </p>{/if}
-      {:else}
-        <div class="kubernetes-batch-empty">
-          <Server size={18} /><span
-            >{loading
-              ? '正在读取所选范围内的工作负载…'
-              : '选择运行资源、命名空间和标签选择器后，将自动显示匹配的工作负载。'}</span
-          >
+          </div>
+          <button class="runtime-continue-button" type="button" aria-label="进入应用与实例配置" data-tooltip="进入应用与实例配置" on:click={continueFromRuntimeStep}><ArrowRight size={18} /></button>
         </div>
       {/if}
-    {:else}
-      <div class="application-form-grid">
-        <div class="application-identity-row">
-          <div class="application-icon-code-fields">
-            <FormField label="应用图标"
-              ><IconPicker
-                value={icon}
-                onSelect={(value) => (icon = value)}
-                ariaLabel="选择应用图标"
-              /></FormField
-            >
-            <FormField
-              label="关键应用"
-              className="application-critical-field"
-              asLabel={false}
-              ><DropdownSelect
-                value={String(critical)}
-                options={[
-                  { value: 'false', label: '否' },
-                  { value: 'true', label: '是' }
-                ]}
-                ariaLabel="是否为关键应用"
-                on:change={(event) => (critical = event.detail === 'true')}
-              /></FormField
-            >
-            <FormField label="应用标识" required
-              ><TextInput
-                bind:value={code}
-                on:input={syncNameWithIdentifier}
-                required
-                placeholder="payments-api"
-                invalid={submitAttempted && !code.trim()}
-                invalidMode="bubble"
-                invalidMessage="请填写应用标识"
-              /></FormField
-            >
-          </div>
-          <FormField
-            label="应用名称"
-            required
-            className="application-name-field"
-            ><TextInput
-              bind:value={name}
-              on:input={markNameTouched}
-              required
-              placeholder="支付 API"
-              invalid={submitAttempted && !name.trim()}
-              invalidMode="bubble"
-              invalidMessage="请填写应用名称"
-            /></FormField
-          >
-        </div>
-        <div class="owner-fields-row">
-          <FormField label="技术负责人" asLabel={false}
-            ><DropdownSelect
-              options={ownerOptions}
-              bind:value={technicalOwnerIds}
-              multiple
-              taggedSelection
-              reorderableSelection
-              searchable
-              placeholder="选择负责人(主备排序)"
-              ariaLabel="选择技术负责人"
-            /></FormField
-          >
-          <FormField label="运维负责人" asLabel={false}
-            ><DropdownSelect
-              options={ownerOptions}
-              bind:value={operationsOwnerIds}
-              multiple
-              taggedSelection
-              reorderableSelection
-              searchable
-              placeholder="选择负责人(主备排序)"
-              ariaLabel="选择运维负责人"
-            /></FormField
-          >
-        </div>
-        <FormField label="应用标签" className="full-field" asLabel={false}
-          ><TextInput
-            bind:value={labels}
-            tagged
-            placeholder="填写 key=value、key:value 或 key，按回车确认"
-            autocomplete="off"
-          /></FormField
-        >
-        <FormField label="应用描述" className="full-field"
-          ><TextArea
-            bind:value={description}
-            rows={2}
-            placeholder="应用职责和运行边界"
-          /></FormField
-        >
+    {:else if candidates.length > 0}
+      <div class="kubernetes-batch-toolbar">
+        <div><strong>应用与实例配置</strong><small>左侧选择应用，右侧设置应用信息；每个副本对应一个运行实例。</small></div>
+        <span class="kubernetes-discovery-status">{loading ? '正在读取…' : `${candidates.length} 个应用候选`}</span>
       </div>
-      <div class="discovery-toolbar">
-        <span
-          >实例绑定 <small
-            >每个实例绑定一个唯一的 {runtimeLabel(runtimeKind)} 资源</small
-          ></span
-        ><button class="secondary" type="button" on:click={addInstance}
-          ><Plus size={14} />新增实例</button
-        >
-      </div>
-      <div class="instance-draft-head" aria-hidden="true">
-        <span></span><span
-          >实例名称<i class="required-mark" aria-hidden="true">*</i></span
-        ><span
-          >{runtimeLabel(runtimeKind)} 资源<i
-            class="required-mark"
-            aria-hidden="true">*</i
-          ></span
-        ><span
-          >{runtimeKind === 'virtual_machine'
-            ? '进程关键字'
-            : runtimeKind === 'containerized'
-              ? '容器名称'
-              : '工作负载名称'}<i class="required-mark" aria-hidden="true">*</i
-          ></span
-        ><span></span><span></span>
-      </div>
-      <div class="instance-draft-list">
-        {#each instances as instance}
-          {@const preview = bindingPreviews[instance.id]}
-          {@const previewStatus = bindingPreviewStatus(preview, instance)}
-          {@const bindingIssue = instanceBindingIssue(instance)}
-          <div
-            class="instance-draft-entry"
-            class:preview-open={expandedBindingPreviews[instance.id]}
-            class:invalid={submitAttempted && Boolean(bindingIssue)}
-          >
-            <div class="instance-draft-row">
-              <button
-                class={`binding-preview-state ${previewStatus}`}
-                style={`--binding-preview-accent:${bindingPreviewAccent(previewStatus)}`}
-                type="button"
-                data-binding-preview-id={instance.id}
-                data-tooltip={bindingPreviewTooltip(
-                  preview,
-                  previewStatus,
-                  instance
-                )}
-                aria-label={bindingPreviewTooltip(
-                  preview,
-                  previewStatus,
-                  instance
-                )}
-                aria-expanded={expandedBindingPreviews[instance.id] ?? false}
-                aria-controls={`binding-preview-${instance.id}`}
-                on:click={() => toggleBindingPreview(instance)}
-              >
-                {#if previewStatus === 'success'}<CircleCheck
-                    size={16}
-                    color={bindingPreviewAccent(previewStatus)}
+      <div class="kubernetes-batch-layout">
+        <aside class="application-candidate-pane" aria-label="应用列表">
+          <div class="kubernetes-workload-pane-heading"><strong>应用</strong><span>{candidates.length}</span></div>
+          <div class="application-candidate-list">
+            {#each candidates as candidate}
+              <button class="application-candidate" class:active={activeCandidateKey === candidate.key} type="button" on:click={() => (activeCandidateKey = candidate.key)}>
+                {#if runtimeKind === 'cloud_native' && !initialApplication}
+                  <input
+                    class="application-candidate-check"
+                    type="checkbox"
+                    checked={selectedCandidateKeys.includes(candidate.key)}
+                    aria-label={`选择 ${candidate.name}`}
+                    on:click|stopPropagation
+                    on:change={() => toggleCandidate(candidate.key)}
                   />
-                {:else if previewStatus === 'multiple'}<TriangleAlert
-                    size={16}
-                    color={bindingPreviewAccent(previewStatus)}
-                  />
-                {:else if previewStatus === 'none'}<CircleX
-                    size={16}
-                    color={bindingPreviewAccent(previewStatus)}
-                  />
-                {:else}<CircleHelp
-                    size={16}
-                    color={bindingPreviewAccent(previewStatus)}
-                  />{/if}
-              </button>
-              <div class="instance-cell">
-                <TextInput
-                  bind:value={instance.name}
-                  ariaLabel="实例名称"
-                  placeholder="instance-1"
-                  invalid={submitAttempted && !instance.name.trim()}
-                  invalidMode="bubble"
-                  invalidMessage="请填写实例名称"
-                />
-              </div>
-              <div class="instance-cell">
-                <DropdownSelect
-                  value={instance.targetResourceId}
-                  options={runtimeResourceOptions}
-                  placeholder="选择资源"
-                  invalid={submitAttempted && !instance.targetResourceId}
-                  invalidMode="bubble"
-                  invalidMessage="请选择运行资源"
-                  ariaLabel={`${runtimeLabel(runtimeKind)} 资源`}
-                  on:change={(event) =>
-                    selectInstanceResource(instance, String(event.detail))}
-                />
-              </div>
-              <div class="instance-cell">
-                <TextInput
-                  value={String(
-                    instance.selector[
-                      runtimeKind === 'virtual_machine'
-                        ? 'process_keyword'
-                        : runtimeKind === 'containerized'
-                          ? 'container_name'
-                          : 'workload_name'
-                    ] ?? ''
-                  )}
-                  placeholder={runtimeKind === 'virtual_machine'
-                    ? 'java,payments.jar'
-                    : runtimeKind === 'containerized'
-                      ? 'payments-api'
-                      : 'payments'}
-                  invalid={submitAttempted && Boolean(bindingIssue)}
-                  invalidMode="bubble"
-                  invalidMessage={bindingIssue}
-                  ariaLabel={runtimeKind === 'virtual_machine'
-                    ? '进程关键字'
-                    : runtimeKind === 'containerized'
-                      ? '容器名称'
-                      : '工作负载名称'}
-                  on:value={(event) =>
-                    updateSelector(
-                      instance,
-                      runtimeKind === 'virtual_machine'
-                        ? 'process_keyword'
-                        : runtimeKind === 'containerized'
-                          ? 'container_name'
-                          : 'workload_name',
-                      String(event.detail)
-                    )}
-                />
-              </div>
-              {#if runtimeKind !== 'cloud_native'}<button
-                  class="icon-button edit-action binding-preview-button"
-                  type="button"
-                  data-binding-preview-id={instance.id}
-                  data-tooltip={bindingPreviews[instance.id]?.loading
-                    ? '正在预览匹配'
-                    : '预览匹配'}
-                  aria-label={bindingPreviews[instance.id]?.loading
-                    ? '正在预览匹配'
-                    : '预览匹配'}
-                  disabled={bindingPreviews[instance.id]?.loading}
-                  on:click={() => previewBinding(instance)}
-                  ><ScanSearch size={15} /></button
-                >{:else}<span></span>{/if}
-              <button
-                class="icon-button danger-action delete-action"
-                type="button"
-                aria-label="移除实例"
-                data-tooltip="移除实例"
-                on:click={() => removeInstance(instance.id)}
-                ><X size={15} /></button
-              >
-            </div>
-            {#if runtimeKind === 'cloud_native'}
-              <div class="instance-kubernetes-selector">
-                {#each [['namespace', '命名空间'], ['workload_kind', '工作负载类型']] as field}
-                  <TextInput
-                    value={String(instance.selector[field[0]] ?? '')}
-                    placeholder={field[1]}
-                    ariaLabel={field[1]}
-                    on:value={(event) =>
-                      updateSelector(instance, field[0], String(event.detail))}
-                  />
-                {/each}
-              </div>
-            {/if}
-            {#if expandedBindingPreviews[instance.id]}
-              <div
-                id={`binding-preview-${instance.id}`}
-                class={`binding-preview-result ${previewStatus}`}
-                style={`--binding-preview-accent:${bindingPreviewAccent(previewStatus)}`}
-                data-binding-preview-id={instance.id}
-              >
-                {#if !preview}<span>尚未预览匹配，请点击“预览匹配”。</span>
-                {:else if preview.loading}<span>正在读取匹配对象…</span>
-                {:else if preview.error}<span class="binding-preview-status"
-                    ><CircleX
-                      class="binding-preview-icon"
-                      size={14}
-                      color={bindingPreviewAccent(previewStatus)}
-                    /><strong>{preview.error}</strong></span
-                  >
-                {:else if preview.count === 1}<span
-                    class="binding-preview-status"
-                    ><CircleCheck
-                      class="binding-preview-icon"
-                      size={14}
-                      color={bindingPreviewAccent(previewStatus)}
-                    /><span class="binding-preview-summary"
-                      ><strong>匹配到 1 个对象</strong></span
-                    ></span
-                  >
-                {:else if preview.count === 0}<span
-                    class="binding-preview-status"
-                    ><CircleX
-                      class="binding-preview-icon"
-                      size={14}
-                      color={bindingPreviewAccent(previewStatus)}
-                    /><span class="binding-preview-summary"
-                      ><strong>匹配到 0 个对象</strong><span
-                        >（必须恰好匹配一个对象才可创建应用）</span
-                      ></span
-                    ></span
-                  >
-                {:else}<span class="binding-preview-status"
-                    ><TriangleAlert
-                      class="binding-preview-icon"
-                      size={14}
-                      color={bindingPreviewAccent(previewStatus)}
-                    /><span class="binding-preview-summary"
-                      ><strong>匹配到 {preview.count} 个对象</strong><span
-                        >（必须恰好匹配一个对象才可创建应用）</span
-                      ></span
-                    ></span
-                  >{/if}
-                {#if preview && !preview.loading && !preview.error && preview.items.length}
-                  <ul>
-                    {#each preview.items as item}<li>
-                        <span class="binding-preview-bullet" aria-hidden="true"
-                        ></span><strong>{item.name}</strong><span
-                          >{item.detail || item.status || item.id}</span
-                        >
-                      </li>{/each}
-                  </ul>
-                  {#if preview.count > preview.items.length}<small
-                      >仅展示前 {preview.items.length} 条</small
-                    >{/if}
                 {/if}
-              </div>
-            {/if}
+                <EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />
+                <span><strong>{candidate.name}</strong><small>{candidate.kind ? `${candidate.kind} · ` : ''}{candidate.replicas} 个副本</small></span>
+              </button>
+            {/each}
           </div>
-        {/each}
+          {#if initialApplication && !bindingsCleared}
+            <button class="text-button application-clear-bindings" type="button" on:click={clearExistingBindings}>清除所有实例绑定</button>
+          {/if}
+        </aside>
+        <section class="kubernetes-application-pane" aria-label="应用配置">
+          {#if activeCandidate && activeDraft}
+            <div class="kubernetes-application-heading">
+              <div><h3>{activeDraft.name || activeCandidate.name}</h3><p>{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个副本{activeCandidate.namespace ? ` · ${activeCandidate.namespace}` : ''}</p></div>
+              <span class="kubernetes-inclusion-state included">{initialApplication ? '编辑中' : '待新增'}</span>
+            </div>
+            <div class="application-form-grid">
+              <div class="application-identity-row">
+                <div class="application-icon-code-fields">
+                  <FormField label="应用图标"><IconPicker value={activeDraft.icon} onSelect={(value) => updateDraft(activeCandidate.key, 'icon', value)} ariaLabel="选择应用图标" /></FormField>
+                  <FormField label="关键应用" asLabel={false}><DropdownSelect value={String(activeDraft.critical)} options={[{ value: 'false', label: '否' }, { value: 'true', label: '是' }]} ariaLabel="是否为关键应用" on:change={(event) => updateDraft(activeCandidate.key, 'critical', event.detail === 'true')} /></FormField>
+                  <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
+                </div>
+                <FormField label="应用名称" required className="application-name-field"><TextInput value={activeDraft.name} placeholder="支付 API" invalid={submitAttempted && !activeDraft.name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" on:value={(event) => updateDraft(activeCandidate.key, 'name', String(event.detail))} /></FormField>
+              </div>
+              <div class="owner-fields-row">
+                <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={activeDraft.technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" on:change={(event) => updateDraft(activeCandidate.key, 'technicalOwnerIds', Array.isArray(event.detail) ? event.detail : [])} /></FormField>
+                <FormField label="运维负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={activeDraft.operationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" on:change={(event) => updateDraft(activeCandidate.key, 'operationsOwnerIds', Array.isArray(event.detail) ? event.detail : [])} /></FormField>
+              </div>
+              <FormField label="应用标签" className="full-field" asLabel={false}><TextInput value={activeDraft.labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" on:value={(event) => updateDraft(activeCandidate.key, 'labels', String(event.detail))} /></FormField>
+              <FormField label="应用描述" className="full-field"><TextArea value={activeDraft.description} rows={2} placeholder="应用职责和运行边界" on:input={(event) => updateDraft(activeCandidate.key, 'description', (event.currentTarget as HTMLTextAreaElement).value)} /></FormField>
+            </div>
+          {:else}
+            <div class="kubernetes-application-empty"><Server size={18} /><span>选择左侧应用候选，配置其名称、负责人、标签与描述。</span></div>
+          {/if}
+        </section>
       </div>
+    {:else}
+      <div class="kubernetes-batch-empty"><Server size={18} /><span>{loading ? '正在读取运行目标…' : initialApplication ? '当前筛选没有找到可编辑的唯一运行目标，请返回调整条件。' : '没有在所有选定运行资源中匹配到共同目标，请返回调整初筛条件。'}</span></div>
     {/if}
   </div>
 </ModalDialog>
