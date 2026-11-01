@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { ArrowRight, Server } from 'lucide-svelte';
+  import { ArrowRight, ListChecks, ListX, RefreshCw, Search, Server, Trash2 } from 'lucide-svelte';
   import { onDestroy } from 'svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import FormField from '../../components/FormField.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
-  import TextInput from '../../components/TextInput.svelte';
   import TextArea from '../../components/TextArea.svelte';
+  import TextInput from '../../components/TextInput.svelte';
   import ModalDialog from '../../components/ModalDialog.svelte';
+  import SearchInput from '../../components/SearchInput.svelte';
+  import Tabs from '../../components/Tabs.svelte';
   import { formatLabels, parseLabels } from '../../lib/labels';
   import type { Application, Resource, User } from '../../lib/api';
   import { api } from '../../lib/api';
@@ -69,6 +71,8 @@
     critical: boolean;
     technicalOwnerIds: string[];
     operationsOwnerIds: string[];
+    logPath: string;
+    relations: Record<string, string[]>;
   };
   const runtimeChoices: Array<{
     kind: ApplicationRuntimeKind;
@@ -79,6 +83,16 @@
     { kind: 'virtual_machine', label: 'Host', subtitle: '虚拟机', description: '按进程关键字初筛' },
     { kind: 'containerized', label: 'Docker', subtitle: '容器化', description: '按容器名称初筛' },
     { kind: 'cloud_native', label: 'Kubernetes', subtitle: '云原生', description: '按命名空间和标签筛选' }
+  ];
+  const relationGroups = [
+    { key: 'repository', label: '代码仓库', resourceKinds: ['Repository'] },
+    { key: 'registry', label: '注册中心', resourceKinds: ['Nacos'] },
+    { key: 'configuration', label: '配置中心', resourceKinds: ['Nacos'] },
+    { key: 'database', label: '数据库', resourceKinds: ['PostgreSQL', 'MySQL', 'Oracle', 'OceanBase'] },
+    { key: 'cache', label: '缓存', resourceKinds: ['Redis'] },
+    { key: 'messaging', label: '消息队列', resourceKinds: ['Kafka', 'RabbitMQ'] },
+    { key: 'storage', label: '存储', resourceKinds: ['MinIO'] },
+    { key: 'observability', label: '可观测性', resourceKinds: ['Prometheus', 'Loki'] }
   ];
 
   let step = 0;
@@ -108,6 +122,8 @@
   let discoveryRequestId = 0;
   let workloadRequestId = 0;
   let workloadTimer: ReturnType<typeof setTimeout> | undefined;
+  let candidateSearch = '';
+  let applicationTab: 'basic' | 'relations' = 'basic';
 
   $: availableResources = [...resources, ...createdResources].filter(
     (resource, index, all) => all.findIndex((item) => item.id === resource.id) === index
@@ -125,6 +141,11 @@
   }));
   $: activeCandidate = candidates.find((candidate) => candidate.key === activeCandidateKey);
   $: activeDraft = activeCandidate ? candidateDrafts[activeCandidate.key] : undefined;
+  $: visibleCandidates = candidates.filter((candidate) =>
+    [candidate.name, candidate.identity, candidate.kind ?? '', candidate.namespace ?? '']
+      .some((value) => value.toLocaleLowerCase().includes(candidateSearch.trim().toLocaleLowerCase()))
+  );
+  $: allCandidatesSelected = candidates.length > 0 && candidates.every((candidate) => selectedCandidateKeys.includes(candidate.key));
   $: runtimeLocked = Boolean(
     initialApplication?.instances.length
   ) && !bindingsCleared;
@@ -194,7 +215,9 @@
       labels: formatLabels(application.labels),
       critical: application.critical,
       technicalOwnerIds: [...application.technical_owner_ids],
-      operationsOwnerIds: [...application.operations_owner_ids]
+      operationsOwnerIds: [...application.operations_owner_ids],
+      logPath: String(application.instances[0]?.log_binding?.path ?? (runtimeKind === 'virtual_machine' ? '' : 'stdout')),
+      relations: Object.fromEntries(relationGroups.map(({ key }) => [key, (application.dependencies ?? []).filter((dependency) => dependency.dependency_kind === key).map((dependency) => dependency.target_resource_id)]))
     };
   }
 
@@ -221,7 +244,9 @@
         labels: '',
         critical: false,
         technicalOwnerIds: [],
-        operationsOwnerIds: []
+        operationsOwnerIds: [],
+        logPath: runtimeKind === 'virtual_machine' ? '' : 'stdout',
+        relations: {}
       }
     };
   }
@@ -245,6 +270,14 @@
     activeCandidateKey = '';
     error = '';
     step = 0;
+  }
+
+  function toggleAllCandidates() {
+    selectedCandidateKeys = allCandidatesSelected ? [] : candidates.map((candidate) => candidate.key);
+  }
+
+  function refreshCandidates() {
+    void discoverRuntimeCandidates();
   }
 
   function selectRuntime(kind: ApplicationRuntimeKind) {
@@ -284,6 +317,7 @@
       onRequestResourceCreate(runtimeLabel(runtimeKind) as RuntimeResourceKind);
       return;
     }
+    if (runtimeKind !== 'cloud_native' && selected.length === 0) return;
     if (initialApplication && selected.length === 0) bindingsCleared = true;
     runtimeResourceIds = selected;
     if (runtimeKind === 'cloud_native') {
@@ -414,14 +448,16 @@
           labels: '',
           critical: false,
           technicalOwnerIds: [],
-          operationsOwnerIds: []
+          operationsOwnerIds: [],
+          logPath: runtimeKind === 'virtual_machine' ? '' : 'stdout',
+          relations: {}
         };
       }
     });
     candidateDrafts = next;
   }
 
-  function updateDraft(key: string, field: keyof CandidateDraft, value: string | boolean | string[]) {
+  function updateDraft<K extends keyof CandidateDraft>(key: string, field: K, value: CandidateDraft[K]) {
     const current = candidateDrafts[key];
     if (current) candidateDrafts = { ...candidateDrafts, [key]: { ...current, [field]: value } };
   }
@@ -431,6 +467,29 @@
     if (selected.has(key)) selected.delete(key);
     else selected.add(key);
     selectedCandidateKeys = [...selected];
+  }
+
+  function removeSelectedCandidates() {
+    const removed = new Set(selectedCandidateKeys);
+    candidates = candidates.filter((candidate) => !removed.has(candidate.key));
+    selectedCandidateKeys = [];
+    if (!candidates.some((candidate) => candidate.key === activeCandidateKey)) {
+      activeCandidateKey = candidates[0]?.key ?? '';
+    }
+  }
+
+  function resourceNamesForCandidate(candidate: Candidate) {
+    const names = [...new Set(candidate.instances.map((instance) =>
+      availableResources.find((resource) => resource.id === instance.target_resource_id)?.name || instance.target_resource_id
+    ).filter(Boolean))];
+    return names.join('、') || '未绑定资源';
+  }
+
+  function candidateLocator(candidate: Candidate) {
+    const selector = candidate.instances[0]?.selector ?? {};
+    if (runtimeKind === 'virtual_machine') return String(selector.process_command_line ?? candidate.identity ?? '—');
+    if (runtimeKind === 'containerized') return String(selector.container_name ?? candidate.identity ?? '—');
+    return String(selector.workload_name ?? candidate.identity?.split('/').at(-1) ?? '—');
   }
 
   async function continueFromRuntimeStep() {
@@ -540,7 +599,7 @@
       name: instance.name || `instance-${index + 1}`,
       targetResourceId: instance.target_resource_id,
       selector: instance.selector,
-      ...(instance.log_binding ? { logBinding: instance.log_binding } : {}),
+      logBinding: { ...(instance.log_binding ?? {}), ...(draft.logPath.trim() ? { path: draft.logPath.trim() } : {}) },
       ...(instance.status ? { status: instance.status } : {})
     }));
     if (initialApplication) {
@@ -550,7 +609,9 @@
           Object.keys(instance.selector).every((key) => String(item.selector[key] ?? '') === String(instance.selector[key] ?? ''))
         );
         if (prior?.status) instance.status = prior.status;
-        if (prior?.log_binding) instance.logBinding = prior.log_binding;
+        if (prior?.log_binding) {
+          instance.logBinding = { ...prior.log_binding, ...(draft.logPath.trim() ? { path: draft.logPath.trim() } : {}) };
+        }
       }
     }
     return {
@@ -566,6 +627,9 @@
       critical: draft.critical,
       technicalOwnerIds: draft.technicalOwnerIds,
       operationsOwnerIds: draft.operationsOwnerIds,
+      dependencies: Object.entries(draft.relations).flatMap(([dependency_kind, target_resource_ids]) =>
+        target_resource_ids.map((target_resource_id) => ({ dependency_kind, target_resource_id, required: true }))
+      ),
       instances
     };
   }
@@ -635,7 +699,7 @@
       </div>
 
       {#if runtimeChosen}
-        <div class="runtime-binding-fields">
+        <div class:cloud-native-runtime-fields={runtimeKind === 'cloud_native'} class="runtime-binding-fields">
           <div class="runtime-binding-fields-grid">
             {#if runtimeKind !== 'cloud_native'}
               <FormField label="运行资源" required>
@@ -649,32 +713,45 @@
                 <FormField label="初筛关键字"><TextInput bind:value={containerKeyword} placeholder="可选，如：payments-api" /></FormField>
               {/if}
             {:else}
-              <FormField label="运行资源" required>
-                <DropdownSelect value={runtimeResourceIds[0] ?? ''} options={runtimeResourceOptions} searchable disabled={runtimeLocked} placeholder="选择 Kubernetes 资源" ariaLabel="Kubernetes 运行资源" invalid={submitAttempted && runtimeResourceIds.length !== 1} invalidMode="bubble" invalidMessage="请选择一个 Kubernetes 运行资源" on:change={(event) => changeRuntimeResources(String(event.detail))} />
-              </FormField>
-              <FormField label="命名空间" required>
-                <DropdownSelect value={namespace} options={namespaceDropdownOptions} searchable disabled={namespaceLoading || !runtimeResourceIds[0] || runtimeLocked} placeholder={namespaceLoading ? '读取命名空间…' : '选择命名空间'} ariaLabel="Kubernetes 命名空间" invalid={submitAttempted && !namespace} invalidMode="bubble" invalidMessage="请选择 Kubernetes 命名空间" on:change={(event) => { namespace = String(event.detail); queueWorkloadDiscovery(); }} />
-              </FormField>
-              <FormField label="标签选择器">
-                <TextInput bind:value={labelSelector} disabled={runtimeLocked} placeholder="可选，如：app.kubernetes.io/part-of=payments" on:value={queueWorkloadDiscovery} />
-              </FormField>
+              <div class="kubernetes-runtime-half">
+                <FormField label="运行资源" required>
+                  <DropdownSelect value={runtimeResourceIds[0] ?? ''} options={runtimeResourceOptions} searchable disabled={runtimeLocked} placeholder="选择 Kubernetes 资源" ariaLabel="Kubernetes 运行资源" invalid={submitAttempted && runtimeResourceIds.length !== 1} invalidMode="bubble" invalidMessage="请选择一个 Kubernetes 运行资源" on:change={(event) => changeRuntimeResources(String(event.detail))} />
+                </FormField>
+                <FormField label="命名空间" required>
+                  <DropdownSelect value={namespace} options={namespaceDropdownOptions} searchable disabled={namespaceLoading || !runtimeResourceIds[0] || runtimeLocked} placeholder={namespaceLoading ? '读取命名空间…' : '选择命名空间'} ariaLabel="Kubernetes 命名空间" invalid={submitAttempted && !namespace} invalidMode="bubble" invalidMessage="请选择 Kubernetes 命名空间" on:change={(event) => { namespace = String(event.detail); queueWorkloadDiscovery(); }} />
+                </FormField>
+              </div>
+              <div class="kubernetes-runtime-half">
+                <FormField label="标签选择器">
+                  <TextInput bind:value={labelSelector} disabled={runtimeLocked} placeholder="可选，如：app.kubernetes.io/part-of=payments" on:value={queueWorkloadDiscovery} />
+                </FormField>
+                <button class="runtime-continue-button" type="button" aria-label="进入应用与实例配置" data-tooltip="进入应用与实例配置" on:click={continueFromRuntimeStep}><ArrowRight size={18} /></button>
+              </div>
             {/if}
           </div>
-          <button class="runtime-continue-button" type="button" aria-label="进入应用与实例配置" data-tooltip="进入应用与实例配置" on:click={continueFromRuntimeStep}><ArrowRight size={18} /></button>
+          {#if runtimeKind !== 'cloud_native'}<button class="runtime-continue-button" type="button" aria-label="进入应用与实例配置" data-tooltip="进入应用与实例配置" on:click={continueFromRuntimeStep}><ArrowRight size={18} /></button>{/if}
         </div>
       {/if}
-    {:else if candidates.length > 0}
+    {:else if step === 1}
       <div class="kubernetes-batch-toolbar">
         <div><strong>应用与实例配置</strong><small>左侧选择应用，右侧设置应用信息；每个副本对应一个运行实例。</small></div>
-        <span class="kubernetes-discovery-status">{loading ? '正在读取…' : `${candidates.length} 个应用候选`}</span>
+        {#if loading}<span class="kubernetes-discovery-status">正在读取…</span>{/if}
       </div>
       <div class="kubernetes-batch-layout">
         <aside class="application-candidate-pane" aria-label="应用列表">
-          <div class="kubernetes-workload-pane-heading"><strong>应用</strong><span>{candidates.length}</span></div>
+          <div class="application-candidate-pane-heading">
+            <div class="application-candidate-pane-title"><strong>应用</strong><small>{candidates.length} 个应用</small></div>
+            <SearchInput className="application-candidate-search" bind:value={candidateSearch} width="100%" height="36px" placeholder="搜索应用" ariaLabel="搜索应用" />
+            <div class="application-candidate-pane-actions">
+              <button class="icon-button" type="button" data-tooltip={allCandidatesSelected ? '清空选择' : '全选应用'} aria-label={allCandidatesSelected ? '清空选择' : '全选应用'} on:click={toggleAllCandidates}><svelte:component this={allCandidatesSelected ? ListX : ListChecks} size={15} /></button>
+              <button class="icon-button danger-action" type="button" data-tooltip="删除所选应用" aria-label="删除所选应用" disabled={!selectedCandidateKeys.length || Boolean(initialApplication)} on:click={removeSelectedCandidates}><Trash2 size={15} /></button>
+              <button class="icon-button" type="button" data-tooltip="刷新应用列表" aria-label="刷新应用列表" disabled={loading} on:click={refreshCandidates}><RefreshCw size={15} class={loading ? 'spin' : ''} /></button>
+            </div>
+          </div>
           <div class="application-candidate-list">
-            {#each candidates as candidate}
+            {#each visibleCandidates as candidate}
               <button class="application-candidate" class:active={activeCandidateKey === candidate.key} type="button" on:click={() => (activeCandidateKey = candidate.key)}>
-                {#if runtimeKind === 'cloud_native' && !initialApplication}
+                {#if !initialApplication}
                   <input
                     class="application-candidate-check"
                     type="checkbox"
@@ -685,9 +762,10 @@
                   />
                 {/if}
                 <EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />
-                <span><strong>{candidate.name}</strong><small>{candidate.kind ? `${candidate.kind} · ` : ''}{candidate.replicas} 个副本</small></span>
+                <span><strong>{candidate.name}</strong><small><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{resourceNamesForCandidate(candidate)} · {candidate.replicas} 个副本</small></span>
               </button>
             {/each}
+            {#if visibleCandidates.length === 0}<div class="application-candidate-empty"><Search size={15} />没有匹配的应用</div>{/if}
           </div>
           {#if initialApplication && !bindingsCleared}
             <button class="text-button application-clear-bindings" type="button" on:click={clearExistingBindings}>清除所有实例绑定</button>
@@ -696,25 +774,25 @@
         <section class="kubernetes-application-pane" aria-label="应用配置">
           {#if activeCandidate && activeDraft}
             <div class="kubernetes-application-heading">
-              <div><h3>{activeDraft.name || activeCandidate.name}</h3><p>{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个副本{activeCandidate.namespace ? ` · ${activeCandidate.namespace}` : ''}</p></div>
+              <IconPicker value={activeDraft.icon} onSelect={(value) => updateDraft(activeCandidate.key, 'icon', value)} ariaLabel="选择应用图标" />
+              <div><h3>{activeDraft.name || activeCandidate.name}</h3><p><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个副本 · {candidateLocator(activeCandidate)}</p></div>
               <span class="kubernetes-inclusion-state included">{initialApplication ? '编辑中' : '待新增'}</span>
             </div>
-            <div class="application-form-grid">
+            <Tabs className="application-config-tabs" items={[{ value: 'basic', label: '基础信息' }, { value: 'relations', label: '资源关联' }]} value={applicationTab} onChange={(value) => (applicationTab = value as 'basic' | 'relations')} ariaLabel="应用配置分区" />
+            {#if applicationTab === 'basic'}<div class="application-form-grid">
               <div class="application-identity-row">
-                <div class="application-icon-code-fields">
-                  <FormField label="应用图标"><IconPicker value={activeDraft.icon} onSelect={(value) => updateDraft(activeCandidate.key, 'icon', value)} ariaLabel="选择应用图标" /></FormField>
-                  <FormField label="关键应用" asLabel={false}><DropdownSelect value={String(activeDraft.critical)} options={[{ value: 'false', label: '否' }, { value: 'true', label: '是' }]} ariaLabel="是否为关键应用" on:change={(event) => updateDraft(activeCandidate.key, 'critical', event.detail === 'true')} /></FormField>
-                  <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
-                </div>
+                <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
                 <FormField label="应用名称" required className="application-name-field"><TextInput value={activeDraft.name} placeholder="支付 API" invalid={submitAttempted && !activeDraft.name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" on:value={(event) => updateDraft(activeCandidate.key, 'name', String(event.detail))} /></FormField>
+                <FormField label="应用标签" asLabel={false}><TextInput value={activeDraft.labels} tagged placeholder="填写 key=value，按回车确认" autocomplete="off" on:value={(event) => updateDraft(activeCandidate.key, 'labels', String(event.detail))} /></FormField>
+                <div class="critical-radio-field"><span class="form-field-label">关键应用</span><div class="critical-radio-group"><button class="critical-radio-toggle" type="button" role="radio" aria-label="关键应用" aria-checked={activeDraft.critical} class:checked={activeDraft.critical} on:click={() => updateDraft(activeCandidate.key, 'critical', !activeDraft.critical)}></button></div></div>
               </div>
               <div class="owner-fields-row">
                 <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={activeDraft.technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" on:change={(event) => updateDraft(activeCandidate.key, 'technicalOwnerIds', Array.isArray(event.detail) ? event.detail : [])} /></FormField>
                 <FormField label="运维负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={activeDraft.operationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" on:change={(event) => updateDraft(activeCandidate.key, 'operationsOwnerIds', Array.isArray(event.detail) ? event.detail : [])} /></FormField>
               </div>
-              <FormField label="应用标签" className="full-field" asLabel={false}><TextInput value={activeDraft.labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" on:value={(event) => updateDraft(activeCandidate.key, 'labels', String(event.detail))} /></FormField>
+              <FormField label="应用日志配置" className="full-field"><TextInput value={activeDraft.logPath} placeholder={runtimeKind === 'virtual_machine' ? 'Host 日志路径（可选）' : 'stdout'} on:value={(event) => updateDraft(activeCandidate.key, 'logPath', String(event.detail))} /></FormField>
               <FormField label="应用描述" className="full-field"><TextArea value={activeDraft.description} rows={2} placeholder="应用职责和运行边界" on:input={(event) => updateDraft(activeCandidate.key, 'description', (event.currentTarget as HTMLTextAreaElement).value)} /></FormField>
-            </div>
+            </div>{:else}<div class="application-relations-panel"><p>逐项配置应用与其他资源的关系。</p>{#each relationGroups as relation}<FormField label={relation.label}><DropdownSelect options={availableResources.filter((resource) => relation.resourceKinds.includes(resource.kind)).map((resource) => ({ value: resource.id, label: resource.name, description: resource.kind }))} value={activeDraft.relations[relation.key] ?? []} multiple taggedSelection searchable placeholder={`选择${relation.label}资源`} ariaLabel={`选择${relation.label}资源`} on:change={(event) => updateDraft(activeCandidate.key, 'relations', { ...activeDraft.relations, [relation.key]: Array.isArray(event.detail) ? event.detail : [] })} /></FormField>{/each}</div>{/if}
           {:else}
             <div class="kubernetes-application-empty"><Server size={18} /><span>选择左侧应用候选，配置其名称、负责人、标签与描述。</span></div>
           {/if}

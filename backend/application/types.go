@@ -81,18 +81,19 @@ type Alert struct {
 }
 
 type CreateInput struct {
-	ProjectID          string                `json:"project_id,omitempty"`
-	Name               string                `json:"name"`
-	Code               string                `json:"code"`
-	Description        string                `json:"description"`
-	Icon               string                `json:"icon"`
-	RuntimeKind        string                `json:"runtime_kind"`
-	ExternalUID        string                `json:"external_uid,omitempty"`
-	Labels             map[string]string     `json:"labels"`
-	Critical           bool                  `json:"critical"`
-	TechnicalOwnerIDs  []string              `json:"technical_owner_ids"`
-	OperationsOwnerIDs []string              `json:"operations_owner_ids"`
-	Instances          []CreateInstanceInput `json:"instances"`
+	ProjectID          string                  `json:"project_id,omitempty"`
+	Name               string                  `json:"name"`
+	Code               string                  `json:"code"`
+	Description        string                  `json:"description"`
+	Icon               string                  `json:"icon"`
+	RuntimeKind        string                  `json:"runtime_kind"`
+	ExternalUID        string                  `json:"external_uid,omitempty"`
+	Labels             map[string]string       `json:"labels"`
+	Critical           bool                    `json:"critical"`
+	TechnicalOwnerIDs  []string                `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string                `json:"operations_owner_ids"`
+	Instances          []CreateInstanceInput   `json:"instances"`
+	Dependencies       []CreateDependencyInput `json:"dependencies,omitempty"`
 }
 type UpdateInput struct {
 	Name, Code, Description, Icon, Status *string
@@ -103,6 +104,7 @@ type UpdateInput struct {
 	TechnicalOwnerIDs                     *[]string
 	OperationsOwnerIDs                    *[]string
 	Instances                             *[]CreateInstanceInput
+	Dependencies                          *[]CreateDependencyInput
 }
 type CreateInstanceInput struct {
 	ApplicationID    string         `json:"application_id,omitempty"`
@@ -111,5 +113,13 @@ type CreateInstanceInput struct {
 	TargetResourceID string         `json:"target_resource_id"`
 	Selector         map[string]any `json:"selector"`
 	LogBinding       map[string]any `json:"log_binding"`
+	Status           string         `json:"status"`
+}
+
+type CreateDependencyInput struct {
+	TargetResourceID string         `json:"target_resource_id"`
+	DependencyKind   string         `json:"dependency_kind"`
+	Binding          map[string]any `json:"binding"`
+	Required         *bool          `json:"required"`
 	Status           string         `json:"status"`
 }

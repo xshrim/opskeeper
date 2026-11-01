@@ -323,8 +323,30 @@ func (s *store) CreateProject(ctx context.Context, input CreateProjectInput) (Pr
 			if err != nil {
 				return Project{}, fmt.Errorf("encode instance selector: %w", err)
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,status)
-				VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,'active')`, appID, instance.Name, app.RuntimeKind, instance.TargetResourceID, selector); err != nil {
+			logs, err := json.Marshal(instance.LogBinding)
+			if err != nil {
+				return Project{}, fmt.Errorf("encode instance log binding: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,log_binding,status)
+				VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,'active')`, appID, instance.Name, app.RuntimeKind, instance.TargetResourceID, selector, logs); err != nil {
+				return Project{}, mapStoreError(err)
+			}
+		}
+		for _, dependency := range app.Dependencies {
+			binding, err := json.Marshal(dependency.Binding)
+			if err != nil {
+				return Project{}, fmt.Errorf("encode application dependency binding: %w", err)
+			}
+			required := true
+			if dependency.Required != nil {
+				required = *dependency.Required
+			}
+			status := dependency.Status
+			if status == "" {
+				status = "unknown"
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO application_dependencies(application_id,target_resource_id,dependency_kind,binding,required,status)
+				VALUES($1::uuid,$2::uuid,$3,$4::jsonb,$5,$6)`, appID, dependency.TargetResourceID, dependency.DependencyKind, binding, required, status); err != nil {
 				return Project{}, mapStoreError(err)
 			}
 		}

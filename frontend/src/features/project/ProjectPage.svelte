@@ -301,6 +301,7 @@ import {
       critical: draft.critical,
       technical_owner_ids: draft.technicalOwnerIds,
       operations_owner_ids: draft.operationsOwnerIds,
+      dependencies: draft.dependencies ?? [],
       instances: draft.instances.map((instance) => ({
         name: instance.name,
         runtime_kind: draft.runtimeKind,
@@ -374,6 +375,7 @@ import {
         critical: draft.critical,
         technical_owner_ids: draft.technicalOwnerIds,
         operations_owner_ids: draft.operationsOwnerIds,
+        dependencies: draft.dependencies ?? [],
         instances: applicationPayload(draft).instances
       });
       editingApplication = null;

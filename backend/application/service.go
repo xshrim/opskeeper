@@ -119,6 +119,15 @@ func validInstanceStatus(status string) bool {
 	return status == "" || status == "active" || status == "disabled" || status == "unknown"
 }
 
+func validDependencyKind(kind string) bool {
+	switch kind {
+	case "messaging", "cache", "database", "registry", "configuration", "repository", "storage", "observability", "other":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) Create(ctx context.Context, in CreateInput) (Application, error) {
 	applications, err := s.CreateMany(ctx, []CreateInput{in})
 	if err != nil {
@@ -214,6 +223,9 @@ func PrepareCreateInput(in CreateInput) (CreateInput, error) {
 	if in.OperationsOwnerIDs, err = normalizeOwnerIDs(in.OperationsOwnerIDs); err != nil {
 		return CreateInput{}, err
 	}
+	if in.Dependencies, err = normalizeDependencies(in.Dependencies); err != nil {
+		return CreateInput{}, err
+	}
 	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
 		in.Icon = "lucide:AppWindow"
 	}
@@ -245,7 +257,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
 		return Application{}, ErrInvalid
 	}
-	if in.Name == nil && in.Code == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.RuntimeKind == nil && in.ExternalUID == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil {
+	if in.Name == nil && in.Code == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.RuntimeKind == nil && in.ExternalUID == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil && in.Dependencies == nil {
 		return Application{}, ErrInvalid
 	}
 	if in.Name != nil {
@@ -290,6 +302,13 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 		}
 		in.OperationsOwnerIDs = &owners
 	}
+	if in.Dependencies != nil {
+		dependencies, err := normalizeDependencies(*in.Dependencies)
+		if err != nil {
+			return Application{}, err
+		}
+		in.Dependencies = &dependencies
+	}
 	if in.RuntimeKind != nil || in.Instances != nil {
 		current, err := s.store.Get(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id))
 		if err != nil {
@@ -328,6 +347,31 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 		}
 	}
 	return s.store.Update(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id), in)
+}
+
+func normalizeDependencies(items []CreateDependencyInput) ([]CreateDependencyInput, error) {
+	result := make([]CreateDependencyInput, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item.TargetResourceID = strings.TrimSpace(item.TargetResourceID)
+		item.DependencyKind = strings.TrimSpace(item.DependencyKind)
+		if item.TargetResourceID == "" || !validDependencyKind(item.DependencyKind) {
+			return nil, ErrInvalid
+		}
+		key := item.DependencyKind + "\x00" + item.TargetResourceID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		if item.Status == "" {
+			item.Status = "unknown"
+		}
+		if !validInstanceStatus(item.Status) {
+			return nil, ErrInvalid
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 func (s *Service) DeleteInProject(ctx context.Context, projectID, id string) error {
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {

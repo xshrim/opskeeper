@@ -1044,6 +1044,7 @@ export const api = {
           name: string;
           target_resource_id: string;
           selector: Record<string, unknown>;
+          log_binding?: Record<string, unknown>;
           status?: string;
         }>;
       }>;

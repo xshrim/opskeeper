@@ -124,6 +124,9 @@ VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11::uuid[]) RETURNING id::t
 		if err := insertInstances(ctx, tx, id, input.Instances); err != nil {
 			return nil, err
 		}
+		if err := insertDependencies(ctx, tx, id, input.Dependencies); err != nil {
+			return nil, err
+		}
 		ids = append(ids, id)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -245,6 +248,14 @@ WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 			return Application{}, fmt.Errorf("replace application instances: %w", err)
 		}
 		if err := insertInstances(ctx, tx, updatedID, *input.Instances); err != nil {
+			return Application{}, err
+		}
+	}
+	if input.Dependencies != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id=$1::uuid`, updatedID); err != nil {
+			return Application{}, fmt.Errorf("replace application dependencies: %w", err)
+		}
+		if err := insertDependencies(ctx, tx, updatedID, *input.Dependencies); err != nil {
 			return Application{}, err
 		}
 	}
@@ -574,6 +585,28 @@ func insertInstances(ctx context.Context, tx pgx.Tx, applicationID string, insta
 		if _, err := tx.Exec(ctx, `INSERT INTO application_instances(application_id,name,runtime_kind,target_resource_id,selector,log_binding,status)
 VALUES($1::uuid,$2,$3,$4::uuid,$5::jsonb,$6::jsonb,COALESCE(NULLIF($7,''),'active'))`, applicationID,
 			input.Name, input.RuntimeKind, input.TargetResourceID, selector, logs, input.Status); err != nil {
+			return mapStoreError(err)
+		}
+	}
+	return nil
+}
+
+func insertDependencies(ctx context.Context, tx pgx.Tx, applicationID string, dependencies []CreateDependencyInput) error {
+	for _, input := range dependencies {
+		binding, err := json.Marshal(normalizeObject(input.Binding))
+		if err != nil {
+			return fmt.Errorf("encode application dependency binding: %w", err)
+		}
+		status := input.Status
+		if status == "" {
+			status = "unknown"
+		}
+		required := true
+		if input.Required != nil {
+			required = *input.Required
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO application_dependencies(application_id,target_resource_id,dependency_kind,binding,required,status)
+VALUES($1::uuid,$2::uuid,$3,$4::jsonb,$5,$6)`, applicationID, input.TargetResourceID, input.DependencyKind, binding, required, status); err != nil {
 			return mapStoreError(err)
 		}
 	}

@@ -360,6 +360,22 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
+.runtime-binding-fields.cloud-native-runtime-fields {
+  display: block;
+}
+.cloud-native-runtime-fields .runtime-binding-fields-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.kubernetes-runtime-half {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+.kubernetes-runtime-half .runtime-continue-button {
+  align-self: end;
+}
 .runtime-binding-fields-grid > :nth-child(3),
 .runtime-binding-fields-grid > :nth-child(4) {
   grid-column: span 1;
@@ -384,11 +400,64 @@
   border-right: 1px solid var(--theme-border);
   border-radius: 5px 0 0 5px;
 }
+.application-candidate-pane-heading {
+  display: grid;
+  grid-template-columns: max-content minmax(100px, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+  box-sizing: border-box;
+  padding: 0 2px 10px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+.application-candidate-pane-title {
+  display: grid;
+  gap: 3px;
+  min-width: 64px;
+}
+.application-candidate-pane-title strong {
+  color: var(--theme-fg-strong);
+  font-size: 14px;
+}
+.application-candidate-pane-title small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
+.application-candidate-search :global(.search-input) {
+  min-width: 0;
+}
+.application-candidate-pane-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.application-candidate-pane-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.application-candidate-pane-actions .icon-button:disabled {
+  opacity: .45;
+}
 .application-candidate-list {
   display: grid;
   gap: 4px;
   max-height: 430px;
   overflow: auto;
+}
+.application-candidate small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.application-candidate-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 8px;
+  color: var(--theme-fg-muted);
+  font-size: 11px;
 }
 .application-candidate {
   display: flex;
@@ -481,7 +550,25 @@
   gap: 12px;
   padding-bottom: 12px;
   margin-bottom: 14px;
+  min-height: 64px;
+  box-sizing: border-box;
   border-bottom: 1px solid var(--theme-divider);
+}
+.kubernetes-application-heading :global(.icon-picker) {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.kubernetes-application-heading > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+.kubernetes-application-heading p {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kubernetes-application-heading h3 {
   overflow-wrap: anywhere;
@@ -528,9 +615,76 @@
 }
 .application-identity-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
+}
+.critical-radio-field {
+  display: grid;
+  gap: 6px;
+  color: var(--theme-fg-muted);
+  font-size: 12px;
+}
+.critical-radio-group {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.critical-radio-toggle {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 50%;
+  background: var(--theme-bg-surface);
+}
+.critical-radio-toggle.checked {
+  border-color: var(--theme-border-focus);
+}
+.critical-radio-toggle.checked::after {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--theme-border-focus);
+  content: '';
+}
+.critical-radio-toggle:focus-visible {
+  outline: 2px solid var(--theme-border-focus);
+  outline-offset: 2px;
+}
+.application-config-tabs {
+  display: flex;
+  gap: 18px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--theme-divider);
+}
+.application-config-tabs button {
+  padding: 6px 10px 8px;
+  color: var(--theme-fg-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  border-radius: 4px 4px 0 0;
+}
+.application-config-tabs button.active {
+  color: var(--theme-fg-strong);
+  background: var(--theme-bg-selected);
+  border-bottom-color: var(--theme-border-focus);
+  font-weight: 650;
+}
+.application-relations-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+.application-relations-panel > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--theme-fg-muted);
+  font-size: 11px;
 }
 .owner-fields-row {
   display: grid;
@@ -670,6 +824,10 @@
   .runtime-binding-fields-grid,
   .application-identity-row,
   .owner-fields-row {
+    grid-template-columns: 1fr;
+  }
+  .kubernetes-runtime-half,
+  .application-relations-panel {
     grid-template-columns: 1fr;
   }
   .kubernetes-batch-toolbar {

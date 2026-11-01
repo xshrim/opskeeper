@@ -38,6 +38,7 @@ export type ApplicationDraft = {
   critical: boolean;
   technicalOwnerIds: string[];
   operationsOwnerIds: string[];
+  dependencies?: Array<{ dependency_kind: string; target_resource_id: string }>;
   instances: ApplicationInstanceDraft[];
 };
 

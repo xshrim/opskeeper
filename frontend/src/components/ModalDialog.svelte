@@ -168,7 +168,7 @@
   :global(.dialog.modal-dialog-size-large) { width: min(900px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog-size-wide) { width: min(1100px, calc(100vw - 40px)); }
   :global(.dialog.modal-dialog.application-wizard-dialog) {
-    width: min(820px, calc(100vw - 40px));
+    width: min(902px, calc(100vw - 40px));
     max-height: none;
     overflow: visible;
   }

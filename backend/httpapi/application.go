@@ -27,34 +27,36 @@ type applicationHandler struct {
 	apiBasePath string
 }
 type createApplicationRequest struct {
-	Name               string                            `json:"name"`
-	Code               string                            `json:"code"`
-	Description        string                            `json:"description"`
-	Icon               string                            `json:"icon"`
-	ExternalUID        string                            `json:"external_uid"`
-	RuntimeKind        string                            `json:"runtime_kind"`
-	Labels             map[string]string                 `json:"labels"`
-	Critical           bool                              `json:"critical"`
-	TechnicalOwnerIDs  []string                          `json:"technical_owner_ids"`
-	OperationsOwnerIDs []string                          `json:"operations_owner_ids"`
-	Instances          []application.CreateInstanceInput `json:"instances"`
+	Name               string                              `json:"name"`
+	Code               string                              `json:"code"`
+	Description        string                              `json:"description"`
+	Icon               string                              `json:"icon"`
+	ExternalUID        string                              `json:"external_uid"`
+	RuntimeKind        string                              `json:"runtime_kind"`
+	Labels             map[string]string                   `json:"labels"`
+	Critical           bool                                `json:"critical"`
+	TechnicalOwnerIDs  []string                            `json:"technical_owner_ids"`
+	OperationsOwnerIDs []string                            `json:"operations_owner_ids"`
+	Instances          []application.CreateInstanceInput   `json:"instances"`
+	Dependencies       []application.CreateDependencyInput `json:"dependencies"`
 }
 type createApplicationBatchRequest struct {
 	Items []createApplicationRequest `json:"items"`
 }
 type updateApplicationRequest struct {
-	Name               *string                            `json:"name"`
-	Code               *string                            `json:"code"`
-	Description        *string                            `json:"description"`
-	Icon               *string                            `json:"icon"`
-	Status             *string                            `json:"status"`
-	RuntimeKind        *string                            `json:"runtime_kind"`
-	ExternalUID        *string                            `json:"external_uid"`
-	Labels             *map[string]string                 `json:"labels"`
-	Critical           *bool                              `json:"critical"`
-	TechnicalOwnerIDs  *[]string                          `json:"technical_owner_ids"`
-	OperationsOwnerIDs *[]string                          `json:"operations_owner_ids"`
-	Instances          *[]application.CreateInstanceInput `json:"instances"`
+	Name               *string                              `json:"name"`
+	Code               *string                              `json:"code"`
+	Description        *string                              `json:"description"`
+	Icon               *string                              `json:"icon"`
+	Status             *string                              `json:"status"`
+	RuntimeKind        *string                              `json:"runtime_kind"`
+	ExternalUID        *string                              `json:"external_uid"`
+	Labels             *map[string]string                   `json:"labels"`
+	Critical           *bool                                `json:"critical"`
+	TechnicalOwnerIDs  *[]string                            `json:"technical_owner_ids"`
+	OperationsOwnerIDs *[]string                            `json:"operations_owner_ids"`
+	Instances          *[]application.CreateInstanceInput   `json:"instances"`
+	Dependencies       *[]application.CreateDependencyInput `json:"dependencies"`
 }
 type createInstanceRequest struct {
 	Name             string         `json:"name"`
@@ -106,7 +108,7 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
+	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -131,7 +133,7 @@ func (h applicationHandler) createBatch(w http.ResponseWriter, r *http.Request) 
 			Description: item.Description, Icon: item.Icon, RuntimeKind: item.RuntimeKind,
 			ExternalUID: item.ExternalUID, Labels: item.Labels, Critical: item.Critical,
 			TechnicalOwnerIDs: item.TechnicalOwnerIDs, OperationsOwnerIDs: item.OperationsOwnerIDs,
-			Instances: item.Instances,
+			Instances: item.Instances, Dependencies: item.Dependencies,
 		})
 	}
 	created, err := service.CreateMany(r.Context(), inputs)
@@ -154,7 +156,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

@@ -72,6 +72,32 @@ func TestCreateAllowsApplicationWithoutInstances(t *testing.T) {
 	}
 }
 
+func TestPrepareCreateInputNormalizesDependencies(t *testing.T) {
+	prepared, err := PrepareCreateInput(CreateInput{
+		ProjectID: "project-1", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeDocker,
+		Dependencies: []CreateDependencyInput{
+			{TargetResourceID: " redis-1 ", DependencyKind: " cache "},
+			{TargetResourceID: "redis-1", DependencyKind: "cache"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareCreateInput() error = %v", err)
+	}
+	if len(prepared.Dependencies) != 1 || prepared.Dependencies[0].TargetResourceID != "redis-1" || prepared.Dependencies[0].DependencyKind != "cache" {
+		t.Fatalf("normalized dependencies = %#v", prepared.Dependencies)
+	}
+}
+
+func TestPrepareCreateInputRejectsUnknownDependencyKind(t *testing.T) {
+	_, err := PrepareCreateInput(CreateInput{
+		ProjectID: "project-1", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeDocker,
+		Dependencies: []CreateDependencyInput{{TargetResourceID: "resource-1", DependencyKind: "unknown-kind"}},
+	})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("dependency validation error = %v, want invalid", err)
+	}
+}
+
 func TestCreateManyValidatesWholeBatchBeforeStore(t *testing.T) {
 	store := &testStore{}
 	s := NewService(store)
