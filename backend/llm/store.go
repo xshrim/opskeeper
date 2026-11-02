@@ -189,7 +189,7 @@ func (s *ProviderStore) UpdateProvider(ctx context.Context, id string, patch Pro
 	if err != nil {
 		return Provider{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if patch.APIKey != nil && strings.TrimSpace(*patch.APIKey) != "" {
 		if s.encryptor == nil {
 			return Provider{}, fmt.Errorf("provider credential encryptor is unavailable")

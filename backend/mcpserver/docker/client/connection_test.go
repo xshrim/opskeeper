@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +44,7 @@ func TestWithFallbackRetriesUnreachableRemoteHostWithDefaultSocket(t *testing.T)
 	warning, err := WithFallback(t.Context(), ConnectionInput{DockerHost: "tcp://127.0.0.1:1"}, func(cli *dockerapi.Client) error {
 		hosts = append(hosts, cli.DaemonHost())
 		if cli.DaemonHost() != defaultHost {
-			return dockerapi.ErrorConnectionFailed(cli.DaemonHost())
+			return &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("cannot connect to configured Docker daemon")}
 		}
 		return nil
 	})

@@ -82,7 +82,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				organizationRouter := router
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Identity != nil {
-					organizationRouter = router.With(authHandler{service: options.Identity}.requireAuth)
+					organizationRouter = router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				}
 				if options.Authorization != nil {
 					authorizationMiddleware := authorizationHandler{service: options.Authorization}
@@ -91,7 +91,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerOrganizationRoutes(organizationRouter, organizationService, path.Join(basePath, "api/v1"), requirePermission, options.Access)
 			}
 			if options.Identity != nil && options.Applications != nil {
-				applicationRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				applicationRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
@@ -102,7 +102,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerAuthRoutes(router, options.Identity, basePath, options.CookieSecure, options.Access)
 			}
 			if options.Identity != nil && (options.Users != nil || options.Access != nil) {
-				managementRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				managementRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				registerAccessRoutes(managementRouter, options.Users, options.Access, options.Auditor, options.AuditLog)
 			}
 			if options.Identity != nil && options.Authorization != nil && options.AuditLog != nil {
@@ -110,7 +110,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerAuditAuthorizationRoutes(auditRouter, options.Authorization, options.AuditLog)
 			}
 			if options.Identity != nil && (options.Resources != nil || options.Connectors != nil) {
-				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				resourceRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
@@ -120,7 +120,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
 			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.Engine != nil || options.EngineCatalog != nil) {
-				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				aiRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
@@ -138,7 +138,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerKnowledgeRoutes(aiRouter, options.Resources, requirePermission)
 			}
 			if options.Identity != nil && options.Diagnosis != nil {
-				diagnosisRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				diagnosisRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
@@ -146,7 +146,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerDiagnosisRoutes(diagnosisRouter, options.Diagnosis, options.Auditor, requirePermission)
 			}
 			if options.Identity != nil && options.Inspection != nil {
-				inspectionRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				inspectionRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
@@ -154,7 +154,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 				registerInspectionRoutes(inspectionRouter, options.Inspection, options.Auditor, requirePermission)
 			}
 			if options.Identity != nil && options.MCP != nil {
-				operationRouter := router.With(authHandler{service: options.Identity}.requireAuth)
+				operationRouter := router.With(authHandler{service: options.Identity}.requireAuth).With(requireAuthorizationConfigured(options.Authorization))
 				var requirePermission func(authorization.Permission) func(http.Handler) http.Handler
 				if options.Authorization != nil {
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission

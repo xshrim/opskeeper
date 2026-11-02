@@ -2,6 +2,7 @@ package diagnosis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -19,6 +20,7 @@ type ResourceReader interface {
 type ApplicationReader interface {
 	Get(context.Context, string) (application.Application, error)
 	ContextResourceIDs(context.Context, string, string) ([]string, error)
+	DiagnosticContext(context.Context, string, string) (application.DiagnosticContext, error)
 }
 
 type Service struct {
@@ -40,6 +42,14 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	input.Title = strings.TrimSpace(input.Title)
 	input.Question = strings.TrimSpace(input.Question)
 	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
+	input.ApplicationIDs = distinctIDs(input.ApplicationIDs)
+	if len(input.ApplicationIDs) == 0 && input.ApplicationID != "" {
+		input.ApplicationIDs = []string{input.ApplicationID}
+	}
+	associatedTargetSet := make(map[string]struct{})
+	if len(input.ApplicationIDs) > 0 {
+		input.ApplicationID = input.ApplicationIDs[0]
+	}
 	input.ProviderID = strings.TrimSpace(input.ProviderID)
 	input.ModelName = strings.TrimSpace(input.ModelName)
 	input.SkillID = strings.TrimSpace(input.SkillID)
@@ -57,43 +67,61 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 	if len([]rune(input.Title)) > 200 || len([]rune(input.Question)) > 16000 {
 		return Session{}, invalid("diagnosis title or question is too long")
 	}
-	if input.ApplicationID != "" {
+	if len(input.ApplicationIDs) > 0 {
+		if len(input.ApplicationIDs) > 20 {
+			return Session{}, invalid("a session may include at most 20 applications")
+		}
 		if s.applications == nil {
 			return Session{}, invalid("application context is unavailable")
 		}
-		app, err := s.applications.Get(ctx, input.ApplicationID)
-		if err != nil {
-			return Session{}, err
-		}
-		if app.Status == "disabled" {
-			return Session{}, invalid("application is disabled")
-		}
-		if app.ProjectScopeID != "" && app.ProjectScopeID != input.ScopeID {
-			return Session{}, authorization.ErrForbidden
-		}
-		associated, err := s.applications.ContextResourceIDs(ctx, input.ApplicationID, input.ScopeID)
-		if err != nil {
-			return Session{}, err
-		}
-		// An application may reference resources the caller cannot use. The
-		// application itself remains selectable, but only its visible, active
-		// resources become diagnosis targets; explicit target IDs are still
-		// validated strictly below.
-		visibleAssociated := make([]string, 0, len(associated))
-		for _, resourceID := range associated {
-			item, getErr := s.resources.Get(ctx, resourceID)
-			if getErr != nil {
-				if errors.Is(getErr, resource.ErrNotFound) || errors.Is(getErr, authorization.ErrForbidden) {
+		contexts := make([]application.DiagnosticContext, 0, len(input.ApplicationIDs))
+		associatedTargetIDs := make([]string, 0)
+		for _, applicationID := range input.ApplicationIDs {
+			app, err := s.applications.Get(ctx, applicationID)
+			if err != nil {
+				return Session{}, err
+			}
+			if app.Status == "disabled" {
+				return Session{}, invalid("application is disabled")
+			}
+			if app.ProjectScopeID != "" && app.ProjectScopeID != input.ScopeID {
+				return Session{}, authorization.ErrForbidden
+			}
+			applicationContext, contextErr := s.applications.DiagnosticContext(ctx, applicationID, input.ScopeID)
+			if contextErr != nil {
+				return Session{}, contextErr
+			}
+			contexts = append(contexts, applicationContext)
+			associated, err := s.applications.ContextResourceIDs(ctx, applicationID, input.ScopeID)
+			if err != nil {
+				return Session{}, err
+			}
+			// An application may reference resources the caller cannot use. The
+			// application itself remains selectable, but only its visible, active
+			// resources become diagnosis targets.
+			for _, resourceID := range associated {
+				item, getErr := s.resources.Get(ctx, resourceID)
+				if getErr != nil {
+					if errors.Is(getErr, resource.ErrNotFound) || errors.Is(getErr, authorization.ErrForbidden) {
+						continue
+					}
+					return Session{}, getErr
+				}
+				if !applicationResourceVisible(ctx, input.ScopeID, item.ScopeID, item.ID) {
 					continue
 				}
-				return Session{}, getErr
+				associatedTargetIDs = append(associatedTargetIDs, resourceID)
+				associatedTargetSet[resourceID] = struct{}{}
 			}
-			if item.ScopeID != input.ScopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
-				continue
-			}
-			visibleAssociated = append(visibleAssociated, resourceID)
 		}
-		input.TargetResourceIDs = append(visibleAssociated, input.TargetResourceIDs...)
+		applicationContextJSON, err := json.Marshal(struct {
+			Applications []application.DiagnosticContext `json:"applications"`
+		}{Applications: contexts})
+		if err != nil {
+			return Session{}, invalid("application context is not serializable")
+		}
+		input.ApplicationContext = applicationContextJSON
+		input.TargetResourceIDs = append(associatedTargetIDs, input.TargetResourceIDs...)
 	}
 	input.TargetResourceIDs = distinctIDs(input.TargetResourceIDs)
 	if len(input.TargetResourceIDs) > 20 {
@@ -103,6 +131,9 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 		return Session{}, authorization.ErrForbidden
 	}
 	for _, resourceID := range input.TargetResourceIDs {
+		if _, associated := associatedTargetSet[resourceID]; associated {
+			continue
+		}
 		if err := s.validateTarget(ctx, input.ScopeID, resourceID); err != nil {
 			return Session{}, err
 		}
@@ -210,7 +241,8 @@ func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (
 	if err != nil {
 		return Target{}, err
 	}
-	s.appendEvent(ctx, session.ID, CreateEventInput{Type: "target.added", Payload: map[string]any{"resource_id": item.ResourceID}})
+	// The target is persisted independently; event delivery is best-effort.
+	_ = s.appendEvent(ctx, session.ID, CreateEventInput{Type: "target.added", Payload: map[string]any{"resource_id": item.ResourceID}})
 	return item, nil
 }
 
@@ -249,7 +281,7 @@ func (s *Service) AskMessage(ctx context.Context, sessionID string, input Append
 	if err != nil {
 		return Message{}, err
 	}
-	s.appendEvent(ctx, session.ID, CreateEventInput{Type: "message.created", Payload: map[string]any{"message_id": item.ID, "role": item.Role}})
+	_ = s.appendEvent(ctx, session.ID, CreateEventInput{Type: "message.created", Payload: map[string]any{"message_id": item.ID, "role": item.Role}})
 	return item, nil
 }
 
@@ -395,6 +427,13 @@ func allowsScope(ctx context.Context, scopeID string) bool {
 func resourceVisible(ctx context.Context, scopeID, resourceID string) bool {
 	filter, ok := authorization.ResourceFilterFromContext(ctx)
 	return !ok || filter.Allows(scopeID, resourceID)
+}
+
+func applicationResourceVisible(ctx context.Context, applicationScopeID, resourceScopeID, resourceID string) bool {
+	if filter, restricted := authorization.ResourceFilterFromContext(ctx); restricted {
+		return filter.Allows(applicationScopeID, resourceID) || filter.Allows(resourceScopeID, resourceID)
+	}
+	return allowsScope(ctx, applicationScopeID)
 }
 
 func distinctIDs(values []string) []string {

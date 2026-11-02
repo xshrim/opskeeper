@@ -86,7 +86,7 @@ Kubernetes 的 Namespace 映射为 Project，Deployment、StatefulSet、DaemonSe
 
 Kubernetes 来源的 Application 在 `kubernetes.workload_kind` 中保留 Deployment、StatefulSet、DaemonSet、Job 或 CronJob 类型。该字段描述来源工作负载，不改变资源类型，也不产生新的权限层级。
 
-手工创建的 Application 必须归属于 Project Scope；从平台或团队视图发起时，界面必须先选择团队下的项目。其接入方式只能为虚拟机、容器化或云原生，并至少配置一个实例。虚拟机实例关联 Host 与唯一定位进程的关键字表达式（支持 `&`、`|`、逗号/空格分隔和引号保护）；容器化实例关联 Docker 与容器名称；云原生实例关联 Kubernetes 与命名空间及合并显示的“工作负载类型 · 名称”，后端仍分别保存工作负载类型和名称。实例日志来源可以是受控文件路径或已关联日志平台的查询语句；容器化和云原生未指定文件路径时使用标准输出。关联资源可以是 Direct 或 Agent，Application 不保存或判断该接入方式。
+手工创建的 Application 必须归属于 Project Scope；从平台或团队视图发起时，界面必须先选择团队下的项目。其接入方式只能为虚拟机、容器化或云原生，允许暂时没有运行时实例；没有实例时应用状态展示为未知。虚拟机实例关联 Host，并以完整命令行唯一定位进程（初筛关键字不作为最终定位条件）；容器化实例关联 Docker 与容器名称；云原生实例关联 Kubernetes 与命名空间及合并显示的“工作负载类型 · 名称”，后端仍分别保存工作负载类型和名称。实例日志来源可以是受控文件路径或已关联日志平台的查询语句；容器化和云原生未指定文件路径时使用标准输出。关联资源可以是 Direct 或 Agent，Application 不保存或判断该接入方式。
 
 `resource_schemas` 同时保存 `display_name`、`description` 和 `icon`，前端据此展示中文名称、说明和类型图标。`config` 使用 JSONB 保存非敏感类型字段，并由每种资源的版本化 JSON Schema 校验；资源保存实际使用的 `schema_version`。
 
@@ -186,7 +186,6 @@ scopes
 resources
 resource_relations
 resource_schemas
-resource_sync_states
 providers
 engines
 engine_scope_bindings
@@ -203,7 +202,7 @@ scope_defaults（仅保留资源默认项）
 Engine 的统一执行事件与工具审计保存在 `engine_execution_events` 和
 `engine_execution_tool_calls`；Skill 不拥有独立执行表。
 
-`external_uid + source_resource_id + scope` 建立唯一约束，保证外部同步资源重复写入时执行更新而不是重复创建。独立大模型对象使用各自的 Scope 唯一约束；它们不共享资源目录的 `resource_schemas` 或资源关系。
+`external_uid + source_resource_id + scope` 建立唯一约束，保证重复导入同一外部资源时更新而不是重复创建。导入是按需执行的写入操作，当前没有独立的后台同步状态表。独立大模型对象使用各自的 Scope 唯一约束；它们不共享资源目录的 `resource_schemas` 或资源关系。
 
 ## 8. 拓扑查询
 

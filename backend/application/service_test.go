@@ -46,7 +46,11 @@ func (*testStore) DeleteInstance(context.Context, string, string, string) error 
 func (*testStore) ContextResourceIDs(context.Context, string, string) ([]string, error) {
 	return nil, nil
 }
+func (*testStore) DiagnosticContext(context.Context, string, string) (DiagnosticContext, error) {
+	return DiagnosticContext{}, nil
+}
 func (*testStore) Workspace(context.Context, string) (Workspace, error) { return Workspace{}, nil }
+func (*testStore) Topology(context.Context, string) (Topology, error)   { return Topology{}, nil }
 
 func TestCreateValidatesProjectAndCode(t *testing.T) {
 	s := NewService(&testStore{})
@@ -95,6 +99,19 @@ func TestPrepareCreateInputRejectsUnknownDependencyKind(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalid) {
 		t.Fatalf("dependency validation error = %v, want invalid", err)
+	}
+}
+
+func TestPrepareCreateInputRejectsUnknownBindingFields(t *testing.T) {
+	_, err := PrepareCreateInput(CreateInput{
+		ProjectID: "project-1", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeDocker,
+		Dependencies: []CreateDependencyInput{{
+			TargetResourceID: "resource-1", DependencyKind: "database",
+			Binding: map[string]any{"password": "must-not-be-stored-here"},
+		}},
+	})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("binding validation error = %v, want invalid", err)
 	}
 }
 

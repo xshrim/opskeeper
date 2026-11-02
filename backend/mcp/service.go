@@ -213,8 +213,6 @@ func endpointURL(value string, enhancedSecurity bool) (*url.URL, error) {
 	return u, nil
 }
 
-func safeEndpoint(value string) (*url.URL, error) { return endpointURL(value, true) }
-
 func clientTransport(transport, endpoint string, client *http.Client) gomcp.Transport {
 	if transport == "sse" {
 		return &gomcp.SSEClientTransport{Endpoint: endpoint, HTTPClient: client}

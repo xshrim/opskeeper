@@ -112,6 +112,30 @@ func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T
 	}
 }
 
+func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
+	store := newRecordingStore()
+	store.session.ApplicationID = "app-primary"
+	store.session.ApplicationIDs = []string{"app-primary", "app-secondary"}
+	store.session.ApplicationContext = json.RawMessage(`{"applications":[{"application":{"id":"app-primary","name":"Orders"},"resources":[{"id":"db-1","relation":"association","binding":{"database":"orders"}}]},{"application":{"id":"app-secondary","name":"Billing"}}]}`)
+	var captured engine.Request
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+		captured = request
+		return engine.Result{Output: "应用上下文已收到。"}, nil
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+
+	if captured.Input["application_id"] != "app-primary" {
+		t.Fatalf("application_id input = %#v", captured.Input["application_id"])
+	}
+	if ids, ok := captured.Input["application_ids"].([]string); !ok || len(ids) != 2 {
+		t.Fatalf("application_ids input = %#v", captured.Input["application_ids"])
+	}
+	context, ok := captured.Input["application_context"].(map[string]any)
+	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || !strings.Contains(captured.Instruction, "不可信配置数据") {
+		t.Fatalf("application context/instruction missing: input=%#v instruction=%q", captured.Input, captured.Instruction)
+	}
+}
+
 func TestOrchestratorPersistsAssistantBeforeCompletionEvents(t *testing.T) {
 	store := newRecordingStore()
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {

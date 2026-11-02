@@ -82,7 +82,7 @@ func (s *Service) prepareCreateInput(ctx context.Context, input CreateInput, req
 	}
 	input.AgentRef = agentRef
 	if accessMode != "" {
-		input.Subtype = strings.Title(accessMode)
+		input.Subtype = strings.ToUpper(accessMode[:1]) + accessMode[1:]
 	} else {
 		input.Subtype = normalizeResourceSubtype(input.Kind, rawSubtype)
 	}
@@ -297,7 +297,7 @@ func (s *Service) prepareUpdate(ctx context.Context, id string, input UpdateInpu
 	}
 	if input.Subtype != nil || input.AgentRef != nil {
 		if accessMode != "" {
-			value := strings.Title(accessMode)
+			value := strings.ToUpper(accessMode[:1]) + accessMode[1:]
 			input.Subtype = &value
 		}
 		input.AgentRef = &normalizedAgentRef

@@ -219,7 +219,7 @@ func (s *store) CreateNotificationRule(ctx context.Context, scopeID, actorID str
 	if err != nil {
 		return NotificationRuleRecord{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
 	err = tx.QueryRow(ctx, `INSERT INTO notification_rules(scope_id,name,status,share_with_children,event_types,minimum_severity,filters,cooldown_seconds,aggregation_seconds,max_batch_size,silence,created_by) VALUES($1::uuid,$2,$3,$4,$5::text[],$6,$7::jsonb,$8,$9,$10,$11::jsonb,NULLIF($12,'')::uuid) RETURNING id::text`, scopeID, validated.Name, validated.Status, input.ShareWithChildren, events, validated.MinimumSeverity, filters, int(validated.Cooldown.Seconds()), int(validated.Aggregation.Seconds()), validated.MaxBatchSize, silence, actorID).Scan(&id)
 	if err != nil {
@@ -309,7 +309,7 @@ func (s *store) UpdateNotificationRule(ctx context.Context, scopeID, id string, 
 	if err != nil {
 		return NotificationRuleRecord{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	tag, err := tx.Exec(ctx, `UPDATE notification_rules SET name=$3,status=$4,share_with_children=CASE WHEN $12 THEN $13 ELSE share_with_children END,event_types=$5::text[],minimum_severity=$6,filters=$7::jsonb,cooldown_seconds=$8,aggregation_seconds=$9,max_batch_size=$10,silence=$11::jsonb,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL`, id, scopeID, validated.Name, validated.Status, events, validated.MinimumSeverity, filters, int(validated.Cooldown.Seconds()), int(validated.Aggregation.Seconds()), validated.MaxBatchSize, silence, input.ShareWithChildrenSet, input.ShareWithChildren)
 	if err != nil {
 		return NotificationRuleRecord{}, mapError(err)

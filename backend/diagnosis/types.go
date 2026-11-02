@@ -18,20 +18,22 @@ const (
 )
 
 type Session struct {
-	ID            string     `json:"id"`
-	ScopeID       string     `json:"scope_id"`
-	ApplicationID string     `json:"application_id,omitempty"`
-	ProviderID    string     `json:"provider_id,omitempty"`
-	ModelName     string     `json:"model_name,omitempty"`
-	Title         string     `json:"title"`
-	ErrorCode     string     `json:"error_code"`
-	ErrorMessage  string     `json:"error_message"`
-	ActorUserID   *string    `json:"actor_user_id,omitempty"`
-	Status        Status     `json:"status"`
-	StartedAt     time.Time  `json:"started_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                 string          `json:"id"`
+	ScopeID            string          `json:"scope_id"`
+	ApplicationID      string          `json:"application_id,omitempty"`
+	ApplicationIDs     []string        `json:"application_ids,omitempty"`
+	ProviderID         string          `json:"provider_id,omitempty"`
+	ModelName          string          `json:"model_name,omitempty"`
+	Title              string          `json:"title"`
+	ErrorCode          string          `json:"error_code"`
+	ErrorMessage       string          `json:"error_message"`
+	ActorUserID        *string         `json:"actor_user_id,omitempty"`
+	Status             Status          `json:"status"`
+	StartedAt          time.Time       `json:"started_at"`
+	CompletedAt        *time.Time      `json:"completed_at,omitempty"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+	ApplicationContext json.RawMessage `json:"-"`
 }
 
 type Target struct {
@@ -190,11 +192,13 @@ type Snapshot struct {
 type StartInput struct {
 	ScopeID, ActorUserID, Title, Question string
 	ApplicationID                         string
+	ApplicationIDs                        []string
 	ProviderID, ModelName                 string
 	TargetResourceIDs                     []string
 	SkillID, PersonaID                    string
 	Links                                 []string
 	Attachments                           []Attachment
+	ApplicationContext                    json.RawMessage
 }
 
 type AppendMessageInput struct {

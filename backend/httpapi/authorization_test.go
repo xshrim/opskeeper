@@ -56,6 +56,22 @@ func TestAuthorizationMiddlewareRejectsEmptyScopeFilter(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedRoutesFailClosedWithoutAuthorizationService(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := NewRouter(logger, health.NewService("test-api", time.Second, nil), testBuild, Options{
+		BasePath: "/test",
+		Identity: &stubIdentityService{user: identity.User{ID: handlerTestUUID, Status: identity.StatusActive}},
+	}, &stubOrganizationService{}, nil)
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/teams/", nil)
+	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"code":"authorization_unavailable"`) {
+		t.Fatalf("authorization-misconfigured response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestAuthorizationMiddlewarePassesScopeFilterToOrganization(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/teams/", nil)
 	request.AddCookie(&http.Cookie{Name: accessCookieName, Value: "access-token"})

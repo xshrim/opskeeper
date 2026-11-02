@@ -1,6 +1,9 @@
 package minio
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestInputSchemaUsesRequiredFieldsOutsideProperties(t *testing.T) {
 	schema := InputSchema(map[string]any{
@@ -18,7 +21,7 @@ func TestInputSchemaUsesRequiredFieldsOutsideProperties(t *testing.T) {
 }
 
 func TestBucketObjectsLimitIsBounded(t *testing.T) {
-	if _, err := BucketObjects(nil, ConnectionInput{}, "", "", 1); err == nil {
+	if _, err := BucketObjects(context.TODO(), ConnectionInput{}, "", "", 1); err == nil {
 		t.Fatal("missing bucket must fail before connection")
 	}
 }

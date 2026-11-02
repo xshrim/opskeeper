@@ -61,7 +61,7 @@ func (s *store) ClaimNotificationDelivery(ctx context.Context, owner string, lea
 	if err != nil {
 		return NotificationDeliveryJob{}, false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var route claimedNotificationRoute
 	var eventPayload []byte
 	err = tx.QueryRow(ctx, `
@@ -180,7 +180,7 @@ func (s *store) FinishNotificationDelivery(ctx context.Context, job Notification
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	response := notification.SanitizeSummary(body)
 	if len(response) > 4000 {
 		response = response[:4000]

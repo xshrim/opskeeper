@@ -18,6 +18,7 @@ type applicationService interface {
 	CreateInstanceInProject(context.Context, string, string, application.CreateInstanceInput) (application.Instance, error)
 	DeleteInstanceInProject(context.Context, string, string, string) error
 	Workspace(context.Context, string) (application.Workspace, error)
+	Topology(context.Context, string) (application.Topology, error)
 }
 type applicationBatchService interface {
 	CreateMany(context.Context, []application.CreateInput) ([]application.Application, error)
@@ -39,6 +40,7 @@ type createApplicationRequest struct {
 	OperationsOwnerIDs []string                            `json:"operations_owner_ids"`
 	Instances          []application.CreateInstanceInput   `json:"instances"`
 	Dependencies       []application.CreateDependencyInput `json:"dependencies"`
+	Relations          []application.CreateRelationInput   `json:"relations"`
 }
 type createApplicationBatchRequest struct {
 	Items []createApplicationRequest `json:"items"`
@@ -57,6 +59,7 @@ type updateApplicationRequest struct {
 	OperationsOwnerIDs *[]string                            `json:"operations_owner_ids"`
 	Instances          *[]application.CreateInstanceInput   `json:"instances"`
 	Dependencies       *[]application.CreateDependencyInput `json:"dependencies"`
+	Relations          *[]application.CreateRelationInput   `json:"relations"`
 }
 type createInstanceRequest struct {
 	Name             string         `json:"name"`
@@ -76,6 +79,7 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 		return requirePermission(p)
 	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/workspace", h.workspace)
+	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/topology", h.topology)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
 	if _, ok := service.(applicationBatchService); ok {
@@ -95,6 +99,14 @@ func (h applicationHandler) workspace(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, v)
 }
+func (h applicationHandler) topology(w http.ResponseWriter, r *http.Request) {
+	v, e := h.service.Topology(r.Context(), chi.URLParam(r, "projectID"))
+	if e != nil {
+		writeApplicationError(w, r, e)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
 func (h applicationHandler) list(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.List(r.Context(), chi.URLParam(r, "projectID"))
 	if e != nil {
@@ -108,7 +120,7 @@ func (h applicationHandler) create(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies})
+	v, e := h.service.Create(r.Context(), application.CreateInput{ProjectID: chi.URLParam(r, "projectID"), Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies, Relations: b.Relations})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return
@@ -134,6 +146,7 @@ func (h applicationHandler) createBatch(w http.ResponseWriter, r *http.Request) 
 			ExternalUID: item.ExternalUID, Labels: item.Labels, Critical: item.Critical,
 			TechnicalOwnerIDs: item.TechnicalOwnerIDs, OperationsOwnerIDs: item.OperationsOwnerIDs,
 			Instances: item.Instances, Dependencies: item.Dependencies,
+			Relations: item.Relations,
 		})
 	}
 	created, err := service.CreateMany(r.Context(), inputs)
@@ -156,7 +169,7 @@ func (h applicationHandler) update(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &b) {
 		return
 	}
-	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies})
+	v, e := h.service.UpdateInProject(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "applicationID"), application.UpdateInput{Name: b.Name, Code: b.Code, Description: b.Description, Icon: b.Icon, Status: b.Status, RuntimeKind: b.RuntimeKind, ExternalUID: b.ExternalUID, Labels: b.Labels, Critical: b.Critical, TechnicalOwnerIDs: b.TechnicalOwnerIDs, OperationsOwnerIDs: b.OperationsOwnerIDs, Instances: b.Instances, Dependencies: b.Dependencies, Relations: b.Relations})
 	if e != nil {
 		writeApplicationError(w, r, e)
 		return

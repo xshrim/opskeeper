@@ -75,7 +75,7 @@ func classify(err error) (Category, bool) {
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		return CategoryUpstream, netErr.Timeout() || netErr.Temporary()
+		return CategoryUpstream, netErr.Timeout()
 	}
 	return CategoryInternal, false
 }

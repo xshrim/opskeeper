@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strings"
 
 	nt "opskeeper/backend/tool/nacos"
 )
@@ -38,13 +36,4 @@ func (a *nacosAdapter) Test(ctx context.Context) error {
 		return connectorError(CategoryUpstream, "test Nacos connection", true, err)
 	}
 	return nil
-}
-func nacosError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if strings.Contains(strings.ToLower(err.Error()), "401") || strings.Contains(strings.ToLower(err.Error()), "403") {
-		return connectorError(CategoryAuthentication, "Nacos API", false, err)
-	}
-	return fmt.Errorf("Nacos API: %w", err)
 }

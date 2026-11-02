@@ -1,14 +1,11 @@
 package host
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -512,15 +509,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-
-func encodeJSON(value any) json.RawMessage { raw, _ := json.Marshal(value); return raw }
-func scanLines(raw []byte) []string {
-	scanner := bufio.NewScanner(strings.NewReader(string(raw)))
-	scanner.Buffer(make([]byte, 64*1024), MaxReadBytes)
-	lines := make([]string, 0)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines
-}
-func sortStrings(values []string) { sort.Strings(values) }

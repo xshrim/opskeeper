@@ -628,6 +628,9 @@ func archiveScopes(ctx context.Context, tx pgx.Tx, scopeIDs []string, parentScop
 	if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[]))`, scopeIDs); err != nil {
 		return fmt.Errorf("delete application dependencies: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM application_relations WHERE application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[])) OR target_application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[]))`, scopeIDs); err != nil {
+		return fmt.Errorf("delete application relations: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id IN (SELECT a.id FROM applications a JOIN projects p ON p.id=a.project_id WHERE p.scope_id=ANY($1::uuid[]))`, scopeIDs); err != nil {
 		return fmt.Errorf("delete application instances: %w", err)
 	}

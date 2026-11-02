@@ -55,9 +55,20 @@ func (s *store) Start(ctx context.Context, input StartInput) (Session, error) {
 	if err != nil {
 		return Session{}, fmt.Errorf("begin diagnosis session: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, actor_user_id, provider_id, model_name, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, NULLIF($4, '')::uuid, NULLIF($5, ''), 'queued', $6) RETURNING id::text`, input.ScopeID, input.ApplicationID, input.ActorUserID, input.ProviderID, input.ModelName, input.Title).Scan(&id)
+	applicationIDs := append([]string{}, input.ApplicationIDs...)
+	if len(applicationIDs) == 0 && input.ApplicationID != "" {
+		applicationIDs = []string{input.ApplicationID}
+	}
+	contextJSON := input.ApplicationContext
+	if len(contextJSON) == 0 {
+		contextJSON = json.RawMessage(`{}`)
+	}
+	if len(applicationIDs) > 0 {
+		input.ApplicationID = applicationIDs[0]
+	}
+	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, application_ids, actor_user_id, provider_id, model_name, application_context, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid[], NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, ''), $7::jsonb, 'queued', $8) RETURNING id::text`, input.ScopeID, input.ApplicationID, applicationIDs, input.ActorUserID, input.ProviderID, input.ModelName, contextJSON, input.Title).Scan(&id)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -196,7 +207,7 @@ func (s *store) CreatePlan(ctx context.Context, sessionID, summary string, steps
 	if err != nil {
 		return Plan{}, fmt.Errorf("begin diagnosis plan: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO diagnosis_plans (session_id, summary) VALUES ($1::uuid, $2) ON CONFLICT (session_id) DO UPDATE SET summary = EXCLUDED.summary, updated_at = now() RETURNING id::text`, sessionID, summary).Scan(&id); err != nil {
 		return Plan{}, mapStoreError(err)
@@ -535,17 +546,20 @@ func (s *store) Plan(ctx context.Context, sessionID string) (Plan, error) {
 	return s.plan(ctx, sessionID)
 }
 
-const sessionSelect = `SELECT id::text, scope_id::text, COALESCE(application_id::text, ''), actor_user_id::text, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), status, title, error_code, error_message, started_at, completed_at, created_at, updated_at FROM diagnosis_sessions`
+const sessionSelect = `SELECT id::text, scope_id::text, COALESCE(application_id::text, ''), application_ids::text[], actor_user_id::text, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), application_context, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at FROM diagnosis_sessions`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanSession(row rowScanner) (Session, error) {
 	var item Session
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ActorUserID, &item.ProviderID, &item.ModelName, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrNotFound
 		}
 		return Session{}, fmt.Errorf("scan diagnosis session: %w", err)
+	}
+	if len(item.ApplicationIDs) == 0 && item.ApplicationID != "" {
+		item.ApplicationIDs = []string{item.ApplicationID}
 	}
 	return item, nil
 }

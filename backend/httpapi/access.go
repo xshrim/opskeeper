@@ -549,19 +549,6 @@ func (h accessHandler) listAuditLogs(writer http.ResponseWriter, request *http.R
 	writeJSON(writer, http.StatusOK, page)
 }
 
-func (h accessHandler) requirePlatformAdmin(writer http.ResponseWriter, request *http.Request) bool {
-	allowed, err := h.access.IsPlatformAdmin(request.Context(), currentUser(request).ID)
-	if err != nil {
-		writeAccessError(writer, request, err)
-		return false
-	}
-	if !allowed {
-		writeError(writer, request, http.StatusForbidden, "forbidden", "Platform administrator permission is required")
-		return false
-	}
-	return true
-}
-
 func (h accessHandler) requireManagedUser(writer http.ResponseWriter, request *http.Request, userID string) bool {
 	actorID := currentUser(request).ID
 	allowed, err := h.access.CanManageUser(request.Context(), actorID, userID)

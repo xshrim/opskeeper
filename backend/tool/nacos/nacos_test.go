@@ -42,6 +42,8 @@ func TestClientUsesReadOnlyNacosAPIs(t *testing.T) {
 
 func mustPort(host string) int {
 	var p int
-	fmt.Sscanf(host[strings.LastIndex(host, ":")+1:], "%d", &p)
+	if _, err := fmt.Sscanf(host[strings.LastIndex(host, ":")+1:], "%d", &p); err != nil {
+		panic(err)
+	}
 	return p
 }

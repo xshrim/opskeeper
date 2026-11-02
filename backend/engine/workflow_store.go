@@ -128,7 +128,7 @@ func (s *PostgresWorkflowRunStore) UpdateWorkflowRun(ctx context.Context, id str
 	if err != nil {
 		return WorkflowRun{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var run WorkflowRun
 	var input, state []byte
 	if err := tx.QueryRow(ctx, workflowRunSelect+` WHERE id=$1::uuid FOR UPDATE`, strings.TrimSpace(id)).Scan(&run.ID, &run.WorkflowID, &run.WorkflowVersion, &run.ExecutionID, &run.ScopeID, &run.CreatedBy, &run.Status, &run.CurrentNodeID, &run.Attempt, &input, &state, &run.ErrorCode, &run.ErrorMessage, &run.CreatedAt, &run.UpdatedAt, &run.CompletedAt); err != nil {

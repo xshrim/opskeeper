@@ -136,11 +136,9 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 	return tools, facts, nil
 }
 
-var emptySchema = json.RawMessage(`{"type":"object","additionalProperties":false}`)
 var metricsSchema = json.RawMessage(`{"type":"object","required":["query","start","end","step_seconds"],"properties":{"query":{"type":"string"},"start":{"type":"string"},"end":{"type":"string"},"step_seconds":{"type":"integer"}},"additionalProperties":false}`)
 var logsSchema = json.RawMessage(`{"type":"object","required":["query","start","end","limit"],"properties":{"query":{"type":"string"},"start":{"type":"string"},"end":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false}`)
 var alertsSchema = json.RawMessage(`{"type":"object","properties":{"active_only":{"type":"boolean"}},"additionalProperties":false}`)
-var kubernetesSchema = json.RawMessage(`{"type":"object","required":["resource"],"properties":{"resource":{"type":"string"},"namespace":{"type":"string"},"name":{"type":"string"},"label_selector":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false}`)
 
 func evidenceResult(evidence Evidence, err error) (engine.ToolResult, error) {
 	if err != nil {

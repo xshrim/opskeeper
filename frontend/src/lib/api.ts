@@ -126,6 +126,15 @@ export interface ApplicationDependency {
   required: boolean;
   status: string;
 }
+export interface ApplicationRelation {
+  id: string;
+  application_id: string;
+  target_application_id: string;
+  target_application_name?: string;
+  target_application_code?: string;
+  relation_kind: 'depends_on' | 'depended_by' | 'mutual' | string;
+  status: string;
+}
 export interface Application {
   id: string;
   project_id: string;
@@ -142,6 +151,7 @@ export interface Application {
   operations_owner_ids: string[];
   instances: ApplicationInstance[];
   dependencies: ApplicationDependency[];
+  relations: ApplicationRelation[];
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +177,10 @@ export interface ProjectWorkspace {
     status: string;
   }>;
   applications: Application[];
+}
+export interface ProjectTopology {
+  nodes: Array<{ id: string; kind: string; name: string; scope_id?: string; project_id?: string; project_name?: string; resource_kind?: string; metadata?: Record<string, unknown> }>;
+  edges: Array<{ id: string; source_id: string; target_id: string; relation: string; metadata?: Record<string, unknown> }>;
 }
 
 export interface Page<T> {
@@ -573,6 +587,7 @@ export interface DiagnosisSession {
   provider_id?: string;
   model_name?: string;
   application_id?: string;
+  application_ids?: string[];
   actor_user_id?: string;
   status: DiagnosisStatus;
   title: string;
@@ -959,10 +974,14 @@ export const api = {
     }),
   projectWorkspace: (id: string) =>
     request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
+  projectTopology: (id: string) =>
+    request<ProjectTopology>(`api/v1/projects/${id}/topology`),
   applications: (projectId: string) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications`
     ),
+  application: (projectId: string, id: string) =>
+    request<Application>(`api/v1/projects/${projectId}/applications/${id}/`),
   createApplication: (projectId: string, body: Record<string, unknown>) =>
     request<Application>(
       `api/v1/projects/${projectId}/applications`,
@@ -1298,6 +1317,7 @@ export const api = {
   startDiagnosis: (body: {
     scope_id: string;
     application_id?: string;
+    application_ids?: string[];
     title?: string;
     question: string;
     target_resource_ids: string[];

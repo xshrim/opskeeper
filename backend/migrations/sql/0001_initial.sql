@@ -253,14 +253,6 @@ $$;
 
 
 --
--- Name: scope_ai_provider_bindings_touch(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION scope_ai_provider_bindings_touch() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
-
-
 --
 -- Name: validate_application_runtime(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -651,25 +643,6 @@ $$;
 
 
 --
--- Name: validate_scope_ai_provider_binding(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION validate_scope_ai_provider_binding() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-DECLARE provider_scope uuid; provider_kind text; provider_status text;
-BEGIN
-    SELECT scope_id, kind, status INTO provider_scope, provider_kind, provider_status
-      FROM resources WHERE id = NEW.provider_resource_id AND deleted_at IS NULL;
-    IF provider_kind IS DISTINCT FROM 'AIProvider'
-       OR provider_status IS DISTINCT FROM 'active'
-       OR NOT resource_scope_contains(provider_scope, NEW.scope_id) THEN
-        RAISE EXCEPTION 'AIProvider is unavailable from scope' USING ERRCODE = '23514';
-    END IF;
-    RETURN NEW;
-END $$;
-
-
 --
 -- Name: validate_scope_default(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -832,6 +805,7 @@ CREATE TABLE application_dependencies (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     CONSTRAINT application_dependencies_dependency_kind_check CHECK ((dependency_kind = ANY (ARRAY['messaging'::text, 'cache'::text, 'database'::text, 'registry'::text, 'configuration'::text, 'repository'::text, 'storage'::text, 'observability'::text, 'other'::text]))),
+    CONSTRAINT application_dependencies_binding_object_check CHECK ((jsonb_typeof(binding) = 'object'::text)),
     CONSTRAINT application_dependencies_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'unknown'::text])))
 );
 
@@ -851,6 +825,8 @@ CREATE TABLE application_instances (
     status text DEFAULT 'unknown'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT application_instances_selector_object_check CHECK ((jsonb_typeof(selector) = 'object'::text)),
+    CONSTRAINT application_instances_log_binding_object_check CHECK ((jsonb_typeof(log_binding) = 'object'::text)),
     CONSTRAINT application_instances_name_check CHECK (((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 120))),
     CONSTRAINT application_instances_runtime_kind_check CHECK ((runtime_kind = ANY (ARRAY['virtual_machine'::text, 'containerized'::text, 'cloud_native'::text]))),
     CONSTRAINT application_instances_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'unknown'::text])))
@@ -883,6 +859,21 @@ CREATE TABLE applications (
     CONSTRAINT applications_name_check CHECK (((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 120))),
     CONSTRAINT applications_runtime_kind_check CHECK ((runtime_kind = ANY (ARRAY['virtual_machine'::text, 'containerized'::text, 'cloud_native'::text]))),
     CONSTRAINT applications_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'unknown'::text])))
+);
+
+
+-- Name: application_relations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE application_relations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    application_id uuid NOT NULL,
+    target_application_id uuid NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT application_relations_application_check CHECK ((application_id <> target_application_id)),
+    CONSTRAINT application_relations_status_check CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text, 'unknown'::text])))
 );
 
 
@@ -1154,6 +1145,9 @@ CREATE TABLE diagnosis_sessions (
     provider_id uuid,
     model_name text,
     application_id uuid,
+    application_ids uuid[] DEFAULT '{}'::uuid[] NOT NULL,
+    application_context jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT diagnosis_sessions_application_context_object_check CHECK ((jsonb_typeof(application_context) = 'object'::text)),
     CONSTRAINT diagnosis_sessions_error_code_check CHECK ((length(error_code) <= 120)),
     CONSTRAINT diagnosis_sessions_error_message_check CHECK ((length(error_message) <= 1000)),
     CONSTRAINT diagnosis_sessions_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'planning'::text, 'collecting'::text, 'analyzing'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
@@ -1195,7 +1189,7 @@ CREATE TABLE engine_execution_events (
     status text,
     occurred_at timestamp with time zone DEFAULT now() NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT ai_execution_events_sequence_check CHECK ((sequence > 0))
+    CONSTRAINT engine_execution_events_sequence_check CHECK ((sequence > 0))
 );
 
 
@@ -1219,8 +1213,8 @@ CREATE TABLE engine_execution_tool_calls (
     started_at timestamp with time zone,
     completed_at timestamp with time zone,
     duration_ms bigint DEFAULT 0 NOT NULL,
-    CONSTRAINT ai_execution_tool_calls_duration_ms_check CHECK ((duration_ms >= 0)),
-    CONSTRAINT ai_execution_tool_calls_sequence_check CHECK ((sequence > 0))
+    CONSTRAINT engine_execution_tool_calls_duration_ms_check CHECK ((duration_ms >= 0)),
+    CONSTRAINT engine_execution_tool_calls_sequence_check CHECK ((sequence > 0))
 );
 
 
@@ -1820,8 +1814,8 @@ CREATE TABLE persona_versions (
     created_by uuid,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     published_at timestamp with time zone,
-    CONSTRAINT agent_profile_versions_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'disabled'::text]))),
-    CONSTRAINT agent_profile_versions_version_check CHECK ((version > 0))
+    CONSTRAINT persona_versions_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'disabled'::text]))),
+    CONSTRAINT persona_versions_version_check CHECK ((version > 0))
 );
 
 
@@ -2057,22 +2051,6 @@ CREATE TABLE resource_schemas (
 
 
 --
--- Name: resource_sync_states; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE resource_sync_states (
-    resource_id uuid NOT NULL,
-    state text DEFAULT 'never'::text NOT NULL,
-    last_started_at timestamp with time zone,
-    last_completed_at timestamp with time zone,
-    last_error text DEFAULT ''::text NOT NULL,
-    external_version text DEFAULT ''::text NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT resource_sync_states_last_error_check CHECK ((length(last_error) <= 2000)),
-    CONSTRAINT resource_sync_states_state_check CHECK ((state = ANY (ARRAY['never'::text, 'running'::text, 'succeeded'::text, 'failed'::text])))
-);
-
-
 --
 -- Name: resources; Type: TABLE; Schema: public; Owner: -
 --
@@ -2148,20 +2126,6 @@ CREATE TABLE roles (
 
 
 --
--- Name: scope_ai_provider_bindings; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE scope_ai_provider_bindings (
-    scope_id uuid NOT NULL,
-    provider_resource_id uuid NOT NULL,
-    tag text NOT NULL,
-    created_by uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT scope_ai_provider_bindings_tag_check CHECK ((tag = ANY (ARRAY['general'::text, 'diagnosis'::text, 'inspection'::text, 'workflow'::text])))
-);
-
-
 --
 -- Name: scope_defaults; Type: TABLE; Schema: public; Owner: -
 --
@@ -2798,11 +2762,6 @@ INSERT INTO resource_schemas VALUES ('3d8ed7ab-62f3-4bc5-843e-e0907c6ae6c4', 'Mi
 
 
 --
--- Data for Name: resource_sync_states; Type: TABLE DATA; Schema: public; Owner: -
---
-
-
-
 --
 -- Data for Name: resources; Type: TABLE DATA; Schema: public; Owner: -
 --
@@ -2997,11 +2956,6 @@ INSERT INTO roles VALUES ('4ef9298b-c770-4823-9cee-54becdbbf9d5', 'ProjectViewer
 
 
 --
--- Data for Name: scope_ai_provider_bindings; Type: TABLE DATA; Schema: public; Owner: -
---
-
-
-
 --
 -- Data for Name: scope_defaults; Type: TABLE DATA; Schema: public; Owner: -
 --
@@ -3107,35 +3061,35 @@ SELECT pg_catalog.setval('notification_delivery_attempts_id_seq', 1, false);
 
 
 --
--- Name: persona_versions agent_profile_versions_agent_profile_resource_id_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: persona_versions persona_versions_persona_id_version_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY persona_versions
-    ADD CONSTRAINT agent_profile_versions_agent_profile_resource_id_version_key UNIQUE (persona_id, version);
+    ADD CONSTRAINT persona_versions_persona_id_version_key UNIQUE (persona_id, version);
 
 
 --
--- Name: persona_versions agent_profile_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: persona_versions persona_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY persona_versions
-    ADD CONSTRAINT agent_profile_versions_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT persona_versions_pkey PRIMARY KEY (id);
 
 
 --
--- Name: engine_execution_events ai_execution_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: engine_execution_events engine_execution_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY engine_execution_events
-    ADD CONSTRAINT ai_execution_events_pkey PRIMARY KEY (execution_id, sequence);
+    ADD CONSTRAINT engine_execution_events_pkey PRIMARY KEY (execution_id, sequence);
 
 
 --
--- Name: engine_execution_tool_calls ai_execution_tool_calls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: engine_execution_tool_calls engine_execution_tool_calls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY engine_execution_tool_calls
-    ADD CONSTRAINT ai_execution_tool_calls_pkey PRIMARY KEY (execution_id, sequence);
+    ADD CONSTRAINT engine_execution_tool_calls_pkey PRIMARY KEY (execution_id, sequence);
 
 
 --
@@ -3168,6 +3122,20 @@ ALTER TABLE ONLY application_dependencies
 
 ALTER TABLE ONLY application_dependencies
     ADD CONSTRAINT application_dependencies_pkey PRIMARY KEY (id);
+
+
+-- Name: application_relations application_relations_application_id_target_application_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY application_relations
+    ADD CONSTRAINT application_relations_application_id_target_application_id_key UNIQUE (application_id, target_application_id);
+
+
+-- Name: application_relations application_relations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY application_relations
+    ADD CONSTRAINT application_relations_pkey PRIMARY KEY (id);
 
 
 --
@@ -3931,13 +3899,6 @@ ALTER TABLE ONLY resource_schemas
 
 
 --
--- Name: resource_sync_states resource_sync_states_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY resource_sync_states
-    ADD CONSTRAINT resource_sync_states_pkey PRIMARY KEY (resource_id);
-
-
 --
 -- Name: resources resources_id_scope_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
@@ -3995,13 +3956,6 @@ ALTER TABLE ONLY roles
 
 
 --
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY scope_ai_provider_bindings
-    ADD CONSTRAINT scope_ai_provider_bindings_pkey PRIMARY KEY (scope_id, tag, provider_resource_id);
-
-
 --
 -- Name: scope_defaults scope_defaults_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
@@ -4131,6 +4085,18 @@ CREATE INDEX application_dependencies_application_idx ON application_dependencie
 --
 
 CREATE INDEX application_dependencies_target_idx ON application_dependencies USING btree (target_resource_id);
+
+
+-- Name: application_relations_application_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX application_relations_application_idx ON application_relations USING btree (application_id);
+
+
+-- Name: application_relations_target_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX application_relations_target_idx ON application_relations USING btree (target_application_id);
 
 
 --
@@ -4351,10 +4317,10 @@ CREATE INDEX inspection_jobs_claim_idx ON inspection_jobs USING btree (status, a
 
 
 --
--- Name: inspection_policies_agent_profile_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: inspection_policies_persona_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX inspection_policies_agent_profile_idx ON inspection_policies USING btree (persona_id) WHERE ((persona_id IS NOT NULL) AND (deleted_at IS NULL));
+CREATE INDEX inspection_policies_persona_idx ON inspection_policies USING btree (persona_id) WHERE ((persona_id IS NOT NULL) AND (deleted_at IS NULL));
 
 
 --
@@ -4631,19 +4597,6 @@ CREATE INDEX role_bindings_subject_idx ON role_bindings USING btree (subject_typ
 
 
 --
--- Name: scope_ai_provider_bindings_provider_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX scope_ai_provider_bindings_provider_idx ON scope_ai_provider_bindings USING btree (provider_resource_id);
-
-
---
--- Name: scope_ai_provider_one_tagged_provider; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX scope_ai_provider_one_tagged_provider ON scope_ai_provider_bindings USING btree (scope_id, tag);
-
-
 --
 -- Name: scopes_parent_scope_id_idx; Type: INDEX; Schema: public; Owner: -
 --
@@ -5009,26 +4962,6 @@ CREATE TRIGGER roles_authorization_revision AFTER INSERT OR DELETE OR UPDATE ON 
 
 
 --
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_authorization_revision; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER scope_ai_provider_bindings_authorization_revision AFTER INSERT OR DELETE OR UPDATE ON scope_ai_provider_bindings FOR EACH ROW EXECUTE FUNCTION bump_authorization_revision();
-
-
---
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_updated_at; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER scope_ai_provider_bindings_updated_at BEFORE UPDATE ON scope_ai_provider_bindings FOR EACH ROW EXECUTE FUNCTION scope_ai_provider_bindings_touch();
-
-
---
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_validate; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER scope_ai_provider_bindings_validate BEFORE INSERT OR UPDATE OF scope_id, provider_resource_id ON scope_ai_provider_bindings FOR EACH ROW EXECUTE FUNCTION validate_scope_ai_provider_binding();
-
-
 --
 -- Name: scope_defaults scope_defaults_authorization_revision; Type: TRIGGER; Schema: public; Owner: -
 --
@@ -5107,11 +5040,11 @@ CREATE TRIGGER users_authorization_revision AFTER INSERT OR DELETE OR UPDATE ON 
 
 
 --
--- Name: persona_versions agent_profile_versions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: persona_versions persona_versions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY persona_versions
-    ADD CONSTRAINT agent_profile_versions_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+    ADD CONSTRAINT persona_versions_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
 
 
 --
@@ -5152,6 +5085,20 @@ ALTER TABLE ONLY application_dependencies
 
 ALTER TABLE ONLY application_dependencies
     ADD CONSTRAINT application_dependencies_target_resource_id_fkey FOREIGN KEY (target_resource_id) REFERENCES resources(id);
+
+
+-- Name: application_relations application_relations_application_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY application_relations
+    ADD CONSTRAINT application_relations_application_id_fkey FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE;
+
+
+-- Name: application_relations application_relations_target_application_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY application_relations
+    ADD CONSTRAINT application_relations_target_application_id_fkey FOREIGN KEY (target_application_id) REFERENCES applications(id) ON DELETE CASCADE;
 
 
 --
@@ -6067,13 +6014,6 @@ ALTER TABLE ONLY resource_role_permissions
 
 
 --
--- Name: resource_sync_states resource_sync_states_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY resource_sync_states
-    ADD CONSTRAINT resource_sync_states_resource_id_fkey FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE;
-
-
 --
 -- Name: resources resources_agent_ref_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
@@ -6115,29 +6055,6 @@ ALTER TABLE ONLY role_permissions
 
 
 --
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY scope_ai_provider_bindings
-    ADD CONSTRAINT scope_ai_provider_bindings_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
-
-
---
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_provider_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY scope_ai_provider_bindings
-    ADD CONSTRAINT scope_ai_provider_bindings_provider_resource_id_fkey FOREIGN KEY (provider_resource_id) REFERENCES resources(id) ON DELETE CASCADE;
-
-
---
--- Name: scope_ai_provider_bindings scope_ai_provider_bindings_scope_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY scope_ai_provider_bindings
-    ADD CONSTRAINT scope_ai_provider_bindings_scope_id_fkey FOREIGN KEY (scope_id) REFERENCES scopes(id) ON DELETE CASCADE;
-
-
 --
 -- Name: scope_defaults scope_defaults_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --

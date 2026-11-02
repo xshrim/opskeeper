@@ -239,7 +239,8 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	}
 	if err := client.MakeBucket(ctx, s.storage.Bucket, minio.MakeBucketOptions{}); err != nil {
 		var exists minio.ErrorResponse
-		if !errors.As(err, &exists) || exists.Code != "BucketAlreadyOwnedByYou" { /* bucket may be provisioned without permission */
+		if !errors.As(err, &exists) || (exists.Code != "BucketAlreadyOwnedByYou" && exists.Code != "BucketAlreadyExists") {
+			return UploadResult{}, fmt.Errorf("create repository bucket: %w", err)
 		}
 	}
 	dir, err := os.MkdirTemp("", "opskeeper-s3-repo-")

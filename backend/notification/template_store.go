@@ -47,7 +47,7 @@ func (s *TemplateStore) CreateWithSharing(ctx context.Context, scopeID, name, ac
 	if err != nil {
 		return NotificationTemplate{}, TemplateVersion{}, fmt.Errorf("begin notification template: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var item NotificationTemplate
 	err = tx.QueryRow(ctx, `INSERT INTO notification_templates (scope_id, name, created_by, share_with_children) VALUES ($1::uuid, $2, NULLIF($3, '')::uuid, $4) RETURNING id::text, scope_id::text, name, created_at`, scopeID, name, actorID, shareWithChildren).
 		Scan(&item.ID, &item.ScopeID, &item.Name, &item.CreatedAt)
@@ -73,7 +73,7 @@ func (s *TemplateStore) CreateVersion(ctx context.Context, templateID, scopeID, 
 	if err != nil {
 		return TemplateVersion{}, fmt.Errorf("begin notification template version: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, templateID); err != nil {
 		return TemplateVersion{}, fmt.Errorf("lock notification template versions: %w", err)
 	}
@@ -99,7 +99,7 @@ func (s *TemplateStore) Publish(ctx context.Context, templateID, scopeID, versio
 	if err != nil {
 		return TemplateVersion{}, fmt.Errorf("begin notification template publish: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, templateID); err != nil {
 		return TemplateVersion{}, fmt.Errorf("lock notification template versions: %w", err)
 	}

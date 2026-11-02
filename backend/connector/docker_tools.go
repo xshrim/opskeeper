@@ -108,11 +108,6 @@ func (s *Service) resolveDockerTools(ctx context.Context, item engine.ContextRes
 	return nil
 }
 
-func dockerSchema(extra map[string]any) json.RawMessage {
-	encoded, _ := json.Marshal(dockertool.InputSchema(extra))
-	return encoded
-}
-
 func directDockerSchema(extra map[string]any) json.RawMessage {
 	schema := dockertool.InputSchema(extra)
 	if properties, ok := schema["properties"].(map[string]any); ok {

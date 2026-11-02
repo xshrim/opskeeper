@@ -369,11 +369,3 @@ func safePath(path string) (string, error) {
 	}
 	return filepath.Clean(path), nil
 }
-
-func cloneMap(input map[string]any) map[string]any {
-	output := make(map[string]any, len(input))
-	for key, value := range input {
-		output[key] = value
-	}
-	return output
-}

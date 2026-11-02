@@ -50,13 +50,8 @@ func (s *Service) resolveHostTools(ctx context.Context, item engine.ContextResou
 		input.ConnectionInput = connection
 		return hostOutput(host.FileLogs(ctx, input))
 	})
-	add("host_health", "Check Linux host health and availability.", hostDirectSchema(nil), func(ctx context.Context, args map[string]any) (engine.ToolResult, error) {
-		input, err := decodeHost[host.ConnectionInput](args)
-		if err != nil {
-			return engine.ToolResult{}, err
-		}
-		input = connection
-		return hostOutput(host.Health(ctx, input))
+	add("host_health", "Check Linux host health and availability.", hostDirectSchema(nil), func(ctx context.Context, _ map[string]any) (engine.ToolResult, error) {
+		return hostOutput(host.Health(ctx, connection))
 	})
 	return nil
 }

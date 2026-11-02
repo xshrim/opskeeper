@@ -307,10 +307,3 @@ func normalizedBasePath(basePath string) string {
 	}
 	return "/" + strings.Trim(basePath, "/") + "/"
 }
-
-func envOrDefault(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
-		return value
-	}
-	return fallback
-}

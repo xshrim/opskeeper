@@ -197,7 +197,7 @@ Engine 不为这些 Server 增加特殊分支，也不区分 `managed` 和 `exte
 
 ### 7.1 Application 聚合资源
 
-Application 是项目级业务资源，不单独配置 MCP 传输。它的 `config.access_mode` 只能为 `virtual_machine`、`containerized` 或 `cloud_native`，并使用 `instances` 保存一个或多个受控实例关联：分别引用 Host、Docker 或 Kubernetes 逻辑资源及其进程、容器或工作负载定位信息。Host 进程关键字支持 `&`、`|`、逗号/空格隐式 AND 和引号保护；Kubernetes 前端将工作负载类型与名称合并为一个“类型 · 名称”候选项，持久化时仍拆分为 `workload_kind` 与 `workload_name`。
+Application 是项目级业务资源，不单独配置 MCP 传输。它的运行时类型为虚拟机、容器化或云原生，并使用 `instances` 保存零个或多个受控实例关联：分别引用 Host、Docker 或 Kubernetes 逻辑资源及其进程、容器或工作负载定位信息。Host 初筛关键字支持 `&`、`|`、逗号/空格隐式 AND 和引号保护，选定进程后持久化完整命令行作为唯一定位条件；Kubernetes 前端将工作负载类型与名称合并为一个“类型 · 名称”候选项，持久化时仍拆分为 `workload_kind` 与 `workload_name`。没有实例的 Application 暂无可判定的运行状态。
 
 Application 作为 AI 上下文时应采用混合设计：Application 是权限、审计和业务语义主体；工具实现复用关联 Host/Docker/Kubernetes/Loki 的公共只读工具，并由 Application 实例固定目标参数。Application 不读取或区分关联资源的 Direct/Agent 接入方式，统一调用器按关联资源自身配置选择唯一 Provider；缺少受控工具时明确失败且不回退。不得将整个关联资源的通用工具集原样暴露给模型，否则模型可以访问与该 Application 无关的进程、容器、命名空间或工作负载。仅在跨实例汇总、实例状态和应用日志等 Application 语义无法由底层资源表达时新增 Application 工具。
 

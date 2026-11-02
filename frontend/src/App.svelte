@@ -910,7 +910,7 @@ import type {
           }}
           onRequestResourceCreate={(request) => {
             applicationResourceResult = null;
-            applicationResourceRequest = { ...request, id: crypto.randomUUID() };
+            applicationResourceRequest = request;
           }}
           resourceCreationResult={applicationResourceResult}
           onNotice={(message) => (notice = message)}

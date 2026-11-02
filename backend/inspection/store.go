@@ -60,7 +60,7 @@ func (s *store) CreatePolicy(ctx context.Context, input Policy, actorID string) 
 	if err != nil {
 		return Policy{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
 	err = tx.QueryRow(ctx, `INSERT INTO inspection_policies (scope_id,name,cron,timezone,status,target_labels,persona_id,timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows,created_by) VALUES ($1::uuid,$2,$3,$4,$5,$6,NULLIF($7,'')::uuid,$8,$9,$10,$11,$12,$13,NULLIF($14,'')::uuid) RETURNING id::text`, input.ScopeID, input.Name, input.Cron, input.Timezone, input.Status, labels, input.PersonaID, int(input.Timeout.Seconds()), input.Retries, input.MaxConcurrent, input.MaxToolCalls, input.MaxTokens, windows, actorID).Scan(&id)
 	if err != nil {
@@ -165,7 +165,11 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockID).Scan(&locked); err != nil || !locked {
 		return 0, err
 	}
-	defer conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockID)
+	defer func() {
+		// Releasing the session lock is best-effort; the dedicated connection is
+		// returned to the pool immediately after this function exits.
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, lockID)
+	}()
 	rows, err := conn.Query(ctx, `SELECT id::text,scope_id::text,name,cron,timezone,status,target_labels,COALESCE(persona_id::text,''),timeout_seconds,retries,max_concurrent,max_tool_calls,max_tokens,maintenance_windows FROM inspection_policies WHERE status='active' AND deleted_at IS NULL`)
 	if err != nil {
 		return 0, mapError(err)
@@ -238,7 +242,7 @@ func (s *store) CreateScheduledRun(ctx context.Context, policy Policy, start, en
 	if err != nil {
 		return "", false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var runID string
 	err = tx.QueryRow(ctx, `INSERT INTO inspection_runs (policy_id,scope_id,window_start,window_end,trigger,policy_snapshot,target_snapshot) VALUES ($1::uuid,$2::uuid,$3,$4,'schedule',$5,$6) ON CONFLICT (policy_id,window_start) DO NOTHING RETURNING id::text`, policy.ID, policy.ScopeID, start, end, policyRaw, targetRaw).Scan(&runID)
 	if err == pgx.ErrNoRows {
@@ -259,7 +263,7 @@ func (s *store) ClaimJob(ctx context.Context, owner string, lease time.Duration)
 	if err != nil {
 		return Job{}, false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var job Job
 	err = tx.QueryRow(ctx, `WITH next AS (SELECT id FROM inspection_jobs WHERE (status='queued' AND available_at<=now()) OR (status='leased' AND lease_expires_at<now()) ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE inspection_jobs job SET status='leased',attempt=attempt+1,lease_owner=$1,lease_expires_at=now()+$2::interval,heartbeat_at=now(),updated_at=now() FROM next WHERE job.id=next.id RETURNING job.id::text,job.run_id::text,job.lease_owner,job.attempt,job.max_attempts`, owner, lease.String()).Scan(&job.ID, &job.RunID, &job.LeaseOwner, &job.Attempt, &job.MaxAttempts)
 	if err == pgx.ErrNoRows {
@@ -280,7 +284,7 @@ func (s *store) FinishJob(ctx context.Context, id, owner string, runErr error) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var attempt, maxAttempts int
 	var runID string
 	err = tx.QueryRow(ctx, `SELECT run_id::text,attempt,max_attempts FROM inspection_jobs WHERE id=$1::uuid AND lease_owner=$2 AND status='leased' FOR UPDATE`, id, owner).Scan(&runID, &attempt, &maxAttempts)
@@ -330,7 +334,7 @@ func (s *store) CreateManualRun(ctx context.Context, policy Policy, now time.Tim
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var runID string
 	if err = tx.QueryRow(ctx, `INSERT INTO inspection_runs (policy_id,scope_id,window_start,window_end,trigger,policy_snapshot,target_snapshot) VALUES ($1::uuid,$2::uuid,$3,$4,'manual',$5,$6) RETURNING id::text`, policy.ID, policy.ScopeID, now.UTC(), now.UTC().Add(time.Nanosecond), policyRaw, targetRaw).Scan(&runID); err != nil {
 		return "", mapError(err)
@@ -381,7 +385,7 @@ func (s *store) SaveResults(ctx context.Context, run Run, policy Policy, results
 	if err != nil {
 		return nil, nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('inspection-results:'||$1,0))`, policy.ID); err != nil {
 		return nil, nil, err
 	}
@@ -718,7 +722,7 @@ func (s *store) CreateConfiguredChannel(ctx context.Context, item NotificationCh
 	if err != nil {
 		return NotificationChannel{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if err := tx.QueryRow(ctx, `INSERT INTO notification_channels(scope_id,name,kind,webhook_url,status,rate_limit_per_minute,config_version,share_with_children) VALUES($1::uuid,$2,$3,'https://encrypted.invalid/',$4,$5,1,$6) RETURNING id::text`, item.ScopeID, item.Name, item.Kind, item.Status, item.RateLimitPerMinute, item.ShareWithChildren).Scan(&item.ID); err != nil {
 		return NotificationChannel{}, mapError(err)
 	}
@@ -765,7 +769,7 @@ func (s *store) UpdateConfiguredChannel(ctx context.Context, item NotificationCh
 	if err != nil {
 		return NotificationChannel{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var nextVersion int
 	err = tx.QueryRow(ctx, `UPDATE notification_channels SET name=$3,status=$4,rate_limit_per_minute=$5,share_with_children=CASE WHEN $6 THEN $7 ELSE share_with_children END,config_version=config_version+1,updated_at=now() WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL RETURNING config_version`, item.ID, item.ScopeID, item.Name, item.Status, item.RateLimitPerMinute, item.ShareWithChildrenSet, item.ShareWithChildren).Scan(&nextVersion)
 	if err == pgx.ErrNoRows {
@@ -800,7 +804,7 @@ func (s *store) ReserveChannelTest(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var limit int
 	var scopeID string
 	if err := tx.QueryRow(ctx, `SELECT rate_limit_per_minute,scope_id::text FROM notification_channels WHERE id=$1::uuid AND status='active' AND deleted_at IS NULL FOR UPDATE`, id).Scan(&limit, &scopeID); err == pgx.ErrNoRows {
@@ -844,7 +848,7 @@ func (s *store) MarkLLMStatus(ctx context.Context, runID, status string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var scopeID, policyID string
 	var deterministicCompleted bool
 	if err := tx.QueryRow(ctx, `SELECT scope_id::text,policy_id::text,deterministic_completed FROM inspection_runs WHERE id=$1::uuid FOR UPDATE`, runID).Scan(&scopeID, &policyID, &deterministicCompleted); err != nil {

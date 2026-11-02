@@ -22,6 +22,7 @@ type Application struct {
 	OperationsOwnerIDs []string          `json:"operations_owner_ids"`
 	Instances          []Instance        `json:"instances"`
 	Dependencies       []Dependency      `json:"dependencies"`
+	Relations          []Relation        `json:"relations"`
 	CreatedAt          time.Time         `json:"created_at"`
 	UpdatedAt          time.Time         `json:"updated_at"`
 }
@@ -67,6 +68,85 @@ type Workspace struct {
 	Applications []Application     `json:"applications"`
 }
 
+type Topology struct {
+	Nodes []TopologyNode `json:"nodes"`
+	Edges []TopologyEdge `json:"edges"`
+}
+
+type TopologyNode struct {
+	ID           string         `json:"id"`
+	Kind         string         `json:"kind"`
+	Name         string         `json:"name"`
+	ScopeID      string         `json:"scope_id,omitempty"`
+	ProjectID    string         `json:"project_id,omitempty"`
+	ProjectName  string         `json:"project_name,omitempty"`
+	ResourceKind string         `json:"resource_kind,omitempty"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
+type TopologyEdge struct {
+	ID       string         `json:"id"`
+	SourceID string         `json:"source_id"`
+	TargetID string         `json:"target_id"`
+	Relation string         `json:"relation"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+}
+
+// DiagnosticContext is the immutable application metadata snapshot supplied
+// to a diagnosis run. It contains configuration facts only; live state still
+// comes from resource tools and observations.
+type DiagnosticContext struct {
+	Application  DiagnosticApplication            `json:"application"`
+	Project      DiagnosticProject                `json:"project"`
+	Resources    []DiagnosticResource             `json:"resources"`
+	Dependencies []DiagnosticApplicationReference `json:"dependencies"`
+	Dependents   []DiagnosticApplicationReference `json:"dependents"`
+}
+
+type DiagnosticApplication struct {
+	ID          string            `json:"id"`
+	ProjectID   string            `json:"project_id"`
+	Name        string            `json:"name"`
+	Code        string            `json:"code"`
+	Description string            `json:"description,omitempty"`
+	RuntimeKind string            `json:"runtime_kind"`
+	Status      string            `json:"status"`
+	Critical    bool              `json:"critical"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type DiagnosticProject struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Code        string            `json:"code"`
+	Description string            `json:"description,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+}
+
+type DiagnosticResource struct {
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Kind        string         `json:"kind"`
+	Relation    string         `json:"relation"`
+	RuntimeKind string         `json:"runtime_kind,omitempty"`
+	Status      string         `json:"status"`
+	Binding     map[string]any `json:"binding,omitempty"`
+}
+
+type DiagnosticApplicationReference struct {
+	ID           string `json:"id"`
+	ProjectID    string `json:"project_id"`
+	ProjectName  string `json:"project_name"`
+	ProjectCode  string `json:"project_code"`
+	Name         string `json:"name"`
+	Code         string `json:"code"`
+	Description  string `json:"description,omitempty"`
+	RuntimeKind  string `json:"runtime_kind"`
+	Status       string `json:"status"`
+	LinkStatus   string `json:"link_status"`
+	RelationKind string `json:"relation_kind"`
+}
+
 type RelatedResource struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -94,6 +174,7 @@ type CreateInput struct {
 	OperationsOwnerIDs []string                `json:"operations_owner_ids"`
 	Instances          []CreateInstanceInput   `json:"instances"`
 	Dependencies       []CreateDependencyInput `json:"dependencies,omitempty"`
+	Relations          []CreateRelationInput   `json:"relations,omitempty"`
 }
 type UpdateInput struct {
 	Name, Code, Description, Icon, Status *string
@@ -105,6 +186,7 @@ type UpdateInput struct {
 	OperationsOwnerIDs                    *[]string
 	Instances                             *[]CreateInstanceInput
 	Dependencies                          *[]CreateDependencyInput
+	Relations                             *[]CreateRelationInput
 }
 type CreateInstanceInput struct {
 	ApplicationID    string         `json:"application_id,omitempty"`
@@ -122,4 +204,20 @@ type CreateDependencyInput struct {
 	Binding          map[string]any `json:"binding"`
 	Required         *bool          `json:"required"`
 	Status           string         `json:"status"`
+}
+
+type Relation struct {
+	ID                    string `json:"id"`
+	ApplicationID         string `json:"application_id"`
+	TargetApplicationID   string `json:"target_application_id"`
+	TargetApplicationName string `json:"target_application_name,omitempty"`
+	TargetApplicationCode string `json:"target_application_code,omitempty"`
+	RelationKind          string `json:"relation_kind"`
+	Status                string `json:"status"`
+}
+
+type CreateRelationInput struct {
+	TargetApplicationID string `json:"target_application_id"`
+	RelationKind        string `json:"relation_kind"`
+	Status              string `json:"status"`
 }

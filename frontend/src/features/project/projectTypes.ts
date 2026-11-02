@@ -6,7 +6,7 @@ export type RuntimeResourceKind = 'Host' | 'Docker' | 'Kubernetes';
 
 export type ApplicationResourceCreationRequest = {
   id: string;
-  kind: RuntimeResourceKind;
+  kind: string;
   scopeId: string;
   instanceId?: string;
 };
@@ -38,7 +38,8 @@ export type ApplicationDraft = {
   critical: boolean;
   technicalOwnerIds: string[];
   operationsOwnerIds: string[];
-  dependencies?: Array<{ dependency_kind: string; target_resource_id: string }>;
+  dependencies?: Array<{ dependency_kind: string; target_resource_id: string; binding?: Record<string, string>; required?: boolean }>;
+  relations?: Array<{ target_application_id: string; relation_kind: 'depends_on' | 'depended_by' | 'mutual'; status?: string }>;
   instances: ApplicationInstanceDraft[];
 };
 

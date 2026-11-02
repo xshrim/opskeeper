@@ -129,6 +129,11 @@ VALUES($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11::uuid[]) RETURNING id::t
 		}
 		ids = append(ids, id)
 	}
+	for index, input := range inputs {
+		if err := insertRelations(ctx, tx, ids[index], input.Relations); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit create applications: %w", err)
 	}
@@ -151,7 +156,23 @@ func (s *store) Get(ctx context.Context, projectID, applicationID string) (Appli
 		query += ` AND a.project_id=$2::uuid`
 	}
 	query, args = visibleApplications(query, args, ctx)
-	return scanApp(s.pool.QueryRow(ctx, query, args...))
+	item, err := scanApp(s.pool.QueryRow(ctx, query, args...))
+	if err != nil {
+		return Application{}, err
+	}
+	item.Instances, err = s.listInstances(ctx, item.ID)
+	if err != nil {
+		return Application{}, err
+	}
+	item.Dependencies, err = s.listDependencies(ctx, item.ID)
+	if err != nil {
+		return Application{}, err
+	}
+	item.Relations, err = s.listRelations(ctx, item.ID)
+	if err != nil {
+		return Application{}, err
+	}
+	return item, nil
 }
 
 func (s *store) List(ctx context.Context, projectID string) ([]Application, error) {
@@ -173,6 +194,10 @@ func (s *store) List(ctx context.Context, projectID string) ([]Application, erro
 			return nil, err
 		}
 		item.Dependencies, err = s.listDependencies(ctx, item.ID)
+		if err != nil {
+			return nil, err
+		}
+		item.Relations, err = s.listRelations(ctx, item.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -259,6 +284,14 @@ WHERE a.id=$1::uuid AND a.deleted_at IS NULL`
 			return Application{}, err
 		}
 	}
+	if input.Relations != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM application_relations WHERE application_id=$1::uuid`, updatedID); err != nil {
+			return Application{}, fmt.Errorf("replace application relations: %w", err)
+		}
+		if err := insertRelations(ctx, tx, updatedID, *input.Relations); err != nil {
+			return Application{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Application{}, fmt.Errorf("commit update application: %w", err)
 	}
@@ -308,6 +341,9 @@ func (s *store) Delete(ctx context.Context, projectID, applicationID string) err
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `DELETE FROM application_dependencies WHERE application_id=$1::uuid`, current.ID); err != nil {
 		return fmt.Errorf("delete application dependencies: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM application_relations WHERE application_id=$1::uuid OR target_application_id=$1::uuid`, current.ID); err != nil {
+		return fmt.Errorf("delete application relations: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM application_instances WHERE application_id=$1::uuid`, current.ID); err != nil {
 		return fmt.Errorf("delete application instances: %w", err)
@@ -415,32 +451,6 @@ func (s *store) DeleteInstance(ctx context.Context, projectID, applicationID, in
 	return nil
 }
 
-func (s *store) getDependency(ctx context.Context, projectID, applicationID, dependencyID string) (Dependency, error) {
-	args := []any{dependencyID, applicationID}
-	query := `SELECT d.id::text,d.application_id::text,d.target_resource_id::text,r.name,r.kind,
-       d.dependency_kind,d.binding,d.required,d.status
-  FROM application_dependencies d
-  JOIN applications a ON a.id=d.application_id
-  JOIN projects p ON p.id=a.project_id
-  JOIN resources r ON r.id=d.target_resource_id
- WHERE d.id=$1::uuid AND d.application_id=$2::uuid AND a.deleted_at IS NULL AND p.deleted_at IS NULL AND r.deleted_at IS NULL`
-	if strings.TrimSpace(projectID) != "" {
-		args = append(args, projectID)
-		query += ` AND a.project_id=$3::uuid`
-	}
-	query, args = visibleApplications(query, args, ctx)
-	var item Dependency
-	var binding []byte
-	if err := s.pool.QueryRow(ctx, query, args...).Scan(&item.ID, &item.ApplicationID, &item.TargetResourceID,
-		&item.TargetResourceName, &item.TargetResourceKind, &item.DependencyKind, &binding, &item.Required, &item.Status); err != nil {
-		return Dependency{}, mapStoreError(err)
-	}
-	if err := json.Unmarshal(binding, &item.Binding); err != nil {
-		return Dependency{}, fmt.Errorf("decode application binding: %w", err)
-	}
-	return item, nil
-}
-
 func (s *store) listDependencies(ctx context.Context, applicationID string) ([]Dependency, error) {
 	rows, err := s.pool.Query(ctx, `SELECT d.id::text,d.application_id::text,d.target_resource_id::text,r.name,r.kind,
        d.dependency_kind,d.binding,d.required,d.status
@@ -470,12 +480,13 @@ func (s *store) ContextResourceIDs(ctx context.Context, scopeID, applicationID s
 	query, args := visibleApplications(`SELECT DISTINCT r.id::text
   FROM applications a JOIN projects p ON p.id=a.project_id
   JOIN (
-    SELECT application_id, target_resource_id FROM application_instances
+    SELECT application_id, target_resource_id FROM application_instances WHERE status <> 'disabled'
     UNION ALL
-    SELECT application_id, target_resource_id FROM application_dependencies
+    SELECT application_id, target_resource_id FROM application_dependencies WHERE status <> 'disabled'
   ) relation ON relation.application_id=a.id
   JOIN resources r ON r.id=relation.target_resource_id
  WHERE a.id=$1::uuid AND p.scope_id=$2::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
+   AND resource_scope_contains(r.scope_id,p.scope_id)
  ORDER BY r.id`, []any{applicationID, scopeID}, ctx)
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -491,6 +502,228 @@ func (s *store) ContextResourceIDs(ctx context.Context, scopeID, applicationID s
 		items = append(items, id)
 	}
 	return items, rows.Err()
+}
+
+func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID string) (DiagnosticContext, error) {
+	item, err := s.Get(ctx, "", applicationID)
+	if err != nil {
+		return DiagnosticContext{}, err
+	}
+	if item.ProjectScopeID != scopeID {
+		return DiagnosticContext{}, ErrNotFound
+	}
+	var project DiagnosticProject
+	var labels []byte
+	if err := s.pool.QueryRow(ctx, `SELECT id::text,name,code,description,labels
+  FROM projects
+ WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL`, item.ProjectID, scopeID).Scan(
+		&project.ID, &project.Name, &project.Code, &project.Description, &labels); err != nil {
+		return DiagnosticContext{}, mapStoreError(err)
+	}
+	if err := json.Unmarshal(labels, &project.Labels); err != nil {
+		return DiagnosticContext{}, fmt.Errorf("decode diagnostic project labels: %w", err)
+	}
+	resources := make([]DiagnosticResource, 0, len(item.Instances)+len(item.Dependencies))
+	allowedResources, err := s.diagnosticResources(ctx, scopeID, item)
+	if err != nil {
+		return DiagnosticContext{}, err
+	}
+	for _, instance := range item.Instances {
+		resource, ok := allowedResources[instance.TargetResourceID]
+		if !ok {
+			continue
+		}
+		resources = append(resources, DiagnosticResource{
+			ID: instance.TargetResourceID, Name: resource.Name, Kind: resource.Kind,
+			Relation: "runtime", RuntimeKind: instance.RuntimeKind, Status: instance.Status,
+		})
+	}
+	for _, dependency := range item.Dependencies {
+		resource, ok := allowedResources[dependency.TargetResourceID]
+		if !ok {
+			continue
+		}
+		resources = append(resources, DiagnosticResource{
+			ID: dependency.TargetResourceID, Name: resource.Name, Kind: resource.Kind,
+			Relation: "association", Status: dependency.Status, Binding: sanitizeBinding(dependency.DependencyKind, dependency.Binding),
+		})
+	}
+	dependencies, err := s.listDiagnosticApplicationReferences(ctx, applicationID, false)
+	if err != nil {
+		return DiagnosticContext{}, err
+	}
+	dependents, err := s.listDiagnosticApplicationReferences(ctx, applicationID, true)
+	if err != nil {
+		return DiagnosticContext{}, err
+	}
+	return DiagnosticContext{
+		Application: DiagnosticApplication{ID: item.ID, ProjectID: item.ProjectID, Name: item.Name, Code: item.Code, Description: item.Description, RuntimeKind: item.RuntimeKind, Status: item.Status, Critical: item.Critical, Labels: cloneLabels(item.Labels)},
+		Project:     project, Resources: resources, Dependencies: dependencies, Dependents: dependents,
+	}, nil
+}
+
+type diagnosticResourceMetadata struct {
+	Name string
+	Kind string
+}
+
+func (s *store) diagnosticResources(ctx context.Context, scopeID string, item Application) (map[string]diagnosticResourceMetadata, error) {
+	ids := make([]string, 0, len(item.Instances)+len(item.Dependencies))
+	seen := make(map[string]struct{})
+	for _, instance := range item.Instances {
+		if _, ok := seen[instance.TargetResourceID]; !ok {
+			ids = append(ids, instance.TargetResourceID)
+			seen[instance.TargetResourceID] = struct{}{}
+		}
+	}
+	for _, dependency := range item.Dependencies {
+		if _, ok := seen[dependency.TargetResourceID]; !ok {
+			ids = append(ids, dependency.TargetResourceID)
+			seen[dependency.TargetResourceID] = struct{}{}
+		}
+	}
+	result := make(map[string]diagnosticResourceMetadata, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+	query, args := appendResourceScopeVisibility(
+		`SELECT id::text,name,kind FROM resources WHERE id=ANY($1::uuid[]) AND resource_scope_contains(scope_id,$2::uuid) AND deleted_at IS NULL`,
+		[]any{ids, scopeID}, ctx, "resources",
+	)
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic application resources: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var metadata diagnosticResourceMetadata
+		if err := rows.Scan(&id, &metadata.Name, &metadata.Kind); err != nil {
+			return nil, fmt.Errorf("scan diagnostic application resource: %w", err)
+		}
+		result[id] = metadata
+	}
+	return result, rows.Err()
+}
+
+func (s *store) listDiagnosticApplicationReferences(ctx context.Context, applicationID string, incoming bool) ([]DiagnosticApplicationReference, error) {
+	var query string
+	args := []any{applicationID}
+	if incoming {
+		query = `SELECT source.id::text,source.project_id::text,source_project.name,source_project.code,
+       source.name,source.code,source.description,source.runtime_kind,source.status,'depends_on',relation.status
+  FROM application_relations relation
+  JOIN applications source ON source.id=relation.application_id
+  JOIN projects source_project ON source_project.id=source.project_id
+  JOIN applications target ON target.id=relation.target_application_id
+ WHERE relation.target_application_id=$1::uuid AND source.deleted_at IS NULL
+   AND target.deleted_at IS NULL AND source_project.deleted_at IS NULL
+   AND target.id=$1::uuid`
+		query, args = appendApplicationScopeFilter(query, args, "source_project", ctx)
+	} else {
+		query = `SELECT target.id::text,target.project_id::text,target_project.name,target_project.code,
+       target.name,target.code,target.description,target.runtime_kind,target.status,'depends_on',relation.status
+  FROM application_relations relation
+  JOIN applications source ON source.id=relation.application_id
+  JOIN applications target ON target.id=relation.target_application_id
+  JOIN projects target_project ON target_project.id=target.project_id
+ WHERE relation.application_id=$1::uuid AND source.deleted_at IS NULL
+   AND target.deleted_at IS NULL AND target_project.deleted_at IS NULL
+   AND source.id=$1::uuid`
+		query, args = appendApplicationScopeFilter(query, args, "target_project", ctx)
+	}
+	query += ` ORDER BY 5,1`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic application references: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DiagnosticApplicationReference, 0)
+	for rows.Next() {
+		var item DiagnosticApplicationReference
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.ProjectName, &item.ProjectCode, &item.Name, &item.Code, &item.Description, &item.RuntimeKind, &item.Status, &item.RelationKind, &item.LinkStatus); err != nil {
+			return nil, fmt.Errorf("scan diagnostic application reference: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func appendApplicationScopeFilter(query string, args []any, alias string, ctx context.Context) (string, []any) {
+	filter, restricted := authorization.ScopeFilterFromContext(ctx)
+	if !restricted {
+		return query, args
+	}
+	if len(filter.ScopeIDs) == 0 {
+		return query + " AND FALSE", args
+	}
+	position := strconv.Itoa(len(args) + 1)
+	return query + " AND " + alias + ".scope_id = ANY($" + position + ")", append(args, filter.ScopeIDs)
+}
+
+func appendResourceScopeVisibility(query string, args []any, ctx context.Context, alias string) (string, []any) {
+	filter, restricted := authorization.ResourceFilterFromContext(ctx)
+	if !restricted {
+		if scopeFilter, ok := authorization.ScopeFilterFromContext(ctx); ok {
+			filter.ScopeIDs = scopeFilter.ScopeIDs
+			restricted = true
+		}
+	}
+	if !restricted {
+		return query, args
+	}
+	if len(filter.ScopeIDs) == 0 && len(filter.ResourceIDs) == 0 {
+		return query + " AND FALSE", args
+	}
+	scopePosition := len(args) + 1
+	resourcePosition := len(args) + 2
+	clause := fmt.Sprintf(` AND (%s.id = ANY($%d::uuid[]) OR %s.scope_id = ANY($%d::uuid[]) OR EXISTS (
+        WITH RECURSIVE ancestors(id) AS (
+            SELECT unnest($%d::uuid[])
+            UNION
+            SELECT scope.parent_scope_id FROM scopes scope JOIN ancestors ON ancestors.id=scope.id WHERE scope.parent_scope_id IS NOT NULL
+        ) SELECT 1 FROM ancestors WHERE ancestors.id=%s.scope_id
+    ))`, alias, resourcePosition, alias, scopePosition, scopePosition, alias)
+	return query + clause, append(args, filter.ScopeIDs, filter.ResourceIDs)
+}
+
+func cloneLabels(value map[string]string) map[string]string {
+	if value == nil {
+		return nil
+	}
+	result := make(map[string]string, len(value))
+	for key, item := range value {
+		result[key] = item
+	}
+	return result
+}
+
+func sanitizeBinding(kind string, value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	result := make(map[string]any, len(value))
+	for key, item := range value {
+		key = strings.TrimSpace(key)
+		if !allowedDependencyBindingField(kind, key) {
+			continue
+		}
+		switch typed := item.(type) {
+		case string:
+			result[key] = safeBindingText(typed)
+		case bool, float64, int, int64:
+			result[key] = typed
+		}
+	}
+	return result
+}
+
+func safeBindingText(value string) string {
+	value = strings.TrimSpace(value)
+	if len([]rune(value)) > 512 {
+		return string([]rune(value)[:512])
+	}
+	return value
 }
 
 func (s *store) Workspace(ctx context.Context, projectID string) (Workspace, error) {
@@ -515,6 +748,177 @@ func (s *store) Workspace(ctx context.Context, projectID string) (Workspace, err
 		summary.Dependencies += len(item.Dependencies)
 	}
 	return Workspace{Summary: summary, Resources: resources, Alerts: alerts, Applications: apps}, nil
+}
+
+func (s *store) Topology(ctx context.Context, projectID string) (Topology, error) {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return Topology{}, err
+	}
+	var project TopologyNode
+	if err := s.pool.QueryRow(ctx, `SELECT id::text,name,scope_id::text FROM projects WHERE id=$1::uuid AND deleted_at IS NULL`, projectID).Scan(&project.ID, &project.Name, &project.ScopeID); err != nil {
+		return Topology{}, mapStoreError(err)
+	}
+	project.Kind = "project"
+	nodes := []TopologyNode{project}
+	edges := make([]TopologyEdge, 0)
+	apps, err := s.List(ctx, projectID)
+	if err != nil {
+		return Topology{}, err
+	}
+	appIDs := make([]string, 0, len(apps))
+	appSet := make(map[string]struct{}, len(apps))
+	for _, app := range apps {
+		appIDs = append(appIDs, app.ID)
+		appSet[app.ID] = struct{}{}
+		nodes = append(nodes, TopologyNode{ID: app.ID, Kind: "application", Name: app.Name, ProjectID: projectID, ProjectName: project.Name, Metadata: map[string]any{"code": app.Code, "runtime_kind": app.RuntimeKind, "description": app.Description, "status": app.Status, "critical": app.Critical, "labels": app.Labels, "instance_count": len(app.Instances)}})
+		edges = append(edges, TopologyEdge{ID: "contains:" + app.ID, SourceID: projectID, TargetID: app.ID, Relation: "contains"})
+	}
+	resourceQuery, resourceArgs := appendResourceScopeVisibility(`SELECT DISTINCT r.id::text,r.scope_id::text,r.name,r.kind,r.subtype,r.labels
+  FROM resources r
+	JOIN projects current_project ON current_project.id=$2::uuid
+  WHERE r.deleted_at IS NULL AND (r.scope_id=current_project.scope_id OR EXISTS (SELECT 1 FROM application_instances i WHERE i.application_id=ANY($1::uuid[]) AND i.target_resource_id=r.id)
+	OR EXISTS (SELECT 1 FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[]) AND d.target_resource_id=r.id))`, []any{appIDs, projectID}, ctx, "r")
+	resourceRows, err := s.pool.Query(ctx, resourceQuery, resourceArgs...)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list application topology resources: %w", err)
+	}
+	resourceSet := make(map[string]struct{})
+	for resourceRows.Next() {
+		var node TopologyNode
+		var subtype string
+		var rawLabels []byte
+		if err := resourceRows.Scan(&node.ID, &node.ScopeID, &node.Name, &node.ResourceKind, &subtype, &rawLabels); err != nil {
+			resourceRows.Close()
+			return Topology{}, fmt.Errorf("scan application topology resource: %w", err)
+		}
+		node.Kind = "resource"
+		labels := map[string]string{}
+		if err := json.Unmarshal(rawLabels, &labels); err != nil {
+			resourceRows.Close()
+			return Topology{}, fmt.Errorf("decode application topology resource labels: %w", err)
+		}
+		node.Metadata = map[string]any{"subtype": subtype, "labels": labels, "external": node.ScopeID != project.ScopeID}
+		nodes = append(nodes, node)
+		resourceSet[node.ID] = struct{}{}
+	}
+	if err := resourceRows.Err(); err != nil {
+		resourceRows.Close()
+		return Topology{}, err
+	}
+	resourceRows.Close()
+	instanceRows, err := s.pool.Query(ctx, `SELECT i.id::text,i.application_id::text,i.target_resource_id::text FROM application_instances i WHERE i.application_id=ANY($1::uuid[])`, appIDs)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list application topology instances: %w", err)
+	}
+	for instanceRows.Next() {
+		var id, source, target string
+		if err := instanceRows.Scan(&id, &source, &target); err != nil {
+			instanceRows.Close()
+			return Topology{}, err
+		}
+		if _, ok := resourceSet[target]; ok {
+			edges = append(edges, TopologyEdge{ID: "instance:" + id, SourceID: source, TargetID: target, Relation: "runs_on"})
+		}
+	}
+	instanceRows.Close()
+	dependencyRows, err := s.pool.Query(ctx, `SELECT d.id::text,d.application_id::text,d.target_resource_id::text,d.dependency_kind,d.binding FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[])`, appIDs)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list application topology bindings: %w", err)
+	}
+	for dependencyRows.Next() {
+		var id, source, target, kind string
+		var binding []byte
+		if err := dependencyRows.Scan(&id, &source, &target, &kind, &binding); err != nil {
+			dependencyRows.Close()
+			return Topology{}, err
+		}
+		if _, ok := resourceSet[target]; ok {
+			var metadata map[string]any
+			_ = json.Unmarshal(binding, &metadata)
+			edges = append(edges, TopologyEdge{ID: "binding:" + id, SourceID: source, TargetID: target, Relation: "uses", Metadata: map[string]any{"kind": kind, "binding": sanitizeBinding(kind, metadata)}})
+		}
+	}
+	dependencyRows.Close()
+	resourceIDs := make([]string, 0, len(resourceSet))
+	for resourceID := range resourceSet {
+		resourceIDs = append(resourceIDs, resourceID)
+	}
+	if len(resourceIDs) > 0 {
+		relationRows, err := s.pool.Query(ctx, `SELECT id::text,source_resource_id::text,target_resource_id::text,relation_type,attributes
+  FROM resource_relations
+ WHERE source_resource_id=ANY($1::uuid[]) AND target_resource_id=ANY($1::uuid[])`, resourceIDs)
+		if err != nil {
+			return Topology{}, fmt.Errorf("list project resource topology relations: %w", err)
+		}
+		for relationRows.Next() {
+			var id, source, target, relation string
+			var rawAttributes []byte
+			if err := relationRows.Scan(&id, &source, &target, &relation, &rawAttributes); err != nil {
+				relationRows.Close()
+				return Topology{}, fmt.Errorf("scan project resource topology relation: %w", err)
+			}
+			attributes := map[string]any{}
+			if err := json.Unmarshal(rawAttributes, &attributes); err != nil {
+				relationRows.Close()
+				return Topology{}, fmt.Errorf("decode project resource topology relation: %w", err)
+			}
+			edges = append(edges, TopologyEdge{ID: "resource_relation:" + id, SourceID: source, TargetID: target, Relation: relation, Metadata: attributes})
+		}
+		if err := relationRows.Err(); err != nil {
+			relationRows.Close()
+			return Topology{}, err
+		}
+		relationRows.Close()
+	}
+	relationQuery, relationArgs := appendApplicationScopeFilter(`SELECT relation.id::text,
+	       source.id::text,source.name,source.code,source.runtime_kind,source.status,source.project_id::text,source_project.name,source_project.code,
+	       target.id::text,target.name,target.code,target.runtime_kind,target.status,target.project_id::text,target_project.name,target_project.code,relation.status
+  FROM application_relations relation
+  JOIN applications source ON source.id=relation.application_id
+  JOIN projects source_project ON source_project.id=source.project_id
+  JOIN applications target ON target.id=relation.target_application_id
+  JOIN projects target_project ON target_project.id=target.project_id
+	WHERE (relation.application_id=ANY($1::uuid[]) OR relation.target_application_id=ANY($1::uuid[]))
+	  AND source.deleted_at IS NULL AND source_project.deleted_at IS NULL
+	  AND target.deleted_at IS NULL AND target_project.deleted_at IS NULL`, []any{appIDs}, "source_project", ctx)
+	relationQuery, relationArgs = appendApplicationScopeFilter(relationQuery, relationArgs, "target_project", ctx)
+	relationRows, err := s.pool.Query(ctx, relationQuery, relationArgs...)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list application topology relations: %w", err)
+	}
+	projectSet := map[string]struct{}{projectID: {}}
+	ensureProject := func(id, name, code string) {
+		if _, ok := projectSet[id]; ok {
+			return
+		}
+		nodes = append(nodes, TopologyNode{ID: id, Kind: "project", Name: name, Metadata: map[string]any{"code": code, "external": true}})
+		projectSet[id] = struct{}{}
+	}
+	ensureApplication := func(id, name, code, runtimeKind, status, owningProjectID, owningProjectName, owningProjectCode string) {
+		ensureProject(owningProjectID, owningProjectName, owningProjectCode)
+		if _, ok := appSet[id]; ok {
+			return
+		}
+		nodes = append(nodes, TopologyNode{ID: id, Kind: "application", Name: name, ProjectID: owningProjectID, ProjectName: owningProjectName, Metadata: map[string]any{"code": code, "runtime_kind": runtimeKind, "status": status, "external": owningProjectID != projectID}})
+		appSet[id] = struct{}{}
+		edges = append(edges, TopologyEdge{ID: "contains:" + id, SourceID: owningProjectID, TargetID: id, Relation: "contains"})
+	}
+	for relationRows.Next() {
+		var id, sourceID, sourceName, sourceCode, sourceRuntime, sourceStatus, sourceProjectID, sourceProjectName, sourceProjectCode string
+		var targetID, targetName, targetCode, targetRuntime, targetStatus, targetProjectID, targetProjectName, targetProjectCode, status string
+		if err := relationRows.Scan(&id, &sourceID, &sourceName, &sourceCode, &sourceRuntime, &sourceStatus, &sourceProjectID, &sourceProjectName, &sourceProjectCode,
+			&targetID, &targetName, &targetCode, &targetRuntime, &targetStatus, &targetProjectID, &targetProjectName, &targetProjectCode, &status); err != nil {
+			relationRows.Close()
+			return Topology{}, err
+		}
+		ensureApplication(sourceID, sourceName, sourceCode, sourceRuntime, sourceStatus, sourceProjectID, sourceProjectName, sourceProjectCode)
+		ensureApplication(targetID, targetName, targetCode, targetRuntime, targetStatus, targetProjectID, targetProjectName, targetProjectCode)
+		edges = append(edges, TopologyEdge{ID: "relation:" + id, SourceID: sourceID, TargetID: targetID, Relation: "depends_on", Metadata: map[string]any{"status": status}})
+	}
+	if err := relationRows.Err(); err != nil {
+		return Topology{}, err
+	}
+	return Topology{Nodes: nodes, Edges: edges}, nil
 }
 
 func (s *store) workspaceResources(ctx context.Context, projectID string) ([]RelatedResource, error) {
@@ -611,6 +1015,61 @@ VALUES($1::uuid,$2::uuid,$3,$4::jsonb,$5,$6)`, applicationID, input.TargetResour
 		}
 	}
 	return nil
+}
+
+func insertRelations(ctx context.Context, tx pgx.Tx, applicationID string, relations []CreateRelationInput) error {
+	for _, input := range relations {
+		var valid bool
+		query := `SELECT EXISTS (
+  SELECT 1 FROM applications source
+		JOIN applications target ON target.id=$2::uuid
+		JOIN projects target_project ON target_project.id=target.project_id
+ WHERE source.id=$1::uuid AND source.deleted_at IS NULL
+   AND target.deleted_at IS NULL AND target_project.deleted_at IS NULL`
+		args := []any{applicationID, input.TargetApplicationID}
+		query, args = appendApplicationScopeFilter(query, args, "target_project", ctx)
+		query += ")"
+		if err := tx.QueryRow(ctx, query, args...).Scan(&valid); err != nil {
+			return fmt.Errorf("validate application relation target: %w", err)
+		}
+		if !valid {
+			return ErrInvalid
+		}
+		status := input.Status
+		if status == "" {
+			status = "active"
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO application_relations(application_id,target_application_id,status)
+VALUES($1::uuid,$2::uuid,$3)`, applicationID, input.TargetApplicationID, status); err != nil {
+			return mapStoreError(err)
+		}
+	}
+	return nil
+}
+
+func (s *store) listRelations(ctx context.Context, applicationID string) ([]Relation, error) {
+	query := `SELECT relation.id::text,relation.application_id::text,relation.target_application_id::text,
+       target.name,target.code,'depends_on',relation.status
+  FROM application_relations relation
+  JOIN applications target ON target.id=relation.target_application_id
+	JOIN projects target_project ON target_project.id=target.project_id
+ WHERE relation.application_id=$1::uuid AND target.deleted_at IS NULL AND target_project.deleted_at IS NULL`
+	query, args := appendApplicationScopeFilter(query, []any{applicationID}, "target_project", ctx)
+	query += ` ORDER BY target.name,relation.id`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list application relations: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Relation, 0)
+	for rows.Next() {
+		var item Relation
+		if err := rows.Scan(&item.ID, &item.ApplicationID, &item.TargetApplicationID, &item.TargetApplicationName, &item.TargetApplicationCode, &item.RelationKind, &item.Status); err != nil {
+			return nil, fmt.Errorf("scan application relation: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func normalizeObject(value map[string]any) map[string]any {

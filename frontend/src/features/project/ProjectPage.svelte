@@ -37,7 +37,8 @@ import ScopeChip from '../../components/ScopeChip.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
 import { labelTags } from '../../lib/labels';
   import TagList from '../../components/TagList.svelte';
-  import ApplicationWizard from './ApplicationWizard.svelte';
+import ApplicationWizard from './ApplicationWizard.svelte';
+import ProjectTopologyView from './ProjectTopology.svelte';
   import ProjectCreateForm from './ProjectCreateForm.svelte';
 import {
   runtimeLabel,
@@ -76,11 +77,16 @@ import {
   ) => void = () => {};
   export let onResourceCreated: (resource: Resource) => void = () => {};
   export let onRequestResourceCreate: (
-    request: Omit<ApplicationResourceCreationRequest, 'id'>
+    request: ApplicationResourceCreationRequest
   ) => void = () => {};
   export let resourceCreationResult: ApplicationResourceCreationResult | null = null;
 
   let workspace: ProjectWorkspace | null = null;
+  let projectTopology: import('../../lib/api').ProjectTopology | null = null;
+  let loadingTopology = false;
+  let projectAreaTab: 'applications' | 'topology' = 'applications';
+  let topologyMode: 'browse' | 'edit' = 'browse';
+  let topologyResourceRequestId = '';
   let workspaceProjectId = '';
   let loadingWorkspace = false;
   let collapsedTeams = new Set<string>();
@@ -165,6 +171,7 @@ import {
   }
   $: if (!selectedProjectId) {
     workspace = null;
+    projectTopology = null;
     workspaceProjectId = '';
     selectedApplicationIds = [];
   }
@@ -279,15 +286,47 @@ import {
     return names.length ? names.join('、') : '未配置';
   }
   async function loadWorkspace(id: string) {
+    topologyMode = 'browse';
     loadingWorkspace = true;
+    loadingTopology = true;
     try {
-      workspace = await api.projectWorkspace(id);
+      const [nextWorkspace, nextTopology] = await Promise.all([
+        api.projectWorkspace(id),
+        api.projectTopology(id)
+      ]);
+      workspace = nextWorkspace;
+      projectTopology = nextTopology;
       workspaceProjectId = id;
     } catch (error) {
       onError(describeError(error, '项目驾驶舱加载失败'));
     } finally {
       loadingWorkspace = false;
+      loadingTopology = false;
     }
+  }
+  async function loadTopology() {
+    if (!selectedProjectId) return;
+    loadingTopology = true;
+    try {
+      projectTopology = await api.projectTopology(selectedProjectId);
+      workspace = await api.projectWorkspace(selectedProjectId);
+    } catch (error) {
+      onError(describeError(error, '项目拓扑刷新失败'));
+    } finally {
+      loadingTopology = false;
+    }
+  }
+  function enterTopologyEdit() {
+    if (selectedProject && canManageProject(selectedProject, 'update')) topologyMode = 'edit';
+  }
+  function requestTopologyResource(kind: string) {
+    const id = crypto.randomUUID();
+    topologyResourceRequestId = id;
+    onRequestResourceCreate({ id, kind, scopeId: selectedProject?.scope.id ?? selectedScopeId });
+  }
+  $: if (resourceCreationResult && resourceCreationResult.requestId === topologyResourceRequestId) {
+    topologyResourceRequestId = '';
+    void loadWorkspace(selectedProjectId);
   }
   function applicationPayload(draft: ApplicationDraft) {
     return {
@@ -302,6 +341,7 @@ import {
       technical_owner_ids: draft.technicalOwnerIds,
       operations_owner_ids: draft.operationsOwnerIds,
       dependencies: draft.dependencies ?? [],
+      relations: draft.relations ?? [],
       instances: draft.instances.map((instance) => ({
         name: instance.name,
         runtime_kind: draft.runtimeKind,
@@ -376,6 +416,7 @@ import {
         technical_owner_ids: draft.technicalOwnerIds,
         operations_owner_ids: draft.operationsOwnerIds,
         dependencies: draft.dependencies ?? [],
+        relations: draft.relations ?? [],
         instances: applicationPayload(draft).instances
       });
       editingApplication = null;
@@ -625,16 +666,20 @@ import {
           >
         </div>{/each}
     </div>
-    <div class="resource-map-columns">
-      <section class="map-main-column">
-        <section class="panel project-applications-panel">
-        <div class="section-heading">
-          <div>
-            <h2>项目应用</h2>
-            <p>应用状态、实例绑定和运行资源</p>
-          </div>
-          <div class="section-heading-actions">
-            <span class="muted">{workspace?.applications.length ?? 0} 个应用</span><button
+    <section class="project-applications-area">
+      <div class="project-area-toolbar">
+        <div class="project-area-tabs" role="tablist" aria-label="项目视图">
+          <button class:active={projectAreaTab === 'applications'} role="tab" aria-selected={projectAreaTab === 'applications'} on:click={() => (projectAreaTab = 'applications')}>
+            <EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={16} />项目应用
+          </button>
+          <button class:active={projectAreaTab === 'topology'} role="tab" aria-selected={projectAreaTab === 'topology'} on:click={() => (projectAreaTab = 'topology')}>
+            <Network size={16} />项目拓扑
+          </button>
+        </div>
+        <div class="section-heading-actions project-area-actions">
+          <span class="muted">{workspace?.applications.length ?? 0} 个应用</span>
+          {#if projectAreaTab === 'applications'}
+            <button
               class="secondary"
               type="button"
               disabled={loadingWorkspace}
@@ -650,6 +695,35 @@ import {
               on:click={() => (deletingApplications = selectedApplications)}
               ><Trash2 size={15} />删除应用</button
             ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />新增应用</button>
+          {:else}
+            <button
+              class="secondary"
+              type="button"
+              disabled={loadingTopology}
+              data-tooltip="刷新项目拓扑"
+              aria-label="刷新项目拓扑"
+              on:click={() => void loadTopology()}
+              ><RefreshCw size={15} />刷新</button
+            ><button
+              class="secondary"
+              type="button"
+              disabled={!selectedProject || !canManageProject(selectedProject, 'update')}
+              data-tooltip={topologyMode === 'edit' ? '返回浏览模式' : '编辑项目拓扑'}
+              aria-label={topologyMode === 'edit' ? '返回浏览模式' : '编辑项目拓扑'}
+              on:click={() => topologyMode = topologyMode === 'edit' ? 'browse' : 'edit'}
+              >{#if topologyMode === 'edit'}<Map size={15} />浏览模式{:else}<Pencil size={15} />编辑{/if}</button
+            >
+          {/if}
+        </div>
+      </div>
+      {#if projectAreaTab === 'applications'}
+      <div class="resource-map-columns">
+      <section class="map-main-column">
+        <section class="panel project-applications-panel">
+        <div class="section-heading">
+          <div>
+            <h2>项目应用</h2>
+            <p>应用状态、实例绑定和运行资源</p>
           </div>
         </div>
         {#if loadingWorkspace}<div class="map-loading">正在加载项目驾驶舱...</div>
@@ -733,29 +807,6 @@ import {
               >
             </div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}
         </section>
-        <section class="panel topology-panel">
-          <div class="panel-heading">
-            <div>
-              <h2>运行拓扑</h2>
-              <p>项目与运行资源之间的连接概览</p>
-            </div>
-            <Network size={17} />
-          </div>
-          <div class="project-topology">
-            <div class="topology-node project-node">
-              <EntityBrandIcon
-                kind="Project"
-                fallback={selectedProject.icon || 'lucide:FolderKanban'}
-                size={15}
-                className="topology-icon"
-              />{selectedProject.name}
-            </div>
-            {#each (workspace?.resources ?? []).slice(0, 5) as resource}<span
-                class="topology-branch"
-              ></span>
-              <div class="topology-node">{resource.name}</div>{/each}
-          </div>
-        </section>
         <section class="panel map-side-panel alerts-panel">
           <div class="panel-heading">
             <div>
@@ -775,7 +826,24 @@ import {
             </div>{/each}
         </section>
       </aside>
-    </div>
+      </div>
+      {:else}
+        <section class="panel project-topology-panel">
+          <ProjectTopologyView
+            project={selectedProject!}
+            topology={projectTopology}
+            loading={loadingTopology}
+            mode={topologyMode}
+            onRefresh={loadTopology}
+            onAddApplication={() => (applicationWizardOpen = true)}
+            onAddResource={requestTopologyResource}
+            onEditApplication={(application) => (editingApplication = workspace?.applications.find((item) => item.id === application.id) ?? null)}
+            {onNotice}
+            {onError}
+          />
+        </section>
+      {/if}
+    </section>
   {/if}
 </section>
 
@@ -794,12 +862,15 @@ import {
 {#if applicationWizardOpen || editingApplication}<ApplicationWizard
     resources={availableResources}
     {users}
+    applications={workspace?.applications ?? []}
+    projects={allProjects.map((project) => ({ id: project.id, name: project.name }))}
     initialApplication={editingApplication}
     onSave={saveApplications}
     onUpdate={updateApplication}
     {onResourceCreated}
     onRequestResourceCreate={(kind: RuntimeResourceKind, instanceId?: string) =>
       onRequestResourceCreate({
+        id: crypto.randomUUID(),
         kind,
         scopeId: selectedProject?.scope.id ?? selectedScopeId,
         ...(instanceId ? { instanceId } : {})

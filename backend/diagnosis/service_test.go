@@ -2,6 +2,7 @@ package diagnosis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -77,20 +78,36 @@ func TestServiceStartAddsApplicationContextResources(t *testing.T) {
 	applications := fakeApplications{
 		item:      appdomain.Application{ID: "app-1", ProjectScopeID: "scope-1", Status: "active"},
 		resources: []string{"runtime-1", "database-1"},
+		context: appdomain.DiagnosticContext{
+			Application: appdomain.DiagnosticApplication{ID: "app-1", Name: "Orders", Code: "orders"},
+			Resources:   []appdomain.DiagnosticResource{{ID: "database-1", Relation: "association", Binding: map[string]any{"database": "orders"}}},
+		},
 	}
 	service := NewService(store, resources, applications)
 	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
-	if _, err := service.Start(ctx, StartInput{ScopeID: "scope-1", ActorUserID: "actor-1", ApplicationID: "app-1", Question: "inspect", TargetResourceIDs: []string{"explicit-1"}}); err != nil {
+	if _, err := service.Start(ctx, StartInput{ScopeID: "scope-1", ActorUserID: "actor-1", ApplicationIDs: []string{"app-1", "app-2"}, Question: "inspect", TargetResourceIDs: []string{"explicit-1"}}); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 	want := []string{"runtime-1", "database-1", "explicit-1"}
 	if len(store.started.TargetResourceIDs) != len(want) {
 		t.Fatalf("context resources = %v, want %v", store.started.TargetResourceIDs, want)
 	}
+	if len(store.started.ApplicationIDs) != 2 || store.started.ApplicationID != "app-1" {
+		t.Fatalf("stored application ids = %v / %q", store.started.ApplicationIDs, store.started.ApplicationID)
+	}
 	for index, id := range want {
 		if store.started.TargetResourceIDs[index] != id {
 			t.Fatalf("context resources = %v, want %v", store.started.TargetResourceIDs, want)
 		}
+	}
+	var snapshot struct {
+		Applications []appdomain.DiagnosticContext `json:"applications"`
+	}
+	if err := json.Unmarshal(store.started.ApplicationContext, &snapshot); err != nil {
+		t.Fatalf("application context snapshot is not JSON: %v", err)
+	}
+	if len(snapshot.Applications) != 2 || snapshot.Applications[0].Application.Name != "Orders" || snapshot.Applications[1].Application.ID != "app-2" || len(snapshot.Applications[0].Resources) != 1 || snapshot.Applications[0].Resources[0].Binding["database"] != "orders" {
+		t.Fatalf("application context snapshot = %#v", snapshot)
 	}
 }
 
@@ -107,6 +124,7 @@ func (f fakeResources) Get(_ context.Context, id string) (resource.Resource, err
 type fakeApplications struct {
 	item      appdomain.Application
 	resources []string
+	context   appdomain.DiagnosticContext
 }
 
 func (f fakeApplications) Get(context.Context, string) (appdomain.Application, error) {
@@ -115,6 +133,11 @@ func (f fakeApplications) Get(context.Context, string) (appdomain.Application, e
 
 func (f fakeApplications) ContextResourceIDs(context.Context, string, string) ([]string, error) {
 	return append([]string(nil), f.resources...), nil
+}
+func (f fakeApplications) DiagnosticContext(_ context.Context, applicationID, _ string) (appdomain.DiagnosticContext, error) {
+	item := f.context
+	item.Application.ID = applicationID
+	return item, nil
 }
 
 type memoryStore struct {

@@ -17,6 +17,18 @@ type authorizationHandler struct {
 	service authorizationService
 }
 
+func requireAuthorizationConfigured(service authorizationService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if service == nil {
+				writeError(writer, request, http.StatusServiceUnavailable, "authorization_unavailable", "Authorization service is not configured")
+				return
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
+}
+
 func (h authorizationHandler) requirePermission(permission authorization.Permission) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ArrowRight, ListChecks, ListX, RefreshCw, Search, Server, Trash2 } from 'lucide-svelte';
-  import { onDestroy } from 'svelte';
+  import { ArrowRight, ListChecks, ListX, Plus, RefreshCw, Search, Server, Trash2, X } from 'lucide-svelte';
+  import { onDestroy, onMount } from 'svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import FormField from '../../components/FormField.svelte';
@@ -27,6 +27,8 @@
 
   export let resources: Resource[] = [];
   export let users: User[] = [];
+  export let applications: Application[] = [];
+  export let projects: Array<{ id: string; name: string }> = [];
   export let initialApplication: Application | null = null;
   export let onSave: (applications: ApplicationDraft[]) => Promise<void> | void;
   export let onUpdate: (
@@ -72,7 +74,19 @@
     technicalOwnerIds: string[];
     operationsOwnerIds: string[];
     logPath: string;
-    relations: Record<string, string[]>;
+    resourceBindings: ResourceBindingDraft[];
+    applicationRelations: ApplicationRelationDraft[];
+  };
+  type ResourceBindingDraft = {
+    resourceId: string;
+    dependencyKind: string;
+    binding: Record<string, string>;
+    required: boolean;
+  };
+  type ApplicationRelationDraft = {
+    targetApplicationId: string;
+    projectId?: string;
+    relationKind: 'depends_on' | 'depended_by' | 'mutual';
   };
   const runtimeChoices: Array<{
     kind: ApplicationRuntimeKind;
@@ -84,7 +98,7 @@
     { kind: 'containerized', label: 'Docker', subtitle: '容器化', description: '按容器名称初筛' },
     { kind: 'cloud_native', label: 'Kubernetes', subtitle: '云原生', description: '按命名空间和标签筛选' }
   ];
-  const relationGroups = [
+  const resourceBindingGroups = [
     { key: 'repository', label: '代码仓库', resourceKinds: ['Repository'] },
     { key: 'registry', label: '注册中心', resourceKinds: ['Nacos'] },
     { key: 'configuration', label: '配置中心', resourceKinds: ['Nacos'] },
@@ -123,7 +137,8 @@
   let workloadRequestId = 0;
   let workloadTimer: ReturnType<typeof setTimeout> | undefined;
   let candidateSearch = '';
-  let applicationTab: 'basic' | 'relations' = 'basic';
+  let applicationTab: 'basic' | 'bindings' | 'applications' = 'basic';
+  let applicationCatalog: Array<Application & { project_name?: string }> = [];
 
   $: availableResources = [...resources, ...createdResources].filter(
     (resource, index, all) => all.findIndex((item) => item.id === resource.id) === index
@@ -139,6 +154,7 @@
     label: user.display_name || user.username,
     description: user.display_name ? user.username : user.email || user.phone
   }));
+  $: applicationProjectOptions = projects.map((project) => ({ value: project.id, label: project.name }));
   $: activeCandidate = candidates.find((candidate) => candidate.key === activeCandidateKey);
   $: activeDraft = activeCandidate ? candidateDrafts[activeCandidate.key] : undefined;
   $: visibleCandidates = candidates.filter((candidate) =>
@@ -162,6 +178,20 @@
     discoveryRequestId++;
     workloadRequestId++;
   });
+
+  onMount(() => {
+    void loadApplicationCatalog();
+  });
+
+  async function loadApplicationCatalog() {
+    const current = applications.map((item) => ({ ...item, project_name: projects.find((project) => project.id === item.project_id)?.name }));
+    const missingProjects = projects.filter((project) => project.id !== current[0]?.project_id);
+    const results = await Promise.allSettled(missingProjects.map((project) => api.applications(project.id)));
+    const remote = results.flatMap((result, index) => result.status === 'fulfilled'
+      ? result.value.items.map((item) => ({ ...item, project_name: missingProjects[index].name }))
+      : []);
+    applicationCatalog = [...current, ...remote].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
+  }
 
   function initializeEdit(application: Application) {
     editInitialized = true;
@@ -217,7 +247,16 @@
       technicalOwnerIds: [...application.technical_owner_ids],
       operationsOwnerIds: [...application.operations_owner_ids],
       logPath: String(application.instances[0]?.log_binding?.path ?? (runtimeKind === 'virtual_machine' ? '' : 'stdout')),
-      relations: Object.fromEntries(relationGroups.map(({ key }) => [key, (application.dependencies ?? []).filter((dependency) => dependency.dependency_kind === key).map((dependency) => dependency.target_resource_id)]))
+      resourceBindings: (application.dependencies ?? []).map((dependency) => ({
+        resourceId: dependency.target_resource_id,
+        dependencyKind: dependency.dependency_kind,
+        binding: Object.fromEntries(Object.entries(dependency.binding ?? {}).map(([key, value]) => [key, String(value)])),
+        required: dependency.required
+      })),
+      applicationRelations: (application.relations ?? []).map((relation) => ({
+        targetApplicationId: relation.target_application_id,
+        relationKind: relation.relation_kind as ApplicationRelationDraft['relationKind']
+      }))
     };
   }
 
@@ -246,7 +285,8 @@
         technicalOwnerIds: [],
         operationsOwnerIds: [],
         logPath: runtimeKind === 'virtual_machine' ? '' : 'stdout',
-        relations: {}
+        resourceBindings: [],
+        applicationRelations: []
       }
     };
   }
@@ -450,7 +490,8 @@
           technicalOwnerIds: [],
           operationsOwnerIds: [],
           logPath: runtimeKind === 'virtual_machine' ? '' : 'stdout',
-          relations: {}
+          resourceBindings: [],
+          applicationRelations: []
         };
       }
     });
@@ -460,6 +501,82 @@
   function updateDraft<K extends keyof CandidateDraft>(key: string, field: K, value: CandidateDraft[K]) {
     const current = candidateDrafts[key];
     if (current) candidateDrafts = { ...candidateDrafts, [key]: { ...current, [field]: value } };
+  }
+
+  function bindingFields(kind: string): Array<{ key: string; label: string; placeholder: string }> {
+    if (kind === 'database') return [
+      { key: 'database', label: '数据库 / 实例', placeholder: '例如 orders' },
+      { key: 'schema', label: 'Schema（可选）', placeholder: '例如 public' }
+    ];
+    if (kind === 'messaging') return [
+      { key: 'topic', label: 'Topic / 队列', placeholder: '例如 orders.events' },
+      { key: 'group', label: '消费组（可选）', placeholder: '例如 orders-service' }
+    ];
+    if (kind === 'configuration') return [
+      { key: 'namespace', label: '命名空间', placeholder: '例如 production' },
+      { key: 'data_id', label: '配置文件 / Data ID', placeholder: '例如 application.yaml' },
+      { key: 'group', label: '分组（可选）', placeholder: '例如 DEFAULT_GROUP' }
+    ];
+    if (kind === 'registry') return [{ key: 'namespace', label: '命名空间（可选）', placeholder: '例如 production' }];
+    if (kind === 'cache') return [
+      { key: 'database', label: '数据库编号', placeholder: '例如 0' },
+      { key: 'key_prefix', label: 'Key 前缀（可选）', placeholder: '例如 orders:' }
+    ];
+    if (kind === 'storage') return [
+      { key: 'bucket', label: 'Bucket', placeholder: '例如 production' },
+      { key: 'prefix', label: '对象前缀（可选）', placeholder: '例如 orders/' }
+    ];
+    if (kind === 'repository') return [
+      { key: 'path', label: '路径（可选）', placeholder: '例如 services/orders' },
+      { key: 'revision', label: '分支 / Revision（可选）', placeholder: '例如 main' }
+    ];
+    if (kind === 'observability') return [{ key: 'target', label: '对象标识（可选）', placeholder: '例如 orders-api' }];
+    return [{ key: 'object', label: '对象标识（可选）', placeholder: '填写资源内的具体对象' }];
+  }
+
+  function dependencyKindForResource(resource: Resource | undefined) {
+    if (!resource) return 'other';
+    if (['PostgreSQL', 'MySQL', 'Oracle', 'OceanBase'].includes(resource.kind)) return 'database';
+    if (['Kafka', 'RabbitMQ'].includes(resource.kind)) return 'messaging';
+    if (resource.kind === 'Redis') return 'cache';
+    if (resource.kind === 'Nacos') return 'configuration';
+    if (resource.kind === 'Repository') return 'repository';
+    if (resource.kind === 'MinIO') return 'storage';
+    if (['Prometheus', 'Loki'].includes(resource.kind)) return 'observability';
+    return 'other';
+  }
+
+  function resourceBindingLabel(kind: string) {
+    return resourceBindingGroups.find((group) => group.key === kind)?.label ?? '其他资源';
+  }
+
+  function updateBinding(key: string, resourceId: string, field: string, value: string) {
+    const draft = candidateDrafts[key];
+    if (!draft) return;
+    updateDraft(key, 'resourceBindings', draft.resourceBindings.map((item) => item.resourceId === resourceId ? { ...item, binding: { ...item.binding, [field]: value } } : item));
+  }
+
+  function removeResourceBinding(key: string, resourceId: string) {
+    const draft = candidateDrafts[key];
+    if (draft) updateDraft(key, 'resourceBindings', draft.resourceBindings.filter((item) => item.resourceId !== resourceId));
+  }
+
+  function addApplicationDependency(key: string) {
+    const draft = candidateDrafts[key];
+    if (!draft) return;
+    updateDraft(key, 'applicationRelations', [...draft.applicationRelations, { targetApplicationId: '', relationKind: 'depends_on' }]);
+  }
+
+  function updateApplicationDependency(key: string, index: number, targetApplicationId: string, projectId?: string) {
+    const draft = candidateDrafts[key];
+    if (!draft) return;
+    updateDraft(key, 'applicationRelations', draft.applicationRelations.map((item, itemIndex) => itemIndex === index ? { ...item, targetApplicationId, ...(projectId !== undefined ? { projectId } : {}) } : item));
+  }
+
+  function removeApplicationDependency(key: string, index: number) {
+    const draft = candidateDrafts[key];
+    if (!draft) return;
+    updateDraft(key, 'applicationRelations', draft.applicationRelations.filter((_, itemIndex) => itemIndex !== index));
   }
 
   function toggleCandidate(key: string) {
@@ -627,9 +744,17 @@
       critical: draft.critical,
       technicalOwnerIds: draft.technicalOwnerIds,
       operationsOwnerIds: draft.operationsOwnerIds,
-      dependencies: Object.entries(draft.relations).flatMap(([dependency_kind, target_resource_ids]) =>
-        target_resource_ids.map((target_resource_id) => ({ dependency_kind, target_resource_id, required: true }))
-      ),
+      dependencies: draft.resourceBindings.map((binding) => ({
+        dependency_kind: binding.dependencyKind,
+        target_resource_id: binding.resourceId,
+        binding: binding.binding,
+        required: binding.required
+      })),
+      relations: draft.applicationRelations.map((relation) => ({
+        target_application_id: relation.targetApplicationId,
+        relation_kind: relation.relationKind,
+        status: 'active'
+      })),
       instances
     };
   }
@@ -733,10 +858,7 @@
         </div>
       {/if}
     {:else if step === 1}
-      <div class="kubernetes-batch-toolbar">
-        <div><strong>应用与实例配置</strong><small>左侧选择应用，右侧设置应用信息；每个副本对应一个运行实例。</small></div>
-        {#if loading}<span class="kubernetes-discovery-status">正在读取…</span>{/if}
-      </div>
+      {#if loading}<div class="kubernetes-discovery-status application-discovery-status">正在读取运行目标…</div>{/if}
       <div class="kubernetes-batch-layout">
         <aside class="application-candidate-pane" aria-label="应用列表">
           <div class="application-candidate-pane-heading">
@@ -778,7 +900,7 @@
               <div><h3>{activeDraft.name || activeCandidate.name}</h3><p><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个副本 · {candidateLocator(activeCandidate)}</p></div>
               <span class="kubernetes-inclusion-state included">{initialApplication ? '编辑中' : '待新增'}</span>
             </div>
-            <Tabs className="application-config-tabs" items={[{ value: 'basic', label: '基础信息' }, { value: 'relations', label: '资源关联' }]} value={applicationTab} onChange={(value) => (applicationTab = value as 'basic' | 'relations')} ariaLabel="应用配置分区" />
+            <Tabs className="application-config-tabs" items={[{ value: 'basic', label: '基础信息' }, { value: 'bindings', label: '资源关联' }, { value: 'applications', label: '应用依赖' }]} value={applicationTab} onChange={(value) => (applicationTab = value as 'basic' | 'bindings' | 'applications')} ariaLabel="应用配置分区" />
             {#if applicationTab === 'basic'}<div class="application-form-grid">
               <div class="application-identity-row">
                 <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
@@ -792,7 +914,42 @@
               </div>
               <FormField label="应用日志配置" className="full-field"><TextInput value={activeDraft.logPath} placeholder={runtimeKind === 'virtual_machine' ? 'Host 日志路径（可选）' : 'stdout'} on:value={(event) => updateDraft(activeCandidate.key, 'logPath', String(event.detail))} /></FormField>
               <FormField label="应用描述" className="full-field"><TextArea value={activeDraft.description} rows={2} placeholder="应用职责和运行边界" on:input={(event) => updateDraft(activeCandidate.key, 'description', (event.currentTarget as HTMLTextAreaElement).value)} /></FormField>
-            </div>{:else}<div class="application-relations-panel"><p>逐项配置应用与其他资源的关系。</p>{#each relationGroups as relation}<FormField label={relation.label}><DropdownSelect options={availableResources.filter((resource) => relation.resourceKinds.includes(resource.kind)).map((resource) => ({ value: resource.id, label: resource.name, description: resource.kind }))} value={activeDraft.relations[relation.key] ?? []} multiple taggedSelection searchable placeholder={`选择${relation.label}资源`} ariaLabel={`选择${relation.label}资源`} on:change={(event) => updateDraft(activeCandidate.key, 'relations', { ...activeDraft.relations, [relation.key]: Array.isArray(event.detail) ? event.detail : [] })} /></FormField>{/each}</div>{/if}
+            </div>{:else if applicationTab === 'bindings'}
+              <div class="application-relations-panel application-bindings-panel"><p>自定义添加具体资源，并填写应用实际使用的库、Topic、命名空间或其他对象。</p>
+                <FormField label="关联资源">
+                  <DropdownSelect options={availableResources.map((resource) => ({ value: resource.id, label: resource.name, description: resource.kind }))} value={activeDraft.resourceBindings.map((item) => item.resourceId)} multiple taggedSelection searchable placeholder="选择资源" ariaLabel="选择关联资源" on:change={(event) => {
+                    const selected = Array.isArray(event.detail) ? event.detail : event.detail ? [event.detail] : [];
+                    const existing = activeDraft.resourceBindings.filter((item) => selected.includes(item.resourceId));
+                    const next = selected.map((resourceId) => existing.find((item) => item.resourceId === resourceId) ?? ({ resourceId, dependencyKind: dependencyKindForResource(availableResources.find((resource) => resource.id === resourceId)), binding: {}, required: true }));
+                    updateDraft(activeCandidate.key, 'resourceBindings', next);
+                  }} />
+                </FormField>
+                {#each activeDraft.resourceBindings as binding}
+                  {@const resource = availableResources.find((item) => item.id === binding.resourceId)}
+                  <div class="application-binding-detail">
+                    <div class="application-binding-detail-heading"><span><strong>{resource?.name ?? binding.resourceId}</strong><small>{resource?.kind ?? resourceBindingLabel(binding.dependencyKind)}</small></span><button class="icon-button" type="button" aria-label="移除资源关联" data-tooltip="移除资源关联" on:click={() => removeResourceBinding(activeCandidate.key, binding.resourceId)}><X size={14} /></button></div>
+                    <div class="application-binding-fields">
+                      {#each bindingFields(binding.dependencyKind) as field}
+                        <FormField label={field.label}><TextInput value={binding.binding[field.key] ?? ''} placeholder={field.placeholder} on:value={(event) => updateBinding(activeCandidate.key, binding.resourceId, field.key, String(event.detail))} /></FormField>
+                      {/each}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="application-relations-panel application-relations-config"><p>配置当前应用依赖的应用。每条依赖可跨项目选择。</p>
+                {#each activeDraft.applicationRelations as dependency, dependencyIndex}
+                  {@const target = applicationCatalog.find((item) => item.id === dependency.targetApplicationId)}
+                  {@const projectId = dependency.projectId ?? target?.project_id ?? ''}
+                  <div class="application-dependency-row">
+                    <FormField label="依赖项目"><DropdownSelect options={applicationProjectOptions} value={projectId} searchable placeholder="选择项目" ariaLabel="依赖项目" on:change={(event) => updateApplicationDependency(activeCandidate.key, dependencyIndex, '', String(event.detail))} /></FormField>
+                    <FormField label="依赖应用"><DropdownSelect options={applicationCatalog.filter((item) => item.project_id === projectId && item.id !== initialApplication?.id).map((item) => ({ value: item.id, label: item.name, description: item.code }))} value={dependency.targetApplicationId} searchable placeholder={projectId ? '选择应用' : '先选择项目'} disabled={!projectId} ariaLabel="依赖应用" on:change={(event) => updateApplicationDependency(activeCandidate.key, dependencyIndex, String(event.detail))} /></FormField>
+                    <button class="icon-button danger-action" type="button" aria-label="移除应用依赖" data-tooltip="移除应用依赖" on:click={() => removeApplicationDependency(activeCandidate.key, dependencyIndex)}><X size={14} /></button>
+                  </div>
+                {/each}
+                <button class="text-button application-add-dependency" type="button" on:click={() => addApplicationDependency(activeCandidate.key)}><Plus size={14} />新增依赖</button>
+              </div>
+            {/if}
           {:else}
             <div class="kubernetes-application-empty"><Server size={18} /><span>选择左侧应用候选，配置其名称、负责人、标签与描述。</span></div>
           {/if}

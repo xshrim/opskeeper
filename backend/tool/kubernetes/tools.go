@@ -458,10 +458,10 @@ func (expression searchExpression) Match(value string) bool {
 }
 
 func wildcardMatch(pattern, value string) bool {
-	patterns, values := []rune(pattern), []rune(value)
+	values := []rune(value)
 	previous := make([]bool, len(values)+1)
 	previous[0] = true
-	for _, token := range patterns {
+	for _, token := range pattern {
 		current := make([]bool, len(values)+1)
 		if token == '*' {
 			current[0] = previous[0]

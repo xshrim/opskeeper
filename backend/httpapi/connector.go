@@ -317,22 +317,6 @@ func registerConnectorRoutes(router chi.Router, service connectorService, audito
 	router.With(guard(authorization.ResourceRead)).Get("/resources/{resourceID}/connection-tests/latest", handler.latest)
 }
 
-func queryLimit(request *http.Request) int {
-	value, err := strconv.Atoi(request.URL.Query().Get("limit"))
-	if err != nil || value <= 0 {
-		return 50
-	}
-	if value > 100 {
-		return 100
-	}
-	return value
-}
-
-func queryBool(request *http.Request, name string) bool {
-	value, _ := strconv.ParseBool(request.URL.Query().Get(name))
-	return value
-}
-
 func (h connectorHandler) test(writer http.ResponseWriter, request *http.Request) {
 	check, err := h.service.Test(request.Context(), currentUser(request).ID, chi.URLParam(request, "resourceID"))
 	if err != nil {

@@ -164,7 +164,7 @@ func (s *personaVersionStore) CreatePersonaVersion(ctx context.Context, personaI
 	if err != nil {
 		return PersonaVersion{}, fmt.Errorf("begin Persona version: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, personaID); err != nil {
 		return PersonaVersion{}, fmt.Errorf("lock Persona versions: %w", err)
 	}
@@ -213,7 +213,7 @@ func (s *personaVersionStore) PublishPersonaVersion(ctx context.Context, persona
 	if err != nil {
 		return PersonaVersion{}, fmt.Errorf("begin Persona publish: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, personaID); err != nil {
 		return PersonaVersion{}, err
 	}

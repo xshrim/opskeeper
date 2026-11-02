@@ -74,7 +74,7 @@ func (s *store) CreateVersion(ctx context.Context, input CreateVersionInput) (Ve
 	if err != nil {
 		return Version{}, fmt.Errorf("begin Skill version transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, input.SkillID); err != nil {
 		return Version{}, fmt.Errorf("lock Skill versions: %w", err)
 	}
@@ -125,7 +125,7 @@ func (s *store) PublishVersion(ctx context.Context, skillID, versionID string) (
 	if err != nil {
 		return Version{}, fmt.Errorf("begin Skill publish: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, skillID); err != nil {
 		return Version{}, err
 	}

@@ -55,7 +55,7 @@ func (s *store) SetPolicyNotificationRules(ctx context.Context, scopeID, policyI
 	if err != nil {
 		return nil, fmt.Errorf("begin policy notification rule update: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	var policyExists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM inspection_policies WHERE id=$1::uuid AND scope_id=$2::uuid AND deleted_at IS NULL)`, policyID, scopeID).Scan(&policyExists); err != nil {
 		return nil, mapError(err)

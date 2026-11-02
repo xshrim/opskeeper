@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/user"
@@ -537,9 +536,6 @@ func parseIntField(value string) int {
 	parsed, _ := strconv.Atoi(strings.TrimSpace(value))
 	return parsed
 }
-func firstLine(data []byte) string {
-	return strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
-}
 func contextOrBackground(ctx context.Context) context.Context {
 	if ctx == nil {
 		return context.Background()
@@ -550,7 +546,3 @@ func contextOrBackground(ctx context.Context) context.Context {
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
-
-// Keep io imported for old Go toolchains that do not optimize LimitReader
-// away in builds where source implementations are replaced by tests.
-var _ = io.EOF

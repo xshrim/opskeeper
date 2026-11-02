@@ -223,15 +223,6 @@ func (h workflowRunHandler) cancel(w http.ResponseWriter, r *http.Request) {
 	h.transition(w, r, engine.WorkflowRunCancelled)
 }
 
-func (h workflowRunHandler) transitionRun(w http.ResponseWriter, r *http.Request, run engine.WorkflowRun, status engine.WorkflowRunStatus) {
-	updated, err := h.runs.UpdateWorkflowRun(r.Context(), run.ID, engine.WorkflowRunPatch{Status: status, Attempt: run.Attempt + 1})
-	if err != nil {
-		writeWorkflowError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, updated)
-}
-
 func (h workflowRunHandler) update(w http.ResponseWriter, r *http.Request) {
 	run, err := h.runs.GetWorkflowRun(r.Context(), chi.URLParam(r, "runID"))
 	if err != nil {

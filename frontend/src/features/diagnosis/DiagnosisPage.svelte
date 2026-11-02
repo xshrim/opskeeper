@@ -226,6 +226,7 @@
     return {
       scopeID: scopeId,
       applicationID: applicationId,
+      applicationIDs: diagnosisApplicationIds,
       sessions: diagnosisSessions,
       selectedSessionID: selectedDiagnosisId,
       snapshot: diagnosisSnapshot,
@@ -339,7 +340,11 @@
       };
       diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length;
       diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
-      diagnosisApplicationIds = diagnosisSnapshot.session.application_id ? [diagnosisSnapshot.session.application_id] : [];
+      diagnosisApplicationIds = diagnosisSnapshot.session.application_ids?.length
+        ? diagnosisSnapshot.session.application_ids
+        : diagnosisSnapshot.session.application_id
+          ? [diagnosisSnapshot.session.application_id]
+          : [];
       if (diagnosisSnapshot.session. provider_id) selectedProviderId = diagnosisSnapshot.session. provider_id;
       if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
       applicationId = diagnosisSnapshot.session.application_id ?? '';
@@ -636,12 +641,7 @@
   $: diagnosisTargets = contextResources.filter(
     (resource) => resourceInActiveWorkspace(resource) && !isDiagnosisContextExcluded(resource)
   );
-  $: {
-    const usableResourceIDs = new Set(diagnosisTargets.map((resource) => resource.id));
-    diagnosisApplications = diagnosisApplicationCandidates.filter((application) =>
-      [...application.instances, ...application.dependencies].some((item) => usableResourceIDs.has(item.target_resource_id))
-    );
-  }
+  $: diagnosisApplications = diagnosisApplicationCandidates;
   $: selectedApplicationResourceIDs = new Set(
     diagnosisApplications
       .filter((application) => diagnosisApplicationIds.includes(application.id))

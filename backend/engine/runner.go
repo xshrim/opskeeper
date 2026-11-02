@@ -1232,10 +1232,6 @@ func resolvedToolDefinitions(request Request) []ToolDefinition {
 	return request.ResolvedContext.Tools
 }
 
-func resolvedToolDefinition(request Request, name string) ToolDefinition {
-	return resolvedToolBinding(request, name).definition
-}
-
 func executionPrompt(request Request) (string, error) {
 	payload := make(map[string]any, len(request.Input)+3)
 	for key, value := range request.Input {

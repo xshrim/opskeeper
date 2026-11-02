@@ -51,7 +51,7 @@ func New(cfg Config) (http.Handler, error) {
 	if strings.TrimSpace(cfg.BearerToken) != "" {
 		token := []byte(cfg.BearerToken)
 		h = auth.RequireBearerToken(func(_ context.Context, g string, _ *http.Request) (*auth.TokenInfo, error) {
-			if equal(g, token) == false {
+			if !equal(g, token) {
 				return nil, auth.ErrInvalidToken
 			}
 			return &auth.TokenInfo{UserID: "rabbitmq-mcp-static-token"}, nil

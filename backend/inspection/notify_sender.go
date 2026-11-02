@@ -193,7 +193,7 @@ func (s NotifySender) service(kind string, c map[string]string) (notify.Notifier
 		n.AddReceivers(c["channel"])
 		return n, nil
 	case "googlechat":
-		n, err := notifygooglechat.New(option.WithCredentialsJSON([]byte(c["credentials_json"])))
+		n, err := notifygooglechat.New(option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(c["credentials_json"])))
 		if err != nil {
 			return nil, err
 		}

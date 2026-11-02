@@ -32,7 +32,9 @@ type Store interface {
 	CreateInstance(context.Context, string, string, CreateInstanceInput) (Instance, error)
 	DeleteInstance(context.Context, string, string, string) error
 	ContextResourceIDs(context.Context, string, string) ([]string, error)
+	DiagnosticContext(context.Context, string, string) (DiagnosticContext, error)
 	Workspace(context.Context, string) (Workspace, error)
+	Topology(context.Context, string) (Topology, error)
 }
 
 type BindingValidator interface {
@@ -126,6 +128,10 @@ func validDependencyKind(kind string) bool {
 	default:
 		return false
 	}
+}
+
+func validRelationKind(kind string) bool {
+	return kind == "depends_on"
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (Application, error) {
@@ -226,6 +232,9 @@ func PrepareCreateInput(in CreateInput) (CreateInput, error) {
 	if in.Dependencies, err = normalizeDependencies(in.Dependencies); err != nil {
 		return CreateInput{}, err
 	}
+	if in.Relations, err = normalizeRelations(in.Relations); err != nil {
+		return CreateInput{}, err
+	}
 	if in.Icon == "" || len([]rune(in.Icon)) > maxIconLength {
 		in.Icon = "lucide:AppWindow"
 	}
@@ -257,7 +266,7 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
 		return Application{}, ErrInvalid
 	}
-	if in.Name == nil && in.Code == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.RuntimeKind == nil && in.ExternalUID == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil && in.Dependencies == nil {
+	if in.Name == nil && in.Code == nil && in.Description == nil && in.Icon == nil && in.Status == nil && in.RuntimeKind == nil && in.ExternalUID == nil && in.Labels == nil && in.Critical == nil && in.TechnicalOwnerIDs == nil && in.OperationsOwnerIDs == nil && in.Instances == nil && in.Dependencies == nil && in.Relations == nil {
 		return Application{}, ErrInvalid
 	}
 	if in.Name != nil {
@@ -309,6 +318,13 @@ func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in 
 		}
 		in.Dependencies = &dependencies
 	}
+	if in.Relations != nil {
+		relations, err := normalizeRelations(*in.Relations)
+		if err != nil {
+			return Application{}, err
+		}
+		in.Relations = &relations
+	}
 	if in.RuntimeKind != nil || in.Instances != nil {
 		current, err := s.store.Get(ctx, strings.TrimSpace(projectID), strings.TrimSpace(id))
 		if err != nil {
@@ -358,6 +374,9 @@ func normalizeDependencies(items []CreateDependencyInput) ([]CreateDependencyInp
 		if item.TargetResourceID == "" || !validDependencyKind(item.DependencyKind) {
 			return nil, ErrInvalid
 		}
+		if !validDependencyBinding(item.DependencyKind, item.Binding) {
+			return nil, ErrInvalid
+		}
 		key := item.DependencyKind + "\x00" + item.TargetResourceID
 		if _, exists := seen[key]; exists {
 			continue
@@ -365,6 +384,82 @@ func normalizeDependencies(items []CreateDependencyInput) ([]CreateDependencyInp
 		seen[key] = struct{}{}
 		if item.Status == "" {
 			item.Status = "unknown"
+		}
+		if !validInstanceStatus(item.Status) {
+			return nil, ErrInvalid
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func validDependencyBinding(kind string, binding map[string]any) bool {
+	if binding == nil {
+		return true
+	}
+	for key, value := range binding {
+		if !allowedDependencyBindingField(kind, strings.TrimSpace(key)) {
+			return false
+		}
+		switch value.(type) {
+		case string, bool, float64, int, int64:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func allowedDependencyBindingField(kind, key string) bool {
+	switch kind {
+	case "database":
+		return oneOf(key, "database", "schema", "instance", "service", "sid")
+	case "messaging":
+		return oneOf(key, "topic", "queue", "exchange", "group", "vhost")
+	case "configuration":
+		return oneOf(key, "namespace", "group", "data_id", "file")
+	case "registry":
+		return oneOf(key, "namespace", "group")
+	case "cache":
+		return oneOf(key, "database", "key_prefix")
+	case "storage":
+		return oneOf(key, "bucket", "prefix")
+	case "repository":
+		return oneOf(key, "path", "revision", "branch")
+	case "observability":
+		return oneOf(key, "target", "metric", "namespace")
+	case "other":
+		return oneOf(key, "object", "identifier")
+	default:
+		return false
+	}
+}
+
+func oneOf(value string, options ...string) bool {
+	for _, option := range options {
+		if value == option {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeRelations(items []CreateRelationInput) ([]CreateRelationInput, error) {
+	result := make([]CreateRelationInput, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item.TargetApplicationID = strings.TrimSpace(item.TargetApplicationID)
+		item.RelationKind = strings.TrimSpace(item.RelationKind)
+		if item.TargetApplicationID == "" || !uuidPattern.MatchString(item.TargetApplicationID) || !validRelationKind(item.RelationKind) {
+			return nil, ErrInvalid
+		}
+		key := item.RelationKind + "\x00" + item.TargetApplicationID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		if item.Status == "" {
+			item.Status = "active"
 		}
 		if !validInstanceStatus(item.Status) {
 			return nil, ErrInvalid
@@ -417,9 +512,21 @@ func (s *Service) ContextResourceIDs(ctx context.Context, applicationID, scopeID
 	}
 	return s.store.ContextResourceIDs(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(applicationID))
 }
+func (s *Service) DiagnosticContext(ctx context.Context, applicationID, scopeID string) (DiagnosticContext, error) {
+	if strings.TrimSpace(applicationID) == "" || strings.TrimSpace(scopeID) == "" {
+		return DiagnosticContext{}, ErrInvalid
+	}
+	return s.store.DiagnosticContext(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(applicationID))
+}
 func (s *Service) Workspace(ctx context.Context, pid string) (Workspace, error) {
 	if pid == "" {
 		return Workspace{}, ErrInvalid
 	}
 	return s.store.Workspace(ctx, pid)
+}
+func (s *Service) Topology(ctx context.Context, pid string) (Topology, error) {
+	if strings.TrimSpace(pid) == "" {
+		return Topology{}, ErrInvalid
+	}
+	return s.store.Topology(ctx, strings.TrimSpace(pid))
 }
