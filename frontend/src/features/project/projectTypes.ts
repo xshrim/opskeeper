@@ -9,6 +9,7 @@ export type ApplicationResourceCreationRequest = {
   kind: string;
   scopeId: string;
   instanceId?: string;
+  coverageTarget?: string;
 };
 
 export type ApplicationResourceCreationResult = {

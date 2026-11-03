@@ -73,15 +73,35 @@ type Topology struct {
 	Edges []TopologyEdge `json:"edges"`
 }
 
+type TopologyAnnotationInput struct {
+	Name     string         `json:"name"`
+	Metadata map[string]any `json:"metadata"`
+}
+
+type TopologyResourceInput struct {
+	ResourceID string `json:"resource_id"`
+}
+
+type TopologyPositionInput struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
 type TopologyNode struct {
-	ID           string         `json:"id"`
-	Kind         string         `json:"kind"`
-	Name         string         `json:"name"`
-	ScopeID      string         `json:"scope_id,omitempty"`
-	ProjectID    string         `json:"project_id,omitempty"`
-	ProjectName  string         `json:"project_name,omitempty"`
-	ResourceKind string         `json:"resource_kind,omitempty"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
+	ID           string            `json:"id"`
+	Kind         string            `json:"kind"`
+	Name         string            `json:"name"`
+	ScopeID      string            `json:"scope_id,omitempty"`
+	ProjectID    string            `json:"project_id,omitempty"`
+	ProjectName  string            `json:"project_name,omitempty"`
+	ResourceKind string            `json:"resource_kind,omitempty"`
+	Metadata     map[string]any    `json:"metadata,omitempty"`
+	Position     *TopologyPosition `json:"position,omitempty"`
+}
+
+type TopologyPosition struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 type TopologyEdge struct {
@@ -148,16 +168,18 @@ type DiagnosticApplicationReference struct {
 }
 
 type RelatedResource struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	Role string `json:"role"`
+	ID                        string `json:"id"`
+	Name                      string `json:"name"`
+	Kind                      string `json:"kind"`
+	ScopeType                 string `json:"scope_type"`
+	ApplicationReferenceCount int    `json:"application_reference_count"`
 }
 type Alert struct {
-	ID       string `json:"id"`
-	Severity string `json:"severity"`
-	Title    string `json:"title"`
-	Status   string `json:"status"`
+	ID               string `json:"id"`
+	TargetResourceID string `json:"target_resource_id"`
+	Severity         string `json:"severity"`
+	Title            string `json:"title"`
+	Status           string `json:"status"`
 }
 
 type CreateInput struct {

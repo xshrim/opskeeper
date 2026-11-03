@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    AppWindow,
     AlertTriangle,
     ArrowLeft,
     ArrowRight,
@@ -15,6 +16,7 @@
     Search,
     Server,
     Sparkles,
+    StickyNote,
     Trash2
   } from 'lucide-svelte';
   import {
@@ -28,6 +30,7 @@
   } from '../../lib/api';
   import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
 import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
 import StatusBadge from '../../components/StatusBadge.svelte';
 import ExpandableTable from '../../components/ExpandableTable.svelte';
 import ReadonlyTable from '../../components/ReadonlyTable.svelte';
@@ -36,6 +39,7 @@ import SearchInput from '../../components/SearchInput.svelte';
 import ScopeChip from '../../components/ScopeChip.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
 import { labelTags } from '../../lib/labels';
+import { resourceCategoryFor, resourceCategoryIcon } from '../resource/resourceCatalog';
   import TagList from '../../components/TagList.svelte';
 import ApplicationWizard from './ApplicationWizard.svelte';
 import ProjectTopologyView from './ProjectTopology.svelte';
@@ -80,6 +84,7 @@ import {
     request: ApplicationResourceCreationRequest
   ) => void = () => {};
   export let resourceCreationResult: ApplicationResourceCreationResult | null = null;
+  export let resourceCreationCancelledId = '';
 
   let workspace: ProjectWorkspace | null = null;
   let projectTopology: import('../../lib/api').ProjectTopology | null = null;
@@ -87,6 +92,13 @@ import {
   let projectAreaTab: 'applications' | 'topology' = 'applications';
   let topologyMode: 'browse' | 'edit' = 'browse';
   let topologyResourceRequestId = '';
+  type TopologyComponentIntent = { kind: 'application' | 'resource' | 'annotation'; id?: string; resourceKind?: string; runtimeKind?: string; position?: { x: number; y: number } };
+  let topologyComponentIntent: TopologyComponentIntent | null = null;
+  let topologyApplicationId = '';
+  let topologyResourceId = '';
+  let topologyAnnotationName = '';
+  let topologyAnnotationDescription = '';
+  let topologyConfigBusy = false;
   let workspaceProjectId = '';
   let loadingWorkspace = false;
   let collapsedTeams = new Set<string>();
@@ -105,6 +117,8 @@ import {
   let deletingProject: Project | null = null;
   let deletingApplications: Application[] = [];
   let selectedApplicationIds: string[] = [];
+  let inspectedApplicationID = '';
+  let inspectedResourceIDs: string[] | null = null;
   let users: User[] = [];
 
   const applicationColumns: ReadonlyTableColumn[] = [
@@ -143,6 +157,16 @@ import {
     allProjects.find((project) => project.id === selectedProjectId) ??
     null;
   $: selectedApplications = workspace?.applications.filter((application) => selectedApplicationIds.includes(application.id)) ?? [];
+  $: inspectedResourceIDSet = inspectedResourceIDs ? new Set(inspectedResourceIDs) : null;
+  $: visibleWorkspaceResources = (workspace?.resources ?? []).filter((resource) => !inspectedResourceIDSet || inspectedResourceIDSet.has(resource.id));
+  $: visibleWorkspaceAlerts = (workspace?.alerts ?? []).filter((alert) => !inspectedResourceIDSet || inspectedResourceIDSet.has(alert.target_resource_id));
+  $: topologyResourceOptions = topologyComponentIntent?.kind === 'resource'
+    ? availableResources.filter((resource) => resourceCategoryFor(resource) === topologyComponentIntent?.resourceKind)
+    : availableResources;
+  $: applicationAlertCounts = Object.fromEntries((workspace?.applications ?? []).map((application) => {
+    const resourceIDs = new Set(applicationResourceIDs(application));
+    return [application.id, (workspace?.alerts ?? []).filter((alert) => resourceIDs.has(alert.target_resource_id)).length];
+  }));
   $: normalizedProjectSearch = projectSearch.trim().toLocaleLowerCase();
   $: filteredProjects = normalizedProjectSearch
     ? visibleProjects.filter((project) =>
@@ -167,6 +191,8 @@ import {
   }
   $: if (selectedProjectId && selectedProjectId !== workspaceProjectId) {
     selectedApplicationIds = [];
+    inspectedApplicationID = '';
+    inspectedResourceIDs = null;
     void loadWorkspace(selectedProjectId);
   }
   $: if (!selectedProjectId) {
@@ -175,6 +201,7 @@ import {
     workspaceProjectId = '';
     selectedApplicationIds = [];
   }
+  $: if (topologyMode === 'browse' || projectAreaTab !== 'topology') topologyComponentIntent = null;
 
   async function measureTeamFilter() {
     await tick();
@@ -281,6 +308,57 @@ import {
     ].filter(Boolean)).size;
   }
 
+  function applicationResourceIDs(application: Application) {
+    return [...new Set([
+      ...application.instances.map((instance) => instance.target_resource_id),
+      ...(application.dependencies ?? []).map((dependency) => dependency.target_resource_id)
+    ].filter(Boolean))];
+  }
+
+  function inspectApplication(application: Application) {
+    inspectedApplicationID = application.id;
+    inspectedResourceIDs = applicationResourceIDs(application);
+  }
+
+  function inspectTopologySelection(selection: { node: import('../../lib/api').ProjectTopology['nodes'][number] | null; edge: import('../../lib/api').ProjectTopology['edges'][number] | null }) {
+    const appIDs = new Set<string>();
+    const resourceIDs = new Set<string>();
+    const addNode = (id: string) => {
+      const node = projectTopology?.nodes.find((item) => item.id === id);
+      if (node?.kind === 'application') appIDs.add(node.id);
+      if (node?.kind === 'resource') resourceIDs.add(node.id);
+    };
+    if (selection.node) {
+      addNode(selection.node.id);
+      inspectedApplicationID = selection.node.kind === 'application' ? selection.node.id : '';
+    } else if (selection.edge) {
+      addNode(selection.edge.source_id);
+      addNode(selection.edge.target_id);
+      inspectedApplicationID = '';
+    } else {
+      inspectedApplicationID = '';
+      inspectedResourceIDs = null;
+      return;
+    }
+    for (const id of appIDs) {
+      const application = workspace?.applications.find((item) => item.id === id);
+      if (application) applicationResourceIDs(application).forEach((resourceID) => resourceIDs.add(resourceID));
+    }
+    inspectedResourceIDs = [...resourceIDs];
+  }
+
+  function setProjectAreaTab(tab: 'applications' | 'topology') {
+    projectAreaTab = tab;
+    inspectedApplicationID = '';
+    inspectedResourceIDs = null;
+    if (tab === 'applications') topologyMode = 'browse';
+    if (tab === 'applications') topologyComponentIntent = null;
+  }
+
+  function scopeLevelLabel(scopeType: string) {
+    return scopeType === 'platform' ? '平台级' : scopeType === 'team' ? '团队级' : '项目级';
+  }
+
   function ownerLabel(ids: string[]) {
     const names = ids.map((id) => ownerOptions.find((option) => option.value === id)?.label || id);
     return names.length ? names.join('、') : '未配置';
@@ -322,11 +400,104 @@ import {
   function requestTopologyResource(kind: string) {
     const id = crypto.randomUUID();
     topologyResourceRequestId = id;
-    onRequestResourceCreate({ id, kind, scopeId: selectedProject?.scope.id ?? selectedScopeId });
+    onRequestResourceCreate({ id, kind, scopeId: selectedProject?.scope.id ?? selectedScopeId, coverageTarget: '.map-side-column' });
+  }
+  $: if (resourceCreationCancelledId && resourceCreationCancelledId === topologyResourceRequestId) {
+    topologyResourceRequestId = '';
+    topologyComponentIntent = null;
   }
   $: if (resourceCreationResult && resourceCreationResult.requestId === topologyResourceRequestId) {
     topologyResourceRequestId = '';
-    void loadWorkspace(selectedProjectId);
+    void (async () => {
+      try {
+        await api.addProjectTopologyResource(selectedProjectId, resourceCreationResult.resource.id);
+        if (topologyComponentIntent?.position) await api.setProjectTopologyPosition(selectedProjectId, resourceCreationResult.resource.id, topologyComponentIntent.position);
+        topologyComponentIntent = null;
+        await loadTopology();
+      } catch (error) {
+        onError(describeError(error, '资源已创建，但加入项目拓扑失败'));
+      }
+    })();
+  }
+  async function useExistingTopologyComponent(intent: TopologyComponentIntent) {
+    if (!selectedProjectId || !intent.id) return;
+    try {
+      if (intent.kind === 'application') {
+        const node = projectTopology?.nodes.find((item) => item.kind === 'application' && item.id === intent.id);
+        if (!node) throw new Error('应用不在当前项目拓扑中');
+        if (intent.position) await api.setProjectTopologyPosition(selectedProjectId, node.id, intent.position);
+        if (intent.position) await loadTopology();
+      } else if (intent.kind === 'resource') {
+        await api.addProjectTopologyResource(selectedProjectId, intent.id);
+        if (intent.position) await api.setProjectTopologyPosition(selectedProjectId, intent.id, intent.position);
+        await loadTopology();
+      }
+      onNotice('拓扑组件已添加');
+    } catch (error) {
+      onError(describeError(error, '添加拓扑组件失败'));
+    }
+  }
+  function configureTopologyComponent(intent: TopologyComponentIntent) {
+    if (intent.kind === 'application' && !intent.id) {
+      topologyComponentIntent = intent;
+      applicationWizardOpen = true;
+      return;
+    }
+    if (intent.kind === 'resource' && !intent.id) {
+      topologyComponentIntent = intent;
+      requestTopologyResource(intent.resourceKind ?? 'Host');
+      return;
+    }
+    if (intent.id) {
+      void useExistingTopologyComponent(intent);
+      return;
+    }
+    topologyComponentIntent = intent;
+    topologyApplicationId = intent.kind === 'application' && intent.id ? intent.id : workspace?.applications[0]?.id ?? '';
+    topologyResourceId = intent.kind === 'resource' && intent.id
+      ? intent.id
+      : availableResources.find((resource) => resourceCategoryFor(resource) === intent.resourceKind)?.id ?? '';
+    topologyAnnotationName = '';
+    topologyAnnotationDescription = '';
+  }
+  function cancelTopologyComponent() {
+    if (topologyConfigBusy) return;
+    topologyComponentIntent = null;
+  }
+  async function saveTopologyComponent() {
+    const intent = topologyComponentIntent;
+    if (!intent || !selectedProjectId || topologyConfigBusy) return;
+    topologyConfigBusy = true;
+    try {
+      if (intent.kind === 'application') {
+        const node = projectTopology?.nodes.find((item) => item.kind === 'application' && item.id === topologyApplicationId);
+        if (!node) throw new Error('请选择当前项目中已存在的应用');
+        topologyComponentIntent = null;
+        if (intent.position) await api.setProjectTopologyPosition(selectedProjectId, node.id, intent.position);
+        await loadTopology();
+      } else if (intent.kind === 'resource') {
+        if (!topologyResourceId) throw new Error('请选择资源');
+        await api.addProjectTopologyResource(selectedProjectId, topologyResourceId);
+        if (intent.position) await api.setProjectTopologyPosition(selectedProjectId, topologyResourceId, intent.position);
+        topologyComponentIntent = null;
+        await loadTopology();
+      } else {
+        const name = topologyAnnotationName.trim();
+        if (!name) throw new Error('请填写说明块标题');
+        const node = await api.createProjectTopologyAnnotation(selectedProjectId, {
+          name,
+          metadata: { description: topologyAnnotationDescription.trim() }
+        });
+        if (intent.position) await api.setProjectTopologyPosition(selectedProjectId, node.id, intent.position);
+        topologyComponentIntent = null;
+        await loadTopology();
+      }
+      onNotice('拓扑组件已保存');
+    } catch (error) {
+      onError(describeError(error, '保存拓扑组件失败'));
+    } finally {
+      topologyConfigBusy = false;
+    }
   }
   function applicationPayload(draft: ApplicationDraft) {
     return {
@@ -397,9 +568,17 @@ import {
   }
   async function saveApplications(drafts: ApplicationDraft[]) {
     if (!selectedProjectId) return;
-    await api.createApplications(selectedProjectId, drafts.map(applicationPayload));
+    const addedFromTopology = topologyComponentIntent?.kind === 'application';
+    const dropPosition = topologyComponentIntent?.position;
+    const result = await api.createApplications(selectedProjectId, drafts.map(applicationPayload));
     applicationWizardOpen = false;
     await loadWorkspace(selectedProjectId);
+    if (addedFromTopology) {
+      topologyMode = 'edit';
+      if (dropPosition) await Promise.all(result.items.map((application, index) => api.setProjectTopologyPosition(selectedProjectId, application.id, { x: Math.min(1171, dropPosition.x + index * 24), y: Math.min(9960, dropPosition.y + index * 24) })));
+      topologyComponentIntent = null;
+      await loadTopology();
+    }
     onNotice(`${drafts.length} 个应用已新增`);
   }
   async function updateApplication(app: Application, draft: ApplicationDraft) {
@@ -658,7 +837,7 @@ import {
       </div>
     </header>
     <div class="workspace-stats">
-      {#each [['应用', workspace?.summary.applications ?? 0, '应用和服务'], ['实例', workspace?.summary.instances ?? 0, '运行中的实例'], ['关联资源', workspace?.summary.resources ?? 0, 'Host / Docker / K8s'], ['服务依赖', workspace?.summary.dependencies ?? 0, '暂未配置'], ['告警', workspace?.summary.alerts ?? 0, '待处理信号']] as stat}<div
+      {#each [['应用', workspace?.summary.applications ?? 0, '应用和服务'], ['实例', workspace?.summary.instances ?? 0, '运行中的实例'], ['资源', workspace?.summary.resources ?? 0, '当前项目可见范围'], ['服务依赖', workspace?.summary.dependencies ?? 0, '暂未配置'], ['告警', workspace?.summary.alerts ?? 0, '待处理信号']] as stat}<div
           class="workspace-stat"
         >
           <span>{stat[0]}</span><strong>{stat[1]}</strong><small
@@ -666,14 +845,15 @@ import {
           >
         </div>{/each}
     </div>
-    <section class="project-applications-area">
+    <div class="resource-map-columns">
+      <section class="panel project-applications-area map-main-column">
       <div class="project-area-toolbar">
         <div class="project-area-tabs" role="tablist" aria-label="项目视图">
-          <button class:active={projectAreaTab === 'applications'} role="tab" aria-selected={projectAreaTab === 'applications'} on:click={() => (projectAreaTab = 'applications')}>
-            <EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={16} />项目应用
+          <button class:active={projectAreaTab === 'applications'} role="tab" aria-selected={projectAreaTab === 'applications'} on:click={() => setProjectAreaTab('applications')}>
+            <AppWindow size={16} />应用
           </button>
-          <button class:active={projectAreaTab === 'topology'} role="tab" aria-selected={projectAreaTab === 'topology'} on:click={() => (projectAreaTab = 'topology')}>
-            <Network size={16} />项目拓扑
+          <button class:active={projectAreaTab === 'topology'} role="tab" aria-selected={projectAreaTab === 'topology'} on:click={() => setProjectAreaTab('topology')}>
+            <Network size={16} />拓扑
           </button>
         </div>
         <div class="section-heading-actions project-area-actions">
@@ -683,8 +863,8 @@ import {
               class="secondary"
               type="button"
               disabled={loadingWorkspace}
-              data-tooltip="刷新项目应用"
-              aria-label="刷新项目应用"
+              data-tooltip="刷新应用"
+              aria-label="刷新应用"
               on:click={() => selectedProject && void loadWorkspace(selectedProject.id)}
               ><RefreshCw size={15} />刷新</button
             ><button
@@ -693,39 +873,31 @@ import {
               disabled={!selectedApplications.length}
               data-tooltip={selectedApplications.length ? `删除所选 ${selectedApplications.length} 个应用` : '请先选择应用'}
               on:click={() => (deletingApplications = selectedApplications)}
-              ><Trash2 size={15} />删除应用</button
-            ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />新增应用</button>
+              ><Trash2 size={15} />删除</button
+            ><button class="primary workspace-action" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={15} />新增</button>
           {:else}
             <button
               class="secondary"
               type="button"
               disabled={loadingTopology}
-              data-tooltip="刷新项目拓扑"
-              aria-label="刷新项目拓扑"
+              data-tooltip="刷新拓扑"
+              aria-label="刷新拓扑"
               on:click={() => void loadTopology()}
               ><RefreshCw size={15} />刷新</button
             ><button
-              class="secondary"
+              class="primary"
               type="button"
               disabled={!selectedProject || !canManageProject(selectedProject, 'update')}
-              data-tooltip={topologyMode === 'edit' ? '返回浏览模式' : '编辑项目拓扑'}
-              aria-label={topologyMode === 'edit' ? '返回浏览模式' : '编辑项目拓扑'}
+              data-tooltip={topologyMode === 'edit' ? '返回浏览模式' : '编辑拓扑'}
+              aria-label={topologyMode === 'edit' ? '返回浏览模式' : '编辑拓扑'}
               on:click={() => topologyMode = topologyMode === 'edit' ? 'browse' : 'edit'}
-              >{#if topologyMode === 'edit'}<Map size={15} />浏览模式{:else}<Pencil size={15} />编辑{/if}</button
+              >{#if topologyMode === 'edit'}<Map size={15} />浏览{:else}<Pencil size={15} />编辑{/if}</button
             >
           {/if}
         </div>
       </div>
-      {#if projectAreaTab === 'applications'}
-      <div class="resource-map-columns">
-      <section class="map-main-column">
-        <section class="panel project-applications-panel">
-        <div class="section-heading">
-          <div>
-            <h2>项目应用</h2>
-            <p>应用状态、实例绑定和运行资源</p>
-          </div>
-        </div>
+        {#if projectAreaTab === 'applications'}
+        <div class="project-applications-panel">
         {#if loadingWorkspace}<div class="map-loading">正在加载项目驾驶舱...</div>
         {:else if workspace?.applications.length}
           <ExpandableTable
@@ -736,11 +908,13 @@ import {
             selectable
             selectedIds={selectedApplicationIds}
             onSelectionChange={(ids) => (selectedApplicationIds = ids)}
+            onRowClick={inspectApplication}
+            rowClass={(row) => row.id === inspectedApplicationID ? 'inspected-application-row' : ''}
             emptyText="当前项目暂无应用"
           >
             <svelte:fragment slot="cell" let:row let:column>
               {#if column.key === 'application'}
-                <span class="application-table-name"><EntityBrandIcon kind="Application" fallback={row.icon || 'lucide:AppWindow'} size={17} /><span><strong>{row.name}</strong><small>{row.code}</small></span></span>
+                <span class="application-table-name"><EntityBrandIcon kind="Application" fallback={row.icon || 'lucide:AppWindow'} size={17} /><span><strong>{row.name}</strong><small>{row.code}</small></span>{#if applicationAlertCounts[row.id]}<span class="application-alert-indicator" data-tooltip={`${applicationAlertCounts[row.id]} 条关联告警`} aria-label={`${applicationAlertCounts[row.id]} 条关联告警`}><AlertTriangle size={13} />{applicationAlertCounts[row.id]}</span>{/if}</span>
               {:else if column.key === 'runtime'}
                 <span class="application-table-value" data-tooltip={applicationRuntimeResourceNames(row)}><strong>{applicationRuntimeResourceNames(row)}</strong><small>{row.instances.length ? row.runtime_kind === 'virtual_machine' ? '虚拟机' : row.runtime_kind === 'containerized' ? '容器化' : '云原生' : '未绑定运行时'}</small></span>
               {:else if column.key === 'instances'}<span class="application-table-count">{row.instances.length} 个实例</span>
@@ -786,36 +960,54 @@ import {
               ><Plus size={15} />新增应用</button
             >
           </div>{/if}
-        </section>
+        </div>
+        {:else}
+          <div class="project-topology-panel">
+            <ProjectTopologyView
+              project={selectedProject!}
+              topology={projectTopology}
+              applications={workspace?.applications ?? []}
+              resources={availableResources}
+              loading={loadingTopology}
+              mode={topologyMode}
+              configurationOpen={Boolean(topologyComponentIntent)}
+              applicationAlertCounts={applicationAlertCounts}
+              onSelectionChange={inspectTopologySelection}
+              onRefresh={loadTopology}
+              onConfigureNode={configureTopologyComponent}
+              onEditApplication={(application) => (editingApplication = workspace?.applications.find((item) => item.id === application.id) ?? null)}
+              {onNotice}
+              {onError}
+            />
+          </div>
+        {/if}
       </section>
-      <aside class="map-side-column">
+      <aside class="map-side-column" class:topology-configuring={Boolean(topologyComponentIntent)}>
         <section class="panel map-side-panel">
           <div class="panel-heading">
-            <div>
-              <h2>运行资源</h2>
-              <p>项目关联的 Host、Docker 和 Kubernetes 资源</p>
+            <div class="side-panel-heading-copy">
+              <Server size={17} />
+              <h2>资源</h2>
+              <p>{inspectedApplicationID ? '当前应用关联的资源' : '本项目级资源及应用已关联资源'}</p>
             </div>
-            <Server size={17} />
           </div>
-          {#each workspace?.resources ?? [] as resource}<div
+          {#each visibleWorkspaceResources as resource}<div
               class="resource-map-row"
             >
-              <span class="resource-kind">{resource.kind}</span><span
-                ><strong>{resource.name}</strong><small
-                  >{resource.role || '运行资源'}</small
-                ></span
+              <span class="resource-kind">{resource.kind}</span><span class="resource-map-copy"
+              ><strong>{resource.name}</strong></span><span class="resource-map-meta"><span class="resource-reference-count">被 {resource.application_reference_count} 个应用引用</span><span class={`scope-level-tag scope-${resource.scope_type}`}>{scopeLevelLabel(resource.scope_type)}</span></span
               >
-            </div>{:else}<div class="detail-empty">暂无关联运行资源</div>{/each}
+            </div>{:else}<div class="detail-empty">暂无可见资源</div>{/each}
         </section>
         <section class="panel map-side-panel alerts-panel">
           <div class="panel-heading">
-            <div>
-              <h2>项目告警</h2>
-              <p>需要关注的项目健康信号</p>
+            <div class="side-panel-heading-copy">
+              <AlertTriangle size={17} />
+              <h2>告警</h2>
+              <p>{inspectedApplicationID ? '当前应用关联的告警' : '本项目待处理告警'}</p>
             </div>
-            <AlertTriangle size={17} />
           </div>
-          {#each workspace?.alerts ?? [] as alert}<div class="alert-map-row">
+          {#each visibleWorkspaceAlerts as alert}<div class="alert-map-row">
               <span class="severity {alert.severity}"></span><span
                 ><strong>{alert.title}</strong><small
                   >{statusLabel(alert.status)}</small
@@ -825,25 +1017,28 @@ import {
               <CheckCircle2 size={15} />当前没有项目告警
             </div>{/each}
         </section>
+        {#if projectAreaTab === 'topology' && topologyMode === 'edit' && topologyComponentIntent && !applicationWizardOpen && !topologyResourceRequestId}
+          <div class="topology-config-overlay">
+            <section class="topology-config-window" aria-label="配置拓扑组件">
+              <header><span class="topology-config-icon">{#if topologyComponentIntent.kind === 'application'}<EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />{:else if topologyComponentIntent.kind === 'resource'}<ResourceBrandIcon resource={{ kind: topologyComponentIntent.resourceKind ?? 'Host' }} fallback={resourceCategoryIcon(topologyComponentIntent.resourceKind ?? 'Host')} size={17} />{:else}<StickyNote size={17} />{/if}</span><div><strong>{topologyComponentIntent.kind === 'application' ? '配置应用节点' : topologyComponentIntent.kind === 'resource' ? '配置资源节点' : '配置说明块'}</strong><small>确认组件内容后添加到项目拓扑</small></div></header>
+              <div class="topology-config-body">
+                {#if topologyComponentIntent.kind === 'application'}
+                  <label>应用<select bind:value={topologyApplicationId}><option value="">选择应用</option>{#each workspace?.applications ?? [] as application (application.id)}<option value={application.id}>{application.name} · {application.code}</option>{/each}</select></label>
+                  <button class="secondary" type="button" on:click={() => (applicationWizardOpen = true)}><Plus size={14} />新增应用</button>
+                {:else if topologyComponentIntent.kind === 'resource'}
+                  <label>资源<select bind:value={topologyResourceId}><option value="">选择资源</option>{#each topologyResourceOptions as resource (resource.id)}<option value={resource.id}>{resource.name} · {resource.kind}</option>{/each}</select></label>
+                  <button class="secondary" type="button" on:click={() => requestTopologyResource(topologyComponentIntent?.resourceKind || 'Host')}><Plus size={14} />新增资源</button>
+                {:else}
+                  <label>标题<input bind:value={topologyAnnotationName} maxlength="200" placeholder="例如：支付核心系统" /></label>
+                  <label>说明<textarea bind:value={topologyAnnotationDescription} rows="4" placeholder="补充系统边界、职责或其他备注"></textarea></label>
+                {/if}
+              </div>
+              <footer><button class="secondary" type="button" disabled={topologyConfigBusy} on:click={cancelTopologyComponent}>取消</button><button class="primary" type="button" disabled={topologyConfigBusy} on:click={saveTopologyComponent}><CheckCircle2 size={14} />{topologyConfigBusy ? '保存中' : '确认并添加'}</button></footer>
+            </section>
+          </div>
+        {/if}
       </aside>
-      </div>
-      {:else}
-        <section class="panel project-topology-panel">
-          <ProjectTopologyView
-            project={selectedProject!}
-            topology={projectTopology}
-            loading={loadingTopology}
-            mode={topologyMode}
-            onRefresh={loadTopology}
-            onAddApplication={() => (applicationWizardOpen = true)}
-            onAddResource={requestTopologyResource}
-            onEditApplication={(application) => (editingApplication = workspace?.applications.find((item) => item.id === application.id) ?? null)}
-            {onNotice}
-            {onError}
-          />
-        </section>
-      {/if}
-    </section>
+    </div>
   {/if}
 </section>
 
@@ -865,18 +1060,21 @@ import {
     applications={workspace?.applications ?? []}
     projects={allProjects.map((project) => ({ id: project.id, name: project.name }))}
     initialApplication={editingApplication}
+    initialRuntimeKind={topologyComponentIntent?.kind === 'application' ? topologyComponentIntent.runtimeKind : ''}
+    embedded={projectAreaTab === 'topology' && Boolean(topologyComponentIntent)}
     onSave={saveApplications}
     onUpdate={updateApplication}
     {onResourceCreated}
-    onRequestResourceCreate={(kind: RuntimeResourceKind, instanceId?: string) =>
+      onRequestResourceCreate={(kind: RuntimeResourceKind, instanceId?: string) =>
       onRequestResourceCreate({
         id: crypto.randomUUID(),
         kind,
         scopeId: selectedProject?.scope.id ?? selectedScopeId,
+        ...(topologyComponentIntent ? { coverageTarget: '.map-side-column' } : {}),
         ...(instanceId ? { instanceId } : {})
       })}
     {resourceCreationResult}
-    onCancel={() => { applicationWizardOpen = false; editingApplication = null; }}
+    onCancel={() => { applicationWizardOpen = false; editingApplication = null; topologyComponentIntent = null; }}
   />{/if}
 {#if deletingProject}
   <DeleteConfirmationDialog

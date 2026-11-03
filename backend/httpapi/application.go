@@ -23,6 +23,15 @@ type applicationService interface {
 type applicationBatchService interface {
 	CreateMany(context.Context, []application.CreateInput) ([]application.Application, error)
 }
+type applicationTopologyAnnotationService interface {
+	CreateTopologyAnnotation(context.Context, string, application.TopologyAnnotationInput) (application.TopologyNode, error)
+}
+type applicationTopologyResourceService interface {
+	SetTopologyPosition(context.Context, string, string, application.TopologyPositionInput) error
+	AddTopologyResource(context.Context, string, application.TopologyResourceInput) error
+	RemoveTopologyResource(context.Context, string, string) error
+	DeleteTopologyAnnotation(context.Context, string, string) error
+}
 type applicationHandler struct {
 	service     applicationService
 	apiBasePath string
@@ -44,6 +53,14 @@ type createApplicationRequest struct {
 }
 type createApplicationBatchRequest struct {
 	Items []createApplicationRequest `json:"items"`
+}
+type createTopologyAnnotationRequest struct {
+	Name     string         `json:"name"`
+	Metadata map[string]any `json:"metadata"`
+}
+type topologyPositionRequest struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 type updateApplicationRequest struct {
 	Name               *string                              `json:"name"`
@@ -80,6 +97,15 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/workspace", h.workspace)
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/topology", h.topology)
+	if _, ok := service.(applicationTopologyAnnotationService); ok {
+		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/topology/annotations", h.createTopologyAnnotation)
+	}
+	if _, ok := service.(applicationTopologyResourceService); ok {
+		router.With(guard(authorization.ProjectManage)).Put("/projects/{projectID}/topology/nodes/{nodeID}/position", h.setTopologyPosition)
+		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/topology/resources", h.addTopologyResource)
+		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/resources/{resourceID}", h.removeTopologyResource)
+		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/annotations/{annotationID}", h.deleteTopologyAnnotation)
+	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
 	if _, ok := service.(applicationBatchService); ok {
@@ -90,6 +116,22 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/", h.delete)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/instances", h.createInstance)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/instances/{instanceID}/", h.deleteInstance)
+}
+func (h applicationHandler) setTopologyPosition(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	var body topologyPositionRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	if err := service.SetTopologyPosition(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "nodeID"), application.TopologyPositionInput{X: body.X, Y: body.Y}); err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 func (h applicationHandler) workspace(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.Workspace(r.Context(), chi.URLParam(r, "projectID"))
@@ -106,6 +148,63 @@ func (h applicationHandler) topology(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+func (h applicationHandler) createTopologyAnnotation(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyAnnotationService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	var body createTopologyAnnotationRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := service.CreateTopologyAnnotation(r.Context(), chi.URLParam(r, "projectID"), application.TopologyAnnotationInput{Name: body.Name, Metadata: body.Metadata})
+	if err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+func (h applicationHandler) addTopologyResource(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	var body application.TopologyResourceInput
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	if err := service.AddTopologyResource(r.Context(), chi.URLParam(r, "projectID"), body); err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+func (h applicationHandler) removeTopologyResource(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	if err := service.RemoveTopologyResource(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "resourceID")); err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+func (h applicationHandler) deleteTopologyAnnotation(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	if err := service.DeleteTopologyAnnotation(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "annotationID")); err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 func (h applicationHandler) list(w http.ResponseWriter, r *http.Request) {
 	v, e := h.service.List(r.Context(), chi.URLParam(r, "projectID"))

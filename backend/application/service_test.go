@@ -51,6 +51,17 @@ func (*testStore) DiagnosticContext(context.Context, string, string) (Diagnostic
 }
 func (*testStore) Workspace(context.Context, string) (Workspace, error) { return Workspace{}, nil }
 func (*testStore) Topology(context.Context, string) (Topology, error)   { return Topology{}, nil }
+func (*testStore) SetTopologyPosition(context.Context, string, string, TopologyPositionInput) error {
+	return nil
+}
+func (*testStore) CreateTopologyAnnotation(context.Context, string, TopologyAnnotationInput) (TopologyNode, error) {
+	return TopologyNode{}, nil
+}
+func (*testStore) AddTopologyResource(context.Context, string, TopologyResourceInput) error {
+	return nil
+}
+func (*testStore) RemoveTopologyResource(context.Context, string, string) error   { return nil }
+func (*testStore) DeleteTopologyAnnotation(context.Context, string, string) error { return nil }
 
 func TestCreateValidatesProjectAndCode(t *testing.T) {
 	s := NewService(&testStore{})
@@ -60,6 +71,16 @@ func TestCreateValidatesProjectAndCode(t *testing.T) {
 	}
 	if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost, Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}}}); err != nil {
 		t.Fatalf("valid application rejected: %v", err)
+	}
+}
+
+func TestSetTopologyPositionValidatesCoordinatesAndNodeID(t *testing.T) {
+	s := NewService(&testStore{})
+	if err := s.SetTopologyPosition(context.Background(), "project", "node", TopologyPositionInput{X: 100, Y: 100}); err == nil {
+		t.Fatal("invalid node ID accepted")
+	}
+	if err := s.SetTopologyPosition(context.Background(), "project", "00000000-0000-4000-8000-000000000001", TopologyPositionInput{X: -1, Y: 100}); err == nil {
+		t.Fatal("negative coordinate accepted")
 	}
 }
 

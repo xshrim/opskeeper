@@ -158,6 +158,7 @@ import type {
   let openCreateTeamRequest = 0;
   let applicationResourceRequest: ApplicationResourceCreationRequest | null = null;
   let applicationResourceResult: ApplicationResourceCreationResult | null = null;
+  let applicationResourceCancelledId = '';
 
   $: scopeChoices = buildScopeChoices(platform, teams, projects);
   $: activeScope =
@@ -910,9 +911,11 @@ import type {
           }}
           onRequestResourceCreate={(request) => {
             applicationResourceResult = null;
+            applicationResourceCancelledId = '';
             applicationResourceRequest = request;
           }}
           resourceCreationResult={applicationResourceResult}
+          resourceCreationCancelledId={applicationResourceCancelledId}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
           onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
@@ -947,6 +950,7 @@ import type {
             {activeMessage}
             {activeMessageTone}
             workflowOnly
+            workflowPositionTarget={applicationResourceRequest.coverageTarget ?? ''}
             workflowRequest={applicationResourceRequest}
             onWorkflowComplete={(requestId, resource) => {
               const request = applicationResourceRequest;
@@ -954,6 +958,7 @@ import type {
               applicationResourceResult = resource
                 ? { requestId, instanceId: request.instanceId, resource }
                 : null;
+              applicationResourceCancelledId = resource ? '' : requestId;
               applicationResourceRequest = null;
             }}
           />

@@ -35,6 +35,11 @@ type Store interface {
 	DiagnosticContext(context.Context, string, string) (DiagnosticContext, error)
 	Workspace(context.Context, string) (Workspace, error)
 	Topology(context.Context, string) (Topology, error)
+	SetTopologyPosition(context.Context, string, string, TopologyPositionInput) error
+	CreateTopologyAnnotation(context.Context, string, TopologyAnnotationInput) (TopologyNode, error)
+	AddTopologyResource(context.Context, string, TopologyResourceInput) error
+	RemoveTopologyResource(context.Context, string, string) error
+	DeleteTopologyAnnotation(context.Context, string, string) error
 }
 
 type BindingValidator interface {
@@ -529,4 +534,34 @@ func (s *Service) Topology(ctx context.Context, pid string) (Topology, error) {
 		return Topology{}, ErrInvalid
 	}
 	return s.store.Topology(ctx, strings.TrimSpace(pid))
+}
+func (s *Service) SetTopologyPosition(ctx context.Context, pid, nodeID string, input TopologyPositionInput) error {
+	if strings.TrimSpace(pid) == "" || !uuidPattern.MatchString(strings.TrimSpace(nodeID)) || input.X < 0 || input.Y < 0 || input.X > 10000 || input.Y > 10000 {
+		return ErrInvalid
+	}
+	return s.store.SetTopologyPosition(ctx, strings.TrimSpace(pid), strings.TrimSpace(nodeID), input)
+}
+func (s *Service) CreateTopologyAnnotation(ctx context.Context, pid string, input TopologyAnnotationInput) (TopologyNode, error) {
+	if strings.TrimSpace(pid) == "" || strings.TrimSpace(input.Name) == "" {
+		return TopologyNode{}, ErrInvalid
+	}
+	return s.store.CreateTopologyAnnotation(ctx, strings.TrimSpace(pid), input)
+}
+func (s *Service) AddTopologyResource(ctx context.Context, pid string, input TopologyResourceInput) error {
+	if strings.TrimSpace(pid) == "" || strings.TrimSpace(input.ResourceID) == "" {
+		return ErrInvalid
+	}
+	return s.store.AddTopologyResource(ctx, strings.TrimSpace(pid), TopologyResourceInput{ResourceID: strings.TrimSpace(input.ResourceID)})
+}
+func (s *Service) RemoveTopologyResource(ctx context.Context, pid, resourceID string) error {
+	if strings.TrimSpace(pid) == "" || strings.TrimSpace(resourceID) == "" {
+		return ErrInvalid
+	}
+	return s.store.RemoveTopologyResource(ctx, strings.TrimSpace(pid), strings.TrimSpace(resourceID))
+}
+func (s *Service) DeleteTopologyAnnotation(ctx context.Context, pid, annotationID string) error {
+	if strings.TrimSpace(pid) == "" || strings.TrimSpace(annotationID) == "" {
+		return ErrInvalid
+	}
+	return s.store.DeleteTopologyAnnotation(ctx, strings.TrimSpace(pid), strings.TrimSpace(annotationID))
 }

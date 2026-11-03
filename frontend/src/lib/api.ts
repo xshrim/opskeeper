@@ -168,10 +168,12 @@ export interface ProjectWorkspace {
     id: string;
     name: string;
     kind: string;
-    role: string;
+    scope_type: 'platform' | 'team' | 'project' | string;
+    application_reference_count: number;
   }>;
   alerts: Array<{
     id: string;
+    target_resource_id: string;
     severity: string;
     title: string;
     status: string;
@@ -179,7 +181,7 @@ export interface ProjectWorkspace {
   applications: Application[];
 }
 export interface ProjectTopology {
-  nodes: Array<{ id: string; kind: string; name: string; scope_id?: string; project_id?: string; project_name?: string; resource_kind?: string; metadata?: Record<string, unknown> }>;
+  nodes: Array<{ id: string; kind: string; name: string; scope_id?: string; project_id?: string; project_name?: string; resource_kind?: string; metadata?: Record<string, unknown>; position?: { x: number; y: number } }>;
   edges: Array<{ id: string; source_id: string; target_id: string; relation: string; metadata?: Record<string, unknown> }>;
 }
 
@@ -976,6 +978,16 @@ export const api = {
     request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
   projectTopology: (id: string) =>
     request<ProjectTopology>(`api/v1/projects/${id}/topology`),
+  addProjectTopologyResource: (projectId: string, resourceId: string) =>
+    request<void>(`api/v1/projects/${projectId}/topology/resources`, json({ resource_id: resourceId })),
+  setProjectTopologyPosition: (projectId: string, nodeId: string, position: { x: number; y: number }) =>
+    request<void>(`api/v1/projects/${projectId}/topology/nodes/${nodeId}/position`, { ...json(position), method: 'PUT' }),
+  removeProjectTopologyResource: (projectId: string, resourceId: string) =>
+    request<void>(`api/v1/projects/${projectId}/topology/resources/${resourceId}`, { method: 'DELETE' }),
+  createProjectTopologyAnnotation: (projectId: string, body: { name: string; metadata?: Record<string, unknown> }) =>
+    request<ProjectTopology['nodes'][number]>(`api/v1/projects/${projectId}/topology/annotations`, json(body)),
+  deleteProjectTopologyAnnotation: (projectId: string, annotationId: string) =>
+    request<void>(`api/v1/projects/${projectId}/topology/annotations/${annotationId}`, { method: 'DELETE' }),
   applications: (projectId: string) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications`

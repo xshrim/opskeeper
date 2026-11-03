@@ -11,6 +11,7 @@
   export let canSelectRow: (row: any) => boolean = () => true;
   export let onSelectionChange: (ids: string[]) => void = () => {};
   export let onRowToggle: (row: any, expanded: boolean) => void = () => {};
+  export let onRowClick: (row: any) => void = () => {};
   export let filterable = false;
   export let filterValue = '';
   export let filterPlaceholder = '筛选';
@@ -110,6 +111,7 @@
         {@const expanded = expandedIds.has(id)}
         <tr class:selected={selectedIds.includes(id)} class={rowClass(row)} on:click={(event) => {
           const target = event.target as HTMLElement;
+          onRowClick(row);
           if (expandable && !(target.closest('button, input, a, select, textarea'))) toggleExpanded(row);
         }}>
           {#if expandable && togglePlacement === 'column'}

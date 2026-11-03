@@ -180,6 +180,7 @@
   export let visibleResources: Resource[] = [];
   export let workflowOnly = false;
   export let workflowRequest: ApplicationResourceCreationRequest | null = null;
+  export let workflowPositionTarget = '';
   export let onWorkflowComplete: (
     requestId: string,
     resource: Resource | null
@@ -2834,10 +2835,12 @@
     {#if resourceAddMenuOpen}
       <ModalDialog
         title={resourceWorkflowEditing() ? '编辑资源' : '新增资源'}
-        coverage={workflowOnly ? 'page' : 'target'}
-        inertTarget={workflowOnly ? '' : '.resource-catalog-panel'}
-        positionTarget={workflowOnly ? '' : '.resource-catalog-panel'}
-        widthTargetRatio={workflowOnly ? 0 : 0.9}
+        coverage={workflowOnly ? (workflowPositionTarget ? 'target' : 'page') : 'target'}
+        inertTarget={workflowOnly ? workflowPositionTarget : '.resource-catalog-panel'}
+        maskTarget={workflowOnly ? workflowPositionTarget : ''}
+        positionTarget={workflowOnly ? workflowPositionTarget : '.resource-catalog-panel'}
+        widthTargetRatio={workflowOnly ? (workflowPositionTarget ? 1 : 0) : 0.9}
+        stretchTarget={workflowOnly && Boolean(workflowPositionTarget)}
         description={resourceWorkflowEditing()
           ? `修改${resourceAddCategory}${resourceAddSubtype ? ` · ${resourceAddSubtype}` : ''}的连接配置、凭据和资源属性。`
           : '配置资源范围、连接信息和访问凭据。'}

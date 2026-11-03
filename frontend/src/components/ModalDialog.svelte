@@ -25,7 +25,9 @@
   export let size: 'small' | 'medium' | 'large' | 'wide' = 'medium';
   export let coverage: DialogCoverage = 'page';
   export let inertTarget = '';
+  export let maskTarget = '';
   export let positionTarget = '';
+  export let stretchTarget = false;
   export let widthTargetRatio = 0;
   export let overflowMode: DialogOverflow = 'scroll';
   export let autoHeight = true;
@@ -48,8 +50,9 @@
   label={title}
   {modal}
   inertTarget={coverage === 'target' ? inertTarget : ''}
-  maskTarget={coverage === 'target' ? inertTarget : ''}
+  maskTarget={maskTarget || (coverage === 'target' ? inertTarget : '')}
   {positionTarget}
+  {stretchTarget}
   {widthTargetRatio}
   {overflowMode}
   {autoHeight}

@@ -773,11 +773,12 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		nodes = append(nodes, TopologyNode{ID: app.ID, Kind: "application", Name: app.Name, ProjectID: projectID, ProjectName: project.Name, Metadata: map[string]any{"code": app.Code, "runtime_kind": app.RuntimeKind, "description": app.Description, "status": app.Status, "critical": app.Critical, "labels": app.Labels, "instance_count": len(app.Instances)}})
 		edges = append(edges, TopologyEdge{ID: "contains:" + app.ID, SourceID: projectID, TargetID: app.ID, Relation: "contains"})
 	}
-	resourceQuery, resourceArgs := appendResourceScopeVisibility(`SELECT DISTINCT r.id::text,r.scope_id::text,r.name,r.kind,r.subtype,r.labels
+	resourceQuery, resourceArgs := appendResourceScopeVisibility(`SELECT DISTINCT r.id::text,r.scope_id::text,r.name,r.kind,r.subtype,r.labels,
+  EXISTS (SELECT 1 FROM project_topology_resources ptr WHERE ptr.project_id=$2::uuid AND ptr.resource_id=r.id)
   FROM resources r
 	JOIN projects current_project ON current_project.id=$2::uuid
-  WHERE r.deleted_at IS NULL AND (r.scope_id=current_project.scope_id OR EXISTS (SELECT 1 FROM application_instances i WHERE i.application_id=ANY($1::uuid[]) AND i.target_resource_id=r.id)
-	OR EXISTS (SELECT 1 FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[]) AND d.target_resource_id=r.id))`, []any{appIDs, projectID}, ctx, "r")
+	WHERE r.deleted_at IS NULL AND (r.scope_id=current_project.scope_id OR EXISTS (SELECT 1 FROM project_topology_resources topology_resource WHERE topology_resource.project_id=$2::uuid AND topology_resource.resource_id=r.id) OR EXISTS (SELECT 1 FROM application_instances i WHERE i.application_id=ANY($1::uuid[]) AND i.target_resource_id=r.id)
+		OR EXISTS (SELECT 1 FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[]) AND d.target_resource_id=r.id))`, []any{appIDs, projectID}, ctx, "r")
 	resourceRows, err := s.pool.Query(ctx, resourceQuery, resourceArgs...)
 	if err != nil {
 		return Topology{}, fmt.Errorf("list application topology resources: %w", err)
@@ -787,7 +788,8 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		var node TopologyNode
 		var subtype string
 		var rawLabels []byte
-		if err := resourceRows.Scan(&node.ID, &node.ScopeID, &node.Name, &node.ResourceKind, &subtype, &rawLabels); err != nil {
+		var topologyMember bool
+		if err := resourceRows.Scan(&node.ID, &node.ScopeID, &node.Name, &node.ResourceKind, &subtype, &rawLabels, &topologyMember); err != nil {
 			resourceRows.Close()
 			return Topology{}, fmt.Errorf("scan application topology resource: %w", err)
 		}
@@ -797,7 +799,7 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 			resourceRows.Close()
 			return Topology{}, fmt.Errorf("decode application topology resource labels: %w", err)
 		}
-		node.Metadata = map[string]any{"subtype": subtype, "labels": labels, "external": node.ScopeID != project.ScopeID}
+		node.Metadata = map[string]any{"subtype": subtype, "labels": labels, "external": node.ScopeID != project.ScopeID, "topology_member": topologyMember}
 		nodes = append(nodes, node)
 		resourceSet[node.ID] = struct{}{}
 	}
@@ -918,26 +920,201 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 	if err := relationRows.Err(); err != nil {
 		return Topology{}, err
 	}
+	annotationQuery, annotationArgs := appendApplicationScopeFilter(`SELECT annotation.id::text,annotation.name,annotation.metadata
+  FROM project_topology_annotations annotation
+  JOIN projects annotation_project ON annotation_project.id=annotation.project_id
+ WHERE annotation.project_id=$1::uuid AND annotation_project.deleted_at IS NULL`, []any{projectID}, "annotation_project", ctx)
+	annotationRows, err := s.pool.Query(ctx, annotationQuery, annotationArgs...)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list project topology annotations: %w", err)
+	}
+	for annotationRows.Next() {
+		var node TopologyNode
+		var metadata []byte
+		if err := annotationRows.Scan(&node.ID, &node.Name, &metadata); err != nil {
+			annotationRows.Close()
+			return Topology{}, fmt.Errorf("scan project topology annotation: %w", err)
+		}
+		if err := json.Unmarshal(metadata, &node.Metadata); err != nil {
+			annotationRows.Close()
+			return Topology{}, fmt.Errorf("decode project topology annotation: %w", err)
+		}
+		node.Kind = "annotation"
+		node.ProjectID = projectID
+		nodes = append(nodes, node)
+	}
+	if err := annotationRows.Err(); err != nil {
+		annotationRows.Close()
+		return Topology{}, err
+	}
+	annotationRows.Close()
+	positionRows, err := s.pool.Query(ctx, `SELECT node_id::text,position_x,position_y FROM project_topology_positions WHERE project_id=$1::uuid`, projectID)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list project topology positions: %w", err)
+	}
+	positions := make(map[string]TopologyPositionInput)
+	for positionRows.Next() {
+		var id string
+		var position TopologyPositionInput
+		if err := positionRows.Scan(&id, &position.X, &position.Y); err != nil {
+			positionRows.Close()
+			return Topology{}, fmt.Errorf("scan project topology position: %w", err)
+		}
+		positions[id] = position
+	}
+	if err := positionRows.Err(); err != nil {
+		positionRows.Close()
+		return Topology{}, err
+	}
+	positionRows.Close()
+	for index := range nodes {
+		if position, ok := positions[nodes[index].ID]; ok {
+			nodes[index].Position = &TopologyPosition{X: position.X, Y: position.Y}
+		}
+	}
 	return Topology{Nodes: nodes, Edges: edges}, nil
 }
 
+func (s *store) SetTopologyPosition(ctx context.Context, projectID, nodeID string, input TopologyPositionInput) error {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return err
+	}
+	topology, err := s.Topology(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, node := range topology.Nodes {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotFound
+	}
+	_, err = s.pool.Exec(ctx, `INSERT INTO project_topology_positions(project_id,node_id,position_x,position_y)
+VALUES($1::uuid,$2::uuid,$3,$4) ON CONFLICT(project_id,node_id) DO UPDATE SET position_x=EXCLUDED.position_x,position_y=EXCLUDED.position_y,updated_at=now()`, projectID, nodeID, input.X, input.Y)
+	if err != nil {
+		return fmt.Errorf("save project topology position: %w", err)
+	}
+	return nil
+}
+
+func (s *store) CreateTopologyAnnotation(ctx context.Context, projectID string, input TopologyAnnotationInput) (TopologyNode, error) {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return TopologyNode{}, err
+	}
+	if input.Metadata == nil {
+		input.Metadata = map[string]any{}
+	}
+	metadata, err := json.Marshal(input.Metadata)
+	if err != nil {
+		return TopologyNode{}, fmt.Errorf("encode topology annotation metadata: %w", err)
+	}
+	var node TopologyNode
+	if err := s.pool.QueryRow(ctx, `INSERT INTO project_topology_annotations(project_id,name,metadata)
+VALUES($1::uuid,$2,$3::jsonb) RETURNING id::text,name,metadata`, projectID, strings.TrimSpace(input.Name), metadata).Scan(&node.ID, &node.Name, &node.Metadata); err != nil {
+		return TopologyNode{}, fmt.Errorf("create project topology annotation: %w", err)
+	}
+	node.Kind = "annotation"
+	node.ProjectID = projectID
+	return node, nil
+}
+
+func (s *store) AddTopologyResource(ctx context.Context, projectID string, input TopologyResourceInput) error {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return err
+	}
+	query, args := appendResourceScopeVisibility(`SELECT r.scope_id::text,p.scope_id::text FROM resources r JOIN scopes resource_scope ON resource_scope.id=r.scope_id JOIN projects p ON p.id=$2::uuid WHERE r.id=$1::uuid AND r.deleted_at IS NULL AND resource_scope.deleted_at IS NULL AND p.deleted_at IS NULL`, []any{input.ResourceID, projectID}, ctx, "r")
+	var resourceScopeID, projectScopeID string
+	if err := s.pool.QueryRow(ctx, query, args...).Scan(&resourceScopeID, &projectScopeID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return mapStoreError(err)
+	}
+	if resourceScopeID == projectScopeID {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO project_topology_resources(project_id,resource_id) VALUES($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, projectID, input.ResourceID)
+	if err != nil {
+		return fmt.Errorf("add resource to project topology: %w", err)
+	}
+	return nil
+}
+
+func (s *store) RemoveTopologyResource(ctx context.Context, projectID, resourceID string) error {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM project_topology_resources WHERE project_id=$1::uuid AND resource_id=$2::uuid`, projectID, resourceID)
+	if err != nil {
+		return fmt.Errorf("remove resource from project topology: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *store) DeleteTopologyAnnotation(ctx context.Context, projectID, annotationID string) error {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM project_topology_annotations WHERE project_id=$1::uuid AND id=$2::uuid`, projectID, annotationID)
+	if err != nil {
+		return fmt.Errorf("delete project topology annotation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *store) workspaceResources(ctx context.Context, projectID string) ([]RelatedResource, error) {
-	rows, err := s.pool.Query(ctx, `WITH project_resources AS (
-  SELECT r.id,r.name,r.kind,'project'::text AS role
-    FROM resources r JOIN projects p ON p.scope_id=r.scope_id
-   WHERE p.id=$1::uuid AND r.deleted_at IS NULL
+	query, args := appendResourceScopeVisibility(`WITH project_scope AS (
+  SELECT project.scope_id FROM projects project WHERE project.id=$1::uuid
+), project_resources AS (
+  SELECT resource.id
+    FROM resources resource JOIN project_scope scope ON scope.scope_id=resource.scope_id
+   WHERE resource.deleted_at IS NULL
   UNION
-  SELECT r.id,r.name,r.kind,'instance'::text
-    FROM resources r JOIN application_instances i ON i.target_resource_id=r.id
-    JOIN applications a ON a.id=i.application_id
-   WHERE a.project_id=$1::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
+  SELECT topology_resource.resource_id
+    FROM project_topology_resources topology_resource
+   WHERE topology_resource.project_id=$1::uuid
   UNION
-  SELECT r.id,r.name,r.kind,'dependency'::text
-    FROM resources r JOIN application_dependencies d ON d.target_resource_id=r.id
-    JOIN applications a ON a.id=d.application_id
-   WHERE a.project_id=$1::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
+  SELECT instance.target_resource_id
+    FROM application_instances instance
+    JOIN applications application ON application.id=instance.application_id
+   WHERE application.project_id=$1::uuid AND application.deleted_at IS NULL
+  UNION
+  SELECT dependency.target_resource_id
+    FROM application_dependencies dependency
+    JOIN applications application ON application.id=dependency.application_id
+   WHERE application.project_id=$1::uuid AND application.deleted_at IS NULL
+), application_resource_references AS (
+  SELECT app_refs.target_resource_id,COUNT(DISTINCT app_refs.application_id)::integer AS reference_count
+    FROM (
+      SELECT instance.target_resource_id,instance.application_id
+        FROM application_instances instance
+        JOIN applications application ON application.id=instance.application_id
+       WHERE application.project_id=$1::uuid AND application.deleted_at IS NULL
+      UNION
+      SELECT dependency.target_resource_id,dependency.application_id
+        FROM application_dependencies dependency
+        JOIN applications application ON application.id=dependency.application_id
+       WHERE application.project_id=$1::uuid AND application.deleted_at IS NULL
+    ) app_refs
+   GROUP BY app_refs.target_resource_id
 )
-SELECT id::text,name,kind,role FROM project_resources ORDER BY name,id`, projectID)
+SELECT r.id::text,r.name,r.kind,resource_scope.scope_type,COALESCE(reference.reference_count,0)
+  FROM resources r
+  JOIN scopes resource_scope ON resource_scope.id=r.scope_id
+  JOIN project_resources bound_resource ON bound_resource.id=r.id
+  LEFT JOIN application_resource_references reference ON reference.target_resource_id=r.id
+ WHERE r.deleted_at IS NULL`, []any{projectID}, ctx, "r")
+	rows, err := s.pool.Query(ctx, query+` ORDER BY resource_scope.scope_type,r.name,r.id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list project workspace resources: %w", err)
 	}
@@ -945,7 +1122,7 @@ SELECT id::text,name,kind,role FROM project_resources ORDER BY name,id`, project
 	items := make([]RelatedResource, 0)
 	for rows.Next() {
 		var item RelatedResource
-		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.Role); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.ScopeType, &item.ApplicationReferenceCount); err != nil {
 			return nil, fmt.Errorf("scan project workspace resource: %w", err)
 		}
 		items = append(items, item)
@@ -954,13 +1131,14 @@ SELECT id::text,name,kind,role FROM project_resources ORDER BY name,id`, project
 }
 
 func (s *store) workspaceAlerts(ctx context.Context, projectID string) ([]Alert, error) {
-	rows, err := s.pool.Query(ctx, `SELECT f.id::text,f.severity,f.message,f.status
+	query, args := appendResourceScopeVisibility(`SELECT f.id::text,f.target_resource_id::text,f.severity,f.message,f.status
   FROM inspection_findings f
   JOIN inspection_policies policy ON policy.id=f.policy_id
   JOIN resources r ON r.id=f.target_resource_id
-  JOIN projects p ON p.scope_id=r.scope_id
- WHERE policy.scope_id=p.scope_id AND p.id=$1::uuid AND f.status='open' AND r.deleted_at IS NULL
- ORDER BY f.severity DESC,f.last_observed_at DESC,f.id`, projectID)
+	JOIN projects project ON project.id=$1::uuid
+ WHERE policy.scope_id=project.scope_id
+   AND f.scope_id=policy.scope_id AND f.status='open' AND r.deleted_at IS NULL`, []any{projectID}, ctx, "r")
+	rows, err := s.pool.Query(ctx, query+` ORDER BY f.severity DESC,f.last_observed_at DESC,f.id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list project workspace alerts: %w", err)
 	}
@@ -968,7 +1146,7 @@ func (s *store) workspaceAlerts(ctx context.Context, projectID string) ([]Alert,
 	items := make([]Alert, 0)
 	for rows.Next() {
 		var item Alert
-		if err := rows.Scan(&item.ID, &item.Severity, &item.Title, &item.Status); err != nil {
+		if err := rows.Scan(&item.ID, &item.TargetResourceID, &item.Severity, &item.Title, &item.Status); err != nil {
 			return nil, fmt.Errorf("scan project workspace alert: %w", err)
 		}
 		items = append(items, item)

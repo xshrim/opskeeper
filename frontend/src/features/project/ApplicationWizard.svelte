@@ -30,6 +30,8 @@
   export let applications: Application[] = [];
   export let projects: Array<{ id: string; name: string }> = [];
   export let initialApplication: Application | null = null;
+  export let initialRuntimeKind = '';
+  export let embedded = false;
   export let onSave: (applications: ApplicationDraft[]) => Promise<void> | void;
   export let onUpdate: (
     application: Application,
@@ -181,6 +183,7 @@
 
   onMount(() => {
     void loadApplicationCatalog();
+    if (initialRuntimeKind && !initialApplication) selectRuntime(initialRuntimeKind as ApplicationRuntimeKind);
   });
 
   async function loadApplicationCatalog() {
@@ -793,8 +796,13 @@
 </script>
 
 <ModalDialog
-  dialogClass="project-dialog application-wizard-dialog"
+  dialogClass={`project-dialog application-wizard-dialog ${embedded ? 'topology-embedded-wizard' : ''}`}
   size="wide"
+  coverage={embedded ? 'none' : 'page'}
+  positionTarget={embedded ? '.map-side-column' : ''}
+  widthTargetRatio={embedded ? 1 : 0}
+  maskTarget={embedded ? '.map-side-column' : ''}
+  stretchTarget={embedded}
   overflowMode="expand"
   initialCenterRatio={0.38}
   title={initialApplication ? '编辑应用' : '新增应用'}

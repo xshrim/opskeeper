@@ -10,6 +10,7 @@
   export let inertTarget = '';
   export let maskTarget = '';
   export let positionTarget = '';
+  export let stretchTarget = false;
   export let widthTargetRatio = 0;
   export let overflowMode: 'clip' | 'scroll' | 'expand' = 'scroll';
   export let autoHeight = false;
@@ -82,6 +83,11 @@
     const targetRect = target?.getBoundingClientRect();
     const currentRect = dialogElement.getBoundingClientRect();
     let width = currentRect.width;
+    if (targetRect && stretchTarget) {
+      setGeometry(targetRect.left, targetRect.top, targetRect.width, targetRect.height, true, true, false);
+      positionInitialized = true;
+      return;
+    }
     if (targetRect && widthTargetRatio > 0) {
       width = clamp(
         targetRect.width * widthTargetRatio,

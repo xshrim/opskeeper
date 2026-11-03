@@ -52,12 +52,11 @@ export default defineConfig(({ command }) => {
       }
     },
     build: {
-      // The complete Lucide registry powers the searchable team icon picker.
-      // It is isolated and cacheable, so use a threshold above that intentional chunk.
       chunkSizeWarningLimit: 800,
       rollupOptions: {
         output: {
           manualChunks(id) {
+            if (id.includes('/src/features/')) return 'feature-pages';
             if (!id.includes('/node_modules/')) return undefined;
             if (id.includes('/node_modules/lucide-svelte/')) return 'vendor-icons';
             if (id.includes('/node_modules/simple-icons/')) return 'vendor-brands';
