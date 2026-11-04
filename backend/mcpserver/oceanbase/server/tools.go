@@ -12,6 +12,11 @@ type tableInput struct {
 	Schema string `json:"schema"`
 	Table  string `json:"table"`
 }
+type slowQueriesInput struct {
+	ot.ConnectionInput
+	Limit      int     `json:"limit,omitempty"`
+	MinTotalMS float64 `json:"min_total_ms,omitempty"`
+}
 
 func schema() map[string]any { return ot.InputSchema(nil) }
 func tableSchema() map[string]any {
@@ -44,6 +49,22 @@ func RegisterTools(s *mcp.Server) {
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "oceanbase_table_structure", Description: "Read indexes and constraints for one table.", InputSchema: tableSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in tableInput) (*mcp.CallToolResult, ot.TableStructureOutput, error) {
 		o, e := ot.TableStructure(ctx, in.ConnectionInput, ot.TableColumnsInput{Schema: in.Schema, Table: in.Table})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "oceanbase_slow_queries", Description: "Rank non-internal SQL Audit statements from the last 30 minutes by cumulative execution time; threshold is per SQL ID and availability depends on tenant mode, version and privileges.", InputSchema: ot.InputSchema(map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}, "min_total_ms": map[string]any{"type": "number", "minimum": 0}})}, func(ctx context.Context, _ *mcp.CallToolRequest, in slowQueriesInput) (*mcp.CallToolResult, ot.SlowQueriesOutput, error) {
+		o, e := ot.SlowQueries(ctx, in.ConnectionInput, ot.SlowQueriesInput{Limit: in.Limit, MinTotalMS: in.MinTotalMS})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "oceanbase_active_queries", Description: "Read active sessions from the OceanBase tenant process list; availability depends on tenant mode, version and privileges.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, ot.ActiveQueriesOutput, error) {
+		o, e := ot.ActiveQueries(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "oceanbase_lock_waits", Description: "Read OceanBase transaction lock waits and blocker sessions when supported by the tenant mode, version and privileges.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, ot.LockWaitsOutput, error) {
+		o, e := ot.LockWaits(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "oceanbase_connection_stats", Description: "Read OceanBase tenant session counts; maximum connection capacity may not be exposed.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, ot.ConnectionStatsOutput, error) {
+		o, e := ot.ConnectionStats(ctx, in.ConnectionInput)
 		return nil, o, e
 	})
 }

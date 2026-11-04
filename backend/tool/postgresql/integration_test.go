@@ -47,6 +47,36 @@ func TestRealPostgreSQLFixedToolCatalog(t *testing.T) {
 	if _, err := TableColumns(context.Background(), input, TableColumnsInput{Schema: tables.Tables[0].Schema, Table: tables.Tables[0].Name}); err != nil {
 		t.Fatalf("TableColumns(): %v", err)
 	}
+	if _, err := TableStructure(context.Background(), input, TableStructureInput{Schema: tables.Tables[0].Schema, Table: tables.Tables[0].Name}); err != nil {
+		t.Fatalf("TableStructure(): %v", err)
+	}
+	if _, err := TableSchemaLookup(context.Background(), input, SchemaLookupInput{Table: tables.Tables[0].Name}); err != nil {
+		t.Fatalf("TableSchemaLookup(): %v", err)
+	}
+	if _, err := SlowQueries(context.Background(), input, SlowQueriesInput{}); err != nil {
+		t.Fatalf("SlowQueries(): %v", err)
+	}
+	if _, err := Explain(context.Background(), input, ExplainInput{Query: "SELECT 1"}); err != nil {
+		t.Fatalf("Explain(): %v", err)
+	}
+	if _, err := ActiveQueries(context.Background(), input); err != nil {
+		t.Fatalf("ActiveQueries(): %v", err)
+	}
+	if _, err := LockWaits(context.Background(), input); err != nil {
+		t.Fatalf("LockWaits(): %v", err)
+	}
+	if _, err := VacuumTableStats(context.Background(), input); err != nil {
+		t.Fatalf("VacuumTableStats(): %v", err)
+	}
+	if _, err := ConnectionStats(context.Background(), input); err != nil {
+		t.Fatalf("ConnectionStats(): %v", err)
+	}
+	if _, err := ConnectionGroups(context.Background(), input); err != nil {
+		t.Fatalf("ConnectionGroups(): %v", err)
+	}
+	if _, err := IdleSessions(context.Background(), input); err != nil {
+		t.Fatalf("IdleSessions(): %v", err)
+	}
 	if out, err := Performance(context.Background(), input); err != nil || len(out.Values) == 0 {
 		t.Fatalf("Performance() = %#v, %v", out, err)
 	}

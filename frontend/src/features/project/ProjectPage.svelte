@@ -483,7 +483,7 @@ import {
         await loadTopology();
       } else {
         const name = topologyAnnotationName.trim();
-        if (!name) throw new Error('请填写说明块标题');
+        if (!name) throw new Error('请填写外部实体标题');
         const node = await api.createProjectTopologyAnnotation(selectedProjectId, {
           name,
           metadata: { description: topologyAnnotationDescription.trim() }
@@ -1020,7 +1020,7 @@ import {
         {#if projectAreaTab === 'topology' && topologyMode === 'edit' && topologyComponentIntent && !applicationWizardOpen && !topologyResourceRequestId}
           <div class="topology-config-overlay">
             <section class="topology-config-window" aria-label="配置拓扑组件">
-              <header><span class="topology-config-icon">{#if topologyComponentIntent.kind === 'application'}<EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />{:else if topologyComponentIntent.kind === 'resource'}<ResourceBrandIcon resource={{ kind: topologyComponentIntent.resourceKind ?? 'Host' }} fallback={resourceCategoryIcon(topologyComponentIntent.resourceKind ?? 'Host')} size={17} />{:else}<StickyNote size={17} />{/if}</span><div><strong>{topologyComponentIntent.kind === 'application' ? '配置应用节点' : topologyComponentIntent.kind === 'resource' ? '配置资源节点' : '配置说明块'}</strong><small>确认组件内容后添加到项目拓扑</small></div></header>
+              <header><span class="topology-config-icon">{#if topologyComponentIntent.kind === 'application'}<EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />{:else if topologyComponentIntent.kind === 'resource'}<ResourceBrandIcon resource={{ kind: topologyComponentIntent.resourceKind ?? 'Host' }} fallback={resourceCategoryIcon(topologyComponentIntent.resourceKind ?? 'Host')} size={17} />{:else}<StickyNote size={17} />{/if}</span><div><strong>{topologyComponentIntent.kind === 'application' ? '配置应用节点' : topologyComponentIntent.kind === 'resource' ? '配置资源节点' : '配置外部实体'}</strong><small>确认组件内容后添加到项目拓扑</small></div></header>
               <div class="topology-config-body">
                 {#if topologyComponentIntent.kind === 'application'}
                   <label>应用<select bind:value={topologyApplicationId}><option value="">选择应用</option>{#each workspace?.applications ?? [] as application (application.id)}<option value={application.id}>{application.name} · {application.code}</option>{/each}</select></label>
@@ -1029,8 +1029,8 @@ import {
                   <label>资源<select bind:value={topologyResourceId}><option value="">选择资源</option>{#each topologyResourceOptions as resource (resource.id)}<option value={resource.id}>{resource.name} · {resource.kind}</option>{/each}</select></label>
                   <button class="secondary" type="button" on:click={() => requestTopologyResource(topologyComponentIntent?.resourceKind || 'Host')}><Plus size={14} />新增资源</button>
                 {:else}
-                  <label>标题<input bind:value={topologyAnnotationName} maxlength="200" placeholder="例如：支付核心系统" /></label>
-                  <label>说明<textarea bind:value={topologyAnnotationDescription} rows="4" placeholder="补充系统边界、职责或其他备注"></textarea></label>
+                  <label>名称<input bind:value={topologyAnnotationName} maxlength="200" placeholder="例如：支付核心系统" /></label>
+                  <label>说明<textarea bind:value={topologyAnnotationDescription} rows="4" placeholder="说明其系统边界、职责或连接方式"></textarea></label>
                 {/if}
               </div>
               <footer><button class="secondary" type="button" disabled={topologyConfigBusy} on:click={cancelTopologyComponent}>取消</button><button class="primary" type="button" disabled={topologyConfigBusy} on:click={saveTopologyComponent}><CheckCircle2 size={14} />{topologyConfigBusy ? '保存中' : '确认并添加'}</button></footer>

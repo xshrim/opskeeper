@@ -988,6 +988,10 @@ export const api = {
     request<ProjectTopology['nodes'][number]>(`api/v1/projects/${projectId}/topology/annotations`, json(body)),
   deleteProjectTopologyAnnotation: (projectId: string, annotationId: string) =>
     request<void>(`api/v1/projects/${projectId}/topology/annotations/${annotationId}`, { method: 'DELETE' }),
+  createProjectTopologyEdge: (projectId: string, body: { source_id: string; target_id: string; relation: string; metadata?: Record<string, unknown> }) =>
+    request<ProjectTopology['edges'][number]>(`api/v1/projects/${projectId}/topology/edges`, json(body)),
+  deleteProjectTopologyEdge: (projectId: string, edgeId: string) =>
+    request<void>(`api/v1/projects/${projectId}/topology/edges/${edgeId}`, { method: 'DELETE' }),
   applications: (projectId: string) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications`

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"opskeeper/backend/tool/relational"
 )
 
 // ConnectionInput is transport-neutral. Direct resources fill it from their
@@ -74,6 +75,79 @@ type TableColumnsOutput struct {
 	Table   string       `json:"table"`
 	Columns []ColumnInfo `json:"columns"`
 }
+type TableStructureInput = TableColumnsInput
+type SchemaLookupInput struct {
+	Table string `json:"table"`
+}
+type SchemaMatch struct {
+	Schema string `json:"schema"`
+	Table  string `json:"table"`
+	Kind   string `json:"kind"`
+}
+type SchemaLookupOutput struct {
+	Table   string        `json:"table"`
+	Matches []SchemaMatch `json:"matches"`
+}
+type ConstraintInfo = relational.TableConstraint
+type IndexInfo = relational.TableIndex
+type TableStructureOutput = relational.TableStructureOutput
+type SlowQueriesInput = relational.SlowQueriesInput
+type SlowQueryInfo = relational.SlowQuery
+type SlowQueriesOutput = relational.SlowQueriesOutput
+type ExplainInput struct {
+	Schema string `json:"schema,omitempty"`
+	Query  string `json:"query"`
+}
+type ExplainOutput struct {
+	Schema string `json:"schema,omitempty"`
+	Plan   any    `json:"plan"`
+}
+type ActiveQueryInfo = relational.ActiveQuery
+type ActiveQueriesOutput = relational.ActiveQueriesOutput
+type LockWaitInfo = relational.LockWait
+type LockWaitsOutput = relational.LockWaitsOutput
+type VacuumTableStat struct {
+	Schema                    string `json:"schema"`
+	Table                     string `json:"table"`
+	LiveTuples                int64  `json:"live_tuples"`
+	DeadTuples                int64  `json:"dead_tuples"`
+	ModificationsSinceAnalyze int64  `json:"modifications_since_analyze"`
+	LastVacuum                string `json:"last_vacuum,omitempty"`
+	LastAutovacuum            string `json:"last_autovacuum,omitempty"`
+	LastAnalyze               string `json:"last_analyze,omitempty"`
+	LastAutoanalyze           string `json:"last_autoanalyze,omitempty"`
+	VacuumCount               int64  `json:"vacuum_count"`
+	AutovacuumCount           int64  `json:"autovacuum_count"`
+}
+type VacuumTableStatsOutput struct {
+	Tables []VacuumTableStat `json:"tables"`
+}
+type ConnectionStatsOutput = relational.ConnectionStatsOutput
+type ConnectionGroup struct {
+	Count           int64  `json:"count"`
+	State           string `json:"state"`
+	User            string `json:"user"`
+	ApplicationName string `json:"application_name"`
+	ClientAddress   string `json:"client_address"`
+	WaitEventType   string `json:"wait_event_type"`
+	WaitEvent       string `json:"wait_event"`
+}
+type ConnectionGroupsOutput struct {
+	Groups []ConnectionGroup `json:"groups"`
+}
+type IdleSession struct {
+	PID             int64  `json:"pid"`
+	User            string `json:"user"`
+	ApplicationName string `json:"application_name"`
+	ClientAddress   string `json:"client_address"`
+	State           string `json:"state"`
+	StateChange     string `json:"state_change"`
+	QueryStart      string `json:"query_start"`
+	Query           string `json:"query"`
+}
+type IdleSessionsOutput struct {
+	Sessions []IdleSession `json:"sessions"`
+}
 type PerformanceOutput struct {
 	Values map[string]any `json:"values"`
 }
@@ -81,8 +155,10 @@ type VacuumOutput struct {
 	Values map[string]any `json:"values"`
 }
 type ExtensionInfo struct {
-	Name, Version string
-	Installed     bool `json:"installed"`
+	Name             string `json:"name"`
+	Version          string `json:"version"`
+	AvailableVersion string `json:"available_version"`
+	Installed        bool   `json:"installed"`
 }
 type ExtensionsOutput struct {
 	Extensions []ExtensionInfo `json:"extensions"`
@@ -103,9 +179,19 @@ var tools = []ToolInfo{
 	{Name: "postgresql_tables", Description: "List user tables with size, row and scan/write statistics."},
 	{Name: "postgresql_performance", Description: "Read PostgreSQL performance counters and configuration parameters."},
 	{Name: "postgresql_vacuum", Description: "Read PostgreSQL VACUUM and autovacuum configuration."},
-	{Name: "postgresql_extensions", Description: "List installed PostgreSQL extensions and versions."},
+	{Name: "postgresql_extensions", Description: "List installed and available PostgreSQL extensions and versions."},
 	{Name: "postgresql_database_info", Description: "Read PostgreSQL database identity and general information."},
 	{Name: "postgresql_table_columns", Description: "Read columns, types, defaults and comments for one user table."},
+	{Name: "postgresql_table_structure", Description: "Read constraints and indexes for one user table."},
+	{Name: "postgresql_table_schema_lookup", Description: "Find visible PostgreSQL schemas containing a table."},
+	{Name: "postgresql_slow_queries", Description: "Rank normalized PostgreSQL queries by execution cost using pg_stat_statements."},
+	{Name: "postgresql_explain", Description: "Read a safe, read-only PostgreSQL SELECT query plan."},
+	{Name: "postgresql_active_queries", Description: "Read bounded details about active PostgreSQL queries."},
+	{Name: "postgresql_lock_waits", Description: "Read blocked PostgreSQL sessions and their blockers."},
+	{Name: "postgresql_vacuum_table_stats", Description: "Read per-table PostgreSQL vacuum and dead-tuple statistics."},
+	{Name: "postgresql_connection_stats", Description: "Read PostgreSQL connection counts and utilization."},
+	{Name: "postgresql_connection_groups", Description: "Group PostgreSQL connections by state, user and client."},
+	{Name: "postgresql_idle_sessions", Description: "Read the oldest bounded PostgreSQL idle sessions."},
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
@@ -146,9 +232,15 @@ func open(ctx context.Context, input ConnectionInput) (*pgx.Conn, error) {
 	}
 	config.RuntimeParams["default_transaction_read_only"] = "on"
 	config.RuntimeParams["application_name"] = "opskeeper-diagnostic"
-	if input.TimeoutSeconds > 0 {
-		config.RuntimeParams["statement_timeout"] = strconv.Itoa(input.TimeoutSeconds * 1000)
+	seconds := input.TimeoutSeconds
+	if seconds <= 0 {
+		seconds = 10
 	}
+	if seconds > 300 {
+		return nil, errors.New("timeout_seconds must not exceed 300")
+	}
+	config.ConnectTimeout = time.Duration(seconds) * time.Second
+	config.RuntimeParams["statement_timeout"] = strconv.Itoa(seconds * 1000)
 	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return nil, err
@@ -315,7 +407,7 @@ func Vacuum(ctx context.Context, input ConnectionInput) (VacuumOutput, error) {
 }
 func Extensions(ctx context.Context, input ConnectionInput) (ExtensionsOutput, error) {
 	return withConn(ctx, input, func(ctx context.Context, conn *pgx.Conn) (ExtensionsOutput, error) {
-		rows, err := conn.Query(ctx, "SELECT e.extname,e.extversion,true FROM pg_extension e ORDER BY e.extname")
+		rows, err := conn.Query(ctx, "SELECT a.name,COALESCE(e.extversion,''),a.default_version,e.oid IS NOT NULL FROM pg_available_extensions a LEFT JOIN pg_extension e ON e.extname=a.name ORDER BY a.name LIMIT 1000")
 		if err != nil {
 			return ExtensionsOutput{}, err
 		}
@@ -323,7 +415,7 @@ func Extensions(ctx context.Context, input ConnectionInput) (ExtensionsOutput, e
 		out := ExtensionsOutput{Extensions: []ExtensionInfo{}}
 		for rows.Next() {
 			var e ExtensionInfo
-			if err := rows.Scan(&e.Name, &e.Version, &e.Installed); err != nil {
+			if err := rows.Scan(&e.Name, &e.Version, &e.AvailableVersion, &e.Installed); err != nil {
 				return out, err
 			}
 			out.Extensions = append(out.Extensions, e)

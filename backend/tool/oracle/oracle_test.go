@@ -6,8 +6,8 @@ import (
 )
 
 func TestCatalogAndInputSchemaAreFixed(t *testing.T) {
-	if got := len(ListTools()); got != 7 {
-		t.Fatalf("tool count = %d, want 7", got)
+	if got := len(ListTools()); got != 11 {
+		t.Fatalf("tool count = %d, want 11", got)
 	}
 	if InputSchema(nil)["additionalProperties"] != false {
 		t.Fatal("connection schema must reject undeclared fields")

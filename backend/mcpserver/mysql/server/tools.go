@@ -12,6 +12,11 @@ type columnsInput struct {
 	Schema string `json:"schema"`
 	Table  string `json:"table"`
 }
+type slowQueriesInput struct {
+	mt.ConnectionInput
+	Limit      int     `json:"limit,omitempty"`
+	MinTotalMS float64 `json:"min_total_ms,omitempty"`
+}
 
 func schema() map[string]any { return mt.InputSchema(nil) }
 func columnsSchema() map[string]any {
@@ -46,6 +51,22 @@ func RegisterTools(s *mcp.Server) {
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "mysql_database_info", Description: "Read MySQL database identity and general information.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mt.DatabaseInfoOutput, error) {
 		o, e := mt.DatabaseInfo(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "mysql_slow_queries", Description: "Rank normalized MySQL statements by execution cost.", InputSchema: mt.InputSchema(map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}, "min_total_ms": map[string]any{"type": "number", "minimum": 0}})}, func(ctx context.Context, _ *mcp.CallToolRequest, in slowQueriesInput) (*mcp.CallToolResult, mt.SlowQueriesOutput, error) {
+		o, e := mt.SlowQueries(ctx, in.ConnectionInput, mt.SlowQueriesInput{Limit: in.Limit, MinTotalMS: in.MinTotalMS})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "mysql_active_queries", Description: "Read bounded details about active MySQL statements.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mt.ActiveQueriesOutput, error) {
+		o, e := mt.ActiveQueries(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "mysql_lock_waits", Description: "Read waiting and blocking MySQL transactions.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mt.LockWaitsOutput, error) {
+		o, e := mt.LockWaits(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "mysql_connection_stats", Description: "Read MySQL connection counts and utilization.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mt.ConnectionStatsOutput, error) {
+		o, e := mt.ConnectionStats(ctx, in.ConnectionInput)
 		return nil, o, e
 	})
 }

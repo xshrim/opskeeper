@@ -40,4 +40,8 @@ func TestRealPostgreSQLMCPHealth(t *testing.T) {
 	if err != nil || len(result) == 0 {
 		t.Fatalf("CallBounded(postgresql_health) = %s, %v", result, err)
 	}
+	result, err = coremcp.CallBounded(context.Background(), endpoint, "postgresql_explain", map[string]bool{"postgresql_explain": true}, map[string]any{"host": parsed.Hostname(), "port": port, "database": parsed.Path[1:], "username": parsed.User.Username(), "password": password, "timeout_seconds": 10, "query": "SELECT 1"}, 10*time.Second, 1<<20)
+	if err != nil || len(result) == 0 {
+		t.Fatalf("CallBounded(postgresql_explain) = %s, %v", result, err)
+	}
 }

@@ -65,6 +65,25 @@ func (s *Service) resolveOracleTools(ctx context.Context, item engine.ContextRes
 				}
 				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
+		case "oracle_slow_queries":
+			add(tool.Name, tool.Description, oracleSlowQueriesSchema(), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
+				var in ot.SlowQueriesInput
+				raw, _ := json.Marshal(args)
+				if e := json.Unmarshal(raw, &in); e != nil {
+					return engine.ToolResult{}, e
+				}
+				out, e := ot.SlowQueries(c, connection, in)
+				if e != nil {
+					return engine.ToolResult{}, oracleError(tool.Name, e)
+				}
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
+			})
+		case "oracle_active_queries":
+			register(tool.Name, tool.Description, func(c context.Context, i ot.ConnectionInput) (any, error) { return ot.ActiveQueries(c, i) })
+		case "oracle_lock_waits":
+			register(tool.Name, tool.Description, func(c context.Context, i ot.ConnectionInput) (any, error) { return ot.LockWaits(c, i) })
+		case "oracle_connection_stats":
+			register(tool.Name, tool.Description, func(c context.Context, i ot.ConnectionInput) (any, error) { return ot.ConnectionStats(c, i) })
 		}
 	}
 	return nil
@@ -75,6 +94,9 @@ func oracleDirectSchema() json.RawMessage {
 }
 func oracleColumnsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","required":["schema","table"],"properties":{"schema":{"type":"string","minLength":1,"maxLength":128},"table":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}`)
+}
+func oracleSlowQueriesSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":100},"min_total_ms":{"type":"number","minimum":0}},"additionalProperties":false}`)
 }
 
 func (s *Service) oracleConnection(ctx context.Context, item engine.ContextResource) (ot.ConnectionInput, error) {

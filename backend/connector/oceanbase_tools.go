@@ -65,6 +65,25 @@ func (s *Service) resolveOceanBaseTools(ctx context.Context, item engine.Context
 				}
 				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
+		case "oceanbase_slow_queries":
+			add(tool.Name, tool.Description, oceanBaseSlowQueriesSchema(), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
+				var input ot.SlowQueriesInput
+				raw, _ := json.Marshal(args)
+				if e := json.Unmarshal(raw, &input); e != nil {
+					return engine.ToolResult{}, e
+				}
+				out, e := ot.SlowQueries(c, connection, input)
+				if e != nil {
+					return engine.ToolResult{}, oceanBaseError(tool.Name, e)
+				}
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
+			})
+		case "oceanbase_active_queries":
+			register(tool.Name, tool.Description, func(c context.Context, in ot.ConnectionInput) (any, error) { return ot.ActiveQueries(c, in) })
+		case "oceanbase_lock_waits":
+			register(tool.Name, tool.Description, func(c context.Context, in ot.ConnectionInput) (any, error) { return ot.LockWaits(c, in) })
+		case "oceanbase_connection_stats":
+			register(tool.Name, tool.Description, func(c context.Context, in ot.ConnectionInput) (any, error) { return ot.ConnectionStats(c, in) })
 		}
 	}
 	return nil
@@ -74,6 +93,9 @@ func oceanBaseDirectSchema() json.RawMessage {
 }
 func oceanBaseColumnsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","required":["schema","table"],"properties":{"schema":{"type":"string","minLength":1,"maxLength":128},"table":{"type":"string","minLength":1,"maxLength":128}},"additionalProperties":false}`)
+}
+func oceanBaseSlowQueriesSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":100},"min_total_ms":{"type":"number","minimum":0}},"additionalProperties":false}`)
 }
 func (s *Service) oceanBaseConnection(ctx context.Context, item engine.ContextResource) (ot.ConnectionInput, error) {
 	in := ot.ConnectionInput{Host: stringValue(item.Config, "host"), Port: intValue(item.Config, "port"), Mode: stringValue(item.Config, "mode"), Database: stringValue(item.Config, "database"), ServiceName: stringValue(item.Config, "service_name"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}

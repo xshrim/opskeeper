@@ -52,25 +52,102 @@ func (s *Service) resolvePostgreSQLTools(ctx context.Context, item engine.Contex
 		case "postgresql_database_info":
 			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.DatabaseInfo(c, i) })
 		case "postgresql_table_columns":
-			add(tool.Name, tool.Description, postgreSQLColumnsSchema(), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
-				var input pt.TableColumnsInput
-				raw, _ := json.Marshal(args)
-				if err := json.Unmarshal(raw, &input); err != nil {
+			addPostgreSQLTableTool(add, tool.Name, tool.Description, postgreSQLColumnsSchema(), connection, false)
+		case "postgresql_table_structure":
+			addPostgreSQLTableTool(add, tool.Name, tool.Description, postgreSQLColumnsSchema(), connection, true)
+		case "postgresql_table_schema_lookup":
+			add(tool.Name, tool.Description, postgreSQLLookupSchema(), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
+				var input pt.SchemaLookupInput
+				if err := decodePostgreSQLArgs(args, &input); err != nil {
 					return engine.ToolResult{}, err
 				}
-				out, err := pt.TableColumns(runCtx, connection, input)
+				out, err := pt.TableSchemaLookup(runCtx, connection, input)
 				if err != nil {
 					return engine.ToolResult{}, postgreSQLError(tool.Name, err)
 				}
 				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
+		case "postgresql_slow_queries":
+			add(tool.Name, tool.Description, postgreSQLSlowQueriesSchema(), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
+				var input pt.SlowQueriesInput
+				if err := decodePostgreSQLArgs(args, &input); err != nil {
+					return engine.ToolResult{}, err
+				}
+				out, err := pt.SlowQueries(runCtx, connection, input)
+				if err != nil {
+					return engine.ToolResult{}, postgreSQLError(tool.Name, err)
+				}
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
+			})
+		case "postgresql_explain":
+			add(tool.Name, tool.Description, postgreSQLExplainSchema(), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
+				var input pt.ExplainInput
+				if err := decodePostgreSQLArgs(args, &input); err != nil {
+					return engine.ToolResult{}, err
+				}
+				out, err := pt.Explain(runCtx, connection, input)
+				if err != nil {
+					return engine.ToolResult{}, postgreSQLError(tool.Name, err)
+				}
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
+			})
+		case "postgresql_active_queries":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.ActiveQueries(c, i) })
+		case "postgresql_lock_waits":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.LockWaits(c, i) })
+		case "postgresql_vacuum_table_stats":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.VacuumTableStats(c, i) })
+		case "postgresql_connection_stats":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.ConnectionStats(c, i) })
+		case "postgresql_connection_groups":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.ConnectionGroups(c, i) })
+		case "postgresql_idle_sessions":
+			register(tool.Name, tool.Description, func(c context.Context, i pt.ConnectionInput) (any, error) { return pt.IdleSessions(c, i) })
 		}
 	}
 	return nil
 }
 
+func decodePostgreSQLArgs(args map[string]any, out any) error {
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, out)
+}
+
+func addPostgreSQLTableTool(add func(string, string, json.RawMessage, func(context.Context, map[string]any) (engine.ToolResult, error)), name, description string, schema json.RawMessage, connection pt.ConnectionInput, structure bool) {
+	add(name, description, schema, func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
+		var input pt.TableColumnsInput
+		if err := decodePostgreSQLArgs(args, &input); err != nil {
+			return engine.ToolResult{}, err
+		}
+		var out any
+		var err error
+		if structure {
+			out, err = pt.TableStructure(runCtx, connection, input)
+		} else {
+			out, err = pt.TableColumns(runCtx, connection, input)
+		}
+		if err != nil {
+			return engine.ToolResult{}, postgreSQLError(name, err)
+		}
+		return engine.ToolResult{Output: out, Untrusted: true}, nil
+	})
+}
+
 func postgreSQLColumnsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","required":["schema","table"],"properties":{"schema":{"type":"string"},"table":{"type":"string"}},"additionalProperties":false}`)
+}
+
+func postgreSQLLookupSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","required":["table"],"properties":{"table":{"type":"string"}},"additionalProperties":false}`)
+}
+func postgreSQLSlowQueriesSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":100},"min_total_ms":{"type":"number","minimum":0}},"additionalProperties":false}`)
+}
+func postgreSQLExplainSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","required":["query"],"properties":{"schema":{"type":"string"},"query":{"type":"string","minLength":1,"maxLength":10000}},"additionalProperties":false}`)
 }
 
 func postgreSQLDirectSchema() json.RawMessage {

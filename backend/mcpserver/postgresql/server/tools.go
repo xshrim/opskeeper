@@ -12,10 +12,37 @@ type columnsInput struct {
 	Schema string `json:"schema"`
 	Table  string `json:"table"`
 }
+type lookupInput struct {
+	pt.ConnectionInput
+	Table string `json:"table"`
+}
+type slowQueriesInput struct {
+	pt.ConnectionInput
+	Limit      int     `json:"limit,omitempty"`
+	MinTotalMS float64 `json:"min_total_ms,omitempty"`
+}
+type explainInput struct {
+	pt.ConnectionInput
+	Schema string `json:"schema,omitempty"`
+	Query  string `json:"query"`
+}
 
 func columnsSchema() map[string]any {
 	schema := pt.InputSchema(map[string]any{"schema": map[string]any{"type": "string"}, "table": map[string]any{"type": "string"}})
 	schema["required"] = []string{"schema", "table"}
+	return schema
+}
+func lookupSchema() map[string]any {
+	schema := pt.InputSchema(map[string]any{"table": map[string]any{"type": "string"}})
+	schema["required"] = []string{"table"}
+	return schema
+}
+func slowQueriesSchema() map[string]any {
+	return pt.InputSchema(map[string]any{"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}, "min_total_ms": map[string]any{"type": "number", "minimum": 0}})
+}
+func explainSchema() map[string]any {
+	schema := pt.InputSchema(map[string]any{"schema": map[string]any{"type": "string"}, "query": map[string]any{"type": "string", "minLength": 1, "maxLength": 10000}})
+	schema["required"] = []string{"query"}
 	return schema
 }
 
@@ -67,6 +94,46 @@ func RegisterTools(s *mcp.Server) {
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_table_columns", Description: "Read columns, types, defaults and comments for one user table.", InputSchema: columnsSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in columnsInput) (*mcp.CallToolResult, pt.TableColumnsOutput, error) {
 		o, e := pt.TableColumns(ctx, in.ConnectionInput, pt.TableColumnsInput{Schema: in.Schema, Table: in.Table})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_table_structure", Description: "Read constraints and indexes for one user table.", InputSchema: columnsSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in columnsInput) (*mcp.CallToolResult, pt.TableStructureOutput, error) {
+		o, e := pt.TableStructure(ctx, in.ConnectionInput, pt.TableStructureInput{Schema: in.Schema, Table: in.Table})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_table_schema_lookup", Description: "Find visible PostgreSQL schemas containing a table.", InputSchema: lookupSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in lookupInput) (*mcp.CallToolResult, pt.SchemaLookupOutput, error) {
+		o, e := pt.TableSchemaLookup(ctx, in.ConnectionInput, pt.SchemaLookupInput{Table: in.Table})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_slow_queries", Description: "Rank normalized PostgreSQL queries by execution cost using pg_stat_statements.", InputSchema: slowQueriesSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in slowQueriesInput) (*mcp.CallToolResult, pt.SlowQueriesOutput, error) {
+		o, e := pt.SlowQueries(ctx, in.ConnectionInput, pt.SlowQueriesInput{Limit: in.Limit, MinTotalMS: in.MinTotalMS})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_explain", Description: "Read a safe, read-only PostgreSQL SELECT query plan.", InputSchema: explainSchema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in explainInput) (*mcp.CallToolResult, pt.ExplainOutput, error) {
+		o, e := pt.Explain(ctx, in.ConnectionInput, pt.ExplainInput{Schema: in.Schema, Query: in.Query})
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_active_queries", Description: "Read bounded details about active PostgreSQL queries.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.ActiveQueriesOutput, error) {
+		o, e := pt.ActiveQueries(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_lock_waits", Description: "Read blocked PostgreSQL sessions and their blockers.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.LockWaitsOutput, error) {
+		o, e := pt.LockWaits(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_vacuum_table_stats", Description: "Read per-table PostgreSQL vacuum and dead-tuple statistics.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.VacuumTableStatsOutput, error) {
+		o, e := pt.VacuumTableStats(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_connection_stats", Description: "Read PostgreSQL connection counts and utilization.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.ConnectionStatsOutput, error) {
+		o, e := pt.ConnectionStats(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_connection_groups", Description: "Group PostgreSQL connections by state, user and client.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.ConnectionGroupsOutput, error) {
+		o, e := pt.ConnectionGroups(ctx, in.ConnectionInput)
+		return nil, o, e
+	})
+	mcp.AddTool(s, &mcp.Tool{Name: "postgresql_idle_sessions", Description: "Read the oldest bounded PostgreSQL idle sessions.", InputSchema: schema()}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, pt.IdleSessionsOutput, error) {
+		o, e := pt.IdleSessions(ctx, in.ConnectionInput)
 		return nil, o, e
 	})
 }

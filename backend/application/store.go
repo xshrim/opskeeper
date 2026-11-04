@@ -755,10 +755,14 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		return Topology{}, err
 	}
 	var project TopologyNode
-	if err := s.pool.QueryRow(ctx, `SELECT id::text,name,scope_id::text FROM projects WHERE id=$1::uuid AND deleted_at IS NULL`, projectID).Scan(&project.ID, &project.Name, &project.ScopeID); err != nil {
+	var projectScopeType string
+	if err := s.pool.QueryRow(ctx, `SELECT project.id::text,project.name,project.scope_id::text,scope.scope_type
+  FROM projects project JOIN scopes scope ON scope.id=project.scope_id
+ WHERE project.id=$1::uuid AND project.deleted_at IS NULL`, projectID).Scan(&project.ID, &project.Name, &project.ScopeID, &projectScopeType); err != nil {
 		return Topology{}, mapStoreError(err)
 	}
 	project.Kind = "project"
+	project.Metadata = map[string]any{"scope_type": projectScopeType}
 	nodes := []TopologyNode{project}
 	edges := make([]TopologyEdge, 0)
 	apps, err := s.List(ctx, projectID)
@@ -774,8 +778,9 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		edges = append(edges, TopologyEdge{ID: "contains:" + app.ID, SourceID: projectID, TargetID: app.ID, Relation: "contains"})
 	}
 	resourceQuery, resourceArgs := appendResourceScopeVisibility(`SELECT DISTINCT r.id::text,r.scope_id::text,r.name,r.kind,r.subtype,r.labels,
-  EXISTS (SELECT 1 FROM project_topology_resources ptr WHERE ptr.project_id=$2::uuid AND ptr.resource_id=r.id)
+  EXISTS (SELECT 1 FROM project_topology_resources ptr WHERE ptr.project_id=$2::uuid AND ptr.resource_id=r.id),resource_scope.scope_type
   FROM resources r
+	JOIN scopes resource_scope ON resource_scope.id=r.scope_id
 	JOIN projects current_project ON current_project.id=$2::uuid
 	WHERE r.deleted_at IS NULL AND (r.scope_id=current_project.scope_id OR EXISTS (SELECT 1 FROM project_topology_resources topology_resource WHERE topology_resource.project_id=$2::uuid AND topology_resource.resource_id=r.id) OR EXISTS (SELECT 1 FROM application_instances i WHERE i.application_id=ANY($1::uuid[]) AND i.target_resource_id=r.id)
 		OR EXISTS (SELECT 1 FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[]) AND d.target_resource_id=r.id))`, []any{appIDs, projectID}, ctx, "r")
@@ -789,7 +794,8 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		var subtype string
 		var rawLabels []byte
 		var topologyMember bool
-		if err := resourceRows.Scan(&node.ID, &node.ScopeID, &node.Name, &node.ResourceKind, &subtype, &rawLabels, &topologyMember); err != nil {
+		var scopeType string
+		if err := resourceRows.Scan(&node.ID, &node.ScopeID, &node.Name, &node.ResourceKind, &subtype, &rawLabels, &topologyMember, &scopeType); err != nil {
 			resourceRows.Close()
 			return Topology{}, fmt.Errorf("scan application topology resource: %w", err)
 		}
@@ -799,7 +805,7 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 			resourceRows.Close()
 			return Topology{}, fmt.Errorf("decode application topology resource labels: %w", err)
 		}
-		node.Metadata = map[string]any{"subtype": subtype, "labels": labels, "external": node.ScopeID != project.ScopeID, "topology_member": topologyMember}
+		node.Metadata = map[string]any{"subtype": subtype, "labels": labels, "external": node.ScopeID != project.ScopeID, "topology_member": topologyMember, "scope_type": scopeType}
 		nodes = append(nodes, node)
 		resourceSet[node.ID] = struct{}{}
 	}
@@ -948,6 +954,40 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 		return Topology{}, err
 	}
 	annotationRows.Close()
+	nodeSet := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeSet[node.ID] = struct{}{}
+	}
+	manualEdgeRows, err := s.pool.Query(ctx, `SELECT id::text,source_node_id::text,target_node_id::text,relation,metadata
+  FROM project_topology_edges WHERE project_id=$1::uuid ORDER BY created_at,id`, projectID)
+	if err != nil {
+		return Topology{}, fmt.Errorf("list project topology edges: %w", err)
+	}
+	for manualEdgeRows.Next() {
+		var edge TopologyEdge
+		var metadata []byte
+		if err := manualEdgeRows.Scan(&edge.ID, &edge.SourceID, &edge.TargetID, &edge.Relation, &metadata); err != nil {
+			manualEdgeRows.Close()
+			return Topology{}, fmt.Errorf("scan project topology edge: %w", err)
+		}
+		if _, ok := nodeSet[edge.SourceID]; !ok {
+			continue
+		}
+		if _, ok := nodeSet[edge.TargetID]; !ok {
+			continue
+		}
+		if err := json.Unmarshal(metadata, &edge.Metadata); err != nil {
+			manualEdgeRows.Close()
+			return Topology{}, fmt.Errorf("decode project topology edge: %w", err)
+		}
+		edge.ID = "topology:" + edge.ID
+		edges = append(edges, edge)
+	}
+	if err := manualEdgeRows.Err(); err != nil {
+		manualEdgeRows.Close()
+		return Topology{}, err
+	}
+	manualEdgeRows.Close()
 	positionRows, err := s.pool.Query(ctx, `SELECT node_id::text,position_x,position_y FROM project_topology_positions WHERE project_id=$1::uuid`, projectID)
 	if err != nil {
 		return Topology{}, fmt.Errorf("list project topology positions: %w", err)
@@ -1062,9 +1102,60 @@ func (s *store) DeleteTopologyAnnotation(ctx context.Context, projectID, annotat
 	if err := s.projectExists(ctx, projectID); err != nil {
 		return err
 	}
+	if _, err := s.pool.Exec(ctx, `DELETE FROM project_topology_edges WHERE project_id=$1::uuid AND (source_node_id=$2::uuid OR target_node_id=$2::uuid)`, projectID, annotationID); err != nil {
+		return fmt.Errorf("delete topology annotation edges: %w", err)
+	}
 	tag, err := s.pool.Exec(ctx, `DELETE FROM project_topology_annotations WHERE project_id=$1::uuid AND id=$2::uuid`, projectID, annotationID)
 	if err != nil {
 		return fmt.Errorf("delete project topology annotation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *store) CreateTopologyEdge(ctx context.Context, projectID string, input TopologyEdgeInput) (TopologyEdge, error) {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return TopologyEdge{}, err
+	}
+	topology, err := s.Topology(ctx, projectID)
+	if err != nil {
+		return TopologyEdge{}, err
+	}
+	validNodes := make(map[string]struct{}, len(topology.Nodes))
+	for _, node := range topology.Nodes {
+		validNodes[node.ID] = struct{}{}
+	}
+	if _, ok := validNodes[input.SourceID]; !ok {
+		return TopologyEdge{}, ErrNotFound
+	}
+	if _, ok := validNodes[input.TargetID]; !ok {
+		return TopologyEdge{}, ErrNotFound
+	}
+	if input.Metadata == nil {
+		input.Metadata = map[string]any{}
+	}
+	metadata, err := json.Marshal(input.Metadata)
+	if err != nil {
+		return TopologyEdge{}, fmt.Errorf("encode project topology edge metadata: %w", err)
+	}
+	var edge TopologyEdge
+	if err := s.pool.QueryRow(ctx, `INSERT INTO project_topology_edges(project_id,source_node_id,target_node_id,relation,metadata)
+VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::jsonb) RETURNING id::text,source_node_id::text,target_node_id::text,relation,metadata`, projectID, input.SourceID, input.TargetID, strings.TrimSpace(input.Relation), metadata).Scan(&edge.ID, &edge.SourceID, &edge.TargetID, &edge.Relation, &edge.Metadata); err != nil {
+		return TopologyEdge{}, fmt.Errorf("create project topology edge: %w", err)
+	}
+	edge.ID = "topology:" + edge.ID
+	return edge, nil
+}
+
+func (s *store) DeleteTopologyEdge(ctx context.Context, projectID, edgeID string) error {
+	if err := s.projectExists(ctx, projectID); err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM project_topology_edges WHERE project_id=$1::uuid AND id=$2::uuid`, projectID, edgeID)
+	if err != nil {
+		return fmt.Errorf("delete project topology edge: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound

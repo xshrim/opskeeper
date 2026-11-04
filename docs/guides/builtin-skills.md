@@ -13,7 +13,7 @@ Connector 返回的是固定的结构化诊断快照。确定性规则负责将�
 | Skill | 目标资源 | 固定只读能力 | 典型事实 |
 |---|---|---|---|
 | Kubernetes 工作负载诊断 | `Application`、`Kubernetes` | 允许列表内的 Kubernetes 对象读取 | 工作负载、Pod、事件、探针、资源限制、发布状态 |
-| PostgreSQL 健康诊断 | `PostgreSQL` | `postgresql_*` 固定工具 | 健康、会话、表、性能、VACUUM、扩展和数据库信息 |
+| PostgreSQL 健康诊断 | `PostgreSQL` | `postgresql_*` 固定工具 | 健康、慢查询、活动 SQL、锁等待、连接、表结构与统计、性能、VACUUM、扩展和数据库信息 |
 | Redis 健康诊断 | `Redis` | `redis_health`、`redis_memory`、`redis_clients`、`redis_replication`、`redis_slowlog`、`redis_database_info` | 健康、内存、客户端、复制、慢命令和数据库信息；不扫描全量 Key |
 | Kafka 健康诊断 | `Kafka` | `kafka_inspect` | Broker、Topic、分区、ISR、离线副本、消费组成员与累计积压 |
 

@@ -40,6 +40,8 @@ type Store interface {
 	AddTopologyResource(context.Context, string, TopologyResourceInput) error
 	RemoveTopologyResource(context.Context, string, string) error
 	DeleteTopologyAnnotation(context.Context, string, string) error
+	CreateTopologyEdge(context.Context, string, TopologyEdgeInput) (TopologyEdge, error)
+	DeleteTopologyEdge(context.Context, string, string) error
 }
 
 type BindingValidator interface {
@@ -564,4 +566,16 @@ func (s *Service) DeleteTopologyAnnotation(ctx context.Context, pid, annotationI
 		return ErrInvalid
 	}
 	return s.store.DeleteTopologyAnnotation(ctx, strings.TrimSpace(pid), strings.TrimSpace(annotationID))
+}
+func (s *Service) CreateTopologyEdge(ctx context.Context, pid string, input TopologyEdgeInput) (TopologyEdge, error) {
+	if strings.TrimSpace(pid) == "" || !uuidPattern.MatchString(strings.TrimSpace(input.SourceID)) || !uuidPattern.MatchString(strings.TrimSpace(input.TargetID)) || strings.TrimSpace(input.SourceID) == strings.TrimSpace(input.TargetID) || strings.TrimSpace(input.Relation) == "" {
+		return TopologyEdge{}, ErrInvalid
+	}
+	return s.store.CreateTopologyEdge(ctx, strings.TrimSpace(pid), input)
+}
+func (s *Service) DeleteTopologyEdge(ctx context.Context, pid, edgeID string) error {
+	if strings.TrimSpace(pid) == "" || !uuidPattern.MatchString(strings.TrimSpace(edgeID)) {
+		return ErrInvalid
+	}
+	return s.store.DeleteTopologyEdge(ctx, strings.TrimSpace(pid), strings.TrimSpace(edgeID))
 }

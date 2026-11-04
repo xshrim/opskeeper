@@ -87,6 +87,13 @@ type TopologyPositionInput struct {
 	Y int `json:"y"`
 }
 
+type TopologyEdgeInput struct {
+	SourceID string         `json:"source_id"`
+	TargetID string         `json:"target_id"`
+	Relation string         `json:"relation"`
+	Metadata map[string]any `json:"metadata"`
+}
+
 type TopologyNode struct {
 	ID           string            `json:"id"`
 	Kind         string            `json:"kind"`

@@ -64,6 +64,25 @@ func (s *Service) resolveMySQLTools(ctx context.Context, item engine.ContextReso
 				}
 				return engine.ToolResult{Output: out, Untrusted: true}, nil
 			})
+		case "mysql_slow_queries":
+			add(tool.Name, tool.Description, mysqlSlowQueriesSchema(), func(c context.Context, args map[string]any) (engine.ToolResult, error) {
+				var input mt.SlowQueriesInput
+				raw, _ := json.Marshal(args)
+				if e := json.Unmarshal(raw, &input); e != nil {
+					return engine.ToolResult{}, e
+				}
+				out, e := mt.SlowQueries(c, connection, input)
+				if e != nil {
+					return engine.ToolResult{}, mysqlError(tool.Name, e)
+				}
+				return engine.ToolResult{Output: out, Untrusted: true}, nil
+			})
+		case "mysql_active_queries":
+			register(tool.Name, tool.Description, func(c context.Context, i mt.ConnectionInput) (any, error) { return mt.ActiveQueries(c, i) })
+		case "mysql_lock_waits":
+			register(tool.Name, tool.Description, func(c context.Context, i mt.ConnectionInput) (any, error) { return mt.LockWaits(c, i) })
+		case "mysql_connection_stats":
+			register(tool.Name, tool.Description, func(c context.Context, i mt.ConnectionInput) (any, error) { return mt.ConnectionStats(c, i) })
 		}
 	}
 	return nil
@@ -73,6 +92,9 @@ func mysqlDirectSchema() json.RawMessage {
 }
 func mysqlColumnsSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","required":["schema","table"],"properties":{"schema":{"type":"string"},"table":{"type":"string"}},"additionalProperties":false}`)
+}
+func mysqlSlowQueriesSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":100},"min_total_ms":{"type":"number","minimum":0}},"additionalProperties":false}`)
 }
 func (s *Service) mySQLConnection(ctx context.Context, item engine.ContextResource) (mt.ConnectionInput, error) {
 	in := mt.ConnectionInput{Host: stringValue(item.Config, "host"), Database: stringValue(item.Config, "database"), Port: intValue(item.Config, "port"), TimeoutSeconds: intValue(item.Config, "timeout_seconds")}

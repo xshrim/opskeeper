@@ -31,6 +31,8 @@ type applicationTopologyResourceService interface {
 	AddTopologyResource(context.Context, string, application.TopologyResourceInput) error
 	RemoveTopologyResource(context.Context, string, string) error
 	DeleteTopologyAnnotation(context.Context, string, string) error
+	CreateTopologyEdge(context.Context, string, application.TopologyEdgeInput) (application.TopologyEdge, error)
+	DeleteTopologyEdge(context.Context, string, string) error
 }
 type applicationHandler struct {
 	service     applicationService
@@ -61,6 +63,12 @@ type createTopologyAnnotationRequest struct {
 type topologyPositionRequest struct {
 	X int `json:"x"`
 	Y int `json:"y"`
+}
+type topologyEdgeRequest struct {
+	SourceID string         `json:"source_id"`
+	TargetID string         `json:"target_id"`
+	Relation string         `json:"relation"`
+	Metadata map[string]any `json:"metadata"`
 }
 type updateApplicationRequest struct {
 	Name               *string                              `json:"name"`
@@ -105,6 +113,8 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/topology/resources", h.addTopologyResource)
 		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/resources/{resourceID}", h.removeTopologyResource)
 		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/annotations/{annotationID}", h.deleteTopologyAnnotation)
+		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/topology/edges", h.createTopologyEdge)
+		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/edges/{edgeID}", h.deleteTopologyEdge)
 	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
@@ -201,6 +211,35 @@ func (h applicationHandler) deleteTopologyAnnotation(w http.ResponseWriter, r *h
 		return
 	}
 	if err := service.DeleteTopologyAnnotation(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "annotationID")); err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+func (h applicationHandler) createTopologyEdge(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	var body topologyEdgeRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	edge, err := service.CreateTopologyEdge(r.Context(), chi.URLParam(r, "projectID"), application.TopologyEdgeInput{SourceID: body.SourceID, TargetID: body.TargetID, Relation: body.Relation, Metadata: body.Metadata})
+	if err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, edge)
+}
+func (h applicationHandler) deleteTopologyEdge(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(applicationTopologyResourceService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrInvalid)
+		return
+	}
+	if err := service.DeleteTopologyEdge(r.Context(), chi.URLParam(r, "projectID"), chi.URLParam(r, "edgeID")); err != nil {
 		writeApplicationError(w, r, err)
 		return
 	}

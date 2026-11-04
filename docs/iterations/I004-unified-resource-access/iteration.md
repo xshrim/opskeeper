@@ -41,7 +41,7 @@
 | T04 | Host 工具集接入 | P0 | T01-T02 | Host Direct 工具集、Agent MCP 代理和连接测试 | 待批准 |
 | T05 | Kubernetes 工具集统一 | P0 | T01-T02 | 迁移现有 Kubernetes MCP 工具，接入 Direct 工具集和资源连接配置 | 已完成 |
 | T06 | Application 资源接入 | P0 | T01-T05 | 项目归属、虚拟机/容器化/云原生实例关联、日志读取和唯一性验证 | 已完成 |
-| T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | 12 个固定只读 PostgreSQL 工具共用 Direct/MCP 实现及专用管理界面 | 已完成 |
+| T07 | PostgreSQL 工具集统一 | P0 | T01-T02 | PostgreSQL 固定只读工具共用 Direct/MCP 实现及专用管理界面 | 已完成 |
 | T08 | Redis 工具集统一 | P0 | T01-T02 | Redis 连接、状态和诊断工具共用 Direct/MCP 实现 | 已完成 |
 | T09 | Nacos 工具集统一 | P0 | T01-T02 | Nacos 服务注册、配置中心、命名空间 API 工具和 Direct/MCP 适配器 | 已完成 |
 | T10 | Repository 工具集统一 | P0 | T01-T09 | Git/Bundle 仓库接入、上传存储、代码阅读工具和 AI 上下文 | 部分完成 |

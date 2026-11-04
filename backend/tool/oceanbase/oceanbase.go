@@ -17,6 +17,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/helingjun/obconnector-go"
 	_ "github.com/sijms/go-ora/v2"
+	"opskeeper/backend/tool/relational"
 )
 
 const (
@@ -73,13 +74,7 @@ type TableColumnsOutput struct {
 	Table   string       `json:"table"`
 	Columns []ColumnInfo `json:"columns"`
 }
-type TableStructureOutput struct {
-	Schema      string           `json:"schema"`
-	Table       string           `json:"table"`
-	CreateSQL   string           `json:"create_sql,omitempty"`
-	Constraints []map[string]any `json:"constraints,omitempty"`
-	Indexes     []map[string]any `json:"indexes"`
-}
+type TableStructureOutput = relational.TableStructureOutput
 type ToolInfo struct{ Name, Description string }
 
 var tools = []ToolInfo{
@@ -90,6 +85,10 @@ var tools = []ToolInfo{
 	{Name: "oceanbase_tables", Description: "List OceanBase user tables with row counts and size."},
 	{Name: "oceanbase_table_columns", Description: "Read columns, types, defaults and comments for one table."},
 	{Name: "oceanbase_table_structure", Description: "Read indexes and constraints for one table."},
+	{Name: "oceanbase_slow_queries", Description: "Rank non-internal SQL Audit statements from the last 30 minutes by cumulative execution time; threshold is per SQL ID and availability depends on tenant mode, version and privileges."},
+	{Name: "oceanbase_active_queries", Description: "Read active sessions from the OceanBase tenant process list; availability depends on tenant mode, version and privileges."},
+	{Name: "oceanbase_lock_waits", Description: "Read OceanBase transaction lock waits and blocker sessions when supported by the tenant mode, version and privileges."},
+	{Name: "oceanbase_connection_stats", Description: "Read OceanBase tenant session counts; maximum connection capacity may not be exposed."},
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
@@ -323,68 +322,4 @@ func TableColumns(ctx context.Context, in ConnectionInput, input TableColumnsInp
 		}
 		return out, rows.Err()
 	})
-}
-func TableStructure(ctx context.Context, in ConnectionInput, input TableColumnsInput) (TableStructureOutput, error) {
-	input.Schema = strings.TrimSpace(input.Schema)
-	input.Table = strings.TrimSpace(input.Table)
-	if input.Schema == "" || input.Table == "" {
-		return TableStructureOutput{}, errors.New("schema and table are required")
-	}
-	return withDB(ctx, in, func(ctx context.Context, db *sql.DB, m, _ string) (TableStructureOutput, error) {
-		out := TableStructureOutput{Schema: input.Schema, Table: input.Table, Indexes: []map[string]any{}, Constraints: []map[string]any{}}
-		if m == ModeMySQL {
-			var n string
-			e := db.QueryRowContext(ctx, "SHOW CREATE TABLE `"+strings.ReplaceAll(input.Schema, "`", "``")+"`.`"+strings.ReplaceAll(input.Table, "`", "``")+"`").Scan(&n, &out.CreateSQL)
-			if e != nil {
-				return out, e
-			}
-			rows, e := db.QueryContext(ctx, "SHOW INDEX FROM `"+strings.ReplaceAll(input.Table, "`", "``")+"` FROM `"+strings.ReplaceAll(input.Schema, "`", "``")+"`")
-			if e != nil {
-				return out, e
-			}
-			defer rows.Close()
-			return out, scanMaps(rows, &out.Indexes)
-		}
-		for _, entry := range []struct {
-			q   string
-			dst *[]map[string]any
-		}{{`SELECT constraint_name,constraint_type,status FROM all_constraints WHERE owner=:1 AND table_name=:2 ORDER BY constraint_name`, &out.Constraints}, {`SELECT index_name,index_type,status FROM all_indexes WHERE owner=:1 AND table_name=:2 ORDER BY index_name`, &out.Indexes}} {
-			rows, e := db.QueryContext(ctx, entry.q, strings.ToUpper(input.Schema), strings.ToUpper(input.Table))
-			if e != nil {
-				return out, e
-			}
-			if e = scanMaps(rows, entry.dst); e != nil {
-				rows.Close()
-				return out, e
-			}
-			rows.Close()
-		}
-		return out, nil
-	})
-}
-func scanMaps(rows *sql.Rows, dst *[]map[string]any) error {
-	cols, e := rows.Columns()
-	if e != nil {
-		return e
-	}
-	for rows.Next() {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if e = rows.Scan(ptrs...); e != nil {
-			return e
-		}
-		item := map[string]any{}
-		for i, col := range cols {
-			if b, ok := vals[i].([]byte); ok {
-				item[col] = string(b)
-			} else {
-				item[col] = vals[i]
-			}
-		}
-		*dst = append(*dst, item)
-	}
-	return rows.Err()
 }

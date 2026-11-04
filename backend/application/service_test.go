@@ -62,6 +62,10 @@ func (*testStore) AddTopologyResource(context.Context, string, TopologyResourceI
 }
 func (*testStore) RemoveTopologyResource(context.Context, string, string) error   { return nil }
 func (*testStore) DeleteTopologyAnnotation(context.Context, string, string) error { return nil }
+func (*testStore) CreateTopologyEdge(context.Context, string, TopologyEdgeInput) (TopologyEdge, error) {
+	return TopologyEdge{}, nil
+}
+func (*testStore) DeleteTopologyEdge(context.Context, string, string) error { return nil }
 
 func TestCreateValidatesProjectAndCode(t *testing.T) {
 	s := NewService(&testStore{})
@@ -81,6 +85,13 @@ func TestSetTopologyPositionValidatesCoordinatesAndNodeID(t *testing.T) {
 	}
 	if err := s.SetTopologyPosition(context.Background(), "project", "00000000-0000-4000-8000-000000000001", TopologyPositionInput{X: -1, Y: 100}); err == nil {
 		t.Fatal("negative coordinate accepted")
+	}
+}
+
+func TestCreateTopologyEdgeValidatesNodeIDs(t *testing.T) {
+	s := NewService(&testStore{})
+	if _, err := s.CreateTopologyEdge(context.Background(), "project", TopologyEdgeInput{SourceID: "source", TargetID: "target", Relation: "external_dependency"}); err == nil {
+		t.Fatal("invalid topology edge IDs accepted")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	driver "github.com/go-sql-driver/mysql"
+	"opskeeper/backend/tool/relational"
 )
 
 type ConnectionInput struct {
@@ -63,12 +64,7 @@ type TableColumnsOutput struct {
 	Table   string       `json:"table"`
 	Columns []ColumnInfo `json:"columns"`
 }
-type TableStructureOutput struct {
-	Schema    string           `json:"schema"`
-	Table     string           `json:"table"`
-	CreateSQL string           `json:"create_sql"`
-	Indexes   []map[string]any `json:"indexes"`
-}
+type TableStructureOutput = relational.TableStructureOutput
 type DatabaseInfoOutput struct {
 	Values map[string]any `json:"values"`
 }
@@ -82,6 +78,10 @@ var tools = []ToolInfo{
 	{Name: "mysql_table_columns", Description: "Read columns, types, defaults and comments for one user table."},
 	{Name: "mysql_table_structure", Description: "Read the CREATE TABLE definition and indexes for one user table."},
 	{Name: "mysql_database_info", Description: "Read MySQL database identity and general information."},
+	{Name: "mysql_slow_queries", Description: "Rank normalized MySQL statements by execution cost."},
+	{Name: "mysql_active_queries", Description: "Read bounded details about active MySQL statements."},
+	{Name: "mysql_lock_waits", Description: "Read waiting and blocking MySQL transactions."},
+	{Name: "mysql_connection_stats", Description: "Read MySQL connection counts and utilization."},
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
@@ -229,48 +229,6 @@ func TableColumns(ctx context.Context, in ConnectionInput, input TableColumnsInp
 				return out, e
 			}
 			out.Columns = append(out.Columns, c)
-		}
-		return out, rows.Err()
-	})
-}
-func TableStructure(ctx context.Context, in ConnectionInput, input TableColumnsInput) (TableStructureOutput, error) {
-	input.Schema, input.Table = strings.TrimSpace(input.Schema), strings.TrimSpace(input.Table)
-	if input.Schema == "" || input.Table == "" {
-		return TableStructureOutput{}, errors.New("schema and table are required")
-	}
-	return withDB(ctx, in, func(ctx context.Context, db *sql.DB) (TableStructureOutput, error) {
-		var name, createSQL string
-		if err := db.QueryRowContext(ctx, "SHOW CREATE TABLE `"+strings.ReplaceAll(input.Schema, "`", "``")+"`.`"+strings.ReplaceAll(input.Table, "`", "``")+"`").Scan(&name, &createSQL); err != nil {
-			return TableStructureOutput{}, err
-		}
-		rows, err := db.QueryContext(ctx, "SHOW INDEX FROM `"+strings.ReplaceAll(input.Table, "`", "``")+"` FROM `"+strings.ReplaceAll(input.Schema, "`", "``")+"`")
-		if err != nil {
-			return TableStructureOutput{}, err
-		}
-		defer rows.Close()
-		out := TableStructureOutput{Schema: input.Schema, Table: input.Table, CreateSQL: createSQL, Indexes: []map[string]any{}}
-		cols, err := rows.Columns()
-		if err != nil {
-			return out, err
-		}
-		for rows.Next() {
-			vals := make([]any, len(cols))
-			ptrs := make([]any, len(cols))
-			for i := range vals {
-				ptrs[i] = &vals[i]
-			}
-			if err := rows.Scan(ptrs...); err != nil {
-				return out, err
-			}
-			item := map[string]any{}
-			for i, col := range cols {
-				if b, ok := vals[i].([]byte); ok {
-					item[col] = string(b)
-				} else {
-					item[col] = vals[i]
-				}
-			}
-			out.Indexes = append(out.Indexes, item)
 		}
 		return out, rows.Err()
 	})

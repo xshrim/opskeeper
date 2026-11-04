@@ -12,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/sijms/go-ora/v2"
+	"opskeeper/backend/tool/relational"
 )
 
 // ConnectionInput is transport-neutral and intentionally contains only the
@@ -80,12 +81,7 @@ type TableColumnsOutput struct {
 	Table   string       `json:"table"`
 	Columns []ColumnInfo `json:"columns"`
 }
-type TableStructureOutput struct {
-	Schema      string           `json:"schema"`
-	Table       string           `json:"table"`
-	Constraints []map[string]any `json:"constraints,omitempty"`
-	Indexes     []map[string]any `json:"indexes,omitempty"`
-}
+type TableStructureOutput = relational.TableStructureOutput
 type ToolInfo struct{ Name, Description string }
 
 var tools = []ToolInfo{
@@ -96,6 +92,10 @@ var tools = []ToolInfo{
 	{Name: "oracle_tables", Description: "List user tables with statistics, tablespace and segment size."},
 	{Name: "oracle_table_columns", Description: "Read columns, types, defaults and comments for one user table."},
 	{Name: "oracle_table_structure", Description: "Read constraints and indexes for one user table."},
+	{Name: "oracle_slow_queries", Description: "Rank Oracle SQL cursors by cumulative execution time."},
+	{Name: "oracle_active_queries", Description: "Read bounded details about active Oracle user sessions and SQL."},
+	{Name: "oracle_lock_waits", Description: "Read Oracle sessions waiting on blocking sessions."},
+	{Name: "oracle_connection_stats", Description: "Read Oracle user-session counts and process utilization."},
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
@@ -275,40 +275,5 @@ func TableColumns(ctx context.Context, in ConnectionInput, input TableColumnsInp
 			_ = db.QueryRowContext(ctx, `SELECT comments FROM all_col_comments WHERE owner=:1 AND table_name=:2 AND column_name=:3`, strings.ToUpper(input.Schema), strings.ToUpper(input.Table), out.Columns[i].Name).Scan(&out.Columns[i].Comment)
 		}
 		return out, nil
-	})
-}
-func TableStructure(ctx context.Context, in ConnectionInput, input TableColumnsInput) (TableStructureOutput, error) {
-	input.Schema, input.Table = strings.TrimSpace(input.Schema), strings.TrimSpace(input.Table)
-	if input.Schema == "" || input.Table == "" {
-		return TableStructureOutput{}, errors.New("schema and table are required")
-	}
-	return withDB(ctx, in, func(ctx context.Context, db *sql.DB) (TableStructureOutput, error) {
-		out := TableStructureOutput{Schema: input.Schema, Table: input.Table, Constraints: []map[string]any{}, Indexes: []map[string]any{}}
-		rows, e := db.QueryContext(ctx, `SELECT constraint_name,constraint_type,status,validated FROM all_constraints WHERE owner=:1 AND table_name=:2 ORDER BY constraint_name`, strings.ToUpper(input.Schema), strings.ToUpper(input.Table))
-		if e != nil {
-			return out, e
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var n, t, s, v string
-			if e := rows.Scan(&n, &t, &s, &v); e != nil {
-				return out, e
-			}
-			out.Constraints = append(out.Constraints, map[string]any{"name": n, "type": t, "status": s, "validated": v})
-		}
-		rows.Close()
-		rows, e = db.QueryContext(ctx, `SELECT index_name,index_type,status,uniqueness FROM all_indexes WHERE owner=:1 AND table_name=:2 ORDER BY index_name`, strings.ToUpper(input.Schema), strings.ToUpper(input.Table))
-		if e != nil {
-			return out, e
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var n, t, s, u string
-			if e := rows.Scan(&n, &t, &s, &u); e != nil {
-				return out, e
-			}
-			out.Indexes = append(out.Indexes, map[string]any{"name": n, "type": t, "status": s, "uniqueness": u})
-		}
-		return out, rows.Err()
 	})
 }
