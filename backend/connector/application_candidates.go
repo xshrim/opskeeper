@@ -35,6 +35,7 @@ type ApplicationCandidate struct {
 	Namespace     string                         `json:"namespace,omitempty"`
 	Replicas      int                            `json:"replicas"`
 	ReadyReplicas int                            `json:"ready_replicas,omitempty"`
+	Tooltip       string                         `json:"tooltip,omitempty"`
 	Instances     []ApplicationCandidateInstance `json:"instances"`
 }
 
@@ -100,6 +101,7 @@ func (s *Service) DiscoverApplicationCandidates(ctx context.Context, input Appli
 			items = append(items, ApplicationCandidate{
 				Key: candidateKey(input.RuntimeKind, identity), Identity: identity, RuntimeKind: input.RuntimeKind, Name: workload.Name,
 				Detail: workload.Kind, Kind: workload.Kind, Namespace: workload.Namespace,
+				Tooltip:  workloadTooltip(workload),
 				Replicas: int(workload.Replicas), ReadyReplicas: int(workload.ReadyReplicas), Instances: instances,
 			})
 		}
@@ -159,9 +161,21 @@ func (s *Service) DiscoverApplicationCandidates(ctx context.Context, input Appli
 			}
 			current := resourceMatches[resourceID]
 			if current == nil {
+				detail := item.Detail
+				tooltip := ""
+				if input.RuntimeKind == "virtual_machine" {
+					detail = strings.TrimSpace(item.Detail)
+					if detail == "" {
+						detail = fmt.Sprintf("PID %s", item.ID)
+					}
+					tooltip = fmt.Sprintf("完整命令：%s", item.Detail)
+				} else {
+					detail = fmt.Sprintf("%s · %s", shortContainerID(item.ID), item.Detail)
+					tooltip = fmt.Sprintf("容器名称：%s\n容器 ID：%s\n运行命令：%s", item.Name, item.ID, item.Detail)
+				}
 				current = &candidateResourceMatch{candidate: ApplicationCandidate{
 					Key: candidateKey(input.RuntimeKind, identity), Identity: identity, RuntimeKind: input.RuntimeKind, Name: item.Name,
-					Detail: item.Detail, Instances: []ApplicationCandidateInstance{},
+					Detail: detail, Tooltip: tooltip, Instances: []ApplicationCandidateInstance{},
 				}}
 				resourceMatches[resourceID] = current
 			}
@@ -273,6 +287,27 @@ func candidateInstanceStatus(runtimeKind, observed string) string {
 	default:
 		return "active"
 	}
+}
+
+func shortContainerID(id string) string {
+	id = strings.TrimSpace(id)
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+func workloadTooltip(workload DiscoveredWorkload) string {
+	labels := make([]string, 0, len(workload.Labels))
+	for key, value := range workload.Labels {
+		labels = append(labels, key+"="+value)
+	}
+	sort.Strings(labels)
+	labelText := "无"
+	if len(labels) > 0 {
+		labelText = strings.Join(labels, ", ")
+	}
+	return fmt.Sprintf("工作负载名称：%s\n工作负载类型：%s\n工作负载标签：%s", workload.Name, workload.Kind, labelText)
 }
 
 func workloadInstanceStatus(workload DiscoveredWorkload) string {

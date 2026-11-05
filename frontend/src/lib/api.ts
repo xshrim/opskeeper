@@ -1074,6 +1074,7 @@ export const api = {
         namespace?: string;
         replicas: number;
         ready_replicas?: number;
+        tooltip?: string;
         ambiguous?: boolean;
         instances: Array<{
           name: string;

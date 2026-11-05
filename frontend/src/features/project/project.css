@@ -373,8 +373,12 @@
   align-items: end;
   gap: 12px;
 }
-.kubernetes-runtime-half .runtime-continue-button {
+.kubernetes-runtime-half.kubernetes-runtime-filter-half {
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+.kubernetes-runtime-half.kubernetes-runtime-filter-half .runtime-continue-button {
   align-self: end;
+  justify-self: end;
 }
 .runtime-binding-fields-grid > :nth-child(3),
 .runtime-binding-fields-grid > :nth-child(4) {
@@ -632,19 +636,21 @@
 }
 .application-identity-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) max-content;
   gap: 16px;
   align-items: start;
 }
 .critical-radio-field {
   display: grid;
   gap: 6px;
+  justify-items: end;
   color: var(--theme-fg-muted);
   font-size: 12px;
 }
 .critical-radio-group {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   min-height: 36px;
 }
 .critical-radio-toggle {
@@ -844,6 +850,7 @@
     grid-template-columns: 1fr;
   }
   .kubernetes-runtime-half,
+  .kubernetes-runtime-half.kubernetes-runtime-filter-half,
   .application-relations-panel {
     grid-template-columns: 1fr;
   }
@@ -1552,15 +1559,12 @@
   gap: 15px;
 }
 
-.map-side-column.topology-configuring > .map-side-panel { visibility: hidden; }
-
-:global(.dialog.modal-dialog.topology-embedded-wizard) {
-  max-height: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+.topology-application-create-region {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
-:global(.dialog.modal-dialog.topology-embedded-wizard .dialog-resize-handle) { display: none; }
+
+.map-side-column.topology-configuring > .map-side-panel { visibility: hidden; }
 
 .topology-config-overlay {
   position: absolute;

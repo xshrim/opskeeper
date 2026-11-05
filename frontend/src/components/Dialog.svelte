@@ -12,6 +12,8 @@
   export let positionTarget = '';
   export let stretchTarget = false;
   export let widthTargetRatio = 0;
+  export let alignTargetTop = false;
+  export let resizable = true;
   export let overflowMode: 'clip' | 'scroll' | 'expand' = 'scroll';
   export let autoHeight = false;
   export let initialCenterRatio = 0.42;
@@ -111,7 +113,9 @@
         : (window.innerWidth - expandedRect.width) / 2;
     const top = preservePosition
       ? currentRect.top
-      : window.innerHeight * initialCenterRatio - expandedRect.height / 2;
+      : targetRect && alignTargetTop
+        ? targetRect.top
+        : window.innerHeight * initialCenterRatio - expandedRect.height / 2;
     setGeometry(
       left,
       top,
@@ -241,18 +245,20 @@
     on:pointercancel={handlePointerUp}
   >
     <slot />
-    <button
-      class="dialog-resize-handle dialog-resize-handle-left"
-      type="button"
-      aria-label="调整弹窗大小"
-      on:pointerdown={(event) => handleResizePointerDown(event, 'left')}
-    ></button>
-    <button
-      class="dialog-resize-handle dialog-resize-handle-right"
-      type="button"
-      aria-label="调整弹窗大小"
-      on:pointerdown={(event) => handleResizePointerDown(event, 'right')}
-    ></button>
+    {#if resizable}
+      <button
+        class="dialog-resize-handle dialog-resize-handle-left"
+        type="button"
+        aria-label="调整弹窗大小"
+        on:pointerdown={(event) => handleResizePointerDown(event, 'left')}
+      ></button>
+      <button
+        class="dialog-resize-handle dialog-resize-handle-right"
+        type="button"
+        aria-label="调整弹窗大小"
+        on:pointerdown={(event) => handleResizePointerDown(event, 'right')}
+      ></button>
+    {/if}
   </dialog>
 </div>
 

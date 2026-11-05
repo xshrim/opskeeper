@@ -101,7 +101,11 @@ func (s *Service) PreviewApplicationBinding(ctx context.Context, runtimeKind, re
 				continue
 			}
 			result.Count++
-			result.Items = append(result.Items, ApplicationBindingItem{ID: container.ID, Name: name, Detail: container.Image, Status: container.Status})
+			command := strings.TrimSpace(container.Command)
+			if command == "" {
+				command = container.Image
+			}
+			result.Items = append(result.Items, ApplicationBindingItem{ID: container.ID, Name: name, Detail: command, Status: container.Status})
 		}
 		return result, nil
 	default:

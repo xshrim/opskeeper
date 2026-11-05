@@ -1,6 +1,11 @@
 package connector
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	kt "opskeeper/backend/tool/kubernetes"
+)
 
 func TestFinalizeApplicationCandidatesUsesUniqueIntersection(t *testing.T) {
 	makeMatch := func(name, resourceID string, count int) *candidateResourceMatch {
@@ -71,5 +76,17 @@ func TestUniqueIDsPreservesFirstOccurrence(t *testing.T) {
 	got := uniqueIDs([]string{" docker-a ", "", "docker-b", "docker-a"})
 	if len(got) != 2 || got[0] != "docker-a" || got[1] != "docker-b" {
 		t.Fatalf("uniqueIDs() = %#v", got)
+	}
+}
+
+func TestCandidateDisplayDetails(t *testing.T) {
+	if got := shortContainerID("1234567890abcdef"); got != "1234567890ab" {
+		t.Fatalf("shortContainerID() = %q", got)
+	}
+	tooltip := workloadTooltip(DiscoveredWorkload{ResourceItem: kt.ResourceItem{
+		Name: "payments", Kind: "Deployment", Labels: map[string]string{"app": "payments"},
+	}})
+	if !strings.Contains(tooltip, "工作负载类型：Deployment") || !strings.Contains(tooltip, "app=payments") {
+		t.Fatalf("workloadTooltip() = %q", tooltip)
 	}
 }

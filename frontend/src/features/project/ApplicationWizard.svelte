@@ -31,7 +31,6 @@
   export let projects: Array<{ id: string; name: string }> = [];
   export let initialApplication: Application | null = null;
   export let initialRuntimeKind = '';
-  export let embedded = false;
   export let onSave: (applications: ApplicationDraft[]) => Promise<void> | void;
   export let onUpdate: (
     application: Application,
@@ -796,13 +795,9 @@
 </script>
 
 <ModalDialog
-  dialogClass={`project-dialog application-wizard-dialog ${embedded ? 'topology-embedded-wizard' : ''}`}
+  dialogClass="project-dialog application-wizard-dialog"
   size="wide"
-  coverage={embedded ? 'none' : 'page'}
-  positionTarget={embedded ? '.map-side-column' : ''}
-  widthTargetRatio={embedded ? 1 : 0}
-  maskTarget={embedded ? '.map-side-column' : ''}
-  stretchTarget={embedded}
+  coverage="page"
   overflowMode="expand"
   initialCenterRatio={0.38}
   title={initialApplication ? '编辑应用' : '新增应用'}
@@ -854,7 +849,7 @@
                   <DropdownSelect value={namespace} options={namespaceDropdownOptions} searchable disabled={namespaceLoading || !runtimeResourceIds[0] || runtimeLocked} placeholder={namespaceLoading ? '读取命名空间…' : '选择命名空间'} ariaLabel="Kubernetes 命名空间" invalid={submitAttempted && !namespace} invalidMode="bubble" invalidMessage="请选择 Kubernetes 命名空间" on:change={(event) => { namespace = String(event.detail); queueWorkloadDiscovery(); }} />
                 </FormField>
               </div>
-              <div class="kubernetes-runtime-half">
+              <div class="kubernetes-runtime-half kubernetes-runtime-filter-half">
                 <FormField label="标签选择器">
                   <TextInput bind:value={labelSelector} disabled={runtimeLocked} placeholder="可选，如：app.kubernetes.io/part-of=payments" on:value={queueWorkloadDiscovery} />
                 </FormField>

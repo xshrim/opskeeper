@@ -29,6 +29,8 @@
   export let positionTarget = '';
   export let stretchTarget = false;
   export let widthTargetRatio = 0;
+  export let alignTargetTop = false;
+  export let resizable = true;
   export let overflowMode: DialogOverflow = 'scroll';
   export let autoHeight = true;
   export let initialCenterRatio = 0.42;
@@ -54,6 +56,8 @@
   {positionTarget}
   {stretchTarget}
   {widthTargetRatio}
+  {alignTargetTop}
+  {resizable}
   {overflowMode}
   {autoHeight}
   {initialCenterRatio}

@@ -8,7 +8,9 @@
     value: string;
     label: string;
     icon?: string;
+    meta?: string;
     description?: string;
+    tooltip?: string;
     disabled?: boolean;
   };
 
@@ -204,7 +206,7 @@
         aria-label={ariaLabel}
         on:input={handleCustomInput}
       />
-      {#if customValue}<button class="dropdown-select-clear" type="button" aria-label="清空" on:click|stopPropagation={clearCustom}><X size={13} /></button>{/if}
+      {#if customValue}<button class="dropdown-select-clear" type="button" aria-label="清空" on:click|preventDefault|stopPropagation={clearCustom}><X size={13} /></button>{/if}
     {:else if multiple && taggedSelection}
       <div
         class="dropdown-select-tags"
@@ -213,7 +215,7 @@
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        on:click|stopPropagation={toggle}
+        on:click|preventDefault|stopPropagation={toggle}
         on:dragover|preventDefault={appendDragged}
         on:drop|preventDefault={finishDrag}
         on:keydown={(event) => {
@@ -239,7 +241,7 @@
               class="dropdown-select-tag-remove"
               type="button"
               aria-label={`移除 ${option.label}`}
-              on:click|stopPropagation={() => removeSelected(option.value)}
+              on:click|preventDefault|stopPropagation={() => removeSelected(option.value)}
             ><X size={12} /></button>
           </span>
         {:else}
@@ -254,13 +256,13 @@
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        on:click|stopPropagation={toggle}
+        on:click|preventDefault|stopPropagation={toggle}
       >
         {#if showIcons && selected?.icon}<span class="dropdown-select-icon"><IconValue value={selected.icon} size={14} /></span>{/if}
         <span class:placeholder={!displayValue} class="dropdown-select-value">{displayValue || placeholder}</span>
       </button>
     {/if}
-    <button class="dropdown-select-chevron" type="button" aria-label={open ? '收起选项' : '展开选项'} {disabled} on:click|stopPropagation={toggle}><ChevronDown size={14} /></button>
+    <button class="dropdown-select-chevron" type="button" aria-label={open ? '收起选项' : '展开选项'} {disabled} on:click|preventDefault|stopPropagation={toggle}><ChevronDown size={14} /></button>
   </div>
 
   {#if open}
@@ -269,9 +271,9 @@
       <div class="dropdown-select-options">
         {#if allowAll}<button class="dropdown-select-option all-option" type="button" role="option" aria-selected={selectedValues.includes(allValue)} on:click={() => select(allValue)}>{#if showIcons}<span class="dropdown-select-icon"><span aria-hidden="true">✦</span></span>{/if}<span>{allLabel}</span></button>{/if}
         {#each filteredOptions as option}
-          <button class:selected={(multiple ? selectedValues.includes(option.value) : option.value === value)} class="dropdown-select-option" type="button" role="option" aria-selected={multiple ? selectedValues.includes(option.value) : option.value === value} disabled={option.disabled} on:click={() => select(option.value)}>
+          <button class:selected={(multiple ? selectedValues.includes(option.value) : option.value === value)} class="dropdown-select-option" type="button" role="option" aria-selected={multiple ? selectedValues.includes(option.value) : option.value === value} disabled={option.disabled} data-tooltip={option.tooltip || undefined} on:click={() => select(option.value)}>
             {#if showIcons && option.icon}<span class="dropdown-select-icon"><IconValue value={option.icon} size={14} /></span>{/if}
-            <span class="dropdown-select-option-copy"><strong>{option.label}</strong>{#if option.description}<small>{option.description}</small>{/if}</span>
+            <span class="dropdown-select-option-copy"><strong>{option.label}{#if option.meta}<small class="dropdown-select-option-meta">{option.meta}</small>{/if}</strong>{#if option.description}<small>{option.description}</small>{/if}</span>
           </button>
         {:else}<span class="dropdown-select-empty">没有匹配项</span>{/each}
       </div>
@@ -311,6 +313,7 @@
   .dropdown-select-icon { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; color: var(--theme-fg-muted); }
   .dropdown-select-option-copy { display: grid; min-width: 0; gap: 1px; }
   .dropdown-select-option-copy strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .dropdown-select-option-meta { display: inline; margin-left: 6px; color: var(--theme-fg-muted); font-size: 10px; font-weight: 400; }
   .dropdown-select-option-copy small { overflow: hidden; color: var(--theme-fg-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
   .dropdown-select-empty { display: block; padding: 9px 7px; font-size: 12px; }
   .dropdown-select.variant-underline .dropdown-select-trigger { border-width: 0 0 1px; border-radius: 0; background: transparent; }
