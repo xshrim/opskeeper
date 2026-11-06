@@ -15,6 +15,12 @@ func AuthorizeResourceUse(ctx context.Context, resource ContextResource) error {
 	if resource.ID == "" || resource.ScopeID == "" {
 		return errors.New("context resource id and scope are required")
 	}
+	if filter, ok := authorization.ResourceUseFilterFromContext(ctx); ok {
+		if !filter.Allows(resource.ScopeID, resource.ID) {
+			return authorization.ErrForbidden
+		}
+		return nil
+	}
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
 		if !filter.Allows(resource.ScopeID, resource.ID) {
 			return authorization.ErrForbidden

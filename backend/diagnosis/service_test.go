@@ -29,20 +29,97 @@ func TestServiceStartRequiresAuthorizedSameScopeTarget(t *testing.T) {
 	}
 }
 
+func TestServiceStartAllowsAuthorizedCrossScopeTarget(t *testing.T) {
+	store := &memoryStore{}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"team-target": {ID: "team-target", ScopeID: "team-scope"},
+	}}
+	service := NewService(store, resources, nil)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"project-scope", "team-scope"}})
+	if _, err := service.Start(ctx, StartInput{ScopeID: "project-scope", ActorUserID: "actor-1", Question: "inspect", TargetResourceIDs: []string{"team-target"}}); err != nil {
+		t.Fatalf("Start() with authorized team target error = %v", err)
+	}
+}
+
+func TestServiceStartUsesResourceUsePermissionForTargets(t *testing.T) {
+	store := &memoryStore{}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"team-target": {ID: "team-target", ScopeID: "team-scope"},
+	}}
+	service := NewService(store, resources, nil)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"project-scope"}})
+	ctx = authorization.WithResourceUseFilter(ctx, authorization.ResourceFilter{ScopeIDs: []string{"team-scope"}})
+	if _, err := service.Start(ctx, StartInput{ScopeID: "project-scope", ActorUserID: "actor-1", Question: "inspect", TargetResourceIDs: []string{"team-target"}}); err != nil {
+		t.Fatalf("Start() with resource-use-authorized target error = %v", err)
+	}
+}
+
+func TestServiceStartAllowsProjectApplicationInAuthorizedTeamSession(t *testing.T) {
+	store := &memoryStore{}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"project-runtime": {ID: "project-runtime", ScopeID: "project-scope"},
+	}}
+	applications := fakeApplications{
+		item:      appdomain.Application{ID: "app-1", ProjectScopeID: "project-scope", Status: "active"},
+		resources: []string{"project-runtime"},
+		context:   appdomain.DiagnosticContext{Application: appdomain.DiagnosticApplication{ID: "app-1"}},
+	}
+	service := NewService(store, resources, applications)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"team-scope", "project-scope"}})
+	ctx = authorization.WithResourceUseFilter(ctx, authorization.ResourceFilter{ScopeIDs: []string{"team-scope", "project-scope"}})
+	if _, err := service.Start(ctx, StartInput{ScopeID: "team-scope", ActorUserID: "actor-1", ApplicationIDs: []string{"app-1"}, Question: "inspect"}); err != nil {
+		t.Fatalf("Start() with project application in team session error = %v", err)
+	}
+	if got := store.started.TargetResourceIDs; len(got) != 1 || got[0] != "project-runtime" {
+		t.Fatalf("session targets = %v, want project runtime resource", got)
+	}
+}
+
+func TestServiceAddTargetAllowsAuthorizedCrossScopeResourceButRequiresSessionScope(t *testing.T) {
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "project-scope", ActorUserID: testActor("actor-1"), Status: StatusQueued}}
+	resources := fakeResources{items: map[string]resource.Resource{
+		"team-target": {ID: "team-target", ScopeID: "team-scope"},
+	}}
+	service := NewService(store, resources, nil)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "actor-1", ScopeIDs: []string{"project-scope", "team-scope"}})
+	if _, err := service.AddTarget(ctx, "session-1", "team-target"); err != nil {
+		t.Fatalf("AddTarget() with authorized team target error = %v", err)
+	}
+	unauthorizedSession := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "actor-1", ScopeIDs: []string{"team-scope"}})
+	if _, err := service.AddTarget(unauthorizedSession, "session-1", "team-target"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("AddTarget() without session-scope permission error = %v, want ErrForbidden", err)
+	}
+}
+
 func TestServiceAskReopensCompletedSession(t *testing.T) {
-	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("actor-1"), Status: StatusSucceeded}}
 	service := NewService(store, fakeResources{}, nil)
-	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{SubjectID: "actor-1", ScopeIDs: []string{"scope-1"}})
 	message, err := service.Ask(ctx, "session-1", "continue")
 	if err != nil || !store.reopened || message.Role != "user" || message.Content != "continue" {
 		t.Fatalf("Ask() = %#v, %v; reopened=%v", message, err, store.reopened)
 	}
 }
 
+func TestServiceAskRequiresResourceUseForExistingTargets(t *testing.T) {
+	store := &memoryStore{
+		session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded},
+		targets: []Target{{SessionID: "session-1", ResourceID: "resource-1"}},
+	}
+	service := NewService(store, fakeResources{items: map[string]resource.Resource{
+		"resource-1": {ID: "resource-1", ScopeID: "scope-1"},
+	}}, nil)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ScopeIDs: []string{"scope-1"}})
+	ctx = authorization.WithResourceUseFilter(ctx, authorization.ResourceFilter{ScopeIDs: []string{"scope-2"}})
+	if _, err := service.Ask(ctx, "session-1", "continue"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("Ask() without resource use error = %v, want ErrForbidden", err)
+	}
+}
+
 func TestServiceAskMessagePersistsComposerMetadata(t *testing.T) {
-	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("actor-1"), Status: StatusSucceeded}}
 	service := NewService(store, fakeResources{}, nil)
-	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{SubjectID: "actor-1", ScopeIDs: []string{"scope-1"}})
 	input := AppendMessageInput{
 		Content:     "investigate",
 		SkillID:     "skill-1",
@@ -57,14 +134,53 @@ func TestServiceAskMessagePersistsComposerMetadata(t *testing.T) {
 }
 
 func TestServiceAddTargetReopensCompletedSession(t *testing.T) {
-	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", Status: StatusSucceeded}}
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("actor-1"), Status: StatusSucceeded}}
 	resources := fakeResources{items: map[string]resource.Resource{
 		"host-1": {ID: "host-1", ScopeID: "scope-1"},
 	}}
 	service := NewService(store, resources, nil)
-	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{SubjectID: "actor-1", ScopeIDs: []string{"scope-1"}})
 	if _, err := service.AddTarget(ctx, "session-1", "host-1"); err != nil || !store.reopened {
 		t.Fatalf("AddTarget() = %v; reopened=%v", err, store.reopened)
+	}
+}
+
+func TestServiceKeepsPrivateSessionsWithTheirCreator(t *testing.T) {
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("owner-1"), Status: StatusSucceeded}}
+	service := NewService(store, fakeResources{}, nil)
+	other := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "other-1", ScopeIDs: []string{"scope-1"}})
+	if _, err := service.Get(other, "session-1"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("private session Get() error = %v, want ErrForbidden", err)
+	}
+	if err := service.Delete(other, "session-1"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("private session Delete() error = %v, want ErrForbidden", err)
+	}
+
+	owner := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "owner-1", ScopeIDs: []string{"scope-1"}})
+	updated, err := service.SetScopeShared(owner, "session-1", true)
+	if err != nil || !updated.ScopeShared {
+		t.Fatalf("SetScopeShared() = %#v, %v", updated, err)
+	}
+	if _, err := service.Get(other, "session-1"); err != nil {
+		t.Fatalf("shared session Get() error = %v", err)
+	}
+	if _, err := service.Ask(other, "session-1", "continue"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("shared session Ask() error = %v, want ErrForbidden", err)
+	}
+	if _, err := service.SetScopeShared(other, "session-1", false); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("shared session SetScopeShared() error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestServiceListsSessionsForCurrentActor(t *testing.T) {
+	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("owner-1")}}
+	service := NewService(store, fakeResources{}, nil)
+	ctx := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "owner-1", ScopeIDs: []string{"scope-1"}})
+	if _, err := service.List(ctx, "scope-1", 50); err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if store.listActor != "owner-1" {
+		t.Fatalf("List actor = %q, want owner-1", store.listActor)
 	}
 }
 
@@ -141,23 +257,32 @@ func (f fakeApplications) DiagnosticContext(_ context.Context, applicationID, _ 
 }
 
 type memoryStore struct {
-	session  Session
-	started  StartInput
-	appended AppendMessageInput
-	reopened bool
+	session   Session
+	started   StartInput
+	appended  AppendMessageInput
+	reopened  bool
+	targets   []Target
+	listActor string
 }
+
+func testActor(id string) *string { return &id }
 
 func (m *memoryStore) Start(_ context.Context, input StartInput) (Session, error) {
 	m.started = input
-	m.session = Session{ID: "session-1", ScopeID: input.ScopeID, Status: StatusQueued}
+	m.session = Session{ID: "session-1", ScopeID: input.ScopeID, ActorUserID: testActor(input.ActorUserID), ScopeShared: input.ScopeShared, Status: StatusQueued}
 	return m.session, nil
 }
 func (m *memoryStore) Get(context.Context, string) (Session, error) { return m.session, nil }
-func (m *memoryStore) List(context.Context, string, int) ([]Session, error) {
+func (m *memoryStore) List(_ context.Context, _ string, actorID string, _ int) ([]Session, error) {
+	m.listActor = actorID
 	return []Session{m.session}, nil
 }
+func (m *memoryStore) SetScopeShared(_ context.Context, _ string, shared bool) (Session, error) {
+	m.session.ScopeShared = shared
+	return m.session, nil
+}
 func (*memoryStore) Delete(context.Context, string) error                      { return nil }
-func (*memoryStore) Targets(context.Context, string) ([]Target, error)         { return nil, nil }
+func (m *memoryStore) Targets(context.Context, string) ([]Target, error)       { return m.targets, nil }
 func (*memoryStore) AddTarget(context.Context, string, string) (Target, error) { return Target{}, nil }
 func (*memoryStore) Messages(context.Context, string, int) ([]Message, error)  { return nil, nil }
 func (m *memoryStore) AppendMessage(_ context.Context, id string, input AppendMessageInput) (Message, error) {

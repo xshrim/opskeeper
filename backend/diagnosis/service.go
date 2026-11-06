@@ -84,15 +84,19 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 			if app.Status == "disabled" {
 				return Session{}, invalid("application is disabled")
 			}
-			if app.ProjectScopeID != "" && app.ProjectScopeID != input.ScopeID {
+			if app.ProjectScopeID != "" && !allowsScope(ctx, app.ProjectScopeID) {
 				return Session{}, authorization.ErrForbidden
 			}
-			applicationContext, contextErr := s.applications.DiagnosticContext(ctx, applicationID, input.ScopeID)
+			applicationScopeID := input.ScopeID
+			if app.ProjectScopeID != "" {
+				applicationScopeID = app.ProjectScopeID
+			}
+			applicationContext, contextErr := s.applications.DiagnosticContext(ctx, applicationID, applicationScopeID)
 			if contextErr != nil {
 				return Session{}, contextErr
 			}
 			contexts = append(contexts, applicationContext)
-			associated, err := s.applications.ContextResourceIDs(ctx, applicationID, input.ScopeID)
+			associated, err := s.applications.ContextResourceIDs(ctx, applicationID, applicationScopeID)
 			if err != nil {
 				return Session{}, err
 			}
@@ -107,7 +111,7 @@ func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) 
 					}
 					return Session{}, getErr
 				}
-				if !applicationResourceVisible(ctx, input.ScopeID, item.ScopeID, item.ID) {
+				if !applicationResourceVisible(ctx, item.ScopeID, item.ID) {
 					continue
 				}
 				associatedTargetIDs = append(associatedTargetIDs, resourceID)
@@ -149,17 +153,17 @@ func (s *Service) Get(ctx context.Context, sessionID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if !allowsScope(ctx, session.ScopeID) {
-		return Snapshot{}, authorization.ErrForbidden
+	if err := ensureSessionAccess(ctx, session); err != nil {
+		return Snapshot{}, err
+	}
+	if sessionOwnedByActor(ctx, session) {
+		if err := s.validateSessionTargets(ctx, session); err != nil {
+			return Snapshot{}, err
+		}
 	}
 	targets, err := s.store.Targets(ctx, session.ID)
 	if err != nil {
 		return Snapshot{}, err
-	}
-	for _, target := range targets {
-		if err := s.validateTarget(ctx, session.ScopeID, target.ResourceID); err != nil {
-			return Snapshot{}, err
-		}
 	}
 	messages, err := s.store.Messages(ctx, session.ID, 100)
 	if err != nil {
@@ -210,7 +214,7 @@ func (s *Service) List(ctx context.Context, scopeID string, limit int) ([]Sessio
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.store.List(ctx, scopeID, limit)
+	return s.store.List(ctx, scopeID, diagnosisActorID(ctx), limit)
 }
 
 func (s *Service) Delete(ctx context.Context, sessionID string) error {
@@ -218,8 +222,8 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	if !allowsScope(ctx, session.ScopeID) {
-		return authorization.ErrForbidden
+	if err := ensureSessionOwner(ctx, session); err != nil {
+		return err
 	}
 	return s.store.Delete(ctx, session.ID)
 }
@@ -227,6 +231,9 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (Target, error) {
 	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
 	if err != nil {
+		return Target{}, err
+	}
+	if err := ensureSessionOwner(ctx, session); err != nil {
 		return Target{}, err
 	}
 	if session.Status == StatusSucceeded || session.Status == StatusFailed || session.Status == StatusCancelled {
@@ -255,8 +262,11 @@ func (s *Service) AskMessage(ctx context.Context, sessionID string, input Append
 	if err != nil {
 		return Message{}, err
 	}
-	if !allowsScope(ctx, session.ScopeID) {
-		return Message{}, authorization.ErrForbidden
+	if err := ensureSessionOwner(ctx, session); err != nil {
+		return Message{}, err
+	}
+	if err := s.validateSessionTargets(ctx, session); err != nil {
+		return Message{}, err
 	}
 	if session.Status == StatusSucceeded || session.Status == StatusFailed || session.Status == StatusCancelled {
 		if _, err := s.store.Reopen(ctx, session.ID); err != nil {
@@ -393,8 +403,8 @@ func (s *Service) EventsAfter(ctx context.Context, sessionID string, after int64
 	if err != nil {
 		return nil, err
 	}
-	if !allowsScope(ctx, session.ScopeID) {
-		return nil, authorization.ErrForbidden
+	if err := ensureSessionAccess(ctx, session); err != nil {
+		return nil, err
 	}
 	if after < 0 {
 		return nil, invalid("event id must not be negative")
@@ -405,6 +415,19 @@ func (s *Service) EventsAfter(ctx context.Context, sessionID string, after int64
 	return s.store.EventsAfter(ctx, session.ID, after, limit)
 }
 
+// SetScopeShared lets only the session creator opt in or out of sharing the
+// entire diagnosis with users that have diagnosis:read in the same scope.
+func (s *Service) SetScopeShared(ctx context.Context, sessionID string, shared bool) (Session, error) {
+	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
+	if err != nil {
+		return Session{}, err
+	}
+	if err := ensureSessionOwner(ctx, session); err != nil {
+		return Session{}, err
+	}
+	return s.store.SetScopeShared(ctx, session.ID, shared)
+}
+
 func (s *Service) validateTarget(ctx context.Context, scopeID, resourceID string) error {
 	if resourceID == "" || s.resources == nil {
 		return invalid("target_resource_id is required")
@@ -413,8 +436,21 @@ func (s *Service) validateTarget(ctx context.Context, scopeID, resourceID string
 	if err != nil {
 		return err
 	}
-	if item.ScopeID != scopeID || !resourceVisible(ctx, item.ScopeID, item.ID) {
+	if !resourceVisible(ctx, item.ScopeID, item.ID) {
 		return authorization.ErrForbidden
+	}
+	return nil
+}
+
+func (s *Service) validateSessionTargets(ctx context.Context, session Session) error {
+	targets, err := s.store.Targets(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if err := s.validateTarget(ctx, session.ScopeID, target.ResourceID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -424,16 +460,51 @@ func allowsScope(ctx context.Context, scopeID string) bool {
 	return !ok || filter.Allows(scopeID)
 }
 
+func diagnosisActorID(ctx context.Context) string {
+	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
+		return strings.TrimSpace(filter.SubjectID)
+	}
+	if filter, ok := authorization.ScopeFilterFromContext(ctx); ok {
+		return strings.TrimSpace(filter.SubjectID)
+	}
+	return ""
+}
+
+func ensureSessionAccess(ctx context.Context, session Session) error {
+	if !allowsScope(ctx, session.ScopeID) {
+		return authorization.ErrForbidden
+	}
+	if sessionOwnedByActor(ctx, session) {
+		return nil
+	}
+	if session.ScopeShared {
+		return nil
+	}
+	return authorization.ErrForbidden
+}
+
+func sessionOwnedByActor(ctx context.Context, session Session) bool {
+	actorID := diagnosisActorID(ctx)
+	return actorID != "" && session.ActorUserID != nil && strings.TrimSpace(*session.ActorUserID) == actorID
+}
+
+func ensureSessionOwner(ctx context.Context, session Session) error {
+	if !allowsScope(ctx, session.ScopeID) || !sessionOwnedByActor(ctx, session) {
+		return authorization.ErrForbidden
+	}
+	return nil
+}
+
 func resourceVisible(ctx context.Context, scopeID, resourceID string) bool {
-	filter, ok := authorization.ResourceFilterFromContext(ctx)
+	filter, ok := authorization.ResourceUseFilterFromContext(ctx)
+	if !ok {
+		filter, ok = authorization.ResourceFilterFromContext(ctx)
+	}
 	return !ok || filter.Allows(scopeID, resourceID)
 }
 
-func applicationResourceVisible(ctx context.Context, applicationScopeID, resourceScopeID, resourceID string) bool {
-	if filter, restricted := authorization.ResourceFilterFromContext(ctx); restricted {
-		return filter.Allows(applicationScopeID, resourceID) || filter.Allows(resourceScopeID, resourceID)
-	}
-	return allowsScope(ctx, applicationScopeID)
+func applicationResourceVisible(ctx context.Context, resourceScopeID, resourceID string) bool {
+	return resourceVisible(ctx, resourceScopeID, resourceID)
 }
 
 func distinctIDs(values []string) []string {

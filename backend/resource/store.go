@@ -631,6 +631,9 @@ func visibleRelationListQuery(query string, args []any, ctx context.Context) (st
 }
 
 func accessFilter(ctx context.Context) ([]string, []string, bool) {
+	if filter, ok := authorization.ResourceUseFilterFromContext(ctx); ok {
+		return filter.ScopeIDs, filter.ResourceIDs, true
+	}
 	if filter, ok := authorization.ResourceFilterFromContext(ctx); ok {
 		return filter.ScopeIDs, filter.ResourceIDs, true
 	}

@@ -87,11 +87,11 @@ import {
   ) => void = () => {};
   export let resourceCreationResult: ApplicationResourceCreationResult | null = null;
   export let resourceCreationCancelledId = '';
+  export let projectAreaTab: 'applications' | 'topology' = 'applications';
 
   let workspace: ProjectWorkspace | null = null;
   let projectTopology: import('../../lib/api').ProjectTopology | null = null;
   let loadingTopology = false;
-  let projectAreaTab: 'applications' | 'topology' = 'applications';
   let topologyMode: 'browse' | 'edit' = 'browse';
   let topologyResourceRequestId = '';
   type TopologyComponentIntent = { kind: 'application' | 'resource' | 'annotation'; id?: string; resourceKind?: string; runtimeKind?: string; position?: { x: number; y: number } };
@@ -116,6 +116,7 @@ import {
   let editingProject: Project | null = null;
   let applicationWizardOpen = false;
   let topologyApplicationCreateOpen = false;
+  let topologyEditApplication: Application | null = null;
   let editingApplication: Application | null = null;
   let deletingProject: Project | null = null;
   let deletingApplications: Application[] = [];
@@ -166,6 +167,7 @@ import {
   $: topologyResourceOptions = topologyComponentIntent?.kind === 'resource'
     ? availableResources.filter((resource) => resourceCategoryFor(resource) === topologyComponentIntent?.resourceKind)
     : availableResources;
+  $: topologyResourceScopeTypes = Object.fromEntries((workspace?.resources ?? []).map((resource) => [resource.id, resource.scope_type]));
   $: applicationAlertCounts = Object.fromEntries((workspace?.applications ?? []).map((application) => {
     const resourceIDs = new Set(applicationResourceIDs(application));
     return [application.id, (workspace?.alerts ?? []).filter((alert) => resourceIDs.has(alert.target_resource_id)).length];
@@ -596,6 +598,12 @@ import {
     await loadTopology();
     onNotice(`应用“${application.name}”已新增`);
   }
+  async function saveTopologyApplicationEdit(draft: ApplicationDraft) {
+    if (!topologyEditApplication) return;
+    await updateApplication(topologyEditApplication, draft);
+    topologyEditApplication = null;
+    await loadTopology();
+  }
   async function updateApplication(app: Application, draft: ApplicationDraft) {
     try {
       await api.updateApplication(selectedProjectId, app.id, {
@@ -983,6 +991,7 @@ import {
               topology={projectTopology}
               applications={workspace?.applications ?? []}
               resources={availableResources}
+              resourceScopeTypes={topologyResourceScopeTypes}
               loading={loadingTopology}
               mode={topologyMode}
               configurationOpen={Boolean(topologyComponentIntent)}
@@ -991,7 +1000,7 @@ import {
               onSelectionChange={inspectTopologySelection}
               onRefresh={loadTopology}
               onConfigureNode={configureTopologyComponent}
-              onEditApplication={(application) => (editingApplication = workspace?.applications.find((item) => item.id === application.id) ?? null)}
+              onEditApplication={(application) => (topologyEditApplication = workspace?.applications.find((item) => item.id === application.id) ?? null)}
               {onNotice}
               {onError}
             />
@@ -999,7 +1008,18 @@ import {
         {/if}
       </section>
       <aside class="map-side-column" class:topology-configuring={Boolean(topologyComponentIntent)}>
-        {#if projectAreaTab === 'topology' && topologyMode === 'edit' && topologyApplicationCreateOpen && topologyComponentIntent?.kind === 'application'}
+        {#if projectAreaTab === 'topology' && topologyMode === 'edit' && topologyEditApplication}
+          <div class="topology-application-create-region">
+            <TopologyApplicationCreate
+              resources={availableResources}
+              {users}
+              runtimeKind={topologyEditApplication.runtime_kind as ApplicationRuntimeKind}
+              initialApplication={topologyEditApplication}
+              onSave={saveTopologyApplicationEdit}
+              onCancel={() => (topologyEditApplication = null)}
+            />
+          </div>
+        {:else if projectAreaTab === 'topology' && topologyMode === 'edit' && topologyApplicationCreateOpen && topologyComponentIntent?.kind === 'application'}
           <div class="topology-application-create-region">
             <TopologyApplicationCreate
               resources={availableResources}

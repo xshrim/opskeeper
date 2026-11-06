@@ -206,6 +206,36 @@ func (s *store) List(ctx context.Context, projectID string) ([]Application, erro
 	return items, rows.Err()
 }
 
+// DiagnosticCandidates intentionally has a scope-oriented contract. A user
+// may start a diagnosis without organization:read, so its caller supplies the
+// diagnosis:start authorization filter through ctx.
+func (s *store) DiagnosticCandidates(ctx context.Context, scopeID string) ([]Application, error) {
+	query, args := visibleApplications(appSelect+` AND resource_scope_contains($1::uuid, p.scope_id)`, []any{scopeID}, ctx)
+	query += ` ORDER BY a.name, a.id`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnosis application candidates: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Application, 0)
+	for rows.Next() {
+		item, err := scanApp(rows)
+		if err != nil {
+			return nil, err
+		}
+		item.Instances, err = s.listInstances(ctx, item.ID)
+		if err != nil {
+			return nil, err
+		}
+		item.Dependencies, err = s.listDependencies(ctx, item.ID)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *store) Update(ctx context.Context, projectID, applicationID string, input UpdateInput) (Application, error) {
 	current, err := s.Get(ctx, projectID, applicationID)
 	if err != nil {
@@ -536,6 +566,7 @@ func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID st
 		resources = append(resources, DiagnosticResource{
 			ID: instance.TargetResourceID, Name: resource.Name, Kind: resource.Kind,
 			Relation: "runtime", RuntimeKind: instance.RuntimeKind, Status: instance.Status,
+			Binding: sanitizeInstanceSelector(instance.RuntimeKind, instance.Selector),
 		})
 	}
 	for _, dependency := range item.Dependencies {
@@ -662,7 +693,10 @@ func appendApplicationScopeFilter(query string, args []any, alias string, ctx co
 }
 
 func appendResourceScopeVisibility(query string, args []any, ctx context.Context, alias string) (string, []any) {
-	filter, restricted := authorization.ResourceFilterFromContext(ctx)
+	filter, restricted := authorization.ResourceUseFilterFromContext(ctx)
+	if !restricted {
+		filter, restricted = authorization.ResourceFilterFromContext(ctx)
+	}
 	if !restricted {
 		if scopeFilter, ok := authorization.ScopeFilterFromContext(ctx); ok {
 			filter.ScopeIDs = scopeFilter.ScopeIDs
@@ -714,6 +748,46 @@ func sanitizeBinding(kind string, value map[string]any) map[string]any {
 		case bool, float64, int, int64:
 			result[key] = typed
 		}
+	}
+	return result
+}
+
+// Runtime selectors are configuration facts that help a diagnosis focus on
+// the application's concrete workload. Keep only the fields understood by
+// the application binding validator; selectors must never expose arbitrary
+// user-provided JSON to the model.
+func sanitizeInstanceSelector(kind string, value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	allowed := map[string]struct{}{}
+	switch kind {
+	case RuntimeHost:
+		allowed["process_command_line"] = struct{}{}
+	case RuntimeDocker:
+		allowed["container_name"] = struct{}{}
+	case RuntimeKubernetes:
+		for _, key := range []string{"workload_name", "namespace", "workload_kind"} {
+			allowed[key] = struct{}{}
+		}
+	default:
+		return nil
+	}
+	result := make(map[string]any, len(value))
+	for key, item := range value {
+		key = strings.TrimSpace(key)
+		if _, ok := allowed[key]; !ok {
+			continue
+		}
+		switch typed := item.(type) {
+		case string:
+			result[key] = safeBindingText(typed)
+		case bool, float64, int, int64:
+			result[key] = typed
+		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }

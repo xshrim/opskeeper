@@ -28,6 +28,7 @@ type Session struct {
 	ErrorCode          string          `json:"error_code"`
 	ErrorMessage       string          `json:"error_message"`
 	ActorUserID        *string         `json:"actor_user_id,omitempty"`
+	ScopeShared        bool            `json:"scope_shared"`
 	Status             Status          `json:"status"`
 	StartedAt          time.Time       `json:"started_at"`
 	CompletedAt        *time.Time      `json:"completed_at,omitempty"`
@@ -199,6 +200,7 @@ type StartInput struct {
 	Links                                 []string
 	Attachments                           []Attachment
 	ApplicationContext                    json.RawMessage
+	ScopeShared                           bool
 }
 
 type AppendMessageInput struct {

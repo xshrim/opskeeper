@@ -7,7 +7,7 @@
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import TextArea from '../../components/TextArea.svelte';
   import TextInput from '../../components/TextInput.svelte';
-  import { api, type Resource, type User } from '../../lib/api';
+  import { api, type Application, type Resource, type User } from '../../lib/api';
   import { parseLabels } from '../../lib/labels';
   import {
     resourcesForRuntime,
@@ -20,10 +20,12 @@
   export let resources: Resource[] = [];
   export let users: User[] = [];
   export let runtimeKind: ApplicationRuntimeKind;
+  export let initialApplication: Application | null = null;
   export let onSave: (draft: ApplicationDraft) => Promise<void> | void;
   export let onCancel: () => void;
 
   type CandidateInstance = {
+    id?: string;
     name: string;
     target_resource_id: string;
     selector: Record<string, unknown>;
@@ -88,6 +90,35 @@
   $: selectedCandidate = candidates.find((candidate) => candidate.key === selectedCandidateKey);
   $: isKubernetes = runtimeKind === 'cloud_native';
   $: runtimeLabelText = runtimeLabel(runtimeKind);
+
+  $: if (initialApplication && !selectedCandidateKey) {
+    runtimeResourceIds = [...new Set(initialApplication.instances.map((instance) => instance.target_resource_id))];
+    name = initialApplication.name;
+    code = initialApplication.code;
+    icon = initialApplication.icon || 'lucide:AppWindow';
+    critical = initialApplication.critical;
+    technicalOwnerIds = [...initialApplication.technical_owner_ids];
+    operationsOwnerIds = [...initialApplication.operations_owner_ids];
+    labels = Object.entries(initialApplication.labels ?? {}).map(([key, value]) => `${key}=${value}`).join(', ');
+    description = initialApplication.description;
+    logPath = String(initialApplication.instances[0]?.log_binding?.path ?? '');
+    selectedCandidateKey = `existing:${initialApplication.id}`;
+    candidates = [{
+      key: selectedCandidateKey,
+      identity: initialApplication.external_uid ?? initialApplication.id,
+      name: initialApplication.name,
+      kind: runtimeKind === 'cloud_native' ? 'Workload' : undefined,
+      replicas: initialApplication.instances.length,
+      instances: initialApplication.instances.map((instance) => ({
+        id: instance.id,
+        name: instance.name,
+        target_resource_id: instance.target_resource_id,
+        selector: instance.selector,
+        log_binding: instance.log_binding,
+        status: instance.status
+      }))
+    }];
+  }
 
   onDestroy(() => {
     namespaceRequestId++;
@@ -218,16 +249,26 @@
         icon,
         labels: parseLabels(labels),
         runtimeKind,
-        externalUid: isKubernetes && candidate.kind
+        externalUid: initialApplication?.external_uid ?? (isKubernetes && candidate.kind
           ? `${runtimeResourceIds[0]}:${candidate.identity}`
-          : '',
+          : ''),
         critical,
         technicalOwnerIds,
         operationsOwnerIds,
-        dependencies: [],
-        relations: [],
+        dependencies: initialApplication?.dependencies.map((dependency) => ({
+          dependency_kind: dependency.dependency_kind,
+          target_resource_id: dependency.target_resource_id,
+          binding: Object.fromEntries(Object.entries(dependency.binding ?? {}).map(([key, value]) => [key, String(value)])),
+          required: dependency.required
+        })) ?? [],
+        relations: initialApplication?.relations.map((relation) => ({
+          target_application_id: relation.target_application_id,
+          relation_kind: relation.relation_kind as 'depends_on' | 'depended_by' | 'mutual',
+          status: relation.status
+        })) ?? [],
         instances: candidate.instances.map((instance, index) => ({
-          id: crypto.randomUUID(),
+          id: instance.id ?? crypto.randomUUID(),
+          ...(initialApplication?.instances.some((saved) => saved.id === instance.id) ? { persistedId: instance.id } : {}),
           name: instance.name || `instance-${index + 1}`,
           targetResourceId: instance.target_resource_id,
           selector: instance.selector,
@@ -246,12 +287,12 @@
   }
 </script>
 
-<section class="topology-application-create panel" aria-label="新增应用">
+<section class="topology-application-create panel" aria-label={initialApplication ? '编辑应用' : '新增应用'}>
   <header class="topology-application-create-heading">
-    <div><h2>新增应用</h2><p>筛选一个运行目标并补充应用基础信息。</p></div>
+    <div><h2>{initialApplication ? '编辑应用' : '新增应用'}</h2><p>{initialApplication ? '更新应用信息及其运行实例。' : '筛选一个运行目标并补充应用基础信息。'}</p></div>
     <div class="topology-application-create-actions">
       <button class="secondary" type="button" disabled={saving} on:click={onCancel}>取消</button>
-      <button class="primary" type="button" disabled={saving} on:click={save}>{saving ? '创建中…' : '创建'}</button>
+      <button class="primary" type="button" disabled={saving} on:click={save}>{saving ? (initialApplication ? '保存中…' : '创建中…') : (initialApplication ? '保存' : '创建')}</button>
     </div>
   </header>
   {#if error}<div class="topology-application-error" role="alert">{error}</div>{/if}
@@ -291,7 +332,7 @@
 
     {#if selectedCandidate}
       <section class="topology-application-details">
-        <div class="topology-application-section-heading"><span><IconPicker value={icon} onSelect={(value) => (icon = value)} ariaLabel="选择应用图标" /></span><div><strong>应用信息</strong><small>将创建并关联到选定的运行目标。</small></div></div>
+        <div class="topology-application-section-heading"><span><IconPicker value={icon} onSelect={(value) => (icon = value)} ariaLabel="选择应用图标" /></span><div><strong>应用信息</strong><small>{initialApplication ? '编辑应用信息及关联运行目标。' : '将创建并关联到选定的运行目标。'}</small></div></div>
         <div class="topology-application-form">
           <div class="topology-application-identity">
             <div class="topology-application-identity-half">

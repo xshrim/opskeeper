@@ -5,13 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"opskeeper/backend/authorization"
 )
 
 type testStore struct {
-	input  CreateInput
-	inputs []CreateInput
-	app    Application
-	update UpdateInput
+	input          CreateInput
+	inputs         []CreateInput
+	app            Application
+	update         UpdateInput
+	candidateScope string
+	candidates     []Application
 }
 type testBindingValidator struct{ err error }
 
@@ -34,6 +38,10 @@ func (s *testStore) Get(context.Context, string, string) (Application, error) {
 	return s.app, nil
 }
 func (*testStore) List(context.Context, string) ([]Application, error) { return nil, nil }
+func (s *testStore) DiagnosticCandidates(_ context.Context, scopeID string) ([]Application, error) {
+	s.candidateScope = scopeID
+	return s.candidates, nil
+}
 func (s *testStore) Update(_ context.Context, _ string, _ string, input UpdateInput) (Application, error) {
 	s.update = input
 	return s.app, nil
@@ -75,6 +83,19 @@ func TestCreateValidatesProjectAndCode(t *testing.T) {
 	}
 	if _, err := s.Create(context.Background(), CreateInput{ProjectID: "p", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost, Instances: []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}}}); err != nil {
 		t.Fatalf("valid application rejected: %v", err)
+	}
+}
+
+func TestDiagnosticCandidatesUseDiagnosisScopeFilter(t *testing.T) {
+	store := &testStore{candidates: []Application{{ID: "app-1", Name: "Orders"}}}
+	service := NewService(store)
+	ctx := authorization.WithScopeFilter(context.Background(), authorization.ScopeFilter{ScopeIDs: []string{"scope-1"}})
+	items, err := service.DiagnosticCandidates(ctx, "scope-1")
+	if err != nil || len(items) != 1 || store.candidateScope != "scope-1" {
+		t.Fatalf("DiagnosticCandidates() = %#v, %v; scope=%q", items, err, store.candidateScope)
+	}
+	if _, err := service.DiagnosticCandidates(ctx, "scope-2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unauthorized DiagnosticCandidates() error = %v, want ErrNotFound", err)
 	}
 }
 

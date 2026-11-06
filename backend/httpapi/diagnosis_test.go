@@ -19,13 +19,13 @@ var testDiagnosisHTTPUser = identity.User{ID: "user-1"}
 func TestDiagnosisStartPassesActorAndPayload(t *testing.T) {
 	service := &stubDiagnosisService{}
 	handler := diagnosisHandler{service: service}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/diagnosis-sessions", strings.NewReader(`{"scope_id":"scope-1","question":"why","target_resource_ids":["resource-1"]}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/diagnosis-sessions", strings.NewReader(`{"scope_id":"scope-1","question":"why","target_resource_ids":["resource-1"],"scope_shared":true}`))
 	request = request.WithContext(context.WithValue(request.Context(), authenticatedUserContextKey{}, testDiagnosisHTTPUser))
 	response := httptest.NewRecorder()
 
 	handler.start(response, request)
 
-	if response.Code != http.StatusCreated || service.start.ActorUserID != testDiagnosisHTTPUser.ID || service.start.ScopeID != "scope-1" || len(service.start.TargetResourceIDs) != 1 {
+	if response.Code != http.StatusCreated || service.start.ActorUserID != testDiagnosisHTTPUser.ID || service.start.ScopeID != "scope-1" || len(service.start.TargetResourceIDs) != 1 || !service.start.ScopeShared {
 		t.Fatalf("status=%d input=%#v body=%s", response.Code, service.start, response.Body.String())
 	}
 	var payload map[string]any

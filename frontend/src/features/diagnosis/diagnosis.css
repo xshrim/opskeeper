@@ -1774,6 +1774,21 @@
   gap: 4px;
   min-width: 0;
 }
+.diagnosis-share-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  color: var(--diagnosis-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.diagnosis-share-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
 .diagnosis-composer-attached-items {
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -1942,6 +1957,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.diagnosis-resource-title { display: flex; align-items: center; min-width: 0; gap: 5px; }.diagnosis-resource-title strong { min-width: 0; flex: 1; }.diagnosis-scope-tag { flex: none; padding: 1px 4px; color: var(--theme-fg-strong); border-radius: 3px; font-size: 8px; font-style: normal; line-height: 1.35; }.diagnosis-scope-tag.platform { color: var(--theme-info); background: color-mix(in srgb, var(--theme-info) 14%, var(--theme-bg-raised)); }.diagnosis-scope-tag.team { color: var(--theme-success); background: color-mix(in srgb, var(--theme-success) 14%, var(--theme-bg-raised)); }.diagnosis-scope-tag.project { color: var(--theme-accent); background: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-bg-raised)); }
 .diagnosis-resource-list-f strong {
   color: var(--diagnosis-ink);
   font-size: 10px;

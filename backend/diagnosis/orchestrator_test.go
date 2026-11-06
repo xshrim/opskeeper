@@ -134,6 +134,27 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || !strings.Contains(captured.Instruction, "不可信配置数据") {
 		t.Fatalf("application context/instruction missing: input=%#v instruction=%q", captured.Input, captured.Instruction)
 	}
+	focus, ok := captured.Input["application_resource_focus"].(applicationResourceFocusInput)
+	if !ok || len(focus.Resources) != 1 || focus.Resources[0].ResourceID != "db-1" || len(focus.Resources[0].Relations) != 1 || focus.Resources[0].Relations[0].Binding["database"] != "orders" {
+		t.Fatalf("application resource focus = %#v, want database relationship binding", captured.Input["application_resource_focus"])
+	}
+	if !strings.Contains(captured.Instruction, "优先围绕关系中的 binding") || !strings.Contains(captured.Instruction, "input_schema") {
+		t.Fatalf("relationship-focused instruction missing: %q", captured.Instruction)
+	}
+}
+
+func TestBuildApplicationResourceFocusGroupsAndSortsRelationships(t *testing.T) {
+	raw := json.RawMessage(`{"applications":[
+        {"application":{"id":"app-b","name":"Billing"},"project":{"id":"project-2","name":"Payments"},"resources":[{"id":"resource-2","name":"Kafka","kind":"messaging","relation":"association","status":"active","binding":{"topic":"payments"}}]},
+        {"application":{"id":"app-a","name":"Orders"},"project":{"id":"project-1","name":"Commerce"},"resources":[{"id":"resource-2","name":"Kafka","kind":"messaging","relation":"association","status":"unknown","binding":{"topic":"orders"}},{"id":"resource-1","name":"Postgres","kind":"database","relation":"association","status":"active","binding":{"database":"orders","schema":"public"}}]}
+    ]}`)
+	focus := buildApplicationResourceFocus(raw)
+	if len(focus.Resources) != 2 || focus.Resources[0].ResourceID != "resource-1" || focus.Resources[1].ResourceID != "resource-2" {
+		t.Fatalf("resources = %#v, want deterministic resource ordering", focus.Resources)
+	}
+	if len(focus.Resources[1].Relations) != 2 || focus.Resources[1].Relations[0].ApplicationID != "app-a" || focus.Resources[1].Relations[1].ApplicationID != "app-b" {
+		t.Fatalf("relations = %#v, want deterministic application ordering", focus.Resources[1].Relations)
+	}
 }
 
 func TestOrchestratorPersistsAssistantBeforeCompletionEvents(t *testing.T) {
@@ -428,8 +449,12 @@ func newRecordingStore() *recordingStore {
 
 func (s *recordingStore) Start(context.Context, StartInput) (Session, error) { return s.session, nil }
 func (s *recordingStore) Get(context.Context, string) (Session, error)       { return s.session, nil }
-func (s *recordingStore) List(context.Context, string, int) ([]Session, error) {
+func (s *recordingStore) List(context.Context, string, string, int) ([]Session, error) {
 	return []Session{s.session}, nil
+}
+func (s *recordingStore) SetScopeShared(_ context.Context, _ string, shared bool) (Session, error) {
+	s.session.ScopeShared = shared
+	return s.session, nil
 }
 func (*recordingStore) Delete(context.Context, string) error                { return nil }
 func (s *recordingStore) Targets(context.Context, string) ([]Target, error) { return s.targets, nil }

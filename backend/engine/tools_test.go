@@ -97,6 +97,16 @@ func TestPolicyGatewayAuditsProviderModelTimingAndErrors(t *testing.T) {
 
 func TestAuthorizeResourceUseUsesResourceAndScopeFilters(t *testing.T) {
 	resource := ContextResource{ID: "resource-1", ScopeID: "scope-1"}
+	resourceUseAllowed := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"resource-2"}})
+	resourceUseAllowed = authorization.WithResourceUseFilter(resourceUseAllowed, authorization.ResourceFilter{ResourceIDs: []string{"resource-1"}})
+	if err := AuthorizeResourceUse(resourceUseAllowed, resource); err != nil {
+		t.Fatalf("resource-use permission was ignored: %v", err)
+	}
+	resourceUseDenied := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"resource-1"}})
+	resourceUseDenied = authorization.WithResourceUseFilter(resourceUseDenied, authorization.ResourceFilter{ResourceIDs: []string{"resource-2"}})
+	if !errors.Is(AuthorizeResourceUse(resourceUseDenied, resource), authorization.ErrForbidden) {
+		t.Fatal("resource-use denial was ignored")
+	}
 	allowed := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"resource-1"}})
 	if err := AuthorizeResourceUse(allowed, resource); err != nil {
 		t.Fatalf("allowed resource rejected: %v", err)

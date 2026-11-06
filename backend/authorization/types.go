@@ -80,6 +80,7 @@ func (f ScopeFilter) Allows(scopeID string) bool {
 
 type contextKey struct{}
 type resourceContextKey struct{}
+type resourceUseContextKey struct{}
 
 func WithScopeFilter(ctx context.Context, filter ScopeFilter) context.Context {
 	return context.WithValue(ctx, contextKey{}, filter)
@@ -97,5 +98,14 @@ func WithResourceFilter(ctx context.Context, filter ResourceFilter) context.Cont
 
 func ResourceFilterFromContext(ctx context.Context) (ResourceFilter, bool) {
 	filter, ok := ctx.Value(resourceContextKey{}).(ResourceFilter)
+	return filter, ok
+}
+
+func WithResourceUseFilter(ctx context.Context, filter ResourceFilter) context.Context {
+	return context.WithValue(ctx, resourceUseContextKey{}, filter)
+}
+
+func ResourceUseFilterFromContext(ctx context.Context) (ResourceFilter, bool) {
+	filter, ok := ctx.Value(resourceUseContextKey{}).(ResourceFilter)
 	return filter, ok
 }

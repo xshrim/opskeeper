@@ -1559,8 +1559,15 @@
   padding: 10px;
 }
 
-.project-applications-panel > :is(.map-loading, .map-empty) {
+.project-applications-panel > .map-loading {
   margin: 10px;
+}
+
+.project-applications-panel > .map-empty {
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .map-side-column {

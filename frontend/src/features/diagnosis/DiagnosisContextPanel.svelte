@@ -36,6 +36,9 @@
   export let resourceIcon: (kind: string) => string;
   export let resourceSchemaName: (kind: string) => string;
   export let scopeName: (id: string) => string;
+  export let scopeType: (id: string) => string;
+  export let applicationProjectName: (application: Application) => string;
+  export let applicationScopeType: (application: Application) => string;
   export let diagnosisActiveCausalChain: (snapshot: DiagnosisSnapshot | null) => DiagnosisCausalChain | null;
   export let diagnosisCausalNodes: (chain: DiagnosisCausalChain) => DiagnosisCausalChain['nodes'];
   export let diagnosisCausalEvidenceIDs: (chain: DiagnosisCausalChain, nodeID: string) => string[];
@@ -49,6 +52,10 @@
   function visibleResourceCount(application: Application) {
     const ids = new Set([...application.instances, ...application.dependencies].map((item) => item.target_resource_id));
     return diagnosisTargets.filter((resource) => ids.has(resource.id)).length;
+  }
+
+  function scopeLevelLabel(type: string) {
+    return type === 'platform' ? '平台' : type === 'team' ? '团队' : '项目';
   }
 </script>
 
@@ -70,7 +77,7 @@
       <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选应用">
         {#each diagnosisApplications as application}
           <label class:selected={diagnosisApplicationIds.includes(application.id)}>
-            <span class="diagnosis-resource-icon">⌘</span><span><strong>{application.name}</strong><small>{visibleResourceCount(application)} 个可用关联资源</small></span>
+            <span class="diagnosis-resource-icon">⌘</span><span><span class="diagnosis-resource-title"><strong>{application.name}</strong><em class={`diagnosis-scope-tag ${applicationScopeType(application)}`}>{scopeLevelLabel(applicationScopeType(application))}</em></span><small>{applicationProjectName(application)} · {visibleResourceCount(application)} 个可用关联资源</small></span>
             <input type="checkbox" checked={diagnosisApplicationIds.includes(application.id)} on:change={() => toggleDiagnosisApplication(application)} />
           </label>
         {:else}<p class="diagnosis-empty">当前项目没有可用于诊断的应用。</p>{/each}
@@ -84,7 +91,7 @@
           class:selected={diagnosisTargetIds.includes(resource.id)}
           ><span class="diagnosis-resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span
           ><span
-            ><strong>{resource.name}</strong><small
+            ><span class="diagnosis-resource-title"><strong>{resource.name}</strong><em class={`diagnosis-scope-tag ${scopeType(resource.scope_id)}`}>{scopeLevelLabel(scopeType(resource.scope_id))}</em></span><small
               >{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small
             ></span
           ><input

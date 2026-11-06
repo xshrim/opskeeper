@@ -41,6 +41,10 @@ type diagnosisDeleter interface {
 	Delete(context.Context, string) error
 }
 
+type diagnosisShareUpdater interface {
+	SetScopeShared(context.Context, string, bool) (diagnosis.Session, error)
+}
+
 type diagnosisHandler struct {
 	service diagnosisService
 	auditor audit.Logger
@@ -59,6 +63,11 @@ type startDiagnosisRequest struct {
 	PersonaID         string                 `json:"persona_id,omitempty"`
 	Links             []string               `json:"links,omitempty"`
 	Attachments       []diagnosis.Attachment `json:"attachments,omitempty"`
+	ScopeShared       bool                   `json:"scope_shared"`
+}
+
+type updateDiagnosisSharingRequest struct {
+	ScopeShared bool `json:"scope_shared"`
 }
 
 type addDiagnosisTargetRequest struct {
@@ -91,8 +100,28 @@ func registerDiagnosisRoutes(router chi.Router, service diagnosisService, audito
 		router.With(guard(authorization.DiagnosisStart)).Post("/messages", h.ask)
 		router.With(guard(authorization.DiagnosisStart)).Post("/cancel", h.cancel)
 		router.With(guard(authorization.DiagnosisStart)).Delete("/", h.delete)
+		router.With(guard(authorization.DiagnosisStart)).Patch("/sharing", h.setSharing)
 		router.With(guard(authorization.DiagnosisRead)).Get("/events", h.events)
 	})
+}
+
+func (h diagnosisHandler) setSharing(w http.ResponseWriter, r *http.Request) {
+	updater, ok := h.service.(diagnosisShareUpdater)
+	if !ok {
+		writeError(w, r, http.StatusNotImplemented, "sharing_unavailable", "Diagnosis sharing is unavailable")
+		return
+	}
+	var body updateDiagnosisSharingRequest
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := updater.SetScopeShared(r.Context(), chi.URLParam(r, "sessionID"), body.ScopeShared)
+	if err != nil {
+		writeDiagnosisError(w, r, err)
+		return
+	}
+	h.record(r, "diagnosis.sharing.update", "diagnosis_session", item.ID, item.ScopeID)
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (h diagnosisHandler) cancel(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +155,7 @@ func (h diagnosisHandler) start(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ApplicationIDs: body.ApplicationIDs, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments})
+	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ApplicationIDs: body.ApplicationIDs, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments, ScopeShared: body.ScopeShared})
 	if err != nil {
 		writeDiagnosisError(w, r, err)
 		return

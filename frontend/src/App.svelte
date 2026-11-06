@@ -131,6 +131,7 @@ import type {
   let hasPlatformRole = false;
   let selectedTeamId = '';
   let selectedProjectId = '';
+  let projectAreaTab: 'applications' | 'topology' = 'applications';
   let copiedControl:
     'created-password' | 'reset-username' | 'reset-credentials' | null = null;
   let copiedControlTimer: number | null = null;
@@ -896,6 +897,7 @@ import type {
           availableResources={visibleResources}
           bind:selectedProjectId
           bind:selectedScopeId
+          bind:projectAreaTab
           allTeamsSelected={!selectedTeamId}
           {busy}
           onSelectTeam={(team) => { selectedTeamId = team.id; selectedProjectId = ''; selectedScopeId = team.scope.id; }}
@@ -1032,6 +1034,9 @@ import type {
         <DiagnosisPage
           scopeId={selectedScopeId}
           projectId={selectedProjectId}
+          applicationProjects={activeScope?.type === 'platform' ? projects : activeScope?.type === 'team' ? selectedTeamProjects : selectedProject ? [selectedProject] : []}
+          activeScopeType={activeScope?.type ?? ''}
+          platformScopeId={platform?.scope.id ?? ''}
           applicationId={selectedApplicationId}
           runAction={action}
           {describeError}
@@ -1046,6 +1051,7 @@ import type {
           {resourceIcon}
           {resourceSchemaName}
           {scopeName}
+          {scopeType}
           {skills}
           {personas}
         />

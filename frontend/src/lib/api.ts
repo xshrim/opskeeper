@@ -591,6 +591,7 @@ export interface DiagnosisSession {
   application_id?: string;
   application_ids?: string[];
   actor_user_id?: string;
+  scope_shared?: boolean;
   status: DiagnosisStatus;
   title: string;
   error_code: string;
@@ -979,7 +980,11 @@ export const api = {
   projectTopology: (id: string) =>
     request<ProjectTopology>(`api/v1/projects/${id}/topology`),
   addProjectTopologyResource: (projectId: string, resourceId: string) =>
-    request<void>(`api/v1/projects/${projectId}/topology/resources`, json({ resource_id: resourceId })),
+    request<void>(`api/v1/projects/${projectId}/topology/resources`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resource_id: resourceId })
+    }),
   setProjectTopologyPosition: (projectId: string, nodeId: string, position: { x: number; y: number }) =>
     request<void>(`api/v1/projects/${projectId}/topology/nodes/${nodeId}/position`, { ...json(position), method: 'PUT' }),
   removeProjectTopologyResource: (projectId: string, resourceId: string) =>
@@ -995,6 +1000,10 @@ export const api = {
   applications: (projectId: string) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications`
+    ),
+  diagnosisApplications: (scopeId: string) =>
+    request<Application[]>(
+      `api/v1/diagnosis/applications?scope_id=${encodeURIComponent(scopeId)}`
     ),
   application: (projectId: string, id: string) =>
     request<Application>(`api/v1/projects/${projectId}/applications/${id}/`),
@@ -1344,7 +1353,13 @@ export const api = {
     persona_id?: string;
     links?: string[];
     attachments?: DiagnosisAttachment[];
+    scope_shared?: boolean;
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
+  setDiagnosisSharing: (sessionId: string, scopeShared: boolean) =>
+    request<DiagnosisSession>(
+      `api/v1/diagnosis-sessions/${sessionId}/sharing`,
+      patch({ scope_shared: scopeShared })
+    ),
   addDiagnosisTarget: (sessionId: string, resourceId: string) =>
     request<DiagnosisTarget>(
       `api/v1/diagnosis-sessions/${sessionId}/targets`,

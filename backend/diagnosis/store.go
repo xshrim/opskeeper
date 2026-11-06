@@ -16,7 +16,8 @@ import (
 type Store interface {
 	Start(context.Context, StartInput) (Session, error)
 	Get(context.Context, string) (Session, error)
-	List(context.Context, string, int) ([]Session, error)
+	List(context.Context, string, string, int) ([]Session, error)
+	SetScopeShared(context.Context, string, bool) (Session, error)
 	Delete(context.Context, string) error
 	Targets(context.Context, string) ([]Target, error)
 	AddTarget(context.Context, string, string) (Target, error)
@@ -68,7 +69,7 @@ func (s *store) Start(ctx context.Context, input StartInput) (Session, error) {
 	if len(applicationIDs) > 0 {
 		input.ApplicationID = applicationIDs[0]
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, application_ids, actor_user_id, provider_id, model_name, application_context, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid[], NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, ''), $7::jsonb, 'queued', $8) RETURNING id::text`, input.ScopeID, input.ApplicationID, applicationIDs, input.ActorUserID, input.ProviderID, input.ModelName, contextJSON, input.Title).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, application_ids, actor_user_id, scope_shared, provider_id, model_name, application_context, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid[], NULLIF($4, '')::uuid, $5, NULLIF($6, '')::uuid, NULLIF($7, ''), $8::jsonb, 'queued', $9) RETURNING id::text`, input.ScopeID, input.ApplicationID, applicationIDs, input.ActorUserID, input.ScopeShared, input.ProviderID, input.ModelName, contextJSON, input.Title).Scan(&id)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -98,8 +99,8 @@ func (s *store) Get(ctx context.Context, id string) (Session, error) {
 	return scanSession(s.pool.QueryRow(ctx, sessionSelect+` WHERE id = $1::uuid`, id))
 }
 
-func (s *store) List(ctx context.Context, scopeID string, limit int) ([]Session, error) {
-	rows, err := s.pool.Query(ctx, sessionSelect+` WHERE scope_id = $1::uuid ORDER BY created_at DESC LIMIT $2`, scopeID, limit)
+func (s *store) List(ctx context.Context, scopeID, actorUserID string, limit int) ([]Session, error) {
+	rows, err := s.pool.Query(ctx, sessionSelect+` WHERE scope_id = $1::uuid AND (actor_user_id = NULLIF($2, '')::uuid OR scope_shared) ORDER BY created_at DESC LIMIT $3`, scopeID, actorUserID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnosis sessions: %w", err)
 	}
@@ -113,6 +114,10 @@ func (s *store) List(ctx context.Context, scopeID string, limit int) ([]Session,
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *store) SetScopeShared(ctx context.Context, sessionID string, shared bool) (Session, error) {
+	return scanSession(s.pool.QueryRow(ctx, `UPDATE diagnosis_sessions SET scope_shared = $2, updated_at = now() WHERE id = $1::uuid RETURNING `+sessionFields, sessionID, shared))
 }
 
 func (s *store) Delete(ctx context.Context, sessionID string) error {
@@ -546,13 +551,14 @@ func (s *store) Plan(ctx context.Context, sessionID string) (Plan, error) {
 	return s.plan(ctx, sessionID)
 }
 
-const sessionSelect = `SELECT id::text, scope_id::text, COALESCE(application_id::text, ''), application_ids::text[], actor_user_id::text, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), application_context, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at FROM diagnosis_sessions`
+const sessionFields = `id::text, scope_id::text, COALESCE(application_id::text, ''), application_ids::text[], actor_user_id::text, scope_shared, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), application_context, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at`
+const sessionSelect = `SELECT ` + sessionFields + ` FROM diagnosis_sessions`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanSession(row rowScanner) (Session, error) {
 	var item Session
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ScopeShared, &item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrNotFound
 		}

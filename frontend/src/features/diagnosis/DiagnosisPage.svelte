@@ -28,7 +28,8 @@
     Resource,
     SkillCatalogItem,
     PersonaCatalogItem,
-    DiagnosisAttachment
+    DiagnosisAttachment,
+    Project
   } from '../../lib/api';
   import {
     api,
@@ -109,12 +110,16 @@
   export let resources: Resource[] = [];
   export let contextResources: Resource[] = [];
   export let projectId = '';
+  export let applicationProjects: Project[] = [];
+  export let activeScopeType = '';
+  export let platformScopeId = '';
   export let resourceInActiveWorkspace: (resource: Resource) => boolean;
   let diagnosisTargetIds: string[] = [];
   let diagnosisApplicationIds: string[] = [];
   let diagnosisApplications: Application[] = [];
   let diagnosisApplicationCandidates: Application[] = [];
   let selectedApplicationResourceIDs = new Set<string>();
+	let diagnosisScopeShared = false;
   let diagnosisGenerating = false;
   export let busy = false;
   let diagnosisMessageListElement: HTMLDivElement | null = null;
@@ -151,6 +156,7 @@
   export let resourceIcon: (kind: string) => string;
   export let resourceSchemaName: (kind: string) => string;
   export let scopeName: (id: string) => string;
+  export let scopeType: (id: string) => string;
 
   let diagnosisLoadedScopeId = '';
   let diagnosisLoadedProjectId = '';
@@ -238,6 +244,7 @@
       targetIDs: diagnosisTargetIds,
       providerID: selectedProviderId,
       modelName: llmModelName,
+		scopeShared: diagnosisScopeShared,
       generating: diagnosisGenerating,
       stopRequested: diagnosisStopRequested,
       submissionPending: diagnosisSubmissionPending,
@@ -260,6 +267,7 @@
     if (patch.targetIDs !== undefined) diagnosisTargetIds = patch.targetIDs;
     if (patch.providerID !== undefined) selectedProviderId = patch.providerID;
     if (patch.modelName !== undefined) llmModelName = patch.modelName;
+		if (patch.scopeShared !== undefined) diagnosisScopeShared = patch.scopeShared;
     if (patch.generating !== undefined) diagnosisGenerating = patch.generating;
     if (patch.stopRequested !== undefined) diagnosisStopRequested = patch.stopRequested;
     if (patch.submissionPending !== undefined) diagnosisSubmissionPending = patch.submissionPending;
@@ -286,18 +294,14 @@
 
   async function loadDiagnosis() {
     if (!scopeId) return;
-    if (projectId) {
-      try {
-        const result = await api.applications(projectId);
-        diagnosisApplicationCandidates = result.items.filter((item) => item.status !== 'disabled');
-        if (applicationId && !diagnosisApplicationCandidates.some((item) => item.id === applicationId)) applicationId = '';
-      } catch (error) {
-        diagnosisApplicationCandidates = [];
-        onError(describeError(error, '可用应用加载失败'));
-      }
-    } else {
-      diagnosisApplicationCandidates = [];
-    }
+	try {
+		diagnosisApplicationCandidates = (await api.diagnosisApplications(scopeId))
+			.filter((item) => item.status !== 'disabled');
+		if (applicationId && !diagnosisApplicationCandidates.some((item) => item.id === applicationId)) applicationId = '';
+	} catch (error) {
+		diagnosisApplicationCandidates = [];
+		onError(describeError(error, '可用应用加载失败'));
+	}
     try {
       diagnosisAvailableProviders = await api.availableProviders(scopeId, 'diagnosis');
       if (
@@ -604,8 +608,13 @@
       .filter((id) => diagnosisTargets.some((resource) => resource.id === id));
   }
 
-  function isDiagnosisContextExcluded(_resource: Resource) {
-    return false;
+  function diagnosisApplicationProjectName(application: Application) {
+    return applicationProjects.find((project) => project.id === application.project_id)?.name ?? '所属项目未知';
+  }
+
+  function diagnosisApplicationScopeType(application: Application) {
+    const project = applicationProjects.find((item) => item.id === application.project_id);
+    return project ? scopeType(project.scope.id) : 'project';
   }
 
   function clearDiagnosisHistory() {
@@ -616,6 +625,7 @@
     diagnosisCommands.newDiagnosisSession();
     diagnosisApplicationIds = [];
     applicationId = '';
+		diagnosisScopeShared = false;
   }
 
   function renameDiagnosisSession(session: DiagnosisSession) {
@@ -638,10 +648,16 @@
     resetDiagnosisStreamState();
     void loadDiagnosis();
   }
-  $: diagnosisTargets = contextResources.filter(
-    (resource) => resourceInActiveWorkspace(resource) && !isDiagnosisContextExcluded(resource)
-  );
   $: diagnosisApplications = diagnosisApplicationCandidates;
+  $: associatedDiagnosisResourceIDs = new Set(diagnosisApplications.flatMap((application) =>
+    [...application.instances, ...application.dependencies].map((item) => item.target_resource_id)
+  ));
+  $: diagnosisTargets = contextResources.filter((resource) => {
+    if (activeScopeType === 'platform') return true;
+    if (associatedDiagnosisResourceIDs.has(resource.id)) return true;
+    if (activeScopeType === 'project') return false;
+    return resource.scope_id !== platformScopeId && resourceInActiveWorkspace(resource);
+  });
   $: selectedApplicationResourceIDs = new Set(
     diagnosisApplications
       .filter((application) => diagnosisApplicationIds.includes(application.id))
@@ -842,7 +858,7 @@
         </div>
         <div class="diagnosis-heading-actions">
           <button
-            class="icon-button delete-action"
+            class="icon-button"
             aria-label="清空会话历史"
             data-tooltip="清空会话历史"
             on:click={clearDiagnosisHistory}><Trash2 size={15} /></button
@@ -1024,6 +1040,7 @@
               on:click={() => { diagnosisComposerMenu = diagnosisComposerMenu === 'persona' ? '' : 'persona'; diagnosisComposerMenuSearch = ''; diagnosisComposerTokenStart = diagnosisComposerTextarea?.selectionStart ?? diagnosisComposerText.length; }}
               ><Bot size={15} />专家</button
             >
+				{#if !selectedDiagnosisId}<label class="diagnosis-share-toggle"><input type="checkbox" bind:checked={diagnosisScopeShared} />按当前范围共享</label>{/if}
           </div>
           {#if diagnosisComposerAttachments.length || diagnosisComposerLinks.length}<div class="diagnosis-composer-attached-items">
             {#each diagnosisComposerAttachments as attachment, index}<span class="diagnosis-composer-attachment">{attachment.name}<button type="button" aria-label={`移除附件 ${attachment.name}`} on:click={() => diagnosisComposerAttachments = diagnosisComposerAttachments.filter((_, itemIndex) => itemIndex !== index)}>×</button></span>{/each}
@@ -1140,6 +1157,9 @@
       {resourceIcon}
       {resourceSchemaName}
       {scopeName}
+      {scopeType}
+      applicationProjectName={diagnosisApplicationProjectName}
+      applicationScopeType={diagnosisApplicationScopeType}
       {diagnosisActiveCausalChain}
       {diagnosisCausalNodes}
       {diagnosisCausalEvidenceIDs}

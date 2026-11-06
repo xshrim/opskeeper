@@ -30,6 +30,7 @@ type DiagnosisSessionAPI = {
     persona_id?: string;
     links?: string[];
     attachments?: DiagnosisAttachment[];
+    scope_shared?: boolean;
   }) => Promise<DiagnosisSession>;
   askDiagnosis: (id: string, body: {
     content: string;

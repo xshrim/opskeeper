@@ -28,12 +28,13 @@ type DiagnosisSessionActions = {
     application_ids?: string[];
     question: string;
     target_resource_ids: string[];
-     provider_id?: string;
+    provider_id?: string;
     model_name?: string;
     skill_id?: string;
     persona_id?: string;
     links?: string[];
     attachments?: DiagnosisAttachment[];
+    scope_shared?: boolean;
   }) => Promise<DiagnosisSession>;
   refresh: (sessionID?: string) => Promise<void>;
   open: (sessionID: string) => void;
@@ -57,6 +58,7 @@ export type DiagnosisCommandState = {
   targetIDs: string[];
   providerID: string;
   modelName: string;
+  scopeShared: boolean;
   generating: boolean;
   stopRequested: boolean;
   submissionPending: boolean;
@@ -118,7 +120,8 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
             skill_id: state.skillID || undefined,
             persona_id: state.personaID || undefined,
             links: state.links,
-            attachments: state.attachments
+            attachments: state.attachments,
+            scope_shared: state.scopeShared
           })
       );
       options.updateState({

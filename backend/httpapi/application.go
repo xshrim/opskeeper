@@ -23,6 +23,9 @@ type applicationService interface {
 type applicationBatchService interface {
 	CreateMany(context.Context, []application.CreateInput) ([]application.Application, error)
 }
+type diagnosticApplicationCandidateService interface {
+	DiagnosticCandidates(context.Context, string) ([]application.Application, error)
+}
 type applicationTopologyAnnotationService interface {
 	CreateTopologyAnnotation(context.Context, string, application.TopologyAnnotationInput) (application.TopologyNode, error)
 }
@@ -117,6 +120,9 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 		router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/topology/edges/{edgeID}", h.deleteTopologyEdge)
 	}
 	router.With(guard(authorization.OrganizationRead)).Get("/projects/{projectID}/applications", h.list)
+	if _, ok := service.(diagnosticApplicationCandidateService); ok {
+		router.With(guard(authorization.DiagnosisStart)).Get("/diagnosis/applications", h.diagnosticCandidates)
+	}
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications", h.create)
 	if _, ok := service.(applicationBatchService); ok {
 		router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/batch", h.createBatch)
@@ -126,6 +132,19 @@ func registerApplicationRoutes(router chi.Router, service applicationService, ap
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/", h.delete)
 	router.With(guard(authorization.ProjectManage)).Post("/projects/{projectID}/applications/{applicationID}/instances", h.createInstance)
 	router.With(guard(authorization.ProjectManage)).Delete("/projects/{projectID}/applications/{applicationID}/instances/{instanceID}/", h.deleteInstance)
+}
+func (h applicationHandler) diagnosticCandidates(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(diagnosticApplicationCandidateService)
+	if !ok {
+		writeApplicationError(w, r, application.ErrNotFound)
+		return
+	}
+	items, err := service.DiagnosticCandidates(r.Context(), r.URL.Query().Get("scope_id"))
+	if err != nil {
+		writeApplicationError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 func (h applicationHandler) setTopologyPosition(w http.ResponseWriter, r *http.Request) {
 	service, ok := h.service.(applicationTopologyResourceService)

@@ -48,6 +48,14 @@ func (h authorizationHandler) requirePermission(permission authorization.Permiss
 					return
 				}
 				ctx := authorization.WithResourceFilter(request.Context(), filter)
+				if permission == authorization.DiagnosisStart || permission == authorization.DiagnosisRead {
+					useFilter, useErr := h.service.ResourceFilter(request.Context(), authorization.Subject{UserID: user.ID}, authorization.ResourceUse)
+					if useErr != nil {
+						writeInternalError(writer, request, "diagnosis resource permission lookup", useErr)
+						return
+					}
+					ctx = authorization.WithResourceUseFilter(ctx, useFilter)
+				}
 				next.ServeHTTP(writer, request.WithContext(ctx))
 				return
 			}

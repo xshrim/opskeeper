@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"opskeeper/backend/authorization"
 )
 
 var ErrNotFound = errors.New("application not found")
@@ -51,6 +53,10 @@ type BindingValidator interface {
 type Service struct {
 	store            Store
 	bindingValidator BindingValidator
+}
+
+type diagnosticCandidateStore interface {
+	DiagnosticCandidates(context.Context, string) ([]Application, error)
 }
 
 func NewService(store Store) *Service { return &Service{store: store} }
@@ -268,6 +274,24 @@ func (s *Service) List(ctx context.Context, pid string) ([]Application, error) {
 		return nil, ErrInvalid
 	}
 	return s.store.List(ctx, pid)
+}
+
+// DiagnosticCandidates lists applications under the currently selected
+// diagnosis scope. Authorization comes from the diagnosis:start filter in the
+// request context, rather than from organization:read.
+func (s *Service) DiagnosticCandidates(ctx context.Context, scopeID string) ([]Application, error) {
+	scopeID = strings.TrimSpace(scopeID)
+	if scopeID == "" {
+		return nil, ErrInvalid
+	}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted && !filter.Allows(scopeID) {
+		return nil, ErrNotFound
+	}
+	store, ok := s.store.(diagnosticCandidateStore)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return store.DiagnosticCandidates(ctx, scopeID)
 }
 func (s *Service) UpdateInProject(ctx context.Context, projectID, id string, in UpdateInput) (Application, error) {
 	if strings.TrimSpace(projectID) == "" || strings.TrimSpace(id) == "" {
