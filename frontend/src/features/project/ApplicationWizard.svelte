@@ -906,10 +906,14 @@
             <Tabs className="application-config-tabs" items={[{ value: 'basic', label: '基础信息' }, { value: 'bindings', label: '资源关联' }, { value: 'applications', label: '应用依赖' }]} value={applicationTab} onChange={(value) => (applicationTab = value as 'basic' | 'bindings' | 'applications')} ariaLabel="应用配置分区" />
             {#if applicationTab === 'basic'}<div class="application-form-grid">
               <div class="application-identity-row">
-                <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
-                <FormField label="应用名称" required className="application-name-field"><TextInput value={activeDraft.name} placeholder="支付 API" invalid={submitAttempted && !activeDraft.name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" on:value={(event) => updateDraft(activeCandidate.key, 'name', String(event.detail))} /></FormField>
-                <FormField label="应用标签" asLabel={false}><TextInput value={activeDraft.labels} tagged placeholder="填写 key=value，按回车确认" autocomplete="off" on:value={(event) => updateDraft(activeCandidate.key, 'labels', String(event.detail))} /></FormField>
-                <div class="critical-radio-field"><span class="form-field-label">关键应用</span><div class="critical-radio-group"><button class="critical-radio-toggle" type="button" role="radio" aria-label="关键应用" aria-checked={activeDraft.critical} class:checked={activeDraft.critical} on:click={() => updateDraft(activeCandidate.key, 'critical', !activeDraft.critical)}></button></div></div>
+                <div class="application-identity-half">
+                  <FormField label="应用标识" required><TextInput value={activeDraft.code} placeholder="payments-api" invalid={submitAttempted && !activeDraft.code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" on:value={(event) => updateDraft(activeCandidate.key, 'code', String(event.detail))} /></FormField>
+                  <FormField label="应用名称" required className="application-name-field"><TextInput value={activeDraft.name} placeholder="支付 API" invalid={submitAttempted && !activeDraft.name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" on:value={(event) => updateDraft(activeCandidate.key, 'name', String(event.detail))} /></FormField>
+                </div>
+                <div class="application-identity-half application-labels-half">
+                  <FormField label="应用标签" asLabel={false}><TextInput value={activeDraft.labels} tagged placeholder="填写 key=value，按回车确认" autocomplete="off" on:value={(event) => updateDraft(activeCandidate.key, 'labels', String(event.detail))} /></FormField>
+                  <div class="critical-radio-field"><span class="form-field-label">关键</span><div class="critical-radio-group"><button class="critical-radio-toggle" type="button" role="radio" aria-label="关键" aria-checked={activeDraft.critical} class:checked={activeDraft.critical} on:click={() => updateDraft(activeCandidate.key, 'critical', !activeDraft.critical)}></button></div></div>
+                </div>
               </div>
               <div class="owner-fields-row">
                 <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={activeDraft.technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" on:change={(event) => updateDraft(activeCandidate.key, 'technicalOwnerIds', Array.isArray(event.detail) ? event.detail : [])} /></FormField>

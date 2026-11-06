@@ -294,10 +294,14 @@
         <div class="topology-application-section-heading"><span><IconPicker value={icon} onSelect={(value) => (icon = value)} ariaLabel="选择应用图标" /></span><div><strong>应用信息</strong><small>将创建并关联到选定的运行目标。</small></div></div>
         <div class="topology-application-form">
           <div class="topology-application-identity">
-            <FormField label="应用标识" required><TextInput bind:value={code} placeholder="payments-api" invalid={attempted && !code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" /></FormField>
-            <FormField label="应用名称" required><TextInput bind:value={name} placeholder="支付 API" invalid={attempted && !name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" /></FormField>
-            <FormField label="应用标签" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value，按回车确认" autocomplete="off" /></FormField>
-            <div class="topology-application-critical"><span class="form-field-label">关键应用</span><button class:checked={critical} class="critical-radio-toggle" type="button" role="radio" aria-label="关键应用" aria-checked={critical} on:click={() => (critical = !critical)}></button></div>
+            <div class="topology-application-identity-half">
+              <FormField label="应用标识" required><TextInput bind:value={code} placeholder="payments-api" invalid={attempted && !code.trim()} invalidMode="bubble" invalidMessage="请填写应用标识" /></FormField>
+              <FormField label="应用名称" required><TextInput bind:value={name} placeholder="支付 API" invalid={attempted && !name.trim()} invalidMode="bubble" invalidMessage="请填写应用名称" /></FormField>
+            </div>
+            <div class="application-identity-half application-labels-half">
+              <FormField label="应用标签" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value，按回车确认" autocomplete="off" /></FormField>
+              <div class="critical-radio-field"><span class="form-field-label">关键</span><div class="critical-radio-group"><button class:checked={critical} class="critical-radio-toggle" type="button" role="radio" aria-label="关键" aria-checked={critical} on:click={() => (critical = !critical)}></button></div></div>
+            </div>
           </div>
           <FormField label="技术负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={technicalOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择技术负责人" on:change={(event) => (technicalOwnerIds = Array.isArray(event.detail) ? event.detail : [])} /></FormField>
           <FormField label="运维负责人" asLabel={false}><DropdownSelect options={ownerOptions} value={operationsOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择运维负责人" on:change={(event) => (operationsOwnerIds = Array.isArray(event.detail) ? event.detail : [])} /></FormField>
@@ -321,10 +325,10 @@
   .topology-application-details { display:grid; gap:12px; padding-bottom:16px; border-bottom:1px solid var(--theme-divider); }
   .topology-application-details { padding-bottom:0; border-bottom:0; }
   .topology-application-section-heading { display:flex; align-items:center; gap:8px; }.topology-application-section-heading > span { display:grid; place-items:center; color:var(--theme-accent); }.topology-application-section-heading > div { display:grid; gap:2px; }.topology-application-section-heading strong { color:var(--theme-fg-strong); font-size:13px; }.topology-application-section-heading small { color:var(--theme-fg-muted); font-size:10px; }
+  .topology-application-runtime .topology-application-section-heading > span { color:var(--theme-application); }
   .topology-application-runtime-fields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }.topology-application-runtime-fields.kubernetes-runtime-fields { grid-template-columns:repeat(4,minmax(0,1fr)); }.topology-application-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }.topology-application-form > :global(.topology-application-full-field) { grid-column:1/-1; }
-  .topology-application-identity { display:grid; grid-column:1/-1; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr) max-content; align-items:end; gap:12px; }
+  .topology-application-identity { display:grid; grid-column:1/-1; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:12px; }
+  .topology-application-identity-half { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:end; gap:12px; min-width:0; }
   .topology-application-identity > :global(.form-field) { min-width:0; }
-  .topology-application-identity > .topology-application-critical { justify-content:flex-end; gap:10px; }
-  .topology-application-critical { display:flex; align-items:center; min-height:34px; padding:0 1px; }.topology-application-critical .form-field-label { margin:0; }
-  @media (max-width: 700px) { .topology-application-runtime-fields,.topology-application-runtime-fields.kubernetes-runtime-fields,.topology-application-form,.topology-application-identity { grid-template-columns:1fr; }.topology-application-identity > .topology-application-critical { justify-content:flex-start; } }
+  @media (max-width: 700px) { .topology-application-runtime-fields,.topology-application-runtime-fields.kubernetes-runtime-fields,.topology-application-form,.topology-application-identity,.application-identity-half { grid-template-columns:1fr; } }
 </style>

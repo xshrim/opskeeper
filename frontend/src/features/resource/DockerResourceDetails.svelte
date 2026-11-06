@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import TagList from '../../components/TagList.svelte';
   import { labelTags } from '../../lib/labels';
   import { resourceEndpointFor } from './resourceCatalog';
@@ -10,9 +11,6 @@
   export let formatDate: (value: string) => string;
 
   $: accessMode = String(resource.subtype ?? 'direct').toLowerCase() === 'agent' ? 'agent' : 'direct';
-  $: connectionStatus = resourceCheck
-    ? resourceCheck.status === 'succeeded' ? `正常·${resourceCheck.latency_ms}ms` : '异常'
-    : '尚未测试';
   $: tags = labelTags(resource.labels);
 </script>
 
@@ -25,6 +23,6 @@
     <div><span>连接凭据</span><strong>未配置</strong></div>
     <div><span>传输凭据</span><strong>{accessMode === 'agent' ? '由 MCPServer 管理' : resource.credential_configured ? 'TLS 凭据已配置' : '未配置 TLS 凭据'}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
-    <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus}</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
+    <div class="provider-resource-connection"><span>状态</span><ConnectionTest status={resourceCheck?.status ?? ''} latencyMs={resourceCheck?.latency_ms ?? 0} message={resourceCheck?.message ?? ''} disabled showTime={false} showTooltip={false} /></div>
   </div>
 </div>

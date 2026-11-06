@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import TagList from '../../components/TagList.svelte';
   import { labelTags } from '../../lib/labels';
   import { resourceEndpointFor } from './resourceCatalog';
@@ -18,11 +19,6 @@
     accessMode === 'agent'
       ? mcpServerEndpoint || '关联 MCPServer'
       : resourceEndpointFor(resource);
-  $: connectionStatus = resourceCheck
-    ? resourceCheck.status === 'succeeded'
-      ? `正常·${resourceCheck.latency_ms}ms`
-      : '异常'
-    : '尚未测试';
   $: tags = labelTags(resource.labels);
 </script>
 
@@ -50,10 +46,7 @@
       <span>标签</span><TagList tags={tags} emptyText="未设置标签" />
     </div>
     <div class="provider-resource-connection">
-      <span>状态</span><strong>{connectionStatus}</strong
-      >{#if resourceCheck?.status === 'failed'}<small
-          >{resourceCheck.message}</small
-        >{/if}
+      <span>状态</span><ConnectionTest status={resourceCheck?.status ?? ''} latencyMs={resourceCheck?.latency_ms ?? 0} message={resourceCheck?.message ?? ''} disabled showTime={false} showTooltip={false} />
     </div>
   </div>
 </div>

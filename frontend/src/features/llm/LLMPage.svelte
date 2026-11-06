@@ -1,6 +1,6 @@
 <script lang="ts">
   import EmptyState from '../../components/EmptyState.svelte';
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
   import {
     Cpu,
     Plus,
@@ -11,6 +11,7 @@
     Trash2
   } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
   import FieldLabel from '../../components/FieldLabel.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
@@ -120,15 +121,6 @@
   let engineEditorMessage = '';
   let engineEditorMessageTone: 'success' | 'error' = 'success';
   let engineEditorMessageTimer: number | null = null;
-  let connectionAgeNow = Date.now();
-
-  onMount(() => {
-    const timer = window.setInterval(() => {
-      connectionAgeNow = Date.now();
-    }, 1000);
-    return () => window.clearInterval(timer);
-  });
-
   // Keep the shared scopeName prop for the page contract; the drawer subtitle no longer renders scope text.
   $: void scopeName;
   $: providerSelectOptions = providerTypeOptions.map((option) => ({
@@ -256,44 +248,6 @@
       (tag) => modelTags.find((item) => item.value === tag)?.label ?? tag
     );
   }
-  function providerHealthLabel(provider: Provider) {
-    if (providerIsTesting(provider.id)) {
-      return { label: '测试中', title: '正在测试渠道连接', tone: 'testing' };
-    }
-    const status = providerConnectionSummary(provider);
-    return { label: status.label, title: status.title, tone: status.tone };
-  }
-  function providerConnectionSummary(provider: Provider | undefined) {
-    const test = provider?.last_connection_test;
-    if (!test) return { health: '未测试', latency: '未知', label: '连接测试', title: '点击进行渠道连接测试', tone: 'muted' };
-    if (test.status === 'succeeded') {
-      const label = `正常·${test.latency_ms}ms`;
-      return { health: '正常', latency: `${test.latency_ms}ms`, label, title: label, tone: 'success' };
-    }
-    const message = (test.message || '连接测试失败').replace(/\s+/g, ' ').trim();
-    return { health: '异常', latency: '未知', label: `异常·${message}`, title: message, tone: 'danger' };
-  }
-  function formatConnectionAge(checkedAt: string | undefined) {
-    if (!checkedAt) return '';
-    const checkedTime = Date.parse(checkedAt);
-    if (!Number.isFinite(checkedTime)) return '';
-    const elapsed = Math.max(connectionAgeNow - checkedTime, 0);
-    const minute = 60_000;
-    const hour = 60 * minute;
-    const day = 24 * hour;
-    const week = 7 * day;
-    const month = 30 * day;
-    const year = 365 * day;
-    const value = (amount: number, unit: string) =>
-      `${amount.toFixed(1).padStart(4, '0')} ${unit}`;
-    if (elapsed < minute) return value(elapsed / 1000, '秒');
-    if (elapsed < hour) return value(elapsed / minute, '分');
-    if (elapsed < day) return value(elapsed / hour, '时');
-    if (elapsed < week) return value(elapsed / day, '天');
-    if (elapsed < month) return value(elapsed / week, '周');
-    if (elapsed < year) return value(elapsed / month, '月');
-    return value(elapsed / year, '年');
-  }
   function providerMatches(provider: Provider) {
     const query = providerSearch.trim().toLowerCase();
     if (!query) return true;
@@ -320,7 +274,7 @@
       : [...providerManageScopeOptions, ...scopeChoices.filter((item) => item.id === currentScopeId)];
     return scopes.map((scope) => ({
       value: scope.id,
-      label: `${scopeLevelLabel(scope.type)}级 · ${scope.name}`
+      label: `${scopeLevelLabel(scope.type)} · ${scope.name}`
     }));
   }
   $: if (providers !== sourceProviders) {
@@ -1142,7 +1096,7 @@
         <div class="provider-list-scroll">
           {#each filteredProviders as provider}
             {@const isTesting = Boolean(testingProviders[provider.id])}
-            {@const health = providerHealthLabel(provider)}
+            {@const test = provider.last_connection_test}
             {@const modelSummary = providerModelSummary(provider)}
             <button
               class="provider-row"
@@ -1184,25 +1138,7 @@
                   <span class="tag-chip active">{capability}</span>
                 {/each}
               </span>
-              <span
-                class="provider-health"
-                class:connection-success={health.label.startsWith('正常')}
-                class:connection-danger={health.label.startsWith('异常')}
-                class:connection-muted={health.tone === 'muted'}
-                class:testing={isTesting}
-                role="button"
-                tabindex="0"
-                aria-label={`测试${provider.name}连接`}
-                on:click|stopPropagation={() => void testProvider(provider)}
-                on:keydown|stopPropagation={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    void testProvider(provider);
-                  }
-                }}
-              >
-                <strong data-tooltip={isTesting ? '连接测试中' : '点击进行连接测试'}>{isTesting ? '测试中' : health.label}</strong>
-              </span>
+              <span class="provider-health"><ConnectionTest status={test?.status === 'succeeded' ? 'succeeded' : test ? 'failed' : ''} latencyMs={test?.latency_ms ?? 0} message={test?.message ?? ''} checkedAt={test?.checked_at ?? ''} busy={busy || isTesting} onTest={() => void testProvider(provider)} /></span>
             </span>
             <span class="provider-row-models">
               {#each modelSummary.visible as model}
@@ -1298,14 +1234,16 @@
                 </div>
                 <div class="provider-identity-row">
                   <div class="provider-identity-primary">
-                  <div class="provider-icon-field">
-                    <FieldLabel text="图标" /><IconPicker
-                      value={providerDraft.icon}
-                      onSelect={(icon) => (providerDraft.icon = icon)}
-                      ariaLabel="选择图标"
-                    />
+                  <div class="provider-identity-name">
+                    <div class="provider-icon-field">
+                      <FieldLabel text="图标" /><IconPicker
+                        value={providerDraft.icon}
+                        onSelect={(icon) => (providerDraft.icon = icon)}
+                        ariaLabel="选择图标"
+                      />
+                    </div>
+                    <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
                   </div>
-                  <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
                   <label class="provider-level-field"
                     ><FieldLabel text="级别" /><DropdownSelect
                       bind:value={providerDraft.scopeId}
@@ -1331,20 +1269,7 @@
                     </div>
                   </div>
                   <div class="provider-connection-test"
-                    ><FieldLabel text="连接" /><span class="provider-connection-value"
-                      ><button
-                        class="connection-status-button"
-                        class:testing={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
-                        class:connection-success={providerConnectionSummary(selectedProvider).tone === 'success'}
-                        class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
-                        class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
-                        type="button"
-                        data-tooltip={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
-                        disabled={!providerDraft.id || Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])}
-                        on:click|stopPropagation={() => testProvider()}
-                        >{Boolean(selectedProvider?.id && testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
-                      ><small class="connection-age">{formatConnectionAge(selectedProvider?.last_connection_test?.checked_at)}</small></span
-                    ></div
+                    ><FieldLabel text="连接" /><ConnectionTest status={selectedProvider?.last_connection_test?.status === 'succeeded' ? 'succeeded' : selectedProvider?.last_connection_test ? 'failed' : ''} latencyMs={selectedProvider?.last_connection_test?.latency_ms ?? 0} message={selectedProvider?.last_connection_test?.message ?? ''} checkedAt={selectedProvider?.last_connection_test?.checked_at ?? ''} busy={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])} disabled={!providerDraft.id} onTest={() => void testProvider()} /></div
                   ><div class="provider-status-switch"
                     ><FieldLabel text="状态" /><Switch checked={providerDraft.status === 'active'} ariaLabel="启用渠道" on:change={(event) => { const enabled = event.detail; providerDraft.status = enabled ? 'active' : 'disabled'; providerDraft.enabled = enabled; }} /></div
                   >
@@ -1509,55 +1434,48 @@
                 <h3>基本信息</h3>
               </div>
               <div class="provider-preview-identity-row">
-                <div class="provider-preview-field">
-                  <FieldLabel text="图标" /><span
-                    class="provider-preview-value provider-preview-icon"><IconValue
-                      value={selectedProvider.config.icon || 'lucide:Bot'}
-                      size={18}
-                    /></span
-                  >
+                  <div class="provider-preview-primary">
+                  <div class="provider-preview-name">
+                    <div class="provider-preview-field">
+                      <FieldLabel text="图标" /><span
+                        class="provider-preview-value provider-preview-icon"><IconValue
+                          value={selectedProvider.config.icon || 'lucide:Bot'}
+                          size={18}
+                        /></span
+                      >
+                    </div>
+                    <div class="provider-preview-field">
+                      <FieldLabel text="名称" required /><strong
+                        class="provider-preview-value"
+                        >{selectedProvider.name}</strong
+                      >
+                    </div>
+                  </div>
+                  <div class="provider-preview-field provider-preview-level-field">
+                    <FieldLabel text="级别" /><strong
+                      class="provider-preview-value provider-preview-plain"
+                      >{scopeLevelLabel(scopeType(selectedProvider.scope_id))} · {scopeName(selectedProvider.scope_id)}</strong
+                    >
+                  </div>
                 </div>
-                <div class="provider-preview-field">
-                  <FieldLabel text="名称" required /><strong
-                    class="provider-preview-value"
-                    >{selectedProvider.name}</strong
-                  >
-                </div>
-                <div class="provider-preview-field provider-preview-level-field">
-                  <FieldLabel text="级别" /><strong
-                    class="provider-preview-value provider-preview-plain"
-                    >{scopeLevelLabel(scopeType(selectedProvider.scope_id))}级 · {scopeName(selectedProvider.scope_id)}</strong
-                  >
-                </div>
-                <div class="provider-preview-field provider-preview-tags">
-                  <FieldLabel text="场景" /><span class="tag-row"
-                    >{#each scenarioTags as tag}<span
-                        class={`tag-chip ${capabilityTagClass(tag.value)}`}
-                        class:active={isBound(selectedProvider.tags, tag.value)}
-                        class:preview-tag-hidden={!isBound(selectedProvider.tags, tag.value)}
-                        aria-hidden={!isBound(selectedProvider.tags, tag.value)}
-                        >{tag.label}</span
-                      >{/each}</span
-                  >
-                </div>
-                <div class="provider-preview-field provider-preview-connection-test">
-                  <FieldLabel text="连接" /><span
-                    class="provider-preview-value provider-preview-connection-value"><button
-                      class="connection-status-button"
-                      class:testing={Boolean(testingProviders[selectedProvider.id])}
-                      class:connection-success={providerConnectionSummary(selectedProvider).tone === 'success'}
-                      class:connection-danger={providerConnectionSummary(selectedProvider).tone === 'danger'}
-                      class:connection-muted={providerConnectionSummary(selectedProvider).tone === 'muted'}
-                      type="button"
-                      data-tooltip={Boolean(testingProviders[selectedProvider.id]) ? '连接测试中' : '点击进行连接测试'}
-                      disabled={Boolean(testingProviders[selectedProvider.id])}
-                      on:click|stopPropagation={() => testProvider()}
-                      >{Boolean(testingProviders[selectedProvider.id]) ? '测试中' : providerConnectionSummary(selectedProvider).label}</button
-                    ><small class="connection-age">{formatConnectionAge(selectedProvider.last_connection_test?.checked_at)}</small></span
-                  >
-                </div>
-                <div class="provider-preview-field provider-preview-status">
-                  <FieldLabel text="状态" /><span class="provider-preview-value provider-preview-switch-value"><Switch checked={selectedProvider.status === 'active'} disabled ariaLabel="渠道状态" /></span>
+                <div class="provider-preview-secondary">
+                  <div class="provider-preview-field provider-preview-tags">
+                    <FieldLabel text="场景" /><span class="tag-row"
+                      >{#each scenarioTags as tag}<span
+                          class={`tag-chip ${capabilityTagClass(tag.value)}`}
+                          class:active={isBound(selectedProvider.tags, tag.value)}
+                          class:preview-tag-hidden={!isBound(selectedProvider.tags, tag.value)}
+                          aria-hidden={!isBound(selectedProvider.tags, tag.value)}
+                          >{tag.label}</span
+                        >{/each}</span
+                    >
+                  </div>
+                  <div class="provider-preview-field provider-preview-connection-test">
+                    <FieldLabel text="连接" /><ConnectionTest status={selectedProvider.last_connection_test?.status === 'succeeded' ? 'succeeded' : selectedProvider.last_connection_test ? 'failed' : ''} latencyMs={selectedProvider.last_connection_test?.latency_ms ?? 0} message={selectedProvider.last_connection_test?.message ?? ''} checkedAt={selectedProvider.last_connection_test?.checked_at ?? ''} busy={Boolean(testingProviders[selectedProvider.id])} onTest={() => void testProvider()} />
+                  </div>
+                  <div class="provider-preview-field provider-preview-status">
+                    <FieldLabel text="状态" /><span class="provider-preview-value provider-preview-switch-value"><Switch checked={selectedProvider.status === 'active'} disabled ariaLabel="渠道状态" /></span>
+                  </div>
                 </div>
               </div>
               <div class="provider-runtime-grid">
@@ -2185,8 +2103,7 @@
     width: max-content;
     max-width: 100%;
   }
-  .provider-row-meta > span,
-  .provider-health {
+  .provider-row-meta > span {
     display: grid;
     align-content: center;
     justify-items: end;
@@ -2194,14 +2111,6 @@
     color: var(--theme-fg-muted);
     font-size: 10px;
     text-align: right;
-  }
-  .provider-health {
-    cursor: pointer;
-  }
-  .provider-health:focus-visible {
-    outline: 2px solid var(--theme-border-focus);
-    outline-offset: 2px;
-    border-radius: 999px;
   }
   .provider-row-meta strong {
     color: var(--theme-fg-strong);
@@ -2243,34 +2152,9 @@
     color: var(--theme-fg-muted);
     font-size: 10px;
   }
-  .provider-health strong {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    max-width: 180px;
-    min-height: 21px;
-    overflow: hidden;
-    padding: 0 7px;
-    color: var(--theme-fg-muted);
-    background: var(--theme-bg-subtle);
-    border-radius: 999px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .provider-health.connection-success strong {
-    color: var(--theme-success);
-    background: var(--theme-bg-success-soft);
-  }
-  .provider-health.connection-danger strong {
-    color: var(--theme-danger);
-    background: var(--theme-bg-danger-soft);
-  }
-  .provider-health.testing strong {
-    color: var(--theme-accent-contrast);
-    background: var(--theme-accent-hover);
-  }
-  .provider-health:hover strong {
-    box-shadow: 0 0 0 1px var(--theme-border-focus);
+  .provider-health {
+    display: block;
+    flex: none;
   }
   .provider-row-foot {
     display: flex;
@@ -2475,7 +2359,7 @@
   }
   .provider-identity-row {
     display: grid;
-    grid-template-columns: auto minmax(140px, 3fr) minmax(140px, 1.5fr) minmax(0, 1fr) 80px 46px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
     column-gap: 10px;
     row-gap: 12px;
@@ -2486,16 +2370,46 @@
     display: contents;
   }
   .provider-identity-secondary {
-    display: contents;
+    display: grid;
+    grid-column: 3;
+    grid-template-columns: minmax(0, 1fr) 80px 46px;
+    gap: 10px;
+  }
+  .provider-identity-name {
+    display: grid;
+    grid-column: 1;
+    grid-template-columns: 35px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .provider-identity-primary > .provider-level-field {
+    grid-column: 2;
   }
   .provider-preview-identity-row {
     display: grid;
-    grid-template-columns: auto minmax(140px, 3fr) minmax(140px, 1.5fr) minmax(0, 1fr) 80px 46px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
     column-gap: 10px;
     row-gap: 12px;
     min-height: 58px;
     min-width: 0;
+  }
+  .provider-preview-primary {
+    display: contents;
+  }
+  .provider-preview-secondary {
+    display: grid;
+    grid-column: 3;
+    grid-template-columns: minmax(0, 1fr) 80px 46px;
+    gap: 10px;
+  }
+  .provider-preview-name {
+    display: grid;
+    grid-column: 1;
+    grid-template-columns: 35px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .provider-preview-primary > .provider-preview-level-field {
+    grid-column: 2;
   }
   .provider-preview-field {
     display: grid;
@@ -2525,7 +2439,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .provider-preview-field > .provider-preview-value:not(.provider-preview-icon):not(.provider-preview-switch-value):not(.provider-preview-connection-value) {
+  .provider-preview-field > .provider-preview-value:not(.provider-preview-icon):not(.provider-preview-switch-value) {
     height: 35px;
     min-height: 35px;
     justify-content: flex-start;
@@ -2587,38 +2501,19 @@
   .provider-preview-connection-test :global(.field-label) {
     text-align: center;
   }
-  .provider-connection-value,
-  .provider-preview-connection-value {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    justify-content: center;
-    width: 100%;
-    height: 42px;
-    min-height: 42px;
-    box-sizing: border-box;
-    padding: 0;
-  }
-  .provider-connection-value .connection-status-button,
-  .provider-preview-connection-value .connection-status-button {
-    width: fit-content;
-    max-width: 100%;
-    transform: translateY(0);
-  }
   .provider-preview-type {
     gap: 7px;
   }
   .provider-preview-tags {
-    justify-self: start;
+    justify-self: stretch;
+    width: 100%;
   }
   .provider-preview-tags .tag-row {
     min-height: 35px;
     align-items: center;
     justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow: visible;
   }
   .provider-preview-tags .tag-chip,
   .provider-tag-editor .tag-chip {
@@ -2668,10 +2563,8 @@
     min-height: 35px;
     align-items: center;
     justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow: visible;
   }
   .provider-tag-editor,
   .provider-level-field {
@@ -2698,80 +2591,6 @@
   }
   .provider-connection-test :global(.field-label) {
     text-align: center;
-  }
-  .connection-age {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    color: var(--theme-fg-subtle);
-    font-size: 9px;
-    line-height: 1.2;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .connection-status-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    min-width: 0;
-    max-width: 76px;
-    min-height: 21px;
-    overflow: hidden;
-    padding: 0 7px;
-    color: var(--theme-fg-muted);
-    background: var(--theme-bg-subtle);
-    border: 1px solid transparent;
-    border-radius: 999px;
-    font-size: 10px;
-    text-align: right;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .connection-status-button:hover:not(:disabled),
-  .connection-status-button:focus-visible {
-    border-color: currentColor;
-    outline: none;
-  }
-  .connection-status-button.connection-success {
-    color: var(--theme-success);
-    background: var(--theme-bg-success-soft);
-  }
-  .connection-status-button.connection-danger {
-    color: var(--theme-danger);
-    background: var(--theme-bg-danger-soft);
-  }
-  .connection-status-button.connection-success:hover:not(:disabled),
-  .connection-status-button.connection-success:focus-visible {
-    color: var(--theme-success);
-    background: var(--theme-bg-success-soft);
-  }
-  .connection-status-button.connection-danger:hover:not(:disabled),
-  .connection-status-button.connection-danger:focus-visible {
-    color: var(--theme-danger);
-    background: var(--theme-bg-danger-soft);
-  }
-  .connection-status-button.connection-muted {
-    color: var(--theme-fg-muted);
-    background: var(--theme-bg-subtle);
-  }
-  .connection-status-button.connection-muted:hover:not(:disabled),
-  .connection-status-button.connection-muted:focus-visible {
-    color: var(--theme-fg-strong);
-    background: var(--theme-bg-subtle);
-  }
-  .connection-status-button.testing {
-    color: var(--theme-accent-contrast);
-    background: var(--theme-accent-hover);
-  }
-  .connection-status-button.testing:hover:not(:disabled),
-  .connection-status-button.testing:focus-visible {
-    color: var(--theme-accent-contrast);
-    background: var(--theme-accent-hover);
-  }
-  .connection-status-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.72;
   }
   .provider-runtime-grid,
   .provider-connection-row {
@@ -3322,6 +3141,10 @@
     .provider-identity-row,
     .provider-identity-primary,
     .provider-identity-secondary,
+    .provider-identity-name,
+    .provider-preview-primary,
+    .provider-preview-secondary,
+    .provider-preview-name,
     .provider-runtime-grid,
     .provider-connection-row,
     .provider-level-field,
@@ -3329,7 +3152,15 @@
       grid-template-columns: 1fr;
     }
     .provider-identity-primary,
-    .provider-identity-secondary {
+    .provider-identity-secondary,
+    .provider-identity-name,
+    .provider-preview-primary,
+    .provider-preview-secondary,
+    .provider-preview-name {
+      grid-column: auto;
+    }
+    .provider-identity-primary > .provider-level-field,
+    .provider-preview-primary > .provider-preview-level-field {
       grid-column: auto;
     }
     .model-columns-header {

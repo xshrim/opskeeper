@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import TagList from '../../components/TagList.svelte';
   import { labelTags } from '../../lib/labels';
 
@@ -30,9 +31,6 @@
     : connectionModeKey === 'kubeconfig'
       ? String(resourceCheck?.endpoint ?? '').trim() || '未获取 Kubernetes API Server'
       : String(resource.config?.server ?? '未设置 Kubernetes API Server');
-  $: connectionStatus = resourceCheck
-    ? resourceCheck.status === 'succeeded' ? `正常·${resourceCheck.latency_ms}ms` : '异常'
-    : '尚未测试';
   $: tags = labelTags(resource.labels);
 </script>
 
@@ -45,6 +43,6 @@
     <div><span>连接凭据</span><strong>{connectionCredential}</strong></div>
     <div><span>传输凭据</span><strong>{transportCredential}</strong></div>
     <div class="provider-resource-labels"><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
-    <div class="provider-resource-connection"><span>状态</span><strong>{connectionStatus}</strong>{#if resourceCheck?.status === 'failed'}<small>{resourceCheck.message}</small>{/if}</div>
+    <div class="provider-resource-connection"><span>状态</span><ConnectionTest status={resourceCheck?.status ?? ''} latencyMs={resourceCheck?.latency_ms ?? 0} message={resourceCheck?.message ?? ''} disabled showTime={false} showTooltip={false} /></div>
   </div>
 </div>

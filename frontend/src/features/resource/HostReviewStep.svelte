@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import { hostAccessModeLabel, type HostAccessMode } from './resourceWorkflow';
   export let resourceName = '';
   export let accessMode: HostAccessMode = 'direct';
@@ -65,14 +66,6 @@
     </div>
   </div>
   <div class="provider-test-summary">
-    <span>连接核验</span>{#if testBusy}<strong>正在测试连接...</strong><small
-        >正在读取 Host 信息。</small
-      >{:else if testStatus === 'succeeded'}<strong class="success"
-        >连接正常 · {testLatency ?? 0} ms</strong
-      ><small>{testMessage}</small>{:else if testError}<strong class="failed"
-        >连接失败</strong
-      ><small>{testError}</small>{:else}<strong>尚未核验</strong><small
-        >进入此步骤后自动执行连接测试。</small
-      >{/if}
+    <span>连接核验</span><ConnectionTest status={testError || testStatus === 'failed' ? 'failed' : testStatus === 'succeeded' ? 'succeeded' : ''} latencyMs={testLatency ?? 0} message={testError || testMessage} busy={testBusy} disabled showTime={false} showTooltip={false} />
   </div>
 </form>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   export let transport = 'streamable_http';
   export let url = '';
   export let tokenConfigured = false;
@@ -21,8 +22,6 @@
   <div><span>响应体大小限制</span><strong>{Math.round(Number(maxResponseBytes) / 1024 / 1024)} MiB</strong></div>
   <div class="provider-test-summary">
     <span>连接核验</span>
-    {#if testStatus === 'succeeded'}<strong class="success">连接正常 · 发现 {toolCount} 个工具{latency ? ` · ${latency} ms` : ''}</strong><small>Server 初始化和工具发现已完成</small>
-    {:else if testError}<strong class="failed">{testError}</strong><small>请修正配置后重新测试</small>
-    {:else}<strong>尚未核验</strong><small>进入此步骤后自动执行连接测试</small>{/if}
+    <ConnectionTest status={testError ? 'failed' : testStatus === 'succeeded' ? 'succeeded' : ''} latencyMs={latency ?? 0} message={testError || `发现 ${toolCount} 个工具`} disabled showTime={false} showTooltip={false} />
   </div>
 </div>

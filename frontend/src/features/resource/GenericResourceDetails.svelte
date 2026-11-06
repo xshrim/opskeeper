@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConnectionCheck, Resource } from '../../lib/api';
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import TagList from '../../components/TagList.svelte';
   import { labelTags } from '../../lib/labels';
   import { resourceEndpointFor } from './resourceCatalog';
@@ -24,7 +25,6 @@
   <div><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
   <div>
     <span>状态</span>
-    <strong>{selectedResourceId === resource.id && connectionCheck ? connectionCheck.status === 'succeeded' ? `正常·${connectionCheck.latency_ms}ms` : '异常' : '尚未测试'}</strong>
-    {#if selectedResourceId === resource.id && connectionCheck?.status === 'failed'}<small>{connectionCheck.message}</small>{/if}
+    <ConnectionTest status={selectedResourceId === resource.id ? connectionCheck?.status ?? '' : ''} latencyMs={connectionCheck?.latency_ms ?? 0} message={connectionCheck?.message ?? ''} checkedAt={selectedResourceId === resource.id ? connectionCheck?.checked_at ?? '' : ''} disabled showTooltip={false} />
   </div>
 </div>

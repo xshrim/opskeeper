@@ -222,6 +222,8 @@ body {
   --theme-accent: #e7601b;
   --theme-accent-hover: #d95716;
   --theme-accent-active: #c94e10;
+  --theme-application: #536fc4;
+  --theme-resource: #087f8c;
   --theme-action: #e7601b;
   --theme-action-hover: #d95716;
   --theme-action-active: #c94e10;
@@ -350,6 +352,8 @@ body {
   --theme-accent: #173c35;
   --theme-accent-hover: #1f594b;
   --theme-accent-active: #173e35;
+  --theme-application: #aab8ff;
+  --theme-resource: #5fc7c9;
   --theme-action: #18a27d;
   --theme-action-hover: #158c6c;
   --theme-action-active: #117557;

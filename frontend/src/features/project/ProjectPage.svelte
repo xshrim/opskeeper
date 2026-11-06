@@ -359,7 +359,7 @@ import {
   }
 
   function scopeLevelLabel(scopeType: string) {
-    return scopeType === 'platform' ? '平台级' : scopeType === 'team' ? '团队级' : '项目级';
+    return scopeType === 'platform' ? '平台' : scopeType === 'team' ? '团队' : '项目';
   }
 
   function ownerLabel(ids: string[]) {
@@ -950,7 +950,7 @@ import {
                   <div><small>应用名称</small><strong>{row.name}</strong></div>
                   <div><small>应用标识</small><strong>{row.code}</strong></div>
                   <div><small>运行时</small><strong>{row.instances.length ? runtimeLabel(row.runtime_kind) : '未知'}</strong></div>
-                  <div><small>关键应用</small><strong>{row.critical ? '是' : '否'}</strong></div>
+                  <div><small>关键</small><strong>{row.critical ? '是' : '否'}</strong></div>
                   <div><small>技术负责人</small><strong>{ownerLabel(row.technical_owner_ids)}</strong></div>
                   <div><small>运维负责人</small><strong>{ownerLabel(row.operations_owner_ids)}</strong></div>
                   <div><small>标签</small><TagList tags={labelTags(row.labels)} /></div>
@@ -986,6 +986,7 @@ import {
               loading={loadingTopology}
               mode={topologyMode}
               configurationOpen={Boolean(topologyComponentIntent)}
+              pendingComponent={topologyComponentIntent}
               applicationAlertCounts={applicationAlertCounts}
               onSelectionChange={inspectTopologySelection}
               onRefresh={loadTopology}

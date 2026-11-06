@@ -54,6 +54,7 @@ export default defineConfig(({ command }) => {
     build: {
       chunkSizeWarningLimit: 800,
       rollupOptions: {
+        input: ['index.html', 'topology-style-options.html'],
         output: {
           manualChunks(id) {
             if (id.includes('/src/features/')) return 'feature-pages';

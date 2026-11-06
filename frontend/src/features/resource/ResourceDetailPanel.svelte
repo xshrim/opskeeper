@@ -75,7 +75,7 @@
       <span>更新于 {formatDate(selectedResource.updated_at)}</span>
     </div>
     {#if selectedResourceHasConnector}
-      <ResourceConnectionStatus check={connectionCheck} {busy} {connectionBusy} {formatDate} {capabilityName} onTest={onTestConnection} />
+      <ResourceConnectionStatus check={connectionCheck} {busy} {connectionBusy} {capabilityName} onTest={onTestConnection} />
     {/if}
     <form class="stack-form editor-form" on:submit|preventDefault={onUpdate}>
       <ResourceBasicEditFields resource={selectedResource} bind:name={editResourceName} bind:labels={editResourceLabels} {scopeName} />

@@ -214,7 +214,6 @@
   export let resources: Resource[] = [];
   export let schemas: ResourceSchema[] = [];
   export let childSurfaceActive = false;
-  let connectionDetailResourceId = '';
   let applicationReferences: Record<string, ApplicationReference[]> = {};
   let connectionBusyResourceIds: string[] = [];
   let autoSummaryTestKey = '';
@@ -559,9 +558,9 @@
 
   function activeScopeSummary() {
     const labels: Record<string, string> = {
-      platform: '平台级',
-      team: '团队级',
-      project: '项目级'
+      platform: '平台',
+      team: '团队',
+      project: '项目'
     };
     const scopeId = resourceWorkflowEditing() ? selectedScopeId : resourceCreateScopeId || selectedScopeId;
     const type = scopeType(scopeId);
@@ -2470,7 +2469,6 @@
     try {
       const result = await testResourceConnector(resource, selectedScopeId);
       const check = result.check;
-      connectionDetailResourceId = resource.id;
       if (result.snapshot)
         operationSnapshots = prependMCPSnapshot(
           operationSnapshots,
@@ -2499,7 +2497,6 @@
         capabilities: [],
         checked_at: new Date().toISOString()
       };
-      connectionDetailResourceId = resource.id;
       if (selectedResourceId === resource.id) connectionCheck = failedCheck;
       resourceConnectionChecks = {
         ...resourceConnectionChecks,
@@ -2642,9 +2639,9 @@
       key: 'level',
       label: '级别',
       values: [
-        { value: 'platform', label: '平台级' },
-        { value: 'team', label: '团队级' },
-        { value: 'project', label: '项目级' }
+        { value: 'platform', label: '平台' },
+        { value: 'team', label: '团队' },
+        { value: 'project', label: '项目' }
       ]
     }
   ];
@@ -2801,7 +2798,6 @@
         {selectedResourceId}
         bind:selectedResourceIds
         {resourceConnectionChecks}
-        {connectionDetailResourceId}
         {busy}
         {connectionBusyResourceIds}
         {resourceCanManage}

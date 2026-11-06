@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConnectionTest from '../../components/ConnectionTest.svelte';
   import type { KubernetesConnectionMode } from './resourceWorkflow';
 
   export let resourceName = '';
@@ -26,5 +27,5 @@
   <div><span>连接凭据</span><strong>{isAgent && !connectionOverride ? '由 MCPServer 管理' : credentialConfigured ? '已配置' : '使用环境或默认配置'}</strong></div>
   <div><span>资源属性</span><strong>{labelsConfigured ? '已配置标签' : '未配置标签'}</strong></div>
   <div class="docker-tool-summary"><span>可用只读工具（{tools.length}）</span><div>{#each tools as tool}<code>{tool}</code>{/each}</div></div>
-  <div class="provider-test-summary"><span>连接核验</span>{#if testBusy}<strong>正在测试连接...</strong>{:else if testStatus === 'succeeded'}<strong class="success">连接正常 · {testLatency ?? 0} ms</strong><small>{testMessage}</small>{:else if testError}<strong class="failed">连接失败</strong><small>{testError}</small>{:else}<strong>尚未核验</strong><small>进入此步骤后自动执行连接测试。</small>{/if}</div>
+  <div class="provider-test-summary"><span>连接核验</span><ConnectionTest status={testError || testStatus === 'failed' ? 'failed' : testStatus === 'succeeded' ? 'succeeded' : ''} latencyMs={testLatency ?? 0} message={testError || testMessage} busy={testBusy} disabled showTime={false} showTooltip={false} /></div>
 </form>

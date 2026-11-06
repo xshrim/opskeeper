@@ -636,9 +636,18 @@
 }
 .application-identity-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) max-content;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
+}
+.application-identity-half {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+.application-labels-half {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 .critical-radio-field {
   display: grid;
@@ -846,6 +855,7 @@
   .runtime-choice-grid,
   .runtime-binding-fields-grid,
   .application-identity-row,
+  .application-identity-half,
   .owner-fields-row {
     grid-template-columns: 1fr;
   }

@@ -523,9 +523,9 @@
     return (
       (
         {
-          platform: '平台级',
-          team: '团队级',
-          project: '项目级',
+          platform: '平台',
+          team: '团队',
+          project: '项目',
           resource: '资源级'
         } as Record<string, string>
       )[type] ?? type
