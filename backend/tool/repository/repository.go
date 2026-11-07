@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,8 @@ type ConnectionInput struct {
 	Path           string        `json:"path,omitempty"`
 	URL            string        `json:"url,omitempty"`
 	Branch         string        `json:"branch,omitempty"`
+	Username       string        `json:"username,omitempty"`
+	Password       string        `json:"password,omitempty"`
 	TimeoutSeconds int           `json:"timeout_seconds,omitempty"`
 	StorageBackend string        `json:"storage_backend,omitempty"`
 	StorageKey     string        `json:"storage_key,omitempty"`
@@ -39,7 +42,6 @@ type ToolInfo struct{ Name, Description string }
 
 var tools = []ToolInfo{
 	{"repository_branches", "List repository branches."},
-	{"repository_checkout", "Switch the repository read branch."},
 	{"repository_status", "Read repository status and HEAD."},
 	{"repository_tree", "Read a bounded repository directory tree."},
 	{"repository_file", "Read a bounded repository file."},
@@ -49,44 +51,52 @@ var tools = []ToolInfo{
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
 func InputSchema(extra map[string]any) map[string]any {
-	p := map[string]any{"path": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}, "branch": map[string]any{"type": "string"}, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 300}, "storage_backend": map[string]any{"type": "string", "enum": []string{"local", "postgres", "s3"}}, "storage_key": map[string]any{"type": "string"}, "s3_endpoint": map[string]any{"type": "string"}, "s3_bucket": map[string]any{"type": "string"}, "s3_prefix": map[string]any{"type": "string"}}
+	p := map[string]any{"path": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}, "branch": map[string]any{"type": "string"}, "username": map[string]any{"type": "string"}, "password": map[string]any{"type": "string"}, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 300}, "storage_backend": map[string]any{"type": "string", "enum": []string{"local", "postgres", "s3"}}, "storage_key": map[string]any{"type": "string"}, "s3_endpoint": map[string]any{"type": "string"}, "s3_bucket": map[string]any{"type": "string"}, "s3_prefix": map[string]any{"type": "string"}}
 	for k, v := range extra {
 		p[k] = v
 	}
 	return map[string]any{"type": "object", "properties": p, "additionalProperties": false}
 }
 func command(ctx context.Context, in ConnectionInput, args ...string) ([]byte, error) {
-	if len(args) == 0 {
-		return nil, errors.New("git command is required")
-	}
-	timeout := time.Duration(in.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := repositoryContext(ctx, in)
 	defer cancel()
+	root, cleanup, _, err := openRepository(ctx, in, "")
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	return runGit(ctx, in, root, args...)
+}
+
+func openRepository(ctx context.Context, in ConnectionInput, revision string) (string, func(), string, error) {
+	if len(revision) > 256 || strings.HasPrefix(revision, "-") || strings.ContainsAny(revision, "\x00\r\n:") || strings.Contains(revision, "..") || strings.Contains(revision, "@{") {
+		return "", func() {}, "", errors.New("invalid repository revision")
+	}
 	root := strings.TrimSpace(in.Path)
 	cleanup := func() {}
-	defer func() { cleanup() }()
 	backend := strings.ToLower(strings.TrimSpace(in.StorageBackend))
 	if backend == "s3" {
 		var err error
 		root, cleanup, err = materializeS3(ctx, in)
 		if err != nil {
-			return nil, err
+			return "", func() {}, "", err
 		}
 	}
 	if backend == "postgres" {
 		var err error
 		root, cleanup, err = materializePostgres(ctx, in)
 		if err != nil {
-			return nil, err
+			return "", func() {}, "", err
 		}
 	}
 	if root == "" && strings.TrimSpace(in.URL) != "" {
+		parsed, err := url.Parse(strings.TrimSpace(in.URL))
+		if err != nil || ((parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.User != nil) {
+			return "", func() {}, "", errors.New("repository URL must not contain embedded credentials")
+		}
 		d, err := os.MkdirTemp("", "opskeeper-repository-")
 		if err != nil {
-			return nil, err
+			return "", func() {}, "", err
 		}
 		cleanup = func() { _ = os.RemoveAll(d) }
 		branch := strings.TrimSpace(in.Branch)
@@ -95,25 +105,58 @@ func command(ctx context.Context, in ConnectionInput, args ...string) ([]byte, e
 			clone = append(clone, "--branch", branch)
 		}
 		clone = append(clone, in.URL, d)
-		if out, err := exec.CommandContext(ctx, "git", clone...).CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("git clone: %w: %s", err, strings.TrimSpace(string(out)))
+		if _, err := runGit(ctx, in, d, clone...); err != nil {
+			cleanup()
+			return "", func() {}, "", fmt.Errorf("git clone: %w", err)
 		}
 		root = d
+		if revision != "" && revision != branch {
+			if _, err := runGit(ctx, in, root, "fetch", "--no-tags", "--depth=1", "origin", revision); err != nil {
+				cleanup()
+				return "", func() {}, "", fmt.Errorf("fetch repository revision: %w", err)
+			}
+			revision = "FETCH_HEAD"
+		}
 	}
 	if root == "" {
-		return nil, errors.New("repository path or url is required")
+		return "", func() {}, "", errors.New("repository path or url is required")
 	}
 	clean, err := filepath.Abs(filepath.Clean(root))
 	if err != nil {
-		return nil, err
+		cleanup()
+		return "", func() {}, "", err
 	}
-	root = clean
-	all := append([]string{"-C", root}, args...)
-	out, err := exec.CommandContext(ctx, "git", all...).CombinedOutput()
+	return clean, cleanup, revision, nil
+}
+
+func repositoryContext(ctx context.Context, in ConnectionInput) (context.Context, context.CancelFunc) {
+	timeout := time.Duration(in.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func runGit(ctx context.Context, in ConnectionInput, root string, args ...string) ([]byte, error) {
+	if len(args) == 0 {
+		return nil, errors.New("git command is required")
+	}
+	commandArgs := append([]string{"-C", root}, args...)
+	cmd := exec.CommandContext(ctx, "git", commandArgs...)
+	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+func gitCredentialEnvironment(in ConnectionInput) []string {
+	if in.Username == "" && in.Password == "" {
+		return nil
+	}
+	token := base64.StdEncoding.EncodeToString([]byte(in.Username + ":" + in.Password))
+	return []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + token}
 }
 
 func materializePostgres(ctx context.Context, in ConnectionInput) (string, func(), error) {
@@ -277,6 +320,10 @@ func ref(in ConnectionInput) string {
 	return "HEAD"
 }
 func Tree(ctx context.Context, in ConnectionInput, path string, limit int) ([]TreeEntry, error) {
+	return TreeAt(ctx, in, path, limit, "")
+}
+
+func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, revision string) ([]TreeEntry, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
@@ -284,11 +331,21 @@ func Tree(ctx context.Context, in ConnectionInput, path string, limit int) ([]Tr
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"ls-tree", "-r", "-l", ref(in)}
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	if selectedRevision == "" {
+		selectedRevision = ref(in)
+	}
+	args := []string{"ls-tree", "-r", "-l", selectedRevision}
 	if path != "" {
 		args = append(args, "--", path)
 	}
-	out, e := command(ctx, in, args...)
+	out, e := runGit(ctx, in, root, args...)
 	if e != nil {
 		return nil, e
 	}
@@ -308,6 +365,10 @@ func Tree(ctx context.Context, in ConnectionInput, path string, limit int) ([]Tr
 	return r, nil
 }
 func File(ctx context.Context, in ConnectionInput, path string, max int64) (string, error) {
+	return FileAt(ctx, in, path, max, "")
+}
+
+func FileAt(ctx context.Context, in ConnectionInput, path string, max int64, revision string) (string, error) {
 	path, e := safePath(path)
 	if e != nil {
 		return "", e
@@ -315,7 +376,17 @@ func File(ctx context.Context, in ConnectionInput, path string, max int64) (stri
 	if max <= 0 || max > 4<<20 {
 		max = 4 << 20
 	}
-	out, e := command(ctx, in, "show", ref(in)+":"+path)
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	root, cleanup, selectedRevision, e := openRepository(ctx, in, revision)
+	if e != nil {
+		return "", e
+	}
+	defer cleanup()
+	if selectedRevision == "" {
+		selectedRevision = ref(in)
+	}
+	out, e := runGit(ctx, in, root, "show", selectedRevision+":"+path)
 	if e != nil {
 		return "", e
 	}
@@ -328,6 +399,10 @@ func File(ctx context.Context, in ConnectionInput, path string, max int64) (stri
 	return string(out), nil
 }
 func Search(ctx context.Context, in ConnectionInput, q string, limit int) ([]map[string]any, error) {
+	return SearchAt(ctx, in, q, limit, "")
+}
+
+func SearchAt(ctx context.Context, in ConnectionInput, q string, limit int, revision string) ([]map[string]any, error) {
 	q = strings.TrimSpace(q)
 	if q == "" || len(q) > 256 {
 		return nil, errors.New("query is required and must be at most 256 characters")
@@ -335,29 +410,60 @@ func Search(ctx context.Context, in ConnectionInput, q string, limit int) ([]map
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	entries, err := Tree(ctx, in, "", 200)
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
 	if err != nil {
 		return nil, err
 	}
+	defer cleanup()
+	if selectedRevision == "" {
+		selectedRevision = ref(in)
+	}
+	output := &limitedBuffer{max: 2 << 20}
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "grep", "-z", "-n", "-F", "-I", "-e", q, selectedRevision, "--")
+	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
+	cmd.Stdout = output
+	cmd.Stderr = io.Discard
+	err = cmd.Run()
+	if err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			return nil, fmt.Errorf("git grep: %w", err)
+		}
+	}
 	result := []map[string]any{}
-	for _, entry := range entries {
+	fields := bytes.Split(output.Bytes(), []byte{0})
+	for i := 0; i+2 < len(fields); i += 3 {
 		if len(result) >= limit {
 			break
 		}
-		content, readErr := File(ctx, in, entry.Path, 1<<20)
-		if readErr != nil {
+		path := string(fields[i])
+		path = strings.TrimPrefix(path, selectedRevision+":")
+		lineNo, parseErr := strconv.Atoi(string(fields[i+1]))
+		if path == "" || parseErr != nil {
 			continue
 		}
-		for lineNo, line := range strings.Split(content, "\n") {
-			if strings.Contains(line, q) {
-				result = append(result, map[string]any{"path": entry.Path, "line": lineNo + 1, "text": line})
-				if len(result) >= limit {
-					break
-				}
-			}
-		}
+		result = append(result, map[string]any{"path": path, "line": lineNo, "text": strings.TrimSuffix(string(fields[i+2]), "\n")})
 	}
 	return result, nil
+}
+
+type limitedBuffer struct {
+	bytes.Buffer
+	max int
+}
+
+func (b *limitedBuffer) Write(value []byte) (int, error) {
+	remaining := b.max - b.Len()
+	if remaining > 0 {
+		if len(value) > remaining {
+			_, _ = b.Buffer.Write(value[:remaining])
+		} else {
+			_, _ = b.Buffer.Write(value)
+		}
+	}
+	return len(value), nil
 }
 func Metadata(ctx context.Context, in ConnectionInput) (map[string]any, error) {
 	rem, _ := command(ctx, in, "remote", "-v")

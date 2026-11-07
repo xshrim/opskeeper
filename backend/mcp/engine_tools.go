@@ -332,7 +332,7 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 			setString(key)
 		}
 	} else if strings.EqualFold(kind, "Repository") {
-		for _, key := range []string{"path", "url", "default_branch", "timeout_seconds", "storage_backend", "storage_key", "s3_endpoint", "s3_bucket", "s3_prefix"} {
+		for _, key := range []string{"path", "url", "default_branch", "username", "password", "timeout_seconds", "storage_backend", "storage_key", "s3_endpoint", "s3_bucket", "s3_prefix"} {
 			setString(key)
 		}
 	} else if strings.EqualFold(kind, "Kafka") {
@@ -453,7 +453,7 @@ func postgreSQLAgentSchema(raw json.RawMessage) json.RawMessage {
 }
 
 func repositoryAgentSchema(raw json.RawMessage) json.RawMessage {
-	return hideConnectionFields(raw, "path", "url", "default_branch", "timeout_seconds", "storage_backend", "storage_key", "s3_endpoint", "s3_bucket", "s3_prefix")
+	return hideConnectionFields(raw, "path", "url", "branch", "username", "password", "default_branch", "timeout_seconds", "storage_backend", "storage_key", "s3_endpoint", "s3_bucket", "s3_prefix")
 }
 
 func redisAgentSchema(raw json.RawMessage) json.RawMessage {

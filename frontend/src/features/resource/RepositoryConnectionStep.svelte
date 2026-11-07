@@ -1,9 +1,14 @@
 <script lang="ts">
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
+  import PasswordInput from '../../components/PasswordInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
   export let subtype = 'Git';
   export let url = '';
+  export let username = '';
+  export let password = '';
+  export let credentialConfigured = false;
+  export let editing = false;
   export let defaultBranch = 'main';
   export let storageBackend = 'postgres';
   export let localRoot = '';
@@ -27,7 +32,9 @@
   {#if subtype === 'Git'}
     <FormField label="Git 仓库 URL"><TextInput bind:value={url} placeholder="https://git.example.com/team/repo.git" /></FormField>
     <FormField label="默认分支"><TextInput bind:value={defaultBranch} placeholder="main" /></FormField>
-    <p class="muted">Git 仓库按需实时读取；认证信息会随资源加密保存。</p>
+    <FormField label="HTTPS 用户名（可选）"><TextInput bind:value={username} autocomplete="username" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} /></FormField>
+    <FormField label="HTTPS 密码或访问令牌（可选）"><PasswordInput bind:value={password} autocomplete="new-password" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} ariaLabel="Git HTTPS 密码或访问令牌" /></FormField>
+    <p class="muted">Git HTTPS 凭据加密保存；不要把凭据写入 URL。</p>
   {:else}
     <FormField label="Bundle 存储后端" asLabel={false}><DropdownSelect bind:value={storageBackend} options={storageOptions} ariaLabel="Bundle 存储后端" /></FormField>
     {#if storageBackend === 'local'}

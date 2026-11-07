@@ -33,15 +33,13 @@ type pathInput struct {
 	Path     string `json:"path,omitempty"`
 	MaxBytes int64  `json:"max_bytes,omitempty"`
 	Limit    int    `json:"limit,omitempty"`
+	Revision string `json:"revision,omitempty"`
 }
 type searchInput struct {
 	rt.ConnectionInput
-	Query string `json:"query"`
-	Limit int    `json:"limit,omitempty"`
-}
-type checkoutInput struct {
-	rt.ConnectionInput
-	Branch string `json:"branch"`
+	Query    string `json:"query"`
+	Limit    int    `json:"limit,omitempty"`
+	Revision string `json:"revision,omitempty"`
 }
 
 func RegisterTools(s *mcp.Server) {
@@ -58,20 +56,16 @@ func RegisterTools(s *mcp.Server) {
 		o, e := rt.Metadata(c, in.ConnectionInput)
 		return nil, o, e
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "repository_checkout", Description: "Switch the repository read branch.", InputSchema: rt.InputSchema(map[string]any{"branch": map[string]any{"type": "string"}})}, func(c context.Context, _ *mcp.CallToolRequest, in checkoutInput) (*mcp.CallToolResult, map[string]any, error) {
-		o, e := rt.Checkout(c, in.ConnectionInput, in.Branch)
+	mcp.AddTool(s, &mcp.Tool{Name: "repository_tree", Description: "Read a bounded repository directory tree.", InputSchema: rt.InputSchema(map[string]any{"path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}})}, func(c context.Context, _ *mcp.CallToolRequest, in pathInput) (*mcp.CallToolResult, []rt.TreeEntry, error) {
+		o, e := rt.TreeAt(c, in.ConnectionInput, in.Path, in.Limit, in.Revision)
 		return nil, o, e
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "repository_tree", Description: "Read a bounded repository directory tree.", InputSchema: rt.InputSchema(map[string]any{"path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}})}, func(c context.Context, _ *mcp.CallToolRequest, in pathInput) (*mcp.CallToolResult, []rt.TreeEntry, error) {
-		o, e := rt.Tree(c, in.ConnectionInput, in.Path, in.Limit)
+	mcp.AddTool(s, &mcp.Tool{Name: "repository_file", Description: "Read a bounded repository file.", InputSchema: rt.InputSchema(map[string]any{"path": map[string]any{"type": "string"}, "max_bytes": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}})}, func(c context.Context, _ *mcp.CallToolRequest, in pathInput) (*mcp.CallToolResult, string, error) {
+		o, e := rt.FileAt(c, in.ConnectionInput, in.Path, in.MaxBytes, in.Revision)
 		return nil, o, e
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "repository_file", Description: "Read a bounded repository file.", InputSchema: rt.InputSchema(map[string]any{"path": map[string]any{"type": "string"}, "max_bytes": map[string]any{"type": "integer"}})}, func(c context.Context, _ *mcp.CallToolRequest, in pathInput) (*mcp.CallToolResult, string, error) {
-		o, e := rt.File(c, in.ConnectionInput, in.Path, in.MaxBytes)
-		return nil, o, e
-	})
-	mcp.AddTool(s, &mcp.Tool{Name: "repository_search", Description: "Search text in repository files.", InputSchema: rt.InputSchema(map[string]any{"query": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}})}, func(c context.Context, _ *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, []map[string]any, error) {
-		o, e := rt.Search(c, in.ConnectionInput, in.Query, in.Limit)
+	mcp.AddTool(s, &mcp.Tool{Name: "repository_search", Description: "Search text in repository files.", InputSchema: rt.InputSchema(map[string]any{"query": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}})}, func(c context.Context, _ *mcp.CallToolRequest, in searchInput) (*mcp.CallToolResult, []map[string]any, error) {
+		o, e := rt.SearchAt(c, in.ConnectionInput, in.Query, in.Limit, in.Revision)
 		return nil, o, e
 	})
 }

@@ -57,7 +57,11 @@ export default defineConfig(({ command }) => {
         input: ['index.html', 'topology-style-options.html'],
         output: {
           manualChunks(id) {
-            if (id.includes('/src/features/')) return 'feature-pages';
+            const feature = id.match(/\/src\/features\/([^/]+)\//)?.[1];
+            if (feature && ['diagnosis', 'llm', 'persona', 'project', 'resource'].includes(feature)) {
+              return 'feature-workbench';
+            }
+            if (feature) return `feature-${feature}`;
             if (!id.includes('/node_modules/')) return undefined;
             if (id.includes('/node_modules/lucide-svelte/')) return 'vendor-icons';
             if (id.includes('/node_modules/simple-icons/')) return 'vendor-brands';

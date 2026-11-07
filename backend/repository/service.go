@@ -61,6 +61,9 @@ func NewServiceWithStorage(cfg StorageConfig, maxBytes int64, resources interfac
 	if cfg.Prefix == "" {
 		cfg.Prefix = "repositories"
 	}
+	if strings.TrimSpace(cfg.Backend) == "" {
+		cfg.Backend = "postgres"
+	}
 	return &Service{root: cfg.Root, maxBytes: maxBytes, resources: resources, storage: cfg}
 }
 func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size int64) (UploadResult, error) {
@@ -77,7 +80,11 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if item.Kind != "Repository" || !strings.EqualFold(item.Subtype, "Bundle") {
 		return UploadResult{}, errors.New("resource must be a Bundle Repository")
 	}
-	switch strings.ToLower(strings.TrimSpace(s.storage.Backend)) {
+	backend := strings.ToLower(strings.TrimSpace(stringConfig(item.Config, "storage_backend")))
+	if backend == "" {
+		backend = strings.ToLower(strings.TrimSpace(s.storage.Backend))
+	}
+	switch backend {
 	case "s3":
 		return s.uploadS3(ctx, id, r, size, item)
 	case "postgres":
@@ -103,7 +110,11 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if e = run(ctx, "bundle", "verify", tmpName); e != nil {
 		return UploadResult{}, e
 	}
-	repoDir := filepath.Join(s.root, id)
+	root := strings.TrimSpace(stringConfig(item.Config, "path"))
+	if root == "" {
+		root = s.root
+	}
+	repoDir := filepath.Join(root, id)
 	if e = os.MkdirAll(repoDir, 0700); e != nil {
 		return UploadResult{}, e
 	}
@@ -123,7 +134,9 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if e != nil {
 		return UploadResult{}, e
 	}
-	s.updateStorageConfig(ctx, id, item, "local", id, repoDir, nil)
+	if err := s.updateStorageConfig(ctx, id, item, "local", id, repoDir, nil); err != nil {
+		return UploadResult{}, err
+	}
 	return UploadResult{ResourceID: id, StorageKey: id, Branches: branches, ArchivedRefs: archived}, nil
 }
 
@@ -202,16 +215,18 @@ func (s *Service) finishUpload(ctx context.Context, id string, item resource.Res
 	if err != nil {
 		return UploadResult{}, err
 	}
-	s.updateStorageConfig(ctx, id, item, backend, key, "", nil)
+	if err := s.updateStorageConfig(ctx, id, item, backend, key, "", nil); err != nil {
+		return UploadResult{}, err
+	}
 	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
 }
 
-func (s *Service) updateStorageConfig(ctx context.Context, id string, item resource.Resource, backend, key, path string, extra map[string]string) {
+func (s *Service) updateStorageConfig(ctx context.Context, id string, item resource.Resource, backend, key, path string, extra map[string]string) error {
 	updater, ok := s.resources.(interface {
 		Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
 	})
 	if !ok {
-		return
+		return errors.New("repository resource storage metadata cannot be updated")
 	}
 	cfg := make(map[string]any, len(item.Config)+len(extra)+2)
 	for name, value := range item.Config {
@@ -229,15 +244,28 @@ func (s *Service) updateStorageConfig(ctx context.Context, id string, item resou
 	for name, value := range extra {
 		cfg[name] = value
 	}
-	_, _ = updater.Update(ctx, id, resource.UpdateInput{Config: &cfg})
+	if _, err := updater.Update(ctx, id, resource.UpdateInput{Config: &cfg}); err != nil {
+		return fmt.Errorf("update repository storage metadata: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int64, item resource.Resource) (UploadResult, error) {
-	client, err := s.s3Client()
+	cfg := s.storage
+	if value := stringConfig(item.Config, "s3_endpoint"); value != "" {
+		cfg.Endpoint = value
+	}
+	if value := stringConfig(item.Config, "s3_bucket"); value != "" {
+		cfg.Bucket = value
+	}
+	if value := stringConfig(item.Config, "s3_prefix"); value != "" {
+		cfg.Prefix = value
+	}
+	client, err := s3Client(cfg)
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if err := client.MakeBucket(ctx, s.storage.Bucket, minio.MakeBucketOptions{}); err != nil {
+	if err := client.MakeBucket(ctx, cfg.Bucket, minio.MakeBucketOptions{}); err != nil {
 		var exists minio.ErrorResponse
 		if !errors.As(err, &exists) || (exists.Code != "BucketAlreadyOwnedByYou" && exists.Code != "BucketAlreadyExists") {
 			return UploadResult{}, fmt.Errorf("create repository bucket: %w", err)
@@ -252,18 +280,40 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	if err = os.MkdirAll(repoDir, 0700); err != nil {
 		return UploadResult{}, err
 	}
-	key := s.objectKey(id)
+	key := objectKey(cfg.Prefix, id)
 	existing := filepath.Join(dir, "existing.bundle")
-	if obj, e := client.GetObject(ctx, s.storage.Bucket, key, minio.GetObjectOptions{}); e == nil {
-		f, ce := os.Create(existing)
-		if ce == nil {
-			_, ce = io.Copy(f, obj)
-			_ = f.Close()
+	if _, err := client.StatObject(ctx, cfg.Bucket, key, minio.StatObjectOptions{}); err == nil {
+		obj, err := client.GetObject(ctx, cfg.Bucket, key, minio.GetObjectOptions{})
+		if err != nil {
+			return UploadResult{}, fmt.Errorf("read existing repository bundle: %w", err)
 		}
-		_ = obj.Close()
-		if ce == nil {
-			_ = run(ctx, "init", "--bare", repoDir)
-			_ = run(ctx, "--git-dir", repoDir, "fetch", existing, "+refs/heads/*:refs/heads/*")
+		f, err := os.Create(existing)
+		if err != nil {
+			_ = obj.Close()
+			return UploadResult{}, err
+		}
+		_, copyErr := io.Copy(f, obj)
+		closeFileErr := f.Close()
+		closeObjectErr := obj.Close()
+		if copyErr != nil {
+			return UploadResult{}, fmt.Errorf("read existing repository bundle: %w", copyErr)
+		}
+		if closeFileErr != nil {
+			return UploadResult{}, closeFileErr
+		}
+		if closeObjectErr != nil {
+			return UploadResult{}, closeObjectErr
+		}
+		if err := run(ctx, "init", "--bare", repoDir); err != nil {
+			return UploadResult{}, err
+		}
+		if err := run(ctx, "--git-dir", repoDir, "fetch", existing, "+refs/heads/*:refs/heads/*"); err != nil {
+			return UploadResult{}, err
+		}
+	} else {
+		response := minio.ToErrorResponse(err)
+		if response.Code != "NoSuchKey" && response.Code != "NoSuchObject" {
+			return UploadResult{}, fmt.Errorf("check existing repository bundle: %w", err)
 		}
 	}
 	upload := filepath.Join(dir, "upload.bundle")
@@ -303,7 +353,7 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	if e != nil {
 		return UploadResult{}, e
 	}
-	_, e = client.PutObject(ctx, s.storage.Bucket, key, fh, stat.Size(), minio.PutObjectOptions{ContentType: "application/x-git-bundle"})
+	_, e = client.PutObject(ctx, cfg.Bucket, key, fh, stat.Size(), minio.PutObjectOptions{ContentType: "application/x-git-bundle"})
 	_ = fh.Close()
 	if e != nil {
 		return UploadResult{}, e
@@ -312,24 +362,32 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	if e != nil {
 		return UploadResult{}, e
 	}
-	s.updateStorageConfig(ctx, id, item, "s3", key, "", map[string]string{"s3_endpoint": s.storage.Endpoint, "s3_bucket": s.storage.Bucket, "s3_prefix": s.storage.Prefix})
+	if err := s.updateStorageConfig(ctx, id, item, "s3", key, "", map[string]string{"s3_endpoint": cfg.Endpoint, "s3_bucket": cfg.Bucket, "s3_prefix": cfg.Prefix}); err != nil {
+		return UploadResult{}, err
+	}
 	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
 }
-func (s *Service) objectKey(id string) string {
-	return strings.Trim(s.storage.Prefix, "/") + "/" + id + "/repository.bundle"
+func objectKey(prefix, id string) string {
+	return strings.Trim(prefix, "/") + "/" + id + "/repository.bundle"
 }
-func (s *Service) s3Client() (*minio.Client, error) {
-	if strings.TrimSpace(s.storage.Endpoint) == "" || strings.TrimSpace(s.storage.Bucket) == "" {
+
+func stringConfig(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return value
+}
+func s3Client(cfg StorageConfig) (*minio.Client, error) {
+	if strings.TrimSpace(cfg.Endpoint) == "" || strings.TrimSpace(cfg.Bucket) == "" {
 		return nil, errors.New("S3 endpoint and bucket are required")
 	}
-	endpoint := strings.TrimSpace(s.storage.Endpoint)
+	endpoint := strings.TrimSpace(cfg.Endpoint)
+	secure := cfg.UseSSL
 	if parsed, err := url.Parse(endpoint); err == nil && parsed.Host != "" {
 		endpoint = parsed.Host
 		if parsed.Scheme == "https" {
-			s.storage.UseSSL = true
+			secure = true
 		}
 	}
-	return minio.New(endpoint, &minio.Options{Creds: credentials.NewStaticV4(s.storage.AccessKey, s.storage.SecretKey, ""), Secure: s.storage.UseSSL, BucketLookup: minio.BucketLookupPath})
+	return minio.New(endpoint, &minio.Options{Creds: credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""), Secure: secure, BucketLookup: minio.BucketLookupPath})
 }
 
 func archiveHeads(ctx context.Context, dir string) ([]string, error) {
