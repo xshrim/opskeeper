@@ -392,7 +392,9 @@ func (r *Runtime) personaDelegationTools(parent context.Context, request Request
 			_ = sink(Event{ExecutionID: request.ExecutionID, Type: "persona.delegation.skipped", Status: StatusRunning, Payload: map[string]any{"persona_id": worker.PersonaID, "reason": "no selected resources match worker domain"}})
 			continue
 		}
-		name := uniqueModelToolName(fmt.Sprintf("delegate_%d_%s", index+1, sanitizeToolNamePart(worker.PersonaID)), usedNames)
+		// Persona IDs are internal database identities; keep them in the server
+		// binding only and expose an execution-local ordinal to the model.
+		name := uniqueModelToolName(fmt.Sprintf("delegate_%d", index+1), usedNames)
 		usedNames[name] = struct{}{}
 		workerProfile := worker
 		workerResourceIDs := append([]string(nil), resourceIDs...)

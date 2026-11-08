@@ -284,6 +284,7 @@ func (m *memoryStore) SetScopeShared(_ context.Context, _ string, shared bool) (
 func (*memoryStore) Delete(context.Context, string) error                      { return nil }
 func (m *memoryStore) Targets(context.Context, string) ([]Target, error)       { return m.targets, nil }
 func (*memoryStore) AddTarget(context.Context, string, string) (Target, error) { return Target{}, nil }
+func (*memoryStore) RemoveTarget(context.Context, string, string) error        { return nil }
 func (*memoryStore) Messages(context.Context, string, int) ([]Message, error)  { return nil, nil }
 func (m *memoryStore) AppendMessage(_ context.Context, id string, input AppendMessageInput) (Message, error) {
 	m.appended = input

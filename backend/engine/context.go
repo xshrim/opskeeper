@@ -116,6 +116,7 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 			if definition.ResourceID == "" {
 				definition.ResourceID = resource.ID
 			}
+			definition.ResourceName = resource.Name
 			if r.Registry != nil {
 				if err := r.Registry.Upsert(resource.ID, tool); err != nil {
 					return ResolvedContext{}, fmt.Errorf("register tool %s for context resource %s: %w", definition.Name, id, err)

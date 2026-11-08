@@ -22,6 +22,7 @@
   let dialogElement: HTMLDialogElement;
   let targetMaskStyle = '';
   let positionInitialized = false;
+  let userResized = false;
   let interaction:
     | { kind: 'drag'; pointerId: number; offsetX: number; offsetY: number }
     | {
@@ -84,6 +85,17 @@
       : null;
     const targetRect = target?.getBoundingClientRect();
     const currentRect = dialogElement.getBoundingClientRect();
+    if (preservePosition && userResized) {
+      setGeometry(
+        currentRect.left,
+        currentRect.top,
+        currentRect.width,
+        currentRect.height,
+        true,
+        true
+      );
+      return;
+    }
     let width = currentRect.width;
     if (targetRect && stretchTarget) {
       setGeometry(targetRect.left, targetRect.top, targetRect.width, targetRect.height, true, true, false);
@@ -146,6 +158,7 @@
 
   function handleResizePointerDown(event: PointerEvent, edge: 'left' | 'right') {
     const rect = dialogElement.getBoundingClientRect();
+    userResized = true;
     interaction = { kind: 'resize', pointerId: event.pointerId, edge, rect };
     dialogElement.setPointerCapture?.(event.pointerId);
     event.preventDefault();
@@ -211,7 +224,7 @@
       ? new ResizeObserver(() => requestAnimationFrame(() => positionDialog(true)))
       : null;
     resizeObserver?.observe(dialogElement);
-    const handleWindowResize = () => positionDialog();
+    const handleWindowResize = () => positionDialog(userResized);
     window.addEventListener('resize', handleWindowResize);
     window.addEventListener('scroll', updateTargetMask, true);
     return () => {

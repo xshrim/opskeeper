@@ -102,6 +102,9 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource engine.Context
 				ReadOnly: false,
 			},
 			Fn: func(runCtx context.Context, arguments map[string]any) (engine.ToolResult, error) {
+				if err := rejectInternalLocatorArguments(resource.Kind, arguments); err != nil {
+					return engine.ToolResult{}, err
+				}
 				callArguments, err := p.agentArguments(runCtx, resource, arguments)
 				if err != nil {
 					return engine.ToolResult{}, err
@@ -256,6 +259,9 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 	kind := strings.TrimSpace(contextResource.Kind)
 	if (!strings.EqualFold(kind, "Docker") && !strings.EqualFold(kind, "Kubernetes") && !strings.EqualFold(kind, "Host") && !strings.EqualFold(kind, "PostgreSQL") && !strings.EqualFold(kind, "MySQL") && !strings.EqualFold(kind, "Oracle") && !strings.EqualFold(kind, "OceanBase") && !strings.EqualFold(kind, "Redis") && !strings.EqualFold(kind, "Nacos") && !strings.EqualFold(kind, "Repository") && !strings.EqualFold(kind, "Kafka") && !strings.EqualFold(kind, "RabbitMQ") && !strings.EqualFold(kind, "Elasticsearch") && !strings.EqualFold(kind, "MinIO")) || !strings.EqualFold(strings.TrimSpace(contextResource.Subtype), "agent") {
 		return arguments, nil
+	}
+	if err := rejectInternalLocatorArguments(kind, arguments); err != nil {
+		return nil, err
 	}
 	requestedKubernetesContext, _ := arguments["context"].(string)
 	merged := make(map[string]any, len(arguments)+12)
@@ -438,6 +444,32 @@ func (p mcpContextProvider) agentArguments(ctx context.Context, contextResource 
 		}
 	}
 	return merged, nil
+}
+
+func rejectInternalLocatorArguments(kind string, arguments map[string]any) error {
+	fields := map[string]struct{}{}
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "docker":
+		for _, key := range []string{"container_id", "container_name"} {
+			fields[key] = struct{}{}
+		}
+	case "kubernetes":
+		for _, key := range []string{"namespace", "workload_name", "pod", "name", "node", "container_name"} {
+			fields[key] = struct{}{}
+		}
+	case "host":
+		fields["process_command_line"] = struct{}{}
+	}
+	for key := range fields {
+		value, ok := arguments[key].(string)
+		if !ok {
+			continue
+		}
+		if err := engine.RejectInternalIdentifier(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func dockerAgentSchema(raw json.RawMessage) json.RawMessage {

@@ -1740,7 +1740,7 @@
   </ModalDialog>
 {/if}
 {#if disableTarget}
-  <ModalDialog dialogClass="confirm-dialog" size="small" title={`禁用 ${disableTarget.ids.length} 个用户？`} description="禁用后用户将无法继续登录。" confirmLabel="确认禁用" busyLabel="正在处理" confirmVariant="danger" {busy} message={activeMessage} messageTone={activeMessageTone} closeOnBackdrop={false} onCancel={() => (disableTarget = null)} onConfirm={confirmDisable}>
+  <ModalDialog dialogClass="confirm-dialog" size="small" title={`禁用 ${disableTarget.ids.length} 个用户？`} description="禁用后用户将无法继续登录。" confirmLabel="确认禁用" busyLabel="正在处理" confirmVariant="danger" {busy} message={activeMessage} messageTone={activeMessageTone} closeOnBackdrop={false} resizable={false} onCancel={() => (disableTarget = null)} onConfirm={confirmDisable}>
     <p class="confirm-copy">用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。</p>
   </ModalDialog>
 {/if}

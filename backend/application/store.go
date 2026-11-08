@@ -516,8 +516,8 @@ func (s *store) ContextResourceIDs(ctx context.Context, scopeID, applicationID s
   ) relation ON relation.application_id=a.id
   JOIN resources r ON r.id=relation.target_resource_id
  WHERE a.id=$1::uuid AND p.scope_id=$2::uuid AND a.deleted_at IS NULL AND r.deleted_at IS NULL
-   AND resource_scope_contains(r.scope_id,p.scope_id)
- ORDER BY r.id`, []any{applicationID, scopeID}, ctx)
+   AND resource_scope_contains(r.scope_id,p.scope_id)`, []any{applicationID, scopeID}, ctx)
+	query += ` ORDER BY r.id::text`
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list application context resources: %w", err)
@@ -588,9 +588,38 @@ func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID st
 		return DiagnosticContext{}, err
 	}
 	return DiagnosticContext{
-		Application: DiagnosticApplication{ID: item.ID, ProjectID: item.ProjectID, Name: item.Name, Code: item.Code, Description: item.Description, RuntimeKind: item.RuntimeKind, Status: item.Status, Critical: item.Critical, Labels: cloneLabels(item.Labels)},
-		Project:     project, Resources: resources, Dependencies: dependencies, Dependents: dependents,
+		Application: DiagnosticApplication{
+			ID: item.ID, ProjectID: item.ProjectID, Name: item.Name, Code: item.Code, Icon: item.Icon,
+			Description: item.Description, RuntimeKind: item.RuntimeKind, Status: item.Status,
+			Critical: item.Critical, Labels: cloneLabels(item.Labels),
+			Instances: diagnosticInstances(item.Instances), ResourceDependencies: diagnosticDependencies(item.Dependencies),
+		},
+		Project: project, Resources: resources, Dependencies: dependencies, Dependents: dependents,
 	}, nil
+}
+
+func diagnosticInstances(items []Instance) []DiagnosticInstance {
+	result := make([]DiagnosticInstance, 0, len(items))
+	for _, item := range items {
+		result = append(result, DiagnosticInstance{
+			ID: item.ID, Name: item.Name, RuntimeKind: item.RuntimeKind, TargetResourceID: item.TargetResourceID,
+			TargetResourceName: item.TargetResourceName, TargetResourceKind: item.TargetResourceKind,
+			Selector: sanitizeInstanceSelector(item.RuntimeKind, item.Selector), Status: item.Status,
+		})
+	}
+	return result
+}
+
+func diagnosticDependencies(items []Dependency) []DiagnosticDependency {
+	result := make([]DiagnosticDependency, 0, len(items))
+	for _, item := range items {
+		result = append(result, DiagnosticDependency{
+			ID: item.ID, TargetResourceID: item.TargetResourceID, TargetResourceName: item.TargetResourceName,
+			TargetResourceKind: item.TargetResourceKind, DependencyKind: item.DependencyKind,
+			Binding: sanitizeBinding(item.DependencyKind, item.Binding), Required: item.Required, Status: item.Status,
+		})
+	}
+	return result
 }
 
 type diagnosticResourceMetadata struct {
@@ -848,7 +877,7 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
 	for _, app := range apps {
 		appIDs = append(appIDs, app.ID)
 		appSet[app.ID] = struct{}{}
-		nodes = append(nodes, TopologyNode{ID: app.ID, Kind: "application", Name: app.Name, ProjectID: projectID, ProjectName: project.Name, Metadata: map[string]any{"code": app.Code, "runtime_kind": app.RuntimeKind, "description": app.Description, "status": app.Status, "critical": app.Critical, "labels": app.Labels, "instance_count": len(app.Instances)}})
+		nodes = append(nodes, TopologyNode{ID: app.ID, Kind: "application", Name: app.Name, ProjectID: projectID, ProjectName: project.Name, Metadata: map[string]any{"code": app.Code, "icon": app.Icon, "runtime_kind": app.RuntimeKind, "description": app.Description, "status": app.Status, "critical": app.Critical, "labels": app.Labels, "instance_count": len(app.Instances)}})
 		edges = append(edges, TopologyEdge{ID: "contains:" + app.ID, SourceID: projectID, TargetID: app.ID, Relation: "contains"})
 	}
 	resourceQuery, resourceArgs := appendResourceScopeVisibility(`SELECT DISTINCT r.id::text,r.scope_id::text,r.name,r.kind,r.subtype,r.labels,
@@ -856,6 +885,7 @@ func (s *store) Topology(ctx context.Context, projectID string) (Topology, error
   FROM resources r
 	JOIN scopes resource_scope ON resource_scope.id=r.scope_id
 	JOIN projects current_project ON current_project.id=$2::uuid
+	-- Project resources are always topology nodes; visible platform/team resources need an explicit topology membership or application binding.
 	WHERE r.deleted_at IS NULL AND (r.scope_id=current_project.scope_id OR EXISTS (SELECT 1 FROM project_topology_resources topology_resource WHERE topology_resource.project_id=$2::uuid AND topology_resource.resource_id=r.id) OR EXISTS (SELECT 1 FROM application_instances i WHERE i.application_id=ANY($1::uuid[]) AND i.target_resource_id=r.id)
 		OR EXISTS (SELECT 1 FROM application_dependencies d WHERE d.application_id=ANY($1::uuid[]) AND d.target_resource_id=r.id))`, []any{appIDs, projectID}, ctx, "r")
 	resourceRows, err := s.pool.Query(ctx, resourceQuery, resourceArgs...)
@@ -1242,7 +1272,7 @@ func (s *store) workspaceResources(ctx context.Context, projectID string) ([]Rel
   SELECT project.scope_id FROM projects project WHERE project.id=$1::uuid
 ), project_resources AS (
   SELECT resource.id
-    FROM resources resource JOIN project_scope scope ON scope.scope_id=resource.scope_id
+    FROM resources resource JOIN project_scope scope ON resource_scope_contains(resource.scope_id,scope.scope_id)
    WHERE resource.deleted_at IS NULL
   UNION
   SELECT topology_resource.resource_id

@@ -965,6 +965,12 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 				inputSchema = &parsed
 			}
 			item, err := functiontool.New(functiontool.Config{Name: modelToolName, Description: definition.Description, InputSchema: inputSchema}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
+				if request.LocatorHints != nil {
+					args = ApplyLocatorHints(args, request.LocatorHints[definition.ResourceID])
+				}
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(definition.Name)), "docker_container_") {
+					args = NormalizeDockerLocatorArguments(args)
+				}
 				count := calls.Add(1)
 				if sharedBudget != nil {
 					sharedBudget.addToolCall()
@@ -1235,7 +1241,10 @@ func resolvedToolDefinitions(request Request) []ToolDefinition {
 func executionPrompt(request Request) (string, error) {
 	payload := make(map[string]any, len(request.Input)+3)
 	for key, value := range request.Input {
-		payload[key] = value
+		if isModelInternalIDField(key) {
+			continue
+		}
+		payload[key] = StripModelInternalIDs(value)
 	}
 	if request.Task != "" {
 		payload["task"] = request.Task
@@ -1250,7 +1259,7 @@ func executionPrompt(request Request) (string, error) {
 	// redacted and bounded by summarizeObservation because connector/MCP data
 	// is untrusted and may contain credentials or unexpectedly large payloads.
 	if request.ResolvedContext != nil && len(request.ResolvedContext.Facts) > 0 {
-		payload["environment_facts"] = summarizeObservation(request.ResolvedContext.Facts)
+		payload["environment_facts"] = StripModelInternalIDs(summarizeObservation(request.ResolvedContext.Facts))
 	}
 	if len(payload) == 0 {
 		return "请完成当前任务。", nil

@@ -132,7 +132,7 @@ export interface ApplicationRelation {
   target_application_id: string;
   target_application_name?: string;
   target_application_code?: string;
-  relation_kind: 'depends_on' | 'depended_by' | 'mutual' | string;
+  relation_kind: 'depends_on';
   status: string;
 }
 export interface Application {
@@ -1364,6 +1364,11 @@ export const api = {
     request<DiagnosisTarget>(
       `api/v1/diagnosis-sessions/${sessionId}/targets`,
       json({ resource_id: resourceId })
+    ),
+  removeDiagnosisTarget: (sessionId: string, resourceId: string) =>
+    request<void>(
+      `api/v1/diagnosis-sessions/${sessionId}/targets/${encodeURIComponent(resourceId)}`,
+      { method: 'DELETE' }
     ),
   askDiagnosis: (sessionId: string, body: {
     content: string;

@@ -2026,7 +2026,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      void testResourceConnection(created, false);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     } catch (error) {
       onError(describeError(error, '创建资源失败'));
@@ -2066,7 +2066,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      void testResourceConnection(created, false);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
       createdForWorkflow = created;
     });
@@ -2108,7 +2108,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      void testResourceConnection(created, false);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
       createdForWorkflow = created;
     });
@@ -2150,7 +2150,7 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Host 资源“${created.name}”已创建`);
-      void testResourceConnection(created, false);
+      await testResourceConnection(created, false);
       await loadResourceDetails(created.id);
       createdForWorkflow = created;
     });
@@ -2162,6 +2162,10 @@
     onError('');
     try {
       await operation();
+      const saved = resources.find((resource) => resource.id === selectedResourceId);
+      if (saved && resourceHasConnector(saved)) {
+        await testResourceConnection(saved, false);
+      }
     } catch (error) {
       onError(describeError(error, '操作失败'));
     } finally {
@@ -2211,7 +2215,6 @@
       resources = [created, ...resources];
       selectedResourceId = created.id;
       if (returnToConnection) {
-        void testResourceConnection(created, false);
         await loadMCPSnapshots(created.id);
         await loadResourceDetails(created.id);
         restoreMCPServerReturnContext(created.id);
@@ -2227,7 +2230,6 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`资源“${created.name}”已创建`);
-      void testResourceConnection(created, false);
       await loadResourceDetails(created.id);
     });
   }
@@ -2262,7 +2264,6 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`MCPServer“${updated.name}”已更新`);
-      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2301,7 +2302,6 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Docker 资源“${updated.name}”已更新`);
-      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2336,7 +2336,6 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Kubernetes 资源“${updated.name}”已更新`);
-      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }
@@ -2375,7 +2374,6 @@
       resourceAddMenuOpen = false;
       resourceAddStep = 1;
       onNotice(`Host 资源“${updated.name}”已更新`);
-      void testResourceConnection(updated, false);
       await loadResourceDetails(updated.id);
     });
   }

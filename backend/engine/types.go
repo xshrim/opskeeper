@@ -173,13 +173,16 @@ type Request struct {
 	Budget         Budget          `json:"budget,omitempty"`
 	Stream         bool            `json:"stream,omitempty"`
 
-	EventSink       EventSink             `json:"-"`
-	ResolvedContext *ResolvedContext      `json:"-"`
-	ToolGateway     *PolicyGateway        `json:"-"`
-	ResolvedPersona *Persona              `json:"-"`
-	InternalTools   []Tool                `json:"-"`
-	DelegationDepth int                   `json:"-"`
-	ObservationSink func(ToolObservation) `json:"-"`
+	EventSink       EventSink        `json:"-"`
+	ResolvedContext *ResolvedContext `json:"-"`
+	ToolGateway     *PolicyGateway   `json:"-"`
+	// LocatorHints are server-owned external object locators derived from the
+	// selected application's bindings. They are never serialized into prompts.
+	LocatorHints    map[string]map[string]any `json:"-"`
+	ResolvedPersona *Persona                  `json:"-"`
+	InternalTools   []Tool                    `json:"-"`
+	DelegationDepth int                       `json:"-"`
+	ObservationSink func(ToolObservation)     `json:"-"`
 }
 
 // ToolObservation is emitted after a generic context tool returns. Business

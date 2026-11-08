@@ -253,6 +253,27 @@ func (s *Service) AddTarget(ctx context.Context, sessionID, resourceID string) (
 	return item, nil
 }
 
+func (s *Service) RemoveTarget(ctx context.Context, sessionID, resourceID string) error {
+	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
+	if err != nil {
+		return err
+	}
+	if err := ensureSessionOwner(ctx, session); err != nil {
+		return err
+	}
+	if session.Status == StatusSucceeded || session.Status == StatusFailed || session.Status == StatusCancelled {
+		if _, err := s.store.Reopen(ctx, session.ID); err != nil {
+			return err
+		}
+	}
+	resourceID = strings.TrimSpace(resourceID)
+	if err := s.store.RemoveTarget(ctx, session.ID, resourceID); err != nil {
+		return err
+	}
+	_ = s.appendEvent(ctx, session.ID, CreateEventInput{Type: "target.removed", Payload: map[string]any{"resource_id": resourceID}})
+	return nil
+}
+
 func (s *Service) Ask(ctx context.Context, sessionID, content string) (Message, error) {
 	return s.AskMessage(ctx, sessionID, AppendMessageInput{Content: content})
 }

@@ -5,6 +5,7 @@
   import { Pencil, Trash2 } from 'lucide-svelte';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
   import ResourceTagList from '../../components/ResourceTagList.svelte';
+  import ScopeLevelBadge from '../../components/ScopeLevelBadge.svelte';
   import { labelTags } from '../../lib/labels';
   import { resourceHasConnector } from '../../lib/resources';
   import type { ConnectionCheck, Resource } from '../../lib/api';
@@ -34,8 +35,8 @@
     { key: 'scope', label: '级别', width: '58px' },
     { key: 'labels', label: '标签' },
     { key: 'application', label: '引用', width: '56px' },
-    { key: 'connection', label: '连接', width: '80px' },
-    { key: 'actions', label: '操作', width: '64px' }
+    { key: 'connection', label: '连接', width: '80px', className: 'resource-centered-column' },
+    { key: 'actions', label: '操作', width: '64px', className: 'resource-centered-column' }
   ];
 
   function endpointLabel(resource: Resource, resourceCheck: ConnectionCheck | null | undefined) {
@@ -71,7 +72,7 @@
     {:else if column.key === 'category'}
       <span class="resource-cell resource-category-cell">{#if resource.kind === 'MCPServer'}<strong>MCPServer</strong><small>{resourceSubtypeFor(resource)}</small>{:else}<strong>{resourceCategoryFor(resource)}</strong><small>{resourceSubtypeFor(resource)}</small>{/if}</span>
     {:else if column.key === 'scope'}
-      <span class="resource-cell resource-scope-cell"><strong class="scope-pill {scopeType(resource.scope_id)}">{resourceScopeLabel(resource)}</strong><small>{resourcePermissionLabel(resource)}</small></span>
+      <span class="resource-cell resource-scope-cell"><ScopeLevelBadge className="resource-scope-badge" type={scopeType(resource.scope_id) as 'platform' | 'team' | 'project'} label={resourceScopeLabel(resource)} /><small>{resourcePermissionLabel(resource)}</small></span>
     {:else if column.key === 'labels'}
       <ResourceTagList tags={labelTags(resource.labels)} />
     {:else if column.key === 'application'}

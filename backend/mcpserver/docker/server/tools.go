@@ -28,7 +28,7 @@ type ContainerInspectDTO = docker.ContainerInspectDTO
 type ContainerStatsDTO = docker.ContainerStatsDTO
 
 func RegisterTools(s *mcp.Server) {
-	mcp.AddTool(s, &mcp.Tool{Name: "docker_info", Description: "Read Docker Engine information.", InputSchema: docker.InputSchema(nil)}, func(ctx context.Context, _ *mcp.CallToolRequest, input DockerInfoInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(s, &mcp.Tool{Name: "docker_info", Description: "Read Docker Engine information only; this does not report any container's state or resource usage. For an application instance use docker_container_inspect or docker_container_stats.", InputSchema: docker.InputSchema(nil)}, func(ctx context.Context, _ *mcp.CallToolRequest, input DockerInfoInput) (*mcp.CallToolResult, any, error) {
 		output, err := docker.Info(ctx, input)
 		return nil, output, err
 	})
@@ -39,7 +39,7 @@ func RegisterTools(s *mcp.Server) {
 		output, err := docker.Images(ctx, input)
 		return nil, output, err
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "docker_containers", Description: "List Docker containers.", InputSchema: docker.InputSchema(map[string]any{
+	mcp.AddTool(s, &mcp.Tool{Name: "docker_containers", Description: "List Docker containers and their states. Use the returned id as container_id only when it is a hexadecimal Docker ID; use a returned Names value as container_name.", InputSchema: docker.InputSchema(map[string]any{
 		"all":     map[string]any{"type": "boolean", "description": "Include stopped containers."},
 		"limit":   map[string]any{"type": "integer", "description": "Maximum number of containers to return; 0 uses the Docker default and the maximum is 500."},
 		"filters": map[string]any{"type": "string", "description": "Optional comma-separated Docker filters in key:value or key=value format, for example status=running,label:app=web. Each item is split at its first separator."},
@@ -48,8 +48,8 @@ func RegisterTools(s *mcp.Server) {
 		return nil, output, err
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_logs", Description: "Read bounded, non-following logs from a Docker container.", InputSchema: docker.InputSchema(map[string]any{
-		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
-		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+		"container_id":   map[string]any{"type": "string", "description": "Docker container ID only (12 or 64 hexadecimal characters); never use a container name here."},
+		"container_name": map[string]any{"type": "string", "description": "Docker container name; use this field for names such as /opskeeper-postgres."},
 		"tail":           map[string]any{"type": "string", "description": "Number of lines requested from the end; defaults to 1000. Keyword filtering is applied first, then output is limited to the most recent 200 lines."},
 		"since":          map[string]any{"type": "string", "description": "Only show logs since this timestamp or duration."},
 		"until":          map[string]any{"type": "string", "description": "Only show logs until this timestamp."},
@@ -61,23 +61,23 @@ func RegisterTools(s *mcp.Server) {
 		return nil, output, err
 	})
 	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_file", Description: "Read a bounded regular file from a Docker container.", InputSchema: docker.InputSchema(map[string]any{
-		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
-		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+		"container_id":   map[string]any{"type": "string", "description": "Docker container ID only (12 or 64 hexadecimal characters); never use a container name here."},
+		"container_name": map[string]any{"type": "string", "description": "Docker container name; use this field for names such as /opskeeper-postgres."},
 		"path":           map[string]any{"type": "string", "description": "Absolute path of a regular file inside the container."},
 	})}, func(ctx context.Context, _ *mcp.CallToolRequest, input docker.ContainerFileInput) (*mcp.CallToolResult, any, error) {
 		output, err := docker.ContainerFile(ctx, input)
 		return nil, output, err
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_inspect", Description: "Inspect a Docker container.", InputSchema: docker.InputSchema(map[string]any{
-		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
-		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_inspect", Description: "Inspect one concrete Docker container instance, including its state and configuration. Use container_name for a human-readable name.", InputSchema: docker.InputSchema(map[string]any{
+		"container_id":   map[string]any{"type": "string", "description": "Docker container ID only (12 or 64 hexadecimal characters); never use a container name here."},
+		"container_name": map[string]any{"type": "string", "description": "Docker container name; use this field for names such as /opskeeper-postgres."},
 	})}, func(ctx context.Context, _ *mcp.CallToolRequest, input ContainerInspectInput) (*mcp.CallToolResult, any, error) {
 		output, err := docker.ContainerInspect(ctx, input)
 		return nil, output, err
 	})
-	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_stats", Description: "Read one snapshot of Docker container statistics.", InputSchema: docker.InputSchema(map[string]any{
-		"container_id":   map[string]any{"type": "string", "description": "Container ID or name; takes precedence over container_name."},
-		"container_name": map[string]any{"type": "string", "description": "Container name when container_id is omitted."},
+	mcp.AddTool(s, &mcp.Tool{Name: "docker_container_stats", Description: "Read one snapshot of CPU and memory statistics for one concrete Docker container instance. Use container_name for a human-readable name.", InputSchema: docker.InputSchema(map[string]any{
+		"container_id":   map[string]any{"type": "string", "description": "Docker container ID only (12 or 64 hexadecimal characters); never use a container name here."},
+		"container_name": map[string]any{"type": "string", "description": "Docker container name; use this field for names such as /opskeeper-postgres."},
 	})}, func(ctx context.Context, _ *mcp.CallToolRequest, input ContainerStatsInput) (*mcp.CallToolResult, any, error) {
 		output, err := docker.ContainerStats(ctx, input)
 		return nil, output, err

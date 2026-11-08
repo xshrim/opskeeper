@@ -37,6 +37,7 @@ import ReadonlyTable from '../../components/ReadonlyTable.svelte';
 import type { ReadonlyTableColumn } from '../../components/ReadonlyTable.svelte';
 import SearchInput from '../../components/SearchInput.svelte';
 import ScopeChip from '../../components/ScopeChip.svelte';
+import ScopeLevelBadge from '../../components/ScopeLevelBadge.svelte';
   import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog.svelte';
 import { labelTags } from '../../lib/labels';
 import { resourceCategoryFor, resourceCategoryIcon } from '../resource/resourceCatalog';
@@ -198,6 +199,7 @@ import {
     selectedApplicationIds = [];
     inspectedApplicationID = '';
     inspectedResourceIDs = null;
+    topologyMode = 'browse';
     void loadWorkspace(selectedProjectId);
   }
   $: if (!selectedProjectId) {
@@ -369,7 +371,6 @@ import {
     return names.length ? names.join('、') : '未配置';
   }
   async function loadWorkspace(id: string) {
-    topologyMode = 'browse';
     loadingWorkspace = true;
     loadingTopology = true;
     try {
@@ -781,7 +782,7 @@ import {
                           </div>
                           <div class="project-card-secondary-metrics" aria-label="项目运行统计">
                             <span><small>关联资源</small><strong>{project.summary.resources}</strong></span>
-                            <span><small>服务依赖</small><strong>{project.summary.dependencies}</strong></span>
+                            <span><small>关联</small><strong>{project.summary.dependencies}</strong></span>
                             <span><small>项目告警</small><strong class:warning={project.summary.alerts > 0}>{project.summary.alerts}</strong></span>
                           </div>
                         </div>
@@ -860,7 +861,7 @@ import {
       </div>
     </header>
     <div class="workspace-stats">
-      {#each [['应用', workspace?.summary.applications ?? 0, '应用和服务'], ['实例', workspace?.summary.instances ?? 0, '运行中的实例'], ['资源', workspace?.summary.resources ?? 0, '当前项目可见范围'], ['服务依赖', workspace?.summary.dependencies ?? 0, '暂未配置'], ['告警', workspace?.summary.alerts ?? 0, '待处理信号']] as stat}<div
+      {#each [['应用', workspace?.summary.applications ?? 0, '应用和服务'], ['实例', workspace?.summary.instances ?? 0, '运行中的实例'], ['资源', workspace?.summary.resources ?? 0, '当前项目可见范围'], ['关联', workspace?.summary.dependencies ?? 0, '暂未配置'], ['告警', workspace?.summary.alerts ?? 0, '待处理信号']] as stat}<div
           class="workspace-stat"
         >
           <span>{stat[0]}</span><strong>{stat[1]}</strong><small
@@ -1035,14 +1036,14 @@ import {
             <div class="side-panel-heading-copy">
               <Server size={17} />
               <h2>资源</h2>
-              <p>{inspectedApplicationID ? '当前应用关联的资源' : '本项目级资源及应用已关联资源'}</p>
+              <p>{inspectedApplicationID ? '当前应用关联的资源' : '本项目可见资源及应用已关联资源'}</p>
             </div>
           </div>
           {#each visibleWorkspaceResources as resource}<div
               class="resource-map-row"
             >
               <span class="resource-kind">{resource.kind}</span><span class="resource-map-copy"
-              ><strong>{resource.name}</strong></span><span class="resource-map-meta"><span class="resource-reference-count">被 {resource.application_reference_count} 个应用引用</span><span class={`scope-level-tag scope-${resource.scope_type}`}>{scopeLevelLabel(resource.scope_type)}</span></span
+              ><strong>{resource.name}</strong></span><span class="resource-map-meta"><span class="resource-reference-count">被 {resource.application_reference_count} 个应用依赖</span><ScopeLevelBadge type={resource.scope_type as 'platform' | 'team' | 'project'} label={scopeLevelLabel(resource.scope_type)} /></span
               >
             </div>{:else}<div class="detail-empty">暂无可见资源</div>{/each}
         </section>

@@ -40,7 +40,7 @@ export type ApplicationDraft = {
   technicalOwnerIds: string[];
   operationsOwnerIds: string[];
   dependencies?: Array<{ dependency_kind: string; target_resource_id: string; binding?: Record<string, string>; required?: boolean }>;
-  relations?: Array<{ target_application_id: string; relation_kind: 'depends_on' | 'depended_by' | 'mutual'; status?: string }>;
+  relations?: Array<{ target_application_id: string; relation_kind: 'depends_on'; status?: string }>;
   instances: ApplicationInstanceDraft[];
 };
 

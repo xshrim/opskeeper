@@ -23,7 +23,7 @@
   $: latency = latencyMs >= 1000 ? `${(latencyMs / 1000).toFixed(1)}s` : `${latencyMs}ms`;
   $: label = busy ? '测试中' : status === 'succeeded' ? `正常·${latency}` : status === 'failed' ? `异常·${detail}` : '未测试';
   $: tooltip = status === 'failed' ? `异常·${detail}` : tooltipText || '点击进行连接测试';
-  $: checkedTime = checkedAt ? relativeTime(checkedAt, now) : '尚未测试';
+  $: checkedTime = checkedAt ? relativeTime(checkedAt, now) : '-';
 
   function activate() {
     if (!disabled && !busy) onTest();
@@ -31,7 +31,7 @@
 
   function relativeTime(value: string, timestamp: number) {
     const checked = Date.parse(value);
-    if (!Number.isFinite(checked)) return '尚未测试';
+    if (!Number.isFinite(checked)) return '-';
     const elapsed = Math.max(timestamp - checked, 0);
     const minute = 60_000;
     const hour = 60 * minute;

@@ -76,7 +76,7 @@
   $: candidateOptions = candidates.map((candidate) => ({
     value: candidate.key,
     label: candidate.name,
-    meta: `${candidate.replicas} 个副本`,
+    meta: `${candidate.replicas} 个实例`,
     description: candidateDescription(candidate),
     tooltip: candidate.tooltip
   }));
@@ -263,7 +263,7 @@
         })) ?? [],
         relations: initialApplication?.relations.map((relation) => ({
           target_application_id: relation.target_application_id,
-          relation_kind: relation.relation_kind as 'depends_on' | 'depended_by' | 'mutual',
+          relation_kind: 'depends_on',
           status: relation.status
         })) ?? [],
         instances: candidate.instances.map((instance, index) => ({

@@ -666,13 +666,13 @@
   height: 23px;
   padding: 0;
   color: var(--diagnosis-muted);
-  background: var(--diagnosis-surface);
-  border: 1px solid var(--diagnosis-line);
+  background: transparent;
+  border: 0;
   border-radius: 4px;
 }
 .diagnosis-session-actions button:hover {
   color: var(--diagnosis-accent);
-  border-color: var(--diagnosis-accent);
+  background: transparent;
 }
 .diagnosis-empty {
   padding: 15px 8px;
@@ -1686,6 +1686,7 @@
   border: 0;
   outline: 0;
   resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.55;
 }
@@ -1696,6 +1697,7 @@
   max-height: 190px;
   padding: 12px 13px 8px;
   color: var(--diagnosis-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -1703,6 +1705,12 @@
   pointer-events: none;
 }
 .diagnosis-composer-shell { position: relative; }
+.diagnosis-composer-shell:focus-within > .diagnosis-composer-highlight {
+  visibility: hidden;
+}
+.diagnosis-composer-shell:focus-within > textarea {
+  color: var(--diagnosis-ink);
+}
 .composer-skill-token { color: var(--color-primary); font-weight: 600; }
 .composer-persona-token { color: var(--theme-text-warning); font-weight: 600; }
 .diagnosis-message-attachments {
@@ -1957,7 +1965,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.diagnosis-resource-title { display: flex; align-items: center; min-width: 0; gap: 5px; }.diagnosis-resource-title strong { min-width: 0; flex: 1; }.diagnosis-scope-tag { flex: none; padding: 1px 4px; color: var(--theme-fg-strong); border-radius: 3px; font-size: 8px; font-style: normal; line-height: 1.35; }.diagnosis-scope-tag.platform { color: var(--theme-info); background: color-mix(in srgb, var(--theme-info) 14%, var(--theme-bg-raised)); }.diagnosis-scope-tag.team { color: var(--theme-success); background: color-mix(in srgb, var(--theme-success) 14%, var(--theme-bg-raised)); }.diagnosis-scope-tag.project { color: var(--theme-accent); background: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-bg-raised)); }
+.diagnosis-resource-title { display: flex; align-items: center; min-width: 0; gap: 5px; }.diagnosis-resource-title strong { min-width: 0; flex: 1; }
 .diagnosis-resource-list-f strong {
   color: var(--diagnosis-ink);
   font-size: 10px;

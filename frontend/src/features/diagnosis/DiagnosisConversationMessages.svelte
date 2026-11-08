@@ -249,7 +249,7 @@
               </div>
               {#if message.role === 'user'}
                 <div class="diagnosis-user-actions">
-                  {#if isLastDiagnosisUser(index)}<button class="diagnosis-user-action edit-action" aria-label="编辑并重新发送" data-tooltip="编辑并重新发送" on:click={(event) => beginMessageEdit(message, event)}><Pencil size={13} /></button>{/if}
+                  {#if isLastDiagnosisUser(index)}<button class="diagnosis-user-action" aria-label="编辑并重新发送" data-tooltip="编辑并重新发送" on:click={(event) => beginMessageEdit(message, event)}><Pencil size={13} /></button>{/if}
                   <button class="diagnosis-user-action" aria-label="复制问题" data-tooltip="复制问题" on:click={() => copyDiagnosisMessage(message, false)}><Copy size={13} /></button>
                 </div>
               {/if}

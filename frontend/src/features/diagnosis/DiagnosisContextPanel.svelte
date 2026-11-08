@@ -7,6 +7,8 @@
     Application
   } from '../../lib/api';
   import ResourceBrandIcon from '../../components/ResourceBrandIcon.svelte';
+  import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
+  import ScopeLevelBadge from '../../components/ScopeLevelBadge.svelte';
   import Tabs from '../../components/Tabs.svelte';
   import SelectableList from '../../components/SelectableList.svelte';
 
@@ -76,8 +78,8 @@
       <div class="diagnosis-context-section-title"><strong>应用</strong><small>{diagnosisApplicationIds.length} 已选</small></div>
       <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选应用">
         {#each diagnosisApplications as application}
-          <label class:selected={diagnosisApplicationIds.includes(application.id)}>
-            <span class="diagnosis-resource-icon">⌘</span><span><span class="diagnosis-resource-title"><strong>{application.name}</strong><em class={`diagnosis-scope-tag ${applicationScopeType(application)}`}>{scopeLevelLabel(applicationScopeType(application))}</em></span><small>{applicationProjectName(application)} · {visibleResourceCount(application)} 个可用关联资源</small></span>
+            <label class:selected={diagnosisApplicationIds.includes(application.id)}>
+            <span class="diagnosis-resource-icon"><EntityBrandIcon kind="Application" fallback={application.icon || 'lucide:AppWindow'} size={16} /></span><span><span class="diagnosis-resource-title"><strong>{application.name}</strong><ScopeLevelBadge type={applicationScopeType(application) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(applicationScopeType(application))} /></span><small>{applicationProjectName(application)} · {visibleResourceCount(application)} 个可用关联资源</small></span>
             <input type="checkbox" checked={diagnosisApplicationIds.includes(application.id)} on:change={() => toggleDiagnosisApplication(application)} />
           </label>
         {:else}<p class="diagnosis-empty">当前项目没有可用于诊断的应用。</p>{/each}
@@ -91,16 +93,12 @@
           class:selected={diagnosisTargetIds.includes(resource.id)}
           ><span class="diagnosis-resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span
           ><span
-            ><span class="diagnosis-resource-title"><strong>{resource.name}</strong><em class={`diagnosis-scope-tag ${scopeType(resource.scope_id)}`}>{scopeLevelLabel(scopeType(resource.scope_id))}</em></span><small
+            ><span class="diagnosis-resource-title"><strong>{resource.name}</strong><ScopeLevelBadge type={scopeType(resource.scope_id) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(scopeType(resource.scope_id))} /></span><small
               >{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small
             ></span
           ><input
             type="checkbox"
             checked={diagnosisTargetIds.includes(resource.id)}
-            disabled={diagnosisApplicationIds.some((applicationID) => {
-              const application = diagnosisApplications.find((item) => item.id === applicationID);
-              return [...(application?.instances ?? []), ...(application?.dependencies ?? [])].some((item) => item.target_resource_id === resource.id);
-            })}
             on:change={() => toggleDiagnosisContext(resource.id)}
           /></label
         >

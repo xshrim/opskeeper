@@ -10,6 +10,7 @@ type DiagnosisSessionActions = {
     sessionID: string,
     resourceID: string
   ) => Promise<unknown>;
+  removeDiagnosisTarget: (sessionID: string, resourceID: string) => Promise<void>;
   askDiagnosis: (sessionID: string, body: {
     content: string;
     skill_id?: string;
@@ -197,6 +198,12 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
       options.updateState({
         targetIDs: state.targetIDs.filter((id) => id !== resourceID)
       });
+      if (state.selectedSessionID) {
+        void options.runAction(async () => {
+          await options.session.removeDiagnosisTarget(state.selectedSessionID, resourceID);
+          await options.refreshDiagnosis();
+        });
+      }
       return;
     }
     if (state.targetIDs.length >= 20) {

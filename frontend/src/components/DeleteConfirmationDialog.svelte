@@ -14,7 +14,7 @@
   $: confirmed = confirmation === name;
 </script>
 
-<ModalDialog {title} description="输入对象名称以确认删除。" size="small" dialogClass="confirm-dialog" confirmLabel="确认删除" busyLabel="正在删除" confirmVariant="danger" confirmDisabled={!confirmed} {busy} closeOnBackdrop={false} {onCancel} {onConfirm}>
+<ModalDialog {title} description="输入对象名称以确认删除。" size="small" dialogClass="confirm-dialog" confirmLabel="确认删除" busyLabel="正在删除" confirmVariant="danger" confirmDisabled={!confirmed} {busy} closeOnBackdrop={false} resizable={false} {onCancel} {onConfirm}>
   <p class="confirm-copy">{description}</p>
   {#if impact}<p class="confirm-impact">{impact}</p>{/if}
   <label class="delete-confirmation-field">输入 <strong>{name}</strong> 确认删除<TextInput bind:value={confirmation} ariaLabel={`输入 ${name} 确认删除`} autocomplete="off" /></label>

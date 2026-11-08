@@ -40,13 +40,13 @@ type ToolInfo struct {
 }
 
 var toolCatalog = []ToolInfo{
-	{Name: "docker_info", Description: "Read Docker Engine information."},
+	{Name: "docker_info", Description: "Read Docker Engine information only; this does not report any container's state or resource usage. For an application instance use docker_container_inspect or docker_container_stats."},
 	{Name: "docker_images", Description: "List Docker images."},
-	{Name: "docker_containers", Description: "List Docker containers."},
+	{Name: "docker_containers", Description: "List Docker containers and their states. Use returned ids only as container_id and returned Names values as container_name."},
 	{Name: "docker_container_logs", Description: "Read bounded, non-following logs from a Docker container."},
 	{Name: "docker_container_file", Description: "Read a bounded regular file from a Docker container."},
-	{Name: "docker_container_inspect", Description: "Inspect a Docker container with sensitive values removed."},
-	{Name: "docker_container_stats", Description: "Read one snapshot of Docker container statistics."},
+	{Name: "docker_container_inspect", Description: "Inspect one concrete Docker container instance with sensitive values removed. Use container_name for a human-readable name."},
+	{Name: "docker_container_stats", Description: "Read one snapshot of CPU and memory statistics for one concrete Docker container instance. Use container_name for a human-readable name."},
 }
 
 func AvailableTools() []ToolInfo {

@@ -43,6 +43,7 @@ type DiagnosisSessionAPI = {
     sessionID: string,
     resourceID: string
   ) => Promise<DiagnosisTarget>;
+  removeDiagnosisTarget?: (sessionID: string, resourceID: string) => Promise<void>;
   deleteDiagnosis: (id: string) => Promise<void>;
 };
 
@@ -449,6 +450,10 @@ export function createDiagnosisSessionController(
     return options.api.addDiagnosisTarget(sessionID, resourceID);
   }
 
+  function removeDiagnosisTarget(sessionID: string, resourceID: string) {
+    return options.api.removeDiagnosisTarget?.(sessionID, resourceID) ?? Promise.resolve();
+  }
+
   function deleteDiagnosis(sessionID: string) {
     return options.api.deleteDiagnosis(sessionID);
   }
@@ -461,6 +466,7 @@ export function createDiagnosisSessionController(
 
   return {
     addDiagnosisTarget,
+    removeDiagnosisTarget,
     askDiagnosis,
     close,
     deleteDiagnosis,

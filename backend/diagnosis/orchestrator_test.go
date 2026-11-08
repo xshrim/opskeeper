@@ -124,22 +124,25 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	}}, time.Second)
 	orchestrator.run(context.Background(), "session-1")
 
-	if captured.Input["application_id"] != "app-primary" {
-		t.Fatalf("application_id input = %#v", captured.Input["application_id"])
+	if _, exists := captured.Input["application_id"]; exists {
+		t.Fatalf("application_id must not be model input: %#v", captured.Input["application_id"])
 	}
-	if ids, ok := captured.Input["application_ids"].([]string); !ok || len(ids) != 2 {
-		t.Fatalf("application_ids input = %#v", captured.Input["application_ids"])
+	if _, exists := captured.Input["application_ids"]; exists {
+		t.Fatalf("application_ids must not be model input: %#v", captured.Input["application_ids"])
 	}
 	context, ok := captured.Input["application_context"].(map[string]any)
-	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || !strings.Contains(captured.Instruction, "不可信配置数据") {
+	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || strings.Contains(fmt.Sprint(context), "app-primary") || strings.Contains(fmt.Sprint(context), "db-1") || !strings.Contains(captured.Instruction, "不可信配置数据") {
 		t.Fatalf("application context/instruction missing: input=%#v instruction=%q", captured.Input, captured.Instruction)
 	}
 	focus, ok := captured.Input["application_resource_focus"].(applicationResourceFocusInput)
 	if !ok || len(focus.Resources) != 1 || focus.Resources[0].ResourceID != "db-1" || len(focus.Resources[0].Relations) != 1 || focus.Resources[0].Relations[0].Binding["database"] != "orders" {
 		t.Fatalf("application resource focus = %#v, want database relationship binding", captured.Input["application_resource_focus"])
 	}
-	if !strings.Contains(captured.Instruction, "优先围绕关系中的 binding") || !strings.Contains(captured.Instruction, "input_schema") {
+	if !strings.Contains(captured.Instruction, "内置 Skill：应用诊断") || !strings.Contains(captured.Instruction, "application_resource_focus") || !strings.Contains(captured.Instruction, "selector.container_name 只能传给 container_name") {
 		t.Fatalf("relationship-focused instruction missing: %q", captured.Instruction)
+	}
+	if captured.LocatorHints["db-1"]["database"] != "orders" {
+		t.Fatalf("locator hints = %#v, want server-side database binding", captured.LocatorHints)
 	}
 }
 
@@ -154,6 +157,21 @@ func TestBuildApplicationResourceFocusGroupsAndSortsRelationships(t *testing.T) 
 	}
 	if len(focus.Resources[1].Relations) != 2 || focus.Resources[1].Relations[0].ApplicationID != "app-a" || focus.Resources[1].Relations[1].ApplicationID != "app-b" {
 		t.Fatalf("relations = %#v, want deterministic application ordering", focus.Resources[1].Relations)
+	}
+}
+
+func TestBuildApplicationLocatorHintsDropsConflictingSelectors(t *testing.T) {
+	raw := json.RawMessage(`{"applications":[
+        {"application":{"id":"app-a","name":"Orders"},"resources":[{"id":"docker-1","name":"Docker","binding":{"container_name":"orders-api","namespace":"orders"}}]},
+        {"application":{"id":"app-b","name":"Billing"},"resources":[{"id":"docker-1","name":"Docker","binding":{"container_name":"billing-api","namespace":"orders"}}]},
+        {"application":{"id":"app-c","name":"Catalog"},"resources":[{"id":"docker-1","name":"Docker","binding":{"container_name":"catalog-api","namespace":"orders"}}]}
+    ]}`)
+	hints := buildApplicationLocatorHints(raw)
+	if _, ok := hints["docker-1"]["container_name"]; ok {
+		t.Fatalf("conflicting container selector must not be guessed: %#v", hints)
+	}
+	if hints["docker-1"]["namespace"] != "orders" {
+		t.Fatalf("non-conflicting selector should remain available: %#v", hints)
 	}
 }
 
@@ -461,6 +479,7 @@ func (s *recordingStore) Targets(context.Context, string) ([]Target, error) { re
 func (s *recordingStore) AddTarget(context.Context, string, string) (Target, error) {
 	return Target{}, nil
 }
+func (s *recordingStore) RemoveTarget(context.Context, string, string) error { return nil }
 func (s *recordingStore) Messages(context.Context, string, int) ([]Message, error) {
 	return s.messages, nil
 }

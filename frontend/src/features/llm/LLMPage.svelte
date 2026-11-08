@@ -16,6 +16,7 @@
   import FieldLabel from '../../components/FieldLabel.svelte';
   import IconPicker from '../../components/IconPicker.svelte';
   import SearchInput from '../../components/SearchInput.svelte';
+  import ScopeLevelBadge from '../../components/ScopeLevelBadge.svelte';
   import IconValue from '../../components/IconValue.svelte';
   import MessageBanner from '../../components/MessageBanner.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
@@ -264,9 +265,6 @@
   }
   function scopeLevelLabel(type: string) {
     return ({ platform: '平台', team: '团队', project: '项目' } as Record<string, string>)[type] ?? '当前级别';
-  }
-  function scopeBadgeClass(type: string) {
-    return ({ platform: 'scope-platform', team: 'scope-team', project: 'scope-project' } as Record<string, string>)[type] ?? 'scope-platform';
   }
   function providerScopeDropdownOptions(currentScopeId: string) {
     const scopes = providerManageScopeOptions.some((item) => item.id === currentScopeId)
@@ -1128,7 +1126,7 @@
             </span>
             <span class="provider-row-meta">
               <span>
-                <strong class={`scope-badge ${scopeBadgeClass(scopeType(provider.scope_id))}`}>{scopeLevelLabel(scopeType(provider.scope_id))}</strong>
+                <ScopeLevelBadge type={scopeType(provider.scope_id) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(scopeType(provider.scope_id))} />
                 <small>{providerPermissionLabel(provider)}</small>
               </span>
             </span>
@@ -2111,42 +2109,6 @@
     color: var(--theme-fg-muted);
     font-size: 10px;
     text-align: right;
-  }
-  .provider-row-meta strong {
-    color: var(--theme-fg-strong);
-    font-size: 11px;
-  }
-  .scope-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: auto;
-    min-width: 0;
-    min-height: 20px;
-    padding: 0 7px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 1;
-    white-space: nowrap;
-  }
-  .scope-badge.scope-platform {
-    color: var(--theme-scope-platform-fg);
-    background: var(--theme-scope-platform-bg);
-    border: 1px solid var(--theme-scope-platform-border);
-  }
-  .scope-badge.scope-team {
-    color: var(--theme-scope-team-fg);
-    background: var(--theme-scope-team-bg);
-    border: 1px solid var(--theme-scope-team-border);
-  }
-  .scope-badge.scope-project {
-    color: var(--theme-scope-project-fg);
-    background: var(--theme-scope-project-bg);
-    border: 1px solid var(--theme-scope-project-border);
-  }
-  .provider-row-meta strong.scope-badge {
-    min-height: 20px;
   }
   .provider-row-meta small {
     color: var(--theme-fg-muted);

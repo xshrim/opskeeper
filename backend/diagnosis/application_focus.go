@@ -2,6 +2,7 @@ package diagnosis
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -11,16 +12,18 @@ import (
 // snapshot; this index is deliberately shaped for choosing a resource tool
 // and its narrowest supported filter.
 type applicationResourceFocus struct {
-	ResourceID   string                        `json:"resource_id"`
+	// ResourceID is an internal join key. The model selects the already-bound
+	// tool by name and must not receive database identities as evidence.
+	ResourceID   string                        `json:"-"`
 	ResourceName string                        `json:"resource_name,omitempty"`
 	ResourceKind string                        `json:"resource_kind,omitempty"`
 	Relations    []applicationResourceRelation `json:"relations"`
 }
 
 type applicationResourceRelation struct {
-	ApplicationID   string         `json:"application_id"`
+	ApplicationID   string         `json:"-"`
 	ApplicationName string         `json:"application_name,omitempty"`
-	ProjectID       string         `json:"project_id,omitempty"`
+	ProjectID       string         `json:"-"`
 	ProjectName     string         `json:"project_name,omitempty"`
 	Relation        string         `json:"relation"`
 	RuntimeKind     string         `json:"runtime_kind,omitempty"`
@@ -32,27 +35,70 @@ type applicationResourceFocusInput struct {
 	Resources []applicationResourceFocus `json:"resources"`
 }
 
-type diagnosticApplicationContext struct {
-	Applications []diagnosticApplication `json:"applications"`
+// sanitizeModelJSON removes database identities from persisted context before
+// it is serialized into a model prompt. The typed diagnostic DTOs prevent IDs
+// for newly-created sessions; this recursive pass also protects sessions
+// created before that contract was tightened.
+func sanitizeModelJSON(raw json.RawMessage) (any, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	return stripInternalIDs(value), nil
 }
 
-type diagnosticApplication struct {
-	Application diagnosticApplicationInfo `json:"application"`
-	Project     diagnosticProjectInfo     `json:"project"`
-	Resources   []diagnosticResourceInfo  `json:"resources"`
+func stripInternalIDs(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		result := make([]any, 0, len(typed))
+		for _, item := range typed {
+			result = append(result, stripInternalIDs(item))
+		}
+		return result
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for key, item := range typed {
+			if isInternalIDField(key) {
+				continue
+			}
+			result[key] = stripInternalIDs(item)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
-type diagnosticApplicationInfo struct {
+func isInternalIDField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "id", "application_id", "application_ids", "project_id", "project_ids", "resource_id", "resource_ids", "target_resource_id", "target_resource_ids", "source_resource_id", "source_resource_ids", "instance_id", "instance_ids", "dependency_id", "dependency_ids", "relation_id", "relation_ids", "scope_id", "scope_ids":
+		return true
+	default:
+		return false
+	}
+}
+
+type rawApplicationResourceContext struct {
+	Applications []rawApplicationResourceApplication `json:"applications"`
+}
+
+type rawApplicationResourceApplication struct {
+	Application rawApplicationInfo `json:"application"`
+	Project     rawProjectInfo     `json:"project"`
+	Resources   []rawResourceInfo  `json:"resources"`
+}
+
+type rawApplicationInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-type diagnosticProjectInfo struct {
+type rawProjectInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-type diagnosticResourceInfo struct {
+type rawResourceInfo struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Kind        string         `json:"kind"`
@@ -62,8 +108,58 @@ type diagnosticResourceInfo struct {
 	Binding     map[string]any `json:"binding,omitempty"`
 }
 
+// buildApplicationLocatorHints creates a server-only mapping from the
+// database resource identity to the concrete object selectors configured on
+// an application instance. It is used to correct omitted or placeholder
+// model arguments immediately before a tool call; it is never model input.
+func buildApplicationLocatorHints(raw json.RawMessage) map[string]map[string]any {
+	var snapshot rawApplicationResourceContext
+	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &snapshot) != nil {
+		return nil
+	}
+	hints := make(map[string]map[string]any)
+	conflicts := make(map[string]map[string]struct{})
+	for _, selected := range snapshot.Applications {
+		for _, resource := range selected.Resources {
+			resourceID := strings.TrimSpace(resource.ID)
+			if resourceID == "" || len(resource.Binding) == 0 {
+				continue
+			}
+			if hints[resourceID] == nil {
+				hints[resourceID] = make(map[string]any)
+			}
+			for key, value := range resource.Binding {
+				if conflicts[resourceID] != nil {
+					if _, conflicted := conflicts[resourceID][key]; conflicted {
+						continue
+					}
+				}
+				current, exists := hints[resourceID][key]
+				if !exists || strings.TrimSpace(fmt.Sprint(current)) == "" {
+					hints[resourceID][key] = value
+					continue
+				}
+				// One runtime resource can host several application instances. Do
+				// not silently choose the first selector when bindings disagree;
+				// a wrong container/workload is worse than an explicit retry.
+				if fmt.Sprint(current) != fmt.Sprint(value) {
+					delete(hints[resourceID], key)
+					if conflicts[resourceID] == nil {
+						conflicts[resourceID] = make(map[string]struct{})
+					}
+					conflicts[resourceID][key] = struct{}{}
+				}
+			}
+		}
+	}
+	if len(hints) == 0 {
+		return nil
+	}
+	return hints
+}
+
 func buildApplicationResourceFocus(raw json.RawMessage) applicationResourceFocusInput {
-	var snapshot diagnosticApplicationContext
+	var snapshot rawApplicationResourceContext
 	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &snapshot) != nil {
 		return applicationResourceFocusInput{}
 	}

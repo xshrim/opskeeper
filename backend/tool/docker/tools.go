@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	dockerapi "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/mcpserver/docker/client"
 )
 
@@ -48,8 +49,8 @@ type ListContainersInput struct {
 
 type ContainerLogsInput struct {
 	client.ConnectionInput
-	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
-	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
+	ContainerID   string `json:"container_id,omitempty" jsonschema:"Docker container ID only (12 or 64 hexadecimal characters); never put a container name here."`
+	ContainerName string `json:"container_name,omitempty" jsonschema:"Docker container name, such as /opskeeper-postgres; use this for names instead of container_id."`
 	Tail          string `json:"tail,omitempty" jsonschema:"Number of lines requested from the end. Defaults to 1000; keyword filtering is applied before the final output is limited to the most recent 200 lines."`
 	Since         string `json:"since,omitempty" jsonschema:"Show logs since this timestamp or duration."`
 	Until         string `json:"until,omitempty" jsonschema:"Show logs until this timestamp."`
@@ -60,21 +61,21 @@ type ContainerLogsInput struct {
 
 type ContainerFileInput struct {
 	client.ConnectionInput
-	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
-	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
+	ContainerID   string `json:"container_id,omitempty" jsonschema:"Docker container ID only (12 or 64 hexadecimal characters); never put a container name here."`
+	ContainerName string `json:"container_name,omitempty" jsonschema:"Docker container name, such as /opskeeper-postgres; use this for names instead of container_id."`
 	Path          string `json:"path" jsonschema:"Absolute path of a regular file inside the container."`
 }
 
 type ContainerInspectInput struct {
 	client.ConnectionInput
-	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
-	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
+	ContainerID   string `json:"container_id,omitempty" jsonschema:"Docker container ID only (12 or 64 hexadecimal characters); never put a container name here."`
+	ContainerName string `json:"container_name,omitempty" jsonschema:"Docker container name, such as /opskeeper-postgres; use this for names instead of container_id."`
 }
 
 type ContainerStatsInput struct {
 	client.ConnectionInput
-	ContainerID   string `json:"container_id,omitempty" jsonschema:"Container ID or name. Optional when container_name is provided."`
-	ContainerName string `json:"container_name,omitempty" jsonschema:"Container name. Used when container_id is not provided."`
+	ContainerID   string `json:"container_id,omitempty" jsonschema:"Docker container ID only (12 or 64 hexadecimal characters); never put a container name here."`
+	ContainerName string `json:"container_name,omitempty" jsonschema:"Docker container name, such as /opskeeper-postgres; use this for names instead of container_id."`
 }
 
 type LogsOutput struct {
@@ -312,9 +313,15 @@ func ContainerStats(ctx context.Context, input ContainerStatsInput) (ContainerSt
 
 func resolveContainerIdentifier(containerID, containerName string) (string, error) {
 	if id := strings.TrimSpace(containerID); id != "" {
+		if err := engine.RejectInternalIdentifier("container_id", id); err != nil {
+			return "", err
+		}
 		return id, nil
 	}
 	if name := strings.TrimSpace(containerName); name != "" {
+		if err := engine.RejectInternalIdentifier("container_name", name); err != nil {
+			return "", err
+		}
 		return name, nil
 	}
 	return "", fmt.Errorf("container_id or container_name is required")

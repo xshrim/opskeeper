@@ -8,11 +8,14 @@ type Application struct {
 	// ProjectScopeID is used internally by authorization and diagnosis. It is
 	// deliberately omitted from the public representation because applications
 	// are always addressed through their project.
-	ProjectScopeID     string            `json:"-"`
-	Name               string            `json:"name"`
-	Code               string            `json:"code"`
-	Description        string            `json:"description"`
-	Icon               string            `json:"icon"`
+	ProjectScopeID string `json:"-"`
+	Name           string `json:"name"`
+	Code           string `json:"code"`
+	Description    string `json:"description"`
+	Icon           string `json:"icon"`
+	// RuntimeKind is the application's declared runtime family. Each instance
+	// repeats the same value so its binding can be validated and diagnosed in
+	// isolation.
 	RuntimeKind        string            `json:"runtime_kind"`
 	Status             string            `json:"status"`
 	ExternalUID        string            `json:"external_uid,omitempty"`
@@ -28,10 +31,12 @@ type Application struct {
 }
 
 type Instance struct {
-	ID                 string         `json:"id"`
-	ApplicationID      string         `json:"application_id"`
-	Name               string         `json:"name"`
-	RuntimeKind        string         `json:"runtime_kind"`
+	ID            string `json:"id"`
+	ApplicationID string `json:"application_id"`
+	Name          string `json:"name"`
+	RuntimeKind   string `json:"runtime_kind"`
+	// TargetResourceID identifies the runtime resource hosting this instance;
+	// it is not the external container, process, or workload locator.
 	TargetResourceID   string         `json:"target_resource_id"`
 	TargetResourceName string         `json:"target_resource_name,omitempty"`
 	TargetResourceKind string         `json:"target_resource_kind,omitempty"`
@@ -41,8 +46,10 @@ type Instance struct {
 }
 
 type Dependency struct {
-	ID                 string         `json:"id"`
-	ApplicationID      string         `json:"application_id"`
+	ID            string `json:"id"`
+	ApplicationID string `json:"application_id"`
+	// TargetResourceID identifies the associated business resource. The actual
+	// object inside that resource belongs in Binding.
 	TargetResourceID   string         `json:"target_resource_id"`
 	TargetResourceName string         `json:"target_resource_name,omitempty"`
 	TargetResourceKind string         `json:"target_resource_kind,omitempty"`
@@ -123,6 +130,9 @@ type TopologyEdge struct {
 // to a diagnosis run. It contains configuration facts only; live state still
 // comes from resource tools and observations.
 type DiagnosticContext struct {
+	// Resources is the session-facing index used to expose selectable runtime
+	// and dependency resources. The nested application fields retain the
+	// application topology and concrete bindings for model reasoning.
 	Application  DiagnosticApplication            `json:"application"`
 	Project      DiagnosticProject                `json:"project"`
 	Resources    []DiagnosticResource             `json:"resources"`
@@ -131,15 +141,43 @@ type DiagnosticContext struct {
 }
 
 type DiagnosticApplication struct {
-	ID          string            `json:"id"`
-	ProjectID   string            `json:"project_id"`
-	Name        string            `json:"name"`
-	Code        string            `json:"code"`
-	Description string            `json:"description,omitempty"`
-	RuntimeKind string            `json:"runtime_kind"`
-	Status      string            `json:"status"`
-	Critical    bool              `json:"critical"`
-	Labels      map[string]string `json:"labels,omitempty"`
+	ID                   string                 `json:"id"`
+	ProjectID            string                 `json:"project_id"`
+	Name                 string                 `json:"name"`
+	Code                 string                 `json:"code"`
+	Icon                 string                 `json:"icon,omitempty"`
+	Description          string                 `json:"description,omitempty"`
+	RuntimeKind          string                 `json:"runtime_kind"`
+	Status               string                 `json:"status"`
+	Critical             bool                   `json:"critical"`
+	Labels               map[string]string      `json:"labels,omitempty"`
+	Instances            []DiagnosticInstance   `json:"instances,omitempty"`
+	ResourceDependencies []DiagnosticDependency `json:"resource_dependencies,omitempty"`
+}
+
+// DiagnosticInstance and DiagnosticDependency are configuration facts for the
+// selected application. IDs are retained for server-side correlation and are
+// stripped before the snapshot is sent to a model.
+type DiagnosticInstance struct {
+	ID                 string         `json:"id"`
+	Name               string         `json:"name"`
+	RuntimeKind        string         `json:"runtime_kind"`
+	TargetResourceID   string         `json:"target_resource_id"`
+	TargetResourceName string         `json:"target_resource_name,omitempty"`
+	TargetResourceKind string         `json:"target_resource_kind,omitempty"`
+	Selector           map[string]any `json:"selector,omitempty"`
+	Status             string         `json:"status"`
+}
+
+type DiagnosticDependency struct {
+	ID                 string         `json:"id"`
+	TargetResourceID   string         `json:"target_resource_id"`
+	TargetResourceName string         `json:"target_resource_name,omitempty"`
+	TargetResourceKind string         `json:"target_resource_kind,omitempty"`
+	DependencyKind     string         `json:"dependency_kind"`
+	Binding            map[string]any `json:"binding,omitempty"`
+	Required           bool           `json:"required"`
+	Status             string         `json:"status"`
 }
 
 type DiagnosticProject struct {

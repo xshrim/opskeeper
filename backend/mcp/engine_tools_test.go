@@ -73,6 +73,23 @@ func TestKubernetesAgentContextArgumentOverridesResourceDefault(t *testing.T) {
 	}
 }
 
+func TestAgentLocatorArgumentsRejectInternalDatabaseIDs(t *testing.T) {
+	for _, test := range []struct {
+		kind string
+		args map[string]any
+	}{
+		{kind: "Docker", args: map[string]any{"container_id": "251683f4-d022-4153-886a-2eec581bf110"}},
+		{kind: "Kubernetes", args: map[string]any{"workload_name": "251683f4-d022-4153-886a-2eec581bf110"}},
+	} {
+		if err := rejectInternalLocatorArguments(test.kind, test.args); err == nil {
+			t.Fatalf("%s locator UUID was accepted", test.kind)
+		}
+	}
+	if err := rejectInternalLocatorArguments("Docker", map[string]any{"container_name": "orders-api"}); err != nil {
+		t.Fatalf("external Docker name rejected: %v", err)
+	}
+}
+
 func TestKubernetesAgentSchemaHidesConnectionAndKeepsContext(t *testing.T) {
 	raw := json.RawMessage(`{"type":"object","required":["kubeconfig","context","namespace"],"properties":{"kubeconfig":{"type":"string"},"context":{"type":"string"},"server":{"type":"string"},"token":{"type":"string"},"namespace":{"type":"string"}}}`)
 	var schema map[string]any

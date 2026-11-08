@@ -10,6 +10,7 @@
     MessageSquarePlus,
     Paperclip,
     Pencil,
+    FilePenLine,
     Plus,
     Send,
     Sparkles,
@@ -580,7 +581,6 @@
   }
 
   function toggleDiagnosisContext(resourceID: string) {
-    if (selectedApplicationResourceIDs.has(resourceID)) return;
     diagnosisCommands.toggleDiagnosisContext(resourceID);
   }
 
@@ -655,7 +655,7 @@
   $: diagnosisTargets = contextResources.filter((resource) => {
     if (activeScopeType === 'platform') return true;
     if (associatedDiagnosisResourceIDs.has(resource.id)) return true;
-    if (activeScopeType === 'project') return false;
+    if (activeScopeType === 'project') return resourceInActiveWorkspace(resource);
     return resource.scope_id !== platformScopeId && resourceInActiveWorkspace(resource);
   });
   $: selectedApplicationResourceIDs = new Set(
@@ -896,7 +896,7 @@
                 aria-label="重命名会话"
                 data-tooltip="重命名会话"
                 on:click|stopPropagation={() => renameDiagnosisSession(session)}
-                ><Pencil size={13} /></button
+                ><FilePenLine size={13} /></button
               ><button
                 class="delete-action"
                 aria-label="删除会话"

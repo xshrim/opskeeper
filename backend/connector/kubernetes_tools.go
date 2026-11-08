@@ -21,6 +21,9 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.Contex
 	}
 	register := func(name, description string, extra map[string]any, fn func(context.Context, kclient.ConnectionInput, map[string]any) (any, error)) {
 		add(name, description, directKubernetesSchema(extra), func(runCtx context.Context, args map[string]any) (engine.ToolResult, error) {
+			if err := rejectKubernetesInternalLocators(args); err != nil {
+				return engine.ToolResult{}, err
+			}
 			out, callErr := fn(runCtx, kubernetesToolConnection(connection, args), args)
 			if callErr != nil {
 				return engine.ToolResult{}, callErr
@@ -67,6 +70,19 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.Contex
 	register("kubernetes_health", "Check Kubernetes API health.", nil, func(c context.Context, connection kclient.ConnectionInput, _ map[string]any) (any, error) {
 		return kt.Health(c, connection)
 	})
+	return nil
+}
+
+func rejectKubernetesInternalLocators(arguments map[string]any) error {
+	for _, key := range []string{"namespace", "workload_name", "pod", "name", "node", "container_name"} {
+		value, ok := arguments[key].(string)
+		if !ok {
+			continue
+		}
+		if err := engine.RejectInternalIdentifier(key, value); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -2,8 +2,6 @@ package engine
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,12 +20,13 @@ var (
 )
 
 type ToolDefinition struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema,omitempty"`
-	Source      string          `json:"source,omitempty"`
-	ResourceID  string          `json:"resource_id,omitempty"`
-	ReadOnly    bool            `json:"read_only"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	Source       string          `json:"source,omitempty"`
+	ResourceID   string          `json:"resource_id,omitempty"`
+	ResourceName string          `json:"-"`
+	ReadOnly     bool            `json:"read_only"`
 }
 
 type ToolResult struct {
@@ -225,6 +224,12 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 		g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderID: call.ProviderID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: "tool_validation", Error: message, StartedAt: at, CompletedAt: at})
 		return ToolResult{}, err
 	}
+	if err := RejectModelInternalArguments(call.Arguments); err != nil {
+		return ToolResult{}, err
+	}
+	if err := RejectPlaceholderLocatorArguments(call.Arguments); err != nil {
+		return ToolResult{}, err
+	}
 	tool, ok := g.Registry.Get(call.ResourceID, call.Name)
 	if !ok {
 		err := fmt.Errorf("%w: %s", ErrToolNotFound, call.Name)
@@ -362,10 +367,12 @@ func buildToolBindings(definitions []ToolDefinition) []toolBinding {
 
 	bindings := make([]toolBinding, 0, len(valid))
 	used := make(map[string]struct{}, len(valid))
+	collisionIndexes := make(map[string]int)
 	for _, definition := range valid {
 		modelName := definition.Name
 		if nameCounts[definition.Name] > 1 {
-			modelName = collisionToolAlias(definition.Name, definition.ResourceID)
+			collisionIndexes[definition.Name]++
+			modelName = collisionToolAlias(definition.Name, definition.ResourceName, collisionIndexes[definition.Name])
 		}
 		// A malformed resolver may return the same name/resource more than once.
 		// Keep the declaration set valid even in that case; the registry's
@@ -377,23 +384,19 @@ func buildToolBindings(definitions []ToolDefinition) []toolBinding {
 	return bindings
 }
 
-func collisionToolAlias(name, resourceID string) string {
-	// Resource IDs are usually UUIDs and fit alongside the tool name. For
-	// longer IDs/names use a short digest so aliases stay within common model
-	// function-name limits (64 bytes) without sacrificing determinism.
-	resourcePart := sanitizeToolNamePart(resourceID)
-	alias := name + "__" + resourcePart
-	if len(alias) <= 64 {
-		return alias
+func collisionToolAlias(name, resourceName string, index int) string {
+	// Never put a database resource ID in a model-visible function name. The
+	// resource name helps the model choose among same-named tools; the ordinal
+	// remains the fallback when metadata is unavailable.
+	resourceName = sanitizeToolNamePart(resourceName)
+	suffix := fmt.Sprintf("__resource_%s", resourceName)
+	if resourceName == "" {
+		suffix = fmt.Sprintf("__resource_%d", index)
 	}
-	digest := sha256.Sum256([]byte(resourceID))
-	resourcePart = hex.EncodeToString(digest[:])[:10]
-	maxName := 64 - len("__") - len(resourcePart)
-	if maxName < 1 {
-		maxName = 1
+	if len(name)+len(suffix) > 64 {
+		name = truncateASCII(name, 64-len(suffix))
 	}
-	name = truncateASCII(name, maxName)
-	return name + "__" + resourcePart
+	return name + suffix
 }
 
 func uniqueModelToolName(name string, used map[string]struct{}) string {

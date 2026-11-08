@@ -87,7 +87,7 @@
   type ApplicationRelationDraft = {
     targetApplicationId: string;
     projectId?: string;
-    relationKind: 'depends_on' | 'depended_by' | 'mutual';
+    relationKind: 'depends_on';
   };
   const runtimeChoices: Array<{
     kind: ApplicationRuntimeKind;
@@ -257,7 +257,7 @@
       })),
       applicationRelations: (application.relations ?? []).map((relation) => ({
         targetApplicationId: relation.target_application_id,
-        relationKind: relation.relation_kind as ApplicationRelationDraft['relationKind']
+        relationKind: 'depends_on'
       }))
     };
   }
@@ -887,7 +887,7 @@
                   />
                 {/if}
                 <EntityBrandIcon kind="Application" fallback="lucide:AppWindow" size={17} />
-                <span><strong>{candidate.name}</strong><small><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{resourceNamesForCandidate(candidate)} · {candidate.replicas} 个副本</small></span>
+                <span><strong>{candidate.name}</strong><small><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{resourceNamesForCandidate(candidate)} · {candidate.replicas} 个实例</small></span>
               </button>
             {/each}
             {#if visibleCandidates.length === 0}<div class="application-candidate-empty"><Search size={15} />没有匹配的应用</div>{/if}
@@ -900,7 +900,7 @@
           {#if activeCandidate && activeDraft}
             <div class="kubernetes-application-heading">
               <IconPicker value={activeDraft.icon} onSelect={(value) => updateDraft(activeCandidate.key, 'icon', value)} ariaLabel="选择应用图标" />
-              <div><h3>{activeDraft.name || activeCandidate.name}</h3><p><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个副本 · {candidateLocator(activeCandidate)}</p></div>
+              <div><h3>{activeDraft.name || activeCandidate.name}</h3><p><ResourceBrandIcon resource={{ kind: runtimeLabel(runtimeKind) }} size={12} />{runtimeLabel(runtimeKind)} · {activeCandidate.replicas} 个实例 · {candidateLocator(activeCandidate)}</p></div>
               <span class="kubernetes-inclusion-state included">{initialApplication ? '编辑中' : '待新增'}</span>
             </div>
             <Tabs className="application-config-tabs" items={[{ value: 'basic', label: '基础信息' }, { value: 'bindings', label: '资源关联' }, { value: 'applications', label: '应用依赖' }]} value={applicationTab} onChange={(value) => (applicationTab = value as 'basic' | 'bindings' | 'applications')} ariaLabel="应用配置分区" />

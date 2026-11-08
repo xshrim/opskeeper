@@ -33,6 +33,10 @@ type diagnosisMessageAsker interface {
 	AskMessage(context.Context, string, diagnosis.AppendMessageInput) (diagnosis.Message, error)
 }
 
+type diagnosisTargetRemover interface {
+	RemoveTarget(context.Context, string, string) error
+}
+
 type diagnosisCanceller interface {
 	Cancel(context.Context, string) error
 }
@@ -97,6 +101,7 @@ func registerDiagnosisRoutes(router chi.Router, service diagnosisService, audito
 	router.Route("/diagnosis-sessions/{sessionID}", func(router chi.Router) {
 		router.With(guard(authorization.DiagnosisRead)).Get("/", h.get)
 		router.With(guard(authorization.DiagnosisStart)).Post("/targets", h.addTarget)
+		router.With(guard(authorization.DiagnosisStart)).Delete("/targets/{resourceID}", h.removeTarget)
 		router.With(guard(authorization.DiagnosisStart)).Post("/messages", h.ask)
 		router.With(guard(authorization.DiagnosisStart)).Post("/cancel", h.cancel)
 		router.With(guard(authorization.DiagnosisStart)).Delete("/", h.delete)
@@ -200,6 +205,20 @@ func (h diagnosisHandler) addTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	h.record(r, "diagnosis.target.add", "diagnosis_session", chi.URLParam(r, "sessionID"), "")
 	writeJSON(w, http.StatusCreated, item)
+}
+
+func (h diagnosisHandler) removeTarget(w http.ResponseWriter, r *http.Request) {
+	remover, ok := h.service.(diagnosisTargetRemover)
+	if !ok {
+		writeError(w, r, http.StatusNotImplemented, "target_remove_unavailable", "Diagnosis target removal is unavailable")
+		return
+	}
+	if err := remover.RemoveTarget(r.Context(), chi.URLParam(r, "sessionID"), chi.URLParam(r, "resourceID")); err != nil {
+		writeDiagnosisError(w, r, err)
+		return
+	}
+	h.record(r, "diagnosis.target.remove", "diagnosis_session", chi.URLParam(r, "sessionID"), "")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h diagnosisHandler) ask(w http.ResponseWriter, r *http.Request) {

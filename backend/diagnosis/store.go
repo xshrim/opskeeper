@@ -21,6 +21,7 @@ type Store interface {
 	Delete(context.Context, string) error
 	Targets(context.Context, string) ([]Target, error)
 	AddTarget(context.Context, string, string) (Target, error)
+	RemoveTarget(context.Context, string, string) error
 	Messages(context.Context, string, int) ([]Message, error)
 	AppendMessage(context.Context, string, AppendMessageInput) (Message, error)
 	CreatePlan(context.Context, string, string, []PlanStep) (Plan, error)
@@ -158,6 +159,17 @@ func (s *store) AddTarget(ctx context.Context, sessionID, resourceID string) (Ta
 		return Target{}, mapStoreError(err)
 	}
 	return item, nil
+}
+
+func (s *store) RemoveTarget(ctx context.Context, sessionID, resourceID string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM diagnosis_targets WHERE session_id=$1::uuid AND resource_id=$2::uuid`, sessionID, resourceID)
+	if err != nil {
+		return mapStoreError(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *store) Messages(ctx context.Context, sessionID string, limit int) ([]Message, error) {
