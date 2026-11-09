@@ -1,5 +1,6 @@
 UPDATE resource_schemas
 SET schema = jsonb_set(
+  jsonb_set(
     jsonb_set(
       jsonb_set(
         jsonb_set(
@@ -16,12 +17,13 @@ SET schema = jsonb_set(
       'true'::jsonb,
       true
     ),
-        '{properties,s3_bucket,readOnly}',
-        'true'::jsonb,
-        true
-      ),
-      '{properties,s3_prefix,readOnly}',
-      'true'::jsonb,
-      true
+    '{properties,s3_bucket,readOnly}',
+    'true'::jsonb,
+    true
+  ),
+  '{properties,s3_prefix,readOnly}',
+  'true'::jsonb,
+  true
+)
 WHERE kind = 'Repository'
   AND schema ? 'properties';
