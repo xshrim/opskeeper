@@ -86,6 +86,24 @@ func TestCreateValidatesProjectAndCode(t *testing.T) {
 	}
 }
 
+func TestDiagnosticBindingsExcludeUnauthorizedResources(t *testing.T) {
+	allowed := map[string]diagnosticResourceMetadata{"runtime-1": {Name: "host", Kind: "Host"}}
+	instances := diagnosticInstances([]Instance{
+		{ID: "instance-1", TargetResourceID: "runtime-1"},
+		{ID: "instance-2", TargetResourceID: "hidden-runtime"},
+	}, allowed)
+	if len(instances) != 1 || instances[0].ID != "instance-1" {
+		t.Fatalf("diagnostic instances = %#v, want only authorized binding", instances)
+	}
+	dependencies := diagnosticDependencies([]Dependency{
+		{ID: "dependency-1", TargetResourceID: "runtime-1"},
+		{ID: "dependency-2", TargetResourceID: "hidden-resource"},
+	}, allowed)
+	if len(dependencies) != 1 || dependencies[0].ID != "dependency-1" {
+		t.Fatalf("diagnostic dependencies = %#v, want only authorized binding", dependencies)
+	}
+}
+
 func TestDiagnosticCandidatesUseDiagnosisScopeFilter(t *testing.T) {
 	store := &testStore{candidates: []Application{{ID: "app-1", Name: "Orders"}}}
 	service := NewService(store)
@@ -275,5 +293,32 @@ func TestUpdateRejectsChangingRuntimeWhileInstancesRemain(t *testing.T) {
 	instances := []CreateInstanceInput{{Name: "primary", TargetResourceID: "docker-1", Selector: map[string]any{"container_name": "orders"}}}
 	if _, err := s.UpdateInProject(context.Background(), "project-1", "application-1", UpdateInput{RuntimeKind: &runtimeKind, Instances: &instances}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("UpdateInProject() error = %v, want invalid runtime change", err)
+	}
+}
+
+func TestPrepareCreateInputNormalizesRepositoryDirectory(t *testing.T) {
+	prepared, err := PrepareCreateInput(CreateInput{
+		ProjectID: "project-1", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost,
+		Instances:    []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}},
+		Dependencies: []CreateDependencyInput{{TargetResourceID: "repo-1", DependencyKind: "repository", Binding: map[string]any{"path": "services\\orders\\"}}},
+	})
+	if err != nil {
+		t.Fatalf("PrepareCreateInput() error = %v", err)
+	}
+	if got := prepared.Dependencies[0].Binding["directory"]; got != "services/orders" {
+		t.Fatalf("repository directory = %#v, want services/orders", got)
+	}
+	if _, exists := prepared.Dependencies[0].Binding["path"]; exists {
+		t.Fatal("legacy repository path should be canonicalized to directory")
+	}
+	for _, directory := range []string{"/services/orders", "../orders", "services/../../orders", "services\x00orders"} {
+		_, err := PrepareCreateInput(CreateInput{
+			ProjectID: "project-1", Name: "Orders", Code: "orders-api", RuntimeKind: RuntimeHost,
+			Instances:    []CreateInstanceInput{{Name: "primary", RuntimeKind: RuntimeHost, TargetResourceID: "host-1", Selector: map[string]any{"process_command_line": "orders"}}},
+			Dependencies: []CreateDependencyInput{{TargetResourceID: "repo-1", DependencyKind: "repository", Binding: map[string]any{"directory": directory}}},
+		})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("directory %q error = %v, want invalid", directory, err)
+		}
 	}
 }

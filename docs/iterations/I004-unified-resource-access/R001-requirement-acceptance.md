@@ -301,19 +301,20 @@ Docker 公共工具迁移、Direct 适配器和 MCP Server 薄适配器已在 T0
 - 使用 OceanBase Oracle 模式的 MySQL Wire 端口验证 `obconnector-go` 路径。
 - 使用 OceanBase Oracle 模式的 TNS 端口验证 `go-ora` 路径与 Service Name 要求。
 
-Application T06、PostgreSQL T07、Redis T08 和 Nacos T09 验收通过；三项资源的专用前端创建/编辑、连接测试、总结核验和详情展示均已验证。Repository T10 的 local Bundle 和工具链已完成，但 S3 后端及标准 Git clone/pull 服务尚未完成，因此 T10 当前为部分完成，I004-R001 仍处于实施中。
+Application T06、PostgreSQL T07、Redis T08 和 Nacos T09 验收通过；三项资源的专用前端创建/编辑、连接测试、总结核验和详情展示均已验证。Repository T10 的 Git/Bundle 工具链和 PostgreSQL 默认存储已完成，S3 仍是由启动环境变量选择的可选部署后端；标准 Git clone/pull 服务尚未提供。
 
 ## 8.3 T10 Repository 工具集统一验收
 
 ### 实施内容
 
-- Repository 保留 `Git`、`Bundle` 两种子类型：Git 按需实时读取远端仓库，Bundle 通过 `.bundle` 上传到 OpsKeeper；资源目录继续按统一 Direct/Agent 样式展示。
+- Repository 保留 `Git`、`Bundle` 两种子类型：Git 和 Bundle 均按需读取，第一次工具调用为当前 Engine 执行创建固定源码快照，Bundle 通过 `.bundle` 上传到 OpsKeeper；资源目录继续按统一 Direct/Agent 样式展示。
 - 新增 `backend/tool/repository` 公共只读工具：`repository_branches`、`repository_checkout`、`repository_status`、`repository_tree`、`repository_file`、`repository_search`、`repository_metadata`。工具固定使用受控 Git 参数，限制分支、路径、文件大小、搜索结果和执行超时，不开放任意 Shell/Git 命令。
 - Connector Direct Provider 和 Repository MCP Server 使用同名工具；Agent 资源通过 `agent_ref` 发现远端 MCP 工具，连接字段由服务端注入，Direct/Agent 不互相回退。
 - 新增 `POST /api/v1/resources/{resourceID}/bundle` multipart 上传 API，并在 Repository 详情页提供文件上传控件。服务端执行 `git bundle verify`，导入 bare 仓库；同名分支用强制 ref 更新覆盖，新分支自动追加，串行锁保证并发上传不会破坏仓库。
-- 前端新增 Repository 专用创建/编辑流程：Git 配置 URL/默认分支，Bundle 配置 local/S3 后端及对应参数，均提供独立的配置校验和总结核验步骤；编辑已有 Repository 时会回填配置，Bundle 文件上传仍在详情页提供。
-- 新增 Repository 存储配置：`OPSK_REPOSITORY_STORAGE_BACKEND=local|s3`、`OPSK_REPOSITORY_LOCAL_ROOT`、`OPSK_REPOSITORY_S3_ENDPOINT`、`OPSK_REPOSITORY_S3_BUCKET`、`OPSK_REPOSITORY_S3_PREFIX`、`OPSK_REPOSITORY_S3_ACCESS_KEY`、`OPSK_REPOSITORY_S3_SECRET_KEY`、`OPSK_REPOSITORY_S3_USE_SSL`、`OPSK_REPOSITORY_MAX_BUNDLE_BYTES`。默认 local，上传大小默认上限 512 MiB；S3 通过 S3-compatible API 实际读写 Bundle 对象。
-- 0040 迁移将 Repository Schema 切换为 v2，移除旧敏感字段模型；上传成功后回写 `path/storage_key`，供 AI 诊断工具稳定读取仓库内容。
+- 前端新增 Repository 专用创建/编辑流程：Git 配置 URL/默认分支和按需凭据，Bundle 仅选择上传方式；Bundle 存储后端由 API 启动环境变量决定，创建/编辑页不提供存储选择，文件上传仍在详情页提供。
+- 新增 Repository 存储配置：`OPSK_REPOSITORY_STORAGE_BACKEND=local|postgres|s3`、`OPSK_REPOSITORY_LOCAL_ROOT`、`OPSK_REPOSITORY_S3_ENDPOINT`、`OPSK_REPOSITORY_S3_BUCKET`、`OPSK_REPOSITORY_S3_PREFIX`、`OPSK_REPOSITORY_S3_ACCESS_KEY`、`OPSK_REPOSITORY_S3_SECRET_KEY`、`OPSK_REPOSITORY_S3_USE_SSL`、`OPSK_REPOSITORY_MAX_BUNDLE_BYTES`。默认 `postgres`，上传大小默认上限 512 MiB；Bundle 存储后端仅由 API 进程启动环境变量决定，资源新增和编辑不提供选择。S3 通过 S3-compatible API 实际读写 Bundle 对象。
+- 0040 迁移将 Repository Schema 切换为 v2，移除旧敏感字段模型；上传成功后由服务端回写 `storage_backend/storage_key`，路径和外部存储参数不再由资源配置决定，供 AI 诊断工具稳定读取仓库内容。
+- 代码仓库工具实现绑定到单次 Engine 执行，不使用共享 Registry 保存会话级 directory binding；应用关联的 `revision`/`branch` 由服务端注入，源码快照在执行结束后清理，避免并发诊断串用目录或源码版本。
 
 ### 验证步骤和结果
 

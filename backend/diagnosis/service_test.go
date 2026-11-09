@@ -172,6 +172,28 @@ func TestServiceKeepsPrivateSessionsWithTheirCreator(t *testing.T) {
 	}
 }
 
+func TestServiceSharedSnapshotRequiresResourceReadForTargets(t *testing.T) {
+	store := &memoryStore{
+		session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("owner-1"), ScopeShared: true, Status: StatusSucceeded},
+		targets: []Target{{SessionID: "session-1", ResourceID: "resource-1"}},
+	}
+	service := NewService(store, fakeResources{items: map[string]resource.Resource{
+		"resource-1": {ID: "resource-1", ScopeID: "scope-1"},
+	}}, nil)
+	noRead := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "reader-1", ScopeIDs: []string{"scope-1"}})
+	noRead = authorization.WithResourceUseFilter(noRead, authorization.ResourceFilter{SubjectID: "reader-1"})
+	noRead = authorization.WithResourceReadFilter(noRead, authorization.ResourceFilter{SubjectID: "reader-1"})
+	if _, err := service.Get(noRead, "session-1"); !errors.Is(err, authorization.ErrForbidden) {
+		t.Fatalf("shared snapshot without resource read error = %v, want ErrForbidden", err)
+	}
+	read := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{SubjectID: "reader-1", ScopeIDs: []string{"scope-1"}, ResourceIDs: []string{"resource-1"}})
+	read = authorization.WithResourceUseFilter(read, authorization.ResourceFilter{SubjectID: "reader-1"})
+	read = authorization.WithResourceReadFilter(read, authorization.ResourceFilter{SubjectID: "reader-1", ResourceIDs: []string{"resource-1"}})
+	if _, err := service.Get(read, "session-1"); err != nil {
+		t.Fatalf("shared snapshot with resource read error = %v", err)
+	}
+}
+
 func TestServiceListsSessionsForCurrentActor(t *testing.T) {
 	store := &memoryStore{session: Session{ID: "session-1", ScopeID: "scope-1", ActorUserID: testActor("owner-1")}}
 	service := NewService(store, fakeResources{}, nil)

@@ -112,9 +112,9 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	// Timeline events are best-effort; failure must not stop the diagnosis run.
 	_ = o.appendEvent(ctx, session.ID, CreateEventInput{Type: "phase.changed", Payload: map[string]any{"phase": StatusPlanning}})
-	plan, err := o.store.CreatePlan(ctx, session.ID, "由 Engine 统一处理对话；仅在用户选择并授权资源时加载上下文和调用工具。", []PlanStep{
+	plan, err := o.store.CreatePlan(ctx, session.ID, "由 Engine 统一处理对话；资源工具和范围查询工具都只按当前授权与问题需要加载。", []PlanStep{
 		{Phase: "plan", Status: "succeeded", Title: "确定执行范围", Detail: "已固定会话 Scope、模型以及用户提交的上下文选择。"},
-		{Phase: "collect", Status: "pending", Title: "按需加载上下文", Detail: "仅对已授权且已选择的资源注册只读工具；普通问题可不调用工具。"},
+		{Phase: "collect", Status: "pending", Title: "按需加载上下文", Detail: "仅对已授权资源和范围查询注册只读工具；普通问题可不调用工具。"},
 		{Phase: "verify", Status: "pending", Title: "核验工具结果", Detail: "工具返回内容作为不可信输入，回答应区分事实与推断。"},
 		{Phase: "summarize", Status: "pending", Title: "生成回答", Detail: "由 Engine 按当前对话和可用上下文生成自然语言回答。"},
 	})
@@ -184,10 +184,15 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	if len(targetIDs) > 0 {
 		instruction = "你是 OpsKeeper AI 助手。用户选择了受控资源；仅在问题需要时调用可用的只读工具，并清楚区分工具事实、推断和待验证内容。"
 	}
-	if session.ApplicationID != "" {
+	hasApplicationContext := session.ApplicationID != "" || len(session.ApplicationIDs) > 0 || len(session.ApplicationContext) > 0 && string(session.ApplicationContext) != "{}" && string(session.ApplicationContext) != "null"
+	if hasApplicationContext {
 		instruction += " 当前诊断绑定了已选择的应用；请按内置 Skill：应用诊断理解 application_context、application.instances、resource_dependencies、dependencies/dependents 和 application_resource_focus，并只使用实际授权的工具。"
 	}
-	instruction = buildResponseInstructionFor(instruction, session.ApplicationID != "")
+	scopeTools := o.diagnosticScopeTools(ctx, session.ScopeID)
+	if len(scopeTools) > 0 {
+		instruction += " 范围信息不预先展开到上下文；需要团队、项目、应用清单或应用关系时，使用 diagnosis_scope_teams、diagnosis_scope_projects、diagnosis_scope_applications 和 diagnosis_application_context 按需查询。"
+	}
+	instruction = buildResponseInstructionFor(instruction, hasApplicationContext || len(scopeTools) > 0)
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
@@ -248,13 +253,20 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	input := map[string]any{"question": diagnosisMessageContent(latestMessage), "conversation": conversation}
 	if len(session.ApplicationContext) > 0 && string(session.ApplicationContext) != "null" {
 		if applicationContext, sanitizeErr := sanitizeModelJSON(session.ApplicationContext); sanitizeErr == nil {
+			if envelope, ok := applicationContext.(map[string]any); ok {
+				if _, exists := envelope["scope_context"]; exists {
+					// Legacy sessions may contain a full platform tree. Scope data is
+					// now queried on demand, so never replay that potentially huge tree.
+					delete(envelope, "scope_context")
+				}
+			}
 			input["application_context"] = applicationContext
 			if focus := buildApplicationResourceFocus(session.ApplicationContext); len(focus.Resources) > 0 {
 				input["application_resource_focus"] = focus
 			}
 		}
 	}
-	result, err := o.engine.Execute(ctx, engine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, ProviderID: session.ProviderID, ModelName: session.ModelName, Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: engine.ContextRequest{ResourceIDs: targetIDs}, LocatorHints: buildApplicationLocatorHints(session.ApplicationContext), SkillID: latestMessage.SkillID, PersonaID: latestMessage.PersonaID, Input: input, Budget: engine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event engine.Event) error {
+	result, err := o.engine.Execute(ctx, engine.Request{ExecutionID: diagnosisExecutionID(session.ID), ActorID: dereference(session.ActorUserID), ScopeID: session.ScopeID, ProviderID: session.ProviderID, ModelName: session.ModelName, Purpose: engine.PurposeDiagnosis, Profile: engine.ProfileInteractive, Instruction: instruction, Messages: engineMessages, Context: engine.ContextRequest{ResourceIDs: targetIDs, ResourceBindings: buildApplicationResourceBindings(session.ApplicationContext)}, LocatorHints: buildApplicationLocatorHints(session.ApplicationContext), SkillID: latestMessage.SkillID, PersonaID: latestMessage.PersonaID, Input: input, InternalTools: scopeTools, Budget: engine.Budget{MaxIterations: 100, MaxToolCalls: 100, MaxTokens: 1000000, MaxOutputBytes: 64 << 10, Timeout: o.timeout}, Stream: true, EventSink: func(event engine.Event) error {
 		if event.Type == "assistant.delta" {
 			if text, ok := event.Payload["text"].(string); ok && text != "" {
 				assistantMu.Lock()

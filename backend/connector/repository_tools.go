@@ -6,14 +6,54 @@ import (
 	"fmt"
 	a "opskeeper/backend/engine"
 	rt "opskeeper/backend/tool/repository"
+	"path/filepath"
 	"strings"
 )
 
-func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (a.ToolResult, error))) error {
+func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (a.ToolResult, error)), setCleanup func(func() error)) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
 		return fmt.Errorf("Repository agent resources must use the MCP provider")
 	}
-	in := rt.ConnectionInput{Path: stringValue(item.Config, "path"), URL: stringValue(item.Config, "url"), Branch: stringValue(item.Config, "default_branch"), TimeoutSeconds: intValue(item.Config, "timeout_seconds"), StorageBackend: stringValue(item.Config, "storage_backend"), StorageKey: stringValue(item.Config, "storage_key"), S3Endpoint: stringValue(item.Config, "s3_endpoint"), S3Bucket: stringValue(item.Config, "s3_bucket"), S3Prefix: stringValue(item.Config, "s3_prefix"), Postgres: s.postgresPool}
+	backend := ""
+	if strings.EqualFold(strings.TrimSpace(item.Subtype), "bundle") {
+		backend = s.repositoryStorage.Backend
+		if backend == "" {
+			backend = "postgres"
+		}
+	}
+	storageKey := stringValue(item.Config, "storage_key")
+	path, s3Endpoint, s3Bucket, s3Prefix := "", "", "", ""
+	url, branch := "", ""
+	if strings.EqualFold(strings.TrimSpace(item.Subtype), "git") {
+		url = stringValue(item.Config, "url")
+		branch = stringValue(item.Config, "default_branch")
+	}
+	if strings.EqualFold(strings.TrimSpace(item.Subtype), "bundle") {
+		if s.repositoryStorage.Root != "" && backend == "local" && storageKey != "" {
+			path = filepath.Join(s.repositoryStorage.Root, storageKey)
+		}
+		if s.repositoryStorage.Endpoint != "" {
+			s3Endpoint = s.repositoryStorage.Endpoint
+		}
+		if s.repositoryStorage.Bucket != "" {
+			s3Bucket = s.repositoryStorage.Bucket
+		}
+		if s.repositoryStorage.Prefix != "" {
+			s3Prefix = s.repositoryStorage.Prefix
+		}
+	}
+	in := rt.ConnectionInput{Path: path, URL: url, Branch: branch, TimeoutSeconds: intValue(item.Config, "timeout_seconds"), StorageBackend: backend, StorageKey: storageKey, S3Endpoint: s3Endpoint, S3Bucket: s3Bucket, S3Prefix: s3Prefix, S3AccessKey: s.repositoryStorage.AccessKey, S3SecretKey: s.repositoryStorage.SecretKey, S3UseSSL: s.repositoryStorage.UseSSL, Postgres: s.postgresPool}
+	if item.Binding != nil {
+		in.Directory = stringValue(item.Binding, "directory")
+		if strings.TrimSpace(in.Directory) == "" {
+			in.Directory = stringValue(item.Binding, "path")
+		}
+		if revision := stringValue(item.Binding, "revision"); revision != "" {
+			in.PinnedRevision = revision
+		} else if branch := stringValue(item.Binding, "branch"); branch != "" {
+			in.Branch = branch
+		}
+	}
 	secret, configured, err := s.resourceSecret(ctx, item.ID)
 	if err != nil {
 		return fmt.Errorf("read Repository credential: %w", err)
@@ -28,6 +68,10 @@ func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextReso
 		}
 		in.Username, in.Password = credential.Username, credential.Password
 	}
+	snapshot := rt.NewSnapshot(in)
+	if setCleanup != nil {
+		setCleanup(snapshot.Close)
+	}
 	register := func(name, desc string, schema json.RawMessage, fn func(context.Context, map[string]any) (any, error)) {
 		add(name, desc, schema, func(c context.Context, args map[string]any) (a.ToolResult, error) {
 			v, e := fn(c, args)
@@ -40,23 +84,23 @@ func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextReso
 	for _, t := range rt.ListTools() {
 		switch t.Name {
 		case "repository_branches":
-			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return rt.Branches(c, in) })
+			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Branches(c) })
 		case "repository_status":
-			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return rt.Status(c, in) })
+			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Status(c) })
 		case "repository_tree":
 			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return rt.TreeAt(c, in, stringArg(a, "path"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+				return snapshot.Tree(c, stringArg(a, "path"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
 			})
 		case "repository_file":
 			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "max_bytes": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return rt.FileAt(c, in, stringArg(a, "path"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
+				return snapshot.File(c, stringArg(a, "path"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
 			})
 		case "repository_search":
 			register(t.Name, t.Description, repoSchema(map[string]any{"query": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return rt.SearchAt(c, in, stringArg(a, "query"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+				return snapshot.Search(c, stringArg(a, "query"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
 			})
 		case "repository_metadata":
-			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return rt.Metadata(c, in) })
+			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Metadata(c) })
 		}
 	}
 	return nil

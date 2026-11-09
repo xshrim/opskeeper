@@ -39,6 +39,7 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 		return nil, nil, fmt.Errorf("resource kind changed while resolving context")
 	}
 	tools := make([]engine.Tool, 0, 4)
+	var cleanup func() error
 	add := func(name, description string, schema json.RawMessage, fn func(context.Context, map[string]any) (engine.ToolResult, error)) {
 		tools = append(tools, engine.ToolFunc{Def: engine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
@@ -107,7 +108,7 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 			return nil, nil, err
 		}
 	case "Repository":
-		if err := p.service.resolveRepositoryTools(ctx, resource, add); err != nil {
+		if err := p.service.resolveRepositoryTools(ctx, resource, add, func(value func() error) { cleanup = value }); err != nil {
 			return nil, nil, err
 		}
 	case "Kafka":
@@ -117,6 +118,14 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 	case "Elasticsearch":
 		if err := p.service.resolveElasticsearchTools(ctx, resource, add); err != nil {
 			return nil, nil, err
+		}
+	}
+	if cleanup != nil {
+		for i, tool := range tools {
+			if item, ok := tool.(engine.ToolFunc); ok {
+				item.CloseFn = cleanup
+				tools[i] = item
+			}
 		}
 	}
 	facts := make([]engine.ContextFact, 0, 1)

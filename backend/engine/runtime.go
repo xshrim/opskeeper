@@ -221,6 +221,7 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 			return result, resolveErr
 		}
 		request.ResolvedContext = &resolved
+		defer resolved.close()
 		if r.gateway != nil {
 			request.ToolGateway = r.gateway
 		}
@@ -334,7 +335,7 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 }
 
 func filterPersonaDomain(resolved ResolvedContext, domain string) *ResolvedContext {
-	filtered := &ResolvedContext{}
+	filtered := &ResolvedContext{implementations: make(map[string]Tool)}
 	resourceIDs := make(map[string]struct{})
 	for _, resource := range resolved.Resources {
 		if personaDomainMatches(domain, resource.Kind) {
@@ -345,6 +346,9 @@ func filterPersonaDomain(resolved ResolvedContext, domain string) *ResolvedConte
 	for _, tool := range resolved.Tools {
 		if _, ok := resourceIDs[tool.ResourceID]; ok {
 			filtered.Tools = append(filtered.Tools, tool)
+			if implementation := resolved.tool(tool.ResourceID, tool.Name); implementation != nil {
+				filtered.implementations[contextToolKey(tool.ResourceID, tool.Name)] = implementation
+			}
 		}
 	}
 	for _, fact := range resolved.Facts {

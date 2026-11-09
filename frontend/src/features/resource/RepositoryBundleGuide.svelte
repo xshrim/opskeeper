@@ -67,6 +67,7 @@ git bundle verify opskeeper.bundle</code
         </li>
         <li>点击“上传并更新分支”，等待页面显示上传成功和已同步分支。</li>
       </ol>
+      <p>Bundle 的实际存储后端由 OpsKeeper 启动时的环境变量统一决定，新增或编辑资源时无需选择存储方式。</p>
     </section>
     <section>
       <div class="api-heading">

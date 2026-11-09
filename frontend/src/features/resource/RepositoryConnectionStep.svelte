@@ -1,5 +1,4 @@
 <script lang="ts">
-  import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
   import PasswordInput from '../../components/PasswordInput.svelte';
   import TextInput from '../../components/TextInput.svelte';
@@ -10,41 +9,21 @@
   export let credentialConfigured = false;
   export let editing = false;
   export let defaultBranch = 'main';
-  export let storageBackend = 'postgres';
-  export let localRoot = '';
-  export let s3Endpoint = '';
-  export let s3Bucket = '';
-  export let s3Prefix = 'repositories';
   export let configurationAttempted = false;
   $: issues = subtype === 'Git'
     ? (!url.trim() ? ['Git 仓库 URL'] : [])
-    : storageBackend === 's3'
-      ? (!s3Endpoint.trim() || !s3Bucket.trim() ? ['S3 Endpoint 和 Bucket'] : [])
-      : [];
+    : [];
   $: valid = issues.length === 0;
-  const storageOptions = [
-    { value: 'local', label: '本地磁盘' },
-    { value: 'postgres', label: 'PostgreSQL' },
-    { value: 's3', label: 'S3-compatible' }
-  ];
 </script>
 <div class="stack-form">
   {#if subtype === 'Git'}
     <FormField label="Git 仓库 URL"><TextInput bind:value={url} placeholder="https://git.example.com/team/repo.git" /></FormField>
     <FormField label="默认分支"><TextInput bind:value={defaultBranch} placeholder="main" /></FormField>
-    <FormField label="HTTPS 用户名（可选）"><TextInput bind:value={username} autocomplete="username" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} /></FormField>
-    <FormField label="HTTPS 密码或访问令牌（可选）"><PasswordInput bind:value={password} autocomplete="new-password" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} ariaLabel="Git HTTPS 密码或访问令牌" /></FormField>
-    <p class="muted">Git HTTPS 凭据加密保存；不要把凭据写入 URL。</p>
+    <FormField label="HTTPS 用户名（私有仓库必填）"><TextInput bind:value={username} autocomplete="username" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} /></FormField>
+    <FormField label="HTTPS 密码或访问令牌（私有仓库必填）"><PasswordInput bind:value={password} autocomplete="new-password" placeholder={editing && credentialConfigured ? '已配置凭据，留空以保留' : ''} ariaLabel="Git HTTPS 密码或访问令牌" /></FormField>
+    <p class="muted">公开仓库可不填写凭据；私有仓库需填写可拉取远程仓库的用户名和密码或访问令牌。凭据加密保存，不要写入 URL。</p>
   {:else}
-    <FormField label="Bundle 存储后端" asLabel={false}><DropdownSelect bind:value={storageBackend} options={storageOptions} ariaLabel="Bundle 存储后端" /></FormField>
-    {#if storageBackend === 'local'}
-      <FormField label="本地目录（可选）"><TextInput bind:value={localRoot} placeholder="由服务端默认目录管理" /></FormField>
-    {:else if storageBackend === 's3'}
-      <FormField label="S3 Endpoint"><TextInput bind:value={s3Endpoint} placeholder="http://minio:9000 或 https://silo.example.com" /></FormField>
-      <FormField label="Bucket"><TextInput bind:value={s3Bucket} placeholder="opskeeper" /></FormField>
-      <FormField label="对象前缀"><TextInput bind:value={s3Prefix} placeholder="repositories" /></FormField>
-    {/if}
-    <p class="muted">上传 .bundle 后会自动覆盖同名分支并追加新分支。</p>
+    <p class="muted">Bundle 文件由平台启动配置指定的存储后端统一保存；此处无需选择存储方式。上传后会自动覆盖同名分支并追加新分支。</p>
   {/if}
   {#if configurationAttempted && !valid}<p class="form-error">请填写：{issues.join('、')}。</p>{/if}
 </div>

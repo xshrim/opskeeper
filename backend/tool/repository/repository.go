@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,8 +38,98 @@ type ConnectionInput struct {
 	S3SecretKey    string        `json:"s3_secret_key,omitempty"`
 	S3UseSSL       bool          `json:"s3_use_ssl,omitempty"`
 	Postgres       *pgxpool.Pool `json:"-"`
+	// Directory scopes application source queries to a relative subdirectory
+	// of the repository. It is supplied by the server-side application binding.
+	Directory string `json:"-"`
+	// PinnedRevision is set by the execution-scoped repository snapshot. Model
+	// supplied revisions cannot move a source-level diagnosis to another commit.
+	PinnedRevision string `json:"-"`
 }
 type ToolInfo struct{ Name, Description string }
+
+// Snapshot lazily materializes one repository for one Engine execution. The
+// first repository tool pins the source; later tools reuse the same checkout.
+type Snapshot struct {
+	input    ConnectionInput
+	once     sync.Once
+	mu       sync.Mutex
+	prepared ConnectionInput
+	cleanup  func() error
+	err      error
+}
+
+func NewSnapshot(input ConnectionInput) *Snapshot { return &Snapshot{input: input} }
+
+func (s *Snapshot) resolve(ctx context.Context) (ConnectionInput, error) {
+	s.once.Do(func() {
+		prepared, cleanup, err := Prepare(ctx, s.input)
+		s.mu.Lock()
+		s.prepared, s.cleanup, s.err = prepared, cleanup, err
+		s.mu.Unlock()
+	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prepared, s.err
+}
+
+func (s *Snapshot) Close() error {
+	s.mu.Lock()
+	cleanup := s.cleanup
+	s.cleanup = nil
+	s.mu.Unlock()
+	if cleanup == nil {
+		return nil
+	}
+	return cleanup()
+}
+
+func (s *Snapshot) Branches(ctx context.Context) ([]string, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return Branches(ctx, in)
+}
+
+func (s *Snapshot) Status(ctx context.Context) (map[string]any, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return Status(ctx, in)
+}
+
+func (s *Snapshot) Tree(ctx context.Context, path string, limit int, revision string) ([]TreeEntry, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return TreeAt(ctx, in, path, limit, revision)
+}
+
+func (s *Snapshot) File(ctx context.Context, path string, max int64, revision string) (string, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return "", err
+	}
+	return FileAt(ctx, in, path, max, revision)
+}
+
+func (s *Snapshot) Search(ctx context.Context, query string, limit int, revision string) ([]map[string]any, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return SearchAt(ctx, in, query, limit, revision)
+}
+
+func (s *Snapshot) Metadata(ctx context.Context) (map[string]any, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return Metadata(ctx, in)
+}
 
 var tools = []ToolInfo{
 	{"repository_branches", "List repository branches."},
@@ -50,6 +141,75 @@ var tools = []ToolInfo{
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
+
+// Prepare opens one immutable, execution-scoped repository snapshot. The
+// returned input points at the materialized local repository, so every tool in
+// the execution reads the same files even when the remote repository changes.
+func Prepare(ctx context.Context, in ConnectionInput) (ConnectionInput, func() error, error) {
+	sourceInput := configuredBundleStorage(in)
+	root, cleanup, selectedRevision, err := openRepository(ctx, sourceInput, strings.TrimSpace(in.PinnedRevision))
+	if err != nil {
+		return ConnectionInput{}, func() error { return nil }, err
+	}
+	if strings.EqualFold(strings.TrimSpace(sourceInput.StorageBackend), "local") && strings.TrimSpace(sourceInput.StorageKey) != "" {
+		dir, cloneErr := os.MkdirTemp("", "opskeeper-repository-snapshot-")
+		if cloneErr != nil {
+			cleanup()
+			return ConnectionInput{}, func() error { return nil }, cloneErr
+		}
+		snapshotRoot := filepath.Join(dir, "repo.git")
+		cmd := exec.CommandContext(ctx, "git", "clone", "--bare", root, snapshotRoot)
+		cmd.Env = append(os.Environ(), gitCredentialEnvironment(sourceInput)...)
+		if output, cloneErr := cmd.CombinedOutput(); cloneErr != nil {
+			cleanup()
+			_ = os.RemoveAll(dir)
+			return ConnectionInput{}, func() error { return nil }, fmt.Errorf("git snapshot: %w: %s", cloneErr, strings.TrimSpace(string(output)))
+		}
+		previousCleanup := cleanup
+		root = snapshotRoot
+		cleanup = func() {
+			previousCleanup()
+			_ = os.RemoveAll(dir)
+		}
+	}
+	prepared := in
+	prepared.Path = root
+	prepared.URL = ""
+	prepared.StorageBackend = ""
+	prepared.StorageKey = ""
+	prepared.S3Endpoint = ""
+	prepared.S3Bucket = ""
+	prepared.S3Prefix = ""
+	prepared.S3AccessKey = ""
+	prepared.S3SecretKey = ""
+	prepared.S3UseSSL = false
+	if selectedRevision != "" {
+		prepared.PinnedRevision = selectedRevision
+	} else if revision := snapshotRevision(ctx, prepared, root); revision != "" {
+		prepared.PinnedRevision = revision
+	}
+	return prepared, func() error {
+		cleanup()
+		return nil
+	}, nil
+}
+
+func snapshotRevision(ctx context.Context, in ConnectionInput, root string) string {
+	if head, err := runGit(ctx, in, root, "rev-parse", "--verify", "HEAD"); err == nil {
+		return strings.TrimSpace(string(head))
+	}
+	refs, err := runGit(ctx, in, root, "for-each-ref", "--sort=-committerdate", "--format=%(refname)", "refs/heads")
+	if err != nil {
+		return ""
+	}
+	for _, ref := range strings.Fields(string(refs)) {
+		if head, err := runGit(ctx, in, root, "rev-parse", "--verify", ref); err == nil {
+			return strings.TrimSpace(string(head))
+		}
+	}
+	return ""
+}
+
 func InputSchema(extra map[string]any) map[string]any {
 	p := map[string]any{"path": map[string]any{"type": "string"}, "url": map[string]any{"type": "string"}, "branch": map[string]any{"type": "string"}, "username": map[string]any{"type": "string"}, "password": map[string]any{"type": "string"}, "timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": 300}, "storage_backend": map[string]any{"type": "string", "enum": []string{"local", "postgres", "s3"}}, "storage_key": map[string]any{"type": "string"}, "s3_endpoint": map[string]any{"type": "string"}, "s3_bucket": map[string]any{"type": "string"}, "s3_prefix": map[string]any{"type": "string"}}
 	for k, v := range extra {
@@ -69,6 +229,7 @@ func command(ctx context.Context, in ConnectionInput, args ...string) ([]byte, e
 }
 
 func openRepository(ctx context.Context, in ConnectionInput, revision string) (string, func(), string, error) {
+	in = configuredBundleStorage(in)
 	if len(revision) > 256 || strings.HasPrefix(revision, "-") || strings.ContainsAny(revision, "\x00\r\n:") || strings.Contains(revision, "..") || strings.Contains(revision, "@{") {
 		return "", func() {}, "", errors.New("invalid repository revision")
 	}
@@ -127,6 +288,44 @@ func openRepository(ctx context.Context, in ConnectionInput, revision string) (s
 		return "", func() {}, "", err
 	}
 	return clean, cleanup, revision, nil
+}
+
+// Bundle storage is selected when the process starts. Git resources have no
+// storage key and continue to use their remote URL, so their connection input
+// is left untouched.
+func configuredBundleStorage(in ConnectionInput) ConnectionInput {
+	if strings.TrimSpace(in.StorageKey) == "" {
+		return in
+	}
+	backend := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_STORAGE_BACKEND"))
+	if backend == "" {
+		backend = "postgres"
+	}
+	in.StorageBackend = strings.ToLower(backend)
+	if in.StorageBackend == "local" {
+		if root := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_LOCAL_ROOT")); root != "" {
+			in.Path = filepath.Join(root, in.StorageKey)
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")); value != "" {
+		in.S3Endpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_BUCKET")); value != "" {
+		in.S3Bucket = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")); value != "" {
+		in.S3AccessKey = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")); value != "" {
+		in.S3SecretKey = value
+	}
+	if prefix := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_PREFIX")); prefix != "" {
+		in.S3Prefix = prefix
+	}
+	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_USE_SSL")); value != "" {
+		in.S3UseSSL = strings.EqualFold(value, "true") || value == "1"
+	}
+	return in
 }
 
 func repositoryContext(ctx context.Context, in ConnectionInput) (context.Context, context.CancelFunc) {
@@ -327,18 +526,23 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
-	path, err := safePath(path)
+	path, err := scopedPath(in.Directory, path)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := repositoryContext(ctx, in)
 	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
 	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
-	if selectedRevision == "" {
+	if in.PinnedRevision != "" {
+		selectedRevision = in.PinnedRevision
+	} else if selectedRevision == "" {
 		selectedRevision = ref(in)
 	}
 	args := []string{"ls-tree", "-r", "-l", selectedRevision}
@@ -356,7 +560,7 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 			continue
 		}
 		n, _ := strconv.ParseInt(f[3], 10, 64)
-		p := strings.Join(f[4:], " ")
+		p := displayScopedPath(in.Directory, strings.Join(f[4:], " "))
 		r = append(r, TreeEntry{Path: p, Type: "file", Size: n})
 		if len(r) >= limit {
 			break
@@ -369,7 +573,7 @@ func File(ctx context.Context, in ConnectionInput, path string, max int64) (stri
 }
 
 func FileAt(ctx context.Context, in ConnectionInput, path string, max int64, revision string) (string, error) {
-	path, e := safePath(path)
+	path, e := scopedPath(in.Directory, path)
 	if e != nil {
 		return "", e
 	}
@@ -378,12 +582,17 @@ func FileAt(ctx context.Context, in ConnectionInput, path string, max int64, rev
 	}
 	ctx, cancel := repositoryContext(ctx, in)
 	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
 	root, cleanup, selectedRevision, e := openRepository(ctx, in, revision)
 	if e != nil {
 		return "", e
 	}
 	defer cleanup()
-	if selectedRevision == "" {
+	if in.PinnedRevision != "" {
+		selectedRevision = in.PinnedRevision
+	} else if selectedRevision == "" {
 		selectedRevision = ref(in)
 	}
 	out, e := runGit(ctx, in, root, "show", selectedRevision+":"+path)
@@ -412,16 +621,29 @@ func SearchAt(ctx context.Context, in ConnectionInput, q string, limit int, revi
 	}
 	ctx, cancel := repositoryContext(ctx, in)
 	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
 	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
-	if selectedRevision == "" {
+	if in.PinnedRevision != "" {
+		selectedRevision = in.PinnedRevision
+	} else if selectedRevision == "" {
 		selectedRevision = ref(in)
 	}
 	output := &limitedBuffer{max: 2 << 20}
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "grep", "-z", "-n", "-F", "-I", "-e", q, selectedRevision, "--")
+	searchPath, err := scopedPath(in.Directory, "")
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"-C", root, "grep", "-z", "-n", "-F", "-I", "-e", q, selectedRevision, "--"}
+	if searchPath != "" {
+		args = append(args, searchPath)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
 	cmd.Stdout = output
 	cmd.Stderr = io.Discard
@@ -440,6 +662,7 @@ func SearchAt(ctx context.Context, in ConnectionInput, q string, limit int, revi
 		}
 		path := string(fields[i])
 		path = strings.TrimPrefix(path, selectedRevision+":")
+		path = displayScopedPath(in.Directory, path)
 		lineNo, parseErr := strconv.Atoi(string(fields[i+1]))
 		if path == "" || parseErr != nil {
 			continue
@@ -486,5 +709,32 @@ func safePath(p string) (string, error) {
 		return "", errors.New("path escapes repository")
 	}
 	return c, nil
+}
+
+func scopedPath(directory, path string) (string, error) {
+	directory, err := safePath(directory)
+	if err != nil {
+		return "", err
+	}
+	path, err = safePath(path)
+	if err != nil {
+		return "", err
+	}
+	if directory == "" {
+		return path, nil
+	}
+	if path == "" {
+		return directory, nil
+	}
+	return filepath.ToSlash(filepath.Join(directory, path)), nil
+}
+
+func displayScopedPath(directory, path string) string {
+	directory = strings.Trim(strings.TrimSpace(filepath.ToSlash(directory)), "/")
+	path = filepath.ToSlash(path)
+	if directory == "" {
+		return path
+	}
+	return strings.TrimPrefix(path, directory+"/")
 }
 func utf8ish(b []byte) bool { return bytes.IndexByte(b, 0) < 0 }

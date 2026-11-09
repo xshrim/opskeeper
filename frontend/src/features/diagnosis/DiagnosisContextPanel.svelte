@@ -64,7 +64,7 @@
 <aside class="diagnosis-context-panel-f">
   <div class="diagnosis-panel-top">
     <div>
-      <h2>诊断上下文</h2>
+      <h2>诊断工作台</h2>
       <small>{diagnosisApplicationIds.length} 个应用 · {diagnosisTargetIds.length} 个资源已选</small>
     </div>
   </div>

@@ -6,6 +6,19 @@ T12 提供 Kubernetes、PostgreSQL、Redis 和 Kafka 的内置只读诊断 Skill
 
 Connector 返回的是固定的结构化诊断快照。确定性规则负责将事实转换为 Finding；模型只能解释 Finding、关联 Evidence 和提出待验证假设，不能执行变更或替代规则结论。
 
+诊断会话不会预先携带平台、团队、项目和应用的完整范围树。模型需要了解范围清单时，
+通过诊断内置的只读范围工具按需查询：`diagnosis_scope_teams`、
+`diagnosis_scope_projects`、`diagnosis_scope_applications` 和
+`diagnosis_application_context`。应用清单工具按页返回，单页最多 100 条；工具使用服务端
+当前会话的授权范围，模型只能使用团队名称、项目编码、应用名称或应用编码等人类定位信息，
+不能把数据库 UUID 当作 Docker 容器、Host 进程或 Kubernetes 工作负载的外部定位符。
+
+选中应用时，`application_context` 是不可变的配置快照，描述应用、实例、实例承载的运行时、
+selector、业务资源依赖和应用上下游关系；它不代表实时健康状态。快照中的资源关系已经按当前
+用户可使用的资源裁剪，实时状态、指标和日志仍必须通过实际授权的资源工具获取。共享诊断会话
+的只读读取还会重新校验每个目标资源的 `resource:read`，继续提问或执行工具则需要
+`resource:use`。
+
 四个内置 Skill 的 Connector 调用均受默认 **10 秒** 超时、8 个并发槽位和 4 MiB 证据上限约束；每个快照的 `capabilities` 和 `unavailable` 字段分别说明实际可用和已降级的能力。
 
 ## 2. 内置 Skill 与固定能力

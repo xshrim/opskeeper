@@ -140,6 +140,43 @@ type DiagnosticContext struct {
 	Dependents   []DiagnosticApplicationReference `json:"dependents"`
 }
 
+// DiagnosticScopeApplicationPage is the bounded result returned by the
+// on-demand scope application query. It intentionally has no database IDs;
+// the server resolves the human-facing team/project selectors before querying.
+type DiagnosticScopeApplicationPage struct {
+	Items  []DiagnosticScopeApplication `json:"items"`
+	Total  int                          `json:"total"`
+	Offset int                          `json:"offset"`
+	Limit  int                          `json:"limit"`
+}
+type DiagnosticScopeTeam struct {
+	Name         string                   `json:"name"`
+	Status       string                   `json:"status"`
+	ProjectCount int                      `json:"project_count"`
+	Projects     []DiagnosticScopeProject `json:"projects,omitempty"`
+}
+
+type DiagnosticScopeProject struct {
+	TeamName         string                       `json:"team_name,omitempty"`
+	Name             string                       `json:"name"`
+	Code             string                       `json:"code"`
+	Status           string                       `json:"status"`
+	ApplicationCount int                          `json:"application_count"`
+	Applications     []DiagnosticScopeApplication `json:"applications,omitempty"`
+}
+
+type DiagnosticScopeApplication struct {
+	TeamName      string `json:"team_name,omitempty"`
+	ProjectName   string `json:"project_name,omitempty"`
+	ProjectCode   string `json:"project_code,omitempty"`
+	Name          string `json:"name"`
+	Code          string `json:"code"`
+	RuntimeKind   string `json:"runtime_kind"`
+	Status        string `json:"status"`
+	Critical      bool   `json:"critical"`
+	InstanceCount int    `json:"instance_count"`
+}
+
 type DiagnosticApplication struct {
 	ID                   string                 `json:"id"`
 	ProjectID            string                 `json:"project_id"`

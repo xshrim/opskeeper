@@ -166,6 +166,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, connector.NewStore(pool), connectorLimits)
 	connectorService.SetPostgresPool(pool)
+	connectorService.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL})
 	applicationService.SetBindingValidator(connectorService)
 	llmService := llm.NewService(llm.NewStore(pool), llm.NewProviderStore(pool, credentialEncryptor))
 	skillStore := skill.NewStore(pool)

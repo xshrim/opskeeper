@@ -195,6 +195,17 @@ func TestAgentRunnerRunsInternalDelegationWithoutResourceGateway(t *testing.T) {
 	}
 }
 
+func TestAllowedInternalToolSource(t *testing.T) {
+	for _, source := range []string{"persona-delegation", "diagnosis-scope"} {
+		if !allowedInternalToolSource(source) {
+			t.Fatalf("internal source %q should be allowed", source)
+		}
+	}
+	if allowedInternalToolSource("connector") || allowedInternalToolSource("") {
+		t.Fatal("untrusted internal tool sources must be rejected")
+	}
+}
+
 func TestTrimContextReturnsEvictedObservationReferences(t *testing.T) {
 	state := newExecutionState()
 	observationID := state.save(map[string]any{"rows": []any{"row-1", "row-2"}})

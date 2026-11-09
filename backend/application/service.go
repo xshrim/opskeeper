@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -57,6 +58,13 @@ type Service struct {
 
 type diagnosticCandidateStore interface {
 	DiagnosticCandidates(context.Context, string) ([]Application, error)
+}
+
+type diagnosticScopeQueryStore interface {
+	DiagnosticScopeTeams(context.Context, string) ([]DiagnosticScopeTeam, error)
+	DiagnosticScopeProjects(context.Context, string, string) ([]DiagnosticScopeProject, error)
+	DiagnosticScopeApplications(context.Context, string, string, string, int, int) (DiagnosticScopeApplicationPage, error)
+	DiagnosticApplicationContextByLocator(context.Context, string, string, string) (DiagnosticContext, error)
 }
 
 func NewService(store Store) *Service { return &Service{store: store} }
@@ -405,9 +413,11 @@ func normalizeDependencies(items []CreateDependencyInput) ([]CreateDependencyInp
 		if item.TargetResourceID == "" || !validDependencyKind(item.DependencyKind) {
 			return nil, ErrInvalid
 		}
-		if !validDependencyBinding(item.DependencyKind, item.Binding) {
+		binding, err := normalizeDependencyBinding(item.DependencyKind, item.Binding)
+		if err != nil {
 			return nil, ErrInvalid
 		}
+		item.Binding = binding
 		key := item.DependencyKind + "\x00" + item.TargetResourceID
 		if _, exists := seen[key]; exists {
 			continue
@@ -425,20 +435,61 @@ func normalizeDependencies(items []CreateDependencyInput) ([]CreateDependencyInp
 }
 
 func validDependencyBinding(kind string, binding map[string]any) bool {
+	_, err := normalizeDependencyBinding(kind, binding)
+	return err == nil
+}
+
+func normalizeDependencyBinding(kind string, binding map[string]any) (map[string]any, error) {
 	if binding == nil {
-		return true
+		return nil, nil
 	}
+	result := make(map[string]any, len(binding))
 	for key, value := range binding {
-		if !allowedDependencyBindingField(kind, strings.TrimSpace(key)) {
-			return false
+		key = strings.TrimSpace(key)
+		if !allowedDependencyBindingField(kind, key) {
+			return nil, ErrInvalid
+		}
+		if kind == "repository" && (key == "directory" || key == "path") {
+			text, ok := value.(string)
+			if !ok {
+				return nil, ErrInvalid
+			}
+			text, err := normalizeRepositoryDirectory(text)
+			if err != nil {
+				return nil, err
+			}
+			if key == "path" {
+				if _, exists := result["directory"]; exists {
+					continue
+				}
+				key = "directory"
+			}
+			result[key] = text
+			continue
 		}
 		switch value.(type) {
 		case string, bool, float64, int, int64:
 		default:
-			return false
+			return nil, ErrInvalid
 		}
+		result[key] = value
 	}
-	return true
+	return result, nil
+}
+
+func normalizeRepositoryDirectory(value string) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(value, "\x00\r\n") || filepath.IsAbs(value) || strings.HasPrefix(value, "/") {
+		return "", ErrInvalid
+	}
+	clean := filepath.ToSlash(filepath.Clean(value))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", ErrInvalid
+	}
+	return strings.Trim(clean, "/"), nil
 }
 
 func allowedDependencyBindingField(kind, key string) bool {
@@ -456,7 +507,7 @@ func allowedDependencyBindingField(kind, key string) bool {
 	case "storage":
 		return oneOf(key, "bucket", "prefix")
 	case "repository":
-		return oneOf(key, "path", "revision", "branch")
+		return oneOf(key, "directory", "path", "revision", "branch")
 	case "observability":
 		return oneOf(key, "target", "metric", "namespace")
 	case "other":
@@ -548,6 +599,44 @@ func (s *Service) DiagnosticContext(ctx context.Context, applicationID, scopeID 
 		return DiagnosticContext{}, ErrInvalid
 	}
 	return s.store.DiagnosticContext(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(applicationID))
+}
+
+// DiagnosticScopeTeams returns the visible teams for a diagnosis scope.
+func (s *Service) DiagnosticScopeTeams(ctx context.Context, scopeID string) ([]DiagnosticScopeTeam, error) {
+	reader, ok := s.store.(diagnosticScopeQueryStore)
+	if !ok {
+		return nil, ErrInvalid
+	}
+	return reader.DiagnosticScopeTeams(ctx, strings.TrimSpace(scopeID))
+}
+
+// DiagnosticScopeProjects returns visible projects, optionally narrowed by
+// the human-facing team name supplied by the model or UI.
+func (s *Service) DiagnosticScopeProjects(ctx context.Context, scopeID, teamName string) ([]DiagnosticScopeProject, error) {
+	reader, ok := s.store.(diagnosticScopeQueryStore)
+	if !ok {
+		return nil, ErrInvalid
+	}
+	return reader.DiagnosticScopeProjects(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(teamName))
+}
+
+func (s *Service) DiagnosticScopeApplications(ctx context.Context, scopeID, teamName, projectCode string, offset, limit int) (DiagnosticScopeApplicationPage, error) {
+	reader, ok := s.store.(diagnosticScopeQueryStore)
+	if !ok {
+		return DiagnosticScopeApplicationPage{}, ErrInvalid
+	}
+	return reader.DiagnosticScopeApplications(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(teamName), strings.TrimSpace(projectCode), offset, limit)
+}
+
+// DiagnosticApplicationContextByLocator resolves an application by its
+// human-facing name or code inside the authorized scope and returns its full
+// server-side diagnostic snapshot.
+func (s *Service) DiagnosticApplicationContextByLocator(ctx context.Context, scopeID, name, code string) (DiagnosticContext, error) {
+	reader, ok := s.store.(diagnosticScopeQueryStore)
+	if !ok {
+		return DiagnosticContext{}, ErrInvalid
+	}
+	return reader.DiagnosticApplicationContextByLocator(ctx, strings.TrimSpace(scopeID), strings.TrimSpace(name), strings.TrimSpace(code))
 }
 func (s *Service) Workspace(ctx context.Context, pid string) (Workspace, error) {
 	if pid == "" {

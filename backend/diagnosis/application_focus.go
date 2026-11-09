@@ -158,6 +158,67 @@ func buildApplicationLocatorHints(raw json.RawMessage) map[string]map[string]any
 	return hints
 }
 
+// buildApplicationResourceBindings carries one unambiguous application
+// relationship binding into the server-side resource resolver. A repository
+// can be shared by applications at different directories; in that case no
+// implicit directory is selected, so the model must choose an explicit path
+// from the application context instead of receiving the wrong application's
+// source tree.
+func buildApplicationResourceBindings(raw json.RawMessage) map[string]map[string]any {
+	var snapshot rawApplicationResourceContext
+	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &snapshot) != nil {
+		return nil
+	}
+	bindings := make(map[string]map[string]any)
+	conflicts := make(map[string]struct{})
+	for _, selected := range snapshot.Applications {
+		for _, resource := range selected.Resources {
+			if !strings.EqualFold(strings.TrimSpace(resource.Kind), "Repository") || resource.Relation != "association" {
+				continue
+			}
+			directory, _ := resource.Binding["directory"].(string)
+			if strings.TrimSpace(directory) == "" {
+				// Older snapshots stored the same relationship field as path.
+				directory, _ = resource.Binding["path"].(string)
+			}
+			directory = strings.Trim(strings.TrimSpace(strings.ReplaceAll(directory, "\\", "/")), "/")
+			if directory == "" {
+				continue
+			}
+			binding := map[string]any{"directory": directory}
+			for _, key := range []string{"revision", "branch"} {
+				if value, ok := resource.Binding[key].(string); ok && strings.TrimSpace(value) != "" {
+					binding[key] = strings.TrimSpace(value)
+				}
+			}
+			resourceID := strings.TrimSpace(resource.ID)
+			if resourceID == "" {
+				continue
+			}
+			if _, conflicted := conflicts[resourceID]; conflicted {
+				continue
+			}
+			if current, exists := bindings[resourceID]; exists {
+				for _, key := range []string{"directory", "revision", "branch"} {
+					if fmt.Sprint(current[key]) != fmt.Sprint(binding[key]) {
+						delete(bindings, resourceID)
+						conflicts[resourceID] = struct{}{}
+						break
+					}
+				}
+				if _, conflicted := conflicts[resourceID]; conflicted {
+					continue
+				}
+			}
+			bindings[resourceID] = binding
+		}
+	}
+	if len(bindings) == 0 {
+		return nil
+	}
+	return bindings
+}
+
 func buildApplicationResourceFocus(raw json.RawMessage) applicationResourceFocusInput {
 	var snapshot rawApplicationResourceContext
 	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &snapshot) != nil {

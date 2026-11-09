@@ -82,6 +82,7 @@ func main() {
 	resourceService := resource.NewService(resource.NewStore(pool), encryptor)
 	connectors := connector.NewService(registry, resourceService, connector.NewStore(pool), limits)
 	connectors.SetPostgresPool(pool)
+	connectors.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL})
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectors.EngineProvider()
 	mcpProvider := mcpService.EngineProvider()

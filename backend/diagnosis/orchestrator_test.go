@@ -116,7 +116,7 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	store := newRecordingStore()
 	store.session.ApplicationID = "app-primary"
 	store.session.ApplicationIDs = []string{"app-primary", "app-secondary"}
-	store.session.ApplicationContext = json.RawMessage(`{"applications":[{"application":{"id":"app-primary","name":"Orders"},"resources":[{"id":"db-1","relation":"association","binding":{"database":"orders"}}]},{"application":{"id":"app-secondary","name":"Billing"}}]}`)
+	store.session.ApplicationContext = json.RawMessage(`{"scope_context":{"scope_type":"project","name":"Commerce","project_count":1,"application_count":2},"applications":[{"application":{"id":"app-primary","name":"Orders"},"resources":[{"id":"db-1","relation":"association","binding":{"database":"orders"}}]},{"application":{"id":"app-secondary","name":"Billing"}}]}`)
 	var captured engine.Request
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
 		captured = request
@@ -133,6 +133,15 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	context, ok := captured.Input["application_context"].(map[string]any)
 	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || strings.Contains(fmt.Sprint(context), "app-primary") || strings.Contains(fmt.Sprint(context), "db-1") || !strings.Contains(captured.Instruction, "不可信配置数据") {
 		t.Fatalf("application context/instruction missing: input=%#v instruction=%q", captured.Input, captured.Instruction)
+	}
+	if _, duplicated := context["scope_context"]; duplicated {
+		t.Fatalf("legacy scope context must not be duplicated inside application_context: %#v", context)
+	}
+	if _, exists := captured.Input["scope_context"]; exists {
+		t.Fatalf("legacy scope context must not be sent to the model: input=%#v", captured.Input)
+	}
+	if !strings.Contains(captured.Instruction, "当前诊断范围的信息默认不预先放入上下文") {
+		t.Fatalf("scope context contract missing: %q", captured.Instruction)
 	}
 	focus, ok := captured.Input["application_resource_focus"].(applicationResourceFocusInput)
 	if !ok || len(focus.Resources) != 1 || focus.Resources[0].ResourceID != "db-1" || len(focus.Resources[0].Relations) != 1 || focus.Resources[0].Relations[0].Binding["database"] != "orders" {
@@ -172,6 +181,36 @@ func TestBuildApplicationLocatorHintsDropsConflictingSelectors(t *testing.T) {
 	}
 	if hints["docker-1"]["namespace"] != "orders" {
 		t.Fatalf("non-conflicting selector should remain available: %#v", hints)
+	}
+}
+
+func TestBuildApplicationResourceBindingsUsesOnlyUnambiguousRepositoryDirectory(t *testing.T) {
+	input := json.RawMessage(`{"applications":[
+        {"application":{"id":"app-a","name":"Orders"},"resources":[{"id":"repo-1","kind":"Repository","relation":"association","binding":{"directory":"services/orders"}}]},
+        {"application":{"id":"app-b","name":"Billing"},"resources":[{"id":"repo-1","kind":"Repository","relation":"association","binding":{"directory":"services/billing"}}]},
+        {"application":{"id":"app-c","name":"Catalog"},"resources":[{"id":"repo-2","kind":"Repository","relation":"association","binding":{"path":"services/catalog"}}]}
+    ]}`)
+	bindings := buildApplicationResourceBindings(input)
+	if _, exists := bindings["repo-1"]; exists {
+		t.Fatalf("conflicting repository directory should not be selected: %#v", bindings)
+	}
+	if bindings["repo-2"]["directory"] != "services/catalog" {
+		t.Fatalf("legacy path binding = %#v, want canonical directory", bindings["repo-2"])
+	}
+}
+
+func TestBuildApplicationResourceBindingsCarriesStableRevisionAndRejectsConflicts(t *testing.T) {
+	input := json.RawMessage(`{"applications":[
+        {"application":{"id":"app-a","name":"Orders"},"resources":[{"id":"repo-1","kind":"Repository","relation":"association","binding":{"directory":"services/orders","revision":"abc123"}}]},
+        {"application":{"id":"app-b","name":"Billing"},"resources":[{"id":"repo-2","kind":"Repository","relation":"association","binding":{"directory":"services/billing","branch":"release"}}]},
+        {"application":{"id":"app-c","name":"Catalog"},"resources":[{"id":"repo-2","kind":"Repository","relation":"association","binding":{"directory":"services/billing","branch":"main"}}]}
+    ]}`)
+	bindings := buildApplicationResourceBindings(input)
+	if bindings["repo-1"]["revision"] != "abc123" {
+		t.Fatalf("repository revision = %#v, want abc123", bindings["repo-1"])
+	}
+	if _, exists := bindings["repo-2"]; exists {
+		t.Fatalf("conflicting repository branches should not be selected: %#v", bindings)
 	}
 }
 

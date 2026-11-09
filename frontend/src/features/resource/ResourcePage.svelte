@@ -41,6 +41,7 @@
   import MinIOConnectionStep from './MinIOConnectionStep.svelte';
   import MinIOReviewStep from './MinIOReviewStep.svelte';
   import RepositoryConnectionStep from './RepositoryConnectionStep.svelte';
+  import RepositoryPreviewStep from './RepositoryPreviewStep.svelte';
   import RepositoryReviewStep from './RepositoryReviewStep.svelte';
   import ResourceSchemaFields from './ResourceSchemaFields.svelte';
   import ResourceDetailPanel from './ResourceDetailPanel.svelte';
@@ -117,6 +118,7 @@
     resourceAddStepDescription,
   } from './resourceWorkflow';
   import { parseLabels } from '../../lib/labels';
+  import { appURL } from '../../lib/health';
   import { api } from '../../lib/api';
   import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import type {
@@ -326,7 +328,10 @@
   let elasticsearchAccessMode: 'direct' | 'agent' = 'direct'; let elasticsearchURL=''; let elasticsearchUsername=''; let elasticsearchPassword=''; let elasticsearchTLSInsecure=false; let elasticsearchTimeoutSeconds=10; let elasticsearchMCPServerResourceId=''; let elasticsearchConfigurationAttempted=false; let elasticsearchDraftTest:any=null; let editingElasticsearchResourceId='';
   let rabbitMQAccessMode: 'direct' | 'agent' = 'direct'; let rabbitMQURL=''; let rabbitMQUsername=''; let rabbitMQPassword=''; let rabbitMQTimeoutSeconds=10; let rabbitMQTLSInsecure=false; let rabbitMQMCPServerResourceId=''; let rabbitMQConfigurationAttempted=false; let rabbitMQDraftTest:any=null; let editingRabbitMQResourceId='';
   let minIOAccessMode: 'direct' | 'agent' = 'direct'; let minIOEndpoint=''; let minIOAccessKey=''; let minIOSecretKey=''; let minIOSessionToken=''; let minIORegion=''; let minIOSecure=false; let minIOTimeoutSeconds=10; let minIOMCPServerResourceId=''; let minIOConfigurationAttempted=false; let minIODraftTest:any=null; let editingMinIOResourceId='';
-  let repositoryURL=''; let repositoryUsername=''; let repositoryPassword=''; let repositoryDefaultBranch='main'; let repositoryStorageBackend='postgres'; let repositoryLocalRoot=''; let repositoryS3Endpoint=''; let repositoryS3Bucket=''; let repositoryS3Prefix='repositories'; let repositoryConfigurationAttempted=false; let editingRepositoryResourceId='';
+  let repositoryURL=''; let repositoryUsername=''; let repositoryPassword=''; let repositoryDefaultBranch='main'; let repositoryConfigurationAttempted=false; let editingRepositoryResourceId='';
+  let repositoryPreviewEntries: Array<{ path: string; type: string; size?: number }> = [];
+  let repositoryPreviewBusy = false;
+  let repositoryPreviewMessage = '';
   export let activeMessage = '';
   export let activeMessageTone: 'success' | 'error' = 'success';
   let selectedSchema: ResourceSchema | null = null;
@@ -735,7 +740,7 @@
     resourceAddMenuOpen = true;
   }
 
-  function openRepositoryWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Repository'; resourceAddCategory='Repository'; resourceAddSubtype=resourceSubtypeFor(resource); editingRepositoryResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); repositoryURL=String(resource.config?.url??''); repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch=String(resource.config?.default_branch??'main'); repositoryStorageBackend=String(resource.config?.storage_backend??'postgres'); repositoryLocalRoot=String(resource.config?.path??''); repositoryS3Endpoint=String(resource.config?.s3_endpoint??''); repositoryS3Bucket=String(resource.config?.s3_bucket??''); repositoryS3Prefix=String(resource.config?.s3_prefix??'repositories'); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openRepositoryWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Repository'; resourceAddCategory='Repository'; resourceAddSubtype=resourceSubtypeFor(resource); editingRepositoryResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); repositoryURL=String(resource.config?.url??''); repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch=String(resource.config?.default_branch??'main'); repositoryPreviewEntries=[]; repositoryPreviewMessage=''; repositoryPreviewBusy=false; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function openOracleWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Oracle'; resourceAddCategory='Oracle'; resourceAddSubtype=resourceSubtypeFor(resource); editingOracleResourceId=resource.id; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oracleAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oracleHost=String(resource.config?.host??''); oraclePort=Number(resource.config?.port??1521); oracleServiceName=String(resource.config?.service_name??''); oracleSID=String(resource.config?.sid??''); oracleTLS=Boolean(resource.config?.tls); oracleTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oracleMCPServerResourceId=resource.agent_ref??''; oracleUsername=''; oraclePassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function openOceanBaseWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='OceanBase'; resourceAddCategory='OceanBase'; resourceAddSubtype=resourceSubtypeFor(resource); editingOceanBaseResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; editingPostgreSQLResourceId=''; editingMySQLResourceId=''; editingOracleResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oceanBaseAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oceanBaseMode=String(resource.config?.mode??'mysql').toLowerCase()==='oracle'?'oracle':'mysql'; oceanBaseHost=String(resource.config?.host??''); oceanBasePort=Number(resource.config?.port??2881); oceanBaseDatabase=String(resource.config?.database??''); oceanBaseServiceName=String(resource.config?.service_name??''); oceanBaseTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oceanBaseMCPServerResourceId=resource.agent_ref??''; oceanBaseUsername=''; oceanBasePassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
   function openResourceEditor(resource: Resource) {
@@ -1037,9 +1042,13 @@
         case 'Elasticsearch': continueElasticsearchAdd(); return;
         case 'RabbitMQ': continueRabbitMQAdd(); return;
         case 'MinIO': continueMinIOAdd(); return;
-        case 'Repository': repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; resourceAddStep = 3; } return;
+        case 'Repository': repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; if (resourceAddSubtype === 'Git') void previewRepositoryDraft(); else { repositoryPreviewMessage = 'Bundle 资源保存后，请在资源详情中上传 Bundle 并查看目录预览。'; resourceAddStep = 3; } } return;
         default: void createResource(); return;
       }
+    }
+    if (resourceKind === 'Repository' && resourceAddStep === 3) {
+      resourceAddStep = 4;
+      return;
     }
     switch (resourceKind) {
       case 'MCPServer': void (editingResourceId ? updateMCPFromWorkflow() : createResource()); return;
@@ -1254,7 +1263,7 @@
   function resetElasticsearchDraft() { elasticsearchAccessMode='direct'; elasticsearchURL=''; elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchTLSInsecure=false; elasticsearchTimeoutSeconds=10; elasticsearchMCPServerResourceId=''; elasticsearchConfigurationAttempted=false; elasticsearchDraftTest=null; editingElasticsearchResourceId=''; }
   function resetRabbitMQDraft() { rabbitMQAccessMode='direct'; rabbitMQURL=''; rabbitMQUsername=''; rabbitMQPassword=''; rabbitMQTimeoutSeconds=10; rabbitMQTLSInsecure=false; rabbitMQMCPServerResourceId=''; rabbitMQConfigurationAttempted=false; rabbitMQDraftTest=null; editingRabbitMQResourceId=''; }
   function resetMinIODraft() { minIOAccessMode='direct'; minIOEndpoint=''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; minIORegion=''; minIOSecure=false; minIOTimeoutSeconds=10; minIOMCPServerResourceId=''; minIOConfigurationAttempted=false; minIODraftTest=null; editingMinIOResourceId=''; }
-  function resetRepositoryDraft() { repositoryURL=''; repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch='main'; repositoryStorageBackend='postgres'; repositoryLocalRoot=''; repositoryS3Endpoint=''; repositoryS3Bucket=''; repositoryS3Prefix='repositories'; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; }
+  function resetRepositoryDraft() { repositoryURL=''; repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch='main'; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; repositoryPreviewEntries=[]; repositoryPreviewBusy=false; repositoryPreviewMessage=''; }
 
   function mcpConfigurationValid() {
     return validateMCPConfiguration(mcpTransport, mcpURL, mcpRequestHeaders);
@@ -1526,7 +1535,28 @@
   async function testRedisDraftConnection() { redisDraftTest={busy:true}; if(redisAccessMode==='agent'){redisDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try { const result=await testDraftRedis({host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),username:redisUsername.trim(),password:redisPassword,timeout_seconds:Number(redisTimeoutSeconds)}); redisDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } catch(error){redisDraftTest={error:describeError(error,'Redis 连接测试失败')};} }
   function nacosDraft() { return { accessMode:nacosAccessMode,host:nacosHost,port:nacosPort,scheme:nacosScheme,contextPath:nacosContextPath,username:nacosUsername,password:nacosPassword,accessToken:nacosAccessToken,timeoutSeconds:nacosTimeoutSeconds,mcpServerResourceId:nacosMCPServerResourceId }; }
   function nacosConfigurationComplete() { return nacosAccessMode==='agent' ? Boolean(nacosMCPServerResourceId) : Boolean(nacosHost.trim()); }
-  function repositoryConfigurationComplete() { return resourceAddSubtype === 'Git' ? Boolean(repositoryURL.trim()) : repositoryStorageBackend !== 's3' || Boolean(repositoryS3Endpoint.trim() && repositoryS3Bucket.trim()); }
+  function repositoryConfigurationComplete() { return resourceAddSubtype === 'Git' ? Boolean(repositoryURL.trim()) : true; }
+  async function previewRepositoryDraft() {
+    repositoryPreviewBusy = true;
+    repositoryPreviewMessage = '';
+    repositoryPreviewEntries = [];
+    try {
+      const response = await fetch(appURL('api/v1/repository/preview'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ subtype: resourceAddSubtype, url: repositoryURL.trim(), branch: repositoryDefaultBranch.trim() || 'main', username: repositoryUsername.trim(), password: repositoryPassword })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? 'Repository 目录预览失败');
+      repositoryPreviewEntries = Array.isArray(data.entries) ? data.entries : [];
+      resourceAddStep = 3;
+    } catch (error) {
+      repositoryPreviewMessage = error instanceof Error ? error.message : 'Repository 目录预览失败';
+    } finally {
+      repositoryPreviewBusy = false;
+    }
+  }
   function resetNacosDraftTest() { nacosDraftTest=null; }
   async function testNacosDraftConnection() { nacosDraftTest={busy:true}; if(nacosAccessMode==='agent'){nacosDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftNacos({host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,username:nacosUsername,password:nacosPassword,access_token:nacosAccessToken,timeout_seconds:Number(nacosTimeoutSeconds)});nacosDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){nacosDraftTest={error:describeError(error,'Nacos 连接测试失败')};}}
   function kafkaConfigurationComplete() { return kafkaAccessMode === 'agent' ? Boolean(kafkaMCPServerResourceId) : Boolean(kafkaBrokers.split(/[\n,]+/).map(v => v.trim()).filter(Boolean).length); }
@@ -2439,8 +2469,10 @@
       catch { throw new Error('Git 仓库 URL 格式无效。'); }
       if (parsed.username || parsed.password) throw new Error('Git 凭据不得写入 URL，请使用凭据字段。');
     }
-    const config = resourceAddSubtype === 'Git' ? { url: repositoryURL.trim(), default_branch: repositoryDefaultBranch.trim() || 'main' } : { storage_backend: repositoryStorageBackend, path: repositoryLocalRoot.trim(), s3_endpoint: repositoryS3Endpoint.trim(), s3_bucket: repositoryS3Bucket.trim(), s3_prefix: repositoryS3Prefix.trim() || 'repositories' };
-    const existing = resources.find((r) => r.id === editingRepositoryResourceId);
+    const existing = editingRepositoryResourceId ? resources.find((resource) => resource.id === editingRepositoryResourceId) : undefined;
+    const config = resourceAddSubtype === 'Git'
+      ? { url: repositoryURL.trim(), default_branch: repositoryDefaultBranch.trim() || 'main' }
+      : { ...(existing?.config ?? {}) };
     const credential = repositoryUsername.trim() || repositoryPassword ? stageCredential('Git HTTPS 凭据', JSON.stringify({ username: repositoryUsername.trim(), password: repositoryPassword })) : undefined;
     const body: Record<string, unknown> = { name: resourceName.trim(), subtype: resourceAddSubtype, labels: parseLabels(resourceLabels), config, ...(credential ? { credential } : {}) };
     if (!existing) { const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'Repository', subtype: resourceAddSubtype, name: resourceName.trim(), labels: body.labels as Record<string,string>, config, credential }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`Repository“${created.name}”已创建`); } else { const updated=await updateResourceRecord(existing.id,body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`Repository“${updated.name}”已更新`); }
@@ -2773,8 +2805,8 @@
             class="secondary"
             type="button"
             disabled={busy || resourceRefreshBusy}
-            data-tooltip="刷新资源目录"
-            aria-label="刷新资源目录"
+            data-tooltip="刷新资源列表"
+            aria-label="刷新资源列表"
             on:click={() => void refreshResources()}
             ><RefreshCw size={15} aria-hidden="true" />刷新</button
           >
@@ -2850,11 +2882,11 @@
         contentInset={false}
         autoHeight
         backLabel={resourceAddStep > 1 ? '上一步' : ''}
-        confirmLabel={resourceAddStep === 1 || (resourceAddStep === 2 && resourceWorkflowNeedsReview())
+        confirmLabel={resourceAddStep === 1 || (resourceAddStep === 2 && resourceWorkflowNeedsReview()) || (resourceKind === 'Repository' && resourceAddStep === 3)
           ? '下一步'
           : resourceWorkflowEditing() ? '保存' : '创建'}
         busyLabel={resourceWorkflowEditing() ? '保存中…' : '创建中…'}
-        confirmDisabled={resourceAddStep === 3 && !selectedScopeId}
+        confirmDisabled={resourceAddStep === 4 && !selectedScopeId}
         {busy}
         message={activeMessage}
         messageTone={activeMessageTone}
@@ -2932,7 +2964,7 @@
         onContinueElasticsearch={continueElasticsearchAdd}
         onContinueRabbitMQ={continueRabbitMQAdd}
         onContinueMinIO={continueMinIOAdd}
-        onContinueRepository={() => { repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; resourceAddStep = 3; } }}
+        onContinueRepository={() => { repositoryConfigurationAttempted = true; if (repositoryConfigurationComplete()) { repositoryConfigurationAttempted = false; if (resourceAddSubtype === 'Git') void previewRepositoryDraft(); else { repositoryPreviewMessage = 'Bundle 资源保存后，请在资源详情中上传 Bundle 并查看目录预览。'; resourceAddStep = 3; } } }}
         onSubmitMcp={() =>
           void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
         onSubmitDocker={() =>
@@ -3211,9 +3243,11 @@
         {:else if resourceKind === 'MinIO' && resourceAddStep === 3}
           <MinIOReviewStep resourceName={resourceName} accessMode={minIOAccessMode} endpoint={minIOEndpoint} mcpServerName={resources.find((r) => r.id === minIOMCPServerResourceId)?.name ?? ''} testBusy={Boolean(minIODraftTest?.busy)} testStatus={minIODraftTest?.status ?? ''} testMessage={minIODraftTest?.message ?? ''} testError={minIODraftTest?.error ?? ''} testLatency={Number(minIODraftTest?.latency ?? 0)} onSubmit={() => void runResourceAction(saveMinIOWorkflow)} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 2}
-          <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:username={repositoryUsername} bind:password={repositoryPassword} credentialConfigured={Boolean(resources.find((resource) => resource.id === editingRepositoryResourceId)?.credential_configured)} editing={Boolean(editingRepositoryResourceId)} bind:defaultBranch={repositoryDefaultBranch} bind:storageBackend={repositoryStorageBackend} bind:localRoot={repositoryLocalRoot} bind:s3Endpoint={repositoryS3Endpoint} bind:s3Bucket={repositoryS3Bucket} bind:s3Prefix={repositoryS3Prefix} configurationAttempted={repositoryConfigurationAttempted} />
+          <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:username={repositoryUsername} bind:password={repositoryPassword} credentialConfigured={Boolean(resources.find((resource) => resource.id === editingRepositoryResourceId)?.credential_configured)} editing={Boolean(editingRepositoryResourceId)} bind:defaultBranch={repositoryDefaultBranch} configurationAttempted={repositoryConfigurationAttempted} />
         {:else if resourceKind === 'Repository' && resourceAddStep === 3}
-          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} storageBackend={repositoryStorageBackend} s3Bucket={repositoryS3Bucket} credentialConfigured={Boolean(repositoryUsername.trim() || repositoryPassword || resources.find((resource) => resource.id === editingRepositoryResourceId)?.credential_configured)} />
+          <RepositoryPreviewStep entries={repositoryPreviewEntries} busy={repositoryPreviewBusy} message={repositoryPreviewMessage} />
+        {:else if resourceKind === 'Repository' && resourceAddStep === 4}
+          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} credentialConfigured={Boolean(repositoryUsername.trim() || repositoryPassword || resources.find((resource) => resource.id === editingRepositoryResourceId)?.credential_configured)} />
         {:else if selectedResource?.kind === 'MCPServer'}
           <div class="mcp-resource-form editor-mcp-form">
             <div class="form-row">

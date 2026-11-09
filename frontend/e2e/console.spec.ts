@@ -470,7 +470,7 @@ test.describe('T07 console', () => {
     await page.getByLabel('切换项目').selectOption('project-1');
     await page.getByRole('button', { name: '资源' }).click();
     await expect(
-      page.getByRole('heading', { name: '资源目录' }).first()
+      page.getByRole('heading', { name: '资源管理' }).first()
     ).toBeVisible();
     await page.getByRole('button', { name: '添加资源' }).click();
     await expect(
@@ -754,7 +754,7 @@ test.describe('T10 and T11 workbenches', () => {
     await page.goto('/');
     await page.getByRole('button', { name: '诊断' }).click();
     await expect(
-      page.getByRole('heading', { name: '诊断工作台' })
+      page.getByRole('heading', { name: '智能诊断' })
     ).toBeVisible();
     await expect(
       page.getByRole('heading', { name: '支付服务诊断' })

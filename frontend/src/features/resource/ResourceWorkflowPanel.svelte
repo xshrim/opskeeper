@@ -173,7 +173,8 @@
       <button class:active={step === 3} disabled={!elasticsearchConfigurationComplete} type="button" on:click={() => elasticsearchConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
     {:else if kind === 'Repository'}
       <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Repository 配置</span></button>
-      <button class:active={step === 3} disabled={!repositoryConfigurationComplete} type="button" on:click={() => repositoryConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button class:active={step === 3} class:done={step > 3} disabled={!repositoryConfigurationComplete} type="button" on:click={() => repositoryConfigurationComplete && onSelectStep(3)}><b>3</b><span>目录预览</span></button>
+      <button class:active={step === 4} disabled={step < 3} type="button" on:click={() => step >= 3 && onSelectStep(4)}><b>4</b><span>总结核验</span></button>
     {:else}
       <button
         class:active={step === 2}
@@ -327,7 +328,9 @@
         {:else if kind === 'Repository' && step === 2}
           <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRepository}>下一步</button>
         {:else if kind === 'Repository' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitRepository} disabled={busy || !scopeSelected}>{editingRepository ? '保存' : '创建'}</button>
+          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={() => onSelectStep(4)}>下一步</button>
+        {:else if kind === 'Repository' && step === 4}
+          <button class="secondary" type="button" on:click={() => onSelectStep(3)}>上一步</button><button class="primary" type="button" on:click={onSubmitRepository} disabled={busy || !scopeSelected}>{editingRepository ? '保存' : '创建'}</button>
         {:else if step === 2}
           <button
             class="secondary"

@@ -59,11 +59,12 @@ type Message struct {
 }
 
 type ContextRequest struct {
-	ResourceIDs      []string `json:"resource_ids,omitempty"`
-	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
-	AllowedKinds     []string `json:"-"`
-	RestrictKinds    bool     `json:"-"`
-	MetadataOnly     bool     `json:"-"`
+	ResourceIDs      []string                  `json:"resource_ids,omitempty"`
+	ResourceBindings map[string]map[string]any `json:"-"`
+	KnowledgeBaseIDs []string                  `json:"knowledge_base_ids,omitempty"`
+	AllowedKinds     []string                  `json:"-"`
+	RestrictKinds    bool                      `json:"-"`
+	MetadataOnly     bool                      `json:"-"`
 }
 
 // ToolDeclaration is the provider-neutral tool contract supplied by an

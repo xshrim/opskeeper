@@ -252,8 +252,8 @@ func TestResourceContextResolverDeduplicatesAndAuthorizesResources(t *testing.T)
 	if err != nil || len(resolved.Resources) != 1 || len(resolved.Tools) != 1 || len(resolved.Facts) != 1 {
 		t.Fatalf("resolved=%+v err=%v", resolved, err)
 	}
-	if _, ok := registry.Get("resource-1", "postgres.inspect"); !ok {
-		t.Fatal("resolved tool was not registered")
+	if resolved.tool("resource-1", "postgres.inspect") == nil {
+		t.Fatal("resolved tool was not bound to the execution")
 	}
 	if _, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"resource-1"}}); err != nil {
 		t.Fatalf("re-resolving a shared resource should refresh tools: %v", err)
@@ -365,4 +365,54 @@ func TestResourceToolInvokerDoesNotFallbackAgentToDirectProvider(t *testing.T) {
 	if _, err := invoker.InvokeFixed(context.Background(), ContextResource{ID: "agent-host", Kind: "Host", Subtype: "agent"}, "host_processes", nil); err == nil {
 		t.Fatal("agent resource silently fell back to the direct provider")
 	}
+}
+
+func TestResourceContextResolverAppliesRelationshipBinding(t *testing.T) {
+	resolver := NewResourceContextResolver(fakeContextResourceReader{resources: map[string]ContextResource{
+		"repo-1": {ID: "repo-1", Kind: "Repository", Name: "services"},
+	}}, nil, fixedToolProvider{})
+	resolved, err := resolver.Resolve(context.Background(), ContextRequest{
+		ResourceIDs:      []string{"repo-1"},
+		ResourceBindings: map[string]map[string]any{"repo-1": {"directory": "services/orders"}},
+		MetadataOnly:     true,
+	})
+	if err != nil || len(resolved.Resources) != 1 || resolved.Resources[0].Binding["directory"] != "services/orders" {
+		t.Fatalf("resolved resource=%#v err=%v, want relationship binding", resolved.Resources, err)
+	}
+}
+
+func TestResolvedContextKeepsExecutionLocalToolBinding(t *testing.T) {
+	resolver := ResourceContextResolver{
+		Resources: fakeContextResourceReader{resources: map[string]ContextResource{
+			"repo": {ID: "repo", Kind: "Repository", Subtype: "direct"},
+		}},
+		Providers: []ContextProvider{bindingToolProvider{}},
+	}
+	first, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"repo"}, ResourceBindings: map[string]map[string]any{"repo": {"directory": "orders"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := resolver.Resolve(context.Background(), ContextRequest{ResourceIDs: []string{"repo"}, ResourceBindings: map[string]map[string]any{"repo": {"directory": "payments"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = second
+	gateway := NewPolicyGateway(NewToolRegistry(), nil, 0, 4096, 1)
+	result, err := gateway.Invoke(context.Background(), ToolCall{
+		ResourceID: "repo", Name: "read", implementation: first.tool("repo", "read"),
+	})
+	if err != nil || result.Output != "orders" {
+		t.Fatalf("execution-local tool binding = %#v, err=%v", result.Output, err)
+	}
+}
+
+type bindingToolProvider struct{}
+
+func (bindingToolProvider) Kinds() []string       { return []string{"Repository"} }
+func (bindingToolProvider) AccessModes() []string { return []string{"direct"} }
+func (bindingToolProvider) Resolve(_ context.Context, resource ContextResource) ([]Tool, []ContextFact, error) {
+	directory, _ := resource.Binding["directory"].(string)
+	return []Tool{ToolFunc{Def: ToolDefinition{Name: "read", Source: "test", ResourceID: resource.ID}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
+		return ToolResult{Output: directory}, nil
+	}}}, nil, nil
 }

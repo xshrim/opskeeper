@@ -252,7 +252,7 @@
       resourceBindings: (application.dependencies ?? []).map((dependency) => ({
         resourceId: dependency.target_resource_id,
         dependencyKind: dependency.dependency_kind,
-        binding: Object.fromEntries(Object.entries(dependency.binding ?? {}).map(([key, value]) => [key, String(value)])),
+        binding: Object.fromEntries(Object.entries(dependency.binding ?? {}).map(([key, value]) => [key === 'path' && dependency.dependency_kind === 'repository' ? 'directory' : key, String(value)])),
         required: dependency.required
       })),
       applicationRelations: (application.relations ?? []).map((relation) => ({
@@ -529,7 +529,7 @@
       { key: 'prefix', label: '对象前缀（可选）', placeholder: '例如 orders/' }
     ];
     if (kind === 'repository') return [
-      { key: 'path', label: '路径（可选）', placeholder: '例如 services/orders' },
+      { key: 'directory', label: '关联目录（可选）', placeholder: '例如 services/orders' },
       { key: 'revision', label: '分支 / Revision（可选）', placeholder: '例如 main' }
     ];
     if (kind === 'observability') return [{ key: 'target', label: '对象标识（可选）', placeholder: '例如 orders-api' }];

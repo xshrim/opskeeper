@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"opskeeper/backend/resource"
+	repositorytool "opskeeper/backend/tool/repository"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +21,11 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
+
+func stringConfig(config map[string]any, key string) string {
+	value, _ := config[key].(string)
+	return strings.TrimSpace(value)
+}
 
 type Service struct {
 	root      string
@@ -39,6 +46,23 @@ type UploadResult struct {
 	StorageKey   string   `json:"storage_key"`
 	Branches     []string `json:"branches"`
 	ArchivedRefs []string `json:"archived_refs,omitempty"`
+}
+
+type PreviewResult struct {
+	ResourceID string                     `json:"resource_id"`
+	Entries    []repositorytool.TreeEntry `json:"entries"`
+}
+
+func (s *Service) PreviewDraft(ctx context.Context, subtype, rawURL, branch, username, password string) (PreviewResult, error) {
+	if !strings.EqualFold(strings.TrimSpace(subtype), "Git") {
+		return PreviewResult{}, errors.New("draft preview only supports Git Repository")
+	}
+	in := repositorytool.ConnectionInput{URL: strings.TrimSpace(rawURL), Branch: strings.TrimSpace(branch), Username: strings.TrimSpace(username), Password: password, TimeoutSeconds: 30}
+	entries, err := repositorytool.Tree(ctx, in, "", 200)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	return PreviewResult{Entries: entries}, nil
 }
 
 func NewService(root string, maxBytes int64, resources interface {
@@ -80,10 +104,9 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if item.Kind != "Repository" || !strings.EqualFold(item.Subtype, "Bundle") {
 		return UploadResult{}, errors.New("resource must be a Bundle Repository")
 	}
-	backend := strings.ToLower(strings.TrimSpace(stringConfig(item.Config, "storage_backend")))
-	if backend == "" {
-		backend = strings.ToLower(strings.TrimSpace(s.storage.Backend))
-	}
+	// Bundle storage is a process-wide deployment choice. Resource configuration
+	// may retain server-managed metadata, but it must never select the backend.
+	backend := strings.ToLower(strings.TrimSpace(s.storage.Backend))
 	switch backend {
 	case "s3":
 		return s.uploadS3(ctx, id, r, size, item)
@@ -110,11 +133,7 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if e = run(ctx, "bundle", "verify", tmpName); e != nil {
 		return UploadResult{}, e
 	}
-	root := strings.TrimSpace(stringConfig(item.Config, "path"))
-	if root == "" {
-		root = s.root
-	}
-	repoDir := filepath.Join(root, id)
+	repoDir := filepath.Join(s.root, id)
 	if e = os.MkdirAll(repoDir, 0700); e != nil {
 		return UploadResult{}, e
 	}
@@ -134,10 +153,48 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	if e != nil {
 		return UploadResult{}, e
 	}
-	if err := s.updateStorageConfig(ctx, id, item, "local", id, repoDir, nil); err != nil {
+	if err := s.updateStorageConfig(ctx, id, item, "local", id); err != nil {
 		return UploadResult{}, err
 	}
 	return UploadResult{ResourceID: id, StorageKey: id, Branches: branches, ArchivedRefs: archived}, nil
+}
+
+// Preview returns a bounded directory tree for a persisted Git or Bundle
+// repository. Credentials are read server-side and are never returned.
+func (s *Service) Preview(ctx context.Context, id string) (PreviewResult, error) {
+	if s == nil || s.resources == nil {
+		return PreviewResult{}, errors.New("repository service unavailable")
+	}
+	item, err := s.resources.Get(ctx, id)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	if item.Kind != "Repository" {
+		return PreviewResult{}, errors.New("resource must be a Repository")
+	}
+	in := repositorytool.ConnectionInput{TimeoutSeconds: 30}
+	if strings.EqualFold(item.Subtype, "Bundle") {
+		in.StorageBackend, in.StorageKey = s.storage.Backend, stringConfig(item.Config, "storage_key")
+		in.Path, in.S3Endpoint, in.S3Bucket, in.S3Prefix = s.storage.Root, s.storage.Endpoint, s.storage.Bucket, s.storage.Prefix
+		in.S3AccessKey, in.S3SecretKey, in.S3UseSSL, in.Postgres = s.storage.AccessKey, s.storage.SecretKey, s.storage.UseSSL, s.storage.Postgres
+	} else {
+		in.URL, in.Branch = stringConfig(item.Config, "url"), stringConfig(item.Config, "default_branch")
+		if reader, ok := s.resources.(interface {
+			RevealSecret(context.Context, string) ([]byte, error)
+		}); ok {
+			if raw, secretErr := reader.RevealSecret(ctx, item.ID); secretErr == nil && len(raw) > 0 {
+				var credential struct{ Username, Password string }
+				if json.Unmarshal(raw, &credential) == nil {
+					in.Username, in.Password = credential.Username, credential.Password
+				}
+			}
+		}
+	}
+	entries, err := repositorytool.Tree(ctx, in, "", 200)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	return PreviewResult{ResourceID: item.ID, Entries: entries}, nil
 }
 
 func (s *Service) uploadPostgres(ctx context.Context, id string, r io.Reader, size int64, item resource.Resource) (UploadResult, error) {
@@ -215,20 +272,20 @@ func (s *Service) finishUpload(ctx context.Context, id string, item resource.Res
 	if err != nil {
 		return UploadResult{}, err
 	}
-	if err := s.updateStorageConfig(ctx, id, item, backend, key, "", nil); err != nil {
+	if err := s.updateStorageConfig(ctx, id, item, backend, key); err != nil {
 		return UploadResult{}, err
 	}
 	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
 }
 
-func (s *Service) updateStorageConfig(ctx context.Context, id string, item resource.Resource, backend, key, path string, extra map[string]string) error {
+func (s *Service) updateStorageConfig(ctx context.Context, id string, item resource.Resource, backend, key string) error {
 	updater, ok := s.resources.(interface {
 		Update(context.Context, string, resource.UpdateInput) (resource.Resource, error)
 	})
 	if !ok {
 		return errors.New("repository resource storage metadata cannot be updated")
 	}
-	cfg := make(map[string]any, len(item.Config)+len(extra)+2)
+	cfg := make(map[string]any, len(item.Config)+2)
 	for name, value := range item.Config {
 		cfg[name] = value
 	}
@@ -236,14 +293,8 @@ func (s *Service) updateStorageConfig(ctx context.Context, id string, item resou
 	delete(cfg, "s3_endpoint")
 	delete(cfg, "s3_bucket")
 	delete(cfg, "s3_prefix")
-	if path != "" {
-		cfg["path"] = path
-	}
 	cfg["storage_backend"] = backend
 	cfg["storage_key"] = key
-	for name, value := range extra {
-		cfg[name] = value
-	}
 	if _, err := updater.Update(ctx, id, resource.UpdateInput{Config: &cfg}); err != nil {
 		return fmt.Errorf("update repository storage metadata: %w", err)
 	}
@@ -252,15 +303,6 @@ func (s *Service) updateStorageConfig(ctx context.Context, id string, item resou
 
 func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int64, item resource.Resource) (UploadResult, error) {
 	cfg := s.storage
-	if value := stringConfig(item.Config, "s3_endpoint"); value != "" {
-		cfg.Endpoint = value
-	}
-	if value := stringConfig(item.Config, "s3_bucket"); value != "" {
-		cfg.Bucket = value
-	}
-	if value := stringConfig(item.Config, "s3_prefix"); value != "" {
-		cfg.Prefix = value
-	}
 	client, err := s3Client(cfg)
 	if err != nil {
 		return UploadResult{}, err
@@ -362,7 +404,7 @@ func (s *Service) uploadS3(ctx context.Context, id string, r io.Reader, size int
 	if e != nil {
 		return UploadResult{}, e
 	}
-	if err := s.updateStorageConfig(ctx, id, item, "s3", key, "", map[string]string{"s3_endpoint": cfg.Endpoint, "s3_bucket": cfg.Bucket, "s3_prefix": cfg.Prefix}); err != nil {
+	if err := s.updateStorageConfig(ctx, id, item, "s3", key); err != nil {
 		return UploadResult{}, err
 	}
 	return UploadResult{ResourceID: id, StorageKey: key, Branches: branches, ArchivedRefs: archived}, nil
@@ -371,10 +413,6 @@ func objectKey(prefix, id string) string {
 	return strings.Trim(prefix, "/") + "/" + id + "/repository.bundle"
 }
 
-func stringConfig(config map[string]any, key string) string {
-	value, _ := config[key].(string)
-	return value
-}
 func s3Client(cfg StorageConfig) (*minio.Client, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" || strings.TrimSpace(cfg.Bucket) == "" {
 		return nil, errors.New("S3 endpoint and bucket are required")

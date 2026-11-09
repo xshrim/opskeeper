@@ -21,13 +21,19 @@ type secretReader interface {
 }
 
 type Service struct {
-	registry     *Registry
-	resources    ResourceReader
-	checks       CheckStore
-	limits       Limits
-	slots        chan struct{}
-	now          func() time.Time
-	postgresPool *pgxpool.Pool
+	registry          *Registry
+	resources         ResourceReader
+	checks            CheckStore
+	limits            Limits
+	slots             chan struct{}
+	now               func() time.Time
+	postgresPool      *pgxpool.Pool
+	repositoryStorage RepositoryStorageConfig
+}
+
+type RepositoryStorageConfig struct {
+	Backend, Root, Endpoint, Bucket, Prefix, AccessKey, SecretKey string
+	UseSSL                                                        bool
 }
 
 func NewService(registry *Registry, resources ResourceReader, args ...any) *Service {
@@ -51,6 +57,13 @@ func NewService(registry *Registry, resources ResourceReader, args ...any) *Serv
 }
 
 func (s *Service) SetPostgresPool(pool *pgxpool.Pool) { s.postgresPool = pool }
+
+// SetRepositoryStorage applies the process-wide Bundle storage configuration
+// selected at API startup. Repository resources cannot override this choice.
+func (s *Service) SetRepositoryStorage(config RepositoryStorageConfig) {
+	config.Backend = strings.ToLower(strings.TrimSpace(config.Backend))
+	s.repositoryStorage = config
+}
 
 func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, error) {
 	metricStarted := time.Now()

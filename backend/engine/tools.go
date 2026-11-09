@@ -43,6 +43,9 @@ type Tool interface {
 type ToolFunc struct {
 	Def ToolDefinition
 	Fn  func(context.Context, map[string]any) (ToolResult, error)
+	// CloseFn releases execution-scoped state captured by this tool. It is
+	// optional so existing stateless tools keep their current shape.
+	CloseFn func() error
 }
 
 func (t ToolFunc) Definition() ToolDefinition { return t.Def }
@@ -51,6 +54,13 @@ func (t ToolFunc) Invoke(ctx context.Context, arguments map[string]any) (ToolRes
 		return ToolResult{}, ErrToolInvalid
 	}
 	return t.Fn(ctx, arguments)
+}
+
+func (t ToolFunc) Close() error {
+	if t.CloseFn == nil {
+		return nil
+	}
+	return t.CloseFn()
 }
 
 type ToolRegistry struct {
@@ -148,6 +158,9 @@ type ToolCall struct {
 	ModelName     string
 	Arguments     map[string]any
 	EventSink     EventSink
+	// implementation is execution-scoped. The shared registry is retained for
+	// legacy callers, but resolved context tools must not be looked up there.
+	implementation Tool
 }
 
 type ToolAuthorizer func(context.Context, ToolCall, ToolDefinition) error
@@ -230,8 +243,11 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 	if err := RejectPlaceholderLocatorArguments(call.Arguments); err != nil {
 		return ToolResult{}, err
 	}
-	tool, ok := g.Registry.Get(call.ResourceID, call.Name)
-	if !ok {
+	tool := call.implementation
+	if tool == nil {
+		tool, _ = g.Registry.Get(call.ResourceID, call.Name)
+	}
+	if tool == nil {
 		err := fmt.Errorf("%w: %s", ErrToolNotFound, call.Name)
 		message := publicError(err)
 		at := time.Now().UTC()

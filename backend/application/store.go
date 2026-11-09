@@ -236,6 +236,193 @@ func (s *store) DiagnosticCandidates(ctx context.Context, scopeID string) ([]App
 	return items, rows.Err()
 }
 
+func (s *store) diagnosticScopeType(ctx context.Context, scopeID string) (string, error) {
+	var scopeType string
+	if err := s.pool.QueryRow(ctx, `SELECT scope_type FROM scopes WHERE id=$1::uuid AND deleted_at IS NULL`, scopeID).Scan(&scopeType); err != nil {
+		return "", mapStoreError(err)
+	}
+	return scopeType, nil
+}
+
+func (s *store) DiagnosticScopeTeams(ctx context.Context, scopeID string) ([]DiagnosticScopeTeam, error) {
+	scopeType, err := s.diagnosticScopeType(ctx, scopeID)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT team.name, team_scope.status, count(DISTINCT project.id)::int
+  FROM teams team
+  JOIN scopes team_scope ON team_scope.id=team.scope_id AND team_scope.deleted_at IS NULL
+  LEFT JOIN projects project ON project.team_id=team.id AND project.deleted_at IS NULL
+ WHERE team.deleted_at IS NULL
+   AND (($2='platform' AND team_scope.parent_scope_id=$1::uuid) OR ($2='team' AND team_scope.id=$1::uuid))`
+	args := []any{scopeID, scopeType}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted {
+		if len(filter.ScopeIDs) == 0 {
+			return []DiagnosticScopeTeam{}, nil
+		}
+		query += fmt.Sprintf(" AND team_scope.id = ANY($%d::uuid[])", len(args)+1)
+		args = append(args, filter.ScopeIDs)
+	}
+	query += ` GROUP BY team.id, team.name, team_scope.status ORDER BY team.name, team.id`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic scope teams: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DiagnosticScopeTeam, 0)
+	for rows.Next() {
+		var item DiagnosticScopeTeam
+		if err := rows.Scan(&item.Name, &item.Status, &item.ProjectCount); err != nil {
+			return nil, fmt.Errorf("scan diagnostic scope team: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) DiagnosticScopeProjects(ctx context.Context, scopeID, teamName string) ([]DiagnosticScopeProject, error) {
+	query := `SELECT team.name, project.name, project.code, project_scope.status, count(application.id)::int
+  FROM projects project
+  JOIN teams team ON team.id=project.team_id AND team.deleted_at IS NULL
+  JOIN scopes project_scope ON project_scope.id=project.scope_id AND project_scope.deleted_at IS NULL
+  LEFT JOIN applications application ON application.project_id=project.id AND application.deleted_at IS NULL
+ WHERE project.deleted_at IS NULL
+   AND resource_scope_contains($1::uuid, project.scope_id)
+   AND ($2='' OR team.name=$2)`
+	args := []any{scopeID, teamName}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted {
+		if len(filter.ScopeIDs) == 0 {
+			return []DiagnosticScopeProject{}, nil
+		}
+		query += fmt.Sprintf(" AND project.scope_id = ANY($%d::uuid[])", len(args)+1)
+		args = append(args, filter.ScopeIDs)
+	}
+	query += ` GROUP BY team.id,team.name,project.id,project.name,project.code,project_scope.status ORDER BY team.name,project.name,project.code`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic scope projects: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DiagnosticScopeProject, 0)
+	for rows.Next() {
+		var item DiagnosticScopeProject
+		if err := rows.Scan(&item.TeamName, &item.Name, &item.Code, &item.Status, &item.ApplicationCount); err != nil {
+			return nil, fmt.Errorf("scan diagnostic scope project: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) DiagnosticScopeApplications(ctx context.Context, scopeID, teamName, projectCode string, offset, limit int) (DiagnosticScopeApplicationPage, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	// shortcut: cap each model-facing page at 100 rows; add cursor-based
+	// pagination only if interactive scope searches need larger batches.
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	query := `SELECT team.name, project.name, project.code, application.name, application.code, application.runtime_kind, application.status,
+       application.critical, count(instance.id)::int, count(*) OVER()::int
+  FROM applications application
+  JOIN projects project ON project.id=application.project_id AND project.deleted_at IS NULL
+  JOIN teams team ON team.id=project.team_id AND team.deleted_at IS NULL
+ WHERE application.deleted_at IS NULL
+   AND resource_scope_contains($1::uuid, project.scope_id)
+   AND ($2='' OR team.name=$2)
+   AND ($3='' OR project.code=$3)
+ GROUP BY team.id,team.name,project.id,project.name,project.code,application.id,application.name,application.code,application.runtime_kind,application.status,application.critical
+ ORDER BY application.name,application.code
+ LIMIT $4 OFFSET $5`
+	args := []any{scopeID, teamName, projectCode, limit, offset}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted {
+		if len(filter.ScopeIDs) == 0 {
+			return DiagnosticScopeApplicationPage{Items: []DiagnosticScopeApplication{}, Offset: offset, Limit: limit}, nil
+		}
+		query = strings.Replace(query, "   AND ($3='' OR project.code=$3)", "   AND ($3='' OR project.code=$3)\n   AND project.scope_id = ANY($6::uuid[])", 1)
+		args = append(args, filter.ScopeIDs)
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return DiagnosticScopeApplicationPage{}, fmt.Errorf("list diagnostic scope applications: %w", err)
+	}
+	defer rows.Close()
+	page := DiagnosticScopeApplicationPage{Items: make([]DiagnosticScopeApplication, 0, limit), Offset: offset, Limit: limit}
+	for rows.Next() {
+		var item DiagnosticScopeApplication
+		var total int
+		var instanceCount int
+		if err := rows.Scan(&item.TeamName, &item.ProjectName, &item.ProjectCode, &item.Name, &item.Code, &item.RuntimeKind, &item.Status, &item.Critical, &instanceCount, &total); err != nil {
+			return DiagnosticScopeApplicationPage{}, fmt.Errorf("scan diagnostic scope application: %w", err)
+		}
+		item.InstanceCount = instanceCount
+		page.Items = append(page.Items, item)
+		page.Total = total
+	}
+	return page, rows.Err()
+}
+
+func (s *store) DiagnosticApplicationContextByLocator(ctx context.Context, scopeID, name, code string) (DiagnosticContext, error) {
+	name = strings.TrimSpace(name)
+	code = strings.TrimSpace(code)
+	if name == "" && code == "" {
+		return DiagnosticContext{}, ErrInvalid
+	}
+	query := `SELECT application.id::text, project.scope_id::text
+  FROM applications application
+  JOIN projects project ON project.id=application.project_id AND project.deleted_at IS NULL
+ WHERE application.deleted_at IS NULL
+   AND resource_scope_contains($1::uuid, project.scope_id)
+   AND (($2<>'' AND application.name=$2) OR ($3<>'' AND application.code=$3))`
+	args := []any{scopeID, name, code}
+	if filter, restricted := authorization.ScopeFilterFromContext(ctx); restricted {
+		if len(filter.ScopeIDs) == 0 {
+			return DiagnosticContext{}, ErrNotFound
+		}
+		query += fmt.Sprintf(" AND project.scope_id = ANY($%d::uuid[])", len(args)+1)
+		args = append(args, filter.ScopeIDs)
+	}
+	query += ` ORDER BY application.name, application.code LIMIT 2`
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return DiagnosticContext{}, fmt.Errorf("resolve diagnostic application: %w", err)
+	}
+	defer rows.Close()
+	var applicationID, applicationScopeID string
+	count := 0
+	for rows.Next() {
+		count++
+		if count == 1 {
+			if err := rows.Scan(&applicationID, &applicationScopeID); err != nil {
+				return DiagnosticContext{}, err
+			}
+		} else {
+			var ignoredID, ignoredScope string
+			if err := rows.Scan(&ignoredID, &ignoredScope); err != nil {
+				return DiagnosticContext{}, err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return DiagnosticContext{}, err
+	}
+	if count == 0 {
+		return DiagnosticContext{}, ErrNotFound
+	}
+	if count > 1 {
+		return DiagnosticContext{}, fmt.Errorf("application locator is ambiguous")
+	}
+	return s.DiagnosticContext(ctx, applicationScopeID, applicationID)
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func (s *store) Update(ctx context.Context, projectID, applicationID string, input UpdateInput) (Application, error) {
 	current, err := s.Get(ctx, projectID, applicationID)
 	if err != nil {
@@ -592,15 +779,18 @@ func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID st
 			ID: item.ID, ProjectID: item.ProjectID, Name: item.Name, Code: item.Code, Icon: item.Icon,
 			Description: item.Description, RuntimeKind: item.RuntimeKind, Status: item.Status,
 			Critical: item.Critical, Labels: cloneLabels(item.Labels),
-			Instances: diagnosticInstances(item.Instances), ResourceDependencies: diagnosticDependencies(item.Dependencies),
+			Instances: diagnosticInstances(item.Instances, allowedResources), ResourceDependencies: diagnosticDependencies(item.Dependencies, allowedResources),
 		},
 		Project: project, Resources: resources, Dependencies: dependencies, Dependents: dependents,
 	}, nil
 }
 
-func diagnosticInstances(items []Instance) []DiagnosticInstance {
+func diagnosticInstances(items []Instance, allowed map[string]diagnosticResourceMetadata) []DiagnosticInstance {
 	result := make([]DiagnosticInstance, 0, len(items))
 	for _, item := range items {
+		if _, ok := allowed[item.TargetResourceID]; !ok {
+			continue
+		}
 		result = append(result, DiagnosticInstance{
 			ID: item.ID, Name: item.Name, RuntimeKind: item.RuntimeKind, TargetResourceID: item.TargetResourceID,
 			TargetResourceName: item.TargetResourceName, TargetResourceKind: item.TargetResourceKind,
@@ -610,9 +800,12 @@ func diagnosticInstances(items []Instance) []DiagnosticInstance {
 	return result
 }
 
-func diagnosticDependencies(items []Dependency) []DiagnosticDependency {
+func diagnosticDependencies(items []Dependency, allowed map[string]diagnosticResourceMetadata) []DiagnosticDependency {
 	result := make([]DiagnosticDependency, 0, len(items))
 	for _, item := range items {
+		if _, ok := allowed[item.TargetResourceID]; !ok {
+			continue
+		}
 		result = append(result, DiagnosticDependency{
 			ID: item.ID, TargetResourceID: item.TargetResourceID, TargetResourceName: item.TargetResourceName,
 			TargetResourceKind: item.TargetResourceKind, DependencyKind: item.DependencyKind,
@@ -770,6 +963,12 @@ func sanitizeBinding(kind string, value map[string]any) map[string]any {
 		key = strings.TrimSpace(key)
 		if !allowedDependencyBindingField(kind, key) {
 			continue
+		}
+		if kind == "repository" && key == "path" {
+			if _, exists := result["directory"]; exists {
+				continue
+			}
+			key = "directory"
 		}
 		switch typed := item.(type) {
 		case string:

@@ -975,7 +975,7 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 				if sharedBudget != nil {
 					sharedBudget.addToolCall()
 				}
-				call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ModelToolName: modelToolName, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: toolCtx.FunctionCallID(), EventSink: request.EventSink}
+				call := ToolCall{ExecutionID: request.ExecutionID, Sequence: int(count), ActorID: request.ActorID, ScopeID: request.ScopeID, ResourceID: definition.ResourceID, Name: definition.Name, ModelToolName: modelToolName, ProviderID: request.ProviderID, ModelName: request.ModelName, Arguments: args, Iteration: int(iteration.Load()), CallID: toolCtx.FunctionCallID(), EventSink: request.EventSink, implementation: request.ResolvedContext.tool(definition.ResourceID, definition.Name)}
 				if startedToolCalls != nil && call.CallID != "" {
 					startedToolCalls.Store(call.CallID, struct{}{})
 				}
@@ -1041,7 +1041,7 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 	}
 	for _, internal := range request.InternalTools {
 		definition := internal.Definition()
-		if definition.Name == "" || !definition.ReadOnly || strings.TrimSpace(definition.Source) != "persona-delegation" {
+		if definition.Name == "" || !definition.ReadOnly || !allowedInternalToolSource(definition.Source) {
 			continue
 		}
 		var inputSchema *adkjsonschema.Schema
@@ -1105,6 +1105,15 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+func allowedInternalToolSource(source string) bool {
+	switch strings.TrimSpace(source) {
+	case "persona-delegation", "diagnosis-scope":
+		return true
+	default:
+		return false
+	}
 }
 
 // functionResponseObservation converts one ADK FunctionResponse into the

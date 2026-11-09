@@ -926,7 +926,7 @@
   <section class="diagnosis-conversation-f">
     <header class="diagnosis-conversation-head">
       <div class="diagnosis-conversation-title">
-        <h1>{diagnosisSnapshot?.session.title || '新建诊断会话'}</h1>
+        <h1>{diagnosisSnapshot?.session.title || '新建会话'}</h1>
         <small>{scopeLabel} · 只读证据链</small>
       </div>
       {#if diagnosisTargetIds.length > 0}<div class="diagnosis-loaded-context">

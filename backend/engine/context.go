@@ -7,13 +7,16 @@ import (
 )
 
 type ContextResource struct {
-	ID       string         `json:"id"`
-	ScopeID  string         `json:"scope_id"`
-	Kind     string         `json:"kind"`
-	Name     string         `json:"name"`
-	Subtype  string         `json:"subtype,omitempty"`
-	AgentRef *string        `json:"agent_ref,omitempty"`
-	Config   map[string]any `json:"-"`
+	ID       string  `json:"id"`
+	ScopeID  string  `json:"scope_id"`
+	Kind     string  `json:"kind"`
+	Name     string  `json:"name"`
+	Subtype  string  `json:"subtype,omitempty"`
+	AgentRef *string `json:"agent_ref,omitempty"`
+	// Binding is a server-owned relationship binding for the current execution
+	// (for example a Repository application directory), not resource config.
+	Binding map[string]any `json:"-"`
+	Config  map[string]any `json:"-"`
 }
 
 type ContextFact struct {
@@ -28,6 +31,33 @@ type ResolvedContext struct {
 	Resources []ContextResource `json:"resources"`
 	Tools     []ToolDefinition  `json:"tools"`
 	Facts     []ContextFact     `json:"facts"`
+	// implementations and cleanups are execution-local and deliberately not
+	// serialized. They keep relationship bindings out of shared registries.
+	implementations map[string]Tool
+	cleanups        []func() error
+}
+
+func contextToolKey(resourceID, name string) string {
+	return strings.TrimSpace(resourceID) + "\x00" + strings.TrimSpace(name)
+}
+
+func (c *ResolvedContext) tool(resourceID, name string) Tool {
+	if c == nil {
+		return nil
+	}
+	return c.implementations[contextToolKey(resourceID, name)]
+}
+
+func (c *ResolvedContext) close() {
+	if c == nil {
+		return
+	}
+	for _, cleanup := range c.cleanups {
+		if cleanup != nil {
+			_ = cleanup()
+		}
+	}
+	c.cleanups = nil
 }
 
 type ContextResourceReader interface {
@@ -62,7 +92,13 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 		return ResolvedContext{}, fmt.Errorf("context resource reader is unavailable")
 	}
 	seen := make(map[string]struct{})
-	resolved := ResolvedContext{Resources: []ContextResource{}, Tools: []ToolDefinition{}, Facts: []ContextFact{}}
+	resolved := ResolvedContext{Resources: []ContextResource{}, Tools: []ToolDefinition{}, Facts: []ContextFact{}, implementations: make(map[string]Tool)}
+	completed := false
+	defer func() {
+		if !completed {
+			resolved.close()
+		}
+	}()
 	for _, rawID := range request.ResourceIDs {
 		id := strings.TrimSpace(rawID)
 		if id == "" {
@@ -78,6 +114,9 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 		}
 		if strings.TrimSpace(resource.ID) == "" {
 			resource.ID = id
+		}
+		if binding := request.ResourceBindings[id]; len(binding) > 0 {
+			resource.Binding = cloneContextBinding(binding)
 		}
 		if r.Authorize != nil {
 			if err := r.Authorize(ctx, resource); err != nil {
@@ -117,16 +156,31 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 				definition.ResourceID = resource.ID
 			}
 			definition.ResourceName = resource.Name
-			if r.Registry != nil {
-				if err := r.Registry.Upsert(resource.ID, tool); err != nil {
-					return ResolvedContext{}, fmt.Errorf("register tool %s for context resource %s: %w", definition.Name, id, err)
-				}
+			if normalized, ok := tool.(ToolFunc); ok {
+				normalized.Def = definition
+				tool = normalized
+			}
+			resolved.implementations[contextToolKey(resource.ID, definition.Name)] = tool
+			if closer, ok := tool.(interface{ Close() error }); ok {
+				resolved.cleanups = append(resolved.cleanups, closer.Close)
 			}
 			resolved.Tools = append(resolved.Tools, definition)
 		}
 		resolved.Facts = append(resolved.Facts, facts...)
 	}
+	completed = true
 	return resolved, nil
+}
+
+func cloneContextBinding(value map[string]any) map[string]any {
+	if len(value) == 0 {
+		return nil
+	}
+	result := make(map[string]any, len(value))
+	for key, item := range value {
+		result[key] = item
+	}
+	return result
 }
 
 func providerFor(providers []ContextProvider, resource ContextResource) (ContextProvider, bool) {
