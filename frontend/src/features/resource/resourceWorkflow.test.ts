@@ -16,6 +16,8 @@ import {
   mcpConfigForSave,
   mcpConfigurationValid,
   parseMCPHeaders,
+  resourceAddStepDescription,
+  resourceAddStepTitle,
 } from './resourceWorkflow';
 
 describe('resource workflow helpers', () => {
@@ -112,6 +114,13 @@ describe('resource workflow helpers', () => {
     expect(hostAccessSummary('Direct', { auth_method: 'password' })).toBe('Direct · SSH 密码');
     expect(hostAccessSummary('Agent', { auth_method: 'key' })).toBe('Agent · SSH 私钥');
     expect(hostAccessSummary('Agent', {})).toBe('Agent');
+  });
+
+  it('uses the repository subtype for workflow step labels', () => {
+    expect(resourceAddStepTitle(2, 'Repository', 'Git')).toBe('Git 配置');
+    expect(resourceAddStepTitle(2, 'Repository', 'Bundle')).toBe('Bundle 上传');
+    expect(resourceAddStepTitle(3, 'Repository', 'Git')).toBe('仓库预览');
+    expect(resourceAddStepDescription(2, 'Repository', 'Bundle')).toContain('上传并校验');
   });
 
   it('separates Kubernetes API connection modes and stores kubeconfig as Base64', () => {

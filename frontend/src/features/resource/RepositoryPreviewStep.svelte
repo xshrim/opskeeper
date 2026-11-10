@@ -6,12 +6,12 @@
 
 <section class="repository-preview-step">
   <div class="preview-intro">
-    <strong>目录预览</strong>
+    <strong>仓库预览</strong>
     <small>{busy ? '正在读取仓库内容…' : '已读取默认分支的前 200 个文件。确认目录内容无误后继续保存。'}</small>
   </div>
   {#if message}<p class="form-error" role="alert">{message}</p>{/if}
   {#if entries.length}
-    <ul aria-label="Repository 目录树">
+      <ul aria-label="仓库目录树">
       {#each entries as entry}<li><code>{entry.path}</code>{#if entry.size !== undefined}<small>{entry.size} B</small>{/if}</li>{/each}
     </ul>
   {:else if !busy && !message}

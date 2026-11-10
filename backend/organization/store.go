@@ -44,6 +44,15 @@ const projectSelect = `
            AND a.status IN ('active', 'healthy', 'normal', 'up')
            AND EXISTS (SELECT 1 FROM application_instances healthy_instance WHERE healthy_instance.application_id = a.id AND healthy_instance.status IN ('active', 'healthy', 'normal', 'up'))
            AND NOT EXISTS (SELECT 1 FROM application_instances unhealthy_instance WHERE unhealthy_instance.application_id = a.id AND unhealthy_instance.status NOT IN ('active', 'healthy', 'normal', 'up'))) AS healthy_application_count,
+       (SELECT count(*)::int
+          FROM application_instances i
+          JOIN applications a ON a.id = i.application_id
+         WHERE a.project_id = p.id AND a.deleted_at IS NULL) AS instance_count,
+       (SELECT count(*)::int
+          FROM application_instances i
+          JOIN applications a ON a.id = i.application_id
+         WHERE a.project_id = p.id AND a.deleted_at IS NULL
+           AND i.status IN ('active', 'healthy', 'normal', 'up')) AS healthy_instance_count,
        (SELECT count(DISTINCT r.id)::int
           FROM resources r
          WHERE r.deleted_at IS NULL
@@ -761,6 +770,8 @@ func scanProject(row scanner) (Project, error) {
 		&project.UpdatedAt,
 		&project.Summary.Applications,
 		&project.Summary.ApplicationsHealthy,
+		&project.Summary.Instances,
+		&project.Summary.InstancesHealthy,
 		&project.Summary.Resources,
 		&project.Summary.Alerts,
 		&project.Summary.Dependencies,

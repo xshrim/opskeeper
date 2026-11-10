@@ -1,5 +1,58 @@
 import type { Resource } from './api';
-import type { Project, Team } from './api';
+import type { Project, RoleBinding, Team } from './api';
+
+export function initialWorkspaceSelection(
+  roleBindings: RoleBinding[],
+  teams: Team[],
+  projects: Project[],
+  platformScopeId: string | undefined,
+  hasPlatformRole: boolean
+) {
+  const scopePriority: Record<string, number> = {
+    platform: 0,
+    team: 1,
+    project: 2
+  };
+  const strongestBinding = roleBindings.reduce<RoleBinding | null>(
+    (strongest, binding) => {
+      const priority = scopePriority[binding.scope_type];
+      if (priority === undefined) return strongest;
+      return strongest === null || priority < scopePriority[strongest.scope_type]
+        ? binding
+        : strongest;
+    },
+    null
+  );
+
+  if (strongestBinding?.scope_type === 'platform') {
+    return {
+      teamId: '',
+      projectId: '',
+      scopeId: strongestBinding.scope_id
+    };
+  }
+  if (strongestBinding?.scope_type === 'team') {
+    const team = teams.find((item) => item.scope.id === strongestBinding.scope_id);
+    if (team) return { teamId: team.id, projectId: '', scopeId: team.scope.id };
+  }
+  if (strongestBinding?.scope_type === 'project') {
+    const project = projects.find((item) => item.scope.id === strongestBinding.scope_id);
+    if (project) {
+      return {
+        teamId: project.team_id,
+        projectId: project.id,
+        scopeId: project.scope.id
+      };
+    }
+  }
+
+  const defaultTeam = hasPlatformRole ? undefined : teams[0];
+  return {
+    teamId: defaultTeam?.id ?? '',
+    projectId: '',
+    scopeId: defaultTeam?.scope.id ?? platformScopeId ?? ''
+  };
+}
 
 export function resourceInWorkspace(
   resource: Resource,

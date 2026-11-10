@@ -25,12 +25,12 @@
     UserRound,
     UsersRound
   } from 'lucide-svelte';
-  import { fetchHealth, toStatusRows, type HealthReport } from './lib/health';
   import { resourceHasConnector, resourceIcon as getResourceIcon, resourceSchemaName as getResourceSchemaName } from './lib/resources';
   import { loadResourceConnectionChecks as loadResourceConnectionChecksData } from './features/resource/resourceData';
-import { buildScopeChoices, scopesInWorkspace, scopeName as getScopeName, scopeType as getScopeType, type ScopeChoice } from './lib/scope';
+  import { buildScopeChoices, scopesInWorkspace, scopeName as getScopeName, scopeType as getScopeType, type ScopeChoice } from './lib/scope';
   import { viewBreadcrumb as getViewBreadcrumb, viewTitle as getViewTitle } from './lib/navigation';
   import {
+    initialWorkspaceSelection,
     projectSelection,
     resourceInWorkspace,
     teamSelection
@@ -38,7 +38,8 @@ import { buildScopeChoices, scopesInWorkspace, scopeName as getScopeName, scopeT
   import {
     actorPermissionsAtScope as getActorPermissionsAtScope,
     canManageResource,
-    userRoleBindings as getUserRoleBindings
+    userRoleBindings as getUserRoleBindings,
+    usersAtScopes
   } from './features/access/accessUtils';
   import { formatDate } from './lib/format';
   import MessageBanner from './components/MessageBanner.svelte';
@@ -103,6 +104,7 @@ import type {
   type AccessTab = 'teams' | 'users' | 'roles';
   let authState: 'loading' | 'login' | 'ready' = 'loading';
   let currentUser: User | null = null;
+  let workspaceUsers: User[] | null = null;
   let notice = '';
   let noticeTimer: number | null = null;
   let errorMessage = '';
@@ -141,9 +143,6 @@ import type {
   let resources: Resource[] = [];
   let contextResources: Resource[] = [];
   let schemas: ResourceSchema[] = [];
-  let health: HealthReport | null = null;
-  let healthController: AbortController | null = null;
-  let healthInterval: number | null = null;
   let selectedScopeId = '';
   let selectedResourceId = '';
   let selectedApplicationId = '';
@@ -182,6 +181,15 @@ import type {
   $: visibleResources = selectedScopeId
     ? resources.filter((resource) => resourceInActiveWorkspace(resource))
     : resources;
+  $: overviewMemberScopeIDs = activeScope?.type === 'platform'
+    ? scopeChoices.map((scope) => scope.id)
+    : activeScope?.type === 'team'
+      ? [activeScope.id, ...visibleProjects.map((project) => project.scope.id)]
+      : selectedScopeId ? [selectedScopeId] : [];
+  $: overviewTeamCount = activeScope?.type === 'platform' ? teams.length : selectedScopeId ? 1 : teams.length;
+  $: overviewMemberCount = workspaceUsers
+    ? usersAtScopes(overviewMemberScopeIDs, workspaceUsers, bindings, groups, groupMembers).length
+    : null;
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
   $: selectedResourceCanUpdate = selectedResource
@@ -190,7 +198,6 @@ import type {
   $: selectedResourceCanDelete = selectedResource
     ? resourceCanManage(selectedResource, 'resource:delete')
     : false;
-  $: rows = toStatusRows(health);
   $: selectedResourceHasConnector = Boolean(
     selectedResource && resourceHasConnector(selectedResource)
   );
@@ -221,7 +228,6 @@ import type {
     return () => {
       if (noticeTimer !== null) window.clearTimeout(noticeTimer);
       if (errorTimer !== null) window.clearTimeout(errorTimer);
-      stopHealthPolling();
       media.removeEventListener('change', refreshTheme);
       document.removeEventListener('pointerdown', handleDocumentPointerDown);
     };
@@ -252,31 +258,6 @@ import type {
     if (view === 'diagnosis') void refreshDiagnosisContextResources();
   }
 
-  function startHealthPolling() {
-    if (healthInterval !== null) return;
-    const controller = new AbortController();
-    healthController = controller;
-    const checkHealth = async () => {
-      try {
-        health = await fetchHealth(controller.signal);
-      } catch {
-        if (healthController === controller) health = null;
-      }
-    };
-    void checkHealth();
-    healthInterval = window.setInterval(checkHealth, 15_000);
-  }
-
-  function stopHealthPolling() {
-    healthController?.abort();
-    healthController = null;
-    if (healthInterval !== null) {
-      window.clearInterval(healthInterval);
-      healthInterval = null;
-    }
-    health = null;
-  }
-
   async function completeAuthenticatedSession(user: User, sessionNotice = '') {
     currentUser = user;
     await loadPreferences();
@@ -285,7 +266,6 @@ import type {
     const sessionContext = await api.sessionContext();
     isPlatformAdmin = sessionContext.platform_admin;
     hasPlatformRole = sessionContext.platform_role;
-    startHealthPolling();
     await loadWorkspace();
     if (sessionNotice) notice = sessionNotice;
   }
@@ -314,10 +294,11 @@ import type {
         contextPage.status === 'fulfilled' ? contextPage.value.items : [];
       resourceRoles = contextResourceResult[1].status === 'fulfilled' ? contextResourceResult[1].value : [];
       resourceRoleBindings = contextResourceResult[2].status === 'fulfilled' ? contextResourceResult[2].value : [];
-      const permissionResult = await Promise.allSettled([api.groups(), api.roles(), api.bindings()]);
+      const permissionResult = await Promise.allSettled([api.groups(), api.roles(), api.bindings(), api.users()]);
       groups = permissionResult[0].status === 'fulfilled' ? permissionResult[0].value : [];
       roles = permissionResult[1].status === 'fulfilled' ? permissionResult[1].value : [];
       bindings = permissionResult[2].status === 'fulfilled' ? permissionResult[2].value : [];
+      workspaceUsers = permissionResult[3].status === 'fulfilled' ? permissionResult[3].value : null;
       const memberResults = await Promise.allSettled(groups.map((group) => api.groupMembers(group.id)));
       groupMembers = Object.fromEntries(groups.map((group, index) => [
         group.id,
@@ -330,10 +311,18 @@ import type {
         teams.map((team) => api.projects(team.id))
       );
       projects = projectPages.flatMap((page) => page.items);
-      const defaultTeam = hasPlatformRole ? undefined : teams[0];
-      selectedTeamId = defaultTeam?.id ?? '';
-      selectedProjectId = '';
-      selectedScopeId = defaultTeam?.scope.id ?? platform.scope.id;
+      const initialSelection = initialWorkspaceSelection(
+        currentUser
+          ? getUserRoleBindings(currentUser.id, groups, groupMembers, bindings)
+          : [],
+        teams,
+        projects,
+        platform.scope.id,
+        hasPlatformRole || isPlatformAdmin
+      );
+      selectedTeamId = initialSelection.teamId;
+      selectedProjectId = initialSelection.projectId;
+      selectedScopeId = initialSelection.scopeId;
       const providerResult = await api.providers(selectedScopeId);
       providers = providerResult.items;
       const [skillResult, personaResult] = await Promise.all([
@@ -384,6 +373,7 @@ import type {
       await api.logout();
     } finally {
       currentUser = null;
+      workspaceUsers = null;
       isPlatformAdmin = false;
       hasPlatformRole = false;
       profileOpen = false;
@@ -391,7 +381,6 @@ import type {
       selectedProjectId = '';
       authState = 'login';
       applySystemTheme();
-      stopHealthPolling();
       view = 'overview';
       userMenuOpen = false;
       busy = false;
@@ -874,15 +863,29 @@ import type {
 
       {#if view === 'overview'}
         <OverviewPage
-          teamCount={teams.length}
-          projectCount={visibleProjects.length}
-          resourceCount={visibleResources.length}
-          healthStatus={health?.status}
-          {rows}
+          {teams}
+          projects={visibleProjects}
           {visibleResources}
+          {resourceConnectionChecks}
+          scopeId={selectedScopeId}
+          {providers}
+          {skills}
+          {personas}
+          organizationTeamCount={overviewTeamCount}
+          organizationMemberCount={overviewMemberCount}
           {resourceSchemaName}
-          {scopeName}
           {resourceIcon}
+          onOpenProject={(project) => {
+            selectedTeamId = project.team_id;
+            selectedProjectId = project.id;
+            selectedScopeId = project.scope.id;
+            chooseView('project');
+          }}
+          onOpenDiagnosis={() => chooseView('diagnosis')}
+          onOpenInspection={() => chooseView('inspection')}
+          onOpenNotifications={() => chooseView('notification')}
+          onOpenModels={() => chooseView('llm')}
+          onOpenAccess={() => chooseView('access')}
           onOpenResources={() => chooseView('resource')}
           onOpenResource={(resource) => {
             selectedResourceId = resource.id;

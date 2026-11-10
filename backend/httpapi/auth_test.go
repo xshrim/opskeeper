@@ -33,6 +33,11 @@ type stubIdentityService struct {
 	oneTimeChangeNew   string
 }
 
+func (s *stubIdentityService) AuthenticateBasic(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, error) {
+	s.loginIdentifier = identifier
+	return s.user, s.loginError
+}
+
 func (s *stubIdentityService) Login(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, identity.SessionTokens, error) {
 	s.loginIdentifier = identifier
 	return s.user, s.tokens, s.loginError
@@ -181,6 +186,25 @@ func TestChangePasswordRequiresAuthenticationAndForwardsCredentials(t *testing.T
 
 	if response.Code != http.StatusOK || service.changeCurrent != "old password" || service.changeNew != "new strong password" {
 		t.Fatalf("change password response = %d current=%q new=%q", response.Code, service.changeCurrent, service.changeNew)
+	}
+}
+
+func TestBasicAuthenticationUsesCredentialsWithoutSessionToken(t *testing.T) {
+	service := &stubIdentityService{user: identity.User{ID: handlerTestUUID, Status: identity.StatusActive}}
+	request := httptest.NewRequest(http.MethodGet, "/test/api/v1/auth/me", nil)
+	request.SetBasicAuth("operator", "password")
+	response := httptest.NewRecorder()
+
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("basic auth status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if service.loginIdentifier != "operator" {
+		t.Fatalf("basic auth identifier = %q, want operator", service.loginIdentifier)
+	}
+	if service.authenticatedToken != "" {
+		t.Fatalf("basic auth unexpectedly used session token %q", service.authenticatedToken)
 	}
 }
 

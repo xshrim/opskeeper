@@ -64,6 +64,8 @@ type Project struct {
 type ProjectSummary struct {
 	Applications        int `json:"applications"`
 	ApplicationsHealthy int `json:"applications_healthy"`
+	Instances           int `json:"instances"`
+	InstancesHealthy    int `json:"instances_healthy"`
 	Resources           int `json:"resources"`
 	Alerts              int `json:"alerts"`
 	Dependencies        int `json:"dependencies"`

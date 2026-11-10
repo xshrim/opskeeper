@@ -799,7 +799,6 @@
   size="wide"
   coverage="page"
   overflowMode="expand"
-  initialCenterRatio={0.38}
   title={initialApplication ? '编辑应用' : '新增应用'}
   description={initialApplication ? '调整应用配置与运行实例。' : '选择运行时并批量配置匹配到的应用。'}
   confirmLabel={step === 0 ? '下一步' : initialApplication ? '保存' : '创建'}

@@ -18,10 +18,10 @@
     try {
       const response = await fetch(appURL(`api/v1/resources/${resource.id}/repository/tree`), { credentials: 'include' });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? '目录预览失败');
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? '仓库预览失败');
       previewEntries = Array.isArray(data.entries) ? data.entries : [];
     } catch (error) {
-      previewMessage = error instanceof Error ? error.message : '目录预览失败';
+      previewMessage = error instanceof Error ? error.message : '仓库预览失败';
       previewEntries = [];
     } finally {
       previewBusy = false;
@@ -56,10 +56,10 @@
     <p class="muted">Git 仓库按需从远端读取，工具支持分支、状态、目录、文件和搜索。</p>
   {/if}
   <section class="repository-preview">
-    <div class="preview-heading"><div><strong>目录预览</strong><small>读取当前仓库默认分支的前 200 个文件</small></div><button class="secondary" type="button" disabled={previewBusy} on:click={() => void preview()}>{previewBusy ? '读取中…' : '刷新预览'}</button></div>
+    <div class="preview-heading"><div><strong>仓库预览</strong><small>读取当前仓库默认分支的前 200 个文件</small></div><button class="secondary" type="button" disabled={previewBusy} on:click={() => void preview()}>{previewBusy ? '读取中…' : '刷新预览'}</button></div>
     {#if previewMessage}<small class="form-error">{previewMessage}</small>{/if}
     {#if previewEntries.length}
-      <ul class="repository-tree" aria-label="Repository 目录树">
+      <ul class="repository-tree" aria-label="仓库目录树">
         {#each previewEntries as entry}<li><code>{entry.path}</code>{#if entry.size !== undefined}<small>{entry.size} B</small>{/if}</li>{/each}
       </ul>
     {:else if !previewBusy && !previewMessage}<small class="muted">点击刷新预览查看目录树。</small>{/if}

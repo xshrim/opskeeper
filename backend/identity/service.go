@@ -153,6 +153,50 @@ func (s *Service) Login(ctx context.Context, identifier, password string, metada
 	return resultUser, tokens, nil
 }
 
+// AuthenticateBasic verifies username/password credentials without creating a
+// session. It is used by stateless API clients that send HTTP Basic auth on
+// each request.
+func (s *Service) AuthenticateBasic(ctx context.Context, identifier, password string, metadata SessionMetadata) (User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" || password == "" {
+		_ = s.recordAudit(ctx, audit.Event{Action: "auth.basic", Result: "failure", RequestID: metadata.RequestID, ClientIP: metadata.ClientIP, Details: map[string]any{"reason": "invalid_credentials"}})
+		return User{}, ErrInvalidCredentials
+	}
+	lookupIdentifier := normalizeUsername(identifier)
+	if strings.Contains(identifier, "@") {
+		lookupIdentifier = normalizeEmail(identifier)
+	}
+	phoneIdentifier := normalizePhone(identifier)
+	if validateOptionalPhone(phoneIdentifier) != nil {
+		phoneIdentifier = ""
+	}
+	user, hash, err := s.store.FindByIdentifier(ctx, lookupIdentifier, phoneIdentifier)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			_ = s.recordAudit(ctx, audit.Event{Action: "auth.basic", Result: "failure", RequestID: metadata.RequestID, ClientIP: metadata.ClientIP, Details: map[string]any{"reason": "invalid_credentials"}})
+			return User{}, ErrInvalidCredentials
+		}
+		return User{}, err
+	}
+	if user.Status != StatusActive || !verifyPassword(hash, password) {
+		_ = s.recordAudit(ctx, audit.Event{ActorUserID: user.ID, Action: "auth.basic", Result: "failure", RequestID: metadata.RequestID, ClientIP: metadata.ClientIP, Details: map[string]any{"reason": "invalid_credentials"}})
+		return User{}, ErrInvalidCredentials
+	}
+	if passwordNeedsUpgrade(hash) {
+		upgraded, hashErr := hashPassword(password)
+		if hashErr != nil {
+			return User{}, hashErr
+		}
+		if hashErr = s.store.UpdatePasswordHash(ctx, user.ID, hash, upgraded); hashErr != nil {
+			return User{}, hashErr
+		}
+	}
+	if err := s.recordAudit(ctx, audit.Event{ActorUserID: user.ID, Action: "auth.basic", Result: "success", RequestID: metadata.RequestID, ClientIP: metadata.ClientIP, Details: map[string]any{"user_agent": metadata.UserAgent}}); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 func (s *Service) Refresh(ctx context.Context, refreshToken string, metadata SessionMetadata) (User, SessionTokens, error) {
 	if refreshToken == "" {
 		_ = s.recordAudit(ctx, audit.Event{Action: "auth.refresh", Result: "failure", RequestID: metadata.RequestID, ClientIP: metadata.ClientIP, Details: map[string]any{"reason": "invalid_session"}})

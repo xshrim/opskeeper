@@ -33,7 +33,7 @@
   export let resizable = true;
   export let overflowMode: DialogOverflow = 'scroll';
   export let autoHeight = true;
-  export let initialCenterRatio = 0.42;
+  export let initialTopRatio = 0.15;
   export let onCancel: () => void = () => {};
   export let onBack: () => void | Promise<void> = () => {};
   export let onConfirm: () => void | Promise<void> = () => {};
@@ -60,7 +60,7 @@
   {resizable}
   {overflowMode}
   {autoHeight}
-  {initialCenterRatio}
+  {initialTopRatio}
   {closeOnBackdrop}
   onBackdrop={onCancel}
 >

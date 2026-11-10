@@ -16,7 +16,7 @@
   export let resizable = true;
   export let overflowMode: 'clip' | 'scroll' | 'expand' = 'scroll';
   export let autoHeight = false;
-  export let initialCenterRatio = 0.42;
+  export let initialTopRatio = 0.15;
   export let onBackdrop: () => void = () => {};
 
   let dialogElement: HTMLDialogElement;
@@ -110,11 +110,17 @@
       );
       dialogElement.style.width = `${width}px`;
     }
+    const top = preservePosition
+      ? currentRect.top
+      : targetRect && alignTargetTop
+        ? targetRect.top
+        : window.innerHeight * initialTopRatio;
     if (overflowMode === 'expand' || autoHeight) {
       if (overflowMode === 'expand' && !(targetRect && widthTargetRatio > 0)) {
         dialogElement.style.width = '';
       }
       dialogElement.style.height = 'auto';
+      dialogElement.style.maxHeight = `${Math.max(minHeight, window.innerHeight - top - viewportMargin)}px`;
     }
     if (!targetRect && !autoHeight && overflowMode !== 'expand') return;
     const expandedRect = dialogElement.getBoundingClientRect();
@@ -123,11 +129,6 @@
       : targetRect
         ? targetRect.left + (targetRect.width - expandedRect.width) / 2
         : (window.innerWidth - expandedRect.width) / 2;
-    const top = preservePosition
-      ? currentRect.top
-      : targetRect && alignTargetTop
-        ? targetRect.top
-        : window.innerHeight * initialCenterRatio - expandedRect.height / 2;
     setGeometry(
       left,
       top,

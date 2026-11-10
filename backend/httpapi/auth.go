@@ -33,6 +33,10 @@ type identityService interface {
 	ChangeOneTimePassword(context.Context, string, string) error
 }
 
+type basicIdentityService interface {
+	AuthenticateBasic(context.Context, string, string, identity.SessionMetadata) (identity.User, error)
+}
+
 type authHandler struct {
 	service       identityService
 	platformAdmin platformAdminService
@@ -354,11 +358,23 @@ func (h authHandler) logoutAll(writer http.ResponseWriter, request *http.Request
 
 func (h authHandler) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		token := cookieValue(request, accessCookieName)
-		if token == "" {
-			token = bearerToken(request)
+		var user identity.User
+		var err error
+		if identifier, password, ok := request.BasicAuth(); ok {
+			if basic, supported := h.service.(basicIdentityService); supported {
+				user, err = basic.AuthenticateBasic(request.Context(), identifier, password, sessionMetadata(request))
+			} else {
+				// Keep custom identity implementations compatible while the built-in
+				// service uses stateless Basic authentication.
+				user, _, err = h.service.Login(request.Context(), identifier, password, sessionMetadata(request))
+			}
+		} else {
+			token := cookieValue(request, accessCookieName)
+			if token == "" {
+				token = bearerToken(request)
+			}
+			user, err = h.service.Authenticate(request.Context(), token)
 		}
-		user, err := h.service.Authenticate(request.Context(), token)
 		if err != nil {
 			writeIdentityError(writer, request, err)
 			return

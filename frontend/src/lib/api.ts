@@ -85,6 +85,8 @@ export interface Project {
   summary: {
     applications: number;
     applications_healthy: number;
+    instances: number;
+    instances_healthy: number;
     resources: number;
     alerts: number;
     dependencies: number;

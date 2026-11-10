@@ -1,7 +1,58 @@
 import { describe, expect, it } from 'vitest';
-import { projectSelection, providerModelSelection, resourceInWorkspace, teamSelection } from './workspace';
+import { initialWorkspaceSelection, projectSelection, providerModelSelection, resourceInWorkspace, teamSelection } from './workspace';
 
 describe('workspace helpers', () => {
+  it('chooses the first platform role over team and project roles', () => {
+    expect(initialWorkspaceSelection([
+      { scope_type: 'project', scope_id: 'project-scope' },
+      { scope_type: 'platform', scope_id: 'platform-scope' },
+      { scope_type: 'team', scope_id: 'team-scope' }
+    ] as never[], [], [], 'platform-scope', false)).toEqual({
+      teamId: '', projectId: '', scopeId: 'platform-scope'
+    });
+  });
+
+  it('chooses the first team role over project roles and all projects in that team', () => {
+    const teams = [
+      { id: 'team-1', scope: { id: 'team-scope-1' } },
+      { id: 'team-2', scope: { id: 'team-scope-2' } }
+    ] as never[];
+    const projects = [
+      { id: 'project-1', team_id: 'team-1', scope: { id: 'project-scope-1' } }
+    ] as never[];
+    expect(initialWorkspaceSelection([
+      { scope_type: 'project', scope_id: 'project-scope-1' },
+      { scope_type: 'team', scope_id: 'team-scope-2' },
+      { scope_type: 'team', scope_id: 'team-scope-1' }
+    ] as never[], teams, projects, 'platform-scope', false)).toEqual({
+      teamId: 'team-2', projectId: '', scopeId: 'team-scope-2'
+    });
+  });
+
+  it('selects the first project role and resolves its team', () => {
+    const teams = [{ id: 'team-1', scope: { id: 'team-scope' } }] as never[];
+    const projects = [
+      { id: 'project-1', team_id: 'team-1', scope: { id: 'project-scope-1' } },
+      { id: 'project-2', team_id: 'team-1', scope: { id: 'project-scope-2' } }
+    ] as never[];
+    expect(initialWorkspaceSelection([
+      { scope_type: 'project', scope_id: 'project-scope-2' },
+      { scope_type: 'project', scope_id: 'project-scope-1' }
+    ] as never[], teams, projects, 'platform-scope', false)).toEqual({
+      teamId: 'team-1', projectId: 'project-2', scopeId: 'project-scope-2'
+    });
+  });
+
+  it('falls back to platform or first team when no role binding resolves', () => {
+    const teams = [{ id: 'team-1', scope: { id: 'team-scope' } }] as never[];
+    expect(initialWorkspaceSelection([] as never[], teams, [], 'platform-scope', true)).toEqual({
+      teamId: '', projectId: '', scopeId: 'platform-scope'
+    });
+    expect(initialWorkspaceSelection([] as never[], teams, [], 'platform-scope', false)).toEqual({
+      teamId: 'team-1', projectId: '', scopeId: 'team-scope'
+    });
+  });
+
   it('keeps platform resources visible from team and project scopes', () => {
     expect(resourceInWorkspace(
       { scope_id: 'platform' } as never,
