@@ -86,9 +86,12 @@ func TestRejectPlaceholderLocatorArguments(t *testing.T) {
 func TestExecutionPromptOmitsContextResourceIDs(t *testing.T) {
 	prompt, err := executionPrompt(Request{
 		Input: map[string]any{"application_id": "app-db-id", "question": "inspect"},
-		ResolvedContext: &ResolvedContext{Facts: []ContextFact{{
-			ResourceID: "resource-db-id", Kind: "Docker", Summary: map[string]any{"resource_id": "resource-db-id", "name": "Docker"},
-		}}},
+		ResolvedContext: &ResolvedContext{
+			Resources: []ContextResource{{ID: "resource-db-id", ScopeID: "scope-db-id", Kind: "Repository", Name: "git", Subtype: "bundle"}},
+			Facts: []ContextFact{{
+				ResourceID: "resource-db-id", Kind: "Docker", Summary: map[string]any{"resource_id": "resource-db-id", "name": "Docker"},
+			}},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +99,7 @@ func TestExecutionPromptOmitsContextResourceIDs(t *testing.T) {
 	if strings.Contains(prompt, "app-db-id") || strings.Contains(prompt, "resource-db-id") || strings.Contains(prompt, "application_id") {
 		t.Fatalf("internal IDs leaked into execution prompt: %s", prompt)
 	}
-	if !strings.Contains(prompt, "inspect") || !strings.Contains(prompt, "Docker") {
+	if !strings.Contains(prompt, "inspect") || !strings.Contains(prompt, "Docker") || !strings.Contains(prompt, `"selected_resources":[{"kind":"Repository","name":"git","subtype":"bundle"}]`) {
 		t.Fatalf("safe model input was lost: %s", prompt)
 	}
 }

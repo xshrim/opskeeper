@@ -25,13 +25,16 @@ type repositoryPreviewRequest struct {
 	Password string `json:"password"`
 }
 
-func registerRepositoryRoutes(router chi.Router, service repositoryBundleService, require func(authorization.Permission) func(http.Handler) http.Handler) {
+func registerRepositoryRoutes(router chi.Router, service repositoryBundleService, require func(authorization.Permission) func(http.Handler) http.Handler, maxBundleBytes int64) {
 	if service == nil {
 		return
 	}
+	if maxBundleBytes <= 0 {
+		maxBundleBytes = 512 << 20
+	}
 	h := func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
-		if err := r.ParseMultipartForm(512 << 20); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBundleBytes+repositoryBundleMultipartOverhead)
+		if err := r.ParseMultipartForm(maxBundleBytes); err != nil {
 			writeError(w, r, 400, "invalid_upload", err.Error())
 			return
 		}

@@ -21,7 +21,6 @@
   import KafkaResourceDetails from './KafkaResourceDetails.svelte';
   import ElasticsearchResourceDetails from './ElasticsearchResourceDetails.svelte';
   import RepositoryResourceDetails from './RepositoryResourceDetails.svelte';
-  import RepositoryBundleGuide from './RepositoryBundleGuide.svelte';
   import { resourceToolsFor } from './resourceTools';
 
   export let resource: Resource;
@@ -174,7 +173,4 @@
         : '暂无工具'}
     />
   </section>
-  {#if resource.kind === 'Repository' && String(resource.subtype).toLowerCase() === 'bundle'}
-    <RepositoryBundleGuide {resource} />
-  {/if}
 </div>

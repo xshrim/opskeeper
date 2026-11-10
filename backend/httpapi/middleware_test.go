@@ -112,7 +112,7 @@ func TestCSRFProtectionRejectsCrossSiteWrite(t *testing.T) {
 }
 
 func TestRequestBodyLimit(t *testing.T) {
-	handler := requestBodyLimit(4)(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	handler := requestBodyLimit(4, 0)(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, err := io.ReadAll(request.Body)
 		if err != nil {
 			writeError(writer, request, http.StatusRequestEntityTooLarge, "request_too_large", "Request body is too large")
@@ -124,6 +124,30 @@ func TestRequestBodyLimit(t *testing.T) {
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("12345")))
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized response = %d, want 413", response.Code)
+	}
+}
+
+func TestRequestBodyLimitAllowsConfiguredRepositoryBundleSize(t *testing.T) {
+	handler := requestBodyLimit(4, 8)(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if _, err := io.ReadAll(request.Body); err != nil {
+			writeError(writer, request, http.StatusRequestEntityTooLarge, "request_too_large", "Request body is too large")
+			return
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/resources/resource-id/bundle", strings.NewReader("12345"))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("repository bundle response = %d, want %d", response.Code, http.StatusNoContent)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/resources/resource-id/other", strings.NewReader("12345"))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("ordinary request response = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
 	}
 }
 

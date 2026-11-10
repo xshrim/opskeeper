@@ -3,12 +3,43 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	a "opskeeper/backend/engine"
 	rt "opskeeper/backend/tool/repository"
 	"path/filepath"
 	"strings"
 )
+
+func (s *Service) testRepositoryBundle(ctx context.Context, config map[string]any) error {
+	backend := strings.ToLower(strings.TrimSpace(s.repositoryStorage.Backend))
+	if backend == "" {
+		backend = "postgres"
+	}
+	if backend == "postgresql" {
+		backend = "postgres"
+	}
+	if backend != "local" && backend != "postgres" && backend != "s3" {
+		return fmt.Errorf("unsupported repository storage backend %q", backend)
+	}
+	storageKey := stringValue(config, "storage_key")
+	if storageKey == "" {
+		return connectorError(CategoryConfiguration, "read Repository Bundle", false, errors.New("Bundle storage key is missing"))
+	}
+	path := ""
+	if backend == "local" && s.repositoryStorage.Root != "" {
+		path = filepath.Join(s.repositoryStorage.Root, storageKey)
+	}
+	in := rt.ConnectionInput{
+		Path: path, StorageBackend: backend, StorageKey: storageKey,
+		S3Endpoint: s.repositoryStorage.Endpoint, S3Bucket: s.repositoryStorage.Bucket,
+		S3Prefix: s.repositoryStorage.Prefix, S3AccessKey: s.repositoryStorage.AccessKey,
+		S3SecretKey: s.repositoryStorage.SecretKey, S3UseSSL: s.repositoryStorage.UseSSL,
+		Postgres: s.postgresPool,
+	}
+	_, err := rt.Branches(ctx, in)
+	return err
+}
 
 func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextResource, add func(string, string, json.RawMessage, func(context.Context, map[string]any) (a.ToolResult, error)), setCleanup func(func() error)) error {
 	if strings.EqualFold(strings.TrimSpace(item.Subtype), "agent") {
@@ -88,16 +119,16 @@ func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextReso
 		case "repository_status":
 			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Status(c) })
 		case "repository_tree":
-			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.Tree(c, stringArg(a, "path"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 500}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
+				return snapshot.TreePage(c, stringArg(a, "path"), int(int64Arg(a, "offset")), int(int64Arg(a, "limit")), stringArg(a, "revision"))
 			})
 		case "repository_file":
-			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "max_bytes": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.File(c, stringArg(a, "path"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
+			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "max_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": 1048576}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
+				return snapshot.FileRange(c, stringArg(a, "path"), int64Arg(a, "offset"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
 			})
 		case "repository_search":
-			register(t.Name, t.Description, repoSchema(map[string]any{"query": map[string]any{"type": "string"}, "limit": map[string]any{"type": "integer"}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.Search(c, stringArg(a, "query"), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+			register(t.Name, t.Description, repoSchema(map[string]any{"query": map[string]any{"type": "string"}, "path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
+				return snapshot.SearchPage(c, stringArg(a, "query"), stringArg(a, "path"), int(int64Arg(a, "offset")), int(int64Arg(a, "limit")), stringArg(a, "revision"))
 			})
 		case "repository_metadata":
 			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Metadata(c) })

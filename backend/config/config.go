@@ -113,7 +113,7 @@ func Load() (Config, error) {
 	if cfg.AllowedOrigins, err = originsFromEnv("OPSK_ALLOWED_ORIGINS"); err != nil {
 		return Config{}, err
 	}
-	if cfg.HTTPMaxBodyBytes, err = int64FromEnv("OPSK_HTTP_MAX_BODY_BYTES", 2<<20, 1024, 64<<20); err != nil {
+	if cfg.HTTPMaxBodyBytes, err = int64FromEnv("OPSK_HTTP_MAX_BODY_BYTES", 5<<20, 1024, 64<<20); err != nil {
 		return Config{}, err
 	}
 	if cfg.HTTPRateLimitPerMinute, err = intFromEnv("OPSK_HTTP_RATE_LIMIT_PER_MINUTE", 600, 1, 100000); err != nil {

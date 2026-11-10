@@ -48,6 +48,8 @@ export function resourceSupportsEndpointTimeout(kind: string) {
 
 export function resourceHasConnector(resource: Resource) {
   if (resource.kind === 'MCPServer') return true;
+  if (resource.kind === 'Repository')
+    return String(resource.subtype ?? '').toLowerCase() === 'bundle';
   if (String(resource.subtype ?? '').toLowerCase() === 'agent')
     return Boolean(resource.agent_ref);
   return [

@@ -190,8 +190,10 @@
   <div class="resource-add-content" class:type-selection-content={step === 1}>
     <div class="resource-add-step-heading">
       <div class="resource-add-step-heading-copy">
-        <h3>{stepTitle}</h3>
-        {#if stepDescription}<small>{stepDescription}</small>{/if}
+        {#if !(kind === 'Repository' && step === 3)}
+          <h3>{stepTitle}</h3>
+          {#if stepDescription}<small>{stepDescription}</small>{/if}
+        {/if}
       </div>
       {#if validationMessage}<p
           class="resource-add-step-validation"

@@ -52,7 +52,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ConnectorTimeout != 10*time.Second || cfg.ConnectorMaxConcurrency != 8 || cfg.ConnectorMaxResponseBytes != 4<<20 {
 		t.Fatalf("Load() returned unexpected connector config: %#v", cfg)
 	}
-	if cfg.HTTPMaxBodyBytes != 2<<20 || cfg.HTTPRateLimitPerMinute != 600 || len(cfg.AllowedOrigins) != 0 {
+	if cfg.HTTPMaxBodyBytes != 5<<20 || cfg.HTTPRateLimitPerMinute != 600 || len(cfg.AllowedOrigins) != 0 {
 		t.Fatalf("Load() returned unexpected HTTP security config: %#v", cfg)
 	}
 }

@@ -146,7 +146,7 @@ make scheduler-run
 | `OPSK_HTTP_ADDRESS`                    | `:8080`                                  | API 监听地址                                                             |
 | `OPSK_TRUSTED_PROXIES`                 | 空                                         | 允许提供客户端转发头的反向代理 IP 或 CIDR，逗号分隔                      |
 | `OPSK_ALLOWED_ORIGINS`                 | 空                                         | 额外允许的精确 HTTP(S) Origin，默认仅同源                                |
-| `OPSK_HTTP_MAX_BODY_BYTES`             | `2097152`                                | 全局请求正文上限，范围 1 KiB-64 MiB                                      |
+| `OPSK_HTTP_MAX_BODY_BYTES`             | `5242880`                                | 全局请求正文上限，范围 1 KiB-64 MiB；Bundle 上传另用独立大小上限          |
 | `OPSK_HTTP_RATE_LIMIT_PER_MINUTE`      | `600`                                    | 每客户端 IP 每分钟请求速率，范围 1-100000                                |
 | `OPSK_CREDENTIAL_KEY`                  | 开发环境使用内置本地密钥；生产环境必须设置 | 资源凭据密文加密密钥，支持 32 字节原值或 Base64 编码值                   |
 | `OPSK_DATABASE_URL`                    | 本地`opskeeper` 连接串                   | 业务数据库连接                                                           |

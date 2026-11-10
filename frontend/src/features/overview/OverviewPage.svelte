@@ -257,7 +257,7 @@
   .overview-metric strong { display: block; margin: 5px 0 0; font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; }
   .overview-metric small.overview-note { margin-top: 7px; }
   .overview-metric strong.warning { color: var(--overview-danger); }
-  .overview-middle { display: grid; grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr) minmax(0, 2fr); grid-template-rows: repeat(2, minmax(0, auto)); gap: 10px; align-items: stretch; }
+  .overview-middle { display: grid; grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr) minmax(0, 2fr); grid-template-rows: repeat(2, minmax(170px, 1fr)); min-height: 350px; gap: 10px; align-items: stretch; }
   .overview-card { overflow: hidden; }
   .overview-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 37px; padding: 0 11px; border-bottom: 1px solid var(--theme-divider); }
   .overview-card-heading h2 { margin: 0; font-size: 10px; font-weight: 700; }
@@ -311,6 +311,6 @@
   .summary-primary { display: block; color: var(--theme-fg-strong); font-size: 24px; font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums; }
   .summary-secondary { margin: 7px 0 0; color: var(--theme-fg-muted); font-size: 9px; line-height: 1.35; }
   .summary-secondary b { color: var(--theme-fg-strong); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  @media (max-width: 1080px) { .overview-middle { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }.resource-star-card, .scorecard, .risk-card, .runtime-health-card { grid-column: auto; grid-row: auto; }.resource-star-content { min-height: 230px; }.overview-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }.capability-card { grid-column: auto; } }
+  @media (max-width: 1080px) { .overview-middle { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; min-height: 0; }.resource-star-card, .scorecard, .risk-card, .runtime-health-card { grid-column: auto; grid-row: auto; }.resource-star-content { min-height: 230px; }.overview-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }.capability-card { grid-column: auto; } }
   @media (max-width: 720px) { .overview-dashboard { padding-top: 12px; }.overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-metric:last-child { grid-column: 1 / -1; }.resource-star-content { grid-template-columns: minmax(120px, .8fr) minmax(0, 1.2fr); gap: 6px; padding: 10px; }.overview-bottom { grid-template-columns: minmax(0, 1fr); } }
 </style>

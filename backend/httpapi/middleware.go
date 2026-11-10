@@ -17,6 +17,8 @@ import (
 	"opskeeper/backend/observability"
 )
 
+const repositoryBundleMultipartOverhead = 1 << 20
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status      int
@@ -206,14 +208,22 @@ func securityHeaders(production bool) func(http.Handler) http.Handler {
 	}
 }
 
-func requestBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
+func requestBodyLimit(maxBytes, repositoryBundleMaxBytes int64) func(http.Handler) http.Handler {
 	if maxBytes <= 0 {
 		maxBytes = 2 << 20
+	}
+	bundleMaxBytes := maxBytes
+	if repositoryBundleMaxBytes > bundleMaxBytes {
+		bundleMaxBytes = repositoryBundleMaxBytes + repositoryBundleMultipartOverhead
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			if request.Body != nil {
-				request.Body = http.MaxBytesReader(writer, request.Body, maxBytes)
+				limit := maxBytes
+				if request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/bundle") {
+					limit = bundleMaxBytes
+				}
+				request.Body = http.MaxBytesReader(writer, request.Body, limit)
 			}
 			next.ServeHTTP(writer, request)
 		})

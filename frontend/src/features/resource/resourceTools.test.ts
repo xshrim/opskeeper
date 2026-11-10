@@ -16,7 +16,8 @@ describe('resourceToolsFor', () => {
       'Redis',
       'Nacos',
       'Kafka',
-      'Elasticsearch'
+      'Elasticsearch',
+      'Repository'
     ];
 
     for (const kind of kinds) {

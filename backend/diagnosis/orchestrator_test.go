@@ -140,7 +140,7 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	if _, exists := captured.Input["scope_context"]; exists {
 		t.Fatalf("legacy scope context must not be sent to the model: input=%#v", captured.Input)
 	}
-	if !strings.Contains(captured.Instruction, "当前诊断范围的信息默认不预先放入上下文") {
+	if !strings.Contains(captured.Instruction, "不要为了确认已选对象是否存在而调用范围查询工具") {
 		t.Fatalf("scope context contract missing: %q", captured.Instruction)
 	}
 	focus, ok := captured.Input["application_resource_focus"].(applicationResourceFocusInput)

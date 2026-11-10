@@ -41,6 +41,12 @@
 
   function endpointLabel(resource: Resource, resourceCheck: ConnectionCheck | null | undefined) {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent') return mcpServerEndpointFor(resource) || '关联 MCPServer';
+    if (resource.kind === 'Repository' && String(resource.subtype ?? '').toLowerCase() === 'bundle') {
+      const backend = String(resourceCheck?.endpoint ?? 'postgresql').trim().toLowerCase();
+      const storageType = backend === 'postgres' ? 'postgresql' : backend;
+      const storageKey = String(resource.config?.storage_key ?? '').trim();
+      return storageKey ? `${storageType}:${storageKey}` : 'Bundle 尚未上传';
+    }
     if (resource.kind === 'Kubernetes') {
       const mode = String(resource.config?.connection_mode ?? (resource.config?.server ? 'endpoint' : 'kubeconfig')).toLowerCase();
       if (mode === 'kubeconfig') return String(resourceCheck?.endpoint ?? '').trim() || '尚未获取 Kubernetes API Server';

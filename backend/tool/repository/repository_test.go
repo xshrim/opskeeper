@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,14 @@ func TestRepositoryReadTools(t *testing.T) {
 	if match["path"] != "README.md" || match["line"] != 1 || match["text"] != "hello repository" {
 		t.Fatalf("unexpected search match: %#v", match)
 	}
+	filePage, e := FileRangeAt(ctx, in, "README.md", 0, 5, "")
+	if e != nil || filePage.Content != "hello" || filePage.Done || filePage.NextOffset <= filePage.Offset {
+		t.Fatalf("first file range=%+v err=%v", filePage, e)
+	}
+	fileTail, e := FileRangeAt(ctx, in, "README.md", filePage.NextOffset, 1024, "")
+	if e != nil || filePage.Content+fileTail.Content != "hello repository\n" || !fileTail.Done {
+		t.Fatalf("file ranges=%+v %+v err=%v", filePage, fileTail, e)
+	}
 
 	firstRevision, e := exec.Command("git", "-C", d, "rev-parse", "HEAD").Output()
 	if e != nil {
@@ -56,6 +65,98 @@ func TestRepositoryReadTools(t *testing.T) {
 	oldContent, e := FileAt(ctx, in, "README.md", 1024, string(bytes.TrimSpace(firstRevision)))
 	if e != nil || oldContent != "hello repository\n" {
 		t.Fatalf("revision file=%q err=%v", oldContent, e)
+	}
+}
+
+func TestRepositoryTreeAllReturnsMoreThanPreviewToolLimit(t *testing.T) {
+	d := t.TempDir()
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", d}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, output)
+		}
+	}
+	git("init")
+	for i := 0; i < 205; i++ {
+		name := filepath.Join(d, "src", fmt.Sprintf("file-%03d.txt", i))
+		if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", ".")
+	git("commit", "-m", "initial")
+
+	entries, err := TreeAll(context.Background(), ConnectionInput{Path: d}, "")
+	if err != nil || len(entries) != 205 {
+		t.Fatalf("TreeAll returned %d files, err=%v; want 205", len(entries), err)
+	}
+	page, err := TreePageAt(context.Background(), ConnectionInput{Path: d}, "", 0, 100, "")
+	if err != nil || len(page.Items) != 100 || page.Total != 205 || page.Done || page.NextOffset != 100 {
+		t.Fatalf("first tree page=%+v err=%v", page, err)
+	}
+	last, err := TreePageAt(context.Background(), ConnectionInput{Path: d}, "", page.NextOffset, 200, "")
+	if err != nil || len(last.Items) != 105 || !last.Done || last.Total != 205 {
+		t.Fatalf("last tree page=%+v err=%v", last, err)
+	}
+	searchPage, err := SearchPageAt(context.Background(), ConnectionInput{Path: d}, "content", "", 0, 100, "")
+	if err != nil || len(searchPage.Items) != 100 || searchPage.ObservedMatches != 205 || searchPage.Done || !searchPage.Complete {
+		t.Fatalf("first search page=%+v err=%v", searchPage, err)
+	}
+	searchMiddle, err := SearchPageAt(context.Background(), ConnectionInput{Path: d}, "content", "", searchPage.NextOffset, 100, "")
+	if err != nil || len(searchMiddle.Items) != 100 || searchMiddle.Done || !searchMiddle.Complete {
+		t.Fatalf("middle search page=%+v err=%v", searchMiddle, err)
+	}
+	searchLast, err := SearchPageAt(context.Background(), ConnectionInput{Path: d}, "content", "", searchMiddle.NextOffset, 100, "")
+	if err != nil || len(searchLast.Items) != 5 || !searchLast.Done || !searchLast.Complete {
+		t.Fatalf("last search page=%+v err=%v", searchLast, err)
+	}
+}
+
+func TestRepositoryFileRangeReadsFilesLargerThanLegacyLimit(t *testing.T) {
+	d := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", d}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, output)
+		}
+	}
+	run("init")
+	content := bytes.Repeat([]byte("a"), 5<<20)
+	content[1<<20] = 0xE2
+	content[(1<<20)+1] = 0x82
+	content[(1<<20)+2] = 0xAC
+	if err := os.WriteFile(filepath.Join(d, "large.txt"), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "large file")
+
+	first, err := FileRangeAt(context.Background(), ConnectionInput{Path: d}, "large.txt", 0, 1<<20, "")
+	if err != nil || first.Done || first.TotalBytes != int64(len(content)) || first.NextOffset <= 0 {
+		t.Fatalf("first range=%+v err=%v", first, err)
+	}
+	second, err := FileRangeAt(context.Background(), ConnectionInput{Path: d}, "large.txt", first.NextOffset, 1<<20, "")
+	if err != nil || !strings.Contains(second.Content, "€") {
+		t.Fatalf("UTF-8 range=%+v err=%v", second, err)
+	}
+	last, err := FileRangeAt(context.Background(), ConnectionInput{Path: d}, "large.txt", int64(len(content)-(1<<20)), 1<<20, "")
+	if err != nil || !last.Done || last.TotalBytes != int64(len(content)) {
+		t.Fatalf("last range=%+v err=%v", last, err)
+	}
+}
+
+func TestLimitedBufferMarksIncompleteRepositorySearchOutput(t *testing.T) {
+	buffer := &limitedBuffer{max: 4}
+	if n, err := buffer.Write([]byte("complete")); err != nil || n != len("complete") {
+		t.Fatalf("write = %d, %v", n, err)
+	}
+	if string(buffer.Bytes()) != "comp" || !buffer.Truncated {
+		t.Fatalf("buffer = %q, truncated=%v", buffer.Bytes(), buffer.Truncated)
 	}
 }
 
@@ -105,6 +206,51 @@ func TestRepositoryDirectoryScopesSourceQueries(t *testing.T) {
 	}
 	if _, err := File(context.Background(), in, "../README.md", 1024); err == nil {
 		t.Fatal("expected scoped path traversal to be rejected")
+	}
+}
+
+func TestRepositoryReadToolsFallbackWhenBareHEADPointsToMissingBranch(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	bare := filepath.Join(root, "repo.git")
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", source)
+	run("-C", source, "symbolic-ref", "HEAD", "refs/heads/main")
+	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("bundle repository\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("-C", source, "add", ".")
+	run("-C", source, "commit", "-m", "initial")
+	run("init", "--bare", bare)
+	run("--git-dir", bare, "fetch", source, "+refs/heads/*:refs/heads/*")
+	run("--git-dir", bare, "symbolic-ref", "HEAD", "refs/heads/master")
+
+	in := ConnectionInput{Path: bare}
+	entries, err := Tree(context.Background(), in, "", 20)
+	if err != nil || len(entries) != 1 || entries[0].Path != "README.md" {
+		t.Fatalf("tree=%v err=%v", entries, err)
+	}
+	content, err := File(context.Background(), in, "README.md", 1024)
+	if err != nil || content != "bundle repository\n" {
+		t.Fatalf("file=%q err=%v", content, err)
+	}
+	matches, err := Search(context.Background(), in, "bundle repository", 10)
+	if err != nil || len(matches) != 1 || matches[0]["path"] != "README.md" {
+		t.Fatalf("search=%v err=%v", matches, err)
+	}
+	status, err := Status(context.Background(), in)
+	if err != nil || status["head"] == "" || status["branch"] != "main" || status["has_worktree"] != false || status["worktree_status"] != "not_applicable" {
+		t.Fatalf("bundle status=%v err=%v", status, err)
+	}
+	metadata, err := Metadata(context.Background(), in)
+	if err != nil || metadata["resolved_revision"] == "" || metadata["has_remote"] != false {
+		t.Fatalf("bundle metadata=%v err=%v", metadata, err)
 	}
 }
 

@@ -18,36 +18,37 @@ import (
 )
 
 type Options struct {
-	BasePath           string
-	TrustedProxies     []netip.Prefix
-	Identity           identityService
-	Users              userManagementService
-	Authorization      authorizationService
-	Access             accessManagementService
-	Auditor            audit.Logger
-	AuditLog           auditQueryService
-	Resources          resourceService
-	Connectors         connectorService
-	LLMs               llmService
-	Skills             skillService
-	Personas           personaService
-	Engine             engine.Engine
-	EngineCatalog      engineCatalogService
-	EngineEvents       engine.EventStore
-	EngineToolCalls    engine.ToolCallStore
-	WorkflowRuns       engine.WorkflowRunStore
-	WorkflowExecutor   workflowExecutionService
-	Diagnosis          diagnosisService
-	Inspection         inspectionService
-	MCP                mcpService
-	RepositoryBundles  repositoryBundleService
-	Applications       applicationService
-	CookieSecure       bool
-	Production         bool
-	AllowedOrigins     []string
-	MaxBodyBytes       int64
-	RateLimitPerMinute int
-	LogHealthIgnore    bool
+	BasePath                 string
+	TrustedProxies           []netip.Prefix
+	Identity                 identityService
+	Users                    userManagementService
+	Authorization            authorizationService
+	Access                   accessManagementService
+	Auditor                  audit.Logger
+	AuditLog                 auditQueryService
+	Resources                resourceService
+	Connectors               connectorService
+	LLMs                     llmService
+	Skills                   skillService
+	Personas                 personaService
+	Engine                   engine.Engine
+	EngineCatalog            engineCatalogService
+	EngineEvents             engine.EventStore
+	EngineToolCalls          engine.ToolCallStore
+	WorkflowRuns             engine.WorkflowRunStore
+	WorkflowExecutor         workflowExecutionService
+	Diagnosis                diagnosisService
+	Inspection               inspectionService
+	MCP                      mcpService
+	RepositoryBundles        repositoryBundleService
+	Applications             applicationService
+	CookieSecure             bool
+	Production               bool
+	AllowedOrigins           []string
+	MaxBodyBytes             int64
+	RepositoryMaxBundleBytes int64
+	RateLimitPerMinute       int
+	LogHealthIgnore          bool
 }
 
 func NewRouter(logger *slog.Logger, healthService *health.Service, build version.Info, options Options, organizationService organizationService, webUI http.Handler) http.Handler {
@@ -60,7 +61,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 	router.Use(securityHeaders(options.Production))
 	router.Use(corsPolicy(options.AllowedOrigins))
 	router.Use(csrfProtection(options.AllowedOrigins))
-	router.Use(requestBodyLimit(options.MaxBodyBytes))
+	router.Use(requestBodyLimit(options.MaxBodyBytes, options.RepositoryMaxBundleBytes))
 	router.Use(newClientRateLimiter(options.RateLimitPerMinute).middleware)
 	router.Use(requestLogger(logger, basePath, options.LogHealthIgnore))
 
@@ -116,7 +117,7 @@ func NewRouter(logger *slog.Logger, healthService *health.Service, build version
 					requirePermission = (authorizationHandler{service: options.Authorization}).requirePermission
 				}
 				registerResourceRoutes(resourceRouter, options.Resources, options.Auditor, requirePermission)
-				registerRepositoryRoutes(resourceRouter, options.RepositoryBundles, requirePermission)
+				registerRepositoryRoutes(resourceRouter, options.RepositoryBundles, requirePermission, options.RepositoryMaxBundleBytes)
 				registerConnectorRoutes(resourceRouter, options.Connectors, options.Auditor, requirePermission)
 			}
 			if options.Identity != nil && (options.LLMs != nil || options.Skills != nil || options.Engine != nil || options.EngineCatalog != nil) {

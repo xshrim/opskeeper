@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
@@ -107,6 +109,14 @@ func (s *Snapshot) Tree(ctx context.Context, path string, limit int, revision st
 	return TreeAt(ctx, in, path, limit, revision)
 }
 
+func (s *Snapshot) TreePage(ctx context.Context, path string, offset, limit int, revision string) (TreePage, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return TreePage{}, err
+	}
+	return TreePageAt(ctx, in, path, offset, limit, revision)
+}
+
 func (s *Snapshot) File(ctx context.Context, path string, max int64, revision string) (string, error) {
 	in, err := s.resolve(ctx)
 	if err != nil {
@@ -115,12 +125,28 @@ func (s *Snapshot) File(ctx context.Context, path string, max int64, revision st
 	return FileAt(ctx, in, path, max, revision)
 }
 
+func (s *Snapshot) FileRange(ctx context.Context, path string, offset, max int64, revision string) (FileRange, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return FileRange{}, err
+	}
+	return FileRangeAt(ctx, in, path, offset, max, revision)
+}
+
 func (s *Snapshot) Search(ctx context.Context, query string, limit int, revision string) ([]map[string]any, error) {
 	in, err := s.resolve(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return SearchAt(ctx, in, query, limit, revision)
+}
+
+func (s *Snapshot) SearchPage(ctx context.Context, query, path string, offset, limit int, revision string) (SearchPage, error) {
+	in, err := s.resolve(ctx)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	return SearchPageAt(ctx, in, query, path, offset, limit, revision)
 }
 
 func (s *Snapshot) Metadata(ctx context.Context) (map[string]any, error) {
@@ -133,11 +159,11 @@ func (s *Snapshot) Metadata(ctx context.Context) (map[string]any, error) {
 
 var tools = []ToolInfo{
 	{"repository_branches", "List repository branches."},
-	{"repository_status", "Read repository status and HEAD."},
-	{"repository_tree", "Read a bounded repository directory tree."},
-	{"repository_file", "Read a bounded repository file."},
-	{"repository_search", "Search text in bounded repository files."},
-	{"repository_metadata", "Read repository remotes and recent commits."},
+	{"repository_status", "Read the resolved repository revision and worktree status when applicable."},
+	{"repository_tree", "Page through every file in a repository directory tree using offset and limit; continue until done is true."},
+	{"repository_file", "Read a text file in byte ranges; continue from next_offset until done is true."},
+	{"repository_search", "Page through literal text matches using offset and limit; continue until done is true and confirm complete is true. observed_matches is only a lower bound when complete is false."},
+	{"repository_metadata", "Read repository remotes and recent commits at the resolved revision."},
 }
 
 func ListTools() []ToolInfo { return append([]ToolInfo(nil), tools...) }
@@ -497,13 +523,58 @@ func Checkout(ctx context.Context, in ConnectionInput, branch string) (map[strin
 	return map[string]any{"branch": branch}, nil
 }
 func Status(ctx context.Context, in ConnectionInput) (map[string]any, error) {
-	head, _ := command(ctx, in, "rev-parse", "HEAD")
-	br, _ := command(ctx, in, "symbolic-ref", "--short", "HEAD")
-	st, e := command(ctx, in, "status", "--porcelain=v1")
+	in = configuredBundleStorage(in)
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	root, cleanup, selected, err := openRepository(ctx, in, "")
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	revision := snapshotRevision(ctx, in, root)
+	if revision == "" {
+		return nil, errors.New("repository has no readable commit")
+	}
+	if selected != "" {
+		revision = selected
+	}
+	branch := ""
+	if out, branchErr := runGit(ctx, in, root, "symbolic-ref", "--short", "HEAD"); branchErr == nil {
+		if head, headErr := runGit(ctx, in, root, "rev-parse", "--verify", "HEAD"); headErr == nil && strings.TrimSpace(string(head)) == revision {
+			branch = strings.TrimSpace(string(out))
+		}
+	}
+	if branch == "" {
+		if out, branchErr := runGit(ctx, in, root, "for-each-ref", "--points-at", revision, "--format=%(refname:short)", "refs/heads"); branchErr == nil {
+			branch = strings.TrimSpace(strings.Split(string(out), "\n")[0])
+		}
+	}
+	bare, err := runGit(ctx, in, root, "rev-parse", "--is-bare-repository")
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{
+		"head": revision, "branch": branch, "has_worktree": strings.TrimSpace(string(bare)) != "true",
+		"resolved_revision": revision,
+	}
+	if strings.TrimSpace(string(bare)) == "true" {
+		result["clean"] = nil
+		result["changed_files"] = nil
+		result["worktree_status"] = "not_applicable"
+		return result, nil
+	}
+	st, e := runGit(ctx, in, root, "status", "--porcelain=v1")
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"head": strings.TrimSpace(string(head)), "branch": strings.TrimSpace(string(br)), "clean": strings.TrimSpace(string(st)) == "", "changed_files": len(strings.Split(strings.TrimSpace(string(st)), "\n"))}, nil
+	changed := 0
+	if text := strings.TrimSpace(string(st)); text != "" {
+		changed = len(strings.Split(text, "\n"))
+	}
+	result["clean"] = changed == 0
+	result["changed_files"] = changed
+	result["worktree_status"] = "available"
+	return result, nil
 }
 
 type TreeEntry struct {
@@ -512,12 +583,282 @@ type TreeEntry struct {
 	Size int64  `json:"size,omitempty"`
 }
 
-func ref(in ConnectionInput) string {
-	if strings.TrimSpace(in.Branch) != "" {
-		return strings.TrimSpace(in.Branch)
+type TreePage struct {
+	Items      []TreeEntry `json:"items"`
+	Offset     int         `json:"offset"`
+	NextOffset int         `json:"next_offset"`
+	Total      int         `json:"total"`
+	Done       bool        `json:"done"`
+}
+
+type SearchPage struct {
+	Items           []map[string]any `json:"items"`
+	Offset          int              `json:"offset"`
+	NextOffset      int              `json:"next_offset"`
+	ObservedMatches int              `json:"observed_matches"`
+	Done            bool             `json:"done"`
+	Complete        bool             `json:"complete"`
+	Truncated       bool             `json:"truncated"`
+}
+
+type FileRange struct {
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Offset     int64  `json:"offset"`
+	NextOffset int64  `json:"next_offset"`
+	TotalBytes int64  `json:"total_bytes"`
+	Done       bool   `json:"done"`
+}
+
+func TreePageAt(ctx context.Context, in ConnectionInput, path string, offset, limit int, revision string) (TreePage, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	path, err := scopedPath(in.Directory, path)
+	if err != nil {
+		return TreePage{}, err
+	}
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
+	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
+	if err != nil {
+		return TreePage{}, err
+	}
+	defer cleanup()
+	selectedRevision = readRevision(ctx, in, root, selectedRevision)
+	args := []string{"-C", root, "ls-tree", "-r", "-l", "-z", selectedRevision}
+	if path != "" {
+		args = append(args, "--", path)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return TreePage{}, err
+	}
+	if err := cmd.Start(); err != nil {
+		return TreePage{}, err
+	}
+	page := TreePage{Offset: offset, Items: make([]TreeEntry, 0, limit)}
+	reader := bufio.NewReader(stdout)
+	for {
+		record, readErr := reader.ReadString('\x00')
+		if len(record) > 0 {
+			header, filePath, found := strings.Cut(strings.TrimSuffix(record, "\x00"), "\t")
+			fields := strings.Fields(header)
+			if found && len(fields) >= 4 {
+				size, _ := strconv.ParseInt(fields[3], 10, 64)
+				if page.Total >= offset && len(page.Items) < limit {
+					page.Items = append(page.Items, TreeEntry{Path: displayScopedPath(in.Directory, filePath), Type: "file", Size: size})
+				}
+				page.Total++
+			}
+		}
+		if readErr != nil {
+			if !errors.Is(readErr, io.EOF) {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				return TreePage{}, readErr
+			}
+			break
+		}
+	}
+	if err := cmd.Wait(); err != nil {
+		return TreePage{}, fmt.Errorf("git ls-tree: %w", err)
+	}
+	if page.Offset > page.Total {
+		page.Offset = page.Total
+	}
+	page.NextOffset = page.Offset + len(page.Items)
+	page.Done = page.NextOffset >= page.Total
+	return page, nil
+}
+
+func FileRangeAt(ctx context.Context, in ConnectionInput, path string, offset int64, max int64, revision string) (FileRange, error) {
+	if offset < 0 {
+		return FileRange{}, errors.New("file offset must not be negative")
+	}
+	if max <= 0 || max > 1<<20 {
+		max = 1 << 20
+	}
+	cleanPath, err := scopedPath(in.Directory, path)
+	if err != nil {
+		return FileRange{}, err
+	}
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
+	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
+	if err != nil {
+		return FileRange{}, err
+	}
+	defer cleanup()
+	selectedRevision = readRevision(ctx, in, root, selectedRevision)
+	blob, err := runGit(ctx, in, root, "rev-parse", "--verify", selectedRevision+":"+cleanPath)
+	if err != nil {
+		return FileRange{}, err
+	}
+	blob = []byte(strings.TrimSpace(string(blob)))
+	sizeOutput, err := runGit(ctx, in, root, "cat-file", "-s", string(blob))
+	if err != nil {
+		return FileRange{}, err
+	}
+	totalBytes, err := strconv.ParseInt(strings.TrimSpace(string(sizeOutput)), 10, 64)
+	if err != nil {
+		return FileRange{}, fmt.Errorf("read repository file size: %w", err)
+	}
+	if offset >= totalBytes {
+		return FileRange{Path: displayScopedPath(in.Directory, cleanPath), Offset: totalBytes, NextOffset: totalBytes, TotalBytes: totalBytes, Done: true}, nil
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "cat-file", "blob", string(blob))
+	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return FileRange{}, err
+	}
+	if err := cmd.Start(); err != nil {
+		return FileRange{}, err
+	}
+	if _, err := io.CopyN(io.Discard, stdout, offset); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return FileRange{}, err
+	}
+	chunk := make([]byte, int(max)+4)
+	n, _ := io.ReadFull(stdout, chunk)
+	chunk = chunk[:n]
+	start := 0
+	for start < len(chunk) && chunk[start]&0xC0 == 0x80 {
+		start++
+	}
+	end := start + int(max)
+	if end > len(chunk) {
+		end = len(chunk)
+	}
+	for end < len(chunk) && end > start && chunk[end]&0xC0 == 0x80 {
+		end--
+	}
+	content := chunk[start:end]
+	if !utf8ish(content) || !utf8.Valid(content) {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return FileRange{}, errors.New("file is not UTF-8 text")
+	}
+	nextOffset := offset + int64(end)
+	done := nextOffset >= totalBytes
+	if !done {
+		_ = cmd.Process.Kill()
+	}
+	waitErr := cmd.Wait()
+	if done && waitErr != nil {
+		return FileRange{}, fmt.Errorf("read repository file: %w", waitErr)
+	}
+	return FileRange{Path: displayScopedPath(in.Directory, cleanPath), Content: string(content), Offset: offset + int64(start), NextOffset: nextOffset, TotalBytes: totalBytes, Done: done}, nil
+}
+
+func SearchPageAt(ctx context.Context, in ConnectionInput, query, path string, offset, limit int, revision string) (SearchPage, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	query = strings.TrimSpace(query)
+	if query == "" || len(query) > 256 {
+		return SearchPage{}, errors.New("query is required and must be at most 256 characters")
+	}
+	path, err := scopedPath(in.Directory, path)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	if in.PinnedRevision != "" {
+		revision = ""
+	}
+	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	defer cleanup()
+	selectedRevision = readRevision(ctx, in, root, selectedRevision)
+	output := &limitedBuffer{max: 64 << 20}
+	args := []string{"-C", root, "grep", "-z", "-n", "-F", "-I", "-e", query, selectedRevision, "--"}
+	if path != "" {
+		args = append(args, path)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
+	cmd.Stdout = output
+	cmd.Stderr = io.Discard
+	err = cmd.Run()
+	if err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			return SearchPage{}, fmt.Errorf("git grep: %w", err)
+		}
+	}
+	fields := bytes.Split(output.Bytes(), []byte{0})
+	items := make([]map[string]any, 0, limit)
+	total := 0
+	matchPath := ""
+	for i := 0; i+2 < len(fields); i += 2 {
+		if matchPath == "" {
+			matchPath = string(fields[i])
+		}
+		matchPath = strings.TrimPrefix(matchPath, selectedRevision+":")
+		line, parseErr := strconv.Atoi(string(fields[i+1]))
+		if matchPath == "" || parseErr != nil {
+			continue
+		}
+		textAndNextPath := strings.SplitN(string(fields[i+2]), "\n", 2)
+		text := strings.TrimSuffix(textAndNextPath[0], "\n")
+		if total >= offset && len(items) < limit {
+			match := map[string]any{"path": displayScopedPath(in.Directory, matchPath), "line": line, "text": text}
+			if len(text) > 4096 {
+				text = text[:4096]
+				for !utf8.ValidString(text) {
+					text = text[:len(text)-1]
+				}
+				match["text"] = text
+				match["text_truncated"] = true
+			}
+			items = append(items, match)
+		}
+		total++
+		matchPath = ""
+		if len(textAndNextPath) > 1 {
+			matchPath = textAndNextPath[1]
+		}
+	}
+	next := offset + len(items)
+	return SearchPage{Items: items, Offset: offset, NextOffset: next, ObservedMatches: total, Done: next >= total, Complete: !output.Truncated, Truncated: output.Truncated}, nil
+}
+
+func readRevision(ctx context.Context, in ConnectionInput, root, selected string) string {
+	if in.PinnedRevision != "" {
+		return in.PinnedRevision
+	}
+	if selected != "" {
+		return selected
+	}
+	if branch := strings.TrimSpace(in.Branch); branch != "" {
+		return branch
+	}
+	if revision := snapshotRevision(ctx, in, root); revision != "" {
+		return revision
 	}
 	return "HEAD"
 }
+
 func Tree(ctx context.Context, in ConnectionInput, path string, limit int) ([]TreeEntry, error) {
 	return TreeAt(ctx, in, path, limit, "")
 }
@@ -526,6 +867,15 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
+	return treeAt(ctx, in, path, limit, revision)
+}
+
+// TreeAll returns every file in the selected repository path for UI previews.
+func TreeAll(ctx context.Context, in ConnectionInput, path string) ([]TreeEntry, error) {
+	return treeAt(ctx, in, path, 0, "")
+}
+
+func treeAt(ctx context.Context, in ConnectionInput, path string, limit int, revision string) ([]TreeEntry, error) {
 	path, err := scopedPath(in.Directory, path)
 	if err != nil {
 		return nil, err
@@ -540,11 +890,7 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 		return nil, err
 	}
 	defer cleanup()
-	if in.PinnedRevision != "" {
-		selectedRevision = in.PinnedRevision
-	} else if selectedRevision == "" {
-		selectedRevision = ref(in)
-	}
+	selectedRevision = readRevision(ctx, in, root, selectedRevision)
 	args := []string{"ls-tree", "-r", "-l", selectedRevision}
 	if path != "" {
 		args = append(args, "--", path)
@@ -562,7 +908,7 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 		n, _ := strconv.ParseInt(f[3], 10, 64)
 		p := displayScopedPath(in.Directory, strings.Join(f[4:], " "))
 		r = append(r, TreeEntry{Path: p, Type: "file", Size: n})
-		if len(r) >= limit {
+		if limit > 0 && len(r) >= limit {
 			break
 		}
 	}
@@ -590,11 +936,7 @@ func FileAt(ctx context.Context, in ConnectionInput, path string, max int64, rev
 		return "", e
 	}
 	defer cleanup()
-	if in.PinnedRevision != "" {
-		selectedRevision = in.PinnedRevision
-	} else if selectedRevision == "" {
-		selectedRevision = ref(in)
-	}
+	selectedRevision = readRevision(ctx, in, root, selectedRevision)
 	out, e := runGit(ctx, in, root, "show", selectedRevision+":"+path)
 	if e != nil {
 		return "", e
@@ -612,69 +954,17 @@ func Search(ctx context.Context, in ConnectionInput, q string, limit int) ([]map
 }
 
 func SearchAt(ctx context.Context, in ConnectionInput, q string, limit int, revision string) ([]map[string]any, error) {
-	q = strings.TrimSpace(q)
-	if q == "" || len(q) > 256 {
-		return nil, errors.New("query is required and must be at most 256 characters")
-	}
-	if limit <= 0 || limit > 100 {
-		limit = 50
-	}
-	ctx, cancel := repositoryContext(ctx, in)
-	defer cancel()
-	if in.PinnedRevision != "" {
-		revision = ""
-	}
-	root, cleanup, selectedRevision, err := openRepository(ctx, in, revision)
+	page, err := SearchPageAt(ctx, in, q, "", 0, limit, revision)
 	if err != nil {
 		return nil, err
 	}
-	defer cleanup()
-	if in.PinnedRevision != "" {
-		selectedRevision = in.PinnedRevision
-	} else if selectedRevision == "" {
-		selectedRevision = ref(in)
-	}
-	output := &limitedBuffer{max: 2 << 20}
-	searchPath, err := scopedPath(in.Directory, "")
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"-C", root, "grep", "-z", "-n", "-F", "-I", "-e", q, selectedRevision, "--"}
-	if searchPath != "" {
-		args = append(args, searchPath)
-	}
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
-	cmd.Stdout = output
-	cmd.Stderr = io.Discard
-	err = cmd.Run()
-	if err != nil {
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
-			return nil, fmt.Errorf("git grep: %w", err)
-		}
-	}
-	result := []map[string]any{}
-	fields := bytes.Split(output.Bytes(), []byte{0})
-	for i := 0; i+2 < len(fields); i += 3 {
-		if len(result) >= limit {
-			break
-		}
-		path := string(fields[i])
-		path = strings.TrimPrefix(path, selectedRevision+":")
-		path = displayScopedPath(in.Directory, path)
-		lineNo, parseErr := strconv.Atoi(string(fields[i+1]))
-		if path == "" || parseErr != nil {
-			continue
-		}
-		result = append(result, map[string]any{"path": path, "line": lineNo, "text": strings.TrimSuffix(string(fields[i+2]), "\n")})
-	}
-	return result, nil
+	return page.Items, nil
 }
 
 type limitedBuffer struct {
 	bytes.Buffer
-	max int
+	max       int
+	Truncated bool
 }
 
 func (b *limitedBuffer) Write(value []byte) (int, error) {
@@ -682,19 +972,40 @@ func (b *limitedBuffer) Write(value []byte) (int, error) {
 	if remaining > 0 {
 		if len(value) > remaining {
 			_, _ = b.Buffer.Write(value[:remaining])
+			b.Truncated = true
 		} else {
 			_, _ = b.Buffer.Write(value)
 		}
+	} else if len(value) > 0 {
+		b.Truncated = true
 	}
 	return len(value), nil
 }
 func Metadata(ctx context.Context, in ConnectionInput) (map[string]any, error) {
-	rem, _ := command(ctx, in, "remote", "-v")
-	log, e := command(ctx, in, "log", "-n", "20", "--date=iso-strict", "--pretty=format:%H%x09%ad%x09%an%x09%s")
+	in = configuredBundleStorage(in)
+	ctx, cancel := repositoryContext(ctx, in)
+	defer cancel()
+	root, cleanup, selected, err := openRepository(ctx, in, "")
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	revision := snapshotRevision(ctx, in, root)
+	if revision == "" {
+		return nil, errors.New("repository has no readable commit")
+	}
+	if selected != "" {
+		revision = selected
+	}
+	rem, remoteErr := runGit(ctx, in, root, "remote", "-v")
+	if remoteErr != nil {
+		return nil, remoteErr
+	}
+	log, e := runGit(ctx, in, root, "log", "-n", "20", "--date=iso-strict", "--pretty=format:%H%x09%ad%x09%an%x09%s", revision)
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"remotes": strings.TrimSpace(string(rem)), "commits": strings.Split(strings.TrimSpace(string(log)), "\n")}, nil
+	return map[string]any{"remotes": strings.TrimSpace(string(rem)), "has_remote": strings.TrimSpace(string(rem)) != "", "resolved_revision": revision, "commits": strings.Split(strings.TrimSpace(string(log)), "\n")}, nil
 }
 func safePath(p string) (string, error) {
 	p = strings.TrimSpace(p)

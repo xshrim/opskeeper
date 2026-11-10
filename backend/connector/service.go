@@ -84,13 +84,26 @@ func (s *Service) Test(ctx context.Context, actorID, resourceID string) (Check, 
 		check.CheckedBy = &actorID
 	}
 
-	adapter, err := s.prepare(ctx, item)
-	if err == nil {
-		check.Capabilities = adapter.Capabilities()
-		if endpoint, ok := adapter.(interface{ Endpoint() string }); ok {
-			check.Endpoint = endpoint.Endpoint()
+	if item.Kind == "Repository" && strings.EqualFold(strings.TrimSpace(item.Subtype), "Bundle") {
+		backend := strings.ToLower(strings.TrimSpace(s.repositoryStorage.Backend))
+		if backend == "" || backend == "postgresql" {
+			backend = "postgres"
 		}
-		err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return adapter.Test(runCtx) })
+		check.Endpoint = backend
+		if backend == "postgres" {
+			check.Endpoint = "postgresql"
+		}
+		err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return s.testRepositoryBundle(runCtx, item.Config) })
+	} else {
+		adapter, prepareErr := s.prepare(ctx, item)
+		err = prepareErr
+		if err == nil {
+			check.Capabilities = adapter.Capabilities()
+			if endpoint, ok := adapter.(interface{ Endpoint() string }); ok {
+				check.Endpoint = endpoint.Endpoint()
+			}
+			err = s.executeForResource(ctx, item, func(runCtx context.Context) error { return adapter.Test(runCtx) })
+		}
 	}
 	check.LatencyMS = max(s.now().Sub(started).Milliseconds(), 0)
 	if err == nil {

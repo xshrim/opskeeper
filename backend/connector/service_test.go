@@ -3,6 +3,8 @@ package connector
 import (
 	"context"
 	"errors"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -84,6 +86,46 @@ func TestServiceConnectionTestPersistsSuccess(t *testing.T) {
 	latest, err := service.Latest(context.Background(), "resource-1")
 	if err != nil || latest.ID != check.ID {
 		t.Fatalf("Latest() = %#v, %v", latest, err)
+	}
+}
+
+func TestServiceBundleConnectionTestReadsConfiguredLocalRepository(t *testing.T) {
+	root := t.TempDir()
+	repositoryPath := filepath.Join(root, "bundle-1")
+	if output, err := exec.Command("git", "init", "--bare", repositoryPath).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v: %s", err, output)
+	}
+	t.Setenv("OPSK_REPOSITORY_STORAGE_BACKEND", "local")
+	t.Setenv("OPSK_REPOSITORY_LOCAL_ROOT", root)
+	checks := &memoryCheckStore{}
+	service := NewService(NewRegistry(), stubResourceReader{item: resource.Resource{
+		ID: "repository-1", Kind: "Repository", Subtype: "Bundle", Config: map[string]any{"storage_key": "bundle-1"},
+	}}, checks, DefaultLimits())
+	service.SetRepositoryStorage(RepositoryStorageConfig{Backend: "local", Root: root})
+
+	check, err := service.Test(context.Background(), "", "repository-1")
+	if err != nil {
+		t.Fatalf("Test() error = %v", err)
+	}
+	if check.Status != "succeeded" || check.Endpoint != "local" {
+		t.Fatalf("Test() check = %#v, want successful local Bundle read", check)
+	}
+}
+
+func TestServiceBundleConnectionTestRecordsPostgreSQLBackend(t *testing.T) {
+	t.Setenv("OPSK_REPOSITORY_STORAGE_BACKEND", "postgres")
+	checks := &memoryCheckStore{}
+	service := NewService(NewRegistry(), stubResourceReader{item: resource.Resource{
+		ID: "repository-1", Kind: "Repository", Subtype: "Bundle", Config: map[string]any{},
+	}}, checks, DefaultLimits())
+	service.SetRepositoryStorage(RepositoryStorageConfig{Backend: "postgres"})
+
+	check, err := service.Test(context.Background(), "", "repository-1")
+	if err != nil {
+		t.Fatalf("Test() error = %v", err)
+	}
+	if check.Status != "failed" || check.Endpoint != "postgresql" || check.ErrorCategory != CategoryConfiguration {
+		t.Fatalf("Test() check = %#v, want failed postgresql Bundle read", check)
 	}
 }
 

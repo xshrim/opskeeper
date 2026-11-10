@@ -1248,7 +1248,7 @@ func resolvedToolDefinitions(request Request) []ToolDefinition {
 }
 
 func executionPrompt(request Request) (string, error) {
-	payload := make(map[string]any, len(request.Input)+3)
+	payload := make(map[string]any, len(request.Input)+4)
 	for key, value := range request.Input {
 		if isModelInternalIDField(key) {
 			continue
@@ -1269,6 +1269,27 @@ func executionPrompt(request Request) (string, error) {
 	// is untrusted and may contain credentials or unexpectedly large payloads.
 	if request.ResolvedContext != nil && len(request.ResolvedContext.Facts) > 0 {
 		payload["environment_facts"] = StripModelInternalIDs(summarizeObservation(request.ResolvedContext.Facts))
+	}
+	if request.ResolvedContext != nil && len(request.ResolvedContext.Resources) > 0 {
+		selectedResources := make([]map[string]string, 0, len(request.ResolvedContext.Resources))
+		for _, resource := range request.ResolvedContext.Resources {
+			selected := map[string]string{}
+			if name := strings.TrimSpace(resource.Name); name != "" {
+				selected["name"] = name
+			}
+			if kind := strings.TrimSpace(resource.Kind); kind != "" {
+				selected["kind"] = kind
+			}
+			if subtype := strings.TrimSpace(resource.Subtype); subtype != "" {
+				selected["subtype"] = subtype
+			}
+			if len(selected) > 0 {
+				selectedResources = append(selectedResources, selected)
+			}
+		}
+		if len(selectedResources) > 0 {
+			payload["selected_resources"] = selectedResources
+		}
 	}
 	if len(payload) == 0 {
 		return "请完成当前任务。", nil

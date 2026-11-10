@@ -190,7 +190,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	scopeTools := o.diagnosticScopeTools(ctx, session.ScopeID)
 	if len(scopeTools) > 0 {
-		instruction += " 范围信息不预先展开到上下文；需要团队、项目、应用清单或应用关系时，使用 diagnosis_scope_teams、diagnosis_scope_projects、diagnosis_scope_applications 和 diagnosis_application_context 按需查询。"
+		instruction += " 当前已选对象及其关联信息会直接提供在上下文中；不要为识别已选对象而调用范围工具。只有用户询问当前上下文之外的团队、项目、应用清单或关系，或现有上下文不足以回答时，才使用 diagnosis_scope_teams、diagnosis_scope_projects、diagnosis_scope_applications 和 diagnosis_application_context 按需查询。"
 	}
 	instruction = buildResponseInstructionFor(instruction, hasApplicationContext || len(scopeTools) > 0)
 	var assistantMu sync.Mutex

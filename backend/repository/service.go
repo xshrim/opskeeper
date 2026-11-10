@@ -58,7 +58,7 @@ func (s *Service) PreviewDraft(ctx context.Context, subtype, rawURL, branch, use
 		return PreviewResult{}, errors.New("draft preview only supports Git Repository")
 	}
 	in := repositorytool.ConnectionInput{URL: strings.TrimSpace(rawURL), Branch: strings.TrimSpace(branch), Username: strings.TrimSpace(username), Password: password, TimeoutSeconds: 30}
-	entries, err := repositorytool.Tree(ctx, in, "", 200)
+	entries, err := repositorytool.TreeAll(ctx, in, "")
 	if err != nil {
 		return PreviewResult{}, err
 	}
@@ -159,8 +159,8 @@ func (s *Service) UploadBundle(ctx context.Context, id string, r io.Reader, size
 	return UploadResult{ResourceID: id, StorageKey: id, Branches: branches, ArchivedRefs: archived}, nil
 }
 
-// Preview returns a bounded directory tree for a persisted Git or Bundle
-// repository. Credentials are read server-side and are never returned.
+// Preview returns every file in a persisted Git or Bundle repository.
+// Credentials are read server-side and are never returned.
 func (s *Service) Preview(ctx context.Context, id string) (PreviewResult, error) {
 	if s == nil || s.resources == nil {
 		return PreviewResult{}, errors.New("repository service unavailable")
@@ -190,7 +190,7 @@ func (s *Service) Preview(ctx context.Context, id string) (PreviewResult, error)
 			}
 		}
 	}
-	entries, err := repositorytool.Tree(ctx, in, "", 200)
+	entries, err := repositorytool.TreeAll(ctx, in, "")
 	if err != nil {
 		return PreviewResult{}, err
 	}

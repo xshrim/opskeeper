@@ -9,6 +9,14 @@ const tool = (name: string, description: string): ResourceTool => ({
 });
 
 const toolsByKind: Record<string, ResourceTool[]> = {
+  Repository: [
+    tool('repository_branches', '列出仓库分支'),
+    tool('repository_status', '读取仓库状态和当前提交'),
+    tool('repository_tree', '读取仓库目录树'),
+    tool('repository_file', '读取仓库文件内容'),
+    tool('repository_search', '在仓库文件中搜索文本'),
+    tool('repository_metadata', '读取仓库远端和近期提交信息')
+  ],
   Docker: [
     tool('docker_info', '读取 Docker Engine 信息'),
     tool('docker_images', '读取镜像列表'),
