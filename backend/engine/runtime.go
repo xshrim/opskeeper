@@ -282,9 +282,9 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		if code == "" {
 			code = "runtime"
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			status, code = StatusCancelled, "timeout"
-		} else if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+		} else if errors.Is(ctx.Err(), context.Canceled) {
 			status, code = StatusCancelled, "cancelled"
 		}
 		result.ExecutionID, result.Status, result.ErrorCode = request.ExecutionID, status, code

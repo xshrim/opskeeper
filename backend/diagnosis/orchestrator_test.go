@@ -350,6 +350,17 @@ func TestOrchestratorFailureAndConcurrentClaimDoNotLeaveActiveSession(t *testing
 	}
 }
 
+func TestOrchestratorKeepsProviderTimeoutAsFailure(t *testing.T) {
+	store := newRecordingStore()
+	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{Status: engine.StatusFailed, ErrorCode: "provider_timeout", ErrorMessage: "provider response timed out"}, context.DeadlineExceeded
+	}}, time.Second)
+	orchestrator.run(context.Background(), "session-1")
+	if store.session.Status != StatusFailed || store.session.ErrorCode != "provider_timeout" {
+		t.Fatalf("provider timeout was not preserved as failure: %#v", store.session)
+	}
+}
+
 func TestOrchestratorPreservesCancellationTerminalState(t *testing.T) {
 	store := newRecordingStore()
 	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
@@ -383,6 +394,9 @@ func TestOrchestratorPreservesPartialAssistantOnTimeout(t *testing.T) {
 
 	if store.session.Status != StatusCancelled || store.session.ErrorCode != "timeout" {
 		t.Fatalf("session = %#v, want timeout cancellation", store.session)
+	}
+	if store.session.ErrorMessage != "诊断执行达到最长时限（1s），回答已中断，已保留已生成内容。" {
+		t.Fatalf("timeout message = %q, want a user-readable interruption reason", store.session.ErrorMessage)
 	}
 	assistantCount := 0
 	for _, message := range store.messages {

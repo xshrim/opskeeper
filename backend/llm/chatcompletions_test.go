@@ -25,12 +25,38 @@ func TestProviderTimeoutClient(t *testing.T) {
 		t.Fatalf("providerTimeout(301) = %s, want 300s", got)
 	}
 	client := providerHTTPClient(15)
-	if client.Timeout != 15*time.Second {
-		t.Fatalf("HTTP client timeout = %s, want 15s", client.Timeout)
+	if client.Timeout != 0 {
+		t.Fatalf("HTTP client timeout = %s, want no total-response timeout", client.Timeout)
 	}
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok || transport.TLSHandshakeTimeout != 15*time.Second || transport.ResponseHeaderTimeout != 15*time.Second {
 		t.Fatalf("HTTP transport timeouts = %#v, want 15s", transport)
+	}
+}
+
+func TestProviderHTTPClientAllowsLongStreamingResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		time.Sleep(1100 * time.Millisecond)
+		_, _ = fmt.Fprint(writer, "done")
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := providerHTTPClient(1).Do(request)
+	if err != nil {
+		t.Fatalf("request was cut off by provider timeout: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
 }
 

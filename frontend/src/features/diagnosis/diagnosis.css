@@ -1656,6 +1656,12 @@
   border-radius: 4px;
   font-size: 10px;
 }
+.diagnosis-interruption.standalone {
+  grid-column: 2;
+  width: fit-content;
+  max-width: 100%;
+  margin: -10px 0 0 39px;
+}
 .diagnosis-interruption i {
   width: 6px;
   height: 6px;

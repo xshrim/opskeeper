@@ -37,6 +37,20 @@ type internalDelegationModel struct{ turns int }
 
 type streamedCanonicalModel struct{}
 
+func TestFailedResultDistinguishesProviderTimeoutFromExecutionTimeout(t *testing.T) {
+	providerResult, _ := failedResult("provider-timeout", 0, context.Background(), context.DeadlineExceeded)
+	if providerResult.Status != StatusFailed || providerResult.ErrorCode != "provider_timeout" {
+		t.Fatalf("provider timeout result = %+v, want a failed provider timeout", providerResult)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	executionResult, _ := failedResult("execution-cancelled", 0, ctx, context.Canceled)
+	if executionResult.Status != StatusCancelled || executionResult.ErrorCode != "cancelled" {
+		t.Fatalf("execution cancellation result = %+v, want a cancelled execution", executionResult)
+	}
+}
+
 func (streamedCanonicalModel) Name() string { return "streamed-canonical-model" }
 
 func (streamedCanonicalModel) GenerateContent(_ context.Context, _ *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {

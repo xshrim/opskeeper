@@ -492,6 +492,16 @@ func TestRuntimeTimeoutReturnsCancelled(t *testing.T) {
 	}
 }
 
+func TestRuntimeDoesNotTreatProviderTimeoutAsExecutionCancellation(t *testing.T) {
+	runtime := New(fakeRunner{run: func(context.Context, Request) (Result, error) {
+		return Result{Status: StatusFailed, ErrorCode: "provider_timeout", ErrorMessage: "provider response timed out"}, context.DeadlineExceeded
+	}})
+	result, err := runtime.Execute(context.Background(), Request{ScopeID: "scope-1", Task: "inspect"})
+	if !errors.Is(err, context.DeadlineExceeded) || result.Status != StatusFailed || result.ErrorCode != "provider_timeout" {
+		t.Fatalf("provider timeout result = %+v, err = %v", result, err)
+	}
+}
+
 func TestRuntimeStreamReturnsEvents(t *testing.T) {
 	runtime := New(fakeRunner{run: func(_ context.Context, request Request) (Result, error) {
 		_ = request.EventSink(Event{Type: "assistant.delta", Payload: map[string]any{"text": "ok"}})

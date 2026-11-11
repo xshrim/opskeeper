@@ -286,7 +286,9 @@ func (s *Service) TestConnection(ctx context.Context, scopeID, providerID, model
 	if err != nil {
 		return ConnectionResult{}, err
 	}
-	text, err := runProbe(ctx, client, resolved.Model.Name, stream)
+	probeCtx, cancel := context.WithTimeout(ctx, providerTimeout(resolved.Provider.Config.TimeoutSeconds))
+	defer cancel()
+	text, err := runProbe(probeCtx, client, resolved.Model.Name, stream)
 	if err != nil {
 		return ConnectionResult{}, err
 	}

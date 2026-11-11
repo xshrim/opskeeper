@@ -39,6 +39,7 @@
   import { providerModelSelection } from '../../lib/workspace';
   import { renderDiagnosisMarkdown } from './diagnosisMarkdown';
   import { createDiagnosisSessionController } from './diagnosisSessionController';
+  import { diagnosisInterruptionReason } from './diagnosisSession';
   import {
     createDiagnosisCommands,
     type DiagnosisCommandState
@@ -886,6 +887,7 @@
               ><span class="diagnosis-session-meta-f"
                 ><small>{formatDate(session.created_at)}</small><em
                   class={`diagnosis-session-status-f ${session.status}`}
+                  title={diagnosisInterruptionReason(session.status, session.error_message, '') || undefined}
                   >{diagnosisStatusLabel(session.status)}</em
                 ></span
               ></button
@@ -942,7 +944,9 @@
         </div>
       </div>{/if}
       <div class="diagnosis-head-actions">
-        <span class="diagnosis-head-status"
+        <span
+          class="diagnosis-head-status"
+          title={diagnosisInterruptionReason(diagnosisSnapshot?.session.status, diagnosisSnapshot?.session.error_message, diagnosisInterruptedReason) || undefined}
           ><i class:running={diagnosisGenerating}></i>{diagnosisGenerating
             ? '正在生成回答'
             : diagnosisSnapshot

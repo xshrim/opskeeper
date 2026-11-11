@@ -2,6 +2,7 @@
   import { Bot, Check, Copy, Pencil, Stethoscope, Wrench, X } from 'lucide-svelte';
   import type { DiagnosisMessage, DiagnosisSnapshot } from '../../lib/api';
   import { diagnosisDurationMilliseconds } from './diagnosisUtils';
+  import { diagnosisInterruptionReason } from './diagnosisSession';
 
   type DiagnosisLiveTimelineItem = {
     id: number;
@@ -56,10 +57,16 @@
     assistantIndex: number;
   };
   let displayMessages: DisplayMessage[] = [];
+  let interruptionReason = '';
   // Keep the derived event view stable within one render pass. The reducer is
   // pure, but rebuilding the same timeline in every branch made streaming
   // updates needlessly expensive and obscured which view was being rendered.
   $: liveTimeline = diagnosisLiveTimeline(diagnosisSnapshot);
+  $: interruptionReason = diagnosisInterruptionReason(
+    diagnosisSnapshot?.session.status,
+    diagnosisSnapshot?.session.error_message,
+    diagnosisInterruptedReason
+  );
   $: {
     const messages: DisplayMessage[] = diagnosisSnapshot
       ? diagnosisSnapshot.messages.map((message, index) => ({
@@ -73,7 +80,7 @@
     if (
       diagnosisSnapshot &&
       !diagnosisHasPersistedNewAnswer(diagnosisSnapshot) &&
-      (diagnosisStreamingText.trim() || diagnosisAnswerCompleted || diagnosisGenerating || diagnosisInterruptedReason || diagnosisHasRunningActions(diagnosisSnapshot))
+      (diagnosisStreamingText.trim() || diagnosisAnswerCompleted || diagnosisGenerating || interruptionReason || diagnosisHasRunningActions(diagnosisSnapshot))
     ) {
       messages.push({
         message: {
@@ -245,7 +252,6 @@
                     {#each message.links ?? [] as link}<a href={link} target="_blank" rel="noreferrer">{link}</a>{/each}
                   </div>
                 {/if}
-                {#if diagnosisInterruptedReason && isStreaming}<span class="diagnosis-interruption"><i></i>回答已中断：{diagnosisInterruptedReason}</span>{/if}
               </div>
               {#if message.role === 'user'}
                 <div class="diagnosis-user-actions">
@@ -268,5 +274,8 @@
           </div>
         </article>
     {/each}
+    {#if interruptionReason}
+      <div class="diagnosis-interruption standalone"><i></i><span>回答已中断：{interruptionReason}</span></div>
+    {/if}
   {/if}
 </div>

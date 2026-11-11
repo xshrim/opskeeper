@@ -1,5 +1,17 @@
 import type { DiagnosisEvent, DiagnosisSnapshot } from '../../lib/api';
 
+export function diagnosisInterruptionReason(
+  status: string | undefined,
+  persistedReason: string | undefined,
+  liveReason: string
+) {
+  const live = liveReason.trim();
+  if (live) return live;
+  return status === 'failed' || status === 'cancelled'
+    ? (persistedReason ?? '').trim()
+    : '';
+}
+
 export const diagnosisEventTypes = [
   'session.created',
   'phase.changed',

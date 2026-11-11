@@ -376,7 +376,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		if message := strings.TrimSpace(result.ErrorMessage); message != "" {
 			cause = errors.New(message)
 		}
-		if result.Status == engine.StatusCancelled || code == "cancelled" || code == "timeout" {
+		if result.Status == engine.StatusCancelled || errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			runStatus = "cancelled"
 			o.cancel(session.ID, code, cause)
 			finishRun("cancelled")
@@ -599,12 +599,16 @@ func (o *Orchestrator) fail(sessionID, code string, cause error) {
 
 func (o *Orchestrator) cancel(sessionID, code string, cause error) {
 	message := "Engine execution was cancelled"
-	if code == "timeout" || errors.Is(cause, context.DeadlineExceeded) {
-		message = "诊断执行超时，已保留已生成内容。"
-	}
-	if cause != nil {
-		if value := safeText(cause.Error(), 1000); strings.TrimSpace(value) != "" {
-			if code != "timeout" && !errors.Is(cause, context.DeadlineExceeded) {
+	switch {
+	case code == "execution_queue_timeout":
+		message = "等待可用执行资源超时，模型尚未开始回答。"
+	case code == "timeout" || errors.Is(cause, context.DeadlineExceeded):
+		message = fmt.Sprintf("诊断执行达到最长时限（%s），回答已中断，已保留已生成内容。", o.timeout)
+	case code == "cancelled" || errors.Is(cause, context.Canceled):
+		message = "诊断执行收到取消信号，回答已中断，已保留已生成内容。"
+	default:
+		if cause != nil {
+			if value := safeText(cause.Error(), 1000); strings.TrimSpace(value) != "" {
 				message = value
 			}
 		}

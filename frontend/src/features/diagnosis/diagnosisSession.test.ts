@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DiagnosisSnapshot } from '../../lib/api';
 import {
   appendDiagnosisEvent,
+  diagnosisInterruptionReason,
   mergeDiagnosisSnapshot,
   openDiagnosisEventStream,
   reduceDiagnosisStreamEvent,
@@ -87,6 +88,13 @@ describe('diagnosis session event handling', () => {
     expect(onError).not.toHaveBeenCalled();
     close();
     expect(FakeEventSource.current?.close).toHaveBeenCalledOnce();
+  });
+
+  it('shows persisted interruption details only for interrupted sessions', () => {
+    expect(diagnosisInterruptionReason('cancelled', 'provider timed out', '')).toBe('provider timed out');
+    expect(diagnosisInterruptionReason('failed', 'output limit reached', '')).toBe('output limit reached');
+    expect(diagnosisInterruptionReason('analyzing', 'stale failure', '')).toBe('');
+    expect(diagnosisInterruptionReason('analyzing', '', 'user stopped')).toBe('user stopped');
   });
 
   it('reports an unexpected stream error once', () => {

@@ -60,7 +60,9 @@ func providerHTTPClient(seconds int) *http.Client {
 	} else {
 		transport = nil
 	}
-	return &http.Client{Transport: transport, Timeout: timeout}
+	// The execution context bounds the full model turn. http.Client.Timeout is
+	// a total-response deadline and would cut off otherwise healthy SSE streams.
+	return &http.Client{Transport: transport}
 }
 
 func NewChatCompletionsModel(config ChatCompletionsConfig) (*ChatCompletionsModel, error) {

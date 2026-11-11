@@ -1304,10 +1304,14 @@ func executionPrompt(request Request) (string, error) {
 func failedResult(executionID string, calls int64, ctx context.Context, err error) (Result, error) {
 	code := "agent"
 	status := StatusFailed
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		code, status = "timeout", StatusCancelled
-	} else if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+	} else if errors.Is(ctx.Err(), context.Canceled) {
 		code, status = "cancelled", StatusCancelled
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		code = "provider_timeout"
+	} else if errors.Is(err, context.Canceled) {
+		code = "provider_interrupted"
 	}
 	return Result{ExecutionID: executionID, Status: status, ErrorCode: code, ErrorMessage: publicError(err), ToolCallCount: int(calls)}, err
 }
