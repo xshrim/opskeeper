@@ -229,7 +229,7 @@
 
 - 资源展示优先使用真实品牌图标，不得用通用字符 glyph、Emoji 或随机 Lucide 图标冒充品牌。品牌识别规则集中在 `frontend/src/lib/resources.ts`，不得在 Overview、Resource、Diagnosis 等页面各自维护品牌映射。
 - 资源品牌图标统一通过 `frontend/src/components/ResourceBrandIcon.svelte` 渲染。资源目录、概览、诊断上下文和后续新增资源展示入口必须复用该组件；只有确实没有品牌图标的内部类型才使用传入的类别 glyph 作为 fallback。
-- 引入图标统一由 `frontend/src/lib/iconifyIcons.ts` 注册，并由 `IconValue.svelte` 和各领域图标组件共享渲染。优先按需使用 `simple-icons`；Lucide 和 simple-icons 都没有对应图标时，才按需引入 theSVG 单色图标。不得引入完整图标集合、运行时从 CDN 下载图标或误用相近图形；新增映射应同时更新 [图标系统设计](/docs/design/icon-system.md)。
+- 引入图标统一由 `frontend/src/lib/iconifyIcons.ts` 注册，并由 `IconValue.svelte` 和各领域图标组件共享渲染。优先按需使用 `simple-icons`；Lucide 和 simple-icons 都没有对应图标时，才按需引入 theSVG 单色图标。不得引入完整图标集合、运行时从 CDN 下载图标或误用相近图形；新增映射应同时更新 [图标系统设计](../design/icon-system.md)。
 - 图标值使用三种形式：Lucide 使用 `lucide:<name>`，引入图标使用 `iconify:<collection>:<name>`，本地上传图片继续使用 `data:image/...`。不再兼容无前缀或 `brand:` 图标值；命名空间只用于图标值，不改变 Provider 类型、资源类型或业务字段。
 - 品牌图标必须保留可访问语义：装饰性图标使用 `aria-hidden="true"`，表达资源身份的图标提供可识别的 `aria-label` 或由相邻文本提供等价信息。图标不能成为唯一的信息载体。
 - 运行时使用的图片、字体、favicon 和源码引用的 SVG 必须放在 `frontend/src/assets/`，通过 Vite 导入或由入口引用。`frontend/public/` 只用于确实需要固定原始 URL、且不应被打包处理的文件。

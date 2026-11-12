@@ -1,6 +1,6 @@
 # 文档规范
 
-本文是 OpsKeeper 文档组织、编写、验收和归档的强制性规范。所有新增文档、需求、任务和验收记录都必须遵循本文；特殊情况需要在 ADR 或对应迭代文档中说明原因。
+本文是 OpsKeeper 文档组织、编写、验收和归档的强制性规范。详细入口见 [docs/README.md](../README.md)；本文只保留边界和规则。
 
 ## 1. 文档原则
 
@@ -18,24 +18,19 @@
 
 ```text
 docs/
-├── README.md                       # 文档总入口
-├── backlog.md                      # 跨迭代待规划事项和技术债
-├── known-limitations.md            # 当前版本限制和容量边界
-├── design/                         # 项目级当前设计事实
-├── adr/                            # 长期架构决策及其历史
-├── standards/                      # 强制工程和文档规则
-├── guides/                         # 可执行的开发、使用和交付步骤
-├── runbooks/                       # 生产故障、恢复和应急处置
-├── iterations/                     # 迭代需求、任务和验收
-│   ├── Ixxx-name/                  # 当前迭代，最多一个
-│   │   ├── iteration.md
-│   │   ├── Rxxx-requirement.md
-│   │   └── Rxxx-requirement-acceptance.md
-│   └── archived/                   # 已封板迭代
-└── templates/                      # 新建文档模板
+├── README.md             # 文档总入口
+├── design/               # 当前设计事实和领域边界
+├── guides/               # development / deployment / operations / integrations / diagnostics
+├── runbooks/             # 生产故障、恢复和应急处置
+├── standards/            # 强制工程规则
+├── adr/                  # 长期决策和决策历史
+├── iterations/           # 当前迭代，封板后移入 archived/
+├── templates/            # 迭代、需求、验收模板
+├── backlog.md            # 待规划事项
+└── known-limitations.md  # 当前限制
 ```
 
-`design/` 下不再建立 `domain/` 子目录；领域设计文档直接放在 `design/` 下。`guides/` 和 `runbooks/` 直接位于 `docs/` 下，`runbooks/` 不需要 README 索引文件。ADR 的 README 是例外，因为它是 ADR 编号索引和状态约定。
+指南按用户任务合并维护，避免为一个组件或一个短流程建立孤立页面。设计文档可以按领域拆分，但必须通过 `docs/README.md` 和架构文档形成入口。
 
 ## 3. 迭代、需求和任务模型
 

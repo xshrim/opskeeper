@@ -35,7 +35,7 @@ spec:
         - name: {{ $component }}
           image: {{ include "opskeeper.image" (dict "root" $root "component" $component) }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
-          command: ["/app/opskeeper-{{ $component }}"]
+          command: ["/app/opskeeper-{{ if eq $component "api" }}app{{ else }}{{ $component }}{{ end }}"]
           securityContext:
             {{- include "opskeeper.containerSecurityContext" $root | nindent 12 }}
           env:

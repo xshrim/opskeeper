@@ -83,7 +83,7 @@ flowchart LR
 | 日志 | `slog` + 项目日志 Handler（`json`/`text`/`raw`） | 规范已确定，待统一接入 | 全部 Go 进程遵循[后端日志规范](../standards/backend-logging.md) |
 | 指标和链路 | OpenTelemetry OTLP/HTTP | 已实现，T15，待环境验收 | HTTP 链路以及任务、Connector、LLM Token 和错误等低基数指标；未配置端点时本地无外部依赖 |
 | 本地部署 | Docker Compose | 已实现，T01 | 默认仅启动 PostgreSQL，数据库、缓存和 Bundle 存储共用该实例 |
-| 生产部署 | 单镜像、Kubernetes、Helm、Ingress | Chart 已实现，T15，待干净集群验收 | API、Worker 可独立扩容；Scheduler 单副本；Migration 使用发布前 Hook |
+| 生产部署 | API/App、Worker、Scheduler 镜像，Kubernetes、Helm、Ingress | Chart 已实现，T15，待干净集群验收 | API/App、Worker 可独立扩容；Scheduler 单副本；迁移由 API/App 启动阶段执行 |
 
 目标任务模型使用 PostgreSQL Job 表和 `FOR UPDATE SKIP LOCKED`，确保缓存后端故障不会造成任务丢失，在 T10-T13 实施。规模确实超过数据库任务队列边界后，再评估 Temporal，不将其作为当前预设依赖。
 
@@ -165,16 +165,16 @@ flowchart LR
 
 ### 当前实现
 
-- 前后端源码和依赖保持独立；本地既可使用 Go API 与 Vite 分离热更新，也可通过 `make front-api-run` 构建并嵌入前端后只运行 API。生产构建同样将 Vite 静态制品嵌入 `opskeeper-api`，由一个进程提供页面、静态资源和业务 API。
+- 前后端源码和依赖保持独立；本地既可使用 Go API 与 Vite 分离热更新，也可通过 `make app-run` 构建并嵌入前端后只运行 App。生产构建同时提供非嵌入的 `opskeeper-api`、独立 `opskeeper-frontend` 静态镜像，以及嵌入前端的 `opskeeper-app` 镜像。
 - 应用临时运行、二进制构建和最终镜像打包统一由根目录 Makefile 提供入口，不使用独立包装脚本。
-- API、Worker 和 Scheduler 的服务名称及镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker` 和 `opskeeper-scheduler`；API 启动时执行迁移，`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
+- API、Worker、Scheduler、Frontend 和 App 的镜像名称固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler`、`opskeeper-frontend` 和 `opskeeper-app`；API/App 启动时执行迁移，`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
 - API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `json`、`text` 和 `raw`，默认使用 `raw`；字段顺序、Trace/Span 和 ReqID 规则遵循[后端日志规范](../standards/backend-logging.md)。
 - API 默认不信任客户端转发头；只有 `OPSK_TRUSTED_PROXIES` 明确列出的直连代理才能提供客户端 IP，解析结果写入请求日志并供后续审计使用。
 - 数据库迁移由 API 启动阶段执行，使用 PostgreSQL advisory lock 防止并发；迁移完成前 API 不监听 HTTP 端口，Schema 演进遵循 Expand/Contract。
 - Connector 调用统一使用超时、全局并发、有限重试、查询范围和最大响应大小限制；连接检查只持久化安全分类、公开消息、耗时和能力，不保存上游响应正文或凭据。
-- T15 Helm Chart 已包含 API、Worker、Scheduler、Migration Hook、探针、资源限制、非 root 安全上下文、PDB、可选 HPA 和 NetworkPolicy；Chart 不生成或接管运行时 Secret。
+- T15 Helm Chart 已包含 API/App、Worker、Scheduler、探针、资源限制、非 root 安全上下文、PDB、可选 HPA 和 NetworkPolicy；Chart 不生成或接管运行时 Secret。
 - API 在生产环境启用 HSTS，并统一设置 CSP、点击劫持与内容嗅探防护、Permissions Policy；状态变更请求经过 Origin/Fetch Metadata 校验，并有 CORS、请求体上限和按客户端 IP 的进程内限流。
-- API、Worker、Scheduler 和 Migration 可通过 OTLP/HTTP 导出链路与指标；审计事件及保留批次采用数据库追加写保护，保留清理必须携带已验证导出引用和变更单。
+- API/App、Worker 和 Scheduler 可通过 OTLP/HTTP 导出链路与指标；审计事件及保留批次采用数据库追加写保护，保留清理必须携带已验证导出引用和变更单。
 - 生产配置拒绝开发数据库默认地址，并拒绝不安全 Cookie 以及非 HTTPS 跨域 Origin。
 
 ### 目标设计
@@ -193,7 +193,7 @@ flowchart LR
 - API、Worker、Scheduler 和数据库迁移只允许使用业务角色连接，不得注入或回退使用 PostgreSQL 超级用户凭据。
 - 初始化环境变量和 `/docker-entrypoint-initdb.d/` 脚本只对空数据目录生效；已有实例的角色、密码和所有权变更必须通过受控的数据库管理操作完成。
 
-数据库迁移和自动化发布的完整流程见[自动化发布](../guides/delivery.md)。
+数据库迁移和自动化发布的完整流程见[部署指南](../guides/deployment.md)。
 
 ## 9. 交付阶段
 

@@ -4,6 +4,7 @@
 services:
   api:
     image: ${IMAGE_REPOSITORY:-opskeeper}-api:${IMAGE_TAG:-local}
+    profiles: ["svc"]
     environment:
       OPSK_LISTEN_PORT: ${OPSK_LISTEN_PORT:-8080}
       OPSK_DB_HOST: postgres:5432
@@ -20,6 +21,7 @@ services:
 
   worker:
     image: ${IMAGE_REPOSITORY:-opskeeper}-worker:${IMAGE_TAG:-local}
+    profiles: ["svc"]
     environment:
       OPSK_DB_HOST: postgres:5432
       OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
@@ -32,12 +34,35 @@ services:
 
   scheduler:
     image: ${IMAGE_REPOSITORY:-opskeeper}-scheduler:${IMAGE_TAG:-local}
+    profiles: ["svc"]
     environment:
       OPSK_DB_HOST: postgres:5432
       OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
       OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
       OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
       OPSK_OTEL_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  frontend:
+    image: ${IMAGE_REPOSITORY:-opskeeper}-frontend:${IMAGE_TAG:-local}
+    profiles: ["svc"]
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+  app:
+    image: ${IMAGE_REPOSITORY:-opskeeper}-app:${IMAGE_TAG:-local}
+    environment:
+      OPSK_LISTEN_PORT: ${OPSK_LISTEN_PORT:-8080}
+      OPSK_DB_HOST: postgres:5432
+      OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
+      OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
+      OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
+      OPSK_OTEL_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "${OPSK_LISTEN_PORT:-8080}:${OPSK_LISTEN_PORT:-8080}"
     depends_on:
       - postgres
     restart: unless-stopped

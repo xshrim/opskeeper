@@ -13,6 +13,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "opskeeper.image" -}}
 {{- $root := .root | default . -}}
 {{- $component := .component | default "api" -}}
+{{- if eq $component "api" }}{{- $component = "app" }}{{- end -}}
 {{- if $root.Values.image.digest -}}
 {{ printf "%s-%s@%s" $root.Values.image.repository $component $root.Values.image.digest }}
 {{- else -}}

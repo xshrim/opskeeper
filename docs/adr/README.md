@@ -7,8 +7,8 @@
 | 编号 | 决策 | 状态 |
 |---|---|---|
 | [0001](0001-package-by-feature.md) | Go 后端采用模块化单体和按业务特性组织 | 已接受 |
-| [0002](0002-embedded-web-single-image.md) | 前后端源码分离，生产时嵌入 Web 并使用单镜像 | 已接受 |
-| [0003](0003-controlled-database-migrations.md) | 使用内嵌迁移器和独立 Migration Job | 已接受 |
+| [0002](0002-embedded-web-single-image.md) | 前后端源码分离与嵌入式 App 镜像 | 已接受 |
+| [0003](0003-controlled-database-migrations.md) | 由 API/App 启动阶段执行数据库迁移 | 已接受 |
 | [0004](0004-fixed-service-names-and-base-path.md) | 固定服务名称，仅配置 HTTP Base Path | 已接受 |
 | [0005](0005-identity-session-baseline.md) | 本地身份使用 Argon2id 和不透明双 Token 会话 | 已接受 |
 | [0006](0006-rbac-scope-filtering-baseline.md) | T04 采用内置角色、向下继承和服务端 Scope 过滤 | 已接受 |
