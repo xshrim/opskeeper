@@ -37,6 +37,14 @@ func TestKubernetesDirectToolsMatchMCPToolCatalog(t *testing.T) {
 	for name := range direct {
 		t.Errorf("Kubernetes tool missing from MCP catalog %q", name)
 	}
+	getProperties := schemas["kubernetes_resource_get"]["properties"].(map[string]any)
+	if _, ok := getProperties["name"]; ok {
+		t.Fatal("Kubernetes resource lookup should not expose the ambiguous name parameter")
+	}
+	objectName, ok := getProperties["object_name"].(map[string]any)
+	if !ok || objectName["description"] == "" {
+		t.Fatalf("Kubernetes resource lookup needs a described object_name parameter: %#v", getProperties)
+	}
 }
 
 func TestKubernetesToolContextOverridesResourceDefault(t *testing.T) {

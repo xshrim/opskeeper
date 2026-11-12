@@ -16,5 +16,7 @@
     font-weight: 400;
     line-height: 1.4;
   }
-  .field-label.invalid { color: var(--theme-danger); }
+  .field-label.invalid {
+    color: var(--theme-danger);
+  }
 </style>

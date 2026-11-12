@@ -10,35 +10,39 @@ OpsKeeper 是面向 Kubernetes 业务应用和各类中间件的 AI 运维值守
 
 前置软件：Go 1.26.5 或更高版本、Node.js 22、npm 11、Docker，以及 Docker Compose v2 或独立 `docker-compose`。
 
-### 分步启动
+### 容器数据库 + 容器服务
 
 ```bash
-# 1. 生成应用本地配置
-cp .env.example .env
-
-# 2. 生成 PostgreSQL 本地配置
-cp deploy/compose/.env.example deploy/compose/.env
-
-# 3. 安装 Go 和前端依赖
-make deps
-
-# 预先清理本地中间件容器、网络和数据卷（按需执行）
-# make infra-clean
-
-# 4. 启动并等待 PostgreSQL
-make infra-up
-
-# 5. 执行数据库迁移
-make migrate
-
-# 6. 创建首个管理员
-make admin-create
-
-# 7. 构建并嵌入前端，然后运行 API
-make front-api-run
+# 一键构建镜像并启动 PostgreSQL、API、Worker 和 Scheduler
+make start
 ```
 
-`make admin-create` 在未提供密码时生成随机密码并打印一次，请立即保存。
+`.env` 不存在时 `make start` 会从 `.env.example` 创建，并同步 Compose 环境文件。镜像由 `make image` 单独构建，随后再由 Compose 启动；`docker-compose.yml` 不包含 `build`。API 启动时自动迁移数据库。首次访问登录页时初始化 `admin` 密码，不需要单独运行 migrate 或 admin 命令。
+
+### 容器数据库 + 本机二进制服务
+
+```bash
+# 仅首次创建；已有 .env 时保留现有配置
+test -f .env || cp .env.example .env
+make infra-up
+make build
+```
+
+`make infra-up` 只启动 PostgreSQL。然后在三个终端分别加载 `.env` 并运行服务：
+
+```bash
+set -a; source .env; set +a; backend/bin/opskeeper-api
+```
+
+```bash
+set -a; source .env; set +a; backend/bin/opskeeper-worker
+```
+
+```bash
+set -a; source .env; set +a; backend/bin/opskeeper-scheduler
+```
+
+API 会自动迁移数据库；管理员仍在首次登录页面初始化。停止二进制时按 `Ctrl+C`，再运行 `make infra-down` 停止 PostgreSQL。两种方式的完整命令、开发模式入口和 sample 数据说明见[本地开发指南](docs/guides/development.md)。
 
 本地查看链路数据时，单独启动可观测服务并配置 API、Worker 或 Scheduler：
 
@@ -48,23 +52,15 @@ make obs-up
 make api-run
 ```
 
-本地监控组件包括 Jaeger（链路）、Prometheus（指标）、Loki（日志）、Grafana（统一展示）和 OTel Collector（OTLP 接收与转发）。Jaeger UI 地址为 `http://127.0.0.1:16686`，Grafana 地址为 `http://127.0.0.1:3000`（默认账号密码 `admin/admin`）。不需要时执行 `make obs-down`。
+本地监控组件包括 Jaeger（链路）、Prometheus（指标）、Loki 和 Grafana（统一展示）以及 OTel Collector（OTLP 接收与转发）。Jaeger UI 地址为 `http://localhost:16686`，Grafana 地址为 `http://localhost:3000`（Grafana 初始账号密码默认为 `admin/admin`）。当前应用日志尚未接入 Loki，仍写在服务标准输出；不需要监控组件时执行 `make obs-down`。
 
-### 一键启动
-
-```bash
-make start
-```
-
-该命令依次完成上述步骤，并只在系统尚无用户时创建默认用户名为 `admin` 的管理员。默认访问地址：`http://localhost:8080/opskeeper/`；按 `Ctrl+C` 停止 API，使用 `make infra-down` 停止中间件。完整的环境要求、分离开发方式、配置项和常用命令见[本地开发](docs/guides/development.md)。
-
-如果已经完成依赖安装、配置和中间件启动，只需要重新迁移并运行嵌入式应用，可执行：
+已有 PostgreSQL 后，要在本机运行嵌入式 Web/API，可执行：
 
 ```bash
 make run
 ```
 
-`make run` 会先应用待执行的数据库迁移，再构建并嵌入前端，最后启动 API；它不会自动启动 PostgreSQL，也不会创建管理员。访问地址仍为 `http://localhost:8080/opskeeper/`。
+`make run` 会构建并嵌入前端，最后通过 `go run` 启动 API；API 启动时自动应用待执行迁移。它不会自动启动 PostgreSQL，也不需要额外的 migrate/admin 命令。访问地址仍为 `http://localhost:8080/opskeeper/`。
 
 ## 文档分类
 

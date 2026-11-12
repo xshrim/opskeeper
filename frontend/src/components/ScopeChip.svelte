@@ -5,7 +5,14 @@
   export let ariaLabel = '';
 </script>
 
-<button class:active type="button" class="scope-chip" aria-pressed={active} aria-label={ariaLabel || label} on:click>
+<button
+  class:active
+  type="button"
+  class="scope-chip"
+  aria-pressed={active}
+  aria-label={ariaLabel || label}
+  on:click
+>
   <strong>{label}</strong>
   {#if count !== ''}<span>{count}</span>{/if}
 </button>

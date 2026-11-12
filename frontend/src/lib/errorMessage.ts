@@ -13,7 +13,8 @@ export function errorMessage(
 ): string {
   if (error instanceof ApiError) {
     if (error.status === 403 && options.forbidden) return options.forbidden;
-    if (error.status === 401 && options.unauthorized) return options.unauthorized;
+    if (error.status === 401 && options.unauthorized)
+      return options.unauthorized;
     return error.message || fallback;
   }
   if (error instanceof SyntaxError && options.invalidJson) {

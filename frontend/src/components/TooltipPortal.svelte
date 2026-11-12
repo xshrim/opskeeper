@@ -42,12 +42,19 @@
     position(pointer);
     visible = true;
     await tick();
-    if (target === node && tooltipElement && !tooltipElement.matches(':popover-open')) {
+    if (
+      target === node &&
+      tooltipElement &&
+      !tooltipElement.matches(':popover-open')
+    ) {
       tooltipElement.showPopover();
     }
   }
   function tooltipTarget(event: Event) {
-    const node = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-tooltip]') : null;
+    const node =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>('[data-tooltip]')
+        : null;
     return node && document.contains(node) ? node : null;
   }
   function onPointerOver(event: PointerEvent) {
@@ -56,18 +63,34 @@
   }
   function onPointerMove(event: PointerEvent) {
     const node = tooltipTarget(event);
-    if (node && node === target) position({ x: event.clientX, y: event.clientY });
+    if (node && node === target)
+      position({ x: event.clientX, y: event.clientY });
   }
   function onPointerOut(event: PointerEvent) {
     const node = tooltipTarget(event);
-    if (node && node === target && !node.contains(event.relatedTarget as Node | null)) hide();
+    if (
+      node &&
+      node === target &&
+      !node.contains(event.relatedTarget as Node | null)
+    )
+      hide();
   }
-  function onFocusIn(event: FocusEvent) { const node = tooltipTarget(event); if (node) show(node); }
+  function onFocusIn(event: FocusEvent) {
+    const node = tooltipTarget(event);
+    if (node) show(node);
+  }
   function onFocusOut(event: FocusEvent) {
     const node = tooltipTarget(event);
-    if (node && node === target && !node.contains(event.relatedTarget as Node | null)) hide();
+    if (
+      node &&
+      node === target &&
+      !node.contains(event.relatedTarget as Node | null)
+    )
+      hide();
   }
-  function onViewportChange() { if (visible) position(); }
+  function onViewportChange() {
+    if (visible) position();
+  }
 
   window.addEventListener('pointerover', onPointerOver);
   window.addEventListener('pointermove', onPointerMove);
@@ -88,11 +111,46 @@
 </script>
 
 {#if visible}
-  <div bind:this={tooltipElement} popover="manual" class:top={placement === 'top'} class="tooltip-portal" role="tooltip" style={`left:${left}px;top:${top}px`}>{text}</div>
+  <div
+    bind:this={tooltipElement}
+    popover="manual"
+    class:top={placement === 'top'}
+    class="tooltip-portal"
+    role="tooltip"
+    style={`left:${left}px;top:${top}px`}
+  >
+    {text}
+  </div>
 {/if}
 
 <style>
-  .tooltip-portal { position: fixed; inset: auto; z-index: 3000; width: max-content; max-width: min(420px, calc(100vw - 24px)); margin: 0; padding: 6px 9px; color: var(--theme-fg-strong); background: var(--theme-bg-raised); border: 1px solid var(--theme-border); border-radius: 5px; box-shadow: var(--theme-shadow-soft); font-size: 11px; font-weight: 500; line-height: 1.35; pointer-events: none; transform: none; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; }
-  .tooltip-portal.top { transform: none; }
-  :global(:root[data-theme='dark']) .tooltip-portal { color: var(--theme-teal); border-color: var(--theme-border-focus); }
+  .tooltip-portal {
+    position: fixed;
+    inset: auto;
+    z-index: 3000;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 24px));
+    margin: 0;
+    padding: 6px 9px;
+    color: var(--theme-fg-strong);
+    background: var(--theme-bg-raised);
+    border: 1px solid var(--theme-border);
+    border-radius: 5px;
+    box-shadow: var(--theme-shadow-soft);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+    pointer-events: none;
+    transform: none;
+    white-space: pre-wrap;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .tooltip-portal.top {
+    transform: none;
+  }
+  :global(:root[data-theme='dark']) .tooltip-portal {
+    color: var(--theme-teal);
+    border-color: var(--theme-border-focus);
+  }
 </style>

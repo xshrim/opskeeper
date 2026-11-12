@@ -20,7 +20,9 @@
   class:tag-overflow={overflow}
   data-tag-measure={measure ? '' : undefined}
   style={`--tag-max-width: ${maxWidth || '100%'}`}
-  data-tooltip={textMode === 'ellipsis' && tooltipOnTruncate ? value : undefined}
+  data-tooltip={textMode === 'ellipsis' && tooltipOnTruncate
+    ? value
+    : undefined}
   aria-label={value}>{value}</span
 >
 
@@ -53,14 +55,30 @@
 
   .tag.tag-independent.tag-has-value {
     color: var(--theme-fg-strong);
-    background: color-mix(in srgb, var(--theme-info) 12%, var(--theme-bg-subtle));
-    border-color: color-mix(in srgb, var(--theme-info) 30%, var(--theme-border));
+    background: color-mix(
+      in srgb,
+      var(--theme-info) 12%,
+      var(--theme-bg-subtle)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--theme-info) 30%,
+      var(--theme-border)
+    );
   }
 
   .tag.tag-independent.tag-key-only {
     color: var(--theme-fg-strong);
-    background: color-mix(in srgb, var(--theme-success) 10%, var(--theme-bg-subtle));
-    border-color: color-mix(in srgb, var(--theme-success) 28%, var(--theme-border));
+    background: color-mix(
+      in srgb,
+      var(--theme-success) 10%,
+      var(--theme-bg-subtle)
+    );
+    border-color: color-mix(
+      in srgb,
+      var(--theme-success) 28%,
+      var(--theme-border)
+    );
   }
 
   .tag-text-full {

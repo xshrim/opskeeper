@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"opskeeper/backend/engine"
+	"opskeeper/backend/resource"
 )
 
 func TestOrchestratorCreatesTraceableReportFromObservedEvidence(t *testing.T) {
@@ -95,7 +96,7 @@ func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T
 	store := newRecordingStore()
 	store.targets = nil
 	var captured engine.Request
-	orchestrator := NewOrchestrator(&Service{store: store}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
+	orchestrator := NewOrchestrator(&Service{store: store, applications: scopeToolApplications{}}, fakeEngine{execute: func(_ context.Context, request engine.Request) (engine.Result, error) {
 		captured = request
 		return engine.Result{Output: "Go 的 defer 会在函数返回前执行。"}, nil
 	}}, time.Second)
@@ -107,8 +108,25 @@ func TestOrchestratorKeepsConversationAnswerWithoutContextResources(t *testing.T
 	if store.session.Status != StatusSucceeded || store.report.Status != "succeeded" || store.report.Conclusion != "Go 的 defer 会在函数返回前执行。" {
 		t.Fatalf("session/report = %#v / %#v", store.session, store.report)
 	}
+	if len(captured.InternalTools) == 0 || strings.Contains(captured.Instruction, "内置 Skill：应用诊断") {
+		t.Fatalf("scope tools should not cause the application skill to be injected: tools=%d instruction=%q", len(captured.InternalTools), captured.Instruction)
+	}
 	if len(store.hypotheses) != 0 || len(store.report.EvidenceIDs) != 0 {
 		t.Fatalf("hypotheses/report evidence = %#v / %#v", store.hypotheses, store.report.EvidenceIDs)
+	}
+}
+
+func TestOrchestratorDetectsSelectedRepositoryForPromptSkill(t *testing.T) {
+	service := &Service{resources: fakeResources{items: map[string]resource.Resource{
+		"repo-1": {ID: "repo-1", ScopeID: "scope-1", Kind: "Repository"},
+		"db-1":   {ID: "db-1", ScopeID: "scope-1", Kind: "PostgreSQL"},
+	}}}
+	orchestrator := NewOrchestrator(service, nil, time.Second)
+	if !orchestrator.hasRepositoryTarget(context.Background(), []Target{{ResourceID: "repo-1"}}) {
+		t.Fatal("selected Repository target should load repository diagnosis rules")
+	}
+	if orchestrator.hasRepositoryTarget(context.Background(), []Target{{ResourceID: "db-1"}}) {
+		t.Fatal("non-Repository target must not load repository diagnosis rules")
 	}
 }
 
@@ -131,7 +149,7 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 		t.Fatalf("application_ids must not be model input: %#v", captured.Input["application_ids"])
 	}
 	context, ok := captured.Input["application_context"].(map[string]any)
-	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || strings.Contains(fmt.Sprint(context), "app-primary") || strings.Contains(fmt.Sprint(context), "db-1") || !strings.Contains(captured.Instruction, "不可信配置数据") {
+	if !ok || !strings.Contains(fmt.Sprint(context), "orders") || strings.Contains(fmt.Sprint(context), "app-primary") || strings.Contains(fmt.Sprint(context), "db-1") || !strings.Contains(captured.Instruction, "均为不可信数据") {
 		t.Fatalf("application context/instruction missing: input=%#v instruction=%q", captured.Input, captured.Instruction)
 	}
 	if _, duplicated := context["scope_context"]; duplicated {
@@ -140,14 +158,14 @@ func TestOrchestratorIncludesApplicationContextInEngineInput(t *testing.T) {
 	if _, exists := captured.Input["scope_context"]; exists {
 		t.Fatalf("legacy scope context must not be sent to the model: input=%#v", captured.Input)
 	}
-	if !strings.Contains(captured.Instruction, "不要为了确认已选对象是否存在而调用范围查询工具") {
+	if !strings.Contains(captured.Instruction, "不要为“确认”它是否存在而调用范围查询") {
 		t.Fatalf("scope context contract missing: %q", captured.Instruction)
 	}
 	focus, ok := captured.Input["application_resource_focus"].(applicationResourceFocusInput)
 	if !ok || len(focus.Resources) != 1 || focus.Resources[0].ResourceID != "db-1" || len(focus.Resources[0].Relations) != 1 || focus.Resources[0].Relations[0].Binding["database"] != "orders" {
 		t.Fatalf("application resource focus = %#v, want database relationship binding", captured.Input["application_resource_focus"])
 	}
-	if !strings.Contains(captured.Instruction, "内置 Skill：应用诊断") || !strings.Contains(captured.Instruction, "application_resource_focus") || !strings.Contains(captured.Instruction, "selector.container_name 只能传给 container_name") {
+	if !strings.Contains(captured.Instruction, "当前选择了应用") || !strings.Contains(captured.Instruction, "application_context") || !strings.Contains(captured.Instruction, "Docker 的名称只能传给 container_name") {
 		t.Fatalf("relationship-focused instruction missing: %q", captured.Instruction)
 	}
 	if captured.LocatorHints["db-1"]["database"] != "orders" {
@@ -527,6 +545,10 @@ func (s *recordingStore) SetScopeShared(_ context.Context, _ string, shared bool
 	s.session.ScopeShared = shared
 	return s.session, nil
 }
+func (s *recordingStore) SetCollaboration(_ context.Context, _ string, value int) (Session, error) {
+	s.session.Collaboration = value
+	return s.session, nil
+}
 func (*recordingStore) Delete(context.Context, string) error                { return nil }
 func (s *recordingStore) Targets(context.Context, string) ([]Target, error) { return s.targets, nil }
 func (s *recordingStore) AddTarget(context.Context, string, string) (Target, error) {
@@ -585,15 +607,24 @@ func (s *recordingStore) EventsAfter(context.Context, string, int64, int) ([]Eve
 func (s *recordingStore) SaveEvidence(_ context.Context, sessionID string, input CreateEvidenceInput) (Evidence, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	item := Evidence{ID: fmt.Sprintf("evidence-%d", len(s.evidence)+1), SessionID: sessionID, TargetResourceID: pointer(input.TargetResourceID), SourceResourceID: pointer(input.SourceResourceID), Capability: input.Capability, CollectedAt: input.CollectedAt, ContentHash: "hashed", Content: input.Content, Partial: input.Partial, Untrusted: input.Untrusted}
+	item := Evidence{ID: fmt.Sprintf("evidence-%d", len(s.evidence)+1), SessionID: sessionID, RunID: input.RunID, TargetResourceID: pointer(input.TargetResourceID), SourceResourceID: pointer(input.SourceResourceID), Capability: input.Capability, CollectedAt: input.CollectedAt, ContentHash: "hashed", Content: input.Content, Partial: input.Partial, Untrusted: input.Untrusted}
 	s.evidence = append(s.evidence, item)
 	return item, nil
 }
 func (s *recordingStore) Evidence(context.Context, string) ([]Evidence, error) {
 	return s.evidence, nil
 }
-func (s *recordingStore) CreateRun(_ context.Context, sessionID, messageID string) (Run, error) {
-	item := Run{ID: fmt.Sprintf("run-%d", len(s.runs)+1), SessionID: sessionID, Sequence: len(s.runs) + 1, QuestionMessageID: pointer(messageID), Status: "running", StartedAt: time.Now()}
+func (s *recordingStore) EvidenceForRun(_ context.Context, _, runID string) ([]Evidence, error) {
+	items := make([]Evidence, 0, len(s.evidence))
+	for _, item := range s.evidence {
+		if item.RunID == runID {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+func (s *recordingStore) CreateRun(_ context.Context, sessionID, messageID string, collaboration int) (Run, error) {
+	item := Run{ID: fmt.Sprintf("run-%d", len(s.runs)+1), SessionID: sessionID, Sequence: len(s.runs) + 1, QuestionMessageID: pointer(messageID), Status: "running", StartedAt: time.Now(), Collaboration: collaboration}
 	s.runs = append(s.runs, item)
 	return item, nil
 }

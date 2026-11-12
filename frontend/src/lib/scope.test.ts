@@ -12,14 +12,17 @@ const scopes: ScopeChoice[] = [
 
 describe('scopesInWorkspace', () => {
   it('allows only the selected project and its ancestors, not sibling projects', () => {
-    expect(scopesInWorkspace(scopes, 'project-a1').map(({ id }) => id)).toEqual([
-      'platform', 'team-a', 'project-a1'
-    ]);
+    expect(scopesInWorkspace(scopes, 'project-a1').map(({ id }) => id)).toEqual(
+      ['platform', 'team-a', 'project-a1']
+    );
   });
 
   it('allows a selected team, its ancestors, and its projects', () => {
     expect(scopesInWorkspace(scopes, 'team-a').map(({ id }) => id)).toEqual([
-      'platform', 'team-a', 'project-a1', 'project-a2'
+      'platform',
+      'team-a',
+      'project-a1',
+      'project-a2'
     ]);
   });
 

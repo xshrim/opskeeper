@@ -1,6 +1,9 @@
 package migrations
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 	items, err := load()
@@ -35,4 +38,41 @@ func TestLoadOrdersEmbeddedMigrations(t *testing.T) {
 			t.Fatalf("migrations are not ordered: %#v", items)
 		}
 	}
+}
+
+func TestRepositoryApplicationTargetsDropPrimaryKeyBeforeMakingResourceNullable(t *testing.T) {
+	items, err := load()
+	if err != nil {
+		t.Fatalf("load() error = %v", err)
+	}
+	for _, item := range items {
+		if item.version != 90 {
+			continue
+		}
+		dropPrimaryKey := strings.Index(item.sql, "DROP CONSTRAINT inspection_policy_targets_pkey")
+		makeResourceNullable := strings.Index(item.sql, "ALTER COLUMN resource_id DROP NOT NULL")
+		if dropPrimaryKey < 0 || makeResourceNullable < 0 || dropPrimaryKey > makeResourceNullable {
+			t.Fatalf("migration 90 must drop the resource_id primary key before making it nullable")
+		}
+		return
+	}
+	t.Fatal("migration 90 was not loaded")
+}
+
+func TestResourceTypeLabelsMigrationCoversRequestedKinds(t *testing.T) {
+	items, err := load()
+	if err != nil {
+		t.Fatalf("load() error = %v", err)
+	}
+	for _, item := range items {
+		if item.version == 91 {
+			for _, expected := range []string{"'Artifact' THEN '制品仓库'", "'Repository' THEN '代码仓库'", "'Nacos' THEN '注册中心和配置中心'", "'TongHttpServer' THEN '前端代理'", "'Kafka' THEN '消息队列'", "'Elasticsearch' THEN '文档检索'", "'MinIO' THEN '对象存储'", "'MCPServer' THEN '工具接入'", "'Monitor' THEN '可观察性'"} {
+				if !strings.Contains(item.sql, expected) {
+					t.Errorf("migration 91 does not contain %q", expected)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("migration 91 was not loaded")
 }

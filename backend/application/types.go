@@ -197,6 +197,7 @@ type DiagnosticApplication struct {
 // stripped before the snapshot is sent to a model.
 type DiagnosticInstance struct {
 	ID                 string         `json:"id"`
+	Type               string         `json:"type"`
 	Name               string         `json:"name"`
 	RuntimeKind        string         `json:"runtime_kind"`
 	TargetResourceID   string         `json:"target_resource_id"`
@@ -208,6 +209,7 @@ type DiagnosticInstance struct {
 
 type DiagnosticDependency struct {
 	ID                 string         `json:"id"`
+	Type               string         `json:"type"`
 	TargetResourceID   string         `json:"target_resource_id"`
 	TargetResourceName string         `json:"target_resource_name,omitempty"`
 	TargetResourceKind string         `json:"target_resource_kind,omitempty"`
@@ -227,6 +229,7 @@ type DiagnosticProject struct {
 
 type DiagnosticResource struct {
 	ID          string         `json:"id"`
+	Type        string         `json:"type"`
 	Name        string         `json:"name"`
 	Kind        string         `json:"kind"`
 	Relation    string         `json:"relation"`
@@ -237,6 +240,7 @@ type DiagnosticResource struct {
 
 type DiagnosticApplicationReference struct {
 	ID           string `json:"id"`
+	Type         string `json:"type"`
 	ProjectID    string `json:"project_id"`
 	ProjectName  string `json:"project_name"`
 	ProjectCode  string `json:"project_code"`

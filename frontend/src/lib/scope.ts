@@ -42,7 +42,11 @@ export function scopeType(scopes: ScopeChoice[], id: string) {
   return scopes.find((scope) => scope.id === id)?.type ?? 'scope';
 }
 
-export function scopeContains(scopes: ScopeChoice[], ancestorId: string, scopeId: string) {
+export function scopeContains(
+  scopes: ScopeChoice[],
+  ancestorId: string,
+  scopeId: string
+) {
   let current = scopes.find((scope) => scope.id === scopeId);
   while (current) {
     if (current.id === ancestorId) return true;
@@ -54,9 +58,10 @@ export function scopeContains(scopes: ScopeChoice[], ancestorId: string, scopeId
 }
 
 export function scopesInWorkspace(scopes: ScopeChoice[], workspaceId: string) {
-  return scopes.filter((scope) =>
-    scope.id === workspaceId ||
-    scopeContains(scopes, workspaceId, scope.id) ||
-    scopeContains(scopes, scope.id, workspaceId)
+  return scopes.filter(
+    (scope) =>
+      scope.id === workspaceId ||
+      scopeContains(scopes, workspaceId, scope.id) ||
+      scopeContains(scopes, scope.id, workspaceId)
   );
 }

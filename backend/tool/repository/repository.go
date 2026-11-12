@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"opskeeper/backend/config"
 )
 
 type ConnectionInput struct {
@@ -141,12 +142,12 @@ func (s *Snapshot) Search(ctx context.Context, query string, limit int, revision
 	return SearchAt(ctx, in, query, limit, revision)
 }
 
-func (s *Snapshot) SearchPage(ctx context.Context, query, path string, offset, limit int, revision string) (SearchPage, error) {
+func (s *Snapshot) SearchPage(ctx context.Context, options SearchOptions) (SearchPage, error) {
 	in, err := s.resolve(ctx)
 	if err != nil {
 		return SearchPage{}, err
 	}
-	return SearchPageAt(ctx, in, query, path, offset, limit, revision)
+	return SearchPageWithOptionsAt(ctx, in, options)
 }
 
 func (s *Snapshot) Metadata(ctx context.Context) (map[string]any, error) {
@@ -160,9 +161,9 @@ func (s *Snapshot) Metadata(ctx context.Context) (map[string]any, error) {
 var tools = []ToolInfo{
 	{"repository_branches", "List repository branches."},
 	{"repository_status", "Read the resolved repository revision and worktree status when applicable."},
-	{"repository_tree", "Page through every file in a repository directory tree using offset and limit; continue until done is true."},
+	{"repository_tree", "Inventory repository files; defaults to 1000 entries per call. Continue from next_offset until done is true."},
 	{"repository_file", "Read a text file in byte ranges; continue from next_offset until done is true."},
-	{"repository_search", "Page through literal text matches using offset and limit; continue until done is true and confirm complete is true. observed_matches is only a lower bound when complete is false."},
+	{"repository_search", "Search tracked source files with fixed text or grep-style extended regular expressions; supports case-insensitive search and paginated results."},
 	{"repository_metadata", "Read repository remotes and recent commits at the resolved revision."},
 }
 
@@ -323,7 +324,7 @@ func configuredBundleStorage(in ConnectionInput) ConnectionInput {
 	if strings.TrimSpace(in.StorageKey) == "" {
 		return in
 	}
-	backend := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_STORAGE_BACKEND"))
+	backend := strings.TrimSpace(os.Getenv("OPSK_STORAGE_BACKEND"))
 	if backend == "" {
 		backend = "postgres"
 	}
@@ -333,22 +334,22 @@ func configuredBundleStorage(in ConnectionInput) ConnectionInput {
 			in.Path = filepath.Join(root, in.StorageKey)
 		}
 	}
-	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_ENDPOINT")); value != "" {
 		in.S3Endpoint = value
 	}
-	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_BUCKET")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_BUCKET")); value != "" {
 		in.S3Bucket = value
 	}
-	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_ACCESS_KEY")); value != "" {
 		in.S3AccessKey = value
 	}
-	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_SECRET_KEY")); value != "" {
 		in.S3SecretKey = value
 	}
-	if prefix := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_PREFIX")); prefix != "" {
+	if prefix := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_PREFIX")); prefix != "" {
 		in.S3Prefix = prefix
 	}
-	if value := strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_USE_SSL")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_USE_SSL")); value != "" {
 		in.S3UseSSL = strings.EqualFold(value, "true") || value == "1"
 	}
 	return in
@@ -388,12 +389,12 @@ func materializePostgres(ctx context.Context, in ConnectionInput) (string, func(
 	pool := in.Postgres
 	closePool := func() {}
 	if pool == nil {
-		url := strings.TrimSpace(os.Getenv("OPSK_DATABASE_URL"))
-		if url == "" || strings.TrimSpace(in.StorageKey) == "" {
-			return "", func() {}, errors.New("PostgreSQL repository database URL and storage key are required")
+		cfg, configErr := config.Load()
+		if configErr != nil || strings.TrimSpace(in.StorageKey) == "" {
+			return "", func() {}, errors.New("PostgreSQL repository database configuration and storage key are required")
 		}
 		var err error
-		pool, err = pgxpool.New(ctx, url)
+		pool, err = pgxpool.New(ctx, cfg.DatabaseURL)
 		if err != nil {
 			return "", func() {}, err
 		}
@@ -433,16 +434,16 @@ func materializePostgres(ctx context.Context, in ConnectionInput) (string, func(
 }
 func materializeS3(ctx context.Context, in ConnectionInput) (string, func(), error) {
 	if in.S3Endpoint == "" {
-		in.S3Endpoint = os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")
+		in.S3Endpoint = os.Getenv("OPSK_STORAGE_S3_ENDPOINT")
 	}
 	if in.S3Bucket == "" {
-		in.S3Bucket = os.Getenv("OPSK_REPOSITORY_S3_BUCKET")
+		in.S3Bucket = os.Getenv("OPSK_STORAGE_S3_BUCKET")
 	}
 	if in.S3AccessKey == "" {
-		in.S3AccessKey = os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")
+		in.S3AccessKey = os.Getenv("OPSK_STORAGE_S3_ACCESS_KEY")
 	}
 	if in.S3SecretKey == "" {
-		in.S3SecretKey = os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")
+		in.S3SecretKey = os.Getenv("OPSK_STORAGE_S3_SECRET_KEY")
 	}
 	if in.S3Endpoint == "" || in.S3Bucket == "" || in.StorageKey == "" {
 		return "", func() {}, errors.New("S3 repository endpoint, bucket and storage key are required")
@@ -601,6 +602,16 @@ type SearchPage struct {
 	Truncated       bool             `json:"truncated"`
 }
 
+type SearchOptions struct {
+	Pattern           string
+	Path              string
+	Offset            int
+	Limit             int
+	Revision          string
+	RegularExpression bool
+	IgnoreCase        bool
+}
+
 type FileRange struct {
 	Path       string `json:"path"`
 	Content    string `json:"content"`
@@ -614,8 +625,8 @@ func TreePageAt(ctx context.Context, in ConnectionInput, path string, offset, li
 	if offset < 0 {
 		offset = 0
 	}
-	if limit <= 0 || limit > 500 {
-		limit = 200
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
 	}
 	path, err := scopedPath(in.Directory, path)
 	if err != nil {
@@ -765,6 +776,11 @@ func FileRangeAt(ctx context.Context, in ConnectionInput, path string, offset in
 }
 
 func SearchPageAt(ctx context.Context, in ConnectionInput, query, path string, offset, limit int, revision string) (SearchPage, error) {
+	return SearchPageWithOptionsAt(ctx, in, SearchOptions{Pattern: query, Path: path, Offset: offset, Limit: limit, Revision: revision})
+}
+
+func SearchPageWithOptionsAt(ctx context.Context, in ConnectionInput, options SearchOptions) (SearchPage, error) {
+	query, path, offset, limit, revision := options.Pattern, options.Path, options.Offset, options.Limit, options.Revision
 	if offset < 0 {
 		offset = 0
 	}
@@ -791,18 +807,32 @@ func SearchPageAt(ctx context.Context, in ConnectionInput, query, path string, o
 	defer cleanup()
 	selectedRevision = readRevision(ctx, in, root, selectedRevision)
 	output := &limitedBuffer{max: 64 << 20}
-	args := []string{"-C", root, "grep", "-z", "-n", "-F", "-I", "-e", query, selectedRevision, "--"}
+	stderr := &limitedBuffer{max: 4096}
+	args := []string{"-C", root, "grep", "-z", "-n", "-I"}
+	if options.RegularExpression {
+		args = append(args, "-E")
+	} else {
+		args = append(args, "-F")
+	}
+	if options.IgnoreCase {
+		args = append(args, "-i")
+	}
+	args = append(args, "-e", query, selectedRevision, "--")
 	if path != "" {
 		args = append(args, path)
 	}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), gitCredentialEnvironment(in)...)
 	cmd.Stdout = output
-	cmd.Stderr = io.Discard
+	cmd.Stderr = stderr
 	err = cmd.Run()
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+			message := strings.TrimSpace(stderr.String())
+			if message != "" {
+				return SearchPage{}, fmt.Errorf("git grep: %w: %s", err, message)
+			}
 			return SearchPage{}, fmt.Errorf("git grep: %w", err)
 		}
 	}
@@ -872,7 +902,17 @@ func TreeAt(ctx context.Context, in ConnectionInput, path string, limit int, rev
 
 // TreeAll returns every file in the selected repository path for UI previews.
 func TreeAll(ctx context.Context, in ConnectionInput, path string) ([]TreeEntry, error) {
-	return treeAt(ctx, in, path, 0, "")
+	page, err := TreeAllAt(ctx, in, path, "")
+	return page.Items, err
+}
+
+// TreeAllAt returns a complete repository file inventory from one resolved revision.
+func TreeAllAt(ctx context.Context, in ConnectionInput, path, revision string) (TreePage, error) {
+	entries, err := treeAt(ctx, in, path, 0, revision)
+	if err != nil {
+		return TreePage{}, err
+	}
+	return TreePage{Items: entries, Offset: 0, NextOffset: len(entries), Total: len(entries), Done: true}, nil
 }
 
 func treeAt(ctx context.Context, in ConnectionInput, path string, limit int, revision string) ([]TreeEntry, error) {

@@ -64,14 +64,17 @@ describe('request', () => {
   });
 
   it('maps network failures to an actionable API error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('Failed to fetch')
+    );
 
     const error = await request('api/v1/resources').catch((value) => value);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
       status: 0,
       code: 'network_error',
-      message: '无法连接到 OpsKeeper API，请确认后端服务已启动且代理或网络配置正确。'
+      message:
+        '无法连接到 OpsKeeper API，请确认后端服务已启动且代理或网络配置正确。'
     });
     document.querySelector('base')?.remove();
   });
@@ -127,7 +130,9 @@ describe('request', () => {
   it('uses Kubernetes discovery and atomic application batch endpoints', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ items: [] }), { status: 200 })
+      );
 
     await api.kubernetesContexts('resource-1');
     await api.kubernetesNamespaces('resource-1', 'prod/context');
@@ -159,7 +164,9 @@ describe('request', () => {
   it('omits an unset Kubernetes context instead of sending "undefined"', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ items: [] }), { status: 200 })
+      );
 
     await api.kubernetesNamespaces('resource-1', undefined);
     await api.kubernetesWorkloads('resource-1', {

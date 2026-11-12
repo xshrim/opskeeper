@@ -2,9 +2,11 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8stesting "k8s.io/client-go/testing"
+	"opskeeper/backend/engine"
 	"opskeeper/backend/resource"
 )
 
@@ -22,6 +25,77 @@ type stubResourceReader struct {
 	item   resource.Resource
 	err    error
 	secret []byte
+}
+
+type contextResourceReader struct{ item engine.ContextResource }
+
+func (r contextResourceReader) Get(context.Context, string) (engine.ContextResource, error) {
+	return r.item, nil
+}
+
+func TestRepositoryContextProviderRegistersReadToolsForGitAndBundle(t *testing.T) {
+	for _, subtype := range []string{"git", "bundle"} {
+		t.Run(subtype, func(t *testing.T) {
+			config := map[string]any{"url": "https://example.test/repo.git", "default_branch": "main"}
+			if subtype == "bundle" {
+				config = map[string]any{"storage_key": "bundle-1"}
+			}
+			service := NewService(NewRegistry(), stubResourceReader{item: resource.Resource{
+				ID: "repository-1", Kind: "Repository", Subtype: subtype, Config: config,
+			}, secret: []byte(`{}`)}, nil, DefaultLimits())
+			service.SetRepositoryStorage(RepositoryStorageConfig{Backend: "postgres"})
+			resolver := engine.NewResourceContextResolver(
+				contextResourceReader{item: engine.ContextResource{ID: "repository-1", Kind: "Repository", Name: "git", Subtype: subtype, Config: config}},
+				nil,
+				service.EngineProvider(),
+			)
+			resolved, err := resolver.Resolve(context.Background(), engine.ContextRequest{ResourceIDs: []string{"repository-1"}})
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			found := map[string]bool{}
+			for _, tool := range resolved.Tools {
+				found[tool.Name] = true
+				var schema map[string]any
+				if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+					t.Fatalf("decode %s schema: %v", tool.Name, err)
+				}
+				properties, _ := schema["properties"].(map[string]any)
+				for propertyName, rawProperty := range properties {
+					property, _ := rawProperty.(map[string]any)
+					if strings.TrimSpace(stringValue(property, "description")) == "" {
+						t.Errorf("%s.%s has no model-facing description", tool.Name, propertyName)
+					}
+				}
+			}
+			for _, name := range []string{"repository_tree", "repository_file", "repository_search"} {
+				if !found[name] {
+					t.Errorf("%s subtype did not register %s; tools=%v", subtype, name, resolved.Tools)
+				}
+			}
+			for _, tool := range resolved.Tools {
+				if tool.Name != "repository_search" {
+					continue
+				}
+				var schema map[string]any
+				if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
+					t.Fatal(err)
+				}
+				properties := schema["properties"].(map[string]any)
+				for _, key := range []string{"search_pattern", "repository_path", "start_offset", "page_size", "regular_expression", "ignore_case"} {
+					property, ok := properties[key].(map[string]any)
+					if !ok || strings.TrimSpace(stringValue(property, "description")) == "" {
+						t.Errorf("repository_search.%s must have a meaningful documented schema", key)
+					}
+				}
+				for _, ambiguous := range []string{"query", "path", "offset", "limit"} {
+					if _, ok := properties[ambiguous]; ok {
+						t.Errorf("repository_search should use semantic parameter names, found %q", ambiguous)
+					}
+				}
+			}
+		})
+	}
 }
 
 func (r stubResourceReader) Get(context.Context, string) (resource.Resource, error) {
@@ -95,7 +169,7 @@ func TestServiceBundleConnectionTestReadsConfiguredLocalRepository(t *testing.T)
 	if output, err := exec.Command("git", "init", "--bare", repositoryPath).CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v: %s", err, output)
 	}
-	t.Setenv("OPSK_REPOSITORY_STORAGE_BACKEND", "local")
+	t.Setenv("OPSK_STORAGE_BACKEND", "local")
 	t.Setenv("OPSK_REPOSITORY_LOCAL_ROOT", root)
 	checks := &memoryCheckStore{}
 	service := NewService(NewRegistry(), stubResourceReader{item: resource.Resource{
@@ -113,7 +187,7 @@ func TestServiceBundleConnectionTestReadsConfiguredLocalRepository(t *testing.T)
 }
 
 func TestServiceBundleConnectionTestRecordsPostgreSQLBackend(t *testing.T) {
-	t.Setenv("OPSK_REPOSITORY_STORAGE_BACKEND", "postgres")
+	t.Setenv("OPSK_STORAGE_BACKEND", "postgres")
 	checks := &memoryCheckStore{}
 	service := NewService(NewRegistry(), stubResourceReader{item: resource.Resource{
 		ID: "repository-1", Kind: "Repository", Subtype: "Bundle", Config: map[string]any{},

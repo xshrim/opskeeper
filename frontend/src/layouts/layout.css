@@ -158,7 +158,7 @@
     padding: 12px 16px 8px;
   }
   .workspace-label,
-.sidebar-footer {
+  .sidebar-footer {
     display: none;
   }
   .nav-item {
@@ -536,13 +536,13 @@
 }
 @media (max-width: 720px) {
   .app-shell,
-.app-shell.sidebar-compact {
+  .app-shell.sidebar-compact {
     display: block;
     height: auto;
     overflow: visible;
   }
   .sidebar,
-.sidebar.sidebar-compact {
+  .sidebar.sidebar-compact {
     position: static;
     width: 100%;
     height: auto;
@@ -550,7 +550,7 @@
     padding: 12px 16px 8px;
   }
   .sidebar .brand,
-.sidebar.sidebar-compact .brand {
+  .sidebar.sidebar-compact .brand {
     justify-content: flex-start;
     padding: 0 4px;
   }
@@ -567,11 +567,11 @@
     text-align: left;
   }
   .sidebar.sidebar-compact .brand-copy,
-.sidebar.sidebar-compact .nav-item-label {
+  .sidebar.sidebar-compact .nav-item-label {
     display: grid;
   }
   .sidebar .workspace-label,
-.sidebar .sidebar-footer {
+  .sidebar .sidebar-footer {
     display: none;
   }
   .sidebar nav {
@@ -581,7 +581,7 @@
     overflow-x: auto;
   }
   .sidebar .nav-item,
-.sidebar.sidebar-compact .nav-item {
+  .sidebar.sidebar-compact .nav-item {
     width: auto;
     min-height: 36px;
     justify-content: flex-start;
@@ -607,7 +607,7 @@
     flex: 0 0 auto;
   }
   .sidebar.sidebar-compact .nav-submenu,
-.nav-submenu {
+  .nav-submenu {
     position: absolute;
     z-index: 15;
     top: calc(100% + 5px);
@@ -685,9 +685,16 @@
 :root[data-theme='dark'] .app-shell {
   background: var(--theme-bg-page);
 }
-nav { display: grid; gap: 3px; }
-.sidebar-footer .status-dot { background: var(--theme-success); }
-.topbar-message-slot .message-banner { pointer-events: auto; }
+nav {
+  display: grid;
+  gap: 3px;
+}
+.sidebar-footer .status-dot {
+  background: var(--theme-success);
+}
+.topbar-message-slot .message-banner {
+  pointer-events: auto;
+}
 :root[data-theme='dark'] .user-menu .secondary {
   color: var(--theme-fg-muted);
   background: var(--theme-bg-surface);
@@ -854,7 +861,11 @@ nav { display: grid; gap: 3px; }
 }
 .global-scope-option.current .global-scope-option-icon {
   color: var(--theme-teal);
-  background: color-mix(in srgb, var(--theme-teal) 12%, var(--theme-bg-surface));
+  background: color-mix(
+    in srgb,
+    var(--theme-teal) 12%,
+    var(--theme-bg-surface)
+  );
 }
 .global-scope-option-copy {
   display: grid;

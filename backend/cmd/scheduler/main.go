@@ -7,9 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"opskeeper/backend/config"
+	"opskeeper/backend/database"
 	"opskeeper/backend/inspection"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/observability"
@@ -46,7 +45,7 @@ func main() {
 			logger.Warn("shutdown telemetry", "kind", "error", "error_type", "telemetry-shutdown", "error", err)
 		}
 	}()
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := database.OpenPool(ctx, cfg.DatabaseURL, logger)
 	if err != nil {
 		logger.Error("configure PostgreSQL client", "kind", "error", "error_type", "postgres-client", "error", err)
 		os.Exit(1)

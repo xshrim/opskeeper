@@ -47,7 +47,10 @@ export function schemaSecret(
     Object.entries(values).filter(([, value]) => value.trim() !== '')
   );
   if (!schema || Object.keys(secret).length === 0) return null;
-  return secretPayload(`${schema.display_name} 敏感连接信息`, JSON.stringify(secret));
+  return secretPayload(
+    `${schema.display_name} 敏感连接信息`,
+    JSON.stringify(secret)
+  );
 }
 
 export function mcpSecret(
@@ -61,7 +64,11 @@ export function mcpSecret(
     )
   );
   const secret = { token: token.trim(), headers, ...tlsSecret };
-  if (!token.trim() && Object.keys(headers).length === 0 && Object.keys(tlsSecret).length === 0)
+  if (
+    !token.trim() &&
+    Object.keys(headers).length === 0 &&
+    Object.keys(tlsSecret).length === 0
+  )
     return null;
   return secretPayload('MCP Server 访问与 TLS 凭据', JSON.stringify(secret));
 }
@@ -79,7 +86,10 @@ export function kubernetesSecret(values: Record<string, string>) {
     Object.entries(values).filter(([, value]) => value.trim())
   );
   if (!Object.keys(secret).length) return null;
-  return secretPayload('Kubernetes kubeconfig 与 Token', JSON.stringify(secret));
+  return secretPayload(
+    'Kubernetes kubeconfig 与 Token',
+    JSON.stringify(secret)
+  );
 }
 
 export function hostSecret(values: Record<string, string>) {
@@ -87,7 +97,10 @@ export function hostSecret(values: Record<string, string>) {
     Object.entries(values).filter(([, value]) => value.trim() !== '')
   );
   if (Object.keys(secret).length === 0) return null;
-  return secretPayload('Host SSH 密码、私钥与 known_hosts', JSON.stringify(secret));
+  return secretPayload(
+    'Host SSH 密码、私钥与 known_hosts',
+    JSON.stringify(secret)
+  );
 }
 
 export async function testResourceConnector(
@@ -153,16 +166,111 @@ export function testDraftMCPConnection(body: {
 }) {
   return api.testDraftMCP(body);
 }
-export function testDraftPostgreSQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftPostgreSQL(body); }
-export function testDraftMySQL(body: { host: string; port: number; database: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftMySQL(body); }
-export function testDraftOracle(body: { host: string; port: number; service_name?: string; sid?: string; username: string; password: string; timeout_seconds?: number; tls?: boolean }) { return api.testDraftOracle(body); }
-export function testDraftOceanBase(body: { host: string; port: number; mode: 'mysql' | 'oracle'; database?: string; service_name?: string; username: string; password: string; timeout_seconds?: number }) { return api.testDraftOceanBase(body); }
-export function testDraftRabbitMQ(body: { url: string; username?: string; password?: string; timeout_seconds?: number; tls_insecure?: boolean }) { return api.testDraftRabbitMQ(body); }
-export function testDraftMinIO(body: { endpoint: string; access_key?: string; secret_key?: string; session_token?: string; region?: string; secure?: boolean; timeout_seconds?: number }) { return api.testDraftMinIO(body); }
-export function testDraftKafka(body: { brokers: string[]; username?: string; password?: string; tls?: boolean; tls_server_name?: string; timeout_seconds?: number }) { return api.testDraftKafka(body); }
-export function testDraftElasticsearch(body: { url: string; username?: string; password?: string; tls_insecure?: boolean; timeout_seconds?: number }) { return api.testDraftElasticsearch(body); }
-export function testDraftRedis(body: { host: string; port: number; database: number; username: string; password: string; timeout_seconds?: number }) { return api.testDraftRedis(body); }
-export function testDraftNacos(body: { host: string; port: number; scheme?: string; context_path?: string; username?: string; password?: string; access_token?: string; timeout_seconds?: number }) { return api.testDraftNacos(body); }
+export function testDraftPostgreSQL(body: {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftPostgreSQL(body);
+}
+export function testDraftMySQL(body: {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftMySQL(body);
+}
+export function testDraftOracle(body: {
+  host: string;
+  port: number;
+  service_name?: string;
+  sid?: string;
+  username: string;
+  password: string;
+  timeout_seconds?: number;
+  tls?: boolean;
+}) {
+  return api.testDraftOracle(body);
+}
+export function testDraftOceanBase(body: {
+  host: string;
+  port: number;
+  mode: 'mysql' | 'oracle';
+  database?: string;
+  service_name?: string;
+  username: string;
+  password: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftOceanBase(body);
+}
+export function testDraftRabbitMQ(body: {
+  url: string;
+  username?: string;
+  password?: string;
+  timeout_seconds?: number;
+  tls_insecure?: boolean;
+}) {
+  return api.testDraftRabbitMQ(body);
+}
+export function testDraftMinIO(body: {
+  endpoint: string;
+  access_key?: string;
+  secret_key?: string;
+  session_token?: string;
+  region?: string;
+  secure?: boolean;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftMinIO(body);
+}
+export function testDraftKafka(body: {
+  brokers: string[];
+  username?: string;
+  password?: string;
+  tls?: boolean;
+  tls_server_name?: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftKafka(body);
+}
+export function testDraftElasticsearch(body: {
+  url: string;
+  username?: string;
+  password?: string;
+  tls_insecure?: boolean;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftElasticsearch(body);
+}
+export function testDraftRedis(body: {
+  host: string;
+  port: number;
+  database: number;
+  username: string;
+  password: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftRedis(body);
+}
+export function testDraftNacos(body: {
+  host: string;
+  port: number;
+  scheme?: string;
+  context_path?: string;
+  username?: string;
+  password?: string;
+  access_token?: string;
+  timeout_seconds?: number;
+}) {
+  return api.testDraftNacos(body);
+}
 
 export function loadMCPSnapshots(resourceId: string) {
   return api.mcpSnapshots(resourceId);
@@ -170,7 +278,8 @@ export function loadMCPSnapshots(resourceId: string) {
 
 export function createResourceRecord(body: Record<string, unknown>) {
   const { credential, ...resource } = body;
-  if (credential === undefined || credential === '') return api.createResource(resource);
+  if (credential === undefined || credential === '')
+    return api.createResource(resource);
   return api.createResource(body);
 }
 

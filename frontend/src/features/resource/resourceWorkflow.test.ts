@@ -17,7 +17,7 @@ import {
   mcpConfigurationValid,
   parseMCPHeaders,
   resourceAddStepDescription,
-  resourceAddStepTitle,
+  resourceAddStepTitle
 } from './resourceWorkflow';
 
 describe('resource workflow helpers', () => {
@@ -27,7 +27,9 @@ describe('resource workflow helpers', () => {
     expect(databaseCredentialComplete('user', '', true, true)).toBe(false);
     expect(databaseCredentialComplete('', 'secret', true, true)).toBe(false);
     expect(databaseCredentialComplete('', '', false, true)).toBe(false);
-    expect(databaseCredentialComplete('user', 'secret', false, false)).toBe(true);
+    expect(databaseCredentialComplete('user', 'secret', false, false)).toBe(
+      true
+    );
   });
 
   it('keeps sensitive schema values out of the resource config', () => {
@@ -42,7 +44,10 @@ describe('resource workflow helpers', () => {
           description: 'Example schema',
           icon: 'lucide:Circle',
           schema: {
-            properties: { host: { type: 'string' }, password: { sensitive: true } }
+            properties: {
+              host: { type: 'string' },
+              password: { sensitive: true }
+            }
           }
         },
         { host: 'db.example.com', password: 'secret' },
@@ -52,16 +57,24 @@ describe('resource workflow helpers', () => {
   });
 
   it('parses MCP headers and rejects malformed input', () => {
-    expect(parseMCPHeaders('X-Tenant: production\nAuthorization: Bearer token')).toEqual({
+    expect(
+      parseMCPHeaders('X-Tenant: production\nAuthorization: Bearer token')
+    ).toEqual({
       'X-Tenant': 'production',
       Authorization: 'Bearer token'
     });
-    expect(() => parseMCPHeaders('missing separator')).toThrow('请求 Header 格式');
+    expect(() => parseMCPHeaders('missing separator')).toThrow(
+      '请求 Header 格式'
+    );
   });
 
   it('requires a safe MCP endpoint and serializes its allowlist', () => {
-    expect(mcpConfigurationValid('sse', 'https://mcp.example.com/sse', '')).toBe(true);
-    expect(mcpConfigurationValid('sse', 'https://token@example.com/sse', '')).toBe(false);
+    expect(
+      mcpConfigurationValid('sse', 'https://mcp.example.com/sse', '')
+    ).toBe(true);
+    expect(
+      mcpConfigurationValid('sse', 'https://token@example.com/sse', '')
+    ).toBe(false);
     expect(
       mcpConfigForSave({
         transport: 'sse',
@@ -80,7 +93,9 @@ describe('resource workflow helpers', () => {
     expect(dockerAccessModeLabel('direct')).toBe('Direct · 直接连接');
     expect(dockerHostValid('unix:///var/run/docker.sock')).toBe(true);
     expect(dockerHostValid('https://docker.example.com:2376')).toBe(true);
-    expect(dockerHostValid('https://user:secret@docker.example.com')).toBe(false);
+    expect(dockerHostValid('https://user:secret@docker.example.com')).toBe(
+      false
+    );
     const direct = {
       accessMode: 'direct' as const,
       host: 'tcp://docker.example.com:2376',
@@ -104,15 +119,42 @@ describe('resource workflow helpers', () => {
     });
     expect(dockerTLSValueValid('Y2E=')).toBe(true);
     expect(dockerTLSValueValid('/etc/docker/ca.pem')).toBe(false);
-    expect(dockerConnectionConfigurationValid({ ...direct, accessMode: 'agent', mcpServerResourceId: '' })).toBe(false);
-    expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '', keyBase64: '' })).toBe(true);
-    expect(dockerConnectionConfigurationValid({ ...direct, certBase64: '/etc/docker/cert.pem', keyBase64: '' })).toBe(false);
-    expect(dockerConnectionConfigurationValid({ ...direct, host: 'http://docker.example.com:2375' })).toBe(false);
+    expect(
+      dockerConnectionConfigurationValid({
+        ...direct,
+        accessMode: 'agent',
+        mcpServerResourceId: ''
+      })
+    ).toBe(false);
+    expect(
+      dockerConnectionConfigurationValid({
+        ...direct,
+        certBase64: '',
+        keyBase64: ''
+      })
+    ).toBe(true);
+    expect(
+      dockerConnectionConfigurationValid({
+        ...direct,
+        certBase64: '/etc/docker/cert.pem',
+        keyBase64: ''
+      })
+    ).toBe(false);
+    expect(
+      dockerConnectionConfigurationValid({
+        ...direct,
+        host: 'http://docker.example.com:2375'
+      })
+    ).toBe(false);
   });
 
   it('summarizes Host subtype and configured SSH authentication', () => {
-    expect(hostAccessSummary('Direct', { auth_method: 'password' })).toBe('Direct · SSH 密码');
-    expect(hostAccessSummary('Agent', { auth_method: 'key' })).toBe('Agent · SSH 私钥');
+    expect(hostAccessSummary('Direct', { auth_method: 'password' })).toBe(
+      'Direct · SSH 密码'
+    );
+    expect(hostAccessSummary('Agent', { auth_method: 'key' })).toBe(
+      'Agent · SSH 私钥'
+    );
     expect(hostAccessSummary('Agent', {})).toBe('Agent');
   });
 
@@ -120,7 +162,9 @@ describe('resource workflow helpers', () => {
     expect(resourceAddStepTitle(2, 'Repository', 'Git')).toBe('Git 配置');
     expect(resourceAddStepTitle(2, 'Repository', 'Bundle')).toBe('Bundle 上传');
     expect(resourceAddStepTitle(3, 'Repository', 'Git')).toBe('仓库预览');
-    expect(resourceAddStepDescription(2, 'Repository', 'Bundle')).toContain('上传并校验');
+    expect(resourceAddStepDescription(2, 'Repository', 'Bundle')).toContain(
+      '上传并校验'
+    );
   });
 
   it('separates Kubernetes API connection modes and stores kubeconfig as Base64', () => {
@@ -135,12 +179,32 @@ describe('resource workflow helpers', () => {
       skipTLSVerify: false
     };
     expect(kubernetesConfigurationValid(kubeconfig)).toBe(true);
-    expect(kubernetesConfigForSave(kubeconfig)).toEqual({ connection_mode: 'kubeconfig' });
-    expect(kubernetesCredentialForSave(kubeconfig)).toEqual({ kubeconfig: 'YXBpVmVyc2lvbjogdjEKa2luZDogQ29uZmln' });
-    expect(kubernetesKubeconfigText('YXBpVmVyc2lvbjogdjEK')).toBe('apiVersion: v1');
-    const endpoint = { ...kubeconfig, connectionMode: 'endpoint' as const, server: 'https://cluster.example:6443', kubeconfig: '', token: 'token', caBase64: 'ca-value', certBase64: 'cert-value', keyBase64: 'key-value' };
+    expect(kubernetesConfigForSave(kubeconfig)).toEqual({
+      connection_mode: 'kubeconfig'
+    });
+    expect(kubernetesCredentialForSave(kubeconfig)).toEqual({
+      kubeconfig: 'YXBpVmVyc2lvbjogdjEKa2luZDogQ29uZmln'
+    });
+    expect(kubernetesKubeconfigText('YXBpVmVyc2lvbjogdjEK')).toBe(
+      'apiVersion: v1'
+    );
+    const endpoint = {
+      ...kubeconfig,
+      connectionMode: 'endpoint' as const,
+      server: 'https://cluster.example:6443',
+      kubeconfig: '',
+      token: 'token',
+      caBase64: 'ca-value',
+      certBase64: 'cert-value',
+      keyBase64: 'key-value'
+    };
     expect(kubernetesConfigurationValid(endpoint)).toBe(true);
-    expect(kubernetesCredentialForSave(endpoint)).toEqual({ token: 'token', ca: 'Y2EtdmFsdWU=', client_cert: 'Y2VydC12YWx1ZQ==', client_key: 'a2V5LXZhbHVl' });
+    expect(kubernetesCredentialForSave(endpoint)).toEqual({
+      token: 'token',
+      ca: 'Y2EtdmFsdWU=',
+      client_cert: 'Y2VydC12YWx1ZQ==',
+      client_key: 'a2V5LXZhbHVl'
+    });
     const agent = { ...kubeconfig, isAgent: true, connectionOverride: false };
     expect(kubernetesConfigurationValid(agent)).toBe(true);
     expect(kubernetesConfigForSave(agent)).toEqual({});

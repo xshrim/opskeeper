@@ -21,32 +21,135 @@
   export let credentialConfigured = false;
   export let editing = false;
   export let onConfigurationChange: () => void = () => {};
-  $: credentialInvalid = configurationAttempted && !databaseCredentialComplete(username, password, credentialConfigured, editing);
+  $: credentialInvalid =
+    configurationAttempted &&
+    !databaseCredentialComplete(
+      username,
+      password,
+      credentialConfigured,
+      editing
+    );
 
-  $: mcpServerOptions = mcpServers.map((server) => ({ value: server.id, label: server.name }));
+  $: mcpServerOptions = mcpServers.map((server) => ({
+    value: server.id,
+    label: server.name
+  }));
 </script>
 
 {#if accessMode === 'agent'}
-  <FormField label="关联 MCPServer" required invalid={configurationAttempted && !mcpServerResourceId}>
-    <DropdownSelect bind:value={mcpServerResourceId} options={mcpServerOptions} placeholder="请选择活动的 MCPServer" ariaLabel="关联 MCPServer" invalid={configurationAttempted && !mcpServerResourceId} on:change={onConfigurationChange} />
+  <FormField
+    label="关联 MCPServer"
+    required
+    invalid={configurationAttempted && !mcpServerResourceId}
+  >
+    <DropdownSelect
+      bind:value={mcpServerResourceId}
+      options={mcpServerOptions}
+      placeholder="请选择活动的 MCPServer"
+      ariaLabel="关联 MCPServer"
+      invalid={configurationAttempted && !mcpServerResourceId}
+      on:change={onConfigurationChange}
+    />
   </FormField>
-  <p class="docker-field-help">OceanBase Agent 通过关联 MCPServer 提供统一只读工具。</p>
+  <p class="docker-field-help">
+    OceanBase Agent 通过关联 MCPServer 提供统一只读工具。
+  </p>
 {:else}
   <div class="docker-form-grid">
     <FormField label="兼容模式" required>
-      <DropdownSelect bind:value={mode} options={[{ value: 'mysql', label: 'MySQL 模式' }, { value: 'oracle', label: 'Oracle 模式' }]} ariaLabel="兼容模式" on:change={onConfigurationChange} />
+      <DropdownSelect
+        bind:value={mode}
+        options={[
+          { value: 'mysql', label: 'MySQL 模式' },
+          { value: 'oracle', label: 'Oracle 模式' }
+        ]}
+        ariaLabel="兼容模式"
+        on:change={onConfigurationChange}
+      />
     </FormField>
-    <FormField label="数据库主机" required invalid={configurationAttempted && !host.trim()}><TextInput bind:value={host} required invalid={configurationAttempted && !host.trim()} on:input={onConfigurationChange} placeholder="例如 oceanbase.example.com" /></FormField>
-    <FormField label="端口"><TextInput type="number" min="1" max="65535" bind:value={port} on:input={onConfigurationChange} /></FormField>
+    <FormField
+      label="数据库主机"
+      required
+      invalid={configurationAttempted && !host.trim()}
+      ><TextInput
+        bind:value={host}
+        required
+        invalid={configurationAttempted && !host.trim()}
+        on:input={onConfigurationChange}
+        placeholder="例如 oceanbase.example.com"
+      /></FormField
+    >
+    <FormField label="端口"
+      ><TextInput
+        type="number"
+        min="1"
+        max="65535"
+        bind:value={port}
+        on:input={onConfigurationChange}
+      /></FormField
+    >
     {#if mode === 'mysql'}
-      <FormField label="数据库名" required invalid={configurationAttempted && !database.trim()}><TextInput bind:value={database} required invalid={configurationAttempted && !database.trim()} on:input={onConfigurationChange} /></FormField>
+      <FormField
+        label="数据库名"
+        required
+        invalid={configurationAttempted && !database.trim()}
+        ><TextInput
+          bind:value={database}
+          required
+          invalid={configurationAttempted && !database.trim()}
+          on:input={onConfigurationChange}
+        /></FormField
+      >
     {:else}
-      <FormField label="数据库名"><TextInput bind:value={database} on:input={onConfigurationChange} placeholder="MySQL Wire 端口可选" /></FormField>
-      <FormField label="Service Name"><TextInput bind:value={serviceName} on:input={onConfigurationChange} placeholder="非 MySQL Wire 端口必填" /></FormField>
+      <FormField label="数据库名"
+        ><TextInput
+          bind:value={database}
+          on:input={onConfigurationChange}
+          placeholder="MySQL Wire 端口可选"
+        /></FormField
+      >
+      <FormField label="Service Name"
+        ><TextInput
+          bind:value={serviceName}
+          on:input={onConfigurationChange}
+          placeholder="非 MySQL Wire 端口必填"
+        /></FormField
+      >
     {/if}
-    <FormField label="用户名" required invalid={credentialInvalid}><TextInput bind:value={username} required={!editing || !credentialConfigured} invalid={credentialInvalid} placeholder={editing && credentialConfigured ? '留空以保留已配置凭据' : ''} on:input={onConfigurationChange} /></FormField>
-    <FormField label="密码" required invalid={credentialInvalid}><PasswordInput bind:value={password} required={!editing || !credentialConfigured} placeholder={editing && credentialConfigured ? '留空以保留已配置凭据' : ''} on:input={onConfigurationChange} ariaLabel="密码" /></FormField>
-    <FormField label="超时时间（秒）"><TextInput type="number" min="1" max="300" bind:value={timeoutSeconds} on:input={onConfigurationChange} /></FormField>
+    <FormField label="用户名" required invalid={credentialInvalid}
+      ><TextInput
+        bind:value={username}
+        required={!editing || !credentialConfigured}
+        invalid={credentialInvalid}
+        placeholder={editing && credentialConfigured
+          ? '留空以保留已配置凭据'
+          : ''}
+        on:input={onConfigurationChange}
+      /></FormField
+    >
+    <FormField label="密码" required invalid={credentialInvalid}
+      ><PasswordInput
+        bind:value={password}
+        required={!editing || !credentialConfigured}
+        placeholder={editing && credentialConfigured
+          ? '留空以保留已配置凭据'
+          : ''}
+        on:input={onConfigurationChange}
+        ariaLabel="密码"
+      /></FormField
+    >
+    <FormField label="超时时间（秒）"
+      ><TextInput
+        type="number"
+        min="1"
+        max="300"
+        bind:value={timeoutSeconds}
+        on:input={onConfigurationChange}
+      /></FormField
+    >
   </div>
-  {#if mode === 'oracle'}<p class="docker-field-help">Oracle 模式会先探测目标端口：MySQL Wire 使用 OceanBase Oracle 驱动；其他端口使用 Oracle TNS，并要求填写 Service Name。</p>{/if}
+  {#if mode === 'oracle'}<p class="docker-field-help">
+      Oracle 模式会先探测目标端口：MySQL Wire 使用 OceanBase Oracle
+      驱动；其他端口使用 Oracle TNS，并要求填写 Service Name。
+    </p>{/if}
 {/if}

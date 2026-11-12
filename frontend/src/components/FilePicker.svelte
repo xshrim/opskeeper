@@ -15,6 +15,21 @@
 
 <span class={className}>
   {#if fileName}<small>{fileName}</small>{/if}
-  <input class={inputClass} bind:this={input} type="file" {accept} {disabled} aria-label={inputAriaLabel || label} on:change={onFileChange} />
-  <button class={buttonClass} type="button" {disabled} aria-label={ariaLabel || label} on:click|stopPropagation|preventDefault={() => input?.click()}>{buttonLabel}</button>
+  <input
+    class={inputClass}
+    bind:this={input}
+    type="file"
+    {accept}
+    {disabled}
+    aria-label={inputAriaLabel || label}
+    on:change={onFileChange}
+  />
+  <button
+    class={buttonClass}
+    type="button"
+    {disabled}
+    aria-label={ariaLabel || label}
+    on:click|stopPropagation|preventDefault={() => input?.click()}
+    >{buttonLabel}</button
+  >
 </span>

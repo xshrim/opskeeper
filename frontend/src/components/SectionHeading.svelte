@@ -10,7 +10,9 @@
 <div class={className}>
   <div>
     {#if eyebrow}<p class="eyebrow">{eyebrow}</p>{/if}
-    <svelte:element this={titleTag} id={titleId || undefined}>{title}</svelte:element>
+    <svelte:element this={titleTag} id={titleId || undefined}
+      >{title}</svelte:element
+    >
     {#if description}<p>{description}</p>{/if}
   </div>
   <slot name="actions" />

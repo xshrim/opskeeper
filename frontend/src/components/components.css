@@ -1,6 +1,8 @@
 /* Shared components styles migrated from app.css. */
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .tiny-avatar {
   display: inline-grid;
@@ -10,21 +12,44 @@
   height: 24px;
   font-size: 10px;
 }
-.danger-action { color: var(--theme-danger); }
+.danger-action {
+  color: var(--theme-danger);
+}
 .danger-action:hover {
   color: var(--theme-danger);
   background: var(--theme-bg-danger-soft);
   border-color: var(--theme-danger);
 }
-.edit-action { color: var(--theme-fg-muted) !important; }
-.delete-action { color: var(--theme-danger) !important; }
-.edit-action:hover { color: var(--theme-teal) !important; background: var(--theme-teal-soft) !important; }
-.delete-action:hover { color: var(--theme-danger) !important; background: var(--theme-bg-danger-soft) !important; border-color: var(--theme-danger) !important; }
-:root[data-theme='dark'] .edit-action { color: var(--theme-teal) !important; }
-.wide-dialog { width: min(720px, 100%); }
-.wide-panel { grid-column: 1 / -1; }
-.recent-panel { grid-column: span 4; }
-.table-list { border-top: 1px solid var(--theme-divider); }
+.edit-action {
+  color: var(--theme-fg-muted) !important;
+}
+.delete-action {
+  color: var(--theme-danger) !important;
+}
+.edit-action:hover {
+  color: var(--theme-teal) !important;
+  background: var(--theme-teal-soft) !important;
+}
+.delete-action:hover {
+  color: var(--theme-danger) !important;
+  background: var(--theme-bg-danger-soft) !important;
+  border-color: var(--theme-danger) !important;
+}
+:root[data-theme='dark'] .edit-action {
+  color: var(--theme-teal) !important;
+}
+.wide-dialog {
+  width: min(720px, 100%);
+}
+.wide-panel {
+  grid-column: 1 / -1;
+}
+.recent-panel {
+  grid-column: span 4;
+}
+.table-list {
+  border-top: 1px solid var(--theme-divider);
+}
 .binding-form {
   display: flex;
   flex-wrap: wrap;
@@ -32,7 +57,9 @@
   padding: 15px 20px;
   border-top: 1px solid var(--theme-divider);
 }
-.binding-form > * { flex: 1 1 140px; }
+.binding-form > * {
+  flex: 1 1 140px;
+}
 .editor-form {
   padding-top: 15px;
   border-top: 1px solid var(--theme-divider);
@@ -58,7 +85,9 @@
   border-radius: 5px;
   font-size: 12px;
 }
-.segmented-control button:hover { color: var(--theme-fg-muted); }
+.segmented-control button:hover {
+  color: var(--theme-fg-muted);
+}
 .segmented-control button.active {
   color: var(--theme-teal);
   background: var(--theme-bg-surface);
@@ -69,15 +98,22 @@
   background: var(--theme-bg-surface);
   border-color: var(--theme-border);
 }
-:root[data-theme='dark'] .segmented-control button { color: var(--theme-fg-muted); }
+:root[data-theme='dark'] .segmented-control button {
+  color: var(--theme-fg-muted);
+}
 :root[data-theme='dark'] .segmented-control button.active {
   color: var(--theme-teal);
   background: var(--theme-bg-selected);
   box-shadow: var(--theme-shadow-soft);
 }
-:root[data-theme='dark'] .segmented-control button:hover { color: var(--theme-teal); }
+:root[data-theme='dark'] .segmented-control button:hover {
+  color: var(--theme-teal);
+}
 @media (max-width: 720px) {
-  .segmented-control { max-width: 100%; flex-wrap: wrap; }
+  .segmented-control {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
 }
 .status-dot {
   display: inline-block;
@@ -664,10 +700,18 @@
 .message-banner.warning {
   background: var(--theme-bg-warning-soft);
 }
-.message-banner.success svg { color: var(--theme-success); }
-.message-banner.error svg { color: var(--theme-danger); }
-.message-banner.warning svg { color: var(--theme-warning); }
-.message-banner.info svg { color: var(--theme-info); }
+.message-banner.success svg {
+  color: var(--theme-success);
+}
+.message-banner.error svg {
+  color: var(--theme-danger);
+}
+.message-banner.warning svg {
+  color: var(--theme-warning);
+}
+.message-banner.info svg {
+  color: var(--theme-info);
+}
 .loading-screen {
   min-height: 100vh;
   min-height: 100dvh;
@@ -744,7 +788,7 @@
     width: 100%;
   }
   .table-header,
-.table-row {
+  .table-row {
     grid-template-columns: minmax(110px, 1.4fr) minmax(95px, 1fr) 48px;
     padding: 0 11px;
   }
@@ -759,7 +803,7 @@
     padding-right: 15px;
   }
   .list-row,
-.compact-row {
+  .compact-row {
     padding-left: 15px;
     padding-right: 15px;
   }
@@ -768,7 +812,7 @@
     padding-right: 15px;
   }
   .form-grid,
-.check-grid {
+  .check-grid {
     grid-template-columns: 1fr;
   }
 }

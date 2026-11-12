@@ -1,9 +1,11 @@
 #!/bin/sh
 set -eu
 
-: "${OPSK_DB_NAME:?OPSK_DB_NAME is required}"
-: "${OPSK_DB_USER:?OPSK_DB_USER is required}"
-: "${OPSK_DB_PASSWORD:?OPSK_DB_PASSWORD is required}"
+POSTGRES_USER=${POSTGRES_USER:-postgres}
+POSTGRES_DB=${POSTGRES_DB:-$POSTGRES_USER}
+OPSK_DB_NAME=${OPSK_DB_NAME:-opskeeper}
+OPSK_DB_USER=${OPSK_DB_USER:-opskeeper}
+OPSK_DB_PASSWORD=${OPSK_DB_PASSWORD:-opskeeper}
 
 psql \
   --set=ON_ERROR_STOP=1 \

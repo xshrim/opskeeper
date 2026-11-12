@@ -37,6 +37,11 @@ type basicIdentityService interface {
 	AuthenticateBasic(context.Context, string, string, identity.SessionMetadata) (identity.User, error)
 }
 
+type bootstrapIdentityService interface {
+	BootstrapRequired(context.Context) (bool, error)
+	BootstrapAdmin(context.Context, identity.BootstrapInput) (identity.User, error)
+}
+
 type authHandler struct {
 	service       identityService
 	platformAdmin platformAdminService
@@ -93,6 +98,8 @@ type authenticatedUserContextKey struct{}
 func registerAuthRoutes(router chi.Router, service identityService, basePath string, cookieSecure bool, platformAdmin platformAdminService) {
 	handler := authHandler{service: service, platformAdmin: platformAdmin, cookiePath: basePath, cookieSecure: cookieSecure}
 	router.Route("/auth", func(router chi.Router) {
+		router.Get("/bootstrap", handler.bootstrapStatus)
+		router.Post("/bootstrap", handler.bootstrap)
 		router.Post("/login", handler.login)
 		router.Post("/refresh", handler.refresh)
 		router.Post("/logout", handler.logout)
@@ -106,6 +113,50 @@ func registerAuthRoutes(router chi.Router, service identityService, basePath str
 		router.With(handler.requireAuth).Put("/me/avatar", handler.updateAvatar)
 		router.With(handler.requireAuth).Post("/logout-all", handler.logoutAll)
 	})
+}
+
+func (h authHandler) bootstrapStatus(writer http.ResponseWriter, request *http.Request) {
+	service, ok := h.service.(bootstrapIdentityService)
+	if !ok {
+		writeError(writer, request, http.StatusServiceUnavailable, "bootstrap_unavailable", "Administrator initialization is unavailable")
+		return
+	}
+	required, err := service.BootstrapRequired(request.Context())
+	if err != nil {
+		writeIdentityError(writer, request, err)
+		return
+	}
+	writer.Header().Set("Cache-Control", "no-store")
+	writeJSON(writer, http.StatusOK, map[string]bool{"required": required})
+}
+
+func (h authHandler) bootstrap(writer http.ResponseWriter, request *http.Request) {
+	service, ok := h.service.(bootstrapIdentityService)
+	if !ok {
+		writeError(writer, request, http.StatusServiceUnavailable, "bootstrap_unavailable", "Administrator initialization is unavailable")
+		return
+	}
+	required, err := service.BootstrapRequired(request.Context())
+	if err != nil {
+		writeIdentityError(writer, request, err)
+		return
+	}
+	if !required {
+		writeIdentityError(writer, request, identity.ErrBootstrapComplete)
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !decodeRequest(writer, request, &body) {
+		return
+	}
+	_, err = service.BootstrapAdmin(request.Context(), identity.BootstrapInput{Username: "admin", DisplayName: "admin", Password: body.Password})
+	if err != nil {
+		writeIdentityError(writer, request, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (h authHandler) login(writer http.ResponseWriter, request *http.Request) {

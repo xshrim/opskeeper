@@ -9,7 +9,10 @@ import {
   type DiagnosisStreamState
 } from './diagnosisSession';
 import { diagnosisMessageIDsReplacedByEdit } from './diagnosisCommands';
-import { diagnosisAssistantTimeline, diagnosisLiveTimeline } from './diagnosisTimelines';
+import {
+  diagnosisAssistantTimeline,
+  diagnosisLiveTimeline
+} from './diagnosisTimelines';
 
 class FakeEventSource {
   static current: FakeEventSource | null = null;
@@ -68,6 +71,58 @@ function snapshot(
 }
 
 describe('diagnosis session event handling', () => {
+  it('keeps investigation task updates in one ongoing diagnosis timeline', () => {
+    const current = snapshot({
+      events: [
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'investigation.updated',
+          payload: {
+            task_ref: 'investigation_1',
+            objective: '检查订单实例',
+            status: 'running',
+            result: {
+              facts: [],
+              inferences: [],
+              unchecked: [],
+              suggestions: []
+            }
+          },
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 3,
+          session_id: 'session-1',
+          type: 'investigation.updated',
+          payload: {
+            task_ref: 'investigation_1',
+            objective: '检查订单实例',
+            status: 'succeeded',
+            result: {
+              facts: ['实例健康'],
+              inferences: [],
+              unchecked: [],
+              suggestions: []
+            }
+          },
+          created_at: '2026-01-01T00:00:02Z'
+        }
+      ]
+    });
+    const timeline = diagnosisLiveTimeline(current);
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0].status).toBe('已完成');
+    expect(timeline[0].output).toContain('实例健康');
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     FakeEventSource.current = null;
@@ -91,16 +146,30 @@ describe('diagnosis session event handling', () => {
   });
 
   it('shows persisted interruption details only for interrupted sessions', () => {
-    expect(diagnosisInterruptionReason('cancelled', 'provider timed out', '')).toBe('provider timed out');
-    expect(diagnosisInterruptionReason('failed', 'output limit reached', '')).toBe('output limit reached');
-    expect(diagnosisInterruptionReason('analyzing', 'stale failure', '')).toBe('');
-    expect(diagnosisInterruptionReason('analyzing', '', 'user stopped')).toBe('user stopped');
+    expect(
+      diagnosisInterruptionReason('cancelled', 'provider timed out', '')
+    ).toBe('provider timed out');
+    expect(
+      diagnosisInterruptionReason('failed', 'output limit reached', '')
+    ).toBe('output limit reached');
+    expect(diagnosisInterruptionReason('analyzing', 'stale failure', '')).toBe(
+      ''
+    );
+    expect(diagnosisInterruptionReason('analyzing', '', 'user stopped')).toBe(
+      'user stopped'
+    );
   });
 
   it('reports an unexpected stream error once', () => {
     const onError = vi.fn();
     vi.stubGlobal('EventSource', FakeEventSource);
-    openDiagnosisEventStream('session-1', 0, () => '/events', () => {}, onError);
+    openDiagnosisEventStream(
+      'session-1',
+      0,
+      () => '/events',
+      () => {},
+      onError
+    );
     FakeEventSource.current?.onerror?.();
     FakeEventSource.current?.onerror?.();
     expect(onError).toHaveBeenCalledOnce();
@@ -173,8 +242,20 @@ describe('diagnosis session event handling', () => {
   it('keeps a locally appended follow-up when the refresh response is stale', () => {
     const local = snapshot({
       messages: [
-        { id: 'question-1', session_id: 'session-1', role: 'user', content: 'first', created_at: '2026-01-01T00:00:00Z' },
-        { id: 'question-2', session_id: 'session-1', role: 'user', content: 'follow-up', created_at: '2026-01-01T00:00:01Z' }
+        {
+          id: 'question-1',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'first',
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 'question-2',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'follow-up',
+          created_at: '2026-01-01T00:00:01Z'
+        }
       ]
     });
     const remote = snapshot({
@@ -182,7 +263,10 @@ describe('diagnosis session event handling', () => {
       messages: local.messages.slice(0, 1)
     });
     const merged = mergeDiagnosisSnapshot(remote, local, []);
-    expect(merged.snapshot.messages.map((message) => message.id)).toEqual(['question-1', 'question-2']);
+    expect(merged.snapshot.messages.map((message) => message.id)).toEqual([
+      'question-1',
+      'question-2'
+    ]);
   });
 
   it('preserves tool rollback, context compaction, and report completion transitions', () => {
@@ -270,9 +354,27 @@ describe('diagnosis session event handling', () => {
         }
       ],
       events: [
-        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '' },
-        { id: 2, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'old_tool', resource_id: 'r1', iteration: 1 }, created_at: '' },
-        { id: 3, session_id: 'session-1', type: 'message.created', payload: { message_id: 'question-2', role: 'user' }, created_at: '' }
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: ''
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'old_tool', resource_id: 'r1', iteration: 1 },
+          created_at: ''
+        },
+        {
+          id: 3,
+          session_id: 'session-1',
+          type: 'message.created',
+          payload: { message_id: 'question-2', role: 'user' },
+          created_at: ''
+        }
       ]
     });
     expect(diagnosisLiveTimeline(current)).toEqual([]);
@@ -282,38 +384,162 @@ describe('diagnosis session event handling', () => {
     const current = snapshot({
       session: { ...snapshot().session, status: 'analyzing' },
       messages: [
-        { id: 'question-1', session_id: 'session-1', role: 'user', content: 'first', created_at: '2026-01-01T00:00:00Z' },
-        { id: 'answer-1', session_id: 'session-1', role: 'assistant', content: 'first answer', created_at: '2026-01-01T00:00:01Z' },
-        { id: 'question-2', session_id: 'session-1', role: 'user', content: 'follow-up', created_at: '2026-01-01T00:00:02Z' }
+        {
+          id: 'question-1',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'first',
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 'answer-1',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: 'first answer',
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 'question-2',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'follow-up',
+          created_at: '2026-01-01T00:00:02Z'
+        }
       ],
       events: [
-        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:00Z' },
-        { id: 2, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'old_tool', resource_id: 'r1', iteration: 1 }, created_at: '2026-01-01T00:00:00Z' },
-        { id: 3, session_id: 'session-1', type: 'tool.completed', payload: { tool: 'old_tool', resource_id: 'r1', iteration: 1, output: { ok: true } }, created_at: '2026-01-01T00:00:01Z' },
-        { id: 4, session_id: 'session-1', type: 'assistant.completed', payload: { text: 'first answer' }, created_at: '2026-01-01T00:00:01Z' },
-        { id: 5, session_id: 'session-1', type: 'message.created', payload: { message_id: 'question-2', role: 'user' }, created_at: '2026-01-01T00:00:02Z' },
-        { id: 6, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:03Z' },
-        { id: 7, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'new_tool', resource_id: 'r1', iteration: 1 }, created_at: '2026-01-01T00:00:03Z' },
-        { id: 8, session_id: 'session-1', type: 'tool.completed', payload: { tool: 'new_tool', resource_id: 'r1', iteration: 1, output: { ok: true } }, created_at: '2026-01-01T00:00:04Z' }
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'old_tool', resource_id: 'r1', iteration: 1 },
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 3,
+          session_id: 'session-1',
+          type: 'tool.completed',
+          payload: {
+            tool: 'old_tool',
+            resource_id: 'r1',
+            iteration: 1,
+            output: { ok: true }
+          },
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 4,
+          session_id: 'session-1',
+          type: 'assistant.completed',
+          payload: { text: 'first answer' },
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 5,
+          session_id: 'session-1',
+          type: 'message.created',
+          payload: { message_id: 'question-2', role: 'user' },
+          created_at: '2026-01-01T00:00:02Z'
+        },
+        {
+          id: 6,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:03Z'
+        },
+        {
+          id: 7,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'new_tool', resource_id: 'r1', iteration: 1 },
+          created_at: '2026-01-01T00:00:03Z'
+        },
+        {
+          id: 8,
+          session_id: 'session-1',
+          type: 'tool.completed',
+          payload: {
+            tool: 'new_tool',
+            resource_id: 'r1',
+            iteration: 1,
+            output: { ok: true }
+          },
+          created_at: '2026-01-01T00:00:04Z'
+        }
       ]
     });
     const previous = diagnosisAssistantTimeline(current, 0);
-    expect(previous.some((item) => item.actions?.some((action) => action.tool === 'old_tool'))).toBe(true);
-    expect(previous.some((item) => item.actions?.some((action) => action.tool === 'new_tool'))).toBe(false);
-    const currentAnswer = diagnosisAssistantTimeline({
-      ...current,
-      messages: [...current.messages, { id: 'answer-2', session_id: 'session-1', role: 'assistant', content: 'follow-up answer', created_at: '2026-01-01T00:00:04Z' }],
-      session: { ...current.session, status: 'succeeded' }
-    }, 1);
-    expect(currentAnswer.some((item) => item.actions?.some((action) => action.tool === 'new_tool'))).toBe(true);
+    expect(
+      previous.some((item) =>
+        item.actions?.some((action) => action.tool === 'old_tool')
+      )
+    ).toBe(true);
+    expect(
+      previous.some((item) =>
+        item.actions?.some((action) => action.tool === 'new_tool')
+      )
+    ).toBe(false);
+    const currentAnswer = diagnosisAssistantTimeline(
+      {
+        ...current,
+        messages: [
+          ...current.messages,
+          {
+            id: 'answer-2',
+            session_id: 'session-1',
+            role: 'assistant',
+            content: 'follow-up answer',
+            created_at: '2026-01-01T00:00:04Z'
+          }
+        ],
+        session: { ...current.session, status: 'succeeded' }
+      },
+      1
+    );
+    expect(
+      currentAnswer.some((item) =>
+        item.actions?.some((action) => action.tool === 'new_tool')
+      )
+    ).toBe(true);
   });
 
   it('replaces the edited question and its previous answer', () => {
     const messages = [
-      { id: 'question-1', session_id: 'session-1', role: 'user', content: 'old', created_at: '' },
-      { id: 'answer-1', session_id: 'session-1', role: 'assistant', content: 'old answer', created_at: '' },
-      { id: 'question-2', session_id: 'session-1', role: 'user', content: 'later', created_at: '' },
-      { id: 'answer-2', session_id: 'session-1', role: 'assistant', content: 'later answer', created_at: '' }
+      {
+        id: 'question-1',
+        session_id: 'session-1',
+        role: 'user',
+        content: 'old',
+        created_at: ''
+      },
+      {
+        id: 'answer-1',
+        session_id: 'session-1',
+        role: 'assistant',
+        content: 'old answer',
+        created_at: ''
+      },
+      {
+        id: 'question-2',
+        session_id: 'session-1',
+        role: 'user',
+        content: 'later',
+        created_at: ''
+      },
+      {
+        id: 'answer-2',
+        session_id: 'session-1',
+        role: 'assistant',
+        content: 'later answer',
+        created_at: ''
+      }
     ] as DiagnosisSnapshot['messages'];
     expect(diagnosisMessageIDsReplacedByEdit(messages, 'question-2')).toEqual([
       'question-2',
@@ -324,29 +550,127 @@ describe('diagnosis session event handling', () => {
   it('binds a visible edited answer to its question-matching execution', () => {
     const current = snapshot({
       messages: [
-        { id: 'question-0', session_id: 'session-1', role: 'user', content: 'kept question', created_at: '2026-01-01T00:00:01Z' },
-        { id: 'answer-0', session_id: 'session-1', role: 'assistant', content: 'kept', created_at: '2026-01-01T00:00:02Z' },
-        { id: 'question-new', session_id: 'session-1', role: 'user', content: 'new', created_at: '2026-01-01T00:00:10Z' },
-        { id: 'answer-new', session_id: 'session-1', role: 'assistant', content: 'new answer', created_at: '2026-01-01T00:00:12Z' }
+        {
+          id: 'question-0',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'kept question',
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 'answer-0',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: 'kept',
+          created_at: '2026-01-01T00:00:02Z'
+        },
+        {
+          id: 'question-new',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'new',
+          created_at: '2026-01-01T00:00:10Z'
+        },
+        {
+          id: 'answer-new',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: 'new answer',
+          created_at: '2026-01-01T00:00:12Z'
+        }
       ],
       runs: [
-        { id: 'run-0', session_id: 'session-1', sequence: 1, question_message_id: 'question-0', status: 'succeeded', started_at: '2026-01-01T00:00:00Z' },
-        { id: 'run-hidden', session_id: 'session-1', sequence: 2, question_message_id: 'question-hidden', status: 'succeeded', started_at: '2026-01-01T00:00:03Z' },
-        { id: 'run-new', session_id: 'session-1', sequence: 3, question_message_id: 'question-new', status: 'succeeded', started_at: '2026-01-01T00:00:11Z' }
+        {
+          id: 'run-0',
+          session_id: 'session-1',
+          sequence: 1,
+          question_message_id: 'question-0',
+          status: 'succeeded',
+          started_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 'run-hidden',
+          session_id: 'session-1',
+          sequence: 2,
+          question_message_id: 'question-hidden',
+          status: 'succeeded',
+          started_at: '2026-01-01T00:00:03Z'
+        },
+        {
+          id: 'run-new',
+          session_id: 'session-1',
+          sequence: 3,
+          question_message_id: 'question-new',
+          status: 'succeeded',
+          started_at: '2026-01-01T00:00:11Z'
+        }
       ],
       events: [
-        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:00Z' },
-        { id: 2, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'old_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:01Z' },
-        { id: 3, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:03Z' },
-        { id: 4, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'hidden_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:04Z' },
-        { id: 5, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '2026-01-01T00:00:11Z' },
-        { id: 6, session_id: 'session-1', type: 'tool.requested', payload: { tool: 'new_tool', resource_id: 'r1' }, created_at: '2026-01-01T00:00:12Z' },
-        { id: 7, session_id: 'session-1', type: 'tool.completed', payload: { tool: 'new_tool', resource_id: 'r1', output: { ok: true } }, created_at: '2026-01-01T00:00:13Z' }
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'old_tool', resource_id: 'r1' },
+          created_at: '2026-01-01T00:00:01Z'
+        },
+        {
+          id: 3,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:03Z'
+        },
+        {
+          id: 4,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'hidden_tool', resource_id: 'r1' },
+          created_at: '2026-01-01T00:00:04Z'
+        },
+        {
+          id: 5,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: '2026-01-01T00:00:11Z'
+        },
+        {
+          id: 6,
+          session_id: 'session-1',
+          type: 'tool.requested',
+          payload: { tool: 'new_tool', resource_id: 'r1' },
+          created_at: '2026-01-01T00:00:12Z'
+        },
+        {
+          id: 7,
+          session_id: 'session-1',
+          type: 'tool.completed',
+          payload: {
+            tool: 'new_tool',
+            resource_id: 'r1',
+            output: { ok: true }
+          },
+          created_at: '2026-01-01T00:00:13Z'
+        }
       ]
     });
     const timeline = diagnosisAssistantTimeline(current, 1);
-    expect(timeline.some((item) => item.actions?.some((action) => action.tool === 'new_tool'))).toBe(true);
-    expect(timeline.some((item) => item.actions?.some((action) => action.tool === 'hidden_tool'))).toBe(false);
+    expect(
+      timeline.some((item) =>
+        item.actions?.some((action) => action.tool === 'new_tool')
+      )
+    ).toBe(true);
+    expect(
+      timeline.some((item) =>
+        item.actions?.some((action) => action.tool === 'hidden_tool')
+      )
+    ).toBe(false);
   });
-
 });

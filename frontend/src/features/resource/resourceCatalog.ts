@@ -81,16 +81,30 @@ export const resourceCatalogTags: Record<string, string[]> = {
 
 export function resourceCatalogTagsFor(resource: ResourceShape | string) {
   const kind = typeof resource === 'string' ? resource : resource.kind;
-  const category = resourceCategoryFor(typeof resource === 'string' ? { kind: resource } : resource);
+  const category = resourceCategoryFor(
+    typeof resource === 'string' ? { kind: resource } : resource
+  );
   return resourceCatalogTags[kind] ?? resourceCatalogTags[category] ?? [];
 }
 
-export const resourceCatalogTagOptions = [...new Set(Object.values(resourceCatalogTags).flat())];
+export const resourceCatalogTagOptions = [
+  ...new Set(Object.values(resourceCatalogTags).flat())
+];
 
 export function resourceCatalogTagClass(tag: string) {
   const classes: Record<string, string> = {
-    仓库: 'repository', 运行时: 'runtime', 注册: 'registry', 配置: 'configuration',
-    网关: 'gateway', 数据库: 'database', 缓存: 'cache', 消息: 'message', 检索: 'search', 存储: 'storage', AI: 'ai', 监控: 'monitor'
+    仓库: 'repository',
+    运行时: 'runtime',
+    注册: 'registry',
+    配置: 'configuration',
+    网关: 'gateway',
+    数据库: 'database',
+    缓存: 'cache',
+    消息: 'message',
+    检索: 'search',
+    存储: 'storage',
+    AI: 'ai',
+    监控: 'monitor'
   };
   return classes[tag] ?? 'default';
 }
@@ -268,58 +282,81 @@ export function resourceSchemaForSelection(
 
 export function resourceEndpointFor(resource: ResourceShape) {
   if (resource.kind === 'PostgreSQL') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();
     const port = Number(resource.config?.port ?? 5432);
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 PostgreSQL 地址';
   }
   if (resource.kind === 'MySQL') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();
     const port = Number(resource.config?.port ?? 3306);
     const database = String(resource.config?.database ?? '').trim();
     return host ? `${host}:${port}/${database}` : '未设置 MySQL 地址';
   }
   if (resource.kind === 'Oracle') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();
     const port = Number(resource.config?.port ?? 1521);
-    const service = String(resource.config?.service_name ?? resource.config?.sid ?? '').trim();
-    return host ? `${host}:${port}/${service || '未设置服务'}` : '未设置 Oracle 地址';
+    const service = String(
+      resource.config?.service_name ?? resource.config?.sid ?? ''
+    ).trim();
+    return host
+      ? `${host}:${port}/${service || '未设置服务'}`
+      : '未设置 Oracle 地址';
   }
   if (resource.kind === 'RabbitMQ') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
-    return String(resource.config?.url ?? '').trim() || '未设置 RabbitMQ Management API';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
+    return (
+      String(resource.config?.url ?? '').trim() ||
+      '未设置 RabbitMQ Management API'
+    );
   }
   if (resource.kind === 'MinIO') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const endpoint = String(resource.config?.endpoint ?? '').trim();
     return endpoint || '未设置 MinIO Endpoint';
   }
   if (resource.kind === 'Redis') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();
     const port = Number(resource.config?.port ?? 6379);
     const database = Number(resource.config?.database ?? 0);
     return host ? `${host}:${port}/db${database}` : '未设置 Redis 地址';
   }
   if (resource.kind === 'Nacos') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const host = String(resource.config?.host ?? '').trim();
     const scheme = String(resource.config?.scheme ?? 'http');
     const port = Number(resource.config?.port ?? 8848);
-    const path = String(resource.config?.context_path ?? '/nacos').replace(/\/$/, '');
+    const path = String(resource.config?.context_path ?? '/nacos').replace(
+      /\/$/,
+      ''
+    );
     return host ? `${scheme}://${host}:${port}${path}` : '未设置 Nacos 地址';
   }
   if (resource.kind === 'Kafka') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
-    const brokers = Array.isArray(resource.config?.brokers) ? resource.config.brokers.map(String).filter(Boolean) : [];
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
+    const brokers = Array.isArray(resource.config?.brokers)
+      ? resource.config.brokers.map(String).filter(Boolean)
+      : [];
     return brokers.length ? brokers.join(', ') : '未设置 Kafka Broker';
   }
   if (resource.kind === 'Elasticsearch' || resource.kind === 'ElasticSearch') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
-    return String(resource.config?.url ?? '').trim() || '未设置 Elasticsearch URL';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
+    return (
+      String(resource.config?.url ?? '').trim() || '未设置 Elasticsearch URL'
+    );
   }
   if (resource.kind === 'Host') {
     if (String(resource.subtype ?? '').toLowerCase() === 'agent')
@@ -339,12 +376,17 @@ export function resourceEndpointFor(resource: ResourceShape) {
     return String(resource.config?.host ?? '本机默认 Unix Socket');
   }
   if (resource.kind === 'Kubernetes') {
-    if (String(resource.subtype ?? '').toLowerCase() === 'agent') return 'MCPServer 代理';
+    if (String(resource.subtype ?? '').toLowerCase() === 'agent')
+      return 'MCPServer 代理';
     const mode = String(
-      resource.config?.connection_mode ?? (resource.config?.server ? 'endpoint' : 'kubeconfig')
+      resource.config?.connection_mode ??
+        (resource.config?.server ? 'endpoint' : 'kubeconfig')
     ).toLowerCase();
     if (mode === 'kubeconfig') return '由 kubeconfig 提供 API Server';
-    return String(resource.config?.server ?? '').trim() || '未设置 Kubernetes API Server';
+    return (
+      String(resource.config?.server ?? '').trim() ||
+      '未设置 Kubernetes API Server'
+    );
   }
   return String(
     resource.config?.url ??

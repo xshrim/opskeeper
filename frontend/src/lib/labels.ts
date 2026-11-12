@@ -21,4 +21,6 @@ export const formatLabels = (labels: Record<string, string> = {}): string =>
     .join(', ');
 
 export const labelTags = (labels: Record<string, string> = {}): string[] =>
-  Object.entries(labels).map(([key, value]) => (value ? `${key}=${value}` : key));
+  Object.entries(labels).map(([key, value]) =>
+    value ? `${key}=${value}` : key
+  );

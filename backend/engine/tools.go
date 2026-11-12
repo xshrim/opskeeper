@@ -184,7 +184,20 @@ func (g *PolicyGateway) recordToolCall(record ToolCallRecord) {
 	// Audit failures must not turn a provider/tool failure into a successful
 	// execution, but the gateway deliberately keeps the execution path
 	// available when the optional audit sink is unavailable.
-	_ = g.AuditStore.RecordToolCall(context.Background(), record)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = g.AuditStore.RecordToolCall(ctx, record)
+}
+
+func (g *PolicyGateway) rejectArguments(call ToolCall, code string, err error) error {
+	message := publicError(err)
+	at := time.Now().UTC()
+	_ = emitToolEvent(call.EventSink, Event{Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, call.Name, map[string]any{"arguments": redactValue(call.Arguments)})})
+	_ = emitToolEvent(call.EventSink, Event{Type: "tool.failed", Status: StatusFailed, Payload: toolEventPayload(call, call.Name, map[string]any{
+		"error": message, "error_code": code, "output": map[string]any{"error": message}, "duration_ms": int64(0),
+	})})
+	g.recordToolCall(ToolCallRecord{ExecutionID: call.ExecutionID, Sequence: call.Sequence, ProviderID: call.ProviderID, ModelName: call.ModelName, ResourceID: call.ResourceID, ToolName: call.Name, Arguments: call.Arguments, Status: StatusFailed, ErrorCode: code, Error: message, StartedAt: at, CompletedAt: at})
+	return err
 }
 
 func NewPolicyGateway(registry *ToolRegistry, authorize ToolAuthorizer, timeout time.Duration, maxResponseBytes int64, maxConcurrent int) *PolicyGateway {
@@ -238,10 +251,10 @@ func (g *PolicyGateway) Invoke(ctx context.Context, call ToolCall) (ToolResult, 
 		return ToolResult{}, err
 	}
 	if err := RejectModelInternalArguments(call.Arguments); err != nil {
-		return ToolResult{}, err
+		return ToolResult{}, g.rejectArguments(call, "tool_validation", err)
 	}
 	if err := RejectPlaceholderLocatorArguments(call.Arguments); err != nil {
-		return ToolResult{}, err
+		return ToolResult{}, g.rejectArguments(call, "tool_validation", err)
 	}
 	tool := call.implementation
 	if tool == nil {

@@ -1,5 +1,10 @@
 <script context="module" lang="ts">
-  export type SelectableOption = { value: string; label: string; description?: string; disabled?: boolean };
+  export type SelectableOption = {
+    value: string;
+    label: string;
+    description?: string;
+    disabled?: boolean;
+  };
 </script>
 
 <script lang="ts">
@@ -14,8 +19,21 @@
 <div class={className} {role} aria-label={ariaLabel || undefined}>
   {#each items as item (item.value)}
     <label class:selected={value.includes(item.value)}>
-      <span><strong>{item.label}</strong>{#if item.description}<small>{item.description}</small>{/if}</span>
-      <input type="checkbox" checked={value.includes(item.value)} disabled={item.disabled} on:change={(event) => onChange(item.value, (event.currentTarget as HTMLInputElement).checked)} />
+      <span
+        ><strong>{item.label}</strong>{#if item.description}<small
+            >{item.description}</small
+          >{/if}</span
+      >
+      <input
+        type="checkbox"
+        checked={value.includes(item.value)}
+        disabled={item.disabled}
+        on:change={(event) =>
+          onChange(
+            item.value,
+            (event.currentTarget as HTMLInputElement).checked
+          )}
+      />
     </label>
   {/each}
   <slot />

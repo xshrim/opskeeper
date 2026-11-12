@@ -54,14 +54,21 @@
     font-size: 12px;
     line-height: 1.45;
     resize: vertical;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
   }
 
-  textarea::placeholder { color: var(--theme-fg-subtle); }
+  textarea::placeholder {
+    color: var(--theme-fg-subtle);
+  }
   textarea:focus-visible {
     border-color: var(--theme-border-focus);
     box-shadow: 0 0 0 3px var(--theme-focus);
   }
   textarea:disabled,
-  textarea:read-only { color: var(--theme-fg-muted); background: var(--theme-bg-subtle); }
+  textarea:read-only {
+    color: var(--theme-fg-muted);
+    background: var(--theme-bg-subtle);
+  }
 </style>

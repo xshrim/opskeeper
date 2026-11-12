@@ -17,10 +17,22 @@
       value: resource.id,
       label: `${resource.name} · ${String(resource.config?.url ?? '未设置地址')}`
     })),
-    ...(allowAdd ? [{ value: '__add_mcp_server__', label: '新增 MCPServer' }] : [])
+    ...(allowAdd
+      ? [{ value: '__add_mcp_server__', label: '新增 MCPServer' }]
+      : [])
   ];
 </script>
 
-<FormField label="关联 MCPServer" required invalid={invalid}>
-  <DropdownSelect bind:value options={options} ariaLabel={ariaLabel} invalid={invalid} on:change={(event) => { value = String(event.detail); dispatch('value', value); dispatch('change', value); }} />
+<FormField label="关联 MCPServer" required {invalid}>
+  <DropdownSelect
+    bind:value
+    {options}
+    {ariaLabel}
+    {invalid}
+    on:change={(event) => {
+      value = String(event.detail);
+      dispatch('value', value);
+      dispatch('change', value);
+    }}
+  />
 </FormField>

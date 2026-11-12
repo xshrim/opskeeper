@@ -8,12 +8,21 @@ import (
 type executionBudgetContextKey struct{}
 
 type executionBudget struct {
-	maxIterations int64
-	maxToolCalls  int64
-	maxTokens     int64
-	iterations    atomic.Int64
-	toolCalls     atomic.Int64
-	tokens        atomic.Int64
+	maxIterations    int64
+	maxToolCalls     int64
+	maxTokens        int64
+	iterations       atomic.Int64
+	toolCalls        atomic.Int64
+	tokens           atomic.Int64
+	observationBytes atomic.Int64
+}
+
+// InheritExecutionBudget preserves the parent's shared counters across SDK contexts.
+func InheritExecutionBudget(ctx, parent context.Context) context.Context {
+	if budget := executionBudgetFromContext(parent); budget != nil {
+		return context.WithValue(ctx, executionBudgetContextKey{}, budget)
+	}
+	return ctx
 }
 
 func newExecutionBudget(budget Budget) *executionBudget {

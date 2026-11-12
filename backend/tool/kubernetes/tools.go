@@ -255,9 +255,9 @@ func WorkloadPodsInputProperties() map[string]any {
 
 func GetInputProperties() map[string]any {
 	return map[string]any{
-		"resource":  map[string]any{"type": "string"},
-		"namespace": map[string]any{"type": "string"},
-		"name":      map[string]any{"type": "string"},
+		"resource":    map[string]any{"type": "string", "description": "Kubernetes API resource type, such as pods, deployments, or services."},
+		"namespace":   map[string]any{"type": "string", "description": "Namespace containing the object; omit only for cluster-scoped objects."},
+		"object_name": map[string]any{"type": "string", "description": "Exact Kubernetes API object name; this is not an OpsKeeper database ID."},
 	}
 }
 

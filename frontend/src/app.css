@@ -172,7 +172,6 @@ body {
   border-color: var(--theme-border);
 }
 
-
 :root[data-theme='dark'] input[type='checkbox'] {
   background-color: var(--theme-bg-page);
   border-color: var(--theme-fg-subtle);

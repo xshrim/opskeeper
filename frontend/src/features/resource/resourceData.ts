@@ -1,6 +1,12 @@
 import { api, ApiError } from '../../lib/api';
 import { resourceHasConnector } from '../../lib/resources';
-import type { ConnectionCheck, MCPSnapshot, Relation, Resource, TopologyNode } from '../../lib/api';
+import type {
+  ConnectionCheck,
+  MCPSnapshot,
+  Relation,
+  Resource,
+  TopologyNode
+} from '../../lib/api';
 
 export async function loadResourceRelations(resourceId: string): Promise<{
   relations: Relation[];
@@ -24,20 +30,31 @@ export async function loadResourceConnectionCheck(
       id: snapshot.id,
       resource_id: resource.id,
       status: snapshot.status === 'succeeded' ? 'succeeded' : 'failed',
-      message: snapshot.error_message || (snapshot.status === 'succeeded' ? 'MCP Server 连接正常' : 'MCP Server 连接失败'),
+      message:
+        snapshot.error_message ||
+        (snapshot.status === 'succeeded'
+          ? 'MCP Server 连接正常'
+          : 'MCP Server 连接失败'),
       latency_ms: snapshot.latency_ms ?? 0,
       capabilities: [],
       checked_at: snapshot.created_at
     };
   }
-  if (String(resource.subtype ?? '').toLowerCase() === 'agent' && resource.agent_ref) {
+  if (
+    String(resource.subtype ?? '').toLowerCase() === 'agent' &&
+    resource.agent_ref
+  ) {
     const [snapshot] = await api.mcpSnapshots(resource.agent_ref);
     if (!snapshot) return null;
     return {
       id: `mcp-agent-${resource.id}`,
       resource_id: resource.id,
       status: snapshot.status === 'succeeded' ? 'succeeded' : 'failed',
-      message: snapshot.error_message || (snapshot.status === 'succeeded' ? 'MCPServer 连接正常' : 'MCPServer 连接失败'),
+      message:
+        snapshot.error_message ||
+        (snapshot.status === 'succeeded'
+          ? 'MCPServer 连接正常'
+          : 'MCPServer 连接失败'),
       latency_ms: snapshot.latency_ms ?? 0,
       capabilities: [],
       checked_at: snapshot.created_at
@@ -64,13 +81,19 @@ export function prependMCPSnapshot(
 
 export async function loadResourceConnectionChecks(resources: Resource[]) {
   const connectorItems = resources.filter(resourceHasConnector);
-  if (!connectorItems.length) return {} as Record<string, ConnectionCheck | null>;
-  const checks = await Promise.all(connectorItems.map(async (resource) => {
-    try {
-      return [resource.id, await loadResourceConnectionCheck(resource)] as const;
-    } catch {
-      return [resource.id, null] as const;
-    }
-  }));
+  if (!connectorItems.length)
+    return {} as Record<string, ConnectionCheck | null>;
+  const checks = await Promise.all(
+    connectorItems.map(async (resource) => {
+      try {
+        return [
+          resource.id,
+          await loadResourceConnectionCheck(resource)
+        ] as const;
+      } catch {
+        return [resource.id, null] as const;
+      }
+    })
+  );
   return Object.fromEntries(checks) as Record<string, ConnectionCheck | null>;
 }

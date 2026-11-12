@@ -22,7 +22,7 @@ time level service kind traceid spanid func file:line msg
 |---|---|
 | `time` | 格式为 `yyyy-MM-ddTHH:mm:ss.ms`，Go 布局为 `2006-01-02T15:04:05.000`。不包含时区后缀；部署环境必须统一时区。 |
 | `level` | `DEBUG`、`INFO`、`WARN` 或 `ERROR`，使用大写。 |
-| `service` | 稳定服务名，例如 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler`、`opskeeper-migrate`。 |
+| `service` | 稳定服务名，例如 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler`。 |
 | `kind` | 小写短横线命名的日志类别，例如 `service-start`、`http-request`、`job`、`audit`、`error`。 |
 | `traceid` | OpenTelemetry Trace ID，使用小写十六进制字符串；没有有效 Trace 时为 `-`。不得使用 request ID 代替。 |
 | `spanid` | OpenTelemetry Span ID，使用小写十六进制字符串；没有有效 Span 时为 `-`。不加入 `parentspanid` 固定字段。 |

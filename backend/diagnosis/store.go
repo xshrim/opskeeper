@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,6 +19,7 @@ type Store interface {
 	Get(context.Context, string) (Session, error)
 	List(context.Context, string, string, int) ([]Session, error)
 	SetScopeShared(context.Context, string, bool) (Session, error)
+	SetCollaboration(context.Context, string, int) (Session, error)
 	Delete(context.Context, string) error
 	Targets(context.Context, string) ([]Target, error)
 	AddTarget(context.Context, string, string) (Target, error)
@@ -31,7 +33,8 @@ type Store interface {
 	EventsAfter(context.Context, string, int64, int) ([]Event, error)
 	SaveEvidence(context.Context, string, CreateEvidenceInput) (Evidence, error)
 	Evidence(context.Context, string) ([]Evidence, error)
-	CreateRun(context.Context, string, string) (Run, error)
+	EvidenceForRun(context.Context, string, string) ([]Evidence, error)
+	CreateRun(context.Context, string, string, int) (Run, error)
 	FinishRun(context.Context, string, string) (Run, error)
 	Runs(context.Context, string) ([]Run, error)
 	SaveCausalChain(context.Context, CausalChain) (CausalChain, error)
@@ -49,6 +52,24 @@ type Store interface {
 }
 
 type store struct{ pool *pgxpool.Pool }
+
+type runLeaseContextKey struct{}
+
+type RunLeaseStore interface {
+	ClaimRunLease(context.Context, string, string, time.Duration) (Session, bool, error)
+	HeartbeatRun(context.Context, string, string, time.Duration) (bool, error)
+	ReleaseRunLease(context.Context, string, string) error
+	RecoverableRuns(context.Context, int) ([]string, error)
+}
+
+func withRunLease(ctx context.Context, owner string) context.Context {
+	return context.WithValue(ctx, runLeaseContextKey{}, owner)
+}
+
+func runLeaseOwner(ctx context.Context) string {
+	owner, _ := ctx.Value(runLeaseContextKey{}).(string)
+	return owner
+}
 
 func NewStore(pool *pgxpool.Pool) Store { return &store{pool: pool} }
 
@@ -70,7 +91,7 @@ func (s *store) Start(ctx context.Context, input StartInput) (Session, error) {
 	if len(applicationIDs) > 0 {
 		input.ApplicationID = applicationIDs[0]
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, application_ids, actor_user_id, scope_shared, provider_id, model_name, application_context, status, title) VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid[], NULLIF($4, '')::uuid, $5, NULLIF($6, '')::uuid, NULLIF($7, ''), $8::jsonb, 'queued', $9) RETURNING id::text`, input.ScopeID, input.ApplicationID, applicationIDs, input.ActorUserID, input.ScopeShared, input.ProviderID, input.ModelName, contextJSON, input.Title).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO diagnosis_sessions (scope_id, application_id, application_ids, actor_user_id, scope_shared, provider_id, model_name, application_context, status, title, collaboration) VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid[], NULLIF($4, '')::uuid, $5, NULLIF($6, '')::uuid, NULLIF($7, ''), $8::jsonb, 'queued', $9, $10) RETURNING id::text`, input.ScopeID, input.ApplicationID, applicationIDs, input.ActorUserID, input.ScopeShared, input.ProviderID, input.ModelName, contextJSON, input.Title, collaborationOrDefault(input.Collaboration)).Scan(&id)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -301,7 +322,15 @@ func (s *store) SaveEvidence(ctx context.Context, sessionID string, input Create
 }
 
 func (s *store) Evidence(ctx context.Context, sessionID string) ([]Evidence, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, COALESCE(run_id::text, ''), target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at FROM diagnosis_evidence WHERE session_id = $1::uuid ORDER BY created_at, id`, sessionID)
+	return s.listEvidence(ctx, `session_id = $1::uuid`, sessionID)
+}
+
+func (s *store) EvidenceForRun(ctx context.Context, sessionID, runID string) ([]Evidence, error) {
+	return s.listEvidence(ctx, `session_id = $1::uuid AND run_id = $2::uuid`, sessionID, runID)
+}
+
+func (s *store) listEvidence(ctx context.Context, filter string, args ...any) ([]Evidence, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, COALESCE(run_id::text, ''), target_resource_id::text, source_resource_id::text, capability, collected_at, window_start, window_end, content_hash, summary, content, partial, untrusted, created_at FROM diagnosis_evidence WHERE `+filter+` ORDER BY created_at, id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnosis evidence: %w", err)
 	}
@@ -317,9 +346,13 @@ func (s *store) Evidence(ctx context.Context, sessionID string) ([]Evidence, err
 	return items, rows.Err()
 }
 
-func (s *store) CreateRun(ctx context.Context, sessionID, questionMessageID string) (Run, error) {
+func (s *store) SetCollaboration(ctx context.Context, sessionID string, value int) (Session, error) {
+	return scanSession(s.pool.QueryRow(ctx, `UPDATE diagnosis_sessions SET collaboration = $2, updated_at = now() WHERE id = $1::uuid RETURNING `+sessionFields, sessionID, value))
+}
+
+func (s *store) CreateRun(ctx context.Context, sessionID, questionMessageID string, collaboration int) (Run, error) {
 	var item Run
-	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_runs (session_id, sequence, question_message_id) SELECT $1::uuid, COALESCE(MAX(sequence), 0) + 1, NULLIF($2, '')::uuid FROM diagnosis_runs WHERE session_id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at`, sessionID, questionMessageID).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt)
+	err := s.pool.QueryRow(ctx, `INSERT INTO diagnosis_runs (session_id, sequence, question_message_id, collaboration) SELECT $1::uuid, COALESCE(MAX(sequence), 0) + 1, NULLIF($2, '')::uuid, $3 FROM diagnosis_runs WHERE session_id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at, collaboration`, sessionID, questionMessageID, collaborationOrDefault(collaboration)).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt, &item.Collaboration)
 	if err != nil {
 		return Run{}, mapStoreError(err)
 	}
@@ -328,7 +361,7 @@ func (s *store) CreateRun(ctx context.Context, sessionID, questionMessageID stri
 
 func (s *store) FinishRun(ctx context.Context, runID, status string) (Run, error) {
 	var item Run
-	err := s.pool.QueryRow(ctx, `UPDATE diagnosis_runs SET status = $2, completed_at = now() WHERE id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at`, runID, status).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt)
+	err := s.pool.QueryRow(ctx, `UPDATE diagnosis_runs SET status = $2, completed_at = now() WHERE id = $1::uuid RETURNING id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at, collaboration`, runID, status).Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt, &item.Collaboration)
 	if err != nil {
 		return Run{}, mapStoreError(err)
 	}
@@ -336,7 +369,7 @@ func (s *store) FinishRun(ctx context.Context, runID, status string) (Run, error
 }
 
 func (s *store) Runs(ctx context.Context, sessionID string) ([]Run, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at FROM diagnosis_runs WHERE session_id = $1::uuid ORDER BY sequence`, sessionID)
+	rows, err := s.pool.Query(ctx, `SELECT id::text, session_id::text, sequence, question_message_id::text, status, started_at, completed_at, collaboration FROM diagnosis_runs WHERE session_id = $1::uuid ORDER BY sequence`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnosis runs: %w", err)
 	}
@@ -344,7 +377,7 @@ func (s *store) Runs(ctx context.Context, sessionID string) ([]Run, error) {
 	items := []Run{}
 	for rows.Next() {
 		var item Run
-		if err := rows.Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.Sequence, &item.QuestionMessageID, &item.Status, &item.StartedAt, &item.CompletedAt, &item.Collaboration); err != nil {
 			return nil, fmt.Errorf("scan diagnosis run: %w", err)
 		}
 		items = append(items, item)
@@ -495,11 +528,81 @@ func (s *store) ClaimRun(ctx context.Context, sessionID string) (Session, bool, 
 	return item, true, nil
 }
 
+func (s *store) ClaimRunLease(ctx context.Context, sessionID, owner string, lease time.Duration) (Session, bool, error) {
+	var item Session
+	err := s.pool.QueryRow(ctx, `WITH candidate AS MATERIALIZED (
+			SELECT id FROM diagnosis_sessions
+			WHERE id=$1::uuid AND (status='queued' OR (status IN ('planning','collecting','analyzing') AND (lease_expires_at IS NULL OR lease_expires_at < now())))
+			FOR UPDATE
+		), abandoned_runs AS (
+			UPDATE diagnosis_runs SET status='failed',completed_at=now()
+			WHERE session_id IN (SELECT id FROM candidate) AND status='running'
+		)
+		UPDATE diagnosis_sessions
+		SET status='planning', lease_owner=$2, lease_expires_at=now()+$3::interval, updated_at=now()
+		WHERE id IN (SELECT id FROM candidate)
+		RETURNING `+sessionFields, sessionID, owner, lease.String()).Scan(
+		&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ScopeShared,
+		&item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode,
+		&item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, false, nil
+	}
+	if err != nil {
+		return Session{}, false, mapStoreError(err)
+	}
+	return item, true, nil
+}
+
+func (s *store) HeartbeatRun(ctx context.Context, sessionID, owner string, lease time.Duration) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET lease_expires_at=now()+$3::interval,updated_at=now()
+		WHERE id=$1::uuid AND lease_owner=$2 AND status IN ('planning','collecting','analyzing') AND lease_expires_at>now()`, sessionID, owner, lease.String())
+	if err != nil {
+		return false, mapStoreError(err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func (s *store) ReleaseRunLease(ctx context.Context, sessionID, owner string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET lease_expires_at=now(),updated_at=now()
+		WHERE id=$1::uuid AND lease_owner=$2 AND status IN ('planning','collecting','analyzing')`, sessionID, owner)
+	return mapStoreError(err)
+}
+
+func (s *store) RecoverableRuns(ctx context.Context, limit int) ([]string, error) {
+	if limit < 1 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id::text FROM diagnosis_sessions
+		WHERE status='queued' OR (status IN ('planning','collecting','analyzing') AND (lease_expires_at IS NULL OR lease_expires_at<now()))
+		ORDER BY updated_at,id LIMIT $1`, limit)
+	if err != nil {
+		return nil, mapStoreError(err)
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *store) Finish(ctx context.Context, sessionID string, status Status, code, message string) (Session, error) {
 	if status != StatusSucceeded && status != StatusFailed && status != StatusCancelled {
 		return Session{}, invalid("a diagnosis can only finish as succeeded, failed, or cancelled")
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET status = $2, error_code = $3, error_message = $4, completed_at = now(), updated_at = now() WHERE id = $1::uuid AND status NOT IN ('succeeded', 'failed', 'cancelled')`, sessionID, status, code, message)
+	owner := runLeaseOwner(ctx)
+	query := `UPDATE diagnosis_sessions SET status=$2,error_code=$3,error_message=$4,completed_at=now(),updated_at=now(),lease_owner='',lease_expires_at=NULL WHERE id=$1::uuid AND status NOT IN ('succeeded','failed','cancelled')`
+	args := []any{sessionID, status, code, message}
+	if owner != "" {
+		query += ` AND lease_owner=$5 AND lease_expires_at>now()`
+		args = append(args, owner)
+	}
+	tag, err := s.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -513,7 +616,14 @@ func (s *store) SetStatus(ctx context.Context, sessionID string, status Status) 
 	if status != StatusQueued && status != StatusPlanning && status != StatusCollecting && status != StatusAnalyzing {
 		return Session{}, invalid("diagnosis status must be an active state")
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET status = $2, updated_at = now() WHERE id = $1::uuid AND status NOT IN ('succeeded', 'failed', 'cancelled')`, sessionID, status)
+	owner := runLeaseOwner(ctx)
+	query := `UPDATE diagnosis_sessions SET status=$2,updated_at=now() WHERE id=$1::uuid AND status NOT IN ('succeeded','failed','cancelled')`
+	args := []any{sessionID, status}
+	if owner != "" {
+		query += ` AND lease_owner=$3 AND lease_expires_at>now()`
+		args = append(args, owner)
+	}
+	tag, err := s.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -524,7 +634,7 @@ func (s *store) SetStatus(ctx context.Context, sessionID string, status Status) 
 }
 
 func (s *store) Reopen(ctx context.Context, sessionID string) (Session, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET status = 'queued', error_code = '', error_message = '', completed_at = NULL, updated_at = now() WHERE id = $1::uuid AND status IN ('succeeded', 'failed', 'cancelled')`, sessionID)
+	tag, err := s.pool.Exec(ctx, `UPDATE diagnosis_sessions SET status='queued',error_code='',error_message='',completed_at=NULL,lease_owner='',lease_expires_at=NULL,updated_at=now() WHERE id=$1::uuid AND status IN ('succeeded','failed','cancelled')`, sessionID)
 	if err != nil {
 		return Session{}, mapStoreError(err)
 	}
@@ -563,14 +673,14 @@ func (s *store) Plan(ctx context.Context, sessionID string) (Plan, error) {
 	return s.plan(ctx, sessionID)
 }
 
-const sessionFields = `id::text, scope_id::text, COALESCE(application_id::text, ''), application_ids::text[], actor_user_id::text, scope_shared, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), application_context, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at`
+const sessionFields = `id::text, scope_id::text, COALESCE(application_id::text, ''), application_ids::text[], actor_user_id::text, scope_shared, COALESCE(provider_id::text, ''), COALESCE(model_name, ''), application_context, status, title, error_code, error_message, started_at, completed_at, created_at, updated_at, collaboration`
 const sessionSelect = `SELECT ` + sessionFields + ` FROM diagnosis_sessions`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanSession(row rowScanner) (Session, error) {
 	var item Session
-	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ScopeShared, &item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ScopeID, &item.ApplicationID, &item.ApplicationIDs, &item.ActorUserID, &item.ScopeShared, &item.ProviderID, &item.ModelName, &item.ApplicationContext, &item.Status, &item.Title, &item.ErrorCode, &item.ErrorMessage, &item.StartedAt, &item.CompletedAt, &item.CreatedAt, &item.UpdatedAt, &item.Collaboration); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Session{}, ErrNotFound
 		}

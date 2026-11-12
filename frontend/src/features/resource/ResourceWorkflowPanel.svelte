@@ -141,41 +141,198 @@
         disabled={!hostConfigurationComplete}
         type="button"
         on:click={() => hostConfigurationComplete && onSelectStep(3)}
-      ><b>3</b><span>总结核验</span></button>
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'PostgreSQL'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>PostgreSQL 配置</span></button>
-      <button class:active={step === 3} disabled={!postgresqlConfigurationComplete} type="button" on:click={() => postgresqlConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>PostgreSQL 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!postgresqlConfigurationComplete}
+        type="button"
+        on:click={() => postgresqlConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'MySQL'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>MySQL 配置</span></button>
-      <button class:active={step === 3} disabled={!mysqlConfigurationComplete} type="button" on:click={() => mysqlConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>MySQL 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!mysqlConfigurationComplete}
+        type="button"
+        on:click={() => mysqlConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Oracle'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Oracle 配置</span></button>
-      <button class:active={step === 3} disabled={!oracleConfigurationComplete} type="button" on:click={() => oracleConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>Oracle 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!oracleConfigurationComplete}
+        type="button"
+        on:click={() => oracleConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'OceanBase'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>OceanBase 配置</span></button>
-      <button class:active={step === 3} disabled={!oceanBaseConfigurationComplete} type="button" on:click={() => oceanBaseConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>OceanBase 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!oceanBaseConfigurationComplete}
+        type="button"
+        on:click={() => oceanBaseConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'RabbitMQ'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>RabbitMQ 配置</span></button>
-      <button class:active={step === 3} disabled={!rabbitMQConfigurationComplete} type="button" on:click={() => rabbitMQConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>RabbitMQ 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!rabbitMQConfigurationComplete}
+        type="button"
+        on:click={() => rabbitMQConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'MinIO'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>MinIO 配置</span></button>
-      <button class:active={step === 3} disabled={!minIOConfigurationComplete} type="button" on:click={() => minIOConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>MinIO 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!minIOConfigurationComplete}
+        type="button"
+        on:click={() => minIOConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Redis'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Redis 配置</span></button>
-      <button class:active={step === 3} disabled={!redisConfigurationComplete} type="button" on:click={() => redisConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>Redis 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!redisConfigurationComplete}
+        type="button"
+        on:click={() => redisConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Nacos'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Nacos 配置</span></button>
-      <button class:active={step === 3} disabled={!nacosConfigurationComplete} type="button" on:click={() => nacosConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>Nacos 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!nacosConfigurationComplete}
+        type="button"
+        on:click={() => nacosConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Kafka'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Kafka 配置</span></button>
-      <button class:active={step === 3} disabled={!kafkaConfigurationComplete} type="button" on:click={() => kafkaConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>Kafka 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!kafkaConfigurationComplete}
+        type="button"
+        on:click={() => kafkaConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Elasticsearch'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>Elasticsearch 配置</span></button>
-      <button class:active={step === 3} disabled={!elasticsearchConfigurationComplete} type="button" on:click={() => elasticsearchConfigurationComplete && onSelectStep(3)}><b>3</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>Elasticsearch 配置</span></button
+      >
+      <button
+        class:active={step === 3}
+        disabled={!elasticsearchConfigurationComplete}
+        type="button"
+        on:click={() => elasticsearchConfigurationComplete && onSelectStep(3)}
+        ><b>3</b><span>总结核验</span></button
+      >
     {:else if kind === 'Repository'}
-      <button class:active={step === 2} class:done={step > 2} disabled={!basicConfigurationComplete} type="button" on:click={() => basicConfigurationComplete && onSelectStep(2)}><b>2</b><span>{subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置'}</span></button>
-      <button class:active={step === 3} class:done={step > 3} disabled={subtype === 'Bundle' ? step < 3 : !repositoryConfigurationComplete} type="button" on:click={() => (subtype === 'Bundle' ? step >= 3 : repositoryConfigurationComplete) && onSelectStep(3)}><b>3</b><span>仓库预览</span></button>
-      <button class:active={step === 4} disabled={step < 3} type="button" on:click={() => step >= 3 && onSelectStep(4)}><b>4</b><span>总结核验</span></button>
+      <button
+        class:active={step === 2}
+        class:done={step > 2}
+        disabled={!basicConfigurationComplete}
+        type="button"
+        on:click={() => basicConfigurationComplete && onSelectStep(2)}
+        ><b>2</b><span>{subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置'}</span
+        ></button
+      >
+      <button
+        class:active={step === 3}
+        class:done={step > 3}
+        disabled={subtype === 'Bundle'
+          ? step < 3
+          : !repositoryConfigurationComplete}
+        type="button"
+        on:click={() =>
+          (subtype === 'Bundle'
+            ? step >= 3
+            : repositoryConfigurationComplete) && onSelectStep(3)}
+        ><b>3</b><span>仓库预览</span></button
+      >
+      <button
+        class:active={step === 4}
+        disabled={step < 3}
+        type="button"
+        on:click={() => step >= 3 && onSelectStep(4)}
+        ><b>4</b><span>总结核验</span></button
+      >
     {:else}
       <button
         class:active={step === 2}
@@ -287,53 +444,244 @@
             type="button"
             on:click={onSubmitHost}
             disabled={busy || !scopeSelected}
-            >{editingHost ? '保存' : '创建'}</button>
+            >{editingHost ? '保存' : '创建'}</button
+          >
         {:else if kind === 'PostgreSQL' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinuePostgreSQL}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinuePostgreSQL}
+            >下一步</button
+          >
         {:else if kind === 'PostgreSQL' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitPostgreSQL} disabled={busy || !scopeSelected}>{editingPostgreSQL ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitPostgreSQL}
+            disabled={busy || !scopeSelected}
+            >{editingPostgreSQL ? '保存' : '创建'}</button
+          >
         {:else if kind === 'MySQL' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueMySQL}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueMySQL}
+            >下一步</button
+          >
         {:else if kind === 'MySQL' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitMySQL} disabled={busy || !scopeSelected}>{editingMySQL ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitMySQL}
+            disabled={busy || !scopeSelected}
+            >{editingMySQL ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Oracle' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueOracle}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueOracle}
+            >下一步</button
+          >
         {:else if kind === 'Oracle' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitOracle} disabled={busy || !scopeSelected}>{editingOracle ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitOracle}
+            disabled={busy || !scopeSelected}
+            >{editingOracle ? '保存' : '创建'}</button
+          >
         {:else if kind === 'OceanBase' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueOceanBase}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueOceanBase}
+            >下一步</button
+          >
         {:else if kind === 'OceanBase' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitOceanBase} disabled={busy || !scopeSelected}>{editingOceanBase ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitOceanBase}
+            disabled={busy || !scopeSelected}
+            >{editingOceanBase ? '保存' : '创建'}</button
+          >
         {:else if kind === 'RabbitMQ' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRabbitMQ}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueRabbitMQ}
+            >下一步</button
+          >
         {:else if kind === 'RabbitMQ' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitRabbitMQ} disabled={busy || !scopeSelected}>{editingRabbitMQ ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitRabbitMQ}
+            disabled={busy || !scopeSelected}
+            >{editingRabbitMQ ? '保存' : '创建'}</button
+          >
         {:else if kind === 'MinIO' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueMinIO}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueMinIO}
+            >下一步</button
+          >
         {:else if kind === 'MinIO' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitMinIO} disabled={busy || !scopeSelected}>{editingMinIO ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitMinIO}
+            disabled={busy || !scopeSelected}
+            >{editingMinIO ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Redis' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRedis}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueRedis}
+            >下一步</button
+          >
         {:else if kind === 'Redis' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitRedis} disabled={busy || !scopeSelected}>{editingRedis ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitRedis}
+            disabled={busy || !scopeSelected}
+            >{editingRedis ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Nacos' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueNacos}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueNacos}
+            >下一步</button
+          >
         {:else if kind === 'Nacos' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitNacos} disabled={busy || !scopeSelected}>{editingNacos ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitNacos}
+            disabled={busy || !scopeSelected}
+            >{editingNacos ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Kafka' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueKafka}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueKafka}
+            >下一步</button
+          >
         {:else if kind === 'Kafka' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitKafka} disabled={busy || !scopeSelected}>{editingKafka ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitKafka}
+            disabled={busy || !scopeSelected}
+            >{editingKafka ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Elasticsearch' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueElasticsearch}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onContinueElasticsearch}>下一步</button
+          >
         {:else if kind === 'Elasticsearch' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={onSubmitElasticsearch} disabled={busy || !scopeSelected}>{editingElasticsearch ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitElasticsearch}
+            disabled={busy || !scopeSelected}
+            >{editingElasticsearch ? '保存' : '创建'}</button
+          >
         {:else if kind === 'Repository' && step === 2}
-          <button class="secondary" type="button" on:click={() => onSelectStep(1)}>上一步</button><button class="primary" type="button" on:click={onContinueRepository}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(1)}>上一步</button
+          ><button class="primary" type="button" on:click={onContinueRepository}
+            >下一步</button
+          >
         {:else if kind === 'Repository' && step === 3}
-          <button class="secondary" type="button" on:click={() => onSelectStep(2)}>上一步</button><button class="primary" type="button" on:click={() => onSelectStep(4)}>下一步</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(2)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={() => onSelectStep(4)}>下一步</button
+          >
         {:else if kind === 'Repository' && step === 4}
-          <button class="secondary" type="button" on:click={() => onSelectStep(3)}>上一步</button><button class="primary" type="button" on:click={onSubmitRepository} disabled={busy || !scopeSelected}>{subtype === 'Bundle' ? '完成' : editingRepository ? '保存' : '创建'}</button>
+          <button
+            class="secondary"
+            type="button"
+            on:click={() => onSelectStep(3)}>上一步</button
+          ><button
+            class="primary"
+            type="button"
+            on:click={onSubmitRepository}
+            disabled={busy || !scopeSelected}
+            >{subtype === 'Bundle'
+              ? '完成'
+              : editingRepository
+                ? '保存'
+                : '创建'}</button
+          >
         {:else if step === 2}
           <button
             class="secondary"

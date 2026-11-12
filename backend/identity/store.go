@@ -24,6 +24,22 @@ func NewStore(pool *pgxpool.Pool) Store {
 	return &store{pool: pool}
 }
 
+const bootstrapRequiredSQL = `SELECT NOT EXISTS (
+	SELECT 1 FROM users u WHERE u.deleted_at IS NULL AND (
+		u.username = 'admin' OR EXISTS (
+			SELECT 1 FROM role_bindings b JOIN roles r ON r.id = b.role_id
+			WHERE b.subject_type = 'user' AND b.subject_id = u.id
+			AND r.name = 'PlatformAdmin' AND r.builtin
+		)
+	)
+)`
+
+func (s *store) BootstrapRequired(ctx context.Context) (bool, error) {
+	var required bool
+	err := s.pool.QueryRow(ctx, bootstrapRequiredSQL).Scan(&required)
+	return required, err
+}
+
 func (s *store) BootstrapAdmin(ctx context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -34,17 +50,30 @@ func (s *store) BootstrapAdmin(ctx context.Context, username, email, phone, disp
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", bootstrapAdvisoryLockID); err != nil {
 		return User{}, fmt.Errorf("lock bootstrap administrator: %w", err)
 	}
-	var userCount int
-	if err := tx.QueryRow(ctx, "SELECT count(*) FROM users WHERE deleted_at IS NULL").Scan(&userCount); err != nil {
-		return User{}, fmt.Errorf("count users: %w", err)
+	var required bool
+	if err := tx.QueryRow(ctx, bootstrapRequiredSQL).Scan(&required); err != nil {
+		return User{}, fmt.Errorf("check bootstrap administrator: %w", err)
 	}
-	if userCount != 0 {
+	if !required {
 		return User{}, ErrBootstrapComplete
 	}
 
 	user, err := insertUser(ctx, tx, username, email, phone, displayName, passwordHash, false)
 	if err != nil {
 		return User{}, mapBootstrapStoreError(err)
+	}
+	// Commit the account and its authority together so a failed setup can be retried.
+	result, err := tx.Exec(ctx, `
+		INSERT INTO role_bindings (subject_type, subject_id, role_id, scope_id)
+		SELECT 'user', $1::uuid, r.id, p.scope_id
+		FROM roles r CROSS JOIN platforms p
+		WHERE r.name = 'PlatformAdmin' AND r.builtin
+		AND p.code = 'default' AND p.deleted_at IS NULL`, user.ID)
+	if err != nil {
+		return User{}, fmt.Errorf("bind bootstrap administrator: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return User{}, errors.New("bootstrap administrator role or platform is missing")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return User{}, fmt.Errorf("commit bootstrap administrator: %w", err)

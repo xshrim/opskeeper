@@ -35,7 +35,8 @@ export function userRoleBindings(
   return bindings.filter(
     (binding) =>
       (binding.subject_type === 'user' && binding.subject_id === userId) ||
-      (binding.subject_type === 'group' && groupIds.includes(binding.subject_id))
+      (binding.subject_type === 'group' &&
+        groupIds.includes(binding.subject_id))
   );
 }
 
@@ -89,7 +90,7 @@ export function usersAtScopes(
       binding.subject_type === 'user'
         ? [binding.subject_id]
         : groupIds.has(binding.subject_id)
-          ? groupMembers[binding.subject_id] ?? []
+          ? (groupMembers[binding.subject_id] ?? [])
           : []
     );
   const visibleIds = new Set([...memberIds, ...boundIds]);
@@ -112,7 +113,9 @@ export function actorPermissionsAtScope(
   }
   const roleIds = new Set(
     userRoleBindings(currentUserId, groups, groupMembers, bindings)
-      .filter((binding) => scopeContains(scopeChoices, binding.scope_id, scopeId))
+      .filter((binding) =>
+        scopeContains(scopeChoices, binding.scope_id, scopeId)
+      )
       .map((binding) => binding.role_id)
   );
   return [
@@ -137,9 +140,13 @@ export function resourceVisibleToScope(
   );
 }
 
-export function viewerResourceRoleAllowed(resourceRole: ResourceRoleDefinition) {
+export function viewerResourceRoleAllowed(
+  resourceRole: ResourceRoleDefinition
+) {
   return !resourceRole.permissions.some((permission) =>
-    ['resource:create', 'resource:update', 'resource:delete'].includes(String(permission))
+    ['resource:create', 'resource:update', 'resource:delete'].includes(
+      String(permission)
+    )
   );
 }
 

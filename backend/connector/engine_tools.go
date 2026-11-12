@@ -24,7 +24,7 @@ func (connectorContextProvider) Kinds() []string {
 }
 
 func (connectorContextProvider) AccessModes() []string {
-	return []string{"direct", "virtual_machine", "containerized", "cloud_native", "虚拟机", "容器化", "云原生"}
+	return []string{"direct", "git", "bundle", "virtual_machine", "containerized", "cloud_native", "虚拟机", "容器化", "云原生"}
 }
 
 func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.ContextResource) ([]engine.Tool, []engine.ContextFact, error) {
@@ -41,6 +41,7 @@ func (p connectorContextProvider) Resolve(ctx context.Context, resource engine.C
 	tools := make([]engine.Tool, 0, 4)
 	var cleanup func() error
 	add := func(name, description string, schema json.RawMessage, fn func(context.Context, map[string]any) (engine.ToolResult, error)) {
+		schema = engine.DescribeToolParameters(resource.Kind, schema)
 		tools = append(tools, engine.ToolFunc{Def: engine.ToolDefinition{Name: name, Description: description, InputSchema: schema, Source: "connector", ResourceID: resource.ID, ReadOnly: true}, Fn: fn})
 	}
 	switch resource.Kind {

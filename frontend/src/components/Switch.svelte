@@ -59,8 +59,18 @@
     box-shadow: var(--theme-shadow-soft);
     transition: transform 140ms ease;
   }
-  .switch-control.active { background: var(--theme-action); }
-  .switch-control.active > span { transform: translateX(16px); }
-  .switch-control:focus-visible { outline: 3px solid var(--theme-focus); outline-offset: 2px; }
-  .switch-control:disabled { opacity: .58; cursor: not-allowed; }
+  .switch-control.active {
+    background: var(--theme-action);
+  }
+  .switch-control.active > span {
+    transform: translateX(16px);
+  }
+  .switch-control:focus-visible {
+    outline: 3px solid var(--theme-focus);
+    outline-offset: 2px;
+  }
+  .switch-control:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+  }
 </style>

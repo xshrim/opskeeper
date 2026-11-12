@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"opskeeper/backend/application"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/inspection"
@@ -25,6 +26,10 @@ type inspectionService interface {
 	CreateChannel(context.Context, inspection.NotificationChannel) (inspection.NotificationChannel, error)
 	ListChannels(context.Context, string) ([]inspection.NotificationChannel, error)
 	SetPolicyStatus(context.Context, string, string, string) error
+}
+
+type inspectionApplicationService interface {
+	ListApplications(context.Context, string) ([]application.Application, error)
 }
 
 type notificationAdminService interface {
@@ -59,19 +64,20 @@ type notificationCatalogHTTPService interface {
 	RetryNotificationDelivery(context.Context, string, string) error
 }
 type policyRequest struct {
-	ScopeID           string                         `json:"scope_id"`
-	Name              string                         `json:"name"`
-	Cron              string                         `json:"cron"`
-	Timezone          string                         `json:"timezone"`
-	TargetResourceIDs []string                       `json:"target_resource_ids"`
-	PersonaID         string                         `json:"persona_id"`
-	TargetLabels      map[string]string              `json:"target_labels"`
-	TimeoutSeconds    int                            `json:"timeout_seconds"`
-	Retries           int                            `json:"retries"`
-	MaxConcurrent     int                            `json:"max_concurrent"`
-	MaxToolCalls      int                            `json:"max_tool_calls"`
-	MaxTokens         int64                          `json:"max_tokens"`
-	Maintenance       []inspection.MaintenanceWindow `json:"maintenance"`
+	ScopeID              string                         `json:"scope_id"`
+	Name                 string                         `json:"name"`
+	Cron                 string                         `json:"cron"`
+	Timezone             string                         `json:"timezone"`
+	TargetResourceIDs    []string                       `json:"target_resource_ids"`
+	TargetApplicationIDs []string                       `json:"target_application_ids"`
+	PersonaID            string                         `json:"persona_id"`
+	TargetLabels         map[string]string              `json:"target_labels"`
+	TimeoutSeconds       int                            `json:"timeout_seconds"`
+	Retries              int                            `json:"retries"`
+	MaxConcurrent        int                            `json:"max_concurrent"`
+	MaxToolCalls         int                            `json:"max_tool_calls"`
+	MaxTokens            int64                          `json:"max_tokens"`
+	Maintenance          []inspection.MaintenanceWindow `json:"maintenance"`
 }
 type channelRequest struct {
 	ScopeID            string            `json:"scope_id"`
@@ -123,6 +129,9 @@ func registerInspectionRoutes(router chi.Router, service inspectionService, audi
 	h := inspectionHandler{service: service, auditor: auditor}
 	router.With(guard(authorization.InspectionManage)).Post("/inspection-policies", h.createPolicy)
 	router.With(guard(authorization.InspectionManage)).Get("/inspection-policies", h.listPolicies)
+	if _, ok := service.(inspectionApplicationService); ok {
+		router.With(guard(authorization.InspectionManage)).Get("/inspection-applications", h.listApplications)
+	}
 	router.With(guard(authorization.InspectionExecute)).Post("/inspection-policies/{policyID}/runs", h.manualRun)
 	router.With(guard(authorization.InspectionManage)).Patch("/inspection-policies/{policyID}/status", h.setPolicyStatus)
 	router.With(guard(authorization.InspectionManage)).Get("/inspection-runs", h.listRuns)
@@ -162,12 +171,25 @@ func (h inspectionHandler) createPolicy(w http.ResponseWriter, r *http.Request) 
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.CreatePolicy(r.Context(), inspection.Policy{ScopeID: body.ScopeID, Name: body.Name, Cron: body.Cron, Timezone: body.Timezone, Status: inspection.PolicyActive, TargetResourceIDs: body.TargetResourceIDs, TargetLabels: body.TargetLabels, PersonaID: body.PersonaID, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Retries: body.Retries, MaxConcurrent: body.MaxConcurrent, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, Maintenance: body.Maintenance}, currentUser(r).ID)
+	item, err := h.service.CreatePolicy(r.Context(), inspection.Policy{ScopeID: body.ScopeID, Name: body.Name, Cron: body.Cron, Timezone: body.Timezone, Status: inspection.PolicyActive, TargetResourceIDs: body.TargetResourceIDs, TargetApplicationIDs: body.TargetApplicationIDs, TargetLabels: body.TargetLabels, PersonaID: body.PersonaID, Timeout: time.Duration(body.TimeoutSeconds) * time.Second, Retries: body.Retries, MaxConcurrent: body.MaxConcurrent, MaxToolCalls: body.MaxToolCalls, MaxTokens: body.MaxTokens, Maintenance: body.Maintenance}, currentUser(r).ID)
 	if err != nil {
 		writeInspectionError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, item)
+}
+func (h inspectionHandler) listApplications(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(inspectionApplicationService)
+	if !ok {
+		writeInspectionError(w, r, inspection.ErrNotFound)
+		return
+	}
+	items, err := service.ListApplications(r.Context(), r.URL.Query().Get("scope_id"))
+	if err != nil {
+		writeInspectionError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 func (h inspectionHandler) listPolicies(w http.ResponseWriter, r *http.Request) {
 	items, err := h.service.ListPolicies(r.Context(), r.URL.Query().Get("scope_id"))

@@ -11,10 +11,12 @@ app.kubernetes.io/name: {{ include "opskeeper.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- define "opskeeper.image" -}}
-{{- if .Values.image.digest -}}
-{{ printf "%s@%s" .Values.image.repository .Values.image.digest }}
+{{- $root := .root | default . -}}
+{{- $component := .component | default "api" -}}
+{{- if $root.Values.image.digest -}}
+{{ printf "%s-%s@%s" $root.Values.image.repository $component $root.Values.image.digest }}
 {{- else -}}
-{{ printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
+{{ printf "%s-%s:%s" $root.Values.image.repository $component (default $root.Chart.AppVersion $root.Values.image.tag) }}
 {{- end -}}
 {{- end }}
 {{- define "opskeeper.podSecurityContext" -}}
@@ -46,14 +48,10 @@ capabilities:
   value: {{ .Values.trustedProxies | quote }}
 - name: OPSK_CACHE_BACKEND
   value: {{ .Values.cacheBackend | quote }}
-- name: OPSK_REPOSITORY_STORAGE_BACKEND
-  value: {{ .Values.repositoryStorageBackend | quote }}
-- name: OPSK_REPOSITORY_S3_PROVIDER
-  value: {{ .Values.repositoryS3Provider | quote }}
+- name: OPSK_STORAGE_BACKEND
+  value: {{ .Values.storageBackend | quote }}
+- name: OPSK_STORAGE_S3_PROVIDER
+  value: {{ .Values.storageS3Provider | quote }}
 - name: OPSK_OTEL_ENDPOINT
   value: {{ .Values.otelExporterEndpoint | quote }}
-- name: OPSK_OPERATION_SUBMITTER_ENABLED
-  value: {{ .Values.operation.enabled | quote }}
-- name: OPSK_OPERATION_RUNNER_IMAGE
-  value: {{ default (include "opskeeper.image" .) .Values.operation.runnerImage | quote }}
 {{- end }}

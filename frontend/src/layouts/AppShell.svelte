@@ -3,6 +3,10 @@
   export let sidebarHoverMode = false;
 </script>
 
-<div class="app-shell" class:sidebar-compact={sidebarCompact} class:sidebar-hover-mode={sidebarHoverMode}>
+<div
+  class="app-shell"
+  class:sidebar-compact={sidebarCompact}
+  class:sidebar-hover-mode={sidebarHoverMode}
+>
   <slot />
 </div>

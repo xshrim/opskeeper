@@ -9,22 +9,58 @@
   export let connectionCheck: ConnectionCheck | null = null;
   export let mcpServerEndpoint = '';
   export let formatDate: (value: string) => string;
-  export let resourceCanManage: (resource: Resource, permission: string) => boolean;
+  export let resourceCanManage: (
+    resource: Resource,
+    permission: string
+  ) => boolean;
 
   $: isAgent = String(resource.subtype ?? '').toLowerCase() === 'agent';
   $: tags = labelTags(resource.labels);
 </script>
 
 <div class="resource-row-details">
-  <div><span>资源地址</span><strong>{isAgent ? mcpServerEndpoint || '关联 MCPServer' : resourceEndpointFor(resource)}</strong></div>
-  <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
-  <div><span>接入方式</span><strong>{isAgent ? 'Agent · MCP 代理' : 'Direct'}</strong></div>
-  <div><span>管理范围</span><strong>{resourceCanManage(resource, 'resource:update') ? '当前 Scope 可管理' : '继承资源，仅限查看'}</strong></div>
-  <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置' : '未配置'}</strong></div>
+  <div>
+    <span>资源地址</span><strong
+      >{isAgent
+        ? mcpServerEndpoint || '关联 MCPServer'
+        : resourceEndpointFor(resource)}</strong
+    >
+  </div>
+  <div>
+    <span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong>
+  </div>
+  <div>
+    <span>接入方式</span><strong
+      >{isAgent ? 'Agent · MCP 代理' : 'Direct'}</strong
+    >
+  </div>
+  <div>
+    <span>管理范围</span><strong
+      >{resourceCanManage(resource, 'resource:update')
+        ? '当前 Scope 可管理'
+        : '继承资源，仅限查看'}</strong
+    >
+  </div>
+  <div>
+    <span>连接凭据</span><strong
+      >{resource.credential_configured ? '已配置' : '未配置'}</strong
+    >
+  </div>
   <div><span>传输凭据</span><strong>未配置</strong></div>
-  <div><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
+  <div><span>标签</span><TagList {tags} emptyText="未设置标签" /></div>
   <div>
     <span>状态</span>
-    <ConnectionTest status={selectedResourceId === resource.id ? connectionCheck?.status ?? '' : ''} latencyMs={connectionCheck?.latency_ms ?? 0} message={connectionCheck?.message ?? ''} checkedAt={selectedResourceId === resource.id ? connectionCheck?.checked_at ?? '' : ''} disabled showTooltip={false} />
+    <ConnectionTest
+      status={selectedResourceId === resource.id
+        ? (connectionCheck?.status ?? '')
+        : ''}
+      latencyMs={connectionCheck?.latency_ms ?? 0}
+      message={connectionCheck?.message ?? ''}
+      checkedAt={selectedResourceId === resource.id
+        ? (connectionCheck?.checked_at ?? '')
+        : ''}
+      disabled
+      showTooltip={false}
+    />
   </div>
 </div>

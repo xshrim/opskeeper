@@ -45,7 +45,11 @@
     data-tooltip={visible ? `隐藏${secretLabel}` : `显示${secretLabel}`}
     on:click={() => (visible = !visible)}
   >
-    {#if visible}<EyeOff size={16} strokeWidth={1.8} aria-hidden="true" />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}
+    {#if visible}<EyeOff
+        size={16}
+        strokeWidth={1.8}
+        aria-hidden="true"
+      />{:else}<Eye size={16} strokeWidth={1.8} aria-hidden="true" />{/if}
   </button>
 </span>
 

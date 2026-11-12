@@ -84,15 +84,21 @@
   }
 
   function closeFields(event: MouseEvent) {
-    if (fieldPanel && !fieldPanel.parentElement?.contains(event.target as Node)) fieldOpen = false;
+    if (fieldPanel && !fieldPanel.parentElement?.contains(event.target as Node))
+      fieldOpen = false;
   }
 </script>
 
 <svelte:window on:click={closeFields} />
 
-<div class="search-input-shell" style={`--search-input-width:${width};--search-input-height:${height}`}>
+<div
+  class="search-input-shell"
+  style={`--search-input-width:${width};--search-input-height:${height}`}
+>
   <label class={`search-input ${className}`}>
-    <span class="search-input-prefix"><Search size={iconSize} aria-hidden="true" /><slot name="prefix" /></span>
+    <span class="search-input-prefix"
+      ><Search size={iconSize} aria-hidden="true" /><slot name="prefix" /></span
+    >
     <input
       bind:this={inputElement}
       type="text"
@@ -106,19 +112,48 @@
     />
     <span class="search-input-suffix">
       {#if value}
-        <button class="search-input-clear" type="button" aria-label="清空搜索" data-tooltip="清空搜索" on:click|preventDefault|stopPropagation={clearValue}><X size={iconSize} aria-hidden="true" /></button>
+        <button
+          class="search-input-clear"
+          type="button"
+          aria-label="清空搜索"
+          data-tooltip="清空搜索"
+          on:click|preventDefault|stopPropagation={clearValue}
+          ><X size={iconSize} aria-hidden="true" /></button
+        >
       {/if}
       {#if fieldSearchable && fieldOptions.length > 0}
-        <button class:active={fieldOpen} class="search-input-fields" type="button" aria-label="字段筛选" aria-expanded={fieldOpen} data-tooltip="字段筛选" on:click|preventDefault|stopPropagation={() => (fieldOpen = !fieldOpen)}><ListFilter size={iconSize} aria-hidden="true" /></button>
+        <button
+          class:active={fieldOpen}
+          class="search-input-fields"
+          type="button"
+          aria-label="字段筛选"
+          aria-expanded={fieldOpen}
+          data-tooltip="字段筛选"
+          on:click|preventDefault|stopPropagation={() =>
+            (fieldOpen = !fieldOpen)}
+          ><ListFilter size={iconSize} aria-hidden="true" /></button
+        >
       {/if}
       <slot name="suffix" />
     </span>
   </label>
   {#if fieldSearchable && fieldOpen && fieldOptions.length > 0}
-    <div class="search-input-field-panel" bind:this={fieldPanel} role="listbox" aria-label="字段搜索">
+    <div
+      class="search-input-field-panel"
+      bind:this={fieldPanel}
+      role="listbox"
+      aria-label="字段搜索"
+    >
       <div class="search-input-field-help">选择字段后直接输入值，回车搜索</div>
       {#each fieldOptions as field (field.key)}
-        <button class="search-input-field-option" type="button" role="option" aria-selected="false" on:click={() => selectField(field.key)}><span>{field.label}</span><code>{field.key}:</code></button>
+        <button
+          class="search-input-field-option"
+          type="button"
+          role="option"
+          aria-selected="false"
+          on:click={() => selectField(field.key)}
+          ><span>{field.label}</span><code>{field.key}:</code></button
+        >
       {/each}
     </div>
   {/if}

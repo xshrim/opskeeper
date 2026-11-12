@@ -6,7 +6,10 @@ export function installDiagnosisDocumentListeners(options: {
   const handlePointerDown = (event: PointerEvent) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (options.isModelMenuOpen() && !target.closest('.diagnosis-model-picker')) {
+    if (
+      options.isModelMenuOpen() &&
+      !target.closest('.diagnosis-model-picker')
+    ) {
       options.closeModelMenu();
     }
   };
@@ -30,7 +33,11 @@ export function installDiagnosisDocumentListeners(options: {
   };
 }
 
-export function copyDiagnosisText(content: string, successMessage: string, onNotice: (message: string) => void) {
+export function copyDiagnosisText(
+  content: string,
+  successMessage: string,
+  onNotice: (message: string) => void
+) {
   const clipboard = navigator.clipboard;
   if (!clipboard?.writeText) {
     onNotice('当前浏览器不允许直接复制，请手动选择文本。');
@@ -50,12 +57,14 @@ export function startDiagnosisPanelResize(
 ) {
   if (window.innerWidth <= 850) return;
   const startX = event.clientX;
-  const startWidth = side === 'history' ? getWidths().history : getWidths().context;
+  const startWidth =
+    side === 'history' ? getWidths().history : getWidths().context;
   const move = (moveEvent: PointerEvent) => {
     const delta = moveEvent.clientX - startX;
-    const next = side === 'history'
-      ? Math.max(180, Math.min(360, startWidth + delta))
-      : Math.max(220, Math.min(380, startWidth - delta));
+    const next =
+      side === 'history'
+        ? Math.max(180, Math.min(360, startWidth + delta))
+        : Math.max(220, Math.min(380, startWidth - delta));
     setWidth(side, next);
   };
   const stop = () => {

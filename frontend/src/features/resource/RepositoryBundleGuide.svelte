@@ -26,14 +26,24 @@
   }
 </script>
 
-<details class="repository-bundle-guide" class:compact={summaryLabel === '了解详情'}>
+<details
+  class="repository-bundle-guide"
+  class:compact={summaryLabel === '了解详情'}
+>
   <summary>
     {#if summaryLabel === '了解详情'}
       <strong class="detail-link">{summaryLabel}</strong>
     {:else}
-      <span><strong>{summaryLabel}</strong><small>生成、校验，并通过页面或 API 上传</small></span>
+      <span
+        ><strong>{summaryLabel}</strong><small
+          >生成、校验，并通过页面或 API 上传</small
+        ></span
+      >
     {/if}
-    {#if summaryLabel !== '了解详情'}<ChevronDown size={17} aria-hidden="true" />{/if}
+    {#if summaryLabel !== '了解详情'}<ChevronDown
+        size={17}
+        aria-hidden="true"
+      />{/if}
   </summary>
   <div class="guide-content">
     <section class="guide-step">
@@ -55,16 +65,53 @@ git bundle verify opskeeper.bundle</code
           <section class="upload-method">
             <h4><span>A.</span> 页面上传</h4>
             <ol>
-              <li>在页面上方的 Bundle 上传区域，选择生成的 <code>opskeeper.bundle</code> 文件。</li>
-              <li>{workflow ? '点击“下一步”，平台会在创建资源后上传、校验并打开仓库预览。' : '点击“上传并更新分支”，等待页面显示上传成功和已同步分支。'}</li>
+              <li>
+                在页面上方的 Bundle 上传区域，选择生成的 <code
+                  >opskeeper.bundle</code
+                > 文件。
+              </li>
+              <li>
+                {workflow
+                  ? '点击“下一步”，平台会在创建资源后上传、校验并打开仓库预览。'
+                  : '点击“上传并更新分支”，等待页面显示上传成功和已同步分支。'}
+              </li>
             </ol>
           </section>
           <section class="upload-method">
             <h4><span>B.</span> API 上传</h4>
-            <p>{#if workflow}先完成当前资源创建，再将命令中的 OpsKeeper 地址和资源 ID 替换为实际值。{:else}将命令中的 OpsKeeper 地址替换为实际部署地址（若配置了基础路径，也要包含基础路径）。{/if}账号需要具备此资源的更新权限。</p>
-            <div class="command-heading"><strong>已获取 Cookie</strong><button type="button" class="icon-button" aria-label="复制 Cookie 上传命令" title="复制 Cookie 上传命令" on:click={() => void copyCommand(apiUploadWithCookie, 'cookie')}>{#if copied === 'cookie'}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}</button></div>
+            <p>
+              {#if workflow}先完成当前资源创建，再将命令中的 OpsKeeper
+                地址和资源 ID 替换为实际值。{:else}将命令中的 OpsKeeper
+                地址替换为实际部署地址（若配置了基础路径，也要包含基础路径）。{/if}账号需要具备此资源的更新权限。
+            </p>
+            <div class="command-heading">
+              <strong>已获取 Cookie</strong><button
+                type="button"
+                class="icon-button"
+                aria-label="复制 Cookie 上传命令"
+                title="复制 Cookie 上传命令"
+                on:click={() => void copyCommand(apiUploadWithCookie, 'cookie')}
+                >{#if copied === 'cookie'}<Check
+                    size={16}
+                    aria-hidden="true"
+                  />{:else}<Copy size={16} aria-hidden="true" />{/if}</button
+              >
+            </div>
             <pre><code>{apiUploadWithCookie}</code></pre>
-            <div class="command-heading"><strong>Basic 认证</strong><button type="button" class="icon-button" aria-label="复制 Basic 认证上传命令" title="复制 Basic 认证上传命令" on:click={() => void copyCommand(apiUploadWithBasicAuth, 'basic')}>{#if copied === 'basic'}<Check size={16} aria-hidden="true" />{:else}<Copy size={16} aria-hidden="true" />{/if}</button></div>
+            <div class="command-heading">
+              <strong>Basic 认证</strong><button
+                type="button"
+                class="icon-button"
+                aria-label="复制 Basic 认证上传命令"
+                title="复制 Basic 认证上传命令"
+                on:click={() =>
+                  void copyCommand(apiUploadWithBasicAuth, 'basic')}
+                >{#if copied === 'basic'}<Check
+                    size={16}
+                    aria-hidden="true"
+                  />{:else}<Copy size={16} aria-hidden="true" />{/if}</button
+              >
+            </div>
             <pre><code>{apiUploadWithBasicAuth}</code></pre>
           </section>
         </div>
@@ -155,7 +202,9 @@ git bundle verify opskeeper.bundle</code
     font-size: 12px;
     font-weight: 700;
   }
-  .step-content { min-width: 0; }
+  .step-content {
+    min-width: 0;
+  }
   .repository-bundle-guide h3 {
     margin: 0 0 4px;
     color: var(--theme-fg-strong);
@@ -173,7 +222,10 @@ git bundle verify opskeeper.bundle</code
     padding-left: 13px;
     border-left: 1px solid var(--theme-divider);
   }
-  .upload-method { display: grid; gap: 4px; }
+  .upload-method {
+    display: grid;
+    gap: 4px;
+  }
   .upload-method h4 {
     display: flex;
     align-items: center;

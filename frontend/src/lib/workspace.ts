@@ -17,7 +17,8 @@ export function initialWorkspaceSelection(
     (strongest, binding) => {
       const priority = scopePriority[binding.scope_type];
       if (priority === undefined) return strongest;
-      return strongest === null || priority < scopePriority[strongest.scope_type]
+      return strongest === null ||
+        priority < scopePriority[strongest.scope_type]
         ? binding
         : strongest;
     },
@@ -32,11 +33,15 @@ export function initialWorkspaceSelection(
     };
   }
   if (strongestBinding?.scope_type === 'team') {
-    const team = teams.find((item) => item.scope.id === strongestBinding.scope_id);
+    const team = teams.find(
+      (item) => item.scope.id === strongestBinding.scope_id
+    );
     if (team) return { teamId: team.id, projectId: '', scopeId: team.scope.id };
   }
   if (strongestBinding?.scope_type === 'project') {
-    const project = projects.find((item) => item.scope.id === strongestBinding.scope_id);
+    const project = projects.find(
+      (item) => item.scope.id === strongestBinding.scope_id
+    );
     if (project) {
       return {
         teamId: project.team_id,
@@ -64,13 +69,17 @@ export function resourceInWorkspace(
 ) {
   if (activeScopeType === 'platform') return true;
   if (activeScopeType === 'team') {
-    return resource.scope_id === platformScopeId
-      || resource.scope_id === selectedTeamScopeId
-      || teamProjectScopeIds.includes(resource.scope_id);
+    return (
+      resource.scope_id === platformScopeId ||
+      resource.scope_id === selectedTeamScopeId ||
+      teamProjectScopeIds.includes(resource.scope_id)
+    );
   }
-  return resource.scope_id === platformScopeId
-    || resource.scope_id === selectedTeamScopeId
-    || resource.scope_id === selectedProjectScopeId;
+  return (
+    resource.scope_id === platformScopeId ||
+    resource.scope_id === selectedTeamScopeId ||
+    resource.scope_id === selectedProjectScopeId
+  );
 }
 
 export function providerModelSelection(
@@ -78,10 +87,12 @@ export function providerModelSelection(
   providerId: string,
   modelName: string
 ) {
-  const provider = providers.find((item) => item.provider_id === providerId)
-    ?? providers[0];
+  const provider =
+    providers.find((item) => item.provider_id === providerId) ?? providers[0];
   if (!provider) return { providerId, modelName };
-  const selectedModel = provider.models.some((model) => String(model.name ?? '') === modelName)
+  const selectedModel = provider.models.some(
+    (model) => String(model.name ?? '') === modelName
+  )
     ? modelName
     : String(provider.models[0]?.name ?? '');
   return { providerId: provider.provider_id, modelName: selectedModel };

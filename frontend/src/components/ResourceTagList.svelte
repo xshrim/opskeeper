@@ -17,8 +17,12 @@
       return;
     }
     const available = container.clientWidth;
-    const items = Array.from(measurement.querySelectorAll<HTMLElement>('[data-tag-measure]'));
-    const overflow = measurement.querySelector<HTMLElement>('[data-tag-overflow]');
+    const items = Array.from(
+      measurement.querySelectorAll<HTMLElement>('[data-tag-measure]')
+    );
+    const overflow = measurement.querySelector<HTMLElement>(
+      '[data-tag-overflow]'
+    );
     if (!available || items.length !== tags.length || !overflow) return;
     const gap = 4;
     const overflowWidth = (count: number) => {
@@ -31,7 +35,9 @@
       const remaining = items.length - index - 1;
       const nextWidth = items[index].offsetWidth;
       const nextUsed = used + (count ? gap : 0) + nextWidth;
-      const withOverflow = remaining ? nextUsed + gap + overflowWidth(remaining) : nextUsed;
+      const withOverflow = remaining
+        ? nextUsed + gap + overflowWidth(remaining)
+        : nextUsed;
       if (withOverflow > available) break;
       used = nextUsed;
       count += 1;
@@ -52,15 +58,39 @@
   {#if tags.length}
     <span bind:this={container} class="resource-tags" aria-label="资源标签">
       {#each tags.slice(0, visibleCount) as tag (tag)}
-        <Tag value={tag} className="resource-tag" textMode="ellipsis" maxWidth="180px" />
+        <Tag
+          value={tag}
+          className="resource-tag"
+          textMode="ellipsis"
+          maxWidth="180px"
+        />
       {/each}
-      {#if visibleCount < tags.length}<Tag value="+{tags.length - visibleCount}" className="resource-tag-overflow" overflow distinguishKeyOnly={false} />{/if}
+      {#if visibleCount < tags.length}<Tag
+          value="+{tags.length - visibleCount}"
+          className="resource-tag-overflow"
+          overflow
+          distinguishKeyOnly={false}
+        />{/if}
     </span>
-    <span bind:this={measurement} class="resource-tags-measure" aria-hidden="true">
-      {#each tags as tag (tag)}<Tag value={tag} className="resource-tag" textMode="ellipsis" maxWidth="180px" measure />{/each}
-      <span class="resource-tag resource-tag-overflow" data-tag-overflow>+0</span>
+    <span
+      bind:this={measurement}
+      class="resource-tags-measure"
+      aria-hidden="true"
+    >
+      {#each tags as tag (tag)}<Tag
+          value={tag}
+          className="resource-tag"
+          textMode="ellipsis"
+          maxWidth="180px"
+          measure
+        />{/each}
+      <span class="resource-tag resource-tag-overflow" data-tag-overflow
+        >+0</span
+      >
     </span>
   {:else}
-    <span class="resource-tags resource-tags-empty-state"><small class="resource-tags-empty">{emptyText}</small></span>
+    <span class="resource-tags resource-tags-empty-state"
+      ><small class="resource-tags-empty">{emptyText}</small></span
+    >
   {/if}
 </span>

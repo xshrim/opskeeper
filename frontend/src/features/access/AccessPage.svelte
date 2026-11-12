@@ -699,10 +699,14 @@
     await action(async () => {
       await api.deleteTeam(team.id, team.name);
       teams = teams.filter((item) => item.id !== team.id);
-      selectedAccessTeamIds = selectedAccessTeamIds.filter((id) => id !== team.id);
+      selectedAccessTeamIds = selectedAccessTeamIds.filter(
+        (id) => id !== team.id
+      );
       onTeamDeleted(team);
       deletingTeam = null;
-      onNotice(`团队“${team.name}”及其项目、应用和范围配置已删除；关联资源已保留至上级范围`);
+      onNotice(
+        `团队“${team.name}”及其项目、应用和范围配置已删除；关联资源已保留至上级范围`
+      );
     });
   }
   function resetUserDialog() {
@@ -1321,7 +1325,8 @@
                 ><StatusBadge
                   className="status-label"
                   tone={event.result === 'success' ? 'active' : 'disabled'}
-                  label={event.result || '—'} />
+                  label={event.result || '—'}
+                />
                 ><span
                   class="access-audit-details"
                   data-tooltip={JSON.stringify(event.details ?? {})}
@@ -1383,27 +1388,81 @@
   </section>
 </section>
 {#if teamDialogOpen}
-  <ModalDialog title="新增团队" description="设置团队的名称、图标、标签和描述。" confirmLabel="创建" confirmForm="create-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (teamDialogOpen = false)}>
-      <form
-        id="create-team-form"
-        class="stack-form"
-        novalidate
-        on:submit|preventDefault={createTeam}
-      >
-        <div class="team-identity-field">
-          <div class="team-icon-selection">
-            <label><FieldLabel text="图标" /><IconPicker value={teamIcon} onSelect={(icon) => (teamIcon = icon)} ariaLabel="选择团队图标" /></label>
-          </div>
-          <div class="team-name-owner-fields">
-            <FormField label="名称" required invalid={Boolean(teamNameError)} error={teamNameError}>
-              <TextInput bind:value={teamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (teamName.trim()) teamNameError = ''; }} />
-            </FormField>
-            <FormField label="负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={teamOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择团队负责人" /></FormField>
-          </div>
+  <ModalDialog
+    title="新增团队"
+    description="设置团队的名称、图标、标签和描述。"
+    confirmLabel="创建"
+    confirmForm="create-team-form"
+    {busy}
+    message={activeMessage}
+    messageTone={activeMessageTone}
+    onCancel={() => (teamDialogOpen = false)}
+  >
+    <form
+      id="create-team-form"
+      class="stack-form"
+      novalidate
+      on:submit|preventDefault={createTeam}
+    >
+      <div class="team-identity-field">
+        <div class="team-icon-selection">
+          <label
+            ><FieldLabel text="图标" /><IconPicker
+              value={teamIcon}
+              onSelect={(icon) => (teamIcon = icon)}
+              ariaLabel="选择团队图标"
+            /></label
+          >
         </div>
-        <FormField label="团队标签" asLabel={false}><TextInput bind:value={teamLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
-        <FormField label="描述"><TextArea bind:value={teamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
-      </form>
+        <div class="team-name-owner-fields">
+          <FormField
+            label="名称"
+            required
+            invalid={Boolean(teamNameError)}
+            error={teamNameError}
+          >
+            <TextInput
+              bind:value={teamName}
+              required
+              maxlength={120}
+              placeholder="例如：支付平台"
+              ariaLabel="团队名称"
+              on:input={() => {
+                if (teamName.trim()) teamNameError = '';
+              }}
+            />
+          </FormField>
+          <FormField label="负责人" asLabel={false}
+            ><DropdownSelect
+              options={ownerOptions}
+              bind:value={teamOwnerIds}
+              multiple
+              taggedSelection
+              reorderableSelection
+              searchable
+              placeholder="选择负责人(主备排序)"
+              ariaLabel="选择团队负责人"
+            /></FormField
+          >
+        </div>
+      </div>
+      <FormField label="团队标签" asLabel={false}
+        ><TextInput
+          bind:value={teamLabels}
+          tagged
+          placeholder="填写 key=value、key:value 或 key，按回车确认"
+          autocomplete="off"
+        /></FormField
+      >
+      <FormField label="描述"
+        ><TextArea
+          bind:value={teamDescription}
+          rows={3}
+          maxlength={1000}
+          placeholder="描述团队的职责或用途"
+        /></FormField
+      >
+    </form>
   </ModalDialog>
 {/if}
 {#if deletingTeam}
@@ -1418,329 +1477,479 @@
   />
 {/if}
 {#if userDialogOpen || editingUser}
-  <ModalDialog dialogClass="wide-dialog" size="large" title={editingUser ? '编辑用户' : '新增用户'} description={editingUser ? '更新用户资料、密码和授权范围。' : '填写用户资料、登录方式和授权范围。'} confirmLabel={editingUser ? '保存' : '创建'} confirmForm="user-dialog-form" confirmDisabled={newUserGrants.length === 0 || newUserGrants.some((grant) => !grant.scopeID || !grant.roleID || grant.resourceGrants.some((resourceGrant) => !resourceGrant.resourceID || !resourceGrant.roleID))} {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => { userDialogOpen = false; editingUser = null; }}>
-      <form
-        id="user-dialog-form"
-        class="stack-form"
-        novalidate
-        on:submit|preventDefault={editingUser ? saveUser : createUser}
-      >
-        <div class="form-row">
-          <FormField label="用户名" required invalid={Boolean(newUserUsernameError)} error={newUserUsernameError}>
-            <TextInput
-              value={editingUser ? editingUser.username : newUserUsername}
-              disabled={Boolean(editingUser)}
-              on:input={(event) => updateNewUserUsername((event.currentTarget as HTMLInputElement).value)}
-              required
-              placeholder="登录用户名"
-              ariaLabel="用户名"
-            />
-          </FormField>
-          <FormField label="显示名" invalid={Boolean(editingUser && editUserDisplayNameError)} error={editingUser ? editUserDisplayNameError : ''}>
-            <TextInput
-              bind:value={newUserDisplayName}
-              maxlength={120}
-              placeholder="默认使用用户名"
-              ariaLabel="显示名"
-              on:input={() => { if (newUserDisplayName.trim()) editUserDisplayNameError = ''; }}
-            />
-          </FormField>
-        </div>
-        <div class="form-row">
-          <FormField label="邮箱"><TextInput type="email" bind:value={newUserEmail} placeholder="name@example.com" ariaLabel="邮箱" /></FormField>
-          <FormField label="手机号"><TextInput type="tel" bind:value={newUserPhone} placeholder="+86 13800138000" ariaLabel="手机号" /></FormField>
-        </div>
-        <fieldset class="preference-group">
-          <legend>{editingUser ? '重置密码' : '一次性密码'}</legend>
-          {#if editingUser}
-            <div class="user-password-row">
-              <button
-                class="secondary"
-                type="button"
-                disabled={busy}
-                on:click={resetManagedUserPassword}>重置密码</button
-              >
-              {#if passwordResetCredentials}
-                <div class="created-credentials-inline" aria-live="polite">
-                  <span
-                    >一次性密码：<strong
-                      >{passwordResetCredentials.password}</strong
-                    ></span
-                  >
-                  <button
-                    class="icon-button"
-                    type="button"
-                    aria-label="复制一次性密码"
-                    data-tooltip="复制一次性密码"
-                    on:click={() => copyPasswordResetCredentials(true)}
-                  >
-                    {#if copiedControl === 'reset-credentials'}<ClipboardCheck
-                        size={15}
-                        aria-hidden="true"
-                      />{:else}<Copy size={15} aria-hidden="true" />{/if}
-                  </button>
-                </div>
-              {:else}
-                <span class="user-password-hint"
-                  >点击后生成新密码，原密码立即失效</span
-                >
-              {/if}
-            </div>
-          {:else}
-            <div class="user-password-row">
-              <div
-                class="segmented-control"
-                role="radiogroup"
-                aria-label="一次性密码方式"
-              >
-                <button
-                  type="button"
-                  class:active={newUserPasswordMode === 'generated'}
-                  on:click={() => (newUserPasswordMode = 'generated')}
-                  >自动生成</button
-                >
-                <button
-                  type="button"
-                  class:active={newUserPasswordMode === 'manual'}
-                  on:click={() => (newUserPasswordMode = 'manual')}
-                  >手动设置</button
-                >
-              </div>
-              {#if newUserPasswordMode === 'manual'}
-                <label
-                  class="user-password-input"
-                  class:invalid={Boolean(newUserPasswordError)}
-                  ><PasswordInput
-                    bind:value={newUserPassword}
-                    required
-                    minlength={8}
-                    ariaInvalid={Boolean(newUserPasswordError)}
-                    ariaDescribedby={newUserPasswordError
-                      ? 'new-user-password-error'
-                      : ''}
-                    autocomplete="new-password"
-                    placeholder="至少 8 位，建议包含字母、数字和特殊字符"
-                    ariaLabel="一次性密码"
-                    on:input={() => {
-                      if (newUserPassword.length >= 8) newUserPasswordError = '';
-                    }}
-                  />{#if newUserPasswordError}<small
-                      id="new-user-password-error"
-                      class="access-field-error"
-                      role="alert">{newUserPasswordError}</small
-                    >{/if}</label
-                >
-              {:else if createdUserCredentials}
-                <div class="created-credentials-inline" aria-live="polite">
-                  <span
-                    >一次性密码：<strong>{createdUserCredentials.password}</strong
-                    ></span
-                  >
-                  <button
-                    class="icon-button"
-                    type="button"
-                    aria-label="复制一次性密码"
-                    data-tooltip="复制一次性密码"
-                    on:click={copyOneTimePassword}
-                    >{#if copiedControl === 'created-password'}<ClipboardCheck
-                        size={15}
-                        aria-hidden="true"
-                      />{:else}<Copy size={15} aria-hidden="true" />{/if}</button
-                  >
-                </div>
-              {:else}
-                <span class="user-password-hint"
-                  >创建后显示一次性密码，仅可查看和复制一次</span
-                >
-              {/if}
-            </div>
-          {/if}
-        </fieldset>
-        <section class="new-user-grants" aria-label="用户授权">
-          <div class="new-user-grants-heading">
-            <div>
-              <strong>授权配置</strong>
-            </div>
+  <ModalDialog
+    dialogClass="wide-dialog"
+    size="large"
+    title={editingUser ? '编辑用户' : '新增用户'}
+    description={editingUser
+      ? '更新用户资料、密码和授权范围。'
+      : '填写用户资料、登录方式和授权范围。'}
+    confirmLabel={editingUser ? '保存' : '创建'}
+    confirmForm="user-dialog-form"
+    confirmDisabled={newUserGrants.length === 0 ||
+      newUserGrants.some(
+        (grant) =>
+          !grant.scopeID ||
+          !grant.roleID ||
+          grant.resourceGrants.some(
+            (resourceGrant) =>
+              !resourceGrant.resourceID || !resourceGrant.roleID
+          )
+      )}
+    {busy}
+    message={activeMessage}
+    messageTone={activeMessageTone}
+    onCancel={() => {
+      userDialogOpen = false;
+      editingUser = null;
+    }}
+  >
+    <form
+      id="user-dialog-form"
+      class="stack-form"
+      novalidate
+      on:submit|preventDefault={editingUser ? saveUser : createUser}
+    >
+      <div class="form-row">
+        <FormField
+          label="用户名"
+          required
+          invalid={Boolean(newUserUsernameError)}
+          error={newUserUsernameError}
+        >
+          <TextInput
+            value={editingUser ? editingUser.username : newUserUsername}
+            disabled={Boolean(editingUser)}
+            on:input={(event) =>
+              updateNewUserUsername(
+                (event.currentTarget as HTMLInputElement).value
+              )}
+            required
+            placeholder="登录用户名"
+            ariaLabel="用户名"
+          />
+        </FormField>
+        <FormField
+          label="显示名"
+          invalid={Boolean(editingUser && editUserDisplayNameError)}
+          error={editingUser ? editUserDisplayNameError : ''}
+        >
+          <TextInput
+            bind:value={newUserDisplayName}
+            maxlength={120}
+            placeholder="默认使用用户名"
+            ariaLabel="显示名"
+            on:input={() => {
+              if (newUserDisplayName.trim()) editUserDisplayNameError = '';
+            }}
+          />
+        </FormField>
+      </div>
+      <div class="form-row">
+        <FormField label="邮箱"
+          ><TextInput
+            type="email"
+            bind:value={newUserEmail}
+            placeholder="name@example.com"
+            ariaLabel="邮箱"
+          /></FormField
+        >
+        <FormField label="手机号"
+          ><TextInput
+            type="tel"
+            bind:value={newUserPhone}
+            placeholder="+86 13800138000"
+            ariaLabel="手机号"
+          /></FormField
+        >
+      </div>
+      <fieldset class="preference-group">
+        <legend>{editingUser ? '重置密码' : '一次性密码'}</legend>
+        {#if editingUser}
+          <div class="user-password-row">
             <button
               class="secondary"
               type="button"
-              on:click={addNewUserGrant}
-              disabled={busy ||
-                manageableScopeChoices.length === 0 ||
-                manageableScopeChoices.every((scope) =>
-                  scopeAlreadyGranted(scope.id)
-                )}><Plus size={15} aria-hidden="true" />新增授权</button
+              disabled={busy}
+              on:click={resetManagedUserPassword}>重置密码</button
             >
-          </div>
-          <div class="new-user-grant-header" aria-hidden="true">
-            <span>级别</span><span>对象</span><span>角色</span><span>操作</span>
-          </div>
-          {#each newUserGrants as grant, grantIndex}
-            <section class="new-user-grant-row">
-              <div class="new-user-grant-fields">
-                <label
-                  ><span class="sr-only">授权级别</span><DropdownSelect
-                    value={grant.scopeType}
-                    options={['platform', 'team', 'project']
-                      .filter((type) => newUserGrantScopes(type as NewUserGrant['scopeType'], grantIndex).length > 0)
-                      .map((type) => ({ value: type, label: grantScopeLabel(type as NewUserGrant['scopeType']) }))}
-                    ariaLabel="授权级别"
-                    on:change={(event) =>
-                      chooseNewUserGrantType(
-                        grantIndex,
-                        String(event.detail) as NewUserGrant['scopeType']
-                      )}
-                  /></label
-                >
-                <label
-                  ><span class="sr-only">授权对象</span>
-                  {#if grant.scopeType === 'platform'}
-                    <span class="new-user-no-object">无需选择</span>
-                  {:else}
-                    <DropdownSelect
-                      value={grant.scopeID}
-                      options={[
-                        { value: '', label: `选择${grant.scopeType === 'team' ? '团队' : '项目'}` },
-                        ...newUserGrantScopes(grant.scopeType, grantIndex).map((scope) => ({ value: scope.id, label: scope.name }))
-                      ]}
-                      ariaLabel="授权对象"
-                      on:change={(event) =>
-                        updateNewUserGrant(grantIndex, {
-                          scopeID: String(event.detail),
-                          roleID: '',
-                          resourceGrants: []
-                        })}
-                    />
-                  {/if}
-                </label>
-                <label
-                  ><span class="sr-only">角色</span><DropdownSelect
-                    value={grant.roleID}
-                    options={[
-                      { value: '', label: '选择角色' },
-                      ...newUserGrantRoles(grant).map((role) => ({ value: role.id, label: grantRoleLabel(role.name) }))
-                    ]}
-                    disabled={!grant.scopeID}
-                    ariaLabel="角色"
-                    on:change={(event) =>
-                      updateNewUserGrant(grantIndex, {
-                        roleID: String(event.detail),
-                        resourceGrants: []
-                      })}
-                  /></label
+            {#if passwordResetCredentials}
+              <div class="created-credentials-inline" aria-live="polite">
+                <span
+                  >一次性密码：<strong
+                    >{passwordResetCredentials.password}</strong
+                  ></span
                 >
                 <button
-                  class="icon-button danger-action delete-action"
+                  class="icon-button"
                   type="button"
-                  data-tooltip="移除此授权"
-                  aria-label="移除此授权"
-                  disabled={busy || newUserGrants.length === 1}
-                  on:click={() => removeNewUserGrant(grantIndex)}
-                  ><Trash2 size={15} aria-hidden="true" /></button
+                  aria-label="复制一次性密码"
+                  data-tooltip="复制一次性密码"
+                  on:click={() => copyPasswordResetCredentials(true)}
+                >
+                  {#if copiedControl === 'reset-credentials'}<ClipboardCheck
+                      size={15}
+                      aria-hidden="true"
+                    />{:else}<Copy size={15} aria-hidden="true" />{/if}
+                </button>
+              </div>
+            {:else}
+              <span class="user-password-hint"
+                >点击后生成新密码，原密码立即失效</span
+              >
+            {/if}
+          </div>
+        {:else}
+          <div class="user-password-row">
+            <div
+              class="segmented-control"
+              role="radiogroup"
+              aria-label="一次性密码方式"
+            >
+              <button
+                type="button"
+                class:active={newUserPasswordMode === 'generated'}
+                on:click={() => (newUserPasswordMode = 'generated')}
+                >自动生成</button
+              >
+              <button
+                type="button"
+                class:active={newUserPasswordMode === 'manual'}
+                on:click={() => (newUserPasswordMode = 'manual')}
+                >手动设置</button
+              >
+            </div>
+            {#if newUserPasswordMode === 'manual'}
+              <label
+                class="user-password-input"
+                class:invalid={Boolean(newUserPasswordError)}
+                ><PasswordInput
+                  bind:value={newUserPassword}
+                  required
+                  minlength={8}
+                  ariaInvalid={Boolean(newUserPasswordError)}
+                  ariaDescribedby={newUserPasswordError
+                    ? 'new-user-password-error'
+                    : ''}
+                  autocomplete="new-password"
+                  placeholder="至少 8 位，建议包含字母、数字和特殊字符"
+                  ariaLabel="一次性密码"
+                  on:input={() => {
+                    if (newUserPassword.length >= 8) newUserPasswordError = '';
+                  }}
+                />{#if newUserPasswordError}<small
+                    id="new-user-password-error"
+                    class="access-field-error"
+                    role="alert">{newUserPasswordError}</small
+                  >{/if}</label
+              >
+            {:else if createdUserCredentials}
+              <div class="created-credentials-inline" aria-live="polite">
+                <span
+                  >一次性密码：<strong>{createdUserCredentials.password}</strong
+                  ></span
+                >
+                <button
+                  class="icon-button"
+                  type="button"
+                  aria-label="复制一次性密码"
+                  data-tooltip="复制一次性密码"
+                  on:click={copyOneTimePassword}
+                  >{#if copiedControl === 'created-password'}<ClipboardCheck
+                      size={15}
+                      aria-hidden="true"
+                    />{:else}<Copy size={15} aria-hidden="true" />{/if}</button
                 >
               </div>
-              {#if newUserGrantIsScopeViewer(grant)}
-                <div class="new-user-resource-grants">
-                  <div>
-                    <strong>范围资源权限</strong>
-                    <small
-                      >{grantScopeLabel(
-                        grant.scopeType
-                      )}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。</small
-                    >
-                  </div>
-                  {#each grant.resourceGrants as resourceGrant, resourceIndex}
-                    <div class="new-user-resource-grant-row">
-                      <label
-                        >资源<DropdownSelect
-                          value={resourceGrant.resourceID}
-                          options={[
-                            { value: '', label: '选择范围内资源' },
-                            ...newUserGrantResources(grant, resourceIndex).map((resource) => ({ value: resource.id, label: `${resource.name} · ${resource.kind}` }))
-                          ]}
-                          ariaLabel="资源"
-                          on:change={(event) =>
-                            updateNewUserResourceGrant(
-                              grantIndex,
-                              resourceIndex,
-                              { resourceID: String(event.detail) }
-                            )}
-                        />
-                        ></label
-                      >
-                      <label
-                        >资源权限<DropdownSelect
-                          value={resourceGrant.roleID}
-                          options={[
-                            { value: '', label: '选择资源权限' },
-                            ...newUserGrantResourceRoles(grant).map((resourceRole) => ({ value: resourceRole.id, label: roleLabel(resourceRole.name) }))
-                          ]}
-                          ariaLabel="资源权限"
-                          on:change={(event) =>
-                            updateNewUserResourceGrant(
-                              grantIndex,
-                              resourceIndex,
-                              { roleID: String(event.detail) }
-                            )}
-                        />
-                        ></label
-                      >
-                      <button
-                        class="icon-button danger-action delete-action"
-                        type="button"
-                        data-tooltip="移除资源权限"
-                        aria-label="移除资源权限"
-                        on:click={() =>
-                          removeNewUserResourceGrant(grantIndex, resourceIndex)}
-                        ><Trash2 size={14} aria-hidden="true" /></button
-                      >
-                    </div>
-                  {/each}
-                  <button
-                    class="secondary"
-                    type="button"
-                    on:click={() => addNewUserResourceGrant(grantIndex)}
-                    disabled={busy || newUserGrantResources(grant).length === 0}
-                    ><Plus size={14} aria-hidden="true" />新增资源权限</button
+            {:else}
+              <span class="user-password-hint"
+                >创建后显示一次性密码，仅可查看和复制一次</span
+              >
+            {/if}
+          </div>
+        {/if}
+      </fieldset>
+      <section class="new-user-grants" aria-label="用户授权">
+        <div class="new-user-grants-heading">
+          <div>
+            <strong>授权配置</strong>
+          </div>
+          <button
+            class="secondary"
+            type="button"
+            on:click={addNewUserGrant}
+            disabled={busy ||
+              manageableScopeChoices.length === 0 ||
+              manageableScopeChoices.every((scope) =>
+                scopeAlreadyGranted(scope.id)
+              )}><Plus size={15} aria-hidden="true" />新增授权</button
+          >
+        </div>
+        <div class="new-user-grant-header" aria-hidden="true">
+          <span>级别</span><span>对象</span><span>角色</span><span>操作</span>
+        </div>
+        {#each newUserGrants as grant, grantIndex}
+          <section class="new-user-grant-row">
+            <div class="new-user-grant-fields">
+              <label
+                ><span class="sr-only">授权级别</span><DropdownSelect
+                  value={grant.scopeType}
+                  options={['platform', 'team', 'project']
+                    .filter(
+                      (type) =>
+                        newUserGrantScopes(
+                          type as NewUserGrant['scopeType'],
+                          grantIndex
+                        ).length > 0
+                    )
+                    .map((type) => ({
+                      value: type,
+                      label: grantScopeLabel(type as NewUserGrant['scopeType'])
+                    }))}
+                  ariaLabel="授权级别"
+                  on:change={(event) =>
+                    chooseNewUserGrantType(
+                      grantIndex,
+                      String(event.detail) as NewUserGrant['scopeType']
+                    )}
+                /></label
+              >
+              <label
+                ><span class="sr-only">授权对象</span>
+                {#if grant.scopeType === 'platform'}
+                  <span class="new-user-no-object">无需选择</span>
+                {:else}
+                  <DropdownSelect
+                    value={grant.scopeID}
+                    options={[
+                      {
+                        value: '',
+                        label: `选择${grant.scopeType === 'team' ? '团队' : '项目'}`
+                      },
+                      ...newUserGrantScopes(grant.scopeType, grantIndex).map(
+                        (scope) => ({ value: scope.id, label: scope.name })
+                      )
+                    ]}
+                    ariaLabel="授权对象"
+                    on:change={(event) =>
+                      updateNewUserGrant(grantIndex, {
+                        scopeID: String(event.detail),
+                        roleID: '',
+                        resourceGrants: []
+                      })}
+                  />
+                {/if}
+              </label>
+              <label
+                ><span class="sr-only">角色</span><DropdownSelect
+                  value={grant.roleID}
+                  options={[
+                    { value: '', label: '选择角色' },
+                    ...newUserGrantRoles(grant).map((role) => ({
+                      value: role.id,
+                      label: grantRoleLabel(role.name)
+                    }))
+                  ]}
+                  disabled={!grant.scopeID}
+                  ariaLabel="角色"
+                  on:change={(event) =>
+                    updateNewUserGrant(grantIndex, {
+                      roleID: String(event.detail),
+                      resourceGrants: []
+                    })}
+                /></label
+              >
+              <button
+                class="icon-button danger-action delete-action"
+                type="button"
+                data-tooltip="移除此授权"
+                aria-label="移除此授权"
+                disabled={busy || newUserGrants.length === 1}
+                on:click={() => removeNewUserGrant(grantIndex)}
+                ><Trash2 size={15} aria-hidden="true" /></button
+              >
+            </div>
+            {#if newUserGrantIsScopeViewer(grant)}
+              <div class="new-user-resource-grants">
+                <div>
+                  <strong>范围资源权限</strong>
+                  <small
+                    >{grantScopeLabel(
+                      grant.scopeType
+                    )}观察员默认可读取该范围资源；可为指定资源追加操作或管理权限。</small
                   >
                 </div>
-              {/if}
-            </section>
-          {:else}
-            <p class="form-help">当前账号没有可授权的范围。</p>
-          {/each}
-        </section>
-      </form>
+                {#each grant.resourceGrants as resourceGrant, resourceIndex}
+                  <div class="new-user-resource-grant-row">
+                    <label
+                      >资源<DropdownSelect
+                        value={resourceGrant.resourceID}
+                        options={[
+                          { value: '', label: '选择范围内资源' },
+                          ...newUserGrantResources(grant, resourceIndex).map(
+                            (resource) => ({
+                              value: resource.id,
+                              label: `${resource.name} · ${resource.kind}`
+                            })
+                          )
+                        ]}
+                        ariaLabel="资源"
+                        on:change={(event) =>
+                          updateNewUserResourceGrant(
+                            grantIndex,
+                            resourceIndex,
+                            { resourceID: String(event.detail) }
+                          )}
+                      />
+                      ></label
+                    >
+                    <label
+                      >资源权限<DropdownSelect
+                        value={resourceGrant.roleID}
+                        options={[
+                          { value: '', label: '选择资源权限' },
+                          ...newUserGrantResourceRoles(grant).map(
+                            (resourceRole) => ({
+                              value: resourceRole.id,
+                              label: roleLabel(resourceRole.name)
+                            })
+                          )
+                        ]}
+                        ariaLabel="资源权限"
+                        on:change={(event) =>
+                          updateNewUserResourceGrant(
+                            grantIndex,
+                            resourceIndex,
+                            { roleID: String(event.detail) }
+                          )}
+                      />
+                      ></label
+                    >
+                    <button
+                      class="icon-button danger-action delete-action"
+                      type="button"
+                      data-tooltip="移除资源权限"
+                      aria-label="移除资源权限"
+                      on:click={() =>
+                        removeNewUserResourceGrant(grantIndex, resourceIndex)}
+                      ><Trash2 size={14} aria-hidden="true" /></button
+                    >
+                  </div>
+                {/each}
+                <button
+                  class="secondary"
+                  type="button"
+                  on:click={() => addNewUserResourceGrant(grantIndex)}
+                  disabled={busy || newUserGrantResources(grant).length === 0}
+                  ><Plus size={14} aria-hidden="true" />新增资源权限</button
+                >
+              </div>
+            {/if}
+          </section>
+        {:else}
+          <p class="form-help">当前账号没有可授权的范围。</p>
+        {/each}
+      </section>
+    </form>
   </ModalDialog>
 {/if}
 {#if editingTeam}
-  <ModalDialog title="编辑团队" description="更新团队的名称、图标、标签和描述。" confirmLabel="保存" confirmForm="edit-team-form" {busy} message={activeMessage} messageTone={activeMessageTone} onCancel={() => (editingTeam = null)}>
-      <form
-        id="edit-team-form"
-        class="stack-form"
-        novalidate
-        on:submit|preventDefault={saveTeam}
-      >
-        <div class="team-identity-field">
-          <div class="team-icon-selection">
-        <label>
-          <FieldLabel text="图标" /><IconPicker value={editTeamIcon} onSelect={(icon) => (editTeamIcon = icon)} ariaLabel="选择团队图标" />
-        </label>
-          </div>
-          <div class="team-name-owner-fields">
-            <FormField label="名称" required invalid={Boolean(editTeamNameError)} error={editTeamNameError}>
-              <TextInput bind:value={editTeamName} required maxlength={120} placeholder="例如：支付平台" ariaLabel="团队名称" on:input={() => { if (editTeamName.trim()) editTeamNameError = ''; }} />
-            </FormField>
-            <FormField label="负责人" asLabel={false}><DropdownSelect options={ownerOptions} bind:value={editTeamOwnerIds} multiple taggedSelection reorderableSelection searchable placeholder="选择负责人(主备排序)" ariaLabel="选择团队负责人" /></FormField>
-          </div>
+  <ModalDialog
+    title="编辑团队"
+    description="更新团队的名称、图标、标签和描述。"
+    confirmLabel="保存"
+    confirmForm="edit-team-form"
+    {busy}
+    message={activeMessage}
+    messageTone={activeMessageTone}
+    onCancel={() => (editingTeam = null)}
+  >
+    <form
+      id="edit-team-form"
+      class="stack-form"
+      novalidate
+      on:submit|preventDefault={saveTeam}
+    >
+      <div class="team-identity-field">
+        <div class="team-icon-selection">
+          <label>
+            <FieldLabel text="图标" /><IconPicker
+              value={editTeamIcon}
+              onSelect={(icon) => (editTeamIcon = icon)}
+              ariaLabel="选择团队图标"
+            />
+          </label>
         </div>
-        <FormField label="团队标签" asLabel={false}><TextInput bind:value={editTeamLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
-        <FormField label="描述"><TextArea bind:value={editTeamDescription} rows={3} maxlength={1000} placeholder="描述团队的职责或用途" /></FormField>
-      </form>
+        <div class="team-name-owner-fields">
+          <FormField
+            label="名称"
+            required
+            invalid={Boolean(editTeamNameError)}
+            error={editTeamNameError}
+          >
+            <TextInput
+              bind:value={editTeamName}
+              required
+              maxlength={120}
+              placeholder="例如：支付平台"
+              ariaLabel="团队名称"
+              on:input={() => {
+                if (editTeamName.trim()) editTeamNameError = '';
+              }}
+            />
+          </FormField>
+          <FormField label="负责人" asLabel={false}
+            ><DropdownSelect
+              options={ownerOptions}
+              bind:value={editTeamOwnerIds}
+              multiple
+              taggedSelection
+              reorderableSelection
+              searchable
+              placeholder="选择负责人(主备排序)"
+              ariaLabel="选择团队负责人"
+            /></FormField
+          >
+        </div>
+      </div>
+      <FormField label="团队标签" asLabel={false}
+        ><TextInput
+          bind:value={editTeamLabels}
+          tagged
+          placeholder="填写 key=value、key:value 或 key，按回车确认"
+          autocomplete="off"
+        /></FormField
+      >
+      <FormField label="描述"
+        ><TextArea
+          bind:value={editTeamDescription}
+          rows={3}
+          maxlength={1000}
+          placeholder="描述团队的职责或用途"
+        /></FormField
+      >
+    </form>
   </ModalDialog>
 {/if}
 {#if disableTarget}
-  <ModalDialog dialogClass="confirm-dialog" size="small" title={`禁用 ${disableTarget.ids.length} 个用户？`} description="禁用后用户将无法继续登录。" confirmLabel="确认禁用" busyLabel="正在处理" confirmVariant="danger" {busy} message={activeMessage} messageTone={activeMessageTone} closeOnBackdrop={false} resizable={false} onCancel={() => (disableTarget = null)} onConfirm={confirmDisable}>
-    <p class="confirm-copy">用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。</p>
+  <ModalDialog
+    dialogClass="confirm-dialog"
+    size="small"
+    title={`禁用 ${disableTarget.ids.length} 个用户？`}
+    description="禁用后用户将无法继续登录。"
+    confirmLabel="确认禁用"
+    busyLabel="正在处理"
+    confirmVariant="danger"
+    {busy}
+    message={activeMessage}
+    messageTone={activeMessageTone}
+    closeOnBackdrop={false}
+    resizable={false}
+    onCancel={() => (disableTarget = null)}
+    onConfirm={confirmDisable}
+  >
+    <p class="confirm-copy">
+      用户将被禁用并无法继续登录，现有角色绑定与审计记录会保留。
+    </p>
   </ModalDialog>
 {/if}

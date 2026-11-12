@@ -3,7 +3,8 @@
   import { createEventDispatcher } from 'svelte';
 
   export let value: string | number = '';
-  export let type: 'text' | 'email' | 'url' | 'number' | 'password' | 'tel' = 'text';
+  export let type: 'text' | 'email' | 'url' | 'number' | 'password' | 'tel' =
+    'text';
   export let placeholder = '';
   export let required = false;
   export let invalid = false;
@@ -11,7 +12,15 @@
   export let invalidMessage = '请填写此必填项';
   export let disabled = false;
   export let readonly = false;
-  export let autocomplete: 'off' | 'on' | 'name' | 'email' | 'url' | 'username' | 'current-password' | 'new-password' = 'off';
+  export let autocomplete:
+    | 'off'
+    | 'on'
+    | 'name'
+    | 'email'
+    | 'url'
+    | 'username'
+    | 'current-password'
+    | 'new-password' = 'off';
   export let ariaLabel = '';
   export let className = '';
   export let width = '100%';
@@ -26,7 +35,11 @@
   export let suggestions: string[] = [];
   export let suggestionPlaceholder = '选择或输入';
 
-  const dispatch = createEventDispatcher<{ value: string | number; input: Event; change: Event }>();
+  const dispatch = createEventDispatcher<{
+    value: string | number;
+    input: Event;
+    change: Event;
+  }>();
   let root: HTMLElement;
   let suggestionsOpen = false;
   let tags: string[] = [];
@@ -37,8 +50,12 @@
     tags = splitTags(value);
     lastPublishedTags = serializeTags(tags);
   }
-  $: filteredSuggestions = suggestions.filter((suggestion) =>
-    suggestion.toLocaleLowerCase().includes(tagDraft.trim().toLocaleLowerCase()) && !tags.includes(suggestion)
+  $: filteredSuggestions = suggestions.filter(
+    (suggestion) =>
+      suggestion
+        .toLocaleLowerCase()
+        .includes(tagDraft.trim().toLocaleLowerCase()) &&
+      !tags.includes(suggestion)
   );
 
   function splitTags(input: string) {
@@ -106,27 +123,46 @@
 
   function handleInput(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    value = type === 'number' && input.value !== '' ? input.valueAsNumber : input.value;
+    value =
+      type === 'number' && input.value !== ''
+        ? input.valueAsNumber
+        : input.value;
     dispatch('value', value);
     dispatch('input', event);
   }
 
   function handleChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
-    value = type === 'number' && input.value !== '' ? input.valueAsNumber : input.value;
+    value =
+      type === 'number' && input.value !== ''
+        ? input.valueAsNumber
+        : input.value;
     dispatch('value', value);
     dispatch('change', event);
   }
 </script>
 
 <svelte:window on:click={closeSuggestions} />
-<span class={`text-input-wrap ${className}`.trim()} class:invalid class:bubble={invalid && invalidMode === 'bubble'} style={`--text-input-width:${width};--text-input-max-width:${maxWidth}`} data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined} bind:this={root}>
+<span
+  class={`text-input-wrap ${className}`.trim()}
+  class:invalid
+  class:bubble={invalid && invalidMode === 'bubble'}
+  style={`--text-input-width:${width};--text-input-max-width:${maxWidth}`}
+  data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined}
+  bind:this={root}
+>
   {#if tagged}
     <span class="text-input-tag-control" class:disabled class:readonly>
       {#each tags as tag, index}
         <span class={`text-input-tag ${tagKind(tag)}`}>
           <span>{tag}</span>
-          <button type="button" aria-label={`移除 ${tag}`} disabled={disabled || readonly} on:click|stopPropagation={() => removeTag(index)}><X size={11} /></button>
+          <button
+            type="button"
+            aria-label={`移除 ${tag}`}
+            disabled={disabled || readonly}
+            on:click|stopPropagation={() => removeTag(index)}
+            ><X size={11} /></button
+          >
         </span>
       {/each}
       <input
@@ -140,7 +176,9 @@
         {maxlength}
         aria-label={ariaLabel || undefined}
         aria-invalid={invalid || undefined}
-        on:focus={() => { suggestionsOpen = suggestions.length > 0; }}
+        on:focus={() => {
+          suggestionsOpen = suggestions.length > 0;
+        }}
         on:input={(event) => dispatch('input', event)}
         on:keydown={(event) => {
           if (event.key === 'Enter') {
@@ -152,9 +190,19 @@
       />
     </span>
     {#if suggestionsOpen && suggestions.length > 0 && filteredSuggestions.length > 0}
-      <span class="text-input-suggestions" role="listbox" aria-label={suggestionPlaceholder}>
+      <span
+        class="text-input-suggestions"
+        role="listbox"
+        aria-label={suggestionPlaceholder}
+      >
         {#each filteredSuggestions as suggestion}
-          <button type="button" role="option" aria-selected="false" on:mousedown|preventDefault={(event) => selectSuggestion(suggestion, event)}>{suggestion}</button>
+          <button
+            type="button"
+            role="option"
+            aria-selected="false"
+            on:mousedown|preventDefault={(event) =>
+              selectSuggestion(suggestion, event)}>{suggestion}</button
+          >
         {/each}
       </span>
     {/if}
@@ -198,17 +246,29 @@
     border-radius: 4px;
     outline: 0;
     font-size: 12px;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
   }
-  .text-input-wrap input::placeholder { color: var(--theme-fg-subtle); }
-  .text-input-wrap input:hover:not(:disabled) { border-color: var(--theme-border-strong); }
+  .text-input-wrap input::placeholder {
+    color: var(--theme-fg-subtle);
+  }
+  .text-input-wrap input:hover:not(:disabled) {
+    border-color: var(--theme-border-strong);
+  }
   .text-input-wrap input:focus-visible {
     border-color: var(--theme-border-focus);
     box-shadow: 0 0 0 3px var(--theme-focus);
   }
-  .text-input-wrap.invalid:not(.bubble) input { border-color: var(--theme-danger); box-shadow: 0 0 0 1px var(--theme-danger); }
+  .text-input-wrap.invalid:not(.bubble) input {
+    border-color: var(--theme-danger);
+    box-shadow: 0 0 0 1px var(--theme-danger);
+  }
   .text-input-wrap input:disabled,
-  .text-input-wrap input:read-only { color: var(--theme-fg-muted); background: var(--theme-bg-subtle); }
+  .text-input-wrap input:read-only {
+    color: var(--theme-fg-muted);
+    background: var(--theme-bg-subtle);
+  }
   .text-input-tag-control {
     display: flex;
     flex-wrap: wrap;
@@ -222,12 +282,23 @@
     border: 1px solid var(--theme-border-strong);
     border-radius: 4px;
     box-sizing: border-box;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
   }
-  .text-input-tag-control:focus-within { border-color: var(--theme-border-focus); box-shadow: 0 0 0 3px var(--theme-focus); }
+  .text-input-tag-control:focus-within {
+    border-color: var(--theme-border-focus);
+    box-shadow: 0 0 0 3px var(--theme-focus);
+  }
   .text-input-tag-control.disabled,
-  .text-input-tag-control.readonly { color: var(--theme-fg-muted); background: var(--theme-bg-subtle); }
-  .text-input-wrap.invalid:not(.bubble) .text-input-tag-control { border-color: var(--theme-danger); box-shadow: 0 0 0 1px var(--theme-danger); }
+  .text-input-tag-control.readonly {
+    color: var(--theme-fg-muted);
+    background: var(--theme-bg-subtle);
+  }
+  .text-input-wrap.invalid:not(.bubble) .text-input-tag-control {
+    border-color: var(--theme-danger);
+    box-shadow: 0 0 0 1px var(--theme-danger);
+  }
   .text-input-tag-control input {
     flex: 1 1 100px;
     width: auto;
@@ -238,7 +309,10 @@
     border: 0;
     box-shadow: none;
   }
-  .text-input-tag-control input:focus-visible { border: 0; box-shadow: none; }
+  .text-input-tag-control input:focus-visible {
+    border: 0;
+    box-shadow: none;
+  }
   .text-input-suggestions {
     position: absolute;
     z-index: 1000;
@@ -281,9 +355,19 @@
     font-size: 11px;
     line-height: 1;
   }
-  .text-input-tag > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .text-input-tag.key { color: var(--theme-fg-strong); background: var(--theme-tag-input-key-bg); }
-  .text-input-tag.assignment { color: var(--theme-fg-strong); background: var(--theme-tag-input-value-bg); }
+  .text-input-tag > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .text-input-tag.key {
+    color: var(--theme-fg-strong);
+    background: var(--theme-tag-input-key-bg);
+  }
+  .text-input-tag.assignment {
+    color: var(--theme-fg-strong);
+    background: var(--theme-tag-input-value-bg);
+  }
   .text-input-tag button {
     position: absolute;
     top: -6px;
@@ -300,10 +384,21 @@
     border-radius: 50%;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 120ms ease, color 120ms ease;
+    transition:
+      opacity 120ms ease,
+      color 120ms ease;
   }
-  .text-input-tag:hover button, .text-input-tag:focus-within button { opacity: 1; pointer-events: auto; }
-  .text-input-tag button:hover, .text-input-tag button:focus-visible { color: var(--theme-action); background: transparent; outline: 0; }
+  .text-input-tag:hover button,
+  .text-input-tag:focus-within button {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .text-input-tag button:hover,
+  .text-input-tag button:focus-visible {
+    color: var(--theme-action);
+    background: transparent;
+    outline: 0;
+  }
   .text-input-wrap.bubble::after {
     position: absolute;
     z-index: 30;

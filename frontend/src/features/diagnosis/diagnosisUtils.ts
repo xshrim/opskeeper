@@ -25,21 +25,35 @@ export function diagnosisDuration(start: string, end?: string) {
 
 export function diagnosisMilliseconds(value: unknown, fallback = 0) {
   const milliseconds = Number(value);
-  return Number.isFinite(milliseconds) && milliseconds >= 0 ? milliseconds : fallback;
+  return Number.isFinite(milliseconds) && milliseconds >= 0
+    ? milliseconds
+    : fallback;
 }
 
 export function diagnosisDurationMilliseconds(milliseconds: number) {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return '—';
   return milliseconds < 1000
     ? `${Math.max(1, Math.round(milliseconds))}ms`
-    : `${(milliseconds / 1000).toFixed(milliseconds >= 10000 ? 1 : 2).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1')}s`;
+    : `${(milliseconds / 1000)
+        .toFixed(milliseconds >= 10000 ? 1 : 2)
+        .replace(/\.0+$/, '')
+        .replace(/(\.\d)0$/, '$1')}s`;
 }
 
 export function diagnosisActionLabel(item: { label?: string; tool?: string }) {
-  return item.label || (item.tool ? `调用工具 ${item.tool}` : '执行动作');
+  return (
+    item.label ||
+    (item.tool === 'diagnosis_investigate'
+      ? '并行调查任务'
+      : item.tool
+        ? `调用工具 ${item.tool}`
+        : '执行动作')
+  );
 }
 
-export function diagnosisProcessActionCount(snapshot: DiagnosisSnapshot | null) {
+export function diagnosisProcessActionCount(
+  snapshot: DiagnosisSnapshot | null
+) {
   if (!snapshot) return 0;
   return (snapshot.events ?? []).filter(
     (event) => event.type === 'tool.completed' || event.type === 'tool.failed'
@@ -51,12 +65,15 @@ export function diagnosisProcessDuration(snapshot: DiagnosisSnapshot | null) {
   const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
   const started = events.find((event) => event.type === 'execution.started');
   if (!started) return '—';
-  const finished = [...events].reverse().find((event) =>
-    event.type === 'execution.completed' ||
-    event.type === 'execution.failed' ||
-    event.type === 'execution.cancelled' ||
-    event.type === 'report.ready'
-  );
+  const finished = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.type === 'execution.completed' ||
+        event.type === 'execution.failed' ||
+        event.type === 'execution.cancelled' ||
+        event.type === 'report.ready'
+    );
   return diagnosisDuration(started.created_at, finished?.created_at);
 }
 import type { DiagnosisCausalChain, DiagnosisSnapshot } from '../../lib/api';
@@ -72,20 +89,28 @@ export function diagnosisCausalNodes(chain: DiagnosisCausalChain) {
     if (!node) return;
     seen.add(id);
     ordered.push(node);
-    for (const link of chain.links.filter((item) => item.from === id)) visit(link.to);
+    for (const link of chain.links.filter((item) => item.from === id))
+      visit(link.to);
   };
   for (const node of chain.nodes) if (!incoming.has(node.id)) visit(node.id);
   for (const node of chain.nodes) visit(node.id);
   return ordered;
 }
 
-export function diagnosisCausalEvidenceIDs(chain: DiagnosisCausalChain, nodeID: string) {
+export function diagnosisCausalEvidenceIDs(
+  chain: DiagnosisCausalChain,
+  nodeID: string
+) {
   const node = chain.nodes.find((item) => item.id === nodeID);
-  const related = chain.links.filter((item) => item.from === nodeID || item.to === nodeID);
-  return [...new Set([
-    ...(node?.evidence_ids ?? []),
-    ...related.flatMap((item) => item.evidence_ids ?? [])
-  ])];
+  const related = chain.links.filter(
+    (item) => item.from === nodeID || item.to === nodeID
+  );
+  return [
+    ...new Set([
+      ...(node?.evidence_ids ?? []),
+      ...related.flatMap((item) => item.evidence_ids ?? [])
+    ])
+  ];
 }
 
 export type DiagnosisAction = {
@@ -111,7 +136,9 @@ export type DiagnosisActionGroup = {
   children: DiagnosisAction[];
 };
 
-export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActionGroup[] {
+export function diagnosisActionData(
+  snapshot: DiagnosisSnapshot
+): DiagnosisActionGroup[] {
   const events = [...(snapshot.events ?? [])].sort((a, b) => a.id - b.id);
   const titleForTool = (name: string) => {
     const titles: Record<string, string> = {
@@ -148,7 +175,10 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
       currentGroup = null;
       continue;
     }
-    if (event.type === 'assistant.delta' || event.type === 'assistant.progress') {
+    if (
+      event.type === 'assistant.delta' ||
+      event.type === 'assistant.progress'
+    ) {
       if (String(event.payload?.text ?? '').trim()) currentGroup = null;
       continue;
     }
@@ -159,7 +189,9 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
     const callID = String(payload.call_id ?? payload.call_sequence ?? '');
     // Evidence bookkeeping also emits tool.completed, but it is not an
     // Engine invocation and therefore must not appear in this trace.
-    const isEngineToolEvent = Object.prototype.hasOwnProperty.call(payload, 'resource_id') || Boolean(callID);
+    const isEngineToolEvent =
+      Object.prototype.hasOwnProperty.call(payload, 'resource_id') ||
+      Boolean(callID);
     if (!tool || !isEngineToolEvent) continue;
     if (!currentGroup) {
       currentGroup = {
@@ -173,8 +205,13 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
     }
     let action = [...currentGroup.children]
       .reverse()
-      .find((item) => item.tool === tool && item.resourceID === resourceID && item.status === '进行中' &&
-        (callID ? item.callID === callID : !item.callID));
+      .find(
+        (item) =>
+          item.tool === tool &&
+          item.resourceID === resourceID &&
+          item.status === '进行中' &&
+          (callID ? item.callID === callID : !item.callID)
+      );
     if (!action) {
       action = {
         id: `tool-${event.id}`,
@@ -182,7 +219,10 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
         title: titleForTool(tool),
         status: '进行中',
         duration: '—',
-        input: jsonText(payload.arguments, JSON.stringify({ tool, resource_id: resourceID }, null, 2)),
+        input: jsonText(
+          payload.arguments,
+          JSON.stringify({ tool, resource_id: resourceID }, null, 2)
+        ),
         output: '等待工具执行结果…',
         created_at: event.created_at,
         updated_at: event.created_at,
@@ -199,26 +239,61 @@ export function diagnosisActionData(snapshot: DiagnosisSnapshot): DiagnosisActio
     if (event.type === 'tool.completed') {
       action.status = '已完成';
       const duration = Number(payload.duration_ms ?? 0);
-      action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
-      action.output = jsonText(payload.output, JSON.stringify({ status: 'succeeded', duration_ms: payload.duration_ms ?? 0 }, null, 2));
+      action.duration =
+        duration > 0
+          ? `${Math.max(1, Math.round(duration / 1000))}s`
+          : diagnosisDuration(action.created_at, event.created_at);
+      action.output = jsonText(
+        payload.output,
+        JSON.stringify(
+          { status: 'succeeded', duration_ms: payload.duration_ms ?? 0 },
+          null,
+          2
+        )
+      );
     } else if (event.type === 'tool.failed') {
       action.status = '失败';
       const duration = Number(payload.duration_ms ?? 0);
-      action.duration = duration > 0 ? `${Math.max(1, Math.round(duration / 1000))}s` : diagnosisDuration(action.created_at, event.created_at);
-      action.output = jsonText(payload.output, JSON.stringify({ status: 'failed', error: payload.error ?? '工具调用失败' }, null, 2));
+      action.duration =
+        duration > 0
+          ? `${Math.max(1, Math.round(duration / 1000))}s`
+          : diagnosisDuration(action.created_at, event.created_at);
+      action.output = jsonText(
+        payload.output,
+        JSON.stringify(
+          { status: 'failed', error: payload.error ?? '工具调用失败' },
+          null,
+          2
+        )
+      );
     }
-    const completed = currentGroup.children.every((item) => item.status !== '进行中');
-    currentGroup.status = completed ? (currentGroup.children.some((item) => item.status === '失败') ? '失败' : '已完成') : '进行中';
-    currentGroup.duration = diagnosisDuration(currentGroup.children[0].created_at, action.updated_at);
+    const completed = currentGroup.children.every(
+      (item) => item.status !== '进行中'
+    );
+    currentGroup.status = completed
+      ? currentGroup.children.some((item) => item.status === '失败')
+        ? '失败'
+        : '已完成'
+      : '进行中';
+    currentGroup.duration = diagnosisDuration(
+      currentGroup.children[0].created_at,
+      action.updated_at
+    );
   }
   return groups;
 }
 
 export function diagnosisHasRunningActions(snapshot: DiagnosisSnapshot | null) {
-  if (snapshot && (snapshot.session.status === 'succeeded' || snapshot.session.status === 'failed' || snapshot.session.status === 'cancelled')) {
+  if (
+    snapshot &&
+    (snapshot.session.status === 'succeeded' ||
+      snapshot.session.status === 'failed' ||
+      snapshot.session.status === 'cancelled')
+  ) {
     return false;
   }
   return Boolean(
-    snapshot && diagnosisActionData(snapshot).some((group) => group.status === '进行中')
+    snapshot &&
+    diagnosisActionData(snapshot).some((group) => group.status === '进行中')
   );
 }

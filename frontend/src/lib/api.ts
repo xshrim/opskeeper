@@ -183,8 +183,24 @@ export interface ProjectWorkspace {
   applications: Application[];
 }
 export interface ProjectTopology {
-  nodes: Array<{ id: string; kind: string; name: string; scope_id?: string; project_id?: string; project_name?: string; resource_kind?: string; metadata?: Record<string, unknown>; position?: { x: number; y: number } }>;
-  edges: Array<{ id: string; source_id: string; target_id: string; relation: string; metadata?: Record<string, unknown> }>;
+  nodes: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    scope_id?: string;
+    project_id?: string;
+    project_name?: string;
+    resource_kind?: string;
+    metadata?: Record<string, unknown>;
+    position?: { x: number; y: number };
+  }>;
+  edges: Array<{
+    id: string;
+    source_id: string;
+    target_id: string;
+    relation: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }
 
 export interface Page<T> {
@@ -419,6 +435,7 @@ export interface InspectionPolicy {
   timezone: string;
   status: string;
   target_resource_ids: string[];
+  target_application_ids: string[];
   target_labels: Record<string, string>;
   persona_id?: string;
   timeout: number;
@@ -528,7 +545,12 @@ export interface NotificationRule {
   cooldown: number;
   aggregation: number;
   max_batch_size: number;
-  silence: { timezone?: string; start?: string; end?: string; weekdays?: number[] };
+  silence: {
+    timezone?: string;
+    start?: string;
+    end?: string;
+    weekdays?: number[];
+  };
   routes: NotificationRuleRoute[];
   share_with_children: boolean;
   inherited?: boolean;
@@ -587,6 +609,7 @@ export type DiagnosisStatus =
 
 export interface DiagnosisSession {
   id: string;
+  collaboration?: number;
   scope_id: string;
   provider_id?: string;
   model_name?: string;
@@ -669,6 +692,7 @@ export interface DiagnosisEvidence {
 
 export interface DiagnosisRun {
   id: string;
+  collaboration?: number;
   session_id: string;
   sequence: number;
   question_message_id?: string;
@@ -751,6 +775,32 @@ export interface DiagnosisEvent {
   type: string;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export interface DiagnosisInvestigationTask {
+  task_ref: string;
+  objective: string;
+  reason: string;
+  expected: string;
+  targets: Array<{
+    ref: string;
+    name: string;
+    kind: string;
+    application?: string;
+    locator?: Record<string, unknown>;
+  }>;
+  expert: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  tools: string[];
+  evidence_ids: string[];
+  result: {
+    facts: string[];
+    inferences: string[];
+    unchecked: string[];
+    suggestions: string[];
+  };
+  started_at: string;
+  completed_at?: string;
 }
 
 export interface Group {
@@ -906,6 +956,10 @@ const patch = (body: unknown): RequestInit => ({
 });
 
 export const api = {
+  bootstrapStatus: () =>
+    request<{ required: boolean }>('api/v1/auth/bootstrap', {}, false),
+  bootstrapAdmin: (password: string) =>
+    request<void>('api/v1/auth/bootstrap', json({ password }), false),
   me: () => request<User>('api/v1/auth/me'),
   sessionContext: () => request<SessionContext>('api/v1/auth/me/context'),
   updateProfile: (body: {
@@ -949,7 +1003,10 @@ export const api = {
   deleteTeam: (id: string, confirmationName: string) =>
     request<DeleteSummary>(`api/v1/teams/${id}/`, {
       method: 'DELETE',
-      body: JSON.stringify({ confirmation_name: confirmationName, cascade: true })
+      body: JSON.stringify({
+        confirmation_name: confirmationName,
+        cascade: true
+      })
     }),
   projects: (teamId: string) =>
     request<Page<Project>>(
@@ -975,7 +1032,10 @@ export const api = {
   deleteProject: (id: string, confirmationName: string) =>
     request<DeleteSummary>(`api/v1/projects/${id}/`, {
       method: 'DELETE',
-      body: JSON.stringify({ confirmation_name: confirmationName, cascade: true })
+      body: JSON.stringify({
+        confirmation_name: confirmationName,
+        cascade: true
+      })
     }),
   projectWorkspace: (id: string) =>
     request<ProjectWorkspace>(`api/v1/projects/${id}/workspace`),
@@ -987,18 +1047,50 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resource_id: resourceId })
     }),
-  setProjectTopologyPosition: (projectId: string, nodeId: string, position: { x: number; y: number }) =>
-    request<void>(`api/v1/projects/${projectId}/topology/nodes/${nodeId}/position`, { ...json(position), method: 'PUT' }),
+  setProjectTopologyPosition: (
+    projectId: string,
+    nodeId: string,
+    position: { x: number; y: number }
+  ) =>
+    request<void>(
+      `api/v1/projects/${projectId}/topology/nodes/${nodeId}/position`,
+      { ...json(position), method: 'PUT' }
+    ),
   removeProjectTopologyResource: (projectId: string, resourceId: string) =>
-    request<void>(`api/v1/projects/${projectId}/topology/resources/${resourceId}`, { method: 'DELETE' }),
-  createProjectTopologyAnnotation: (projectId: string, body: { name: string; metadata?: Record<string, unknown> }) =>
-    request<ProjectTopology['nodes'][number]>(`api/v1/projects/${projectId}/topology/annotations`, json(body)),
+    request<void>(
+      `api/v1/projects/${projectId}/topology/resources/${resourceId}`,
+      { method: 'DELETE' }
+    ),
+  createProjectTopologyAnnotation: (
+    projectId: string,
+    body: { name: string; metadata?: Record<string, unknown> }
+  ) =>
+    request<ProjectTopology['nodes'][number]>(
+      `api/v1/projects/${projectId}/topology/annotations`,
+      json(body)
+    ),
   deleteProjectTopologyAnnotation: (projectId: string, annotationId: string) =>
-    request<void>(`api/v1/projects/${projectId}/topology/annotations/${annotationId}`, { method: 'DELETE' }),
-  createProjectTopologyEdge: (projectId: string, body: { source_id: string; target_id: string; relation: string; metadata?: Record<string, unknown> }) =>
-    request<ProjectTopology['edges'][number]>(`api/v1/projects/${projectId}/topology/edges`, json(body)),
+    request<void>(
+      `api/v1/projects/${projectId}/topology/annotations/${annotationId}`,
+      { method: 'DELETE' }
+    ),
+  createProjectTopologyEdge: (
+    projectId: string,
+    body: {
+      source_id: string;
+      target_id: string;
+      relation: string;
+      metadata?: Record<string, unknown>;
+    }
+  ) =>
+    request<ProjectTopology['edges'][number]>(
+      `api/v1/projects/${projectId}/topology/edges`,
+      json(body)
+    ),
   deleteProjectTopologyEdge: (projectId: string, edgeId: string) =>
-    request<void>(`api/v1/projects/${projectId}/topology/edges/${edgeId}`, { method: 'DELETE' }),
+    request<void>(`api/v1/projects/${projectId}/topology/edges/${edgeId}`, {
+      method: 'DELETE'
+    }),
   applications: (projectId: string) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications`
@@ -1014,7 +1106,10 @@ export const api = {
       `api/v1/projects/${projectId}/applications`,
       json(body)
     ),
-  createApplications: (projectId: string, items: Array<Record<string, unknown>>) =>
+  createApplications: (
+    projectId: string,
+    items: Array<Record<string, unknown>>
+  ) =>
     request<{ items: Application[] }>(
       `api/v1/projects/${projectId}/applications/batch`,
       json({ items })
@@ -1062,8 +1157,30 @@ export const api = {
     request<{ items: Array<{ name: string }> }>(
       `api/v1/resources/${resourceId}/kubernetes/namespaces${context?.trim() ? `?context=${encodeURIComponent(context.trim())}` : ''}`
     ),
-  kubernetesWorkloads: (resourceId: string, params: { context?: string; namespace: string; filters?: string; limit?: number }) =>
-    request<{ items: Array<{ namespace: string; name: string; kind: string; replicas: number; ready_replicas: number; ready: boolean; phase?: string; restarts?: number; labels?: Record<string, string>; pods: Array<{ namespace: string; name: string; containers?: string[] }> }>; count: number }>(
+  kubernetesWorkloads: (
+    resourceId: string,
+    params: {
+      context?: string;
+      namespace: string;
+      filters?: string;
+      limit?: number;
+    }
+  ) =>
+    request<{
+      items: Array<{
+        namespace: string;
+        name: string;
+        kind: string;
+        replicas: number;
+        ready_replicas: number;
+        ready: boolean;
+        phase?: string;
+        restarts?: number;
+        labels?: Record<string, string>;
+        pods: Array<{ namespace: string; name: string; containers?: string[] }>;
+      }>;
+      count: number;
+    }>(
       `api/v1/resources/${resourceId}/kubernetes/workloads?${params.context?.trim() ? `context=${encodeURIComponent(params.context.trim())}&` : ''}namespace=${encodeURIComponent(params.namespace)}&filters=${encodeURIComponent(params.filters ?? '')}&limit=${params.limit ?? 100}`
     ),
   applicationCandidates: (body: {
@@ -1309,11 +1426,17 @@ export const api = {
     config: Record<string, unknown>;
     status?: string;
   }) => request<PersonaCatalogItem>('api/v1/personas', json(body)),
-  updatePersona: (personaId: string, body: { description?: string; tags?: string[] }) =>
-    request<PersonaCatalogItem>(`api/v1/personas/${encodeURIComponent(personaId)}`, {
-      ...json(body),
-      method: 'PATCH'
-    }),
+  updatePersona: (
+    personaId: string,
+    body: { description?: string; tags?: string[] }
+  ) =>
+    request<PersonaCatalogItem>(
+      `api/v1/personas/${encodeURIComponent(personaId)}`,
+      {
+        ...json(body),
+        method: 'PATCH'
+      }
+    ),
   personaVersions: (personaId: string) =>
     request<PersonaVersion[]>(`api/v1/personas/${personaId}/versions`),
   createPersonaVersion: (personaId: string, config: Record<string, unknown>) =>
@@ -1356,7 +1479,13 @@ export const api = {
     links?: string[];
     attachments?: DiagnosisAttachment[];
     scope_shared?: boolean;
+    collaboration?: number;
   }) => request<DiagnosisSession>('api/v1/diagnosis-sessions', json(body)),
+  setDiagnosisCollaboration: (sessionId: string, collaboration: number) =>
+    request<DiagnosisSession>(
+      `api/v1/diagnosis-sessions/${sessionId}/collaboration`,
+      patch({ collaboration })
+    ),
   setDiagnosisSharing: (sessionId: string, scopeShared: boolean) =>
     request<DiagnosisSession>(
       `api/v1/diagnosis-sessions/${sessionId}/sharing`,
@@ -1372,13 +1501,16 @@ export const api = {
       `api/v1/diagnosis-sessions/${sessionId}/targets/${encodeURIComponent(resourceId)}`,
       { method: 'DELETE' }
     ),
-  askDiagnosis: (sessionId: string, body: {
-    content: string;
-    skill_id?: string;
-    persona_id?: string;
-    links?: string[];
-    attachments?: DiagnosisAttachment[];
-  }) =>
+  askDiagnosis: (
+    sessionId: string,
+    body: {
+      content: string;
+      skill_id?: string;
+      persona_id?: string;
+      links?: string[];
+      attachments?: DiagnosisAttachment[];
+    }
+  ) =>
     request<DiagnosisMessage>(
       `api/v1/diagnosis-sessions/${sessionId}/messages`,
       json(body)
@@ -1398,6 +1530,10 @@ export const api = {
   inspectionPolicies: (scopeId: string) =>
     request<InspectionPolicy[]>(
       `api/v1/inspection-policies?scope_id=${encodeURIComponent(scopeId)}`
+    ),
+  inspectionApplications: (scopeId: string) =>
+    request<Application[]>(
+      `api/v1/inspection-applications?scope_id=${encodeURIComponent(scopeId)}`
     ),
   inspectionRuns: (scopeId: string) =>
     request<InspectionRun[]>(

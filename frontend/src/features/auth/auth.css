@@ -206,7 +206,10 @@
   overflow: hidden;
   border-radius: 6px;
 }
-.password-control input { width: 100%; padding-right: 42px; }
+.password-control input {
+  width: 100%;
+  padding-right: 42px;
+}
 .password-toggle {
   position: absolute;
   z-index: 1;
@@ -223,7 +226,18 @@
   border-radius: 4px;
   transform: translateY(-50%);
 }
-.password-toggle:hover { color: var(--theme-fg-muted); background: var(--theme-bg-surface); }
-.password-toggle:focus-visible { outline: 3px solid var(--color-primary-focus-strong); outline-offset: 2px; }
-:root[data-theme='dark'] .password-toggle { color: var(--theme-fg-muted); }
-:root[data-theme='dark'] .password-toggle:hover { color: var(--theme-teal); background: var(--theme-bg-selected); }
+.password-toggle:hover {
+  color: var(--theme-fg-muted);
+  background: var(--theme-bg-surface);
+}
+.password-toggle:focus-visible {
+  outline: 3px solid var(--color-primary-focus-strong);
+  outline-offset: 2px;
+}
+:root[data-theme='dark'] .password-toggle {
+  color: var(--theme-fg-muted);
+}
+:root[data-theme='dark'] .password-toggle:hover {
+  color: var(--theme-teal);
+  background: var(--theme-bg-selected);
+}

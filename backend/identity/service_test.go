@@ -22,6 +22,8 @@ type stubStore struct {
 	oneTimeChangedHash  string
 }
 
+func (s *stubStore) BootstrapRequired(context.Context) (bool, error) { return true, nil }
+
 func (s *stubStore) BootstrapAdmin(_ context.Context, username, email, phone, displayName, passwordHash string) (User, error) {
 	s.bootstrapInput = BootstrapInput{Username: username, Email: email, Phone: phone, DisplayName: displayName, Password: passwordHash}
 	return s.user, nil

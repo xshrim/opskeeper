@@ -3,7 +3,13 @@
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import FormField from '../../components/FormField.svelte';
   import TextInput from '../../components/TextInput.svelte';
-  import { resourceCategoryFor, resourceCategoryIcon, resourceCategoryOptions, resourceSubtypeFor, resourceSubtypeOptionsFor } from './resourceCatalog';
+  import {
+    resourceCategoryFor,
+    resourceCategoryIcon,
+    resourceCategoryOptions,
+    resourceSubtypeFor,
+    resourceSubtypeOptionsFor
+  } from './resourceCatalog';
 
   export let resource: Resource;
   export let name = '';
@@ -12,24 +18,71 @@
   $: categoryValue = resourceCategoryFor(resource);
   $: subtypeValue = resourceSubtypeFor(resource);
   const subtypeIcons: Record<string, string> = {
-    Direct: 'lucide:Plug', Agent: 'lucide:Bot', Generic: 'lucide:Package', Git: 'lucide:GitBranch',
-    Bundle: 'lucide:Archive', StreamHTTP: 'lucide:Radio', SSE: 'lucide:Radio', 指标: 'lucide:ChartNoAxesCombined',
-    日志: 'lucide:FileText', 链路: 'lucide:Route', 告警: 'lucide:Bell'
+    Direct: 'lucide:Plug',
+    Agent: 'lucide:Bot',
+    Generic: 'lucide:Package',
+    Git: 'lucide:GitBranch',
+    Bundle: 'lucide:Archive',
+    StreamHTTP: 'lucide:Radio',
+    SSE: 'lucide:Radio',
+    指标: 'lucide:ChartNoAxesCombined',
+    日志: 'lucide:FileText',
+    链路: 'lucide:Route',
+    告警: 'lucide:Bell'
   };
-  $: categoryOptions = Object.keys(resourceCategoryOptions).filter((category) => category !== '全部').map((category) => ({ value: category, label: category, icon: resourceCategoryIcon(category) }));
-  $: subtypeOptions = resourceSubtypeOptionsFor(resource).map((subtype) => ({ value: subtype, label: subtype, icon: subtypeIcons[subtype] ?? 'lucide:Package' }));
+  $: categoryOptions = Object.keys(resourceCategoryOptions)
+    .filter((category) => category !== '全部')
+    .map((category) => ({
+      value: category,
+      label: category,
+      icon: resourceCategoryIcon(category)
+    }));
+  $: subtypeOptions = resourceSubtypeOptionsFor(resource).map((subtype) => ({
+    value: subtype,
+    label: subtype,
+    icon: subtypeIcons[subtype] ?? 'lucide:Package'
+  }));
 </script>
 
 <h3 class="editor-section-title">基础配置</h3>
-<p class="editor-section-description">资源类型和子类型只读，资源名称与资源标签可在此调整。</p>
+<p class="editor-section-description">
+  资源类型和子类型只读，资源名称与资源标签可在此调整。
+</p>
 <div class="resource-basic-edit-grid">
   <div class="resource-basic-type-row">
-    <FormField label="资源类型"><DropdownSelect value={categoryValue} options={categoryOptions} showIcons disabled ariaLabel="资源类型" /></FormField>
-    <FormField label="资源子类型"><DropdownSelect value={subtypeValue} options={subtypeOptions} showIcons disabled ariaLabel="资源子类型" /></FormField>
+    <FormField label="资源类型"
+      ><DropdownSelect
+        value={categoryValue}
+        options={categoryOptions}
+        showIcons
+        disabled
+        ariaLabel="资源类型"
+      /></FormField
+    >
+    <FormField label="资源子类型"
+      ><DropdownSelect
+        value={subtypeValue}
+        options={subtypeOptions}
+        showIcons
+        disabled
+        ariaLabel="资源子类型"
+      /></FormField
+    >
   </div>
   <div class="resource-basic-identity-row">
-    <FormField label="资源名称" required><TextInput bind:value={name} required /></FormField>
-    <FormField label="资源级别"><TextInput value={scopeName(resource.scope_id)} readonly /></FormField>
+    <FormField label="资源名称" required
+      ><TextInput bind:value={name} required /></FormField
+    >
+    <FormField label="资源级别"
+      ><TextInput value={scopeName(resource.scope_id)} readonly /></FormField
+    >
   </div>
-  <FormField label="资源标签" className="resource-basic-labels" asLabel={false}><TextInput bind:value={labels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" autocomplete="off" /></FormField>
+  <FormField label="资源标签" className="resource-basic-labels" asLabel={false}
+    ><TextInput
+      bind:value={labels}
+      tagged
+      placeholder="填写 key=value、key:value 或 key，按回车确认"
+      autocomplete="off"
+    /></FormField
+  >
 </div>

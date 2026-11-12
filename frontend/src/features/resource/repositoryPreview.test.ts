@@ -17,12 +17,13 @@ describe('repository preview tree', () => {
       'src/main.ts',
       'src/lib'
     ]);
-    expect(visibleRepositoryPreviewNodes(tree, new Set()).map(({ path }) => path)).toEqual([
-      'src',
-      'README.md'
-    ]);
     expect(
-      visibleRepositoryPreviewNodes(tree, new Set(['src'])).map(({ path }) => path)
+      visibleRepositoryPreviewNodes(tree, new Set()).map(({ path }) => path)
+    ).toEqual(['src', 'README.md']);
+    expect(
+      visibleRepositoryPreviewNodes(tree, new Set(['src'])).map(
+        ({ path }) => path
+      )
     ).toEqual(['src', 'src/main.ts', 'src/lib', 'README.md']);
   });
 });

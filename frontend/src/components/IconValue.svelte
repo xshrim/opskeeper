@@ -8,7 +8,9 @@
 
   let LucideIcon: any;
   $: iconifyIcon = iconifyIconForValue(value);
-  $: lucideName = value.startsWith('lucide:') ? value.slice('lucide:'.length) : '';
+  $: lucideName = value.startsWith('lucide:')
+    ? value.slice('lucide:'.length)
+    : '';
   $: LucideIcon = lucideIcons[lucideName as keyof typeof lucideIcons] as any;
 </script>
 
@@ -25,7 +27,12 @@
     {/if}
   </span>
 {:else if LucideIcon}
-  <svelte:component this={LucideIcon} {size} strokeWidth={1.8} aria-hidden="true" />
+  <svelte:component
+    this={LucideIcon}
+    {size}
+    strokeWidth={1.8}
+    aria-hidden="true"
+  />
 {:else}
   <span aria-hidden="true">{value ? value.slice(0, 1) : '◇'}</span>
 {/if}
@@ -41,5 +48,4 @@
     object-fit: contain;
     border-radius: 3px;
   }
-
 </style>

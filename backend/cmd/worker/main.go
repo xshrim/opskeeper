@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"opskeeper/backend/application"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
+	"opskeeper/backend/database"
 	"opskeeper/backend/engine"
 	"opskeeper/backend/inspection"
 	"opskeeper/backend/llm"
@@ -60,7 +61,7 @@ func main() {
 		}
 	}()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := database.OpenPool(ctx, cfg.DatabaseURL, logger)
 	if err != nil {
 		logger.Error("configure PostgreSQL client", "kind", "error", "error_type", "postgres-client", "error", err)
 		os.Exit(1)
@@ -80,9 +81,10 @@ func main() {
 	}
 	store := inspection.NewStore(pool)
 	resourceService := resource.NewService(resource.NewStore(pool), encryptor)
+	applicationService := application.NewService(application.NewStore(pool))
 	connectors := connector.NewService(registry, resourceService, connector.NewStore(pool), limits)
 	connectors.SetPostgresPool(pool)
-	connectors.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL})
+	connectors.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.StorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.StorageS3Endpoint, Bucket: cfg.StorageS3Bucket, Prefix: cfg.StorageS3Prefix, AccessKey: cfg.StorageS3AccessKey, SecretKey: cfg.StorageS3SecretKey, UseSSL: cfg.StorageS3UseSSL})
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectors.EngineProvider()
 	mcpProvider := mcpService.EngineProvider()
@@ -103,7 +105,7 @@ func main() {
 	engineRuntime := engine.NewWithContextAndStore(engine.NewAgentRunner(modelBuilder), contextTooling.Resolver, contextTooling.Gateway, aiStore).
 		WithPersonaResolver(personaResolver).
 		WithPlanResolver(skillService)
-	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: engineRuntime, store: store}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
+	worker := inspection.NewWorker(store, connectorChecker{resources: resourceService, service: connectors}, inspectionExplainer{engine: engineRuntime, store: store, applications: applicationService}, serviceName+":"+hostname(), cfg.InspectionLeaseDuration)
 	notifier := inspection.NotificationWorker{Store: store, Cipher: encryptor, Owner: serviceName + ":notification:" + hostname(), LeaseDuration: cfg.InspectionLeaseDuration}
 	inspectionTicker := time.NewTicker(cfg.InspectionWorkerPollInterval)
 	notificationTicker := time.NewTicker(cfg.NotificationQueuePollInterval)
@@ -310,16 +312,20 @@ type inspectionExplainer struct {
 	store  interface {
 		RecordExplanation(context.Context, string, string) error
 	}
+	applications interface {
+		Get(context.Context, string) (application.Application, error)
+		DiagnosticContext(context.Context, string, string) (application.DiagnosticContext, error)
+	}
 }
 
 func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, policy inspection.Policy, findings []inspection.Finding) error {
 	if e.engine == nil {
 		return nil
 	}
-	targets := map[string]bool{}
+	targets := map[string][]inspection.Finding{}
 	for _, finding := range findings {
 		if finding.TargetResourceID != "" {
-			targets[finding.TargetResourceID] = true
+			targets[finding.TargetResourceID] = append(targets[finding.TargetResourceID], finding)
 		}
 	}
 	if len(targets) == 0 {
@@ -328,42 +334,88 @@ func (e inspectionExplainer) Explain(ctx context.Context, run inspection.Run, po
 	var firstErr error
 	succeeded := 0
 	remainingTools, remainingTokens := policy.MaxToolCalls, policy.MaxTokens
-	for targetID := range targets {
+	explain := func(input map[string]any, resourceIDs []string, bindings map[string]map[string]any) {
 		if remainingTools < 1 || remainingTokens < 1 {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("inspection AI budget exhausted")
 			}
-			break
+			return
 		}
-		var output, status string
-		var toolCalls int
-		var totalTokens int64
-		var err error
 		result, executeErr := e.engine.Execute(ctx, engine.Request{
 			ScopeID: policy.ScopeID, Profile: engine.ProfileInspection, PersonaID: policy.PersonaID,
 			ResolvedPersona: inspectionPersona(policy),
-			Input:           map[string]any{"target_resource_id": targetID}, Context: engine.ContextRequest{ResourceIDs: []string{targetID}},
+			Instruction:     "仅基于确定性巡检 Finding 和所给应用拓扑解释异常。需要时按实例运行时逐个检查，并检查关联资源；存在代码仓库时可按应用绑定目录读取源码验证。区分事实与推断，不执行写操作。",
+			Input:           input, Context: engine.ContextRequest{ResourceIDs: resourceIDs, ResourceBindings: bindings},
 			Budget: engine.Budget{MaxToolCalls: remainingTools, MaxTokens: remainingTokens, Timeout: policy.Timeout},
 		})
-		output, toolCalls, totalTokens, status, err = result.Output, result.ToolCallCount, result.TotalTokens, string(result.Status), executeErr
-		if err != nil {
+		remainingTools -= result.ToolCallCount
+		remainingTokens -= result.TotalTokens
+		if executeErr != nil {
 			if firstErr == nil {
-				firstErr = err
+				firstErr = executeErr
 			}
-			continue
+			return
 		}
-		remainingTools -= toolCalls
-		remainingTokens -= totalTokens
-		if status != "succeeded" {
+		if result.Status != engine.StatusSucceeded {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("inspection Engine execution ended with status %s", status)
+				firstErr = fmt.Errorf("inspection Engine execution ended with status %s", result.Status)
 			}
-			continue
+			return
 		}
 		succeeded++
-		if err := e.store.RecordExplanation(ctx, run.ID, output); err != nil {
-			return err
+		if err := e.store.RecordExplanation(ctx, run.ID, result.Output); err != nil && firstErr == nil {
+			firstErr = err
 		}
+	}
+	handled := map[string]bool{}
+	if e.applications != nil {
+		for _, appID := range policy.TargetApplicationIDs {
+			app, err := e.applications.Get(ctx, appID)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			appContext, err := e.applications.DiagnosticContext(ctx, appID, app.ProjectScopeID)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			resourceIDs := make([]string, 0, len(appContext.Resources))
+			resourceSet := make(map[string]bool, len(appContext.Resources))
+			bindings := make(map[string]map[string]any)
+			for _, item := range appContext.Resources {
+				if item.ID == "" {
+					continue
+				}
+				resourceIDs = append(resourceIDs, item.ID)
+				resourceSet[item.ID] = true
+				if strings.EqualFold(item.Kind, "Repository") && item.Relation == "association" && len(item.Binding) > 0 {
+					bindings[item.ID] = item.Binding
+				}
+			}
+			appFindings := make([]inspection.Finding, 0)
+			for targetID, targetFindings := range targets {
+				if resourceSet[targetID] {
+					appFindings = append(appFindings, targetFindings...)
+					handled[targetID] = true
+				}
+			}
+			if len(appFindings) == 0 {
+				continue
+			}
+			input := map[string]any{"inspection_run_id": run.ID, "application_context": appContext, "findings": appFindings}
+			explain(input, resourceIDs, bindings)
+		}
+	}
+	for targetID, targetFindings := range targets {
+		if handled[targetID] {
+			continue
+		}
+		explain(map[string]any{"inspection_run_id": run.ID, "target_resource_id": targetID, "findings": targetFindings}, []string{targetID}, nil)
 	}
 	if succeeded == 0 {
 		return firstErr

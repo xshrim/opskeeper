@@ -11,14 +11,19 @@ import (
 	"testing"
 	"time"
 
+	"opskeeper/backend/config"
 	coremcp "opskeeper/backend/mcp"
 )
 
 func TestRealPostgreSQLMCPHealth(t *testing.T) {
-	raw := os.Getenv("OPSK_DATABASE_URL")
-	if raw == "" {
-		t.Skip("OPSK_DATABASE_URL is required")
+	if os.Getenv("OPSK_DB_HOST") == "" {
+		t.Skip("OPSK_DB_HOST is required")
 	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := cfg.DatabaseURL
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		t.Fatalf("parse PostgreSQL URL: %v", err)

@@ -9,16 +9,20 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"opskeeper/backend/config"
 )
 
 func TestPostgresWorkflowRunStorePersistsTransitionsAndSnapshots(t *testing.T) {
-	databaseURL := os.Getenv("OPSK_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("OPSK_DATABASE_URL is not set")
+	if os.Getenv("OPSK_DB_HOST") == "" {
+		t.Skip("OPSK_DB_HOST is not set")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	pool, err := pgxpool.New(ctx, databaseURL)
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}

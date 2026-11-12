@@ -2,8 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE_FILE := deploy/compose/docker-compose.yml
 APP_ENV_FILE := $(if $(wildcard .env),.env,.env.example)
-ADMIN_CREATE_ARGS := --username admin --password admin123
-COMPOSE_ENV_FILE := $(if $(wildcard deploy/compose/.env),deploy/compose/.env,deploy/compose/.env.example)
+COMPOSE_ENV_FILE := .env
 WEBUI_DIST := backend/webui/dist
 IMAGE_REPOSITORY ?= opskeeper
 IMAGE_TAG ?= local
@@ -24,6 +23,7 @@ VERSION_PACKAGE := opskeeper/backend/version
 GO_LDFLAGS := -s -w -X $(VERSION_PACKAGE).Value=$(VERSION) -X $(VERSION_PACKAGE).Commit=$(COMMIT) -X $(VERSION_PACKAGE).BuildTime=$(BUILD_TIME)
 
 define compose
+@test -f deploy/compose/.env || cp $(APP_ENV_FILE) deploy/compose/.env
 @if docker compose version >/dev/null 2>&1; then \
 	docker compose -f $(COMPOSE_FILE) --env-file $(COMPOSE_ENV_FILE) $(1); \
 elif command -v docker-compose >/dev/null 2>&1; then \
@@ -36,29 +36,25 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help start deps migrate admin-create sample-seed sample-clean infra-up infra-down infra-clean infra-logs obs-up obs-down obs-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
+.PHONY: help start compose-env deps sample-seed sample-clean infra-up infra-down infra-clean infra-logs obs-up obs-down obs-logs api-stop api-run worker-run scheduler-run frontend-run front-api-run docker-mcp-test docker-mcp-build docker-mcp-run host-mcp-test host-mcp-build host-mcp-run kubernetes-mcp-test kubernetes-mcp-build kubernetes-mcp-run test backend-test backend-embedded-test backend-integration-test llm-provider-test frontend-test lint backend-lint frontend-lint deploy-lint helm-lint format format-check frontend-build webui-assets backend-build build image quality
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "OpsKeeper development commands:\n\n"} /^[a-zA-Z_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 start: ## Prepare and start the complete local development environment.
 	@test -f .env || cp .env.example .env
-	@test -f deploy/compose/.env || cp deploy/compose/.env.example deploy/compose/.env
-	$(MAKE) deps
-	$(MAKE) infra-up
-	$(MAKE) migrate
-	$(MAKE) admin-create ADMIN_CREATE_ARGS="$(ADMIN_CREATE_ARGS) --if-needed"
-	$(MAKE) front-api-run
+	$(MAKE) compose-env
+	$(MAKE) image
+	$(call compose,up -d --wait --wait-timeout 180)
+
+compose-env: ## Copy root environment files for Docker Compose.
+	@mkdir -p deploy/compose
+	cp .env.example deploy/compose/.env.example
+	cp $(APP_ENV_FILE) deploy/compose/.env
 
 deps: ## Download backend and frontend dependencies.
 	cd backend && go mod download
 	cd frontend && npm install --registry="$(NPM_REGISTRY)"
-
-migrate: ## Apply pending PostgreSQL migrations.
-	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/migrate
-
-admin-create: ## Create the first administrator through the controlled bootstrap flow.
-	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/admin create $(ADMIN_CREATE_ARGS)
 
 sample-seed: ## Insert local sample teams, projects, users, GLM channel, Docker and Host resources, and role bindings.
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata seed
@@ -67,16 +63,16 @@ sample-clean: ## Remove only marked local sample teams, projects, users, GLM cha
 	@set -a; source $(APP_ENV_FILE); set +a; cd backend && go run ./cmd/sampledata clean
 
 infra-up: ## Start the PostgreSQL development dependency.
-	$(call compose,up -d --wait --wait-timeout 60)
+	$(call compose,up -d --wait --wait-timeout 60 postgres)
 
 infra-down: ## Stop the PostgreSQL development dependency.
-	$(call compose,down)
+	$(call compose,stop postgres)
 
 infra-clean: ## Delete Compose containers, network, and data volumes.
 	$(call compose,--profile obs down --volumes --remove-orphans)
 
 infra-logs: ## Follow PostgreSQL logs.
-	$(call compose,logs -f)
+	$(call compose,logs -f postgres)
 
 obs-up: ## Start Jaeger, OpenTelemetry, Prometheus, Loki, and Grafana.
 	$(call compose,--profile obs up -d --wait --wait-timeout 60 jaeger otel-collector prometheus loki grafana)
@@ -89,7 +85,7 @@ obs-logs: ## Follow local observability stack logs.
 
 api-stop:
 	set -a; source $(APP_ENV_FILE); set +a; \
-	port=$${OPSK_HTTP_ADDRESS##*:}; \
+	port=$${OPSK_LISTEN_PORT:-8080}; \
 	lsof -tiTCP:$$port -sTCP:LISTEN | xargs -r kill -9
 
 api-run: api-stop ## Run the API server.
@@ -107,7 +103,7 @@ frontend-run: ## Run the Svelte development server.
 front-api-run: api-stop webui-assets ## Build and embed the frontend, then run the API.
 	set -a; source $(APP_ENV_FILE); set +a; cd backend && go run -tags=embed_webui ./cmd/api
 
-run: migrate front-api-run ## Build and embed the frontend, then run the API.
+run: front-api-run ## Build and embed the frontend, then run the API.
 
 docker-mcp-test: ## Run docker-mcp unit and Docker Engine simulator tests.
 	cd backend && go test ./mcpserver/docker/... ./cmd/docker-mcp
@@ -192,16 +188,13 @@ backend-build:
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -tags=embed_webui -o bin/opskeeper-api ./cmd/api
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-worker ./cmd/worker
 	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-scheduler ./cmd/scheduler
-	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-migrate ./cmd/migrate
-	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-admin ./cmd/admin
-	cd backend && CGO_ENABLED=$(CGO_ENABLED) go build -buildvcs=false -ldflags "$(GO_LDFLAGS)" -o bin/opskeeper-operation-runner ./cmd/operation-runner
 
 build: webui-assets ## Build production binaries with the embedded frontend and MCP servers.
 	$(MAKE) backend-build
 	$(MAKE) docker-mcp-build
 	$(MAKE) kubernetes-mcp-build
 
-image: ## Build the final application image.
+image: ## Build API, Worker, and Scheduler images.
 	docker build \
 		--build-arg "GOPROXY=$(GOPROXY)" \
 		--build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) \
@@ -209,8 +202,15 @@ image: ## Build the final application image.
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg BUILD_TIME=$(BUILD_TIME) \
-		-f deploy/Dockerfile \
-		-t $(IMAGE_REPOSITORY):$(IMAGE_TAG) \
-		.
+		--target api -t $(IMAGE_REPOSITORY)-api:$(IMAGE_TAG) \
+		-f deploy/Dockerfile .
+	docker build \
+		--build-arg "GOPROXY=$(GOPROXY)" --build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) --build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg BUILD_TIME=$(BUILD_TIME) \
+		--target worker -t $(IMAGE_REPOSITORY)-worker:$(IMAGE_TAG) -f deploy/Dockerfile .
+	docker build \
+		--build-arg "GOPROXY=$(GOPROXY)" --build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) --build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg BUILD_TIME=$(BUILD_TIME) \
+		--target scheduler -t $(IMAGE_REPOSITORY)-scheduler:$(IMAGE_TAG) -f deploy/Dockerfile .
 
 quality: format-check lint test backend-embedded-test build ## Run the complete local quality gate.

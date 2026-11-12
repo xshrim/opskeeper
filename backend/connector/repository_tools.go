@@ -119,16 +119,20 @@ func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextReso
 		case "repository_status":
 			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Status(c) })
 		case "repository_tree":
-			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 500}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.TreePage(c, stringArg(a, "path"), int(int64Arg(a, "offset")), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+			register(t.Name, "Inventory tracked files at the selected revision. Defaults to 1000 entries per call; continue from next_offset until done=true.", repoSchema(map[string]any{"repository_path": map[string]any{"type": "string", "description": "Directory path relative to the repository root; omit or use an empty string for the whole repository."}, "start_offset": map[string]any{"type": "integer", "minimum": 0, "description": "Zero-based index of the first file to return; use the previous page's next_offset."}, "page_size": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum files in this page; defaults to 1000."}, "revision": map[string]any{"type": "string", "description": "Resolved branch, tag, or commit to inspect; omit to use the execution-pinned revision."}}), func(c context.Context, a map[string]any) (any, error) {
+				limit := int(int64Arg(a, "page_size"))
+				if limit <= 0 {
+					limit = 1000
+				}
+				return snapshot.TreePage(c, stringArg(a, "repository_path"), int(int64Arg(a, "start_offset")), limit, stringArg(a, "revision"))
 			})
 		case "repository_file":
-			register(t.Name, t.Description, repoSchema(map[string]any{"path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "max_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": 1048576}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.FileRange(c, stringArg(a, "path"), int64Arg(a, "offset"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
+			register(t.Name, "Read a tracked text file by byte range; continue from next_offset until done=true.", repoSchema(map[string]any{"file_path": map[string]any{"type": "string", "description": "File path relative to the repository root."}, "byte_offset": map[string]any{"type": "integer", "minimum": 0, "description": "Zero-based byte offset to continue reading this file; use the previous range's next_offset."}, "max_bytes": map[string]any{"type": "integer", "minimum": 1, "maximum": 1048576, "description": "Maximum UTF-8 text bytes to return, up to 1 MiB."}, "revision": map[string]any{"type": "string", "description": "Resolved branch, tag, or commit; omit to use the execution-pinned revision."}}), func(c context.Context, a map[string]any) (any, error) {
+				return snapshot.FileRange(c, stringArg(a, "file_path"), int64Arg(a, "byte_offset"), int64Arg(a, "max_bytes"), stringArg(a, "revision"))
 			})
 		case "repository_search":
-			register(t.Name, t.Description, repoSchema(map[string]any{"query": map[string]any{"type": "string"}, "path": map[string]any{"type": "string"}, "offset": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100}, "revision": map[string]any{"type": "string"}}), func(c context.Context, a map[string]any) (any, error) {
-				return snapshot.SearchPage(c, stringArg(a, "query"), stringArg(a, "path"), int(int64Arg(a, "offset")), int(int64Arg(a, "limit")), stringArg(a, "revision"))
+			register(t.Name, "Search tracked text files. Set regular_expression=true for grep -E syntax, or use fixed-string matching by default. Results are paginated; continue until done=true and complete=true.", repoSchema(map[string]any{"search_pattern": map[string]any{"type": "string", "description": "Text or extended regular expression to search for, such as 'foo|bar', 'func[[:space:]]+Name', or 'TODO'."}, "repository_path": map[string]any{"type": "string", "description": "Optional repository-relative directory or file path to limit the search."}, "start_offset": map[string]any{"type": "integer", "minimum": 0, "description": "Zero-based match offset; use the previous page's next_offset."}, "page_size": map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum matches in this page, up to 100."}, "regular_expression": map[string]any{"type": "boolean", "description": "When true, interpret search_pattern as a grep -E extended regular expression; false uses literal text."}, "ignore_case": map[string]any{"type": "boolean", "description": "When true, match letters case-insensitively."}, "revision": map[string]any{"type": "string", "description": "Resolved branch, tag, or commit; omit to use the execution-pinned revision."}}), func(c context.Context, a map[string]any) (any, error) {
+				return snapshot.SearchPage(c, rt.SearchOptions{Pattern: stringArg(a, "search_pattern"), Path: stringArg(a, "repository_path"), Offset: int(int64Arg(a, "start_offset")), Limit: int(int64Arg(a, "page_size")), RegularExpression: boolValueArg(a, "regular_expression"), IgnoreCase: boolValueArg(a, "ignore_case"), Revision: stringArg(a, "revision")})
 			})
 		case "repository_metadata":
 			register(t.Name, t.Description, repoSchema(nil), func(c context.Context, _ map[string]any) (any, error) { return snapshot.Metadata(c) })
@@ -136,6 +140,12 @@ func (s *Service) resolveRepositoryTools(ctx context.Context, item a.ContextReso
 	}
 	return nil
 }
+
+func boolValueArg(args map[string]any, key string) bool {
+	value, _ := args[key].(bool)
+	return value
+}
+
 func repoSchema(extra map[string]any) json.RawMessage {
 	schema := rt.InputSchema(extra)
 	properties := schema["properties"].(map[string]any)

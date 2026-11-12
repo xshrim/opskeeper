@@ -33,6 +33,12 @@ type stubIdentityService struct {
 	oneTimeChangeNew   string
 }
 
+func (s *stubIdentityService) BootstrapRequired(context.Context) (bool, error) { return true, nil }
+func (s *stubIdentityService) BootstrapAdmin(_ context.Context, input identity.BootstrapInput) (identity.User, error) {
+	s.loginIdentifier = input.Username
+	return s.user, nil
+}
+
 func (s *stubIdentityService) AuthenticateBasic(_ context.Context, identifier, _ string, _ identity.SessionMetadata) (identity.User, error) {
 	s.loginIdentifier = identifier
 	return s.user, s.loginError
@@ -349,14 +355,21 @@ func TestPreferencesUpdateUsesAuthenticatedUser(t *testing.T) {
 	}
 }
 
-func TestBootstrapIsNotExposedOverHTTP(t *testing.T) {
+func TestBootstrapIsAvailableOverHTTP(t *testing.T) {
+	statusRequest := httptest.NewRequest(http.MethodGet, "/test/api/v1/auth/bootstrap", nil)
+	statusResponse := httptest.NewRecorder()
+	service := &stubIdentityService{}
+	newAuthTestRouter(service, false).ServeHTTP(statusResponse, statusRequest)
+	if statusResponse.Code != http.StatusOK || !strings.Contains(statusResponse.Body.String(), `"required":true`) {
+		t.Fatalf("bootstrap status = %d, body = %s", statusResponse.Code, statusResponse.Body.String())
+	}
 	request := httptest.NewRequest(http.MethodPost, "/test/api/v1/auth/bootstrap", strings.NewReader(`{}`))
 	response := httptest.NewRecorder()
 
-	newAuthTestRouter(&stubIdentityService{}, false).ServeHTTP(response, request)
+	newAuthTestRouter(service, false).ServeHTTP(response, request)
 
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("bootstrap status = %d, want 404", response.Code)
+	if response.Code != http.StatusNoContent || service.loginIdentifier != "admin" {
+		t.Fatalf("bootstrap status = %d, user = %q", response.Code, service.loginIdentifier)
 	}
 }
 

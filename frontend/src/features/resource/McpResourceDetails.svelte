@@ -10,22 +10,70 @@
   $: config = resource.config ?? {};
   $: tags = labelTags(resource.labels);
   $: snapshot = snapshots[0];
-  $: connectionStatus = snapshot ? snapshot.status === 'succeeded' ? `正常·${snapshot.latency_ms ?? 0}ms` : '异常' : '尚未测试';
+  $: connectionStatus = snapshot
+    ? snapshot.status === 'succeeded'
+      ? `正常·${snapshot.latency_ms ?? 0}ms`
+      : '异常'
+    : '尚未测试';
 </script>
 
 <div class="provider-resource-details mcp-resource-details">
   <div class="provider-resource-meta">
-    <div><span>传输方式</span><strong>{String(config.transport ?? 'streamable_http') === 'sse' ? 'SSE' : 'Streamable HTTP'}</strong></div>
-    <div class="provider-resource-address"><span>Server 地址</span><strong>{resourceEndpointFor(resource)}</strong></div>
-    <div><span>工具数量</span><strong>{snapshot?.tools?.length ?? 0} 个</strong></div>
-    <div><span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong></div>
-    <div><span>超时时间</span><strong>{Number(config.timeout_seconds ?? 120)} 秒</strong></div>
-    <div><span>响应体大小限制</span><strong>{Math.round(Number(config.max_response_bytes ?? 4 * 1024 * 1024) / 1024 / 1024)} MiB</strong></div>
-    <div><span>自定义 Header</span><strong>{resource.credential_configured ? '已配置' : '未配置'}</strong></div>
-    <div><span>工具白名单</span><strong>{Array.isArray(config.tool_allowlist) && config.tool_allowlist.length ? `${config.tool_allowlist.length} 条规则` : '不限制'}</strong></div>
-    <div><span>连接凭据</span><strong>{resource.credential_configured ? '已配置 Token / Header' : '未配置'}</strong></div>
-    <div><span>传输凭据</span><strong>{resource.credential_configured ? '随连接凭据保存' : '未配置'}</strong></div>
-    <div class="provider-resource-labels"><span>标签</span><TagList tags={tags} emptyText="未设置标签" /></div>
+    <div>
+      <span>传输方式</span><strong
+        >{String(config.transport ?? 'streamable_http') === 'sse'
+          ? 'SSE'
+          : 'Streamable HTTP'}</strong
+      >
+    </div>
+    <div class="provider-resource-address">
+      <span>Server 地址</span><strong>{resourceEndpointFor(resource)}</strong>
+    </div>
+    <div>
+      <span>工具数量</span><strong>{snapshot?.tools?.length ?? 0} 个</strong>
+    </div>
+    <div>
+      <span>最新更新</span><strong>{formatDate(resource.updated_at)}</strong>
+    </div>
+    <div>
+      <span>超时时间</span><strong
+        >{Number(config.timeout_seconds ?? 120)} 秒</strong
+      >
+    </div>
+    <div>
+      <span>响应体大小限制</span><strong
+        >{Math.round(
+          Number(config.max_response_bytes ?? 4 * 1024 * 1024) / 1024 / 1024
+        )} MiB</strong
+      >
+    </div>
+    <div>
+      <span>自定义 Header</span><strong
+        >{resource.credential_configured ? '已配置' : '未配置'}</strong
+      >
+    </div>
+    <div>
+      <span>工具白名单</span><strong
+        >{Array.isArray(config.tool_allowlist) && config.tool_allowlist.length
+          ? `${config.tool_allowlist.length} 条规则`
+          : '不限制'}</strong
+      >
+    </div>
+    <div>
+      <span>连接凭据</span><strong
+        >{resource.credential_configured
+          ? '已配置 Token / Header'
+          : '未配置'}</strong
+      >
+    </div>
+    <div>
+      <span>传输凭据</span><strong
+        >{resource.credential_configured ? '随连接凭据保存' : '未配置'}</strong
+      >
+    </div>
+    <div class="provider-resource-labels">
+      <span>标签</span><TagList {tags} emptyText="未设置标签" />
+    </div>
     <div><span>状态</span><strong>{connectionStatus}</strong></div>
   </div>
 </div>

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"os"
@@ -13,21 +14,28 @@ import (
 )
 
 const (
-	defaultDatabaseURL = "postgres://opskeeper:opskeeper@localhost:5432/opskeeper?sslmode=disable"
-	defaultRedisURL    = "redis://localhost:6379/0"
-	defaultBasePath    = "/opskeeper"
-	defaultLogFormat   = "raw"
-	maxBasePathLength  = 128
+	defaultDBHost     = "localhost:5432"
+	defaultDBName     = "opskeeper"
+	defaultDBUser     = "opskeeper"
+	defaultDBPassword = "opskeeper"
+	defaultDBSSLMode  = "disable"
+	defaultRedisURL   = "redis://localhost:6379/0"
+	defaultBasePath   = "/opskeeper"
+	defaultLogFormat  = "raw"
+	maxBasePathLength = 128
 )
 
 var basePathPattern = regexp.MustCompile(`^/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
 type Config struct {
+	DiagnosisCollaboration        int
+	DiagnosisMaxSubagents         int
+	DiagnosisSubagentConcurrency  int
 	BasePath                      string
 	Environment                   string
 	LogFormat                     string
 	LogHealthIgnore               bool
-	HTTPAddress                   string
+	ListenPort                    int
 	TrustedProxies                []netip.Prefix
 	DatabaseURL                   string
 	RedisURL                      string
@@ -54,47 +62,56 @@ type Config struct {
 	NotificationQueueBackend      string
 	NotificationQueuePollInterval time.Duration
 	MCPEnhancedSecurity           bool
-	RepositoryStorageBackend      string
+	StorageBackend                string
 	RepositoryLocalRoot           string
-	RepositoryS3Endpoint          string
-	RepositoryS3Bucket            string
-	RepositoryS3Prefix            string
-	RepositoryS3AccessKey         string
-	RepositoryS3SecretKey         string
-	RepositoryS3UseSSL            bool
-	RepositoryS3Provider          string
+	StorageS3Endpoint             string
+	StorageS3Bucket               string
+	StorageS3Prefix               string
+	StorageS3AccessKey            string
+	StorageS3SecretKey            string
+	StorageS3UseSSL               bool
+	StorageS3Provider             string
 	RepositoryMaxBundleBytes      int64
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		BasePath:                 envOrDefault("OPSK_BASE_PATH", defaultBasePath),
-		Environment:              envOrDefault("OPSK_ENVIRONMENT", "development"),
-		LogFormat:                envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
-		HTTPAddress:              envOrDefault("OPSK_HTTP_ADDRESS", ":8080"),
-		DatabaseURL:              envOrDefault("OPSK_DATABASE_URL", defaultDatabaseURL),
-		RedisURL:                 strings.TrimSpace(os.Getenv("OPSK_REDIS_URL")),
-		CacheBackend:             envOrDefault("OPSK_CACHE_BACKEND", "postgres"),
-		NotificationQueueBackend: envOrDefault("OPSK_MESSAGE_QUEUE_BACKEND", "postgres"),
-		ReadHeaderTimeout:        5 * time.Second,
-		ReadTimeout:              15 * time.Second,
+		DiagnosisCollaboration:       safeIntFromEnv("OPSK_DIAGNOSIS_COLLABORATION", 2, 1, 5),
+		DiagnosisMaxSubagents:        safeIntFromEnv("OPSK_DIAGNOSIS_MAX_SUBAGENTS", 24, 1, 128),
+		DiagnosisSubagentConcurrency: safeIntFromEnv("OPSK_DIAGNOSIS_SUBAGENT_CONCURRENCY", 4, 1, 16),
+		BasePath:                     envOrDefault("OPSK_BASE_PATH", defaultBasePath),
+		Environment:                  envOrDefault("OPSK_ENVIRONMENT", "development"),
+		LogFormat:                    envOrDefault("OPSK_LOG_FORMAT", defaultLogFormat),
+		RedisURL:                     strings.TrimSpace(os.Getenv("OPSK_REDIS_URL")),
+		CacheBackend:                 envOrDefault("OPSK_CACHE_BACKEND", "postgres"),
+		NotificationQueueBackend:     envOrDefault("OPSK_MQ_BACKEND", "postgres"),
+		ReadHeaderTimeout:            5 * time.Second,
+		ReadTimeout:                  15 * time.Second,
 		// Diagnosis uses a long-lived SSE response. Keep the server-level write
 		// deadline above the Engine's 30-minute execution budget so an idle
 		// tool/model turn cannot terminate the stream prematurely.
-		WriteTimeout:             35 * time.Minute,
-		IdleTimeout:              60 * time.Second,
-		OTLPExporterEndpoint:     strings.TrimSpace(os.Getenv("OPSK_OTEL_ENDPOINT")),
-		RepositoryStorageBackend: envOrDefault("OPSK_REPOSITORY_STORAGE_BACKEND", "postgres"),
-		RepositoryLocalRoot:      envOrDefault("OPSK_REPOSITORY_LOCAL_ROOT", "/var/lib/opskeeper/repositories"),
-		RepositoryS3Endpoint:     strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ENDPOINT")),
-		RepositoryS3Bucket:       strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_BUCKET")),
-		RepositoryS3Prefix:       envOrDefault("OPSK_REPOSITORY_S3_PREFIX", "repositories"),
-		RepositoryS3AccessKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_ACCESS_KEY")),
-		RepositoryS3SecretKey:    strings.TrimSpace(os.Getenv("OPSK_REPOSITORY_S3_SECRET_KEY")),
-		RepositoryS3Provider:     envOrDefault("OPSK_REPOSITORY_S3_PROVIDER", "minio"),
+		WriteTimeout:         35 * time.Minute,
+		IdleTimeout:          60 * time.Second,
+		OTLPExporterEndpoint: strings.TrimSpace(os.Getenv("OPSK_OTEL_ENDPOINT")),
+		StorageBackend:       envOrDefault("OPSK_STORAGE_BACKEND", "postgres"),
+		RepositoryLocalRoot:  envOrDefault("OPSK_REPOSITORY_LOCAL_ROOT", "/var/lib/opskeeper/repositories"),
+		StorageS3Endpoint:    strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_ENDPOINT")),
+		StorageS3Bucket:      strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_BUCKET")),
+		StorageS3Prefix:      envOrDefault("OPSK_STORAGE_S3_PREFIX", "repositories"),
+		StorageS3AccessKey:   strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_ACCESS_KEY")),
+		StorageS3SecretKey:   strings.TrimSpace(os.Getenv("OPSK_STORAGE_S3_SECRET_KEY")),
+		StorageS3Provider:    envOrDefault("OPSK_STORAGE_S3_PROVIDER", "minio"),
+	}
+	var databaseErr error
+	cfg.DatabaseURL, databaseErr = databaseURLFromEnv()
+	if databaseErr != nil {
+		return Config{}, databaseErr
 	}
 
 	var err error
+	if cfg.ListenPort, err = intFromEnv("OPSK_LISTEN_PORT", 8080, 1, 65535); err != nil {
+		return Config{}, err
+	}
 	if cfg.ShutdownTimeout, err = durationFromEnv("OPSK_SHUTDOWN_TIMEOUT", 10*time.Second); err != nil {
 		return Config{}, err
 	}
@@ -156,32 +173,26 @@ func Load() (Config, error) {
 		return Config{}, errors.New("OPSK_CACHE_BACKEND must be memory, postgres or redis")
 	}
 	if cfg.NotificationQueueBackend != "postgres" {
-		return Config{}, errors.New("OPSK_MESSAGE_QUEUE_BACKEND must be postgres")
+		return Config{}, errors.New("OPSK_MQ_BACKEND must be postgres")
 	}
-	if cfg.RepositoryStorageBackend != "local" && cfg.RepositoryStorageBackend != "postgres" && cfg.RepositoryStorageBackend != "s3" {
-		return Config{}, errors.New("OPSK_REPOSITORY_STORAGE_BACKEND must be local, postgres or s3")
+	if cfg.StorageBackend != "local" && cfg.StorageBackend != "postgres" && cfg.StorageBackend != "s3" {
+		return Config{}, errors.New("OPSK_STORAGE_BACKEND must be local, postgres or s3")
 	}
-	if cfg.RepositoryStorageBackend == "s3" && (cfg.RepositoryS3Endpoint == "" || cfg.RepositoryS3Bucket == "") {
-		return Config{}, errors.New("OPSK_REPOSITORY_S3_ENDPOINT and OPSK_REPOSITORY_S3_BUCKET are required for s3 backend")
+	if cfg.StorageBackend == "s3" && (cfg.StorageS3Endpoint == "" || cfg.StorageS3Bucket == "") {
+		return Config{}, errors.New("OPSK_STORAGE_S3_ENDPOINT and OPSK_STORAGE_S3_BUCKET are required for s3 backend")
 	}
-	if strings.TrimSpace(cfg.RepositoryS3Provider) == "" {
-		return Config{}, errors.New("OPSK_REPOSITORY_S3_PROVIDER must not be empty")
+	if strings.TrimSpace(cfg.StorageS3Provider) == "" {
+		return Config{}, errors.New("OPSK_STORAGE_S3_PROVIDER must not be empty")
 	}
-	if cfg.RepositoryS3UseSSL, err = boolFromEnv("OPSK_REPOSITORY_S3_USE_SSL", false); err != nil {
+	if cfg.StorageS3UseSSL, err = boolFromEnv("OPSK_STORAGE_S3_USE_SSL", false); err != nil {
 		return Config{}, err
 	}
 
-	if cfg.HTTPAddress == "" {
-		return Config{}, errors.New("OPSK_HTTP_ADDRESS must not be empty")
-	}
 	if !validBasePath(cfg.BasePath) {
 		return Config{}, fmt.Errorf("OPSK_BASE_PATH must be / or a slash-prefixed path of lowercase letters, digits, or internal hyphens (maximum %d characters)", maxBasePathLength)
 	}
 	if cfg.LogFormat != "raw" && cfg.LogFormat != "text" && cfg.LogFormat != "json" {
 		return Config{}, errors.New("OPSK_LOG_FORMAT must be raw, text, or json")
-	}
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("OPSK_DATABASE_URL must not be empty")
 	}
 	if cfg.CacheBackend == "redis" && cfg.RedisURL == "" {
 		return Config{}, errors.New("OPSK_REDIS_URL must not be empty when OPSK_CACHE_BACKEND=redis")
@@ -190,8 +201,8 @@ func Load() (Config, error) {
 		return Config{}, errors.New("OPSK_COOKIE_SECURE must be true in production")
 	}
 	if cfg.Environment == "production" {
-		if cfg.DatabaseURL == defaultDatabaseURL {
-			return Config{}, errors.New("OPSK_DATABASE_URL must not use the development default in production")
+		if cfg.DatabaseURL == developmentDatabaseURL() {
+			return Config{}, errors.New("OPSK_DB_HOST, OPSK_DB_NAME, OPSK_DB_USER, and OPSK_DB_PASSWORD must not use development defaults in production")
 		}
 		if cfg.CacheBackend == "redis" && cfg.RedisURL == defaultRedisURL {
 			return Config{}, errors.New("OPSK_REDIS_URL must not use the development default in production")
@@ -207,6 +218,55 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func databaseURLFromEnv() (string, error) {
+	host := strings.TrimSpace(envOrDefault("OPSK_DB_HOST", defaultDBHost))
+	name := strings.TrimSpace(envOrDefault("OPSK_DB_NAME", defaultDBName))
+	user := strings.TrimSpace(envOrDefault("OPSK_DB_USER", defaultDBUser))
+	password := os.Getenv("OPSK_DB_PASSWORD")
+	if password == "" {
+		password = defaultDBPassword
+	}
+	sslMode := strings.TrimSpace(envOrDefault("OPSK_DB_SSLMODE", defaultDBSSLMode))
+	if host == "" || name == "" || user == "" || strings.ContainsAny(host, " \t\r\n") {
+		return "", errors.New("OPSK_DB_HOST must not be empty or contain whitespace; OPSK_DB_NAME and OPSK_DB_USER must not be empty")
+	}
+	switch sslMode {
+	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+	default:
+		return "", errors.New("OPSK_DB_SSLMODE must be disable, allow, prefer, require, verify-ca, or verify-full")
+	}
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, password),
+		Host:     host,
+		Path:     "/" + name,
+		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
+	}).String(), nil
+}
+
+func developmentDatabaseURL() string {
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(defaultDBUser, defaultDBPassword),
+		Host:     defaultDBHost,
+		Path:     "/" + defaultDBName,
+		RawQuery: "sslmode=" + defaultDBSSLMode,
+	}).String()
+}
+
+func safeIntFromEnv(key string, fallback, minimum, maximum int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum || value > maximum {
+		slog.Error("invalid diagnosis configuration; using safe default", "kind", "configuration", "key", key, "default", fallback)
+		return fallback
+	}
+	return value
 }
 
 func originsFromEnv(key string) ([]string, error) {

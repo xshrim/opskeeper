@@ -27,13 +27,19 @@
   let expandedIds = new Set<string>();
   let selectAllInput: HTMLInputElement;
 
-  $: filteredRows = filterable && filterValue.trim()
-    ? rows.filter((row) => filterFn(row, filterValue.trim()))
-    : rows;
+  $: filteredRows =
+    filterable && filterValue.trim()
+      ? rows.filter((row) => filterFn(row, filterValue.trim()))
+      : rows;
   $: selectableRows = selectable ? filteredRows.filter(canSelectRow) : [];
-  $: allSelected = selectableRows.length > 0 && selectableRows.every((row) => selectedIds.includes(rowKey(row)));
-  $: someSelected = selectableRows.some((row) => selectedIds.includes(rowKey(row)));
-  $: if (selectAllInput) selectAllInput.indeterminate = someSelected && !allSelected;
+  $: allSelected =
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => selectedIds.includes(rowKey(row)));
+  $: someSelected = selectableRows.some((row) =>
+    selectedIds.includes(rowKey(row))
+  );
+  $: if (selectAllInput)
+    selectAllInput.indeterminate = someSelected && !allSelected;
 
   function toggleExpanded(row: any) {
     const id = rowKey(row);
@@ -77,87 +83,125 @@
     </label>
   {/if}
   <div class="expandable-table-scroll">
-  <table class="expandable-table">
-    <colgroup>
-      {#if expandable && togglePlacement === 'column'}<col class="expandable-table-toggle-column" />{/if}
-      {#if selectable}<col class="expandable-table-select-column" />{/if}
-      {#each columns as column (column.key)}
-        <col style:width={column.width} />
-      {/each}
-    </colgroup>
-    <thead>
-      <tr>
-        {#if expandable && togglePlacement === 'column'}<th class="expandable-table-toggle-cell" aria-label="展开"></th>{/if}
-        {#if selectable}
-          <th class="expandable-table-select-cell">
-            <input
-              bind:this={selectAllInput}
-              type="checkbox"
-              aria-label="选择全部可管理行"
-              checked={allSelected}
-              disabled={selectableRows.length === 0}
-              on:change={(event) => setAllSelected(event.currentTarget.checked)}
-            />
-          </th>
-        {/if}
+    <table class="expandable-table">
+      <colgroup>
+        {#if expandable && togglePlacement === 'column'}<col
+            class="expandable-table-toggle-column"
+          />{/if}
+        {#if selectable}<col class="expandable-table-select-column" />{/if}
         {#each columns as column (column.key)}
-          <th class={column.className ?? ''} scope="col">{column.label}</th>
+          <col style:width={column.width} />
         {/each}
-      </tr>
-    </thead>
-    <tbody>
-      {#each filteredRows as row (rowKey(row))}
-        {@const id = rowKey(row)}
-        {@const expanded = expandedIds.has(id)}
-        <tr class:selected={selectedIds.includes(id)} class={rowClass(row)} on:click={(event) => {
-          const target = event.target as HTMLElement;
-          onRowClick(row);
-          if (expandable && !(target.closest('button, input, a, select, textarea'))) toggleExpanded(row);
-        }}>
-          {#if expandable && togglePlacement === 'column'}
-            <td class="expandable-table-toggle-cell">
-              <button
-                type="button"
-                class="expandable-table-toggle"
-                aria-label={`${expanded ? '折叠' : '展开'} ${row.name ?? id}`}
-                aria-expanded={expanded}
-                on:click|stopPropagation={() => toggleExpanded(row)}
-              >
-                {#if expanded}<ChevronDown size={15} aria-hidden="true" />{:else}<ChevronRight size={15} aria-hidden="true" />{/if}
-              </button>
-            </td>
-          {/if}
+      </colgroup>
+      <thead>
+        <tr>
+          {#if expandable && togglePlacement === 'column'}<th
+              class="expandable-table-toggle-cell"
+              aria-label="展开"
+            ></th>{/if}
           {#if selectable}
-            <td class="expandable-table-select-cell">
+            <th class="expandable-table-select-cell">
               <input
+                bind:this={selectAllInput}
                 type="checkbox"
-                aria-label={`选择 ${row.name ?? row.display_name ?? id}`}
-                checked={selectedIds.includes(id)}
-                disabled={!canSelectRow(row)}
-                on:change={(event) => setRowSelected(row, event.currentTarget.checked)}
+                aria-label="选择全部可管理行"
+                checked={allSelected}
+                disabled={selectableRows.length === 0}
+                on:change={(event) =>
+                  setAllSelected(event.currentTarget.checked)}
               />
-            </td>
+            </th>
           {/if}
           {#each columns as column (column.key)}
-            <td class={column.className ?? ''}>
-              <slot name="cell" {row} {column} {expanded} toggle={() => toggleExpanded(row)}>
-                {String(row[column.key] ?? '')}
-              </slot>
-            </td>
+            <th class={column.className ?? ''} scope="col">{column.label}</th>
           {/each}
         </tr>
-        {#if expandable && expanded}
-          <tr class="expandable-table-details-row">
-            <td colspan={columns.length + Number(selectable) + Number(expandable && togglePlacement === 'column')}>
-              <slot name="details" {row} />
-            </td>
+      </thead>
+      <tbody>
+        {#each filteredRows as row (rowKey(row))}
+          {@const id = rowKey(row)}
+          {@const expanded = expandedIds.has(id)}
+          <tr
+            class:selected={selectedIds.includes(id)}
+            class={rowClass(row)}
+            on:click={(event) => {
+              const target = event.target as HTMLElement;
+              onRowClick(row);
+              if (
+                expandable &&
+                !target.closest('button, input, a, select, textarea')
+              )
+                toggleExpanded(row);
+            }}
+          >
+            {#if expandable && togglePlacement === 'column'}
+              <td class="expandable-table-toggle-cell">
+                <button
+                  type="button"
+                  class="expandable-table-toggle"
+                  aria-label={`${expanded ? '折叠' : '展开'} ${row.name ?? id}`}
+                  aria-expanded={expanded}
+                  on:click|stopPropagation={() => toggleExpanded(row)}
+                >
+                  {#if expanded}<ChevronDown
+                      size={15}
+                      aria-hidden="true"
+                    />{:else}<ChevronRight size={15} aria-hidden="true" />{/if}
+                </button>
+              </td>
+            {/if}
+            {#if selectable}
+              <td class="expandable-table-select-cell">
+                <input
+                  type="checkbox"
+                  aria-label={`选择 ${row.name ?? row.display_name ?? id}`}
+                  checked={selectedIds.includes(id)}
+                  disabled={!canSelectRow(row)}
+                  on:change={(event) =>
+                    setRowSelected(row, event.currentTarget.checked)}
+                />
+              </td>
+            {/if}
+            {#each columns as column (column.key)}
+              <td class={column.className ?? ''}>
+                <slot
+                  name="cell"
+                  {row}
+                  {column}
+                  {expanded}
+                  toggle={() => toggleExpanded(row)}
+                >
+                  {String(row[column.key] ?? '')}
+                </slot>
+              </td>
+            {/each}
           </tr>
-        {/if}
-      {:else}
-        {#if emptyText}<tr><td class="expandable-table-empty" colspan={Math.max(columns.length + Number(selectable) + Number(expandable && togglePlacement === 'column'), 1)}>{emptyText}</td></tr>{/if}
-      {/each}
-    </tbody>
-  </table>
+          {#if expandable && expanded}
+            <tr class="expandable-table-details-row">
+              <td
+                colspan={columns.length +
+                  Number(selectable) +
+                  Number(expandable && togglePlacement === 'column')}
+              >
+                <slot name="details" {row} />
+              </td>
+            </tr>
+          {/if}
+        {:else}
+          {#if emptyText}<tr
+              ><td
+                class="expandable-table-empty"
+                colspan={Math.max(
+                  columns.length +
+                    Number(selectable) +
+                    Number(expandable && togglePlacement === 'column'),
+                  1
+                )}>{emptyText}</td
+              ></tr
+            >{/if}
+        {/each}
+      </tbody>
+    </table>
   </div>
 </div>
 

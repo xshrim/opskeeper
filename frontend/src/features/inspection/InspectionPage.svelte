@@ -9,6 +9,7 @@
     type InspectionFinding,
     type InspectionPolicy,
     type InspectionRun,
+    type Application,
     type PersonaCatalogItem,
     type Resource
   } from '../../lib/api';
@@ -16,6 +17,7 @@
 
   export let scopeId = '';
   export let executableTargets: Resource[] = [];
+  let applicationTargets: Application[] = [];
   export let personas: PersonaCatalogItem[] = [];
   export let scopeName: (id: string) => string;
   export let onNotice: (message: string) => void;
@@ -28,6 +30,7 @@
   let cron = '0 * * * *';
   let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   let targetIds: string[] = [];
+  let targetApplicationIds: string[] = [];
   let personaId = '';
   let targetLabels = '{}';
   let timeoutSeconds = 120;
@@ -37,11 +40,13 @@
   let maxTokens = 20000;
   let busy = false;
   let loadedScopeId = '';
-  $: personaOptions = personas.filter((item) => item.status === 'active').map((profile) => ({
-    value: profile.id,
-    label: profile.name,
-    description: scopeName(profile.scope_id)
-  }));
+  $: personaOptions = personas
+    .filter((item) => item.status === 'active')
+    .map((profile) => ({
+      value: profile.id,
+      label: profile.name,
+      description: scopeName(profile.scope_id)
+    }));
 
   $: if (scopeId && scopeId !== loadedScopeId) {
     loadedScopeId = scopeId;
@@ -58,15 +63,18 @@
 
   async function loadInspection(targetScopeId = scopeId) {
     try {
-      const [nextPolicies, nextRuns, nextFindings] = await Promise.all([
-        api.inspectionPolicies(targetScopeId),
-        api.inspectionRuns(targetScopeId),
-        api.inspectionFindings(targetScopeId)
-      ]);
+      const [nextPolicies, nextRuns, nextFindings, nextApplications] =
+        await Promise.all([
+          api.inspectionPolicies(targetScopeId),
+          api.inspectionRuns(targetScopeId),
+          api.inspectionFindings(targetScopeId),
+          api.inspectionApplications(targetScopeId)
+        ]);
       if (targetScopeId !== scopeId) return;
       policies = nextPolicies;
       runs = nextRuns;
       findings = nextFindings;
+      applicationTargets = nextApplications;
     } catch (error) {
       if (targetScopeId === scopeId) {
         onError(describeError(error, '巡检数据加载失败'));
@@ -118,6 +126,7 @@
         cron,
         timezone,
         target_resource_ids: targetIds,
+        target_application_ids: targetApplicationIds,
         target_labels: JSON.parse(targetLabels),
         persona_id: personaId || undefined,
         timeout_seconds: timeoutSeconds,
@@ -148,16 +157,67 @@
     </div>
     <form class="stack-form" on:submit|preventDefault={createPolicy}>
       <div class="form-grid">
-        <FormField label="名称" required><TextInput bind:value={policyName} required maxlength={200} /></FormField>
-        <FormField label="Cron" required><TextInput bind:value={cron} required /></FormField>
-        <FormField label="时区" required><TextInput bind:value={timezone} required /></FormField>
-        <FormField label="超时（秒）"><TextInput type="number" min="1" max="3600" bind:value={timeoutSeconds} /></FormField>
-        <FormField label="重试次数"><TextInput type="number" min="0" max="10" bind:value={retries} /></FormField>
-        <FormField label="目标并发"><TextInput type="number" min="1" max="64" bind:value={maxConcurrent} /></FormField>
-        <FormField label="Tool 预算"><TextInput type="number" min="1" max="100" bind:value={maxToolCalls} /></FormField>
-        <FormField label="Token 预算"><TextInput type="number" min="1" max="200000" bind:value={maxTokens} /></FormField>
+        <FormField label="名称" required
+          ><TextInput
+            bind:value={policyName}
+            required
+            maxlength={200}
+          /></FormField
+        >
+        <FormField label="Cron" required
+          ><TextInput bind:value={cron} required /></FormField
+        >
+        <FormField label="时区" required
+          ><TextInput bind:value={timezone} required /></FormField
+        >
+        <FormField label="超时（秒）"
+          ><TextInput
+            type="number"
+            min="1"
+            max="3600"
+            bind:value={timeoutSeconds}
+          /></FormField
+        >
+        <FormField label="重试次数"
+          ><TextInput
+            type="number"
+            min="0"
+            max="10"
+            bind:value={retries}
+          /></FormField
+        >
+        <FormField label="目标并发"
+          ><TextInput
+            type="number"
+            min="1"
+            max="64"
+            bind:value={maxConcurrent}
+          /></FormField
+        >
+        <FormField label="Tool 预算"
+          ><TextInput
+            type="number"
+            min="1"
+            max="100"
+            bind:value={maxToolCalls}
+          /></FormField
+        >
+        <FormField label="Token 预算"
+          ><TextInput
+            type="number"
+            min="1"
+            max="200000"
+            bind:value={maxTokens}
+          /></FormField
+        >
       </div>
-      <FormField label="标签选择器（JSON 对象）"><TextArea rows={3} bind:value={targetLabels} ariaLabel="标签选择器（JSON 对象）" /></FormField>
+      <FormField label="标签选择器（JSON 对象）"
+        ><TextArea
+          rows={3}
+          bind:value={targetLabels}
+          ariaLabel="标签选择器（JSON 对象）"
+        /></FormField
+      >
       <fieldset>
         <legend>目标资源</legend>
         <div class="check-grid">
@@ -171,13 +231,40 @@
             >{/each}
         </div>
       </fieldset>
-      <FormField label="解释 Persona（可选）" asLabel={false}><DropdownSelect bind:value={personaId} options={personaOptions} placeholder="使用内置巡检解释 Persona" ariaLabel="解释 Persona" /></FormField>
+      <fieldset>
+        <legend>目标应用</legend>
+        <div class="check-grid">
+          {#each applicationTargets as target}<label class="check-row">
+              <input
+                type="checkbox"
+                checked={targetApplicationIds.includes(target.id)}
+                on:change={() =>
+                  (targetApplicationIds = toggleSelection(
+                    targetApplicationIds,
+                    target.id
+                  ))}
+              />{target.name} · {target.runtime_kind} · {target.instances
+                .length} 个实例
+            </label>{:else}<p class="muted">
+              当前范围没有可巡检的应用。
+            </p>{/each}
+        </div>
+      </fieldset>
+      <FormField label="解释 Persona（可选）" asLabel={false}
+        ><DropdownSelect
+          bind:value={personaId}
+          options={personaOptions}
+          placeholder="使用内置巡检解释 Persona"
+          ariaLabel="解释 Persona"
+        /></FormField
+      >
       <button
         class="primary"
         disabled={busy ||
           !policyName ||
-          (targetIds.length === 0 && targetLabels.trim() === '{}')}
-        >新增策略</button
+          (targetIds.length === 0 &&
+            targetApplicationIds.length === 0 &&
+            targetLabels.trim() === '{}')}>新增策略</button
       >
     </form>
   </section>
@@ -195,7 +282,7 @@
             <strong>{policy.name}</strong>
             <p>
               {policy.cron} · {policy.timezone} · {policy.target_resource_ids
-                .length} 个目标 · {policy.status}
+                .length + policy.target_application_ids.length} 个目标 · {policy.status}
             </p>
           </div>
           <div class="inline-actions">
@@ -213,7 +300,9 @@
                 )}>{policy.status === 'active' ? '停止' : '恢复'}</button
             >
           </div>
-        </article>{:else}<EmptyState className="empty-state">当前作用域还没有巡检策略。</EmptyState>{/each}
+        </article>{:else}<EmptyState className="empty-state"
+          >当前作用域还没有巡检策略。</EmptyState
+        >{/each}
     </div>
   </section>
   <section class="panel">
@@ -232,7 +321,9 @@
               {new Date(run.window_start).toLocaleString()} · LLM {run.llm_status}
             </p>
           </div>
-        </article>{:else}<EmptyState className="empty-state">尚无运行记录。</EmptyState>{/each}
+        </article>{:else}<EmptyState className="empty-state"
+          >尚无运行记录。</EmptyState
+        >{/each}
     </div>
   </section>
   <section class="panel wide-panel">
@@ -249,7 +340,9 @@
             <strong>{finding.severity} · {finding.rule}</strong>
             <p>{finding.message || '无补充说明'} · {finding.status}</p>
           </div>
-        </article>{:else}<EmptyState className="empty-state">没有已记录的异常。</EmptyState>{/each}
+        </article>{:else}<EmptyState className="empty-state"
+          >没有已记录的异常。</EmptyState
+        >{/each}
     </div>
   </section>
 </section>

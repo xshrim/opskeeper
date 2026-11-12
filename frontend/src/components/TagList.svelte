@@ -21,9 +21,12 @@
   let visibleCount = tags.length;
   let resizeObserver: ResizeObserver | undefined;
 
-  $: maxVisibleCount = maxItems > 0 ? Math.min(maxItems, tags.length) : tags.length;
+  $: maxVisibleCount =
+    maxItems > 0 ? Math.min(maxItems, tags.length) : tags.length;
   $: if (!fit) visibleCount = maxVisibleCount;
-  $: displayCount = fit ? Math.min(visibleCount, maxVisibleCount) : maxVisibleCount;
+  $: displayCount = fit
+    ? Math.min(visibleCount, maxVisibleCount)
+    : maxVisibleCount;
 
   function recalculateVisibleCount() {
     if (!fit || !listElement || !measureElement || !tags.length) {
@@ -36,17 +39,24 @@
       measureElement.querySelectorAll<HTMLElement>('[data-tag-measure="tag"]')
     );
     const overflowWidths = new Map(
-      Array.from(measureElement.querySelectorAll<HTMLElement>('[data-overflow-count]')).map(
-        (element) => [Number(element.dataset.overflowCount), element.offsetWidth]
-      )
+      Array.from(
+        measureElement.querySelectorAll<HTMLElement>('[data-overflow-count]')
+      ).map((element) => [
+        Number(element.dataset.overflowCount),
+        element.offsetWidth
+      ])
     );
     const gap = Number.parseFloat(getComputedStyle(listElement).gap) || 0;
     let nextCount = maxVisibleCount;
     for (let count = maxVisibleCount; count >= 0; count -= 1) {
-      const tagWidth = measuredTags.slice(0, count).reduce((sum, element) => sum + element.offsetWidth, 0);
+      const tagWidth = measuredTags
+        .slice(0, count)
+        .reduce((sum, element) => sum + element.offsetWidth, 0);
       const tagGap = gap * Math.max(0, count - 1);
       const hiddenCount = tags.length - count;
-      const overflowWidth = hiddenCount ? (overflowWidths.get(hiddenCount) ?? 0) : 0;
+      const overflowWidth = hiddenCount
+        ? (overflowWidths.get(hiddenCount) ?? 0)
+        : 0;
       const overflowGap = hiddenCount && count ? gap : 0;
       if (tagWidth + tagGap + overflowWidth + overflowGap <= available) {
         nextCount = count;
@@ -87,7 +97,13 @@
       />
     {/each}
     {#if tags.length > displayCount}
-      <Tag value={`+${tags.length - displayCount}`} colorScheme={colorScheme} distinguishKeyOnly={false} textMode="full" overflow />
+      <Tag
+        value={`+${tags.length - displayCount}`}
+        {colorScheme}
+        distinguishKeyOnly={false}
+        textMode="full"
+        overflow
+      />
     {/if}
   {:else if emptyText}
     <span class="tag-list-empty">{emptyText}</span>
@@ -96,10 +112,27 @@
 {#if fit}
   <span class="tag-list-measure" aria-hidden="true" bind:this={measureElement}>
     {#each tags as tag}
-      <span data-tag-measure="tag"><Tag value={tag} {colorScheme} {distinguishKeyOnly} textMode="full" tooltipOnTruncate={false} {maxWidth} /></span>
+      <span data-tag-measure="tag"
+        ><Tag
+          value={tag}
+          {colorScheme}
+          {distinguishKeyOnly}
+          textMode="full"
+          tooltipOnTruncate={false}
+          {maxWidth}
+        /></span
+      >
     {/each}
     {#each Array(tags.length) as _, index}
-      <span data-overflow-count={index + 1}><Tag value={`+${index + 1}`} colorScheme={colorScheme} distinguishKeyOnly={false} textMode="full" overflow /></span>
+      <span data-overflow-count={index + 1}
+        ><Tag
+          value={`+${index + 1}`}
+          {colorScheme}
+          distinguishKeyOnly={false}
+          textMode="full"
+          overflow
+        /></span
+      >
     {/each}
   </span>
 {/if}

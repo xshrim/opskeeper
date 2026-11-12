@@ -21,14 +21,20 @@ export function resourceAddStepTitle(step: number, kind: string, subtype = '') {
   if (kind === 'MinIO')
     return ['MinIO 配置', '总结核验'][step - 2] ?? 'MinIO 配置';
   if (kind === 'Repository')
-    return [
-      subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置',
-      '仓库预览',
-      '总结核验'
-    ][step - 2] ?? (subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置');
+    return (
+      [
+        subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置',
+        '仓库预览',
+        '总结核验'
+      ][step - 2] ?? (subtype === 'Bundle' ? 'Bundle 上传' : 'Git 配置')
+    );
   return '配置资源';
 }
-export function resourceAddStepDescription(step: number, kind: string, subtype = '') {
+export function resourceAddStepDescription(
+  step: number,
+  kind: string,
+  subtype = ''
+) {
   if (step === 1) return '配置资源类型、名称、归属和标签。';
   if (kind === 'MCPServer')
     return step === 2
@@ -55,15 +61,25 @@ export function resourceAddStepDescription(step: number, kind: string, subtype =
         ? '预览仓库目录，确认应用源码所在范围。'
         : '确认代码仓库配置。';
   if (kind === 'PostgreSQL')
-    return step === 2 ? '配置 PostgreSQL 数据库连接方式和凭据。' : '确认配置并核验 PostgreSQL 连接。';
+    return step === 2
+      ? '配置 PostgreSQL 数据库连接方式和凭据。'
+      : '确认配置并核验 PostgreSQL 连接。';
   if (kind === 'Oracle')
-    return step === 2 ? '配置 Oracle 数据库连接方式和凭据。' : '确认配置并核验 Oracle 连接。';
+    return step === 2
+      ? '配置 Oracle 数据库连接方式和凭据。'
+      : '确认配置并核验 Oracle 连接。';
   if (kind === 'OceanBase')
-    return step === 2 ? '配置 OceanBase MySQL 或 Oracle 模式的连接方式和凭据。' : '确认配置并核验 OceanBase 连接。';
+    return step === 2
+      ? '配置 OceanBase MySQL 或 Oracle 模式的连接方式和凭据。'
+      : '确认配置并核验 OceanBase 连接。';
   if (kind === 'RabbitMQ')
-    return step === 2 ? '配置 RabbitMQ Management API 连接方式和凭据。' : '确认配置并核验 RabbitMQ 连接。';
+    return step === 2
+      ? '配置 RabbitMQ Management API 连接方式和凭据。'
+      : '确认配置并核验 RabbitMQ 连接。';
   if (kind === 'MinIO')
-    return step === 2 ? '配置 MinIO S3 API 连接方式和凭据。' : '确认配置并核验 MinIO 连接。';
+    return step === 2
+      ? '配置 MinIO S3 API 连接方式和凭据。'
+      : '确认配置并核验 MinIO 连接。';
   return '配置资源连接参数并确认设置。';
 }
 
@@ -409,8 +425,10 @@ export function databaseCredentialComplete(
 ) {
   const hasUsername = Boolean(username.trim());
   const hasPassword = Boolean(password);
-  return (editing && credentialConfigured && !hasUsername && !hasPassword) ||
-    (hasUsername && hasPassword);
+  return (
+    (editing && credentialConfigured && !hasUsername && !hasPassword) ||
+    (hasUsername && hasPassword)
+  );
 }
 
 export function normalizeResourceFieldValue(

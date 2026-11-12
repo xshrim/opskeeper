@@ -751,7 +751,7 @@ func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID st
 			continue
 		}
 		resources = append(resources, DiagnosticResource{
-			ID: instance.TargetResourceID, Name: resource.Name, Kind: resource.Kind,
+			ID: instance.TargetResourceID, Type: resource.DisplayName, Name: resource.Name, Kind: resource.Kind,
 			Relation: "runtime", RuntimeKind: instance.RuntimeKind, Status: instance.Status,
 			Binding: sanitizeInstanceSelector(instance.RuntimeKind, instance.Selector),
 		})
@@ -762,7 +762,7 @@ func (s *store) DiagnosticContext(ctx context.Context, scopeID, applicationID st
 			continue
 		}
 		resources = append(resources, DiagnosticResource{
-			ID: dependency.TargetResourceID, Name: resource.Name, Kind: resource.Kind,
+			ID: dependency.TargetResourceID, Type: resource.DisplayName, Name: resource.Name, Kind: resource.Kind,
 			Relation: "association", Status: dependency.Status, Binding: sanitizeBinding(dependency.DependencyKind, dependency.Binding),
 		})
 	}
@@ -792,7 +792,7 @@ func diagnosticInstances(items []Instance, allowed map[string]diagnosticResource
 			continue
 		}
 		result = append(result, DiagnosticInstance{
-			ID: item.ID, Name: item.Name, RuntimeKind: item.RuntimeKind, TargetResourceID: item.TargetResourceID,
+			ID: item.ID, Type: allowed[item.TargetResourceID].DisplayName, Name: item.Name, RuntimeKind: item.RuntimeKind, TargetResourceID: item.TargetResourceID,
 			TargetResourceName: item.TargetResourceName, TargetResourceKind: item.TargetResourceKind,
 			Selector: sanitizeInstanceSelector(item.RuntimeKind, item.Selector), Status: item.Status,
 		})
@@ -807,7 +807,7 @@ func diagnosticDependencies(items []Dependency, allowed map[string]diagnosticRes
 			continue
 		}
 		result = append(result, DiagnosticDependency{
-			ID: item.ID, TargetResourceID: item.TargetResourceID, TargetResourceName: item.TargetResourceName,
+			ID: item.ID, Type: allowed[item.TargetResourceID].DisplayName, TargetResourceID: item.TargetResourceID, TargetResourceName: item.TargetResourceName,
 			TargetResourceKind: item.TargetResourceKind, DependencyKind: item.DependencyKind,
 			Binding: sanitizeBinding(item.DependencyKind, item.Binding), Required: item.Required, Status: item.Status,
 		})
@@ -816,8 +816,9 @@ func diagnosticDependencies(items []Dependency, allowed map[string]diagnosticRes
 }
 
 type diagnosticResourceMetadata struct {
-	Name string
-	Kind string
+	Name        string
+	Kind        string
+	DisplayName string
 }
 
 func (s *store) diagnosticResources(ctx context.Context, scopeID string, item Application) (map[string]diagnosticResourceMetadata, error) {
@@ -840,7 +841,7 @@ func (s *store) diagnosticResources(ctx context.Context, scopeID string, item Ap
 		return result, nil
 	}
 	query, args := appendResourceScopeVisibility(
-		`SELECT id::text,name,kind FROM resources WHERE id=ANY($1::uuid[]) AND resource_scope_contains(scope_id,$2::uuid) AND deleted_at IS NULL`,
+		`SELECT r.id::text,r.name,r.kind,COALESCE(NULLIF(rs.display_name,''),r.kind) FROM resources r LEFT JOIN resource_schemas rs ON rs.kind=r.kind AND rs.version=r.schema_version WHERE r.id=ANY($1::uuid[]) AND resource_scope_contains(r.scope_id,$2::uuid) AND r.deleted_at IS NULL`,
 		[]any{ids, scopeID}, ctx, "resources",
 	)
 	rows, err := s.pool.Query(ctx, query, args...)
@@ -851,7 +852,7 @@ func (s *store) diagnosticResources(ctx context.Context, scopeID string, item Ap
 	for rows.Next() {
 		var id string
 		var metadata diagnosticResourceMetadata
-		if err := rows.Scan(&id, &metadata.Name, &metadata.Kind); err != nil {
+		if err := rows.Scan(&id, &metadata.Name, &metadata.Kind, &metadata.DisplayName); err != nil {
 			return nil, fmt.Errorf("scan diagnostic application resource: %w", err)
 		}
 		result[id] = metadata
@@ -897,6 +898,7 @@ func (s *store) listDiagnosticApplicationReferences(ctx context.Context, applica
 		if err := rows.Scan(&item.ID, &item.ProjectID, &item.ProjectName, &item.ProjectCode, &item.Name, &item.Code, &item.Description, &item.RuntimeKind, &item.Status, &item.RelationKind, &item.LinkStatus); err != nil {
 			return nil, fmt.Errorf("scan diagnostic application reference: %w", err)
 		}
+		item.Type = "应用"
 		items = append(items, item)
 	}
 	return items, rows.Err()

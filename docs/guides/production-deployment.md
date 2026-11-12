@@ -1,6 +1,6 @@
 # 生产环境部署
 
-生产部署使用 `deploy/helm/opskeeper` Chart。API 内嵌 Web 制品；Worker 和 Scheduler 使用同一镜像；Migration 作为 Helm `pre-install,pre-upgrade` Hook 先行执行，失败会阻断发布。
+生产部署使用 `deploy/helm/opskeeper` Chart。API 内嵌 Web 制品，API、Worker 和 Scheduler 使用三个独立镜像；API 在启动阶段迁移数据库。
 
 ## 1. 前置条件
 
@@ -8,20 +8,20 @@
 - Helm 3.18 或更高版本。
 - 以 digest 标识的 OpsKeeper 镜像。
 - PostgreSQL 16（由数据库管理员预装 `pgvector` 扩展）和可接收 OTLP/HTTP 的 Collector。缓存与 Repository Bundle 存储默认复用 PostgreSQL。平台自身中间件选择必须遵循 [PostgreSQL First 规约](../standards/postgresql-first.md)。业务迁移角色不需要、也不得拥有创建实例级扩展的权限。
-- 应用与迁移凭据已分离，且 Ingress 直连地址范围已确认。
+- API 运行凭据具备业务 schema 的迁移权限，且 Ingress 直连地址范围已确认。
 
 ## 2. Secret 契约
 
-Chart 不生成 Secret。先从受控密钥系统创建两个 Secret：
+Chart 不生成 Secret。先从受控密钥系统创建一个运行时 Secret：
 
 ```bash
 kubectl -n opskeeper create secret generic opskeeper-runtime \
-  --from-literal=OPSK_DATABASE_URL='<application-role-url>' \
+  --from-literal=OPSK_DB_HOST='<database-host:5432>' \
+  --from-literal=OPSK_DB_NAME='opskeeper' \
+  --from-literal=OPSK_DB_USER='<application-user>' \
+  --from-literal=OPSK_DB_PASSWORD='<application-password>' \
+  --from-literal=OPSK_DB_SSLMODE='verify-full' \
   --from-literal=OPSK_CREDENTIAL_KEY='<32-byte-or-base64-key>'
-
-kubectl -n opskeeper create secret generic opskeeper-migration \
-  --from-literal=OPSK_DATABASE_URL='<migration-role-url>' \
-  --from-literal=OPSK_CREDENTIAL_KEY='<same-active-key>'
 ```
 
 不要将 Secret 值写入 `values.yaml`、Helm 参数、终端历史或 CI 日志。上述命令中的占位符只说明必需键。
@@ -36,12 +36,11 @@ image:
   digest: sha256:<digest>
 basePath: /opskeeper
 existingSecret: opskeeper-runtime
-migrationSecret: opskeeper-migration
 trustedProxies: 10.42.0.0/16
 otelExporterEndpoint: https://otel-collector.observability.svc:4318
 cacheBackend: postgres
-repositoryStorageBackend: postgres
-repositoryS3Provider: minio
+storageBackend: postgres
+storageS3Provider: minio
 ingress:
   enabled: true
   className: nginx
@@ -66,7 +65,7 @@ kubectl -n opskeeper get pods,jobs,networkpolicy,pdb
 curl --fail --silent https://ops.example.com/opskeeper/health/ready
 ```
 
-发布必须检查 Migration Job 日志、API readiness、Worker/Scheduler 错误率和 OTLP 指标。发布后再执行登录、资源读取、诊断和巡检冒烟流程。
+发布必须检查 API 迁移日志和 readiness、Worker/Scheduler 错误率及 OTLP 指标。发布后再执行登录、资源读取、诊断和巡检冒烟流程。
 
 ## 5. 扩容边界
 

@@ -30,6 +30,8 @@ export const diagnosisEventTypes = [
   'tool.started',
   'tool.completed',
   'tool.failed',
+  'investigation.updated',
+  'investigation.progress',
   'evidence.collected',
   'report.ready',
   'diagnosis.failed',
@@ -123,9 +125,12 @@ export function mergeDiagnosisSnapshot(
   const events = [...mergedByID.values()].sort(
     (left, right) => left.id - right.id
   );
-  const mergedMessages = new Map(snapshot.messages.map((message) => [message.id, message]));
+  const mergedMessages = new Map(
+    snapshot.messages.map((message) => [message.id, message])
+  );
   if (localSnapshot?.session.id === snapshot.session.id) {
-    for (const message of localSnapshot.messages) mergedMessages.set(message.id, message);
+    for (const message of localSnapshot.messages)
+      mergedMessages.set(message.id, message);
   }
   return {
     snapshot: {
@@ -232,6 +237,8 @@ export function reduceDiagnosisStreamEvent(
     eventType === 'tool.started' ||
     eventType === 'tool.completed' ||
     eventType === 'tool.failed' ||
+    eventType === 'investigation.updated' ||
+    eventType === 'investigation.progress' ||
     eventType === 'phase.changed'
   ) {
     if (eventType === 'execution.started') {

@@ -16,15 +16,63 @@ import (
 
 type Orchestrator struct {
 	*Service
-	engine  engine.Engine
-	timeout time.Duration
+	engine              engine.Engine
+	timeout             time.Duration
+	leaseOwner          string
+	workerCtx           context.Context
+	maxSubagents        int
+	subagentConcurrency int
+}
+
+func (o *Orchestrator) WithSubagentLimits(maxTasks, concurrency int) *Orchestrator {
+	if maxTasks > 0 && maxTasks <= 128 {
+		o.maxSubagents = maxTasks
+	}
+	if concurrency > 0 && concurrency <= 16 {
+		o.subagentConcurrency = concurrency
+	}
+	return o
 }
 
 func NewOrchestrator(service *Service, engine engine.Engine, timeout time.Duration) *Orchestrator {
 	if timeout <= 0 {
 		timeout = 30 * time.Minute
 	}
-	return &Orchestrator{Service: service, engine: engine, timeout: timeout}
+	return &Orchestrator{Service: service, engine: engine, timeout: timeout, leaseOwner: fmt.Sprintf("api-%d", time.Now().UnixNano())}
+}
+
+// StartRecoveryWorker polls durable queued and lease-expired sessions. Every
+// API replica may run this loop; PostgreSQL session leases select one owner.
+func (o *Orchestrator) StartRecoveryWorker(ctx context.Context) {
+	o.workerCtx = ctx
+	go o.recoveryLoop(ctx)
+}
+
+func (o *Orchestrator) recoveryLoop(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		o.recoverPending(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (o *Orchestrator) recoverPending(ctx context.Context) {
+	store, ok := o.store.(RunLeaseStore)
+	if !ok || o.engine == nil {
+		return
+	}
+	ids, err := store.RecoverableRuns(ctx, 100)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		o.launch(ctx, id)
+	}
 }
 
 func (o *Orchestrator) Start(ctx context.Context, input StartInput) (Session, error) {
@@ -64,12 +112,28 @@ func (o *Orchestrator) Cancel(ctx context.Context, sessionID string) error {
 	return o.engine.Cancel(ctx, diagnosisExecutionID(session.ID))
 }
 
+func (o *Orchestrator) hasRepositoryTarget(ctx context.Context, targets []Target) bool {
+	if o.resources == nil {
+		return false
+	}
+	for _, target := range targets {
+		item, err := o.resources.Get(ctx, target.ResourceID)
+		if err == nil && resourceVisible(ctx, item.ScopeID, item.ID, true) && strings.EqualFold(strings.TrimSpace(item.Kind), "Repository") {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *Orchestrator) launch(parent context.Context, sessionID string) {
 	if o.engine == nil {
 		return
 	}
+	if o.workerCtx != nil {
+		parent = o.workerCtx
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), o.timeout)
+		ctx, cancel := context.WithTimeout(parent, o.timeout)
 		defer cancel()
 		o.run(ctx, sessionID)
 	}()
@@ -103,12 +167,49 @@ func (o *Orchestrator) launchPending(parent context.Context, sessionID, complete
 }
 
 func (o *Orchestrator) run(ctx context.Context, sessionID string) {
-	session, claimed, err := o.store.ClaimRun(ctx, sessionID)
+	var session Session
+	var claimed bool
+	var err error
+	leaseStore, leased := o.store.(RunLeaseStore)
+	if leased {
+		session, claimed, err = leaseStore.ClaimRunLease(ctx, sessionID, o.leaseOwner, 60*time.Second)
+	} else {
+		session, claimed, err = o.store.ClaimRun(ctx, sessionID)
+	}
 	if err != nil {
 		return
 	}
 	if !claimed {
 		return
+	}
+	if leased {
+		ctx = withRunLease(ctx, o.leaseOwner)
+		runCtx, runCancel := context.WithCancel(ctx)
+		ctx = runCtx
+		leaseStop := make(chan struct{})
+		leaseDone := make(chan struct{})
+		go func() {
+			defer close(leaseDone)
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-leaseStop:
+					return
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					heartbeatCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+					ok, heartbeatErr := leaseStore.HeartbeatRun(heartbeatCtx, sessionID, o.leaseOwner, 60*time.Second)
+					cancel()
+					if heartbeatErr != nil || !ok {
+						runCancel()
+						return
+					}
+				}
+			}
+		}()
+		defer func() { close(leaseStop); <-leaseDone; runCancel() }()
 	}
 	// Timeline events are best-effort; failure must not stop the diagnosis run.
 	_ = o.appendEvent(ctx, session.ID, CreateEventInput{Type: "phase.changed", Payload: map[string]any{"phase": StatusPlanning}})
@@ -138,7 +239,8 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		o.fail(session.ID, "message", errors.New("diagnosis question is unavailable"))
 		return
 	}
-	run, err := o.store.CreateRun(ctx, session.ID, messages[len(messages)-1].ID)
+	session.Collaboration = collaborationOrDefault(session.Collaboration)
+	run, err := o.store.CreateRun(ctx, session.ID, messages[len(messages)-1].ID, session.Collaboration)
 	if err != nil {
 		o.fail(session.ID, "run", err)
 		return
@@ -186,13 +288,13 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 	}
 	hasApplicationContext := session.ApplicationID != "" || len(session.ApplicationIDs) > 0 || len(session.ApplicationContext) > 0 && string(session.ApplicationContext) != "{}" && string(session.ApplicationContext) != "null"
 	if hasApplicationContext {
-		instruction += " 当前诊断绑定了已选择的应用；请按内置 Skill：应用诊断理解 application_context、application.instances、resource_dependencies、dependencies/dependents 和 application_resource_focus，并只使用实际授权的工具。"
+		instruction += " 当前选择了应用；按应用诊断规则理解其 application_context 与关联关系，并使用已授权工具。"
 	}
 	scopeTools := o.diagnosticScopeTools(ctx, session.ScopeID)
 	if len(scopeTools) > 0 {
-		instruction += " 当前已选对象及其关联信息会直接提供在上下文中；不要为识别已选对象而调用范围工具。只有用户询问当前上下文之外的团队、项目、应用清单或关系，或现有上下文不足以回答时，才使用 diagnosis_scope_teams、diagnosis_scope_projects、diagnosis_scope_applications 和 diagnosis_application_context 按需查询。"
+		instruction += " 范围查询工具仅用于回答当前上下文之外的组织、项目、应用清单或关系问题；优先使用已有上下文和对象对应的资源工具。"
 	}
-	instruction = buildResponseInstructionFor(instruction, hasApplicationContext || len(scopeTools) > 0)
+	instruction = buildResponseInstructionFor(instruction, hasApplicationContext, o.hasRepositoryTarget(ctx, targets))
 	var assistantMu sync.Mutex
 	assistantPersisted := false
 	var assistantPersistErr error
@@ -247,6 +349,13 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		}
 	}
 	latestMessage := messages[len(messages)-1]
+	investigationTools, investigationInstruction, investigationErr := o.investigationTools(ctx, session, run, latestMessage.PersonaID)
+	if investigationErr != nil {
+		o.fail(session.ID, "investigation_context", investigationErr)
+		return
+	}
+	scopeTools = append(scopeTools, investigationTools...)
+	instruction += investigationInstruction
 	// IDs remain in Context for server-side resource resolution and authorization,
 	// but are deliberately absent from the model-facing input. Exposing them
 	// invites the model to mistake database identities for external locators.
@@ -358,8 +467,14 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 			}
 		}
 		return o.appendEvent(context.Background(), session.ID, CreateEventInput{Type: event.Type, Payload: event.Payload})
-	}, ObservationSink: func(observed engine.ToolObservation) { o.captureObservation(session.ID, run.ID, observed) }})
+	}, ObservationSink: func(observed engine.ToolObservation) { o.captureObservation(ctx, session.ID, run.ID, observed) }})
 	if err != nil {
+		if leased && o.workerCtx != nil && o.workerCtx.Err() != nil {
+			runStatus = "cancelled"
+			_ = leaseStore.ReleaseRunLease(context.Background(), session.ID, o.leaseOwner)
+			finishRun("cancelled")
+			return
+		}
 		// Preserve a useful partial answer before writing the terminal event. A
 		// timeout can interrupt the model between streamed deltas and its final
 		// completion marker.
@@ -490,7 +605,7 @@ func (o *Orchestrator) run(ctx context.Context, sessionID string) {
 		return
 	}
 	_ = o.appendEvent(ctx, session.ID, CreateEventInput{Type: "phase.changed", Payload: map[string]any{"phase": StatusAnalyzing}})
-	evidence, err := o.store.Evidence(ctx, session.ID)
+	evidence, err := o.store.EvidenceForRun(ctx, session.ID, run.ID)
 	if err != nil {
 		o.fail(session.ID, "evidence", err)
 		return
@@ -576,11 +691,11 @@ func terminalDiagnosisStatus(status Status) bool {
 	return status == StatusSucceeded || status == StatusFailed || status == StatusCancelled
 }
 
-func (o *Orchestrator) captureObservation(sessionID, runID string, observed engine.ToolObservation) {
+func (o *Orchestrator) captureObservation(ctx context.Context, sessionID, runID string, observed engine.ToolObservation) {
 	content := mustJSON(observed.Result.Output)
-	item, err := o.store.SaveEvidence(context.Background(), sessionID, CreateEvidenceInput{RunID: runID, TargetResourceID: observed.ResourceID, SourceResourceID: observed.ResourceID, Capability: observed.ToolName, CollectedAt: time.Now().UTC(), Summary: mustJSON(map[string]any{"tool": observed.ToolName, "iteration": observed.Iteration, "call_id": observed.CallID}), Content: content, Untrusted: observed.Result.Untrusted})
+	item, err := o.store.SaveEvidence(ctx, sessionID, CreateEvidenceInput{RunID: runID, TargetResourceID: observed.ResourceID, SourceResourceID: observed.ResourceID, Capability: observed.ToolName, CollectedAt: time.Now().UTC(), Summary: mustJSON(map[string]any{"tool": observed.ToolName, "iteration": observed.Iteration, "call_id": observed.CallID}), Content: content, Untrusted: observed.Result.Untrusted})
 	if err == nil {
-		_ = o.appendEvent(context.Background(), sessionID, CreateEventInput{Type: "evidence.collected", Payload: map[string]any{"evidence_id": item.ID, "source_resource_id": item.SourceResourceID, "capability": item.Capability, "untrusted": item.Untrusted}})
+		_ = o.appendEvent(ctx, sessionID, CreateEventInput{Type: "evidence.collected", Payload: map[string]any{"evidence_id": item.ID, "source_resource_id": item.SourceResourceID, "capability": item.Capability, "untrusted": item.Untrusted}})
 	}
 }
 
@@ -593,8 +708,12 @@ func (o *Orchestrator) fail(sessionID, code string, cause error) {
 			message = value
 		}
 	}
-	_, _ = o.store.Finish(context.Background(), sessionID, StatusFailed, code, message)
-	_ = o.appendEvent(context.Background(), sessionID, CreateEventInput{Type: "diagnosis.failed", Payload: map[string]any{"code": code, "message": message}})
+	ctx := context.Background()
+	if _, ok := o.store.(RunLeaseStore); ok {
+		ctx = withRunLease(ctx, o.leaseOwner)
+	}
+	_, _ = o.store.Finish(ctx, sessionID, StatusFailed, code, message)
+	_ = o.appendEvent(ctx, sessionID, CreateEventInput{Type: "diagnosis.failed", Payload: map[string]any{"code": code, "message": message}})
 }
 
 func (o *Orchestrator) cancel(sessionID, code string, cause error) {
@@ -613,8 +732,12 @@ func (o *Orchestrator) cancel(sessionID, code string, cause error) {
 			}
 		}
 	}
-	_, _ = o.store.Finish(context.Background(), sessionID, StatusCancelled, code, message)
-	_ = o.appendEvent(context.Background(), sessionID, CreateEventInput{Type: "diagnosis.cancelled", Payload: map[string]any{"code": code, "message": message}})
+	ctx := context.Background()
+	if _, ok := o.store.(RunLeaseStore); ok {
+		ctx = withRunLease(ctx, o.leaseOwner)
+	}
+	_, _ = o.store.Finish(ctx, sessionID, StatusCancelled, code, message)
+	_ = o.appendEvent(ctx, sessionID, CreateEventInput{Type: "diagnosis.cancelled", Payload: map[string]any{"code": code, "message": message}})
 }
 
 // appendEvent is the single event persistence path for an orchestration run.

@@ -63,12 +63,23 @@
     preservePosition = false
   ) {
     const maxWidth = Math.max(minWidth, window.innerWidth - viewportMargin * 2);
-    const maxHeight = Math.max(minHeight, window.innerHeight - viewportMargin * 2);
+    const maxHeight = Math.max(
+      minHeight,
+      window.innerHeight - viewportMargin * 2
+    );
     width = clamp(width, minWidth, maxWidth);
     height = clamp(height, minHeight, maxHeight);
     if (!preservePosition) {
-      left = clamp(left, viewportMargin, window.innerWidth - width - viewportMargin);
-      top = clamp(top, viewportMargin, window.innerHeight - height - viewportMargin);
+      left = clamp(
+        left,
+        viewportMargin,
+        window.innerWidth - width - viewportMargin
+      );
+      top = clamp(
+        top,
+        viewportMargin,
+        window.innerHeight - height - viewportMargin
+      );
     }
     dialogElement.style.left = `${left}px`;
     dialogElement.style.top = `${top}px`;
@@ -98,7 +109,15 @@
     }
     let width = currentRect.width;
     if (targetRect && stretchTarget) {
-      setGeometry(targetRect.left, targetRect.top, targetRect.width, targetRect.height, true, true, false);
+      setGeometry(
+        targetRect.left,
+        targetRect.top,
+        targetRect.width,
+        targetRect.height,
+        true,
+        true,
+        false
+      );
       positionInitialized = true;
       return;
     }
@@ -145,7 +164,13 @@
     const target = event.target as HTMLElement | null;
     if (!target || target.closest('.dialog-resize-handle')) return;
     const header = target.closest('.modal-dialog-header');
-    if (!header || target.closest('button, a, input, select, textarea, .message-banner, [data-dialog-no-drag]')) return;
+    if (
+      !header ||
+      target.closest(
+        'button, a, input, select, textarea, .message-banner, [data-dialog-no-drag]'
+      )
+    )
+      return;
     const rect = dialogElement.getBoundingClientRect();
     interaction = {
       kind: 'drag',
@@ -157,7 +182,10 @@
     event.preventDefault();
   }
 
-  function handleResizePointerDown(event: PointerEvent, edge: 'left' | 'right') {
+  function handleResizePointerDown(
+    event: PointerEvent,
+    edge: 'left' | 'right'
+  ) {
     const rect = dialogElement.getBoundingClientRect();
     userResized = true;
     interaction = { kind: 'resize', pointerId: event.pointerId, edge, rect };
@@ -178,7 +206,8 @@
       return;
     }
     const { rect, edge } = interaction;
-    const width = edge === 'left' ? rect.right - event.clientX : event.clientX - rect.left;
+    const width =
+      edge === 'left' ? rect.right - event.clientX : event.clientX - rect.left;
     const left = edge === 'left' ? rect.right - width : rect.left;
     const height = event.clientY - rect.top;
     setGeometry(left, rect.top, width, height);
@@ -201,9 +230,12 @@
     if (event.currentTarget === dialogElement) {
       const rect = dialogElement.getBoundingClientRect();
       if (
-        event.clientX >= rect.left && event.clientX <= rect.right &&
-        event.clientY >= rect.top && event.clientY <= rect.bottom
-      ) return;
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom
+      )
+        return;
     }
     onBackdrop();
   }
@@ -222,7 +254,9 @@
 
     const frame = requestAnimationFrame(() => positionDialog());
     const resizeObserver = autoHeight
-      ? new ResizeObserver(() => requestAnimationFrame(() => positionDialog(true)))
+      ? new ResizeObserver(() =>
+          requestAnimationFrame(() => positionDialog(true))
+        )
       : null;
     resizeObserver?.observe(dialogElement);
     const handleWindowResize = () => positionDialog(userResized);
@@ -241,9 +275,18 @@
   });
 </script>
 
-<div class={`dialog-backdrop ${className}`.trim()} role="presentation" on:click={handleBackdrop}>
+<div
+  class={`dialog-backdrop ${className}`.trim()}
+  role="presentation"
+  on:click={handleBackdrop}
+>
   {#if maskTarget && targetMaskStyle}
-    <div class="dialog-target-mask" style={targetMaskStyle} aria-hidden="true" on:click={handleBackdrop}></div>
+    <div
+      class="dialog-target-mask"
+      style={targetMaskStyle}
+      aria-hidden="true"
+      on:click={handleBackdrop}
+    ></div>
   {/if}
   <dialog
     bind:this={dialogElement}
@@ -289,8 +332,13 @@
     cursor: nwse-resize;
     touch-action: none;
   }
-  .dialog-resize-handle-left { left: 0; cursor: nesw-resize; }
-  .dialog-resize-handle-right { right: 0; }
+  .dialog-resize-handle-left {
+    left: 0;
+    cursor: nesw-resize;
+  }
+  .dialog-resize-handle-right {
+    right: 0;
+  }
   .dialog-resize-handle::after {
     position: absolute;
     right: 4px;

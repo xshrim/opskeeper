@@ -20,9 +20,17 @@
   });
 
   $: detail = (message || '连接测试失败').replace(/\s+/g, ' ').trim();
-  $: latency = latencyMs >= 1000 ? `${(latencyMs / 1000).toFixed(1)}s` : `${latencyMs}ms`;
-  $: label = busy ? '测试中' : status === 'succeeded' ? `正常·${latency}` : status === 'failed' ? `异常·${detail}` : '未测试';
-  $: tooltip = status === 'failed' ? `异常·${detail}` : tooltipText || '点击进行连接测试';
+  $: latency =
+    latencyMs >= 1000 ? `${(latencyMs / 1000).toFixed(1)}s` : `${latencyMs}ms`;
+  $: label = busy
+    ? '测试中'
+    : status === 'succeeded'
+      ? `正常·${latency}`
+      : status === 'failed'
+        ? `异常·${detail}`
+        : '未测试';
+  $: tooltip =
+    status === 'failed' ? `异常·${detail}` : tooltipText || '点击进行连接测试';
   $: checkedTime = checkedAt ? relativeTime(checkedAt, now) : '-';
 
   function activate() {
@@ -39,7 +47,8 @@
     const week = 7 * day;
     const month = 30 * day;
     const year = 365 * day;
-    const format = (amount: number, unit: string) => `${amount.toFixed(1).padStart(4, '0')} ${unit}`;
+    const format = (amount: number, unit: string) =>
+      `${amount.toFixed(1).padStart(4, '0')} ${unit}`;
     if (elapsed < minute) return format(elapsed / 1000, '秒');
     if (elapsed < hour) return format(elapsed / minute, '分');
     if (elapsed < day) return format(elapsed / hour, '时');
@@ -60,10 +69,21 @@
   aria-disabled={disabled || busy}
   aria-label={label}
   data-tooltip={showTooltip ? (busy ? '连接测试中' : tooltip) : undefined}
-  on:click={(event) => { event.stopPropagation(); activate(); }}
-  on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); activate(); } }}
+  on:click={(event) => {
+    event.stopPropagation();
+    activate();
+  }}
+  on:keydown={(event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      event.stopPropagation();
+      activate();
+    }
+  }}
 >
-  <span class="connection-test-label" class:scroll={status === 'failed'}>{label}</span>
+  <span class="connection-test-label" class:scroll={status === 'failed'}
+    >{label}</span
+  >
   {#if showTime}<small>{checkedTime}</small>{/if}
 </span>
 
@@ -99,7 +119,10 @@
     border: 1px solid transparent;
     border-radius: 8px;
   }
-  .connection-test-label.scroll { width: max-content; animation: connection-test-scroll 7s linear infinite alternate; }
+  .connection-test-label.scroll {
+    width: max-content;
+    animation: connection-test-scroll 7s linear infinite alternate;
+  }
   .connection-test small {
     display: block;
     overflow: hidden;
@@ -110,9 +133,25 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .connection-test.succeeded { color: var(--theme-success); }
-  .connection-test.failed { color: var(--theme-danger); }
-  .connection-test.testing { color: var(--theme-accent); cursor: progress; }
+  .connection-test.succeeded {
+    color: var(--theme-success);
+  }
+  .connection-test.failed {
+    color: var(--theme-danger);
+  }
+  .connection-test.testing {
+    color: var(--theme-teal);
+    cursor: progress;
+  }
+  .connection-test.testing .connection-test-label {
+    background: var(--theme-bg-accent-soft);
+    border-color: color-mix(
+      in srgb,
+      var(--theme-teal) 35%,
+      var(--theme-border)
+    );
+    font-weight: 700;
+  }
   .connection-test:hover:not([aria-disabled='true']) .connection-test-label,
   .connection-test:focus-visible .connection-test-label {
     border-color: var(--theme-border-focus);
@@ -120,10 +159,19 @@
   .connection-test:focus-visible {
     outline: none;
   }
-  .connection-test:focus-visible { box-shadow: var(--theme-focus); }
-  .connection-test[aria-disabled='true'] { cursor: not-allowed; opacity: .72; }
+  .connection-test:focus-visible {
+    box-shadow: var(--theme-focus);
+  }
+  .connection-test[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
   @keyframes connection-test-scroll {
-    from { transform: translateX(0); }
-    to { transform: translateX(calc(70px - 100%)); }
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(70px - 100%));
+    }
   }
 </style>

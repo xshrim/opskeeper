@@ -126,7 +126,7 @@ func (r ResourceContextResolver) Resolve(ctx context.Context, request ContextReq
 		if request.RestrictKinds {
 			matches := false
 			for _, kind := range request.AllowedKinds {
-				if personaDomainMatches(kind, resource.Kind) {
+				if PersonaDomainMatches(kind, resource.Kind) {
 					matches = true
 					break
 				}

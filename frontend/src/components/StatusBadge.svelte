@@ -11,7 +11,17 @@
 </script>
 
 {#if interactive}
-  <button class={`${className}${tone ? ` ${tone}` : ''}`} data-tooltip={tooltip || undefined} {type} {disabled} aria-label={ariaLabel || undefined} on:click={onClick}><slot>{label}</slot></button>
+  <button
+    class={`${className}${tone ? ` ${tone}` : ''}`}
+    data-tooltip={tooltip || undefined}
+    {type}
+    {disabled}
+    aria-label={ariaLabel || undefined}
+    on:click={onClick}><slot>{label}</slot></button
+  >
 {:else}
-  <span class={`${className}${tone ? ` ${tone}` : ''}`} data-tooltip={tooltip || undefined}><slot>{label}</slot></span>
+  <span
+    class={`${className}${tone ? ` ${tone}` : ''}`}
+    data-tooltip={tooltip || undefined}><slot>{label}</slot></span
+  >
 {/if}

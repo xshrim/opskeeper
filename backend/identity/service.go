@@ -23,6 +23,7 @@ const (
 )
 
 type Store interface {
+	BootstrapRequired(context.Context) (bool, error)
 	BootstrapAdmin(context.Context, string, string, string, string, string) (User, error)
 	FindByIdentifier(context.Context, string, string) (User, string, error)
 	UpdatePasswordHash(context.Context, string, string, string) error
@@ -106,6 +107,10 @@ func (s *Service) BootstrapAdmin(ctx context.Context, input BootstrapInput) (Use
 		return User{}, err
 	}
 	return s.store.BootstrapAdmin(ctx, input.Username, input.Email, input.Phone, input.DisplayName, hash)
+}
+
+func (s *Service) BootstrapRequired(ctx context.Context) (bool, error) {
+	return s.store.BootstrapRequired(ctx)
 }
 
 func (s *Service) Login(ctx context.Context, identifier, password string, metadata SessionMetadata) (User, SessionTokens, error) {

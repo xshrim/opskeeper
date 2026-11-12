@@ -43,6 +43,8 @@ describe('diagnosis markdown rendering', () => {
 
   it('uses identical rendering for the same live and persisted source', () => {
     const source = '## 结论\n\n**关键证据**\n\n```sql\nSELECT 1;\n```';
-    expect(renderDiagnosisMarkdown(source)).toBe(renderDiagnosisMarkdown(source));
+    expect(renderDiagnosisMarkdown(source)).toBe(
+      renderDiagnosisMarkdown(source)
+    );
   });
 });

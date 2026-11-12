@@ -10,14 +10,20 @@ type DiagnosisSessionActions = {
     sessionID: string,
     resourceID: string
   ) => Promise<unknown>;
-  removeDiagnosisTarget: (sessionID: string, resourceID: string) => Promise<void>;
-  askDiagnosis: (sessionID: string, body: {
-    content: string;
-    skill_id?: string;
-    persona_id?: string;
-    links?: string[];
-    attachments?: DiagnosisAttachment[];
-  }) => Promise<DiagnosisMessage>;
+  removeDiagnosisTarget: (
+    sessionID: string,
+    resourceID: string
+  ) => Promise<void>;
+  askDiagnosis: (
+    sessionID: string,
+    body: {
+      content: string;
+      skill_id?: string;
+      persona_id?: string;
+      links?: string[];
+      attachments?: DiagnosisAttachment[];
+    }
+  ) => Promise<DiagnosisMessage>;
   deleteDiagnosis: (sessionID: string) => Promise<void>;
   deleteDiagnosisSessions: (sessionIDs: string[]) => Promise<unknown>;
   submit: <T>(
@@ -36,7 +42,12 @@ type DiagnosisSessionActions = {
     links?: string[];
     attachments?: DiagnosisAttachment[];
     scope_shared?: boolean;
+    collaboration?: number;
   }) => Promise<DiagnosisSession>;
+  setDiagnosisCollaboration: (
+    sessionID: string,
+    collaboration: number
+  ) => Promise<DiagnosisSession>;
   refresh: (sessionID?: string) => Promise<void>;
   open: (sessionID: string) => void;
   openForLatestQuestion: (sessionID: string) => void;
@@ -60,6 +71,8 @@ export type DiagnosisCommandState = {
   providerID: string;
   modelName: string;
   scopeShared: boolean;
+  collaboration: number;
+  collaborationExplicit: boolean;
   generating: boolean;
   stopRequested: boolean;
   submissionPending: boolean;
@@ -122,7 +135,10 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
             persona_id: state.personaID || undefined,
             links: state.links,
             attachments: state.attachments,
-            scope_shared: state.scopeShared
+            scope_shared: state.scopeShared,
+            collaboration: state.collaborationExplicit
+              ? state.collaboration
+              : undefined
           })
       );
       options.updateState({
@@ -139,19 +155,53 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     });
   }
 
+  async function setCollaboration(value: number) {
+    const state = options.getState();
+    if (!Number.isInteger(value) || value < 1 || value > 5) return;
+    if (!state.selectedSessionID) {
+      options.updateState({
+        collaboration: value,
+        collaborationExplicit: true
+      });
+      return;
+    }
+    try {
+      const session = await options.session.setDiagnosisCollaboration(
+        state.selectedSessionID,
+        value
+      );
+      options.updateState({
+        collaboration: session.collaboration,
+        collaborationExplicit: true,
+        sessions: state.sessions.map((item) =>
+          item.id === session.id ? session : item
+        ),
+        snapshot:
+          state.snapshot?.session.id === session.id
+            ? { ...state.snapshot, session }
+            : state.snapshot
+      });
+    } catch (error) {
+      options.onError(
+        error instanceof Error ? error.message : '协同度保存失败'
+      );
+    }
+  }
+
   async function sendDiagnosisFollowup(question: string) {
     const state = options.getState();
     const content = question.trim();
     if (!state.selectedSessionID || !content) return;
     await options.runAction(async () => {
       const { result: created, stopRequested } = await options.session.submit(
-        () => options.session.askDiagnosis(state.selectedSessionID, {
-          content,
-          skill_id: state.skillID || undefined,
-          persona_id: state.personaID || undefined,
-          links: state.links,
-          attachments: state.attachments
-        })
+        () =>
+          options.session.askDiagnosis(state.selectedSessionID, {
+            content,
+            skill_id: state.skillID || undefined,
+            persona_id: state.personaID || undefined,
+            links: state.links,
+            attachments: state.attachments
+          })
       );
       const current = options.getState();
       options.updateState({
@@ -160,7 +210,9 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
         snapshot: current.snapshot
           ? {
               ...current.snapshot,
-              messages: current.snapshot.messages.some((message) => message.id === created.id)
+              messages: current.snapshot.messages.some(
+                (message) => message.id === created.id
+              )
                 ? current.snapshot.messages
                 : [...current.snapshot.messages, created]
             }
@@ -181,7 +233,11 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     setComposerText: (value: string) => void
   ) {
     const state = options.getState();
-    const content = composerText.trim() || (state.links.length || state.attachments.length ? '请分析提供的附件和链接。' : '');
+    const content =
+      composerText.trim() ||
+      (state.links.length || state.attachments.length
+        ? '请分析提供的附件和链接。'
+        : '');
     if (state.generating || !content) return;
     if (!state.selectedSessionID) {
       await startDiagnosis(content);
@@ -189,7 +245,12 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
       await sendDiagnosisFollowup(content);
     }
     setComposerText('');
-    options.updateState({ skillID: '', personaID: '', links: [], attachments: [] });
+    options.updateState({
+      skillID: '',
+      personaID: '',
+      links: [],
+      attachments: []
+    });
   }
 
   function toggleDiagnosisContext(resourceID: string) {
@@ -200,7 +261,10 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
       });
       if (state.selectedSessionID) {
         void options.runAction(async () => {
-          await options.session.removeDiagnosisTarget(state.selectedSessionID, resourceID);
+          await options.session.removeDiagnosisTarget(
+            state.selectedSessionID,
+            resourceID
+          );
           await options.refreshDiagnosis();
         });
       }
@@ -228,6 +292,8 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     options.updateState({
       selectedSessionID: '',
       snapshot: null,
+      collaboration: 2,
+      collaborationExplicit: false,
       composerText: '',
       skillID: '',
       personaID: '',
@@ -324,10 +390,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
         ],
         snapshot: {
           ...current.snapshot!,
-          messages: [
-            ...visibleMessages,
-            created
-          ]
+          messages: [...visibleMessages, created]
         },
         editingMessageID: '',
         editDraft: '',
@@ -352,6 +415,7 @@ export function createDiagnosisCommands(options: DiagnosisCommandOptions) {
     saveDiagnosisEdit,
     sendDiagnosisFollowup,
     startDiagnosis,
+    setCollaboration,
     submitDiagnosisMessage,
     toggleDiagnosisContext
   };

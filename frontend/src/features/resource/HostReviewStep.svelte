@@ -66,6 +66,18 @@
     </div>
   </div>
   <div class="provider-test-summary">
-    <span>连接核验</span><ConnectionTest status={testError || testStatus === 'failed' ? 'failed' : testStatus === 'succeeded' ? 'succeeded' : ''} latencyMs={testLatency ?? 0} message={testError || testMessage} busy={testBusy} disabled showTime={false} showTooltip={false} />
+    <span>连接核验</span><ConnectionTest
+      status={testError || testStatus === 'failed'
+        ? 'failed'
+        : testStatus === 'succeeded'
+          ? 'succeeded'
+          : ''}
+      latencyMs={testLatency ?? 0}
+      message={testError || testMessage}
+      busy={testBusy}
+      disabled
+      showTime={false}
+      showTooltip={false}
+    />
   </div>
 </form>

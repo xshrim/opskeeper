@@ -21,7 +21,7 @@ make image NPM_REGISTRY=https://registry.npmmirror.com
 make start
 ```
 
-`make start` 自动创建缺失的 `.env` 和 `deploy/compose/.env`，安装前后端依赖，启动并等待 PostgreSQL，执行迁移，在用户表为空时创建默认管理员，最后调用 `make front-api-run`。首次创建管理员时会打印随机密码；后续执行会保留已有管理员和数据。默认缓存和 Bundle 存储也共用该 PostgreSQL。
+`make start` 自动创建缺失的 `.env`，同步 Compose 环境文件，先单独构建 API、Worker、Scheduler 镜像，再启动这三个服务和 PostgreSQL。Compose 文件只引用镜像，不包含 `build`。API 启动时执行迁移；首次访问登录页会弹出管理员初始化窗口。默认缓存和 Bundle 存储也共用该 PostgreSQL。
 
 默认地址：
 
@@ -38,28 +38,28 @@ make start
 | `make help`                     | 查看全部 Make 入口                                                       |
 | `make start`                    | 一键准备并启动完整本地开发环境                                           |
 | `make deps`                     | 安装 Go 和前端依赖                                                       |
-| `make infra-up`                 | 启动 PostgreSQL（缓存和 Bundle 存储默认共用）                             |
+| `make infra-up`                 | 只启动 PostgreSQL，供本机二进制服务连接                                   |
 | `make infra-logs`               | 持续查看 PostgreSQL 日志                                                 |
-| `make infra-down`               | 停止 PostgreSQL，保留数据卷                                              |
+| `make infra-down`               | 只停止 PostgreSQL，保留数据卷                                            |
 | `make infra-clean`             | 删除 Compose 容器、网络和全部数据卷                                      |
 | `make obs-up`                   | 启动 Jaeger、OTel Collector、Prometheus、Loki 和 Grafana                 |
 | `make obs-logs`                 | 持续查看本地监控组件日志                                                  |
 | `make obs-down`                 | 停止本地监控组件                                                          |
-| `make migrate`                  | 应用待执行迁移                                                           |
-| `make admin-create`             | 通过受控流程创建首个管理员，只允许成功一次                               |
-| `make api-stop`                 | 按 `.env` 中的 `OPSK_HTTP_ADDRESS` 端口强制停止已监听的 API 进程       |
+| `make api-stop`                 | 按 `.env` 中的 `OPSK_LISTEN_PORT` 端口强制停止已监听的 API 进程       |
 | `make api-run`                  | 停止旧 API 后临时运行 API                                                |
 | `make worker-run`               | 临时运行 Worker                                                          |
 | `make scheduler-run`            | 临时运行 Scheduler                                                       |
 | `make frontend-run`             | 临时运行 Vite 前端                                                       |
 | `make front-api-run`            | 停止旧 API、构建并嵌入前端，然后通过一个 API 进程提供完整应用            |
-| `make run`                      | 应用迁移、构建并嵌入前端，然后启动完整 API                                |
+| `make run`                      | 构建并嵌入前端，然后通过 `go run` 启动 API；迁移由 API 自动执行           |
+| `make sample-seed`              | 向本地开发库写入标记过的 sample 数据                                     |
+| `make sample-clean`             | 仅清理 sample 工具写入的标记数据                                         |
 | `make test`                     | 运行前后端单元测试                                                       |
 | `make backend-integration-test` | 运行数据库集成测试                                                       |
 | `make llm-provider-test`        | 使用`.env` 中的外部 Provider 配置，经 ADK Runner 验证非流式和 SSE 调用 |
 | `make quality`                  | 执行完整本地质量门禁                                                     |
 | `make build`                    | 构建生产二进制制品                                                       |
-| `make image`                    | 构建最终应用镜像                                                         |
+| `make image`                    | 单独构建 API、Worker 和 Scheduler 镜像                                   |
 
 应用临时运行、二进制构建和最终镜像打包的标准入口只能定义在根目录 `Makefile` 中，不得再增加 `scripts/*.sh` 等包装脚本。底层 Go、npm 和 Docker 命令属于 Make recipe 的实现细节；日常开发和流水线统一调用 `make *-run`、`make build` 和 `make image`。
 
@@ -67,114 +67,163 @@ make start
 
 前后端同仓但依赖独立：`backend/go.mod` 定义 Go Module `opskeeper/backend`，`frontend/package.json` 管理 Svelte 前端依赖。
 
-运行前后端合并后的完整应用：
+本项目支持“容器 PostgreSQL + 本机二进制服务”和“容器 PostgreSQL + 容器服务”两种方式。`make infra-up` 只启动数据库，不会连带启动 Compose 中的应用容器。
+
+### 容器 PostgreSQL + 本机二进制服务
+
+首次使用时创建本地环境文件，然后启动数据库并构建服务二进制：
 
 ```bash
+test -f .env || cp .env.example .env
 make infra-up
-make front-api-run
+make build
 ```
 
-`front-api-run` 与生产环境采用相同的前端嵌入和 HTTP 服务方式，但使用 `go run` 临时运行。前端源代码变化后需要重新执行该命令，不提供 Vite 热更新。
-
-如果依赖、`.env`、中间件和管理员已经准备好，可以使用一条命令完成迁移、前端嵌入和 API 启动：
+在三个独立终端中分别加载根目录 `.env` 并运行 API、Worker、Scheduler：
 
 ```bash
-make run
+set -a; source .env; set +a; backend/bin/opskeeper-api
 ```
 
-`make run` 的执行顺序是：
+```bash
+set -a; source .env; set +a; backend/bin/opskeeper-worker
+```
+
+```bash
+set -a; source .env; set +a; backend/bin/opskeeper-scheduler
+```
+
+也可以在开发时用 Make 目标运行 Go 源码，而不预先生成持久二进制：
 
 ```text
-migrate
-    -> frontend-build
-    -> webui-assets 复制到 backend/webui/dist
-    -> go run -tags=embed_webui ./cmd/api
+终端 1: make front-api-run
+终端 2: make worker-run
+终端 3: make scheduler-run
 ```
 
-该命令不会启动 PostgreSQL，也不会创建管理员；首次初始化环境仍应使用 `make start`，或按前面的步骤分别执行 `make infra-up`、`make migrate` 和 `make admin-create`。访问地址为 `http://localhost:8080/opskeeper/`。
+`make front-api-run` 会构建并嵌入当前前端，再通过一个 API 进程提供完整应用；前端源代码变化后需要重新运行。若要使用 Vite 热更新，则改用 `make api-run` 和 `make frontend-run`。这些命令都不会启动 PostgreSQL。
 
-执行链路为：
+API 每次启动时会在监听 HTTP 端口前检查并自动应用待执行迁移。无需也不存在单独的 `make migrate` 操作命令。首次访问登录页时初始化管理员密码，无需 `make admin-create`。
 
-```text
-frontend-build
-    -> frontend/dist
-    -> webui-assets 复制到 backend/webui/dist
-    -> go run -tags=embed_webui ./cmd/api
-    -> assets_embed.go 使用 go:embed 将 backend/webui/dist 编译进 API
-```
+### 容器 PostgreSQL + 容器服务
 
-仅开发后端时运行 API：
+一键构建并启动完整环境：
 
 ```bash
-make infra-up
-make api-run
+make start
 ```
 
-需要前端热更新时，在不同终端分开运行 API 和 Vite：
+`make start` 会在缺少 `.env` 时从 `.env.example` 创建，然后同步 Compose 环境文件、执行独立的 `make image` 镜像构建，最后运行 `docker compose up`。若要分开执行构建和启动：
 
 ```bash
-make api-run
-make frontend-run
+test -f .env || cp .env.example .env # 仅首次创建；保留已有配置
+make compose-env
+make image
+docker compose -f deploy/compose/docker-compose.yml --env-file .env up -d --wait --wait-timeout 180
 ```
 
- Vite 默认通过 `http://localhost:5173/<prefix>/` 提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。只执行 `make frontend-run` 时仍可打开页面，但 API 数据不可用。
-
-Worker 和 Scheduler 按需在其他终端启动：
+Compose 不会构建镜像。发布新镜像时先执行 `make image`，再强制重建应用服务容器以切换到新镜像。需要查看或停止完整容器环境时：
 
 ```bash
-make worker-run
-make scheduler-run
+docker compose -f deploy/compose/docker-compose.yml --env-file .env up -d --force-recreate api worker scheduler
+docker compose -f deploy/compose/docker-compose.yml --env-file .env logs -f
+docker compose -f deploy/compose/docker-compose.yml --env-file .env down
 ```
 
-`make front-api-run` 不生成持久二进制；`make build` 才生成包含相同嵌入前端的生产 `opskeeper-api` 制品。
+`docker compose down` 保留数据库数据卷；`make infra-clean` 会删除 Compose 数据卷，只能用于确认可丢弃的本地环境。
+
+两种方式中迁移和管理员初始化流程相同：API 启动自动迁移，管理员在首次登录页初始化，不需要额外迁移或管理员创建命令。监控组件可在任一模式下额外用 `make obs-up` 启动。
+
+### 写入和清理 sample 数据
+
+在 API 已成功启动、数据库 schema 已建立后，可写入开发演示数据：
+
+```bash
+make sample-seed
+```
+
+`sample-seed` 从根目录 `.env` 读取配置，要求设置 `OPSK_TEST_USER_PASWORD` 作为样例用户密码；Host 和 LLM 样例资源根据对应 `OPSK_TEST_*` 配置选择性创建。命令只允许连接 `development` 环境下本机 `opskeeper` 数据库，不会用于远程或生产数据库。
+
+清理 sample 工具创建的数据：
+
+```bash
+make sample-clean
+```
+
+`sample-clean` 同样只允许连接本机开发数据库，并按 sample 标记删除团队、项目、样例用户、Docker/Host 资源和样例 Provider，不会清空整个数据库，也不需要用户密码配置。
+
+Vite 默认通过 `http://localhost:5173/<prefix>/` 提供页面和热更新，并把相同前缀下的 `/api` 和 `/health` 请求代理到本地 API。只执行 `make frontend-run` 时仍可打开页面，但 API 数据不可用。`make front-api-run` 通过 `go run` 临时运行 API，不生成持久二进制；`make build` 才生成包含嵌入式前端的服务二进制。
 
 ## 4. 应用配置
 
-根目录 `.env` 供 API、Worker、Scheduler、迁移命令和 Vite 使用。`deploy/compose/.env` 只供 Docker Compose 初始化中间件使用。应用不会读取 Compose 配置，也不会获得 PostgreSQL 超级用户密码。
+根目录 `.env` 是 API、Worker、Scheduler、Compose 和 Vite 的配置源；`make start` 将其复制到 `deploy/compose/.env`。API 运行账号需要具备迁移权限，因为迁移在 API 启动时执行。
 
-常用环境变量：
+常用环境变量按用途分组如下；根目录 `.env.example` 提供按用途组织的完整示例配置。
 
-| 变量                                     | 默认值                                     | 作用                                                                     |
-| ---------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------ |
-| `OPSK_BASE_PATH`                       | `/opskeeper`                             | 页面、静态资源、健康检查和业务 API 的路径前缀                            |
-| `OPSK_ENVIRONMENT`                     | `development`                            | 标识运行环境                                                             |
-| `OPSK_LOG_FORMAT`                      | `raw`                                    | Go 应用日志格式，可选 `json`、`text` 或 `raw`；详见[后端日志规范](../standards/backend-logging.md) |
-| `OPSK_LOG_HEALTH_IGNORE`               | `true`                                   | 是否忽略`/health/live`与`/health/ready`的 API 访问日志；设为`false`可恢复记录 |
-| `OPSK_COOKIE_SECURE`                   | 开发环境`false`，生产环境 `true`       | 会话 Cookie 是否只允许 HTTPS，生产环境不能关闭                           |
-| `OPSK_SESSION_ACCESS_TTL`              | `15m`                                    | 短期访问会话有效期                                                       |
-| `OPSK_SESSION_REFRESH_TTL`             | `168h`                                   | 刷新会话有效期，必须长于访问会话                                         |
-| `OPSK_HTTP_ADDRESS`                    | `:8080`                                  | API 监听地址                                                             |
-| `OPSK_TRUSTED_PROXIES`                 | 空                                         | 允许提供客户端转发头的反向代理 IP 或 CIDR，逗号分隔                      |
-| `OPSK_ALLOWED_ORIGINS`                 | 空                                         | 额外允许的精确 HTTP(S) Origin，默认仅同源                                |
-| `OPSK_HTTP_MAX_BODY_BYTES`             | `5242880`                                | 全局请求正文上限，范围 1 KiB-64 MiB；Bundle 上传另用独立大小上限          |
-| `OPSK_HTTP_RATE_LIMIT_PER_MINUTE`      | `600`                                    | 每客户端 IP 每分钟请求速率，范围 1-100000                                |
-| `OPSK_CREDENTIAL_KEY`                  | 开发环境使用内置本地密钥；生产环境必须设置 | 资源凭据密文加密密钥，支持 32 字节原值或 Base64 编码值                   |
-| `OPSK_DATABASE_URL`                    | 本地`opskeeper` 连接串                   | 业务数据库连接                                                           |
-| `OPSK_CACHE_BACKEND`                   | `postgres`                               | 缓存后端：`memory` 或 `postgres`                                          |
-| `OPSK_REPOSITORY_STORAGE_BACKEND`     | `postgres`                               | Bundle 存储后端：`local`、`postgres` 或 `s3`                              |
-| `OPSK_REPOSITORY_LOCAL_ROOT`           | `/var/lib/opskeeper/repositories`        | Local Bundle 存储目录                                                     |
-| `OPSK_REPOSITORY_S3_PROVIDER`          | `minio`                                  | S3-compatible 后端标识                                                    |
-| `OPSK_REPOSITORY_S3_ENDPOINT`          | 空                                         | S3 Endpoint；默认后端为 MinIO                                             |
-| `OPSK_REPOSITORY_S3_BUCKET`            | 空                                         | S3 Bucket                                                                 |
-| `OPSK_OTEL_ENDPOINT`                   | 空                                         | OTLP/HTTP Collector 地址；空值禁用导出                                   |
-| `OPSK_SHUTDOWN_TIMEOUT`                | `10s`                                    | 优雅退出期限                                                             |
-| `OPSK_DEPENDENCY_TIMEOUT`              | `2s`                                     | 健康检查依赖超时                                                         |
-| `OPSK_CONNECTOR_TIMEOUT`               | `10s`                                    | 单次 Connector 执行总超时，必须为正数                                    |
-| `OPSK_CONNECTOR_MAX_CONCURRENCY`       | `8`                                      | 单个进程允许同时执行的 Connector 数，范围 1-128                          |
-| `OPSK_CONNECTOR_MAX_RESPONSE_BYTES`    | `4194304`                                | 单次 Connector 响应上限，范围 1 KiB-64 MiB                               |
-| `OPSK_MCP_ENHANCED_SECURITY`           | `false`                                  | 是否启用 MCP HTTPS、公网地址和受限网络策略；生产环境建议开启                 |
-| `OPSK_INSPECTION_SCHEDULE_INTERVAL`    | `15s`                                    | Scheduler 检查到期策略的轮询间隔                                         |
-| `OPSK_INSPECTION_WORKER_POLL_INTERVAL` | `2s`                                     | Worker 在无任务时的轮询间隔                                              |
-| `OPSK_INSPECTION_LEASE_DURATION`       | `45s`                                    | 巡检任务租约与心跳续约期限                                               |
-| `OPSK_BOOTSTRAP_USERNAME`              | `admin`                                  | 首次创建管理员的用户名                                                       |
-| `OPSK_BOOTSTRAP_PASSWORD`              | 空                                       | 本地首次初始化管理员密码；生产环境应优先使用 `OPSK_BOOTSTRAP_PASSWORD_FILE` |
-| `OPSK_BOOTSTRAP_EMAIL`                 | 空                                       | 可选邮箱；非空值只能绑定一个用户名                                           |
-| `OPSK_BOOTSTRAP_PHONE`                 | 空                                       | 可选手机号；非空值只能绑定一个用户名                                         |
-| `OPSK_BOOTSTRAP_DISPLAY_NAME`          | `admin`                                  | 首次创建管理员的显示名称                                                     |
-| `OPSK_BOOTSTRAP_PASSWORD_FILE`         | 空                                       | 首次创建管理员的密码文件路径；未指定时自动生成随机密码                       |
-| `OPSK_TEST_LLM_BASE_URL`               | 空                                         | 仅供`make llm-provider-test` 使用的 OpenAI-compatible `/v1` 地址     |
-| `OPSK_TEST_LLM_MODEL`                  | 空                                         | 仅供外部 Provider 验证使用的模型名                                       |
-| `OPSK_TEST_LLM_API_KEY`                | 空                                         | 仅保存在 Git 忽略的`.env` 中的测试 Token；不得写入样例、日志或验收文档 |
+#### HTTP 与身份安全
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `OPSK_BASE_PATH` | `/opskeeper` | 页面、静态资源、健康检查和业务 API 的路径前缀 |
+| `OPSK_ENVIRONMENT` | `development` | 运行环境 |
+| `OPSK_LOG_FORMAT` | `raw` | 应用日志格式：`json`、`text` 或 `raw`；详见[后端日志规范](../standards/backend-logging.md) |
+| `OPSK_LISTEN_PORT` | `8080` | API 监听端口；Compose 将相同端口发布到宿主机 |
+| `OPSK_TRUSTED_PROXIES` | 空 | 可提供客户端转发头的代理 IP/CIDR，逗号分隔 |
+| `OPSK_ALLOWED_ORIGINS` | 空 | 额外允许的精确 HTTP(S) Origin，默认仅同源 |
+| `OPSK_COOKIE_SECURE` | 开发环境 `false`，生产环境 `true` | 会话 Cookie 是否仅允许 HTTPS；生产环境必须开启 |
+| `OPSK_CREDENTIAL_KEY` | 开发环境使用内置密钥 | 资源凭据加密密钥；生产环境必须设置为 32 字节原值或 Base64 值 |
+
+#### 数据库、缓存与对象存储
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `OPSK_DB_HOST` | `localhost:5432` | PostgreSQL 主机与端口 |
+| `OPSK_DB_NAME` / `OPSK_DB_USER` / `OPSK_DB_PASSWORD` | `opskeeper` | 业务数据库及受限应用账号 |
+| `OPSK_DB_SSLMODE` | `disable` | PostgreSQL SSL 模式 |
+| `OPSK_CACHE_BACKEND` | `postgres` | 缓存后端：`memory`、`postgres` 或 `redis` |
+| `OPSK_REDIS_URL` | 空 | `OPSK_CACHE_BACKEND=redis` 时必需；也用于连接 Redis 的集成测试 |
+| `OPSK_STORAGE_BACKEND` | `postgres` | 通用对象存储后端：`local`、`postgres` 或 `s3` |
+| `OPSK_REPOSITORY_LOCAL_ROOT` | `/var/lib/opskeeper/repositories` | Repository 本地存储目录 |
+| `OPSK_STORAGE_S3_PROVIDER` | `minio` | S3-compatible 服务提供方标识 |
+| `OPSK_STORAGE_S3_ENDPOINT` / `OPSK_STORAGE_S3_BUCKET` | 空 | S3 后端端点和 Bucket；使用 S3 时必需 |
+| `OPSK_STORAGE_S3_PREFIX` | `repositories` | S3 对象前缀 |
+| `OPSK_STORAGE_S3_ACCESS_KEY` / `OPSK_STORAGE_S3_SECRET_KEY` | 空 | S3 凭据 |
+| `OPSK_STORAGE_S3_USE_SSL` | `false` | S3 连接是否使用 TLS |
+| `OPSK_REPOSITORY_MAX_BUNDLE_BYTES` | `536870912` | Repository Bundle 上传上限，范围 1 MiB–4 GiB |
+
+#### 执行、诊断与巡检
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `OPSK_SHUTDOWN_TIMEOUT` | `10s` | 优雅退出期限 |
+| `OPSK_DEPENDENCY_TIMEOUT` | `2s` | 单次依赖探测超时；服务在代码中持续重试依赖连接 |
+| `OPSK_CONNECTOR_TIMEOUT` | `10s` | 单次 Connector 执行超时 |
+| `OPSK_CONNECTOR_MAX_CONCURRENCY` | `8` | 单进程 Connector 并发数，范围 1–128 |
+| `OPSK_CONNECTOR_MAX_RESPONSE_BYTES` | `4194304` | Connector 响应上限，范围 1 KiB–64 MiB |
+| `OPSK_DIAGNOSIS_COLLABORATION` | `2` | 诊断协同度，范围 1–5 |
+| `OPSK_DIAGNOSIS_MAX_SUBAGENTS` | `24` | 单轮 Subagent 任务数上限，范围 1–128 |
+| `OPSK_DIAGNOSIS_SUBAGENT_CONCURRENCY` | `4` | 单轮 Subagent 并发数，范围 1–16 |
+| `OPSK_INSPECTION_SCHEDULE_INTERVAL` | `15s` | Scheduler 策略轮询间隔 |
+| `OPSK_INSPECTION_WORKER_POLL_INTERVAL` | `2s` | Worker 空闲轮询间隔 |
+| `OPSK_INSPECTION_LEASE_DURATION` | `45s` | 巡检任务租约时长 |
+
+#### 监控
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `OPSK_OTEL_ENDPOINT` | 空 | OTLP/HTTP Collector 地址；空值禁用导出 |
+| `OPSK_LOG_HEALTH_IGNORE` | `true` | 忽略健康探针访问日志 |
+
+#### 测试配置
+
+`OPSK_TEST_*` 仅用于集成测试、`make llm-provider-test` 和 `make sample-seed`；真实凭据只放在 Git 忽略的 `.env` 中。
+
+| 配置组 | 变量 |
+| --- | --- |
+| 数据库与中间件集成测试 | `OPSK_TEST_DATABASE_URL`、`OPSK_TEST_KAFKA_BROKERS` |
+| Host 测试与样例资源 | `OPSK_TEST_HOST_ADDRESS`、`OPSK_TEST_HOST_PORT`、`OPSK_TEST_HOST_USERNAME`、`OPSK_TEST_HOST_PASSWORD`、`OPSK_TEST_HOST_AUTH_METHOD`、`OPSK_TEST_DOCKER_HOST_URL` |
+| 外部 LLM 测试与样例资源 | `OPSK_TEST_LLM_BASE_URL`、`OPSK_TEST_LLM_MODEL`、`OPSK_TEST_LLM_SCENARIO`、`OPSK_TEST_LLM_API_KEY` |
+| 样例用户 | `OPSK_TEST_USER_PASWORD` |
 
 ### 4.1 HTTP Base Path
 
@@ -197,7 +246,7 @@ OPSK_BASE_PATH=/
 | `/opskeeper`     | `/opskeeper/` | `/opskeeper/api/v1/*` | `/opskeeper/health/live` |
 | `/`              | `/`           | `/api/v1/*`           | `/health/live`           |
 
-四个应用服务名称固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`。
+三个应用服务名称固定为 `opskeeper-api`、`opskeeper-worker` 和 `opskeeper-scheduler`。
 
 ### 4.2 可信代理与客户端 IP
 
@@ -270,7 +319,7 @@ make infra-down
 
 ### 5.1 本地链路追踪
 
-Jaeger、OpenTelemetry Collector、Prometheus、Loki 和 Grafana 属于独立的 `obs` profile，`make infra-up` 不会启动它们：
+Jaeger、OpenTelemetry Collector、Prometheus、Loki 和 Grafana 属于独立的 `obs` profile，`make infra-up` 不会启动它们。容器应用使用 Compose 网络地址向 Collector 导出；本机二进制使用 `.env` 中的 `http://127.0.0.1:4318`：
 
 ```bash
 make obs-up
@@ -278,7 +327,7 @@ make obs-up
 make api-run
 ```
 
-也可将 `OPSK_OTEL_ENDPOINT=http://127.0.0.1:4318` 写入本地 `.env` 后启动 API、Worker 和 Scheduler。执行一次诊断或巡检后，访问 Jaeger UI 查看 Trace，访问 Grafana 查看已自动配置的 Prometheus 指标、Loki 日志和 Jaeger 链路数据。完成后使用 `make obs-down` 停止服务。
+启动对应的 API、Worker、Scheduler 后，Trace 会经 Collector 转发至 Jaeger，Metrics 会写入 Prometheus 并在 Grafana 预置 Dashboard 中展示。当前应用日志写到标准输出，还没有接入 Loki 的采集输入；可用 `docker compose logs` 查看容器日志。完成后使用 `make obs-down` 停止监控服务。
 
 需要彻底清理当前 Compose 项目的本地环境时，使用 `make infra-clean`。该命令会删除 PostgreSQL、可观测容器、网络和数据卷，数据不可恢复，仅适用于明确确认的本地环境。
 
@@ -291,7 +340,7 @@ make api-run
 | Cluster 管理 | `postgres`  | `postgres`  | `postgres`  | PostgreSQL 超级用户        |
 | 应用与迁移   | `opskeeper` | `opskeeper` | `opskeeper` | 仅拥有`opskeeper` 数据库 |
 
-API、Worker、Scheduler 和 Migration 只使用 `opskeeper` 业务凭据。`opskeeper` 是 `NOSUPERUSER`、`NOCREATEDB`、`NOCREATEROLE`、`NOREPLICATION`、`NOBYPASSRLS` 角色。
+API、Worker 和 Scheduler 只使用 `opskeeper` 业务凭据。API 启动时执行迁移，因此该角色还需要对业务 schema 执行迁移所需的权限。`opskeeper` 是 `NOSUPERUSER`、`NOCREATEDB`、`NOCREATEROLE`、`NOREPLICATION`、`NOBYPASSRLS` 角色。
 
 ### 5.3 `POSTGRES_*` 的关系
 
@@ -303,19 +352,13 @@ API、Worker、Scheduler 和 Migration 只使用 `opskeeper` 业务凭据。`ops
 
 `initdb` 会创建 `postgres`、`template0` 和 `template1`。`postgres` 数据库是管理连接使用的维护数据库，`postgres` 角色是数据库用户，两者是不同对象。
 
-`POSTGRES_DB=postgres` 在当前配置下与默认结果一致，但保留显式声明，确保初始化脚本和健康检查始终连接明确的管理数据库。项目初始化脚本再读取 `OPSK_DB_USER`、`OPSK_DB_PASSWORD` 和 `OPSK_DB_NAME`，创建受限的 `opskeeper` 角色及其拥有的业务数据库。
+Compose 显式传入 `POSTGRES_*` 管理账号设置，并传入 `OPSK_DB_NAME`、`OPSK_DB_USER` 和 `OPSK_DB_PASSWORD` 供初始化脚本创建受限业务账号及其数据库。应用服务只接收自身所需的业务数据库连接变量。
 
 Compose 健康检查会验证管理员为超级用户、业务角色不是特权用户、业务数据库归业务角色所有。旧数据卷不符合该模型时会显示为 `unhealthy`，但健康检查不会修改或删除数据。
 
 ## 6. 数据库迁移
 
-首次初始化或拉取到新迁移后执行：
-
-```bash
-make migrate
-```
-
-没有新迁移时，日常重启应用无需重复执行。长期运行的应用进程永不自动迁移数据库。
+API 在每次启动并监听 HTTP 端口前自动应用待执行迁移。没有待处理迁移时，迁移器会在 advisory lock 保护下校验历史后直接返回；Worker 和 Scheduler 会持续重试数据库连接。
 
 当前迁移基线位于 `backend/migrations/sql/0001_initial.sql`。历史增量 SQL 保存在 `backend/migrations/sql/archive/`，仅供追溯，不会被迁移器加载。
 
@@ -349,8 +392,6 @@ make image
 backend/bin/opskeeper-api
 backend/bin/opskeeper-worker
 backend/bin/opskeeper-scheduler
-backend/bin/opskeeper-migrate
-backend/bin/opskeeper-admin
 ```
 
 本地二进制和最终镜像内文件名固定为 `opskeeper-*`。`make build` 默认从 Git 生成版本、提交和 UTC 构建时间，也可由流水线显式传入 `VERSION`、`COMMIT`、`BUILD_TIME`。镜像名通过 `make image IMAGE_REPOSITORY=registry.example.com/opskeeper IMAGE_TAG=<version>` 指定；Go 依赖默认使用 `goproxy.cn`、`proxy.golang.org` 的故障转移代理链，镜像 Builder 还使用阿里云 Alpine 镜像和 npmmirror，均可通过同名 Make 变量覆盖。自定义代理请使用 `make GOPROXY=...` 传入，避免机器上的全局 Go 配置覆盖项目设置。
@@ -368,27 +409,7 @@ OPSK_TEST_DATABASE_URL='postgres://opskeeper:opskeeper@localhost:5432/opskeeper?
 
 ### 8.1 首次创建管理员
 
-首次启动一个空数据库后，必须通过 Makefile 提供的受控流程创建管理员：
-
-```bash
-make admin-create
-```
-
-命令默认使用用户名和显示名称 `admin`，邮箱与手机号保持未绑定，并生成一次性随机密码；随机密码只在创建账号后打印一次。也可以通过命令行参数覆盖：
-
-```bash
-make admin-create ADMIN_CREATE_ARGS='--username admin --email admin@example.com --phone +8613800138000 --display-name "Platform Admin" --password-file /run/secrets/opskeeper-admin-password'
-```
-
-本地环境也可以直接传入明文密码：
-
-```bash
-make admin-create ADMIN_CREATE_ARGS="--username admin --password 'TemporaryPassword123!'"
-```
-
-支持 `--username`、`--email`、`--phone`、`--display-name`、`--password` 和 `--password-file`。参数优先于同名环境变量；`--password` 优先于密码文件。明文 `--password` 会暴露在 shell 历史和进程参数中，只建议用于本地临时初始化；生产环境应使用权限受限的密码文件。用户名与密码是唯一必填项，密码至少需要 12 个字符；display name 默认使用 username，email 和 phone 默认空且各自只能绑定一个 username。登录时可输入 username、email 或 phone，服务端自动识别。
-
-管理员 bootstrap 只允许在没有任何用户的数据库中成功一次，不能通过公开 HTTP 接口抢占首个账号。T04 起，`make admin-create` 在创建用户后同时建立平台级 `PlatformAdmin` 绑定，使首个管理员可以访问组织 API 和后续授权能力。
+首次访问一个尚未有管理员的平台时，任意页面都会落到登录页，并显示初始化管理员窗口。窗口只接受 `admin` 的密码，密码至少 8 位；成功后它在同一数据库事务内创建账号及平台级 `PlatformAdmin` 绑定。管理员已存在时接口返回冲突，不能覆盖现有账号。
 
 ### 8.2 会话使用方式
 

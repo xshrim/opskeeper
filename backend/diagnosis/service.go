@@ -24,19 +24,51 @@ type ApplicationReader interface {
 }
 
 type Service struct {
-	store        Store
-	resources    ResourceReader
-	applications ApplicationReader
-	eventMu      sync.Mutex
-	subMu        sync.Mutex
-	subscribers  map[string]map[chan struct{}]struct{}
+	defaultCollaboration int
+	store                Store
+	resources            ResourceReader
+	applications         ApplicationReader
+	eventMu              sync.Mutex
+	subMu                sync.Mutex
+	subscribers          map[string]map[chan struct{}]struct{}
 }
 
 func NewService(store Store, resources ResourceReader, applications ApplicationReader) *Service {
 	return &Service{store: store, resources: resources, applications: applications, subscribers: make(map[string]map[chan struct{}]struct{})}
 }
 
+func (s *Service) WithDefaultCollaboration(value int) *Service {
+	s.defaultCollaboration = collaborationOrDefault(value)
+	return s
+}
+
+func collaborationOrDefault(value int) int {
+	if value < 1 || value > 5 {
+		return 2
+	}
+	return value
+}
+
+func (s *Service) SetCollaboration(ctx context.Context, sessionID string, value int) (Session, error) {
+	if value < 1 || value > 5 {
+		return Session{}, invalid("collaboration must be between 1 and 5")
+	}
+	session, err := s.store.Get(ctx, strings.TrimSpace(sessionID))
+	if err != nil {
+		return Session{}, err
+	}
+	if err := ensureSessionOwner(ctx, session); err != nil {
+		return Session{}, err
+	}
+	return s.store.SetCollaboration(ctx, session.ID, value)
+}
+
 func (s *Service) Start(ctx context.Context, input StartInput) (Session, error) {
+	if input.Collaboration == 0 {
+		input.Collaboration = collaborationOrDefault(s.defaultCollaboration)
+	} else if input.Collaboration < 1 || input.Collaboration > 5 {
+		return Session{}, invalid("collaboration must be between 1 and 5")
+	}
 	input.ScopeID = strings.TrimSpace(input.ScopeID)
 	input.ActorUserID = strings.TrimSpace(input.ActorUserID)
 	input.Title = strings.TrimSpace(input.Title)

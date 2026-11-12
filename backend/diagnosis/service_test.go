@@ -217,8 +217,9 @@ func TestServiceStartAddsApplicationContextResources(t *testing.T) {
 		item:      appdomain.Application{ID: "app-1", ProjectScopeID: "scope-1", Status: "active"},
 		resources: []string{"runtime-1", "database-1"},
 		context: appdomain.DiagnosticContext{
-			Application: appdomain.DiagnosticApplication{ID: "app-1", Name: "Orders", Code: "orders"},
-			Resources:   []appdomain.DiagnosticResource{{ID: "database-1", Relation: "association", Binding: map[string]any{"database": "orders"}}},
+			Application:  appdomain.DiagnosticApplication{ID: "app-1", Name: "Orders", Code: "orders"},
+			Resources:    []appdomain.DiagnosticResource{{ID: "database-1", Type: "数据库", Relation: "association", Binding: map[string]any{"database": "orders"}}},
+			Dependencies: []appdomain.DiagnosticApplicationReference{{ID: "linked-app", Type: "应用", Name: "Payments"}},
 		},
 	}
 	service := NewService(store, resources, applications)
@@ -244,7 +245,7 @@ func TestServiceStartAddsApplicationContextResources(t *testing.T) {
 	if err := json.Unmarshal(store.started.ApplicationContext, &snapshot); err != nil {
 		t.Fatalf("application context snapshot is not JSON: %v", err)
 	}
-	if len(snapshot.Applications) != 2 || snapshot.Applications[0].Application.Name != "Orders" || snapshot.Applications[1].Application.ID != "app-2" || len(snapshot.Applications[0].Resources) != 1 || snapshot.Applications[0].Resources[0].Binding["database"] != "orders" {
+	if len(snapshot.Applications) != 2 || snapshot.Applications[0].Application.Name != "Orders" || snapshot.Applications[1].Application.ID != "app-2" || len(snapshot.Applications[0].Resources) != 1 || snapshot.Applications[0].Resources[0].Type != "数据库" || snapshot.Applications[0].Resources[0].Binding["database"] != "orders" || snapshot.Applications[0].Dependencies[0].Type != "应用" {
 		t.Fatalf("application context snapshot = %#v", snapshot)
 	}
 }
@@ -303,6 +304,10 @@ func (m *memoryStore) SetScopeShared(_ context.Context, _ string, shared bool) (
 	m.session.ScopeShared = shared
 	return m.session, nil
 }
+func (m *memoryStore) SetCollaboration(_ context.Context, _ string, value int) (Session, error) {
+	m.session.Collaboration = value
+	return m.session, nil
+}
 func (*memoryStore) Delete(context.Context, string) error                      { return nil }
 func (m *memoryStore) Targets(context.Context, string) ([]Target, error)       { return m.targets, nil }
 func (*memoryStore) AddTarget(context.Context, string, string) (Target, error) { return Target{}, nil }
@@ -329,7 +334,10 @@ func (*memoryStore) SaveEvidence(context.Context, string, CreateEvidenceInput) (
 	return Evidence{}, nil
 }
 func (*memoryStore) Evidence(context.Context, string) ([]Evidence, error) { return nil, nil }
-func (*memoryStore) CreateRun(context.Context, string, string) (Run, error) {
+func (*memoryStore) EvidenceForRun(context.Context, string, string) ([]Evidence, error) {
+	return nil, nil
+}
+func (*memoryStore) CreateRun(context.Context, string, string, int) (Run, error) {
 	return Run{ID: "run-1", Status: "running"}, nil
 }
 func (*memoryStore) FinishRun(context.Context, string, string) (Run, error) { return Run{}, nil }

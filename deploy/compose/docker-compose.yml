@@ -1,4 +1,47 @@
+# The Compose .env file supplies substitutions only; containers receive only
+# the service-specific variables declared below.
+# Other application settings use their program defaults unless added here.
 services:
+  api:
+    image: ${IMAGE_REPOSITORY:-opskeeper}-api:${IMAGE_TAG:-local}
+    environment:
+      OPSK_LISTEN_PORT: ${OPSK_LISTEN_PORT:-8080}
+      OPSK_DB_HOST: postgres:5432
+      OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
+      OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
+      OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
+      # Containers must use Compose DNS; 127.0.0.1 in the root .env is for host-run binaries.
+      OPSK_OTEL_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "${OPSK_LISTEN_PORT:-8080}:${OPSK_LISTEN_PORT:-8080}"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  worker:
+    image: ${IMAGE_REPOSITORY:-opskeeper}-worker:${IMAGE_TAG:-local}
+    environment:
+      OPSK_DB_HOST: postgres:5432
+      OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
+      OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
+      OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
+      OPSK_OTEL_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  scheduler:
+    image: ${IMAGE_REPOSITORY:-opskeeper}-scheduler:${IMAGE_TAG:-local}
+    environment:
+      OPSK_DB_HOST: postgres:5432
+      OPSK_DB_NAME: ${OPSK_DB_NAME:-opskeeper}
+      OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
+      OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
+      OPSK_OTEL_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: opskeeper-postgres
@@ -10,7 +53,7 @@ services:
       OPSK_DB_USER: ${OPSK_DB_USER:-opskeeper}
       OPSK_DB_PASSWORD: ${OPSK_DB_PASSWORD:-opskeeper}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -26,10 +69,9 @@ services:
     image: jaegertracing/all-in-one:1.67.0
     container_name: opskeeper-jaeger
     profiles: ["obs"]
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+    command: ["--collector.otlp.enabled=true"]
     ports:
-      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+      - "16686:16686"
     restart: unless-stopped
 
   otel-collector:
@@ -40,8 +82,8 @@ services:
     volumes:
       - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "127.0.0.1:${OTEL_COLLECTOR_GRPC_PORT:-4317}:4317"
-      - "127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT:-4318}:4318"
+      - "4317:4317"
+      - "4318:4318"
     depends_on:
       - jaeger
       - prometheus
@@ -60,7 +102,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+      - "9090:9090"
     restart: unless-stopped
 
   loki:
@@ -72,23 +114,20 @@ services:
       - ./loki/config.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
     ports:
-      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
+      - "3100:3100"
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.5.2
     container_name: opskeeper-grafana
     profiles: ["obs"]
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+      - "3000:3000"
     depends_on:
       - prometheus
       - loki

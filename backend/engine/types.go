@@ -182,7 +182,6 @@ type Request struct {
 	LocatorHints    map[string]map[string]any `json:"-"`
 	ResolvedPersona *Persona                  `json:"-"`
 	InternalTools   []Tool                    `json:"-"`
-	DelegationDepth int                       `json:"-"`
 	ObservationSink func(ToolObservation)     `json:"-"`
 }
 

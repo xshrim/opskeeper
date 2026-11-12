@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"opskeeper/backend/application"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/notification"
 	"opskeeper/backend/persona"
@@ -25,12 +26,36 @@ type PersonaReader interface {
 }
 
 type Service struct {
-	store     policyStore
-	resources ResourceReader
+	store        policyStore
+	resources    ResourceReader
+	applications interface {
+		Get(context.Context, string) (application.Application, error)
+		DiagnosticContext(context.Context, string, string) (application.DiagnosticContext, error)
+		DiagnosticCandidates(context.Context, string) ([]application.Application, error)
+	}
 	personas  PersonaReader
 	cipher    secret.Cipher
 	providers notification.ProviderRegistry
 	tester    NotificationTester
+}
+
+func (s *Service) WithApplications(reader interface {
+	Get(context.Context, string) (application.Application, error)
+	DiagnosticContext(context.Context, string, string) (application.DiagnosticContext, error)
+	DiagnosticCandidates(context.Context, string) ([]application.Application, error)
+}) *Service {
+	s.applications = reader
+	return s
+}
+
+func (s *Service) ListApplications(ctx context.Context, scopeID string) ([]application.Application, error) {
+	if !allowsScope(ctx, scopeID) {
+		return nil, authorization.ErrForbidden
+	}
+	if s.applications == nil {
+		return nil, invalid("application targets are unavailable")
+	}
+	return s.applications.DiagnosticCandidates(ctx, scopeID)
 }
 
 type NotificationTester interface {
@@ -82,6 +107,25 @@ func (s *Service) CreatePolicy(ctx context.Context, input Policy, actorID string
 	for _, targetID := range policy.TargetResourceIDs {
 		if err := s.validateResource(ctx, policy.ScopeID, targetID, ""); err != nil {
 			return Policy{}, err
+		}
+	}
+	for _, appID := range policy.TargetApplicationIDs {
+		if s.applications == nil {
+			return Policy{}, invalid("application targets are unavailable")
+		}
+		app, err := s.applications.Get(ctx, appID)
+		if err != nil {
+			return Policy{}, err
+		}
+		if app.Status == "disabled" || !allowsScope(ctx, app.ProjectScopeID) {
+			return Policy{}, authorization.ErrForbidden
+		}
+		if validator, ok := s.store.(interface {
+			ValidateApplicationTarget(context.Context, string, string) error
+		}); ok {
+			if err := validator.ValidateApplicationTarget(ctx, policy.ScopeID, appID); err != nil {
+				return Policy{}, err
+			}
 		}
 	}
 	if policy.PersonaID != "" {

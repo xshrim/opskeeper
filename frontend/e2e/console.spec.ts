@@ -36,6 +36,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         contentType: 'application/json',
         body: JSON.stringify(body)
       });
+    if (path.endsWith('/auth/bootstrap')) return json({ required: false });
     if (path.endsWith('/auth/me/context'))
       return json({
         platform_admin: platformAdmin,
@@ -116,7 +117,14 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
       });
     if (path.endsWith('/workspace'))
       return json({
-        summary: { project_id: 'project-1', applications: 0, instances: 0, resources: 0, dependencies: 0, alerts: 0 },
+        summary: {
+          project_id: 'project-1',
+          applications: 0,
+          instances: 0,
+          resources: 0,
+          dependencies: 0,
+          alerts: 0
+        },
         resources: [],
         alerts: [],
         applications: []
@@ -150,7 +158,8 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
         total: 1
       });
     if (path.endsWith('/resources/schemas')) return json([]);
-    if (path.includes('/connection-tests/latest')) return json({ code: 'not_found' }, 404);
+    if (path.includes('/connection-tests/latest'))
+      return json({ code: 'not_found' }, 404);
     if (path.endsWith('/resources'))
       return json({ items: [], page: 1, page_size: 100, total: 0 });
     if (path.endsWith('/providers'))
@@ -223,7 +232,7 @@ function pageData(page: Page, requireLogin = false, platformAdmin = false) {
           manifest: {
             name: 'Default Diagnostic',
             description: 'test',
-            instruction: 'return JSON',
+            instruction: 'return JSON'
           },
           input_schema: { type: 'object' },
           output_schema: { type: 'object' },
@@ -473,9 +482,7 @@ test.describe('T07 console', () => {
       page.getByRole('heading', { name: '资源管理' }).first()
     ).toBeVisible();
     await page.getByRole('button', { name: '添加资源' }).click();
-    await expect(
-      page.getByRole('heading', { name: '基础配置' })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '基础配置' })).toBeVisible();
     await expect(page.locator('.resource-list-panel')).toBeHidden();
     await page.getByRole('button', { name: '取消' }).click();
     await expect(page.locator('.resource-list-panel')).toBeVisible();
@@ -627,7 +634,9 @@ test.describe('T07 console', () => {
     await expect(
       picker.getByRole('button', { name: '选择图标 Bot', exact: true })
     ).toBeVisible();
-    await picker.getByRole('button', { name: '选择图标 Bot', exact: true }).click();
+    await picker
+      .getByRole('button', { name: '选择图标 Bot', exact: true })
+      .click();
     await dialog.getByLabel('名称').fill('数据库平台');
     await dialog.getByLabel('描述').fill('数据库平台团队');
     await dialog.getByRole('button', { name: '创建团队' }).click();
@@ -733,9 +742,7 @@ test.describe('T10 and T11 workbenches', () => {
     ).toHaveCount(1);
   });
 
-  test('opens the independent Persona management page', async ({
-    page
-  }) => {
+  test('opens the independent Persona management page', async ({ page }) => {
     await pageData(page);
     await page.goto('/');
     await page.getByRole('button', { name: '专家' }).click();
@@ -753,9 +760,7 @@ test.describe('T10 and T11 workbenches', () => {
     await pageData(page);
     await page.goto('/');
     await page.getByRole('button', { name: '诊断' }).click();
-    await expect(
-      page.getByRole('heading', { name: '智能诊断' })
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '智能诊断' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: '支付服务诊断' })
     ).toBeVisible();

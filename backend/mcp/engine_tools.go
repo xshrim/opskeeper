@@ -94,6 +94,7 @@ func (p mcpContextProvider) Resolve(ctx context.Context, resource engine.Context
 		} else if strings.EqualFold(strings.TrimSpace(resource.Kind), "Elasticsearch") && strings.EqualFold(strings.TrimSpace(resource.Subtype), "agent") {
 			inputSchema = elasticsearchAgentSchema(inputSchema)
 		}
+		inputSchema = engine.DescribeToolParameters(resource.Kind, inputSchema)
 		tools = append(tools, engine.ToolFunc{
 			Def: engine.ToolDefinition{
 				Name: item.Name, Description: item.Description, InputSchema: inputSchema,

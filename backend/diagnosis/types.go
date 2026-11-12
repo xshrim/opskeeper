@@ -18,6 +18,7 @@ const (
 )
 
 type Session struct {
+	Collaboration      int             `json:"collaboration"`
 	ID                 string          `json:"id"`
 	ScopeID            string          `json:"scope_id"`
 	ApplicationID      string          `json:"application_id,omitempty"`
@@ -111,6 +112,7 @@ type Evidence struct {
 // Run is one completed answer attempt. A follow-up creates a new run so its
 // evidence and causal conclusion never overwrite an earlier diagnosis.
 type Run struct {
+	Collaboration     int        `json:"collaboration"`
 	ID                string     `json:"id"`
 	SessionID         string     `json:"session_id"`
 	Sequence          int        `json:"sequence"`
@@ -191,6 +193,7 @@ type Snapshot struct {
 }
 
 type StartInput struct {
+	Collaboration                         int
 	ScopeID, ActorUserID, Title, Question string
 	ApplicationID                         string
 	ApplicationIDs                        []string

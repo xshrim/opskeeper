@@ -65,7 +65,7 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.Contex
 		return kt.PodFile(c, connection, stringArg(a, "namespace"), stringArg(a, "pod"), stringArg(a, "container_name"), stringArg(a, "path"))
 	})
 	register("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(c context.Context, connection kclient.ConnectionInput, a map[string]any) (any, error) {
-		return kt.Get(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "name"))
+		return kt.Get(c, connection, stringArg(a, "resource"), stringArg(a, "namespace"), stringArg(a, "object_name"))
 	})
 	register("kubernetes_health", "Check Kubernetes API health.", nil, func(c context.Context, connection kclient.ConnectionInput, _ map[string]any) (any, error) {
 		return kt.Health(c, connection)
@@ -74,7 +74,7 @@ func (s *Service) resolveKubernetesTools(ctx context.Context, item engine.Contex
 }
 
 func rejectKubernetesInternalLocators(arguments map[string]any) error {
-	for _, key := range []string{"namespace", "workload_name", "pod", "name", "node", "container_name"} {
+	for _, key := range []string{"namespace", "workload_name", "pod", "object_name", "node", "container_name"} {
 		value, ok := arguments[key].(string)
 		if !ok {
 			continue

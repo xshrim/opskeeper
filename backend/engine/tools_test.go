@@ -95,6 +95,24 @@ func TestPolicyGatewayAuditsProviderModelTimingAndErrors(t *testing.T) {
 	}
 }
 
+func TestPolicyGatewayAuditsRejectedPlaceholderArguments(t *testing.T) {
+	audit := &memoryToolCallStore{}
+	var events []Event
+	gateway := NewPolicyGateway(NewToolRegistry(), nil, time.Second, 1024, 1)
+	gateway.AuditStore = audit
+	_, err := gateway.Invoke(context.Background(), ToolCall{
+		ExecutionID: "exec-placeholder", ResourceID: "resource-1", Name: "docker_container_inspect",
+		Arguments: map[string]any{"container_id": "container_id"},
+		EventSink: func(event Event) error { events = append(events, event); return nil },
+	})
+	if err == nil || len(events) != 2 || events[0].Type != "tool.requested" || events[1].Type != "tool.failed" {
+		t.Fatalf("rejected call err=%v events=%+v", err, events)
+	}
+	if len(audit.records) != 1 || audit.records[0].ErrorCode != "tool_validation" {
+		t.Fatalf("rejected call audit=%+v", audit.records)
+	}
+}
+
 func TestAuthorizeResourceUseUsesResourceAndScopeFilters(t *testing.T) {
 	resource := ContextResource{ID: "resource-1", ScopeID: "scope-1"}
 	resourceUseAllowed := authorization.WithResourceFilter(context.Background(), authorization.ResourceFilter{ResourceIDs: []string{"resource-2"}})

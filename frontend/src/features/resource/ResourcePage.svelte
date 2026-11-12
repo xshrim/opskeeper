@@ -115,7 +115,7 @@
     kubernetesConfigurationValid,
     kubernetesKubeconfigText,
     resourceAddStepTitle,
-    resourceAddStepDescription,
+    resourceAddStepDescription
   } from './resourceWorkflow';
   import { parseLabels } from '../../lib/labels';
   import { appURL } from '../../lib/health';
@@ -197,7 +197,11 @@
     resource: Resource,
     permission: string
   ) => boolean;
-  export let resourceCreateScopeOptions: Array<{ id: string; type: string; name: string }> = [];
+  export let resourceCreateScopeOptions: Array<{
+    id: string;
+    type: string;
+    name: string;
+  }> = [];
   export let resourcePermissionLabel: (resource: Resource) => string = () =>
     '可查看';
   export let onSelectResourceScope: (scopeId: string) => void = () => {};
@@ -318,22 +322,133 @@
   let postgresqlConfigurationAttempted = false;
   let postgresqlDraftTest: any = null;
   let editingPostgreSQLResourceId = '';
-  let mysqlAccessMode: 'direct' | 'agent' = 'direct'; let mysqlHost=''; let mysqlPort=3306; let mysqlDatabase=''; let mysqlUsername=''; let mysqlPassword=''; let mysqlTimeoutSeconds=10; let mysqlMCPServerResourceId=''; let mysqlConfigurationAttempted=false; let mysqlDraftTest:any=null; let editingMySQLResourceId='';
-  let oracleAccessMode: 'direct' | 'agent' = 'direct'; let oracleHost=''; let oraclePort=1521; let oracleServiceName=''; let oracleSID=''; let oracleUsername=''; let oraclePassword=''; let oracleTimeoutSeconds=10; let oracleTLS=false; let oracleMCPServerResourceId=''; let oracleConfigurationAttempted=false; let oracleDraftTest:any=null; let editingOracleResourceId='';
-  let oceanBaseAccessMode: 'direct' | 'agent' = 'direct'; let oceanBaseMode: 'mysql' | 'oracle' = 'mysql'; let oceanBaseHost=''; let oceanBasePort=2881; let oceanBaseDatabase=''; let oceanBaseServiceName=''; let oceanBaseUsername=''; let oceanBasePassword=''; let oceanBaseTimeoutSeconds=10; let oceanBaseMCPServerResourceId=''; let oceanBaseConfigurationAttempted=false; let oceanBaseDraftTest:any=null; let editingOceanBaseResourceId='';
+  let mysqlAccessMode: 'direct' | 'agent' = 'direct';
+  let mysqlHost = '';
+  let mysqlPort = 3306;
+  let mysqlDatabase = '';
+  let mysqlUsername = '';
+  let mysqlPassword = '';
+  let mysqlTimeoutSeconds = 10;
+  let mysqlMCPServerResourceId = '';
+  let mysqlConfigurationAttempted = false;
+  let mysqlDraftTest: any = null;
+  let editingMySQLResourceId = '';
+  let oracleAccessMode: 'direct' | 'agent' = 'direct';
+  let oracleHost = '';
+  let oraclePort = 1521;
+  let oracleServiceName = '';
+  let oracleSID = '';
+  let oracleUsername = '';
+  let oraclePassword = '';
+  let oracleTimeoutSeconds = 10;
+  let oracleTLS = false;
+  let oracleMCPServerResourceId = '';
+  let oracleConfigurationAttempted = false;
+  let oracleDraftTest: any = null;
+  let editingOracleResourceId = '';
+  let oceanBaseAccessMode: 'direct' | 'agent' = 'direct';
+  let oceanBaseMode: 'mysql' | 'oracle' = 'mysql';
+  let oceanBaseHost = '';
+  let oceanBasePort = 2881;
+  let oceanBaseDatabase = '';
+  let oceanBaseServiceName = '';
+  let oceanBaseUsername = '';
+  let oceanBasePassword = '';
+  let oceanBaseTimeoutSeconds = 10;
+  let oceanBaseMCPServerResourceId = '';
+  let oceanBaseConfigurationAttempted = false;
+  let oceanBaseDraftTest: any = null;
+  let editingOceanBaseResourceId = '';
   let redisAccessMode: 'direct' | 'agent' = 'direct';
-  let redisHost = ''; let redisPort = 6379; let redisDatabase = 0; let redisUsername = ''; let redisPassword = ''; let redisTimeoutSeconds = 10; let redisMCPServerResourceId = ''; let redisConfigurationAttempted = false; let redisDraftTest: any = null; let editingRedisResourceId = '';
-  let nacosAccessMode: 'direct' | 'agent' = 'direct'; let nacosHost=''; let nacosPort=8848; let nacosScheme='http'; let nacosContextPath='/nacos'; let nacosUsername=''; let nacosPassword=''; let nacosAccessToken=''; let nacosTimeoutSeconds=10; let nacosMCPServerResourceId=''; let nacosConfigurationAttempted=false; let nacosDraftTest:any=null; let editingNacosResourceId='';
-  let kafkaAccessMode: 'direct' | 'agent' = 'direct'; let kafkaBrokers=''; let kafkaTLS=false; let kafkaTLSServerName=''; let kafkaUsername=''; let kafkaPassword=''; let kafkaTimeoutSeconds=10; let kafkaMCPServerResourceId=''; let kafkaConfigurationAttempted=false; let kafkaDraftTest:any=null; let editingKafkaResourceId='';
-  let elasticsearchAccessMode: 'direct' | 'agent' = 'direct'; let elasticsearchURL=''; let elasticsearchUsername=''; let elasticsearchPassword=''; let elasticsearchTLSInsecure=false; let elasticsearchTimeoutSeconds=10; let elasticsearchMCPServerResourceId=''; let elasticsearchConfigurationAttempted=false; let elasticsearchDraftTest:any=null; let editingElasticsearchResourceId='';
-  let rabbitMQAccessMode: 'direct' | 'agent' = 'direct'; let rabbitMQURL=''; let rabbitMQUsername=''; let rabbitMQPassword=''; let rabbitMQTimeoutSeconds=10; let rabbitMQTLSInsecure=false; let rabbitMQMCPServerResourceId=''; let rabbitMQConfigurationAttempted=false; let rabbitMQDraftTest:any=null; let editingRabbitMQResourceId='';
-  let minIOAccessMode: 'direct' | 'agent' = 'direct'; let minIOEndpoint=''; let minIOAccessKey=''; let minIOSecretKey=''; let minIOSessionToken=''; let minIORegion=''; let minIOSecure=false; let minIOTimeoutSeconds=10; let minIOMCPServerResourceId=''; let minIOConfigurationAttempted=false; let minIODraftTest:any=null; let editingMinIOResourceId='';
-  let repositoryURL=''; let repositoryUsername=''; let repositoryPassword=''; let repositoryDefaultBranch='main'; let repositoryBundleFile: File | null = null; let repositoryBundleUploadedResourceId=''; let repositoryConfigurationAttempted=false; let editingRepositoryResourceId='';
-  let repositoryPreviewEntries: Array<{ path: string; type: string; size?: number }> = [];
+  let redisHost = '';
+  let redisPort = 6379;
+  let redisDatabase = 0;
+  let redisUsername = '';
+  let redisPassword = '';
+  let redisTimeoutSeconds = 10;
+  let redisMCPServerResourceId = '';
+  let redisConfigurationAttempted = false;
+  let redisDraftTest: any = null;
+  let editingRedisResourceId = '';
+  let nacosAccessMode: 'direct' | 'agent' = 'direct';
+  let nacosHost = '';
+  let nacosPort = 8848;
+  let nacosScheme = 'http';
+  let nacosContextPath = '/nacos';
+  let nacosUsername = '';
+  let nacosPassword = '';
+  let nacosAccessToken = '';
+  let nacosTimeoutSeconds = 10;
+  let nacosMCPServerResourceId = '';
+  let nacosConfigurationAttempted = false;
+  let nacosDraftTest: any = null;
+  let editingNacosResourceId = '';
+  let kafkaAccessMode: 'direct' | 'agent' = 'direct';
+  let kafkaBrokers = '';
+  let kafkaTLS = false;
+  let kafkaTLSServerName = '';
+  let kafkaUsername = '';
+  let kafkaPassword = '';
+  let kafkaTimeoutSeconds = 10;
+  let kafkaMCPServerResourceId = '';
+  let kafkaConfigurationAttempted = false;
+  let kafkaDraftTest: any = null;
+  let editingKafkaResourceId = '';
+  let elasticsearchAccessMode: 'direct' | 'agent' = 'direct';
+  let elasticsearchURL = '';
+  let elasticsearchUsername = '';
+  let elasticsearchPassword = '';
+  let elasticsearchTLSInsecure = false;
+  let elasticsearchTimeoutSeconds = 10;
+  let elasticsearchMCPServerResourceId = '';
+  let elasticsearchConfigurationAttempted = false;
+  let elasticsearchDraftTest: any = null;
+  let editingElasticsearchResourceId = '';
+  let rabbitMQAccessMode: 'direct' | 'agent' = 'direct';
+  let rabbitMQURL = '';
+  let rabbitMQUsername = '';
+  let rabbitMQPassword = '';
+  let rabbitMQTimeoutSeconds = 10;
+  let rabbitMQTLSInsecure = false;
+  let rabbitMQMCPServerResourceId = '';
+  let rabbitMQConfigurationAttempted = false;
+  let rabbitMQDraftTest: any = null;
+  let editingRabbitMQResourceId = '';
+  let minIOAccessMode: 'direct' | 'agent' = 'direct';
+  let minIOEndpoint = '';
+  let minIOAccessKey = '';
+  let minIOSecretKey = '';
+  let minIOSessionToken = '';
+  let minIORegion = '';
+  let minIOSecure = false;
+  let minIOTimeoutSeconds = 10;
+  let minIOMCPServerResourceId = '';
+  let minIOConfigurationAttempted = false;
+  let minIODraftTest: any = null;
+  let editingMinIOResourceId = '';
+  let repositoryURL = '';
+  let repositoryUsername = '';
+  let repositoryPassword = '';
+  let repositoryDefaultBranch = 'main';
+  let repositoryBundleFile: File | null = null;
+  let repositoryBundleUploadedResourceId = '';
+  let repositoryConfigurationAttempted = false;
+  let editingRepositoryResourceId = '';
+  let repositoryPreviewEntries: Array<{
+    path: string;
+    type: string;
+    size?: number;
+  }> = [];
   let repositoryPreviewBusy = false;
   let repositoryPreviewMessage = '';
   let repositoryWorkflowError = '';
-  let repositoryDraftTest: { status?: string; message?: string; error?: string; busy?: boolean; latency?: number } | null = null;
+  let repositoryDraftTest: {
+    status?: string;
+    message?: string;
+    error?: string;
+    busy?: boolean;
+    latency?: number;
+  } | null = null;
   let repositoryActiveResourceId = '';
   let repositoryExistingResource: Resource | null = null;
   let repositoryBundleConfigured = false;
@@ -366,23 +481,31 @@
   $: if (
     resourceAddMenuOpen &&
     !resourceWorkflowEditing() &&
-    !resourceCreateScopeOptions.some((scope) => scope.id === resourceCreateScopeId)
+    !resourceCreateScopeOptions.some(
+      (scope) => scope.id === resourceCreateScopeId
+    )
   ) {
-    resourceCreateScopeId = resourceCreateScopeOptions.some((scope) => scope.id === selectedScopeId)
+    resourceCreateScopeId = resourceCreateScopeOptions.some(
+      (scope) => scope.id === selectedScopeId
+    )
       ? selectedScopeId
       : '';
   }
   $: dockerMCPServers = resources
-    .filter(
-      (resource) =>
-        resource.kind === 'MCPServer'
-    )
+    .filter((resource) => resource.kind === 'MCPServer')
     .sort((left, right) => left.name.localeCompare(right.name));
   $: kubernetesMCPServers = dockerMCPServers;
-  $: repositoryActiveResourceId = repositoryBundleUploadedResourceId || editingRepositoryResourceId;
-  $: repositoryExistingResource = resources.find((item) => item.id === repositoryActiveResourceId) ?? null;
-  $: repositoryBundleConfigured = Boolean(repositoryBundleUploadedResourceId || repositoryExistingResource?.config?.storage_key);
-  $: repositoryConnectionCheck = repositoryActiveResourceId ? resourceConnectionChecks[repositoryActiveResourceId] ?? null : null;
+  $: repositoryActiveResourceId =
+    repositoryBundleUploadedResourceId || editingRepositoryResourceId;
+  $: repositoryExistingResource =
+    resources.find((item) => item.id === repositoryActiveResourceId) ?? null;
+  $: repositoryBundleConfigured = Boolean(
+    repositoryBundleUploadedResourceId ||
+    repositoryExistingResource?.config?.storage_key
+  );
+  $: repositoryConnectionCheck = repositoryActiveResourceId
+    ? (resourceConnectionChecks[repositoryActiveResourceId] ?? null)
+    : null;
   $: childSurfaceActive = resourceAddMenuOpen || resourceEditorOpen;
   $: if (workflowRequest && workflowRequest.id !== handledWorkflowRequestId) {
     handledWorkflowRequestId = workflowRequest.id;
@@ -395,21 +518,22 @@
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
       (resourceKind === 'Host' && resourceAddStep === 3) ||
-      (resourceKind === 'PostgreSQL' && resourceAddStep === 3)
-      || (resourceKind === 'MySQL' && resourceAddStep === 3)
-      || (resourceKind === 'Oracle' && resourceAddStep === 3)
-      || (resourceKind === 'OceanBase' && resourceAddStep === 3)
-      || (resourceKind === 'Redis' && resourceAddStep === 3)
-      || (resourceKind === 'Kafka' && resourceAddStep === 3)
-      || (resourceKind === 'Nacos' && resourceAddStep === 3)
-      || (resourceKind === 'Elasticsearch' && resourceAddStep === 3)
-      || (resourceKind === 'RabbitMQ' && resourceAddStep === 3)
-      || (resourceKind === 'MinIO' && resourceAddStep === 3)
+      (resourceKind === 'PostgreSQL' && resourceAddStep === 3) ||
+      (resourceKind === 'MySQL' && resourceAddStep === 3) ||
+      (resourceKind === 'Oracle' && resourceAddStep === 3) ||
+      (resourceKind === 'OceanBase' && resourceAddStep === 3) ||
+      (resourceKind === 'Redis' && resourceAddStep === 3) ||
+      (resourceKind === 'Kafka' && resourceAddStep === 3) ||
+      (resourceKind === 'Nacos' && resourceAddStep === 3) ||
+      (resourceKind === 'Elasticsearch' && resourceAddStep === 3) ||
+      (resourceKind === 'RabbitMQ' && resourceAddStep === 3) ||
+      (resourceKind === 'MinIO' && resourceAddStep === 3)
     )
   )
     autoSummaryTestKey = '';
   $: if (
-    resourceAddMenuOpen && resourceKind !== 'MinIO' &&
+    resourceAddMenuOpen &&
+    resourceKind !== 'MinIO' &&
     ((resourceKind === 'MCPServer' && resourceAddStep === 3) ||
       (resourceKind === 'Docker' && resourceAddStep === 3) ||
       (resourceKind === 'Kubernetes' && resourceAddStep === 3) ||
@@ -429,28 +553,111 @@
       resourceKind === 'MCPServer'
         ? mcpDraftSignature()
         : resourceKind === 'Docker'
-            ? JSON.stringify(dockerDraft())
-            : resourceKind === 'Kubernetes'
-              ? JSON.stringify(kubernetesDraft())
-              : resourceKind === 'Host'
-                ? JSON.stringify(hostDraft())
-              : resourceKind === 'PostgreSQL' ? JSON.stringify(postgresqlDraft()) : resourceKind === 'MySQL' ? JSON.stringify({accessMode:mysqlAccessMode,host:mysqlHost,port:mysqlPort,database:mysqlDatabase,username:mysqlUsername,password:mysqlPassword,timeoutSeconds:mysqlTimeoutSeconds,mcpServerResourceId:mysqlMCPServerResourceId}) : resourceKind === 'Oracle' ? JSON.stringify({accessMode:oracleAccessMode,host:oracleHost,port:oraclePort,serviceName:oracleServiceName,sid:oracleSID,username:oracleUsername,password:oraclePassword,timeoutSeconds:oracleTimeoutSeconds,tls:oracleTLS,mcpServerResourceId:oracleMCPServerResourceId}) : resourceKind === 'OceanBase' ? JSON.stringify(oceanBaseDraft()) : resourceKind === 'Redis' ? JSON.stringify(redisDraft()) : resourceKind === 'Kafka' ? JSON.stringify({accessMode:kafkaAccessMode,brokers:kafkaBrokers,tls:kafkaTLS,tlsServerName:kafkaTLSServerName,username:kafkaUsername,password:kafkaPassword,timeoutSeconds:kafkaTimeoutSeconds,mcpServerResourceId:kafkaMCPServerResourceId}) : resourceKind === 'Elasticsearch' ? JSON.stringify({accessMode:elasticsearchAccessMode,url:elasticsearchURL,username:elasticsearchUsername,password:elasticsearchPassword,tlsInsecure:elasticsearchTLSInsecure,timeoutSeconds:elasticsearchTimeoutSeconds,mcpServerResourceId:elasticsearchMCPServerResourceId}) : resourceKind === 'RabbitMQ' ? JSON.stringify({accessMode:rabbitMQAccessMode,url:rabbitMQURL,username:rabbitMQUsername,password:rabbitMQPassword,timeoutSeconds:rabbitMQTimeoutSeconds,tlsInsecure:rabbitMQTLSInsecure,mcpServerResourceId:rabbitMQMCPServerResourceId}) : JSON.stringify(nacosDraft())
+          ? JSON.stringify(dockerDraft())
+          : resourceKind === 'Kubernetes'
+            ? JSON.stringify(kubernetesDraft())
+            : resourceKind === 'Host'
+              ? JSON.stringify(hostDraft())
+              : resourceKind === 'PostgreSQL'
+                ? JSON.stringify(postgresqlDraft())
+                : resourceKind === 'MySQL'
+                  ? JSON.stringify({
+                      accessMode: mysqlAccessMode,
+                      host: mysqlHost,
+                      port: mysqlPort,
+                      database: mysqlDatabase,
+                      username: mysqlUsername,
+                      password: mysqlPassword,
+                      timeoutSeconds: mysqlTimeoutSeconds,
+                      mcpServerResourceId: mysqlMCPServerResourceId
+                    })
+                  : resourceKind === 'Oracle'
+                    ? JSON.stringify({
+                        accessMode: oracleAccessMode,
+                        host: oracleHost,
+                        port: oraclePort,
+                        serviceName: oracleServiceName,
+                        sid: oracleSID,
+                        username: oracleUsername,
+                        password: oraclePassword,
+                        timeoutSeconds: oracleTimeoutSeconds,
+                        tls: oracleTLS,
+                        mcpServerResourceId: oracleMCPServerResourceId
+                      })
+                    : resourceKind === 'OceanBase'
+                      ? JSON.stringify(oceanBaseDraft())
+                      : resourceKind === 'Redis'
+                        ? JSON.stringify(redisDraft())
+                        : resourceKind === 'Kafka'
+                          ? JSON.stringify({
+                              accessMode: kafkaAccessMode,
+                              brokers: kafkaBrokers,
+                              tls: kafkaTLS,
+                              tlsServerName: kafkaTLSServerName,
+                              username: kafkaUsername,
+                              password: kafkaPassword,
+                              timeoutSeconds: kafkaTimeoutSeconds,
+                              mcpServerResourceId: kafkaMCPServerResourceId
+                            })
+                          : resourceKind === 'Elasticsearch'
+                            ? JSON.stringify({
+                                accessMode: elasticsearchAccessMode,
+                                url: elasticsearchURL,
+                                username: elasticsearchUsername,
+                                password: elasticsearchPassword,
+                                tlsInsecure: elasticsearchTLSInsecure,
+                                timeoutSeconds: elasticsearchTimeoutSeconds,
+                                mcpServerResourceId:
+                                  elasticsearchMCPServerResourceId
+                              })
+                            : resourceKind === 'RabbitMQ'
+                              ? JSON.stringify({
+                                  accessMode: rabbitMQAccessMode,
+                                  url: rabbitMQURL,
+                                  username: rabbitMQUsername,
+                                  password: rabbitMQPassword,
+                                  timeoutSeconds: rabbitMQTimeoutSeconds,
+                                  tlsInsecure: rabbitMQTLSInsecure,
+                                  mcpServerResourceId:
+                                    rabbitMQMCPServerResourceId
+                                })
+                              : JSON.stringify(nacosDraft())
     }`;
     if (autoSummaryTestKey !== key) {
       autoSummaryTestKey = key;
       void (resourceKind === 'MCPServer'
         ? testMCPDraftConnection()
         : resourceKind === 'Docker'
-            ? testDockerDraftConnection()
-        : resourceKind === 'Kubernetes'
-          ? testKubernetesDraftConnection()
-          : resourceKind === 'Host'
-            ? testHostDraftConnection()
-            : resourceKind === 'PostgreSQL' ? testPostgreSQLDraftConnection() : resourceKind === 'MySQL' ? testMySQLDraftConnection() : resourceKind === 'Oracle' ? testOracleDraftConnection() : resourceKind === 'OceanBase' ? testOceanBaseDraftConnection() : resourceKind === 'Redis' ? testRedisDraftConnection() : resourceKind === 'Kafka' ? testKafkaDraftConnection() : resourceKind === 'Elasticsearch' ? testElasticsearchDraftConnection() : resourceKind === 'RabbitMQ' ? testRabbitMQDraftConnection() : testNacosDraftConnection());
+          ? testDockerDraftConnection()
+          : resourceKind === 'Kubernetes'
+            ? testKubernetesDraftConnection()
+            : resourceKind === 'Host'
+              ? testHostDraftConnection()
+              : resourceKind === 'PostgreSQL'
+                ? testPostgreSQLDraftConnection()
+                : resourceKind === 'MySQL'
+                  ? testMySQLDraftConnection()
+                  : resourceKind === 'Oracle'
+                    ? testOracleDraftConnection()
+                    : resourceKind === 'OceanBase'
+                      ? testOceanBaseDraftConnection()
+                      : resourceKind === 'Redis'
+                        ? testRedisDraftConnection()
+                        : resourceKind === 'Kafka'
+                          ? testKafkaDraftConnection()
+                          : resourceKind === 'Elasticsearch'
+                            ? testElasticsearchDraftConnection()
+                            : resourceKind === 'RabbitMQ'
+                              ? testRabbitMQDraftConnection()
+                              : testNacosDraftConnection());
     }
   }
 
-  $: if (resourceAddMenuOpen && resourceKind === 'MinIO' && resourceAddStep === 3) {
+  $: if (
+    resourceAddMenuOpen &&
+    resourceKind === 'MinIO' &&
+    resourceAddStep === 3
+  ) {
     void testMinIODraftConnection();
   }
 
@@ -470,7 +677,9 @@
   ) {
     onSelectResourceScope(request.scopeId);
     selectedScopeId = request.scopeId;
-    resourceCreateScopeId = resourceCreateScopeOptions.some((scope) => scope.id === request.scopeId)
+    resourceCreateScopeId = resourceCreateScopeOptions.some(
+      (scope) => scope.id === request.scopeId
+    )
       ? request.scopeId
       : '';
     mcpServerReturnContext = null;
@@ -489,7 +698,10 @@
     chooseResourceAddSubtype(request.kind, 'Direct');
     resourceAddCategory = request.kind;
     resourceAddSubtype = 'Direct';
-    resourceAddSubtypeOptions = resourceCategoryOptions[request.kind] ?? ['Direct', 'Agent'];
+    resourceAddSubtypeOptions = resourceCategoryOptions[request.kind] ?? [
+      'Direct',
+      'Agent'
+    ];
   }
 
   function completeRequestedWorkflow(resource: Resource | null = null) {
@@ -507,7 +719,10 @@
       onError(describeError(error, '资源关系加载失败'));
     }
     try {
-      applicationReferences = { ...applicationReferences, [id]: await api.resourceApplications(id) };
+      applicationReferences = {
+        ...applicationReferences,
+        [id]: await api.resourceApplications(id)
+      };
     } catch (error) {
       onError(describeError(error, '资源应用引用加载失败'));
     }
@@ -577,7 +792,9 @@
       team: '团队',
       project: '项目'
     };
-    const scopeId = resourceWorkflowEditing() ? selectedScopeId : resourceCreateScopeId || selectedScopeId;
+    const scopeId = resourceWorkflowEditing()
+      ? selectedScopeId
+      : resourceCreateScopeId || selectedScopeId;
     const type = scopeType(scopeId);
     return `${labels[type] ?? '当前级别'} · ${scopeName(scopeId) || '平台'}`;
   }
@@ -750,22 +967,149 @@
     resourceAddMenuOpen = true;
   }
 
-  function openRepositoryWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Repository'; resourceAddCategory='Repository'; resourceAddSubtype=resourceSubtypeFor(resource); editingRepositoryResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); repositoryURL=String(resource.config?.url??''); repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch=String(resource.config?.default_branch??'main'); repositoryBundleFile=null; repositoryBundleUploadedResourceId=''; repositoryPreviewEntries=[]; repositoryPreviewMessage=''; repositoryPreviewBusy=false; repositoryWorkflowError=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openOracleWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Oracle'; resourceAddCategory='Oracle'; resourceAddSubtype=resourceSubtypeFor(resource); editingOracleResourceId=resource.id; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oracleAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oracleHost=String(resource.config?.host??''); oraclePort=Number(resource.config?.port??1521); oracleServiceName=String(resource.config?.service_name??''); oracleSID=String(resource.config?.sid??''); oracleTLS=Boolean(resource.config?.tls); oracleTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oracleMCPServerResourceId=resource.agent_ref??''; oracleUsername=''; oraclePassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openOceanBaseWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='OceanBase'; resourceAddCategory='OceanBase'; resourceAddSubtype=resourceSubtypeFor(resource); editingOceanBaseResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; editingPostgreSQLResourceId=''; editingMySQLResourceId=''; editingOracleResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); oceanBaseAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; oceanBaseMode=String(resource.config?.mode??'mysql').toLowerCase()==='oracle'?'oracle':'mysql'; oceanBaseHost=String(resource.config?.host??''); oceanBasePort=Number(resource.config?.port??2881); oceanBaseDatabase=String(resource.config?.database??''); oceanBaseServiceName=String(resource.config?.service_name??''); oceanBaseTimeoutSeconds=Number(resource.config?.timeout_seconds??10); oceanBaseMCPServerResourceId=resource.agent_ref??''; oceanBaseUsername=''; oceanBasePassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
+  function openRepositoryWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Repository';
+    resourceAddCategory = 'Repository';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingRepositoryResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    repositoryURL = String(resource.config?.url ?? '');
+    repositoryUsername = '';
+    repositoryPassword = '';
+    repositoryDefaultBranch = String(resource.config?.default_branch ?? 'main');
+    repositoryBundleFile = null;
+    repositoryBundleUploadedResourceId = '';
+    repositoryPreviewEntries = [];
+    repositoryPreviewMessage = '';
+    repositoryPreviewBusy = false;
+    repositoryWorkflowError = '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openOracleWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Oracle';
+    resourceAddCategory = 'Oracle';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingOracleResourceId = resource.id;
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    oracleAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    oracleHost = String(resource.config?.host ?? '');
+    oraclePort = Number(resource.config?.port ?? 1521);
+    oracleServiceName = String(resource.config?.service_name ?? '');
+    oracleSID = String(resource.config?.sid ?? '');
+    oracleTLS = Boolean(resource.config?.tls);
+    oracleTimeoutSeconds = Number(resource.config?.timeout_seconds ?? 10);
+    oracleMCPServerResourceId = resource.agent_ref ?? '';
+    oracleUsername = '';
+    oraclePassword = '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openOceanBaseWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'OceanBase';
+    resourceAddCategory = 'OceanBase';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingOceanBaseResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    editingPostgreSQLResourceId = '';
+    editingMySQLResourceId = '';
+    editingOracleResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    oceanBaseAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    oceanBaseMode =
+      String(resource.config?.mode ?? 'mysql').toLowerCase() === 'oracle'
+        ? 'oracle'
+        : 'mysql';
+    oceanBaseHost = String(resource.config?.host ?? '');
+    oceanBasePort = Number(resource.config?.port ?? 2881);
+    oceanBaseDatabase = String(resource.config?.database ?? '');
+    oceanBaseServiceName = String(resource.config?.service_name ?? '');
+    oceanBaseTimeoutSeconds = Number(resource.config?.timeout_seconds ?? 10);
+    oceanBaseMCPServerResourceId = resource.agent_ref ?? '';
+    oceanBaseUsername = '';
+    oceanBasePassword = '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
   function openResourceEditor(resource: Resource) {
     clearResourceWorkflowEditingState();
-    if (resource.kind === 'Repository') { openRepositoryWorkflowForEdit(resource); return; }
-    if (resource.kind === 'Nacos') { openNacosWorkflowForEdit(resource); return; }
-    if (resource.kind === 'PostgreSQL') { openPostgreSQLWorkflowForEdit(resource); return; }
-    if (resource.kind === 'MySQL') { openMySQLWorkflowForEdit(resource); return; }
-    if (resource.kind === 'Oracle') { openOracleWorkflowForEdit(resource); return; }
-    if (resource.kind === 'OceanBase') { openOceanBaseWorkflowForEdit(resource); return; }
-    if (resource.kind === 'Kafka') { openKafkaWorkflowForEdit(resource); return; }
-    if (resource.kind === 'Elasticsearch') { openElasticsearchWorkflowForEdit(resource); return; }
-    if (resource.kind === 'RabbitMQ') { openRabbitMQWorkflowForEdit(resource); return; }
-    if (resource.kind === 'MinIO') { openMinIOWorkflowForEdit(resource); return; }
-    if (resource.kind === 'Redis') { openRedisWorkflowForEdit(resource); return; }
+    if (resource.kind === 'Repository') {
+      openRepositoryWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Nacos') {
+      openNacosWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'PostgreSQL') {
+      openPostgreSQLWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'MySQL') {
+      openMySQLWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Oracle') {
+      openOracleWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'OceanBase') {
+      openOceanBaseWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Kafka') {
+      openKafkaWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Elasticsearch') {
+      openElasticsearchWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'RabbitMQ') {
+      openRabbitMQWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'MinIO') {
+      openMinIOWorkflowForEdit(resource);
+      return;
+    }
+    if (resource.kind === 'Redis') {
+      openRedisWorkflowForEdit(resource);
+      return;
+    }
     if (resource.kind === 'MCPServer') {
       openMCPWorkflowForEdit(resource);
       return;
@@ -1019,16 +1363,42 @@
 
   function resourceWorkflowEditing() {
     return Boolean(
-      editingResourceId || editingDockerResourceId || editingKubernetesResourceId ||
-      editingHostResourceId || editingPostgreSQLResourceId || editingMySQLResourceId ||
-      editingOracleResourceId || editingOceanBaseResourceId || editingRedisResourceId || editingNacosResourceId ||
-      editingKafkaResourceId || editingElasticsearchResourceId || editingRabbitMQResourceId ||
-      editingMinIOResourceId || editingRepositoryResourceId
+      editingResourceId ||
+      editingDockerResourceId ||
+      editingKubernetesResourceId ||
+      editingHostResourceId ||
+      editingPostgreSQLResourceId ||
+      editingMySQLResourceId ||
+      editingOracleResourceId ||
+      editingOceanBaseResourceId ||
+      editingRedisResourceId ||
+      editingNacosResourceId ||
+      editingKafkaResourceId ||
+      editingElasticsearchResourceId ||
+      editingRabbitMQResourceId ||
+      editingMinIOResourceId ||
+      editingRepositoryResourceId
     );
   }
 
   function resourceWorkflowNeedsReview() {
-    return ['MCPServer', 'Docker', 'Kubernetes', 'Host', 'PostgreSQL', 'MySQL', 'Oracle', 'OceanBase', 'Redis', 'Nacos', 'Kafka', 'Elasticsearch', 'RabbitMQ', 'MinIO', 'Repository'].includes(resourceKind);
+    return [
+      'MCPServer',
+      'Docker',
+      'Kubernetes',
+      'Host',
+      'PostgreSQL',
+      'MySQL',
+      'Oracle',
+      'OceanBase',
+      'Redis',
+      'Nacos',
+      'Kafka',
+      'Elasticsearch',
+      'RabbitMQ',
+      'MinIO',
+      'Repository'
+    ].includes(resourceKind);
   }
 
   function confirmResourceWorkflow() {
@@ -1038,22 +1408,58 @@
     }
     if (resourceAddStep === 2) {
       switch (resourceKind) {
-        case 'MCPServer': onContinueMcpWorkflow(); return;
-        case 'Docker': continueDockerAdd(); return;
-        case 'Kubernetes': continueKubernetesAdd(); return;
-        case 'Host': continueHostAdd(); return;
-        case 'PostgreSQL': postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } return;
-        case 'MySQL': continueMySQLAdd(); return;
-        case 'Oracle': continueOracleAdd(); return;
-        case 'OceanBase': continueOceanBaseAdd(); return;
-        case 'Redis': continueRedisAdd(); return;
-        case 'Nacos': continueNacosAdd(); return;
-        case 'Kafka': continueKafkaAdd(); return;
-        case 'Elasticsearch': continueElasticsearchAdd(); return;
-        case 'RabbitMQ': continueRabbitMQAdd(); return;
-        case 'MinIO': continueMinIOAdd(); return;
-        case 'Repository': void continueRepositoryWorkflow(); return;
-        default: void createResource(); return;
+        case 'MCPServer':
+          onContinueMcpWorkflow();
+          return;
+        case 'Docker':
+          continueDockerAdd();
+          return;
+        case 'Kubernetes':
+          continueKubernetesAdd();
+          return;
+        case 'Host':
+          continueHostAdd();
+          return;
+        case 'PostgreSQL':
+          postgresqlConfigurationAttempted = true;
+          if (postgresqlConfigurationComplete()) {
+            postgresqlConfigurationAttempted = false;
+            resourceAddStep = 3;
+          }
+          return;
+        case 'MySQL':
+          continueMySQLAdd();
+          return;
+        case 'Oracle':
+          continueOracleAdd();
+          return;
+        case 'OceanBase':
+          continueOceanBaseAdd();
+          return;
+        case 'Redis':
+          continueRedisAdd();
+          return;
+        case 'Nacos':
+          continueNacosAdd();
+          return;
+        case 'Kafka':
+          continueKafkaAdd();
+          return;
+        case 'Elasticsearch':
+          continueElasticsearchAdd();
+          return;
+        case 'RabbitMQ':
+          continueRabbitMQAdd();
+          return;
+        case 'MinIO':
+          continueMinIOAdd();
+          return;
+        case 'Repository':
+          void continueRepositoryWorkflow();
+          return;
+        default:
+          void createResource();
+          return;
       }
     }
     if (resourceKind === 'Repository' && resourceAddStep === 3) {
@@ -1061,21 +1467,57 @@
       return;
     }
     switch (resourceKind) {
-      case 'MCPServer': void (editingResourceId ? updateMCPFromWorkflow() : createResource()); return;
+      case 'MCPServer':
+        void (editingResourceId ? updateMCPFromWorkflow() : createResource());
+        return;
       case 'Docker':
-      case 'Kubernetes': void (editingDockerResourceId ? updateDockerFromWorkflow() : editingKubernetesResourceId ? updateKubernetesFromWorkflow() : resourceKind === 'Kubernetes' ? createKubernetesFromWorkflow() : createDockerFromWorkflow()); return;
-      case 'Host': void (editingHostResourceId ? updateHostFromWorkflow() : createHostFromWorkflow()); return;
-      case 'PostgreSQL': void runResourceAction(savePostgreSQLWorkflow); return;
-      case 'MySQL': void runResourceAction(saveMySQLWorkflow); return;
-      case 'Oracle': void runResourceAction(saveOracleWorkflow); return;
-      case 'OceanBase': void runResourceAction(saveOceanBaseWorkflow); return;
-      case 'Redis': void runResourceAction(saveRedisWorkflow); return;
-      case 'Nacos': void runResourceAction(saveNacosWorkflow); return;
-      case 'Kafka': void runResourceAction(saveKafkaWorkflow); return;
-      case 'Elasticsearch': void runResourceAction(saveElasticsearchWorkflow); return;
-      case 'RabbitMQ': void runResourceAction(saveRabbitMQWorkflow); return;
-      case 'MinIO': void runResourceAction(saveMinIOWorkflow); return;
-      case 'Repository': void runResourceAction(saveRepositoryWorkflow); return;
+      case 'Kubernetes':
+        void (editingDockerResourceId
+          ? updateDockerFromWorkflow()
+          : editingKubernetesResourceId
+            ? updateKubernetesFromWorkflow()
+            : resourceKind === 'Kubernetes'
+              ? createKubernetesFromWorkflow()
+              : createDockerFromWorkflow());
+        return;
+      case 'Host':
+        void (editingHostResourceId
+          ? updateHostFromWorkflow()
+          : createHostFromWorkflow());
+        return;
+      case 'PostgreSQL':
+        void runResourceAction(savePostgreSQLWorkflow);
+        return;
+      case 'MySQL':
+        void runResourceAction(saveMySQLWorkflow);
+        return;
+      case 'Oracle':
+        void runResourceAction(saveOracleWorkflow);
+        return;
+      case 'OceanBase':
+        void runResourceAction(saveOceanBaseWorkflow);
+        return;
+      case 'Redis':
+        void runResourceAction(saveRedisWorkflow);
+        return;
+      case 'Nacos':
+        void runResourceAction(saveNacosWorkflow);
+        return;
+      case 'Kafka':
+        void runResourceAction(saveKafkaWorkflow);
+        return;
+      case 'Elasticsearch':
+        void runResourceAction(saveElasticsearchWorkflow);
+        return;
+      case 'RabbitMQ':
+        void runResourceAction(saveRabbitMQWorkflow);
+        return;
+      case 'MinIO':
+        void runResourceAction(saveMinIOWorkflow);
+        return;
+      case 'Repository':
+        void runResourceAction(saveRepositoryWorkflow);
+        return;
     }
   }
 
@@ -1178,14 +1620,30 @@
       hostAccessMode =
         subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     }
-    if (resourceKind === 'PostgreSQL') postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'MySQL') mysqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'Oracle') oracleAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'OceanBase') oceanBaseAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'Kafka') kafkaAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'Elasticsearch') elasticsearchAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'RabbitMQ') rabbitMQAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-    if (resourceKind === 'MinIO') minIOAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'PostgreSQL')
+      postgresqlAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'MySQL')
+      mysqlAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'Oracle')
+      oracleAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'OceanBase')
+      oceanBaseAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'Kafka')
+      kafkaAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'Elasticsearch')
+      elasticsearchAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'RabbitMQ')
+      rabbitMQAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
+    if (resourceKind === 'MinIO')
+      minIOAccessMode =
+        subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
     resourceAddStep = 1;
     resourceTypeSelectionAttempted = false;
     resourceBasicConfigurationAttempted = false;
@@ -1263,17 +1721,156 @@
     hostDraftTest = null;
     editingHostResourceId = '';
   }
-  function resetPostgreSQLDraft() { postgresqlAccessMode='direct'; postgresqlHost=''; postgresqlPort=5432; postgresqlDatabase=''; postgresqlUsername=''; postgresqlPassword=''; postgresqlTimeoutSeconds=10; postgresqlMCPServerResourceId=''; postgresqlConfigurationAttempted=false; postgresqlDraftTest=null; editingPostgreSQLResourceId=''; }
-  function resetMySQLDraft() { mysqlAccessMode='direct'; mysqlHost=''; mysqlPort=3306; mysqlDatabase=''; mysqlUsername=''; mysqlPassword=''; mysqlTimeoutSeconds=10; mysqlMCPServerResourceId=''; mysqlConfigurationAttempted=false; mysqlDraftTest=null; editingMySQLResourceId=''; }
-  function resetOracleDraft() { oracleAccessMode='direct'; oracleHost=''; oraclePort=1521; oracleServiceName=''; oracleSID=''; oracleUsername=''; oraclePassword=''; oracleTimeoutSeconds=10; oracleTLS=false; oracleMCPServerResourceId=''; oracleConfigurationAttempted=false; oracleDraftTest=null; editingOracleResourceId=''; }
-  function resetOceanBaseDraft() { oceanBaseAccessMode='direct'; oceanBaseMode='mysql'; oceanBaseHost=''; oceanBasePort=2881; oceanBaseDatabase=''; oceanBaseServiceName=''; oceanBaseUsername=''; oceanBasePassword=''; oceanBaseTimeoutSeconds=10; oceanBaseMCPServerResourceId=''; oceanBaseConfigurationAttempted=false; oceanBaseDraftTest=null; editingOceanBaseResourceId=''; }
-  function resetRedisDraft() { redisAccessMode='direct'; redisHost=''; redisPort=6379; redisDatabase=0; redisUsername=''; redisPassword=''; redisTimeoutSeconds=10; redisMCPServerResourceId=''; redisConfigurationAttempted=false; redisDraftTest=null; editingRedisResourceId=''; }
-  function resetNacosDraft() { nacosAccessMode='direct'; nacosHost=''; nacosPort=8848; nacosScheme='http'; nacosContextPath='/nacos'; nacosUsername=''; nacosPassword=''; nacosAccessToken=''; nacosTimeoutSeconds=10; nacosMCPServerResourceId=''; nacosConfigurationAttempted=false; nacosDraftTest=null; editingNacosResourceId=''; }
-  function resetKafkaDraft() { kafkaAccessMode='direct'; kafkaBrokers=''; kafkaTLS=false; kafkaTLSServerName=''; kafkaUsername=''; kafkaPassword=''; kafkaTimeoutSeconds=10; kafkaMCPServerResourceId=''; kafkaConfigurationAttempted=false; kafkaDraftTest=null; editingKafkaResourceId=''; }
-  function resetElasticsearchDraft() { elasticsearchAccessMode='direct'; elasticsearchURL=''; elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchTLSInsecure=false; elasticsearchTimeoutSeconds=10; elasticsearchMCPServerResourceId=''; elasticsearchConfigurationAttempted=false; elasticsearchDraftTest=null; editingElasticsearchResourceId=''; }
-  function resetRabbitMQDraft() { rabbitMQAccessMode='direct'; rabbitMQURL=''; rabbitMQUsername=''; rabbitMQPassword=''; rabbitMQTimeoutSeconds=10; rabbitMQTLSInsecure=false; rabbitMQMCPServerResourceId=''; rabbitMQConfigurationAttempted=false; rabbitMQDraftTest=null; editingRabbitMQResourceId=''; }
-  function resetMinIODraft() { minIOAccessMode='direct'; minIOEndpoint=''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; minIORegion=''; minIOSecure=false; minIOTimeoutSeconds=10; minIOMCPServerResourceId=''; minIOConfigurationAttempted=false; minIODraftTest=null; editingMinIOResourceId=''; }
-  function resetRepositoryDraft() { repositoryURL=''; repositoryUsername=''; repositoryPassword=''; repositoryDefaultBranch='main'; repositoryBundleFile=null; repositoryBundleUploadedResourceId=''; repositoryConfigurationAttempted=false; editingRepositoryResourceId=''; repositoryPreviewEntries=[]; repositoryPreviewBusy=false; repositoryPreviewMessage=''; repositoryDraftTest=null; repositoryWorkflowError=''; }
+  function resetPostgreSQLDraft() {
+    postgresqlAccessMode = 'direct';
+    postgresqlHost = '';
+    postgresqlPort = 5432;
+    postgresqlDatabase = '';
+    postgresqlUsername = '';
+    postgresqlPassword = '';
+    postgresqlTimeoutSeconds = 10;
+    postgresqlMCPServerResourceId = '';
+    postgresqlConfigurationAttempted = false;
+    postgresqlDraftTest = null;
+    editingPostgreSQLResourceId = '';
+  }
+  function resetMySQLDraft() {
+    mysqlAccessMode = 'direct';
+    mysqlHost = '';
+    mysqlPort = 3306;
+    mysqlDatabase = '';
+    mysqlUsername = '';
+    mysqlPassword = '';
+    mysqlTimeoutSeconds = 10;
+    mysqlMCPServerResourceId = '';
+    mysqlConfigurationAttempted = false;
+    mysqlDraftTest = null;
+    editingMySQLResourceId = '';
+  }
+  function resetOracleDraft() {
+    oracleAccessMode = 'direct';
+    oracleHost = '';
+    oraclePort = 1521;
+    oracleServiceName = '';
+    oracleSID = '';
+    oracleUsername = '';
+    oraclePassword = '';
+    oracleTimeoutSeconds = 10;
+    oracleTLS = false;
+    oracleMCPServerResourceId = '';
+    oracleConfigurationAttempted = false;
+    oracleDraftTest = null;
+    editingOracleResourceId = '';
+  }
+  function resetOceanBaseDraft() {
+    oceanBaseAccessMode = 'direct';
+    oceanBaseMode = 'mysql';
+    oceanBaseHost = '';
+    oceanBasePort = 2881;
+    oceanBaseDatabase = '';
+    oceanBaseServiceName = '';
+    oceanBaseUsername = '';
+    oceanBasePassword = '';
+    oceanBaseTimeoutSeconds = 10;
+    oceanBaseMCPServerResourceId = '';
+    oceanBaseConfigurationAttempted = false;
+    oceanBaseDraftTest = null;
+    editingOceanBaseResourceId = '';
+  }
+  function resetRedisDraft() {
+    redisAccessMode = 'direct';
+    redisHost = '';
+    redisPort = 6379;
+    redisDatabase = 0;
+    redisUsername = '';
+    redisPassword = '';
+    redisTimeoutSeconds = 10;
+    redisMCPServerResourceId = '';
+    redisConfigurationAttempted = false;
+    redisDraftTest = null;
+    editingRedisResourceId = '';
+  }
+  function resetNacosDraft() {
+    nacosAccessMode = 'direct';
+    nacosHost = '';
+    nacosPort = 8848;
+    nacosScheme = 'http';
+    nacosContextPath = '/nacos';
+    nacosUsername = '';
+    nacosPassword = '';
+    nacosAccessToken = '';
+    nacosTimeoutSeconds = 10;
+    nacosMCPServerResourceId = '';
+    nacosConfigurationAttempted = false;
+    nacosDraftTest = null;
+    editingNacosResourceId = '';
+  }
+  function resetKafkaDraft() {
+    kafkaAccessMode = 'direct';
+    kafkaBrokers = '';
+    kafkaTLS = false;
+    kafkaTLSServerName = '';
+    kafkaUsername = '';
+    kafkaPassword = '';
+    kafkaTimeoutSeconds = 10;
+    kafkaMCPServerResourceId = '';
+    kafkaConfigurationAttempted = false;
+    kafkaDraftTest = null;
+    editingKafkaResourceId = '';
+  }
+  function resetElasticsearchDraft() {
+    elasticsearchAccessMode = 'direct';
+    elasticsearchURL = '';
+    elasticsearchUsername = '';
+    elasticsearchPassword = '';
+    elasticsearchTLSInsecure = false;
+    elasticsearchTimeoutSeconds = 10;
+    elasticsearchMCPServerResourceId = '';
+    elasticsearchConfigurationAttempted = false;
+    elasticsearchDraftTest = null;
+    editingElasticsearchResourceId = '';
+  }
+  function resetRabbitMQDraft() {
+    rabbitMQAccessMode = 'direct';
+    rabbitMQURL = '';
+    rabbitMQUsername = '';
+    rabbitMQPassword = '';
+    rabbitMQTimeoutSeconds = 10;
+    rabbitMQTLSInsecure = false;
+    rabbitMQMCPServerResourceId = '';
+    rabbitMQConfigurationAttempted = false;
+    rabbitMQDraftTest = null;
+    editingRabbitMQResourceId = '';
+  }
+  function resetMinIODraft() {
+    minIOAccessMode = 'direct';
+    minIOEndpoint = '';
+    minIOAccessKey = '';
+    minIOSecretKey = '';
+    minIOSessionToken = '';
+    minIORegion = '';
+    minIOSecure = false;
+    minIOTimeoutSeconds = 10;
+    minIOMCPServerResourceId = '';
+    minIOConfigurationAttempted = false;
+    minIODraftTest = null;
+    editingMinIOResourceId = '';
+  }
+  function resetRepositoryDraft() {
+    repositoryURL = '';
+    repositoryUsername = '';
+    repositoryPassword = '';
+    repositoryDefaultBranch = 'main';
+    repositoryBundleFile = null;
+    repositoryBundleUploadedResourceId = '';
+    repositoryConfigurationAttempted = false;
+    editingRepositoryResourceId = '';
+    repositoryPreviewEntries = [];
+    repositoryPreviewBusy = false;
+    repositoryPreviewMessage = '';
+    repositoryDraftTest = null;
+    repositoryWorkflowError = '';
+  }
 
   function mcpConfigurationValid() {
     return validateMCPConfiguration(mcpTransport, mcpURL, mcpRequestHeaders);
@@ -1285,7 +1882,10 @@
       if (!resourceAddCategory) issues.push('资源类型');
       if (!resourceAddSubtype) issues.push('资源子类型');
       if (!resourceName.trim()) issues.push('资源名称');
-      if (!(resourceWorkflowEditing() ? selectedScopeId : resourceCreateScopeId)) issues.push('有权限的资源级别');
+      if (
+        !(resourceWorkflowEditing() ? selectedScopeId : resourceCreateScopeId)
+      )
+        issues.push('有权限的资源级别');
       return issues.length ? `请填写：${issues.join('、')}。` : '';
     }
     if (
@@ -1322,9 +1922,27 @@
       const issues = hostConfigurationIssues();
       return `请检查：${issues.length ? issues.join('、') : 'Host 配置'}。`;
     }
-    if (resourceKind === 'Repository' && resourceAddStep === 2 && repositoryConfigurationAttempted && !repositoryConfigurationComplete()) return `请检查${resourceAddSubtype === 'Bundle' ? ' Bundle 上传' : ' Git 配置'}。`;
-    if (resourceKind === 'RabbitMQ' && resourceAddStep === 2 && rabbitMQConfigurationAttempted && !rabbitMQConfigurationComplete()) return '请检查 RabbitMQ 配置。';
-    if (resourceKind === 'MinIO' && resourceAddStep === 2 && minIOConfigurationAttempted && !minIOConfigurationComplete()) return '请检查 MinIO 配置。';
+    if (
+      resourceKind === 'Repository' &&
+      resourceAddStep === 2 &&
+      repositoryConfigurationAttempted &&
+      !repositoryConfigurationComplete()
+    )
+      return `请检查${resourceAddSubtype === 'Bundle' ? ' Bundle 上传' : ' Git 配置'}。`;
+    if (
+      resourceKind === 'RabbitMQ' &&
+      resourceAddStep === 2 &&
+      rabbitMQConfigurationAttempted &&
+      !rabbitMQConfigurationComplete()
+    )
+      return '请检查 RabbitMQ 配置。';
+    if (
+      resourceKind === 'MinIO' &&
+      resourceAddStep === 2 &&
+      minIOConfigurationAttempted &&
+      !minIOConfigurationComplete()
+    )
+      return '请检查 MinIO 配置。';
     return '';
   }
 
@@ -1363,11 +1981,11 @@
   async function saveMCPCredential(existing: Resource) {
     const headers = parseMCPHeaders(mcpRequestHeaders);
     return mcpSecret(mcpToken, headers, {
-        tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '',
-        tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '',
-        tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '',
-        tls_skip_verify: mcpTLSSkipVerify
-      });
+      tls_ca: mcpTLSCA.trim() ? dockerTLSValueForSave(mcpTLSCA) : '',
+      tls_cert: mcpTLSCert.trim() ? dockerTLSValueForSave(mcpTLSCert) : '',
+      tls_key: mcpTLSKey.trim() ? dockerTLSValueForSave(mcpTLSKey) : '',
+      tls_skip_verify: mcpTLSSkipVerify
+    });
   }
 
   async function createDockerCredential() {
@@ -1452,7 +2070,6 @@
     );
   }
 
-
   function resourceSchemaConfigurationComplete() {
     if (!createSchema?.schema.required?.length) return true;
     return createSchema.schema.required.every((key) => {
@@ -1513,39 +2130,365 @@
       connectionOverride: hostConnectionOverride
     } as const;
   }
-  function postgresqlDraft() { return { accessMode: postgresqlAccessMode, host: postgresqlHost, port: postgresqlPort, database: postgresqlDatabase, username: postgresqlUsername, password: postgresqlPassword, timeoutSeconds: postgresqlTimeoutSeconds, mcpServerResourceId: postgresqlMCPServerResourceId }; }
-  function hasSavedResourceCredential(resourceId: string) { return Boolean(resources.find((resource) => resource.id === resourceId)?.credential_configured); }
+  function postgresqlDraft() {
+    return {
+      accessMode: postgresqlAccessMode,
+      host: postgresqlHost,
+      port: postgresqlPort,
+      database: postgresqlDatabase,
+      username: postgresqlUsername,
+      password: postgresqlPassword,
+      timeoutSeconds: postgresqlTimeoutSeconds,
+      mcpServerResourceId: postgresqlMCPServerResourceId
+    };
+  }
+  function hasSavedResourceCredential(resourceId: string) {
+    return Boolean(
+      resources.find((resource) => resource.id === resourceId)
+        ?.credential_configured
+    );
+  }
   async function testSavedDatabaseResource(resourceId: string) {
     const resource = resources.find((item) => item.id === resourceId);
     if (!resource) return null;
     const { check } = await testResourceConnector(resource, selectedScopeId);
-    return { status: check.status, message: check.message, latency: check.latency_ms, error: check.status === 'succeeded' ? '' : check.message };
+    return {
+      status: check.status,
+      message: check.message,
+      latency: check.latency_ms,
+      error: check.status === 'succeeded' ? '' : check.message
+    };
   }
-  function postgresqlConfigurationComplete() { return postgresqlAccessMode === 'agent' ? Boolean(postgresqlMCPServerResourceId) : Boolean(postgresqlHost.trim() && postgresqlDatabase.trim() && databaseCredentialComplete(postgresqlUsername, postgresqlPassword, hasSavedResourceCredential(editingPostgreSQLResourceId), Boolean(editingPostgreSQLResourceId))); }
-  function resetPostgreSQLDraftTest() { postgresqlDraftTest = null; }
+  function postgresqlConfigurationComplete() {
+    return postgresqlAccessMode === 'agent'
+      ? Boolean(postgresqlMCPServerResourceId)
+      : Boolean(
+          postgresqlHost.trim() &&
+          postgresqlDatabase.trim() &&
+          databaseCredentialComplete(
+            postgresqlUsername,
+            postgresqlPassword,
+            hasSavedResourceCredential(editingPostgreSQLResourceId),
+            Boolean(editingPostgreSQLResourceId)
+          )
+        );
+  }
+  function resetPostgreSQLDraftTest() {
+    postgresqlDraftTest = null;
+  }
   async function testPostgreSQLDraftConnection() {
-    postgresqlDraftTest = { busy: true }; if (postgresqlAccessMode === 'agent') { postgresqlDraftTest = { status: 'succeeded', message: '由 MCPServer 提供连接', latency: 0 }; return; }
-    try { const saved = editingPostgreSQLResourceId && !postgresqlUsername.trim() && !postgresqlPassword ? await testSavedDatabaseResource(editingPostgreSQLResourceId) : null; if (saved) { postgresqlDraftTest = saved; return; } const result = await testDraftPostgreSQL({ host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), username: postgresqlUsername.trim(), password: postgresqlPassword, timeout_seconds: Number(postgresqlTimeoutSeconds) }); postgresqlDraftTest = { status: result.status, message: result.message, latency: result.latency_ms, error: result.status === 'succeeded' ? '' : result.message }; } catch (error) { postgresqlDraftTest = { error: describeError(error, 'PostgreSQL 连接测试失败') }; }
+    postgresqlDraftTest = { busy: true };
+    if (postgresqlAccessMode === 'agent') {
+      postgresqlDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const saved =
+        editingPostgreSQLResourceId &&
+        !postgresqlUsername.trim() &&
+        !postgresqlPassword
+          ? await testSavedDatabaseResource(editingPostgreSQLResourceId)
+          : null;
+      if (saved) {
+        postgresqlDraftTest = saved;
+        return;
+      }
+      const result = await testDraftPostgreSQL({
+        host: postgresqlHost.trim(),
+        port: Number(postgresqlPort),
+        database: postgresqlDatabase.trim(),
+        username: postgresqlUsername.trim(),
+        password: postgresqlPassword,
+        timeout_seconds: Number(postgresqlTimeoutSeconds)
+      });
+      postgresqlDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      postgresqlDraftTest = {
+        error: describeError(error, 'PostgreSQL 连接测试失败')
+      };
+    }
   }
-  function mysqlConfigurationComplete() { return mysqlAccessMode === 'agent' ? Boolean(mysqlMCPServerResourceId) : Boolean(mysqlHost.trim() && mysqlDatabase.trim() && databaseCredentialComplete(mysqlUsername, mysqlPassword, hasSavedResourceCredential(editingMySQLResourceId), Boolean(editingMySQLResourceId))); }
-  function resetMySQLDraftTest() { mysqlDraftTest = null; }
-  async function testMySQLDraftConnection() { mysqlDraftTest={busy:true}; if(mysqlAccessMode==='agent'){mysqlDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const saved=editingMySQLResourceId&&!mysqlUsername.trim()&&!mysqlPassword?await testSavedDatabaseResource(editingMySQLResourceId):null;if(saved){mysqlDraftTest=saved;return;}const result=await testDraftMySQL({host:mysqlHost.trim(),port:Number(mysqlPort),database:mysqlDatabase.trim(),username:mysqlUsername.trim(),password:mysqlPassword,timeout_seconds:Number(mysqlTimeoutSeconds)});mysqlDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){mysqlDraftTest={error:describeError(error,'MySQL 连接测试失败')};} }
-  function oracleConfigurationComplete() { return oracleAccessMode === 'agent' ? Boolean(oracleMCPServerResourceId) : Boolean(oracleHost.trim() && (oracleServiceName.trim() || oracleSID.trim()) && !(oracleServiceName.trim() && oracleSID.trim()) && databaseCredentialComplete(oracleUsername, oraclePassword, hasSavedResourceCredential(editingOracleResourceId), Boolean(editingOracleResourceId))); }
-  function resetOracleDraftTest() { oracleDraftTest = null; }
-  async function testOracleDraftConnection() { oracleDraftTest={busy:true}; if(oracleAccessMode==='agent'){oracleDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try{const saved=editingOracleResourceId&&!oracleUsername.trim()&&!oraclePassword?await testSavedDatabaseResource(editingOracleResourceId):null;if(saved){oracleDraftTest=saved;return;}const result=await testDraftOracle({host:oracleHost.trim(),port:Number(oraclePort),service_name:oracleServiceName.trim()||undefined,sid:oracleSID.trim()||undefined,username:oracleUsername.trim(),password:oraclePassword,timeout_seconds:Number(oracleTimeoutSeconds),tls:oracleTLS});oracleDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){oracleDraftTest={error:describeError(error,'Oracle 连接测试失败')};} }
-  function continueOracleAdd() { oracleConfigurationAttempted=true; if(!oracleConfigurationComplete()) return; oracleConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function oceanBaseDraft() { return { accessMode:oceanBaseAccessMode, mode:oceanBaseMode, host:oceanBaseHost, port:oceanBasePort, database:oceanBaseDatabase, serviceName:oceanBaseServiceName, username:oceanBaseUsername, password:oceanBasePassword, timeoutSeconds:oceanBaseTimeoutSeconds, mcpServerResourceId:oceanBaseMCPServerResourceId }; }
-  function oceanBaseConfigurationComplete() { return oceanBaseAccessMode === 'agent' ? Boolean(oceanBaseMCPServerResourceId) : Boolean(oceanBaseHost.trim() && databaseCredentialComplete(oceanBaseUsername, oceanBasePassword, hasSavedResourceCredential(editingOceanBaseResourceId), Boolean(editingOceanBaseResourceId)) && (oceanBaseMode !== 'mysql' || oceanBaseDatabase.trim())); }
-  function resetOceanBaseDraftTest() { oceanBaseDraftTest = null; }
-  async function testOceanBaseDraftConnection() { oceanBaseDraftTest={busy:true}; if(oceanBaseAccessMode==='agent'){oceanBaseDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const saved=editingOceanBaseResourceId&&!oceanBaseUsername.trim()&&!oceanBasePassword?await testSavedDatabaseResource(editingOceanBaseResourceId):null;if(saved){oceanBaseDraftTest=saved;return;}const result=await testDraftOceanBase({host:oceanBaseHost.trim(),port:Number(oceanBasePort),mode:oceanBaseMode,database:oceanBaseDatabase.trim()||undefined,service_name:oceanBaseServiceName.trim()||undefined,username:oceanBaseUsername.trim(),password:oceanBasePassword,timeout_seconds:Number(oceanBaseTimeoutSeconds)}); oceanBaseDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; }catch(error){oceanBaseDraftTest={error:describeError(error,'OceanBase 连接测试失败')};} }
-  function continueOceanBaseAdd() { oceanBaseConfigurationAttempted=true; if(!oceanBaseConfigurationComplete()) return; oceanBaseConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function redisDraft() { return { accessMode: redisAccessMode, host: redisHost, port: redisPort, database: redisDatabase, username: redisUsername, password: redisPassword, timeoutSeconds: redisTimeoutSeconds, mcpServerResourceId: redisMCPServerResourceId }; }
-  function resetRedisDraftTest() { redisDraftTest=null; }
-  function redisConfigurationComplete() { return redisAccessMode === 'agent' ? Boolean(redisMCPServerResourceId) : Boolean(redisHost.trim()); }
-  async function testRedisDraftConnection() { redisDraftTest={busy:true}; if(redisAccessMode==='agent'){redisDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try { const result=await testDraftRedis({host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),username:redisUsername.trim(),password:redisPassword,timeout_seconds:Number(redisTimeoutSeconds)}); redisDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message}; } catch(error){redisDraftTest={error:describeError(error,'Redis 连接测试失败')};} }
-  function nacosDraft() { return { accessMode:nacosAccessMode,host:nacosHost,port:nacosPort,scheme:nacosScheme,contextPath:nacosContextPath,username:nacosUsername,password:nacosPassword,accessToken:nacosAccessToken,timeoutSeconds:nacosTimeoutSeconds,mcpServerResourceId:nacosMCPServerResourceId }; }
-  function nacosConfigurationComplete() { return nacosAccessMode==='agent' ? Boolean(nacosMCPServerResourceId) : Boolean(nacosHost.trim()); }
-  function repositoryConfigurationComplete() { return resourceAddSubtype === 'Git' ? Boolean(repositoryURL.trim()) : Boolean(repositoryBundleFile || repositoryBundleConfigured); }
+  function mysqlConfigurationComplete() {
+    return mysqlAccessMode === 'agent'
+      ? Boolean(mysqlMCPServerResourceId)
+      : Boolean(
+          mysqlHost.trim() &&
+          mysqlDatabase.trim() &&
+          databaseCredentialComplete(
+            mysqlUsername,
+            mysqlPassword,
+            hasSavedResourceCredential(editingMySQLResourceId),
+            Boolean(editingMySQLResourceId)
+          )
+        );
+  }
+  function resetMySQLDraftTest() {
+    mysqlDraftTest = null;
+  }
+  async function testMySQLDraftConnection() {
+    mysqlDraftTest = { busy: true };
+    if (mysqlAccessMode === 'agent') {
+      mysqlDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const saved =
+        editingMySQLResourceId && !mysqlUsername.trim() && !mysqlPassword
+          ? await testSavedDatabaseResource(editingMySQLResourceId)
+          : null;
+      if (saved) {
+        mysqlDraftTest = saved;
+        return;
+      }
+      const result = await testDraftMySQL({
+        host: mysqlHost.trim(),
+        port: Number(mysqlPort),
+        database: mysqlDatabase.trim(),
+        username: mysqlUsername.trim(),
+        password: mysqlPassword,
+        timeout_seconds: Number(mysqlTimeoutSeconds)
+      });
+      mysqlDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      mysqlDraftTest = { error: describeError(error, 'MySQL 连接测试失败') };
+    }
+  }
+  function oracleConfigurationComplete() {
+    return oracleAccessMode === 'agent'
+      ? Boolean(oracleMCPServerResourceId)
+      : Boolean(
+          oracleHost.trim() &&
+          (oracleServiceName.trim() || oracleSID.trim()) &&
+          !(oracleServiceName.trim() && oracleSID.trim()) &&
+          databaseCredentialComplete(
+            oracleUsername,
+            oraclePassword,
+            hasSavedResourceCredential(editingOracleResourceId),
+            Boolean(editingOracleResourceId)
+          )
+        );
+  }
+  function resetOracleDraftTest() {
+    oracleDraftTest = null;
+  }
+  async function testOracleDraftConnection() {
+    oracleDraftTest = { busy: true };
+    if (oracleAccessMode === 'agent') {
+      oracleDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const saved =
+        editingOracleResourceId && !oracleUsername.trim() && !oraclePassword
+          ? await testSavedDatabaseResource(editingOracleResourceId)
+          : null;
+      if (saved) {
+        oracleDraftTest = saved;
+        return;
+      }
+      const result = await testDraftOracle({
+        host: oracleHost.trim(),
+        port: Number(oraclePort),
+        service_name: oracleServiceName.trim() || undefined,
+        sid: oracleSID.trim() || undefined,
+        username: oracleUsername.trim(),
+        password: oraclePassword,
+        timeout_seconds: Number(oracleTimeoutSeconds),
+        tls: oracleTLS
+      });
+      oracleDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      oracleDraftTest = { error: describeError(error, 'Oracle 连接测试失败') };
+    }
+  }
+  function continueOracleAdd() {
+    oracleConfigurationAttempted = true;
+    if (!oracleConfigurationComplete()) return;
+    oracleConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function oceanBaseDraft() {
+    return {
+      accessMode: oceanBaseAccessMode,
+      mode: oceanBaseMode,
+      host: oceanBaseHost,
+      port: oceanBasePort,
+      database: oceanBaseDatabase,
+      serviceName: oceanBaseServiceName,
+      username: oceanBaseUsername,
+      password: oceanBasePassword,
+      timeoutSeconds: oceanBaseTimeoutSeconds,
+      mcpServerResourceId: oceanBaseMCPServerResourceId
+    };
+  }
+  function oceanBaseConfigurationComplete() {
+    return oceanBaseAccessMode === 'agent'
+      ? Boolean(oceanBaseMCPServerResourceId)
+      : Boolean(
+          oceanBaseHost.trim() &&
+          databaseCredentialComplete(
+            oceanBaseUsername,
+            oceanBasePassword,
+            hasSavedResourceCredential(editingOceanBaseResourceId),
+            Boolean(editingOceanBaseResourceId)
+          ) &&
+          (oceanBaseMode !== 'mysql' || oceanBaseDatabase.trim())
+        );
+  }
+  function resetOceanBaseDraftTest() {
+    oceanBaseDraftTest = null;
+  }
+  async function testOceanBaseDraftConnection() {
+    oceanBaseDraftTest = { busy: true };
+    if (oceanBaseAccessMode === 'agent') {
+      oceanBaseDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const saved =
+        editingOceanBaseResourceId &&
+        !oceanBaseUsername.trim() &&
+        !oceanBasePassword
+          ? await testSavedDatabaseResource(editingOceanBaseResourceId)
+          : null;
+      if (saved) {
+        oceanBaseDraftTest = saved;
+        return;
+      }
+      const result = await testDraftOceanBase({
+        host: oceanBaseHost.trim(),
+        port: Number(oceanBasePort),
+        mode: oceanBaseMode,
+        database: oceanBaseDatabase.trim() || undefined,
+        service_name: oceanBaseServiceName.trim() || undefined,
+        username: oceanBaseUsername.trim(),
+        password: oceanBasePassword,
+        timeout_seconds: Number(oceanBaseTimeoutSeconds)
+      });
+      oceanBaseDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      oceanBaseDraftTest = {
+        error: describeError(error, 'OceanBase 连接测试失败')
+      };
+    }
+  }
+  function continueOceanBaseAdd() {
+    oceanBaseConfigurationAttempted = true;
+    if (!oceanBaseConfigurationComplete()) return;
+    oceanBaseConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function redisDraft() {
+    return {
+      accessMode: redisAccessMode,
+      host: redisHost,
+      port: redisPort,
+      database: redisDatabase,
+      username: redisUsername,
+      password: redisPassword,
+      timeoutSeconds: redisTimeoutSeconds,
+      mcpServerResourceId: redisMCPServerResourceId
+    };
+  }
+  function resetRedisDraftTest() {
+    redisDraftTest = null;
+  }
+  function redisConfigurationComplete() {
+    return redisAccessMode === 'agent'
+      ? Boolean(redisMCPServerResourceId)
+      : Boolean(redisHost.trim());
+  }
+  async function testRedisDraftConnection() {
+    redisDraftTest = { busy: true };
+    if (redisAccessMode === 'agent') {
+      redisDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftRedis({
+        host: redisHost.trim(),
+        port: Number(redisPort),
+        database: Number(redisDatabase),
+        username: redisUsername.trim(),
+        password: redisPassword,
+        timeout_seconds: Number(redisTimeoutSeconds)
+      });
+      redisDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      redisDraftTest = { error: describeError(error, 'Redis 连接测试失败') };
+    }
+  }
+  function nacosDraft() {
+    return {
+      accessMode: nacosAccessMode,
+      host: nacosHost,
+      port: nacosPort,
+      scheme: nacosScheme,
+      contextPath: nacosContextPath,
+      username: nacosUsername,
+      password: nacosPassword,
+      accessToken: nacosAccessToken,
+      timeoutSeconds: nacosTimeoutSeconds,
+      mcpServerResourceId: nacosMCPServerResourceId
+    };
+  }
+  function nacosConfigurationComplete() {
+    return nacosAccessMode === 'agent'
+      ? Boolean(nacosMCPServerResourceId)
+      : Boolean(nacosHost.trim());
+  }
+  function repositoryConfigurationComplete() {
+    return resourceAddSubtype === 'Git'
+      ? Boolean(repositoryURL.trim())
+      : Boolean(repositoryBundleFile || repositoryBundleConfigured);
+  }
   async function previewRepositoryDraft() {
     repositoryPreviewBusy = true;
     repositoryPreviewMessage = '';
@@ -1556,43 +2499,474 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ subtype: resourceAddSubtype, url: repositoryURL.trim(), branch: repositoryDefaultBranch.trim() || 'main', username: repositoryUsername.trim(), password: repositoryPassword })
+        body: JSON.stringify({
+          subtype: resourceAddSubtype,
+          url: repositoryURL.trim(),
+          branch: repositoryDefaultBranch.trim() || 'main',
+          username: repositoryUsername.trim(),
+          password: repositoryPassword
+        })
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? '仓库预览失败');
-      repositoryPreviewEntries = Array.isArray(data.entries) ? data.entries : [];
-      repositoryDraftTest = { status: 'succeeded', message: '仓库内容读取通过' };
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ?? data?.message ?? '仓库预览失败'
+        );
+      repositoryPreviewEntries = Array.isArray(data.entries)
+        ? data.entries
+        : [];
+      repositoryDraftTest = {
+        status: 'succeeded',
+        message: '仓库内容读取通过'
+      };
       resourceAddStep = 3;
     } catch (error) {
-      repositoryPreviewMessage = error instanceof Error ? error.message : '仓库预览失败';
-      repositoryDraftTest = { status: 'failed', error: repositoryPreviewMessage };
+      repositoryPreviewMessage =
+        error instanceof Error ? error.message : '仓库预览失败';
+      repositoryDraftTest = {
+        status: 'failed',
+        error: repositoryPreviewMessage
+      };
     } finally {
       repositoryPreviewBusy = false;
     }
   }
-  function resetNacosDraftTest() { nacosDraftTest=null; }
-  async function testNacosDraftConnection() { nacosDraftTest={busy:true}; if(nacosAccessMode==='agent'){nacosDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftNacos({host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,username:nacosUsername,password:nacosPassword,access_token:nacosAccessToken,timeout_seconds:Number(nacosTimeoutSeconds)});nacosDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){nacosDraftTest={error:describeError(error,'Nacos 连接测试失败')};}}
-  function kafkaConfigurationComplete() { return kafkaAccessMode === 'agent' ? Boolean(kafkaMCPServerResourceId) : Boolean(kafkaBrokers.split(/[\n,]+/).map(v => v.trim()).filter(Boolean).length); }
-  function resetKafkaDraftTest() { kafkaDraftTest = null; }
-  async function testKafkaDraftConnection() { kafkaDraftTest={busy:true}; if(kafkaAccessMode==='agent'){kafkaDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftKafka({brokers:kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean),username:kafkaUsername.trim(),password:kafkaPassword,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)});kafkaDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){kafkaDraftTest={error:describeError(error,'Kafka 连接测试失败')};} }
-  function elasticsearchConfigurationComplete() { return elasticsearchAccessMode === 'agent' ? Boolean(elasticsearchMCPServerResourceId) : Boolean(elasticsearchURL.trim()); }
-  function rabbitMQConfigurationComplete() { return rabbitMQAccessMode === 'agent' ? Boolean(rabbitMQMCPServerResourceId) : Boolean(rabbitMQURL.trim()); }
-  function minIOConfigurationComplete() { return minIOAccessMode === 'agent' ? Boolean(minIOMCPServerResourceId) : Boolean(minIOEndpoint.trim()); }
-  function resetElasticsearchDraftTest() { elasticsearchDraftTest = null; }
-  async function testElasticsearchDraftConnection() { elasticsearchDraftTest={busy:true}; if(elasticsearchAccessMode==='agent'){elasticsearchDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftElasticsearch({url:elasticsearchURL.trim(),username:elasticsearchUsername.trim(),password:elasticsearchPassword,tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)});elasticsearchDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};}catch(error){elasticsearchDraftTest={error:describeError(error,'Elasticsearch 连接测试失败')};} }
-  function resetRabbitMQDraftTest() { rabbitMQDraftTest = null; }
-  async function testRabbitMQDraftConnection() { rabbitMQDraftTest={busy:true}; if(rabbitMQAccessMode==='agent'){rabbitMQDraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftRabbitMQ({url:rabbitMQURL.trim(),username:rabbitMQUsername.trim(),password:rabbitMQPassword,tls_insecure:rabbitMQTLSInsecure,timeout_seconds:Number(rabbitMQTimeoutSeconds)}); rabbitMQDraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};} catch(error){rabbitMQDraftTest={error:describeError(error,'RabbitMQ 连接测试失败')};} }
-  function resetMinIODraftTest() { minIODraftTest = null; }
-  async function testMinIODraftConnection() { minIODraftTest={busy:true}; if(minIOAccessMode==='agent'){minIODraftTest={status:'succeeded',message:'由 MCPServer 提供连接',latency:0};return;} try {const result=await testDraftMinIO({endpoint:minIOEndpoint.trim(),access_key:minIOAccessKey.trim(),secret_key:minIOSecretKey,session_token:minIOSessionToken,region:minIORegion.trim(),secure:minIOSecure,timeout_seconds:Number(minIOTimeoutSeconds)}); minIODraftTest={status:result.status,message:result.message,latency:result.latency_ms,error:result.status==='succeeded'?'':result.message};} catch(error){minIODraftTest={error:describeError(error,'MinIO 连接测试失败')};} }
-  function openElasticsearchWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Elasticsearch'; resourceAddCategory='ElasticSearch'; resourceAddSubtype=resourceSubtypeFor(resource); editingElasticsearchResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); elasticsearchAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; elasticsearchURL=String(resource.config?.url??''); elasticsearchTLSInsecure=Boolean(resource.config?.tls_insecure); elasticsearchTimeoutSeconds=Number(resource.config?.timeout_seconds??10); elasticsearchUsername=''; elasticsearchPassword=''; elasticsearchMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openRabbitMQWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='RabbitMQ'; resourceAddCategory='RabbitMQ'; resourceAddSubtype=resourceSubtypeFor(resource); editingRabbitMQResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); rabbitMQAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; rabbitMQURL=String(resource.config?.url??''); rabbitMQTimeoutSeconds=Number(resource.config?.timeout_seconds??10); rabbitMQTLSInsecure=Boolean(resource.config?.tls_insecure); rabbitMQMCPServerResourceId=resource.agent_ref??''; rabbitMQUsername=''; rabbitMQPassword=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openMinIOWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MinIO'; resourceAddCategory='MinIO'; resourceAddSubtype=resourceSubtypeFor(resource); editingMinIOResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); minIOAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; minIOEndpoint=String(resource.config?.endpoint??''); minIORegion=String(resource.config?.region??''); minIOSecure=Boolean(resource.config?.secure); minIOTimeoutSeconds=Number(resource.config?.timeout_seconds??10); minIOMCPServerResourceId=resource.agent_ref??''; minIOAccessKey=''; minIOSecretKey=''; minIOSessionToken=''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openKafkaWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Kafka'; resourceAddCategory='Kafka'; resourceAddSubtype=resourceSubtypeFor(resource); editingKafkaResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); kafkaAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; kafkaBrokers=Array.isArray(resource.config?.brokers)?resource.config.brokers.join('\n'):''; kafkaTLS=Boolean(resource.config?.tls); kafkaTLSServerName=String(resource.config?.tls_server_name??''); kafkaUsername=''; kafkaPassword=''; kafkaMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function syncPostgreSQLEditor(resource: Resource) { resourceName = resource.name; resourceLabels = Object.entries(resource.labels ?? {}).map(([k,v]) => `${k}=${v}`).join(', '); postgresqlAccessMode = String(resource.subtype ?? '').toLowerCase() === 'agent' ? 'agent' : 'direct'; postgresqlHost = String(resource.config?.host ?? ''); postgresqlPort = Number(resource.config?.port ?? 5432); postgresqlDatabase = String(resource.config?.database ?? ''); postgresqlUsername = ''; postgresqlPassword = ''; postgresqlMCPServerResourceId = resource.agent_ref ?? ''; }
-  function openMySQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='MySQL'; resourceAddCategory='MySQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingMySQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; resourceName=resource.name; resourceLabels=Object.entries(resource.labels??{}).map(([k,v])=>`${k}=${v}`).join(', '); mysqlAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; mysqlHost=String(resource.config?.host??''); mysqlPort=Number(resource.config?.port??3306); mysqlDatabase=String(resource.config?.database??''); mysqlUsername=''; mysqlPassword=''; mysqlMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openPostgreSQLWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId = resource.scope_id; selectedResourceId = resource.id; resourceKind='PostgreSQL'; resourceAddCategory='PostgreSQL'; resourceAddSubtype=resourceSubtypeFor(resource); editingPostgreSQLResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; syncPostgreSQLEditor(resource); resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openRedisWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id); selectedScopeId=resource.scope_id; selectedResourceId=resource.id; resourceKind='Redis'; resourceAddCategory='Redis'; resourceAddSubtype=resourceSubtypeFor(resource); editingRedisResourceId=resource.id; editingResourceId=''; editingDockerResourceId=''; editingKubernetesResourceId=''; editingHostResourceId=''; redisAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct'; redisHost=String(resource.config?.host??''); redisPort=Number(resource.config?.port??6379); redisDatabase=Number(resource.config?.database??0); redisUsername=''; redisPassword=''; redisMCPServerResourceId=resource.agent_ref??''; resourceAddStep=1; resourceAddMenuOpen=true; resourceEditorOpen=false; }
-  function openNacosWorkflowForEdit(resource: Resource) { onSelectResourceScope(resource.scope_id);selectedScopeId=resource.scope_id;selectedResourceId=resource.id;resourceKind='Nacos';resourceAddCategory='Nacos';resourceAddSubtype=resourceSubtypeFor(resource);editingNacosResourceId=resource.id;editingResourceId='';editingDockerResourceId='';editingKubernetesResourceId='';editingHostResourceId='';nacosAccessMode=String(resource.subtype??'').toLowerCase()==='agent'?'agent':'direct';nacosHost=String(resource.config?.host??'');nacosPort=Number(resource.config?.port??8848);nacosScheme=String(resource.config?.scheme??'http');nacosContextPath=String(resource.config?.context_path??'/nacos');nacosUsername='';nacosPassword='';nacosAccessToken='';nacosMCPServerResourceId=resource.agent_ref??'';resourceAddStep=1;resourceAddMenuOpen=true;resourceEditorOpen=false; }
+  function resetNacosDraftTest() {
+    nacosDraftTest = null;
+  }
+  async function testNacosDraftConnection() {
+    nacosDraftTest = { busy: true };
+    if (nacosAccessMode === 'agent') {
+      nacosDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftNacos({
+        host: nacosHost.trim(),
+        port: Number(nacosPort),
+        scheme: nacosScheme,
+        context_path: nacosContextPath,
+        username: nacosUsername,
+        password: nacosPassword,
+        access_token: nacosAccessToken,
+        timeout_seconds: Number(nacosTimeoutSeconds)
+      });
+      nacosDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      nacosDraftTest = { error: describeError(error, 'Nacos 连接测试失败') };
+    }
+  }
+  function kafkaConfigurationComplete() {
+    return kafkaAccessMode === 'agent'
+      ? Boolean(kafkaMCPServerResourceId)
+      : Boolean(
+          kafkaBrokers
+            .split(/[\n,]+/)
+            .map((v) => v.trim())
+            .filter(Boolean).length
+        );
+  }
+  function resetKafkaDraftTest() {
+    kafkaDraftTest = null;
+  }
+  async function testKafkaDraftConnection() {
+    kafkaDraftTest = { busy: true };
+    if (kafkaAccessMode === 'agent') {
+      kafkaDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftKafka({
+        brokers: kafkaBrokers
+          .split(/[\n,]+/)
+          .map((v) => v.trim())
+          .filter(Boolean),
+        username: kafkaUsername.trim(),
+        password: kafkaPassword,
+        tls: kafkaTLS,
+        tls_server_name: kafkaTLSServerName.trim(),
+        timeout_seconds: Number(kafkaTimeoutSeconds)
+      });
+      kafkaDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      kafkaDraftTest = { error: describeError(error, 'Kafka 连接测试失败') };
+    }
+  }
+  function elasticsearchConfigurationComplete() {
+    return elasticsearchAccessMode === 'agent'
+      ? Boolean(elasticsearchMCPServerResourceId)
+      : Boolean(elasticsearchURL.trim());
+  }
+  function rabbitMQConfigurationComplete() {
+    return rabbitMQAccessMode === 'agent'
+      ? Boolean(rabbitMQMCPServerResourceId)
+      : Boolean(rabbitMQURL.trim());
+  }
+  function minIOConfigurationComplete() {
+    return minIOAccessMode === 'agent'
+      ? Boolean(minIOMCPServerResourceId)
+      : Boolean(minIOEndpoint.trim());
+  }
+  function resetElasticsearchDraftTest() {
+    elasticsearchDraftTest = null;
+  }
+  async function testElasticsearchDraftConnection() {
+    elasticsearchDraftTest = { busy: true };
+    if (elasticsearchAccessMode === 'agent') {
+      elasticsearchDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftElasticsearch({
+        url: elasticsearchURL.trim(),
+        username: elasticsearchUsername.trim(),
+        password: elasticsearchPassword,
+        tls_insecure: elasticsearchTLSInsecure,
+        timeout_seconds: Number(elasticsearchTimeoutSeconds)
+      });
+      elasticsearchDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      elasticsearchDraftTest = {
+        error: describeError(error, 'Elasticsearch 连接测试失败')
+      };
+    }
+  }
+  function resetRabbitMQDraftTest() {
+    rabbitMQDraftTest = null;
+  }
+  async function testRabbitMQDraftConnection() {
+    rabbitMQDraftTest = { busy: true };
+    if (rabbitMQAccessMode === 'agent') {
+      rabbitMQDraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftRabbitMQ({
+        url: rabbitMQURL.trim(),
+        username: rabbitMQUsername.trim(),
+        password: rabbitMQPassword,
+        tls_insecure: rabbitMQTLSInsecure,
+        timeout_seconds: Number(rabbitMQTimeoutSeconds)
+      });
+      rabbitMQDraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      rabbitMQDraftTest = {
+        error: describeError(error, 'RabbitMQ 连接测试失败')
+      };
+    }
+  }
+  function resetMinIODraftTest() {
+    minIODraftTest = null;
+  }
+  async function testMinIODraftConnection() {
+    minIODraftTest = { busy: true };
+    if (minIOAccessMode === 'agent') {
+      minIODraftTest = {
+        status: 'succeeded',
+        message: '由 MCPServer 提供连接',
+        latency: 0
+      };
+      return;
+    }
+    try {
+      const result = await testDraftMinIO({
+        endpoint: minIOEndpoint.trim(),
+        access_key: minIOAccessKey.trim(),
+        secret_key: minIOSecretKey,
+        session_token: minIOSessionToken,
+        region: minIORegion.trim(),
+        secure: minIOSecure,
+        timeout_seconds: Number(minIOTimeoutSeconds)
+      });
+      minIODraftTest = {
+        status: result.status,
+        message: result.message,
+        latency: result.latency_ms,
+        error: result.status === 'succeeded' ? '' : result.message
+      };
+    } catch (error) {
+      minIODraftTest = { error: describeError(error, 'MinIO 连接测试失败') };
+    }
+  }
+  function openElasticsearchWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Elasticsearch';
+    resourceAddCategory = 'ElasticSearch';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingElasticsearchResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    elasticsearchAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    elasticsearchURL = String(resource.config?.url ?? '');
+    elasticsearchTLSInsecure = Boolean(resource.config?.tls_insecure);
+    elasticsearchTimeoutSeconds = Number(
+      resource.config?.timeout_seconds ?? 10
+    );
+    elasticsearchUsername = '';
+    elasticsearchPassword = '';
+    elasticsearchMCPServerResourceId = resource.agent_ref ?? '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openRabbitMQWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'RabbitMQ';
+    resourceAddCategory = 'RabbitMQ';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingRabbitMQResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    rabbitMQAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    rabbitMQURL = String(resource.config?.url ?? '');
+    rabbitMQTimeoutSeconds = Number(resource.config?.timeout_seconds ?? 10);
+    rabbitMQTLSInsecure = Boolean(resource.config?.tls_insecure);
+    rabbitMQMCPServerResourceId = resource.agent_ref ?? '';
+    rabbitMQUsername = '';
+    rabbitMQPassword = '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openMinIOWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'MinIO';
+    resourceAddCategory = 'MinIO';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingMinIOResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    minIOAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    minIOEndpoint = String(resource.config?.endpoint ?? '');
+    minIORegion = String(resource.config?.region ?? '');
+    minIOSecure = Boolean(resource.config?.secure);
+    minIOTimeoutSeconds = Number(resource.config?.timeout_seconds ?? 10);
+    minIOMCPServerResourceId = resource.agent_ref ?? '';
+    minIOAccessKey = '';
+    minIOSecretKey = '';
+    minIOSessionToken = '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openKafkaWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Kafka';
+    resourceAddCategory = 'Kafka';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingKafkaResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    kafkaAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    kafkaBrokers = Array.isArray(resource.config?.brokers)
+      ? resource.config.brokers.join('\n')
+      : '';
+    kafkaTLS = Boolean(resource.config?.tls);
+    kafkaTLSServerName = String(resource.config?.tls_server_name ?? '');
+    kafkaUsername = '';
+    kafkaPassword = '';
+    kafkaMCPServerResourceId = resource.agent_ref ?? '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function syncPostgreSQLEditor(resource: Resource) {
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    postgresqlAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    postgresqlHost = String(resource.config?.host ?? '');
+    postgresqlPort = Number(resource.config?.port ?? 5432);
+    postgresqlDatabase = String(resource.config?.database ?? '');
+    postgresqlUsername = '';
+    postgresqlPassword = '';
+    postgresqlMCPServerResourceId = resource.agent_ref ?? '';
+  }
+  function openMySQLWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'MySQL';
+    resourceAddCategory = 'MySQL';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingMySQLResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    resourceName = resource.name;
+    resourceLabels = Object.entries(resource.labels ?? {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
+    mysqlAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    mysqlHost = String(resource.config?.host ?? '');
+    mysqlPort = Number(resource.config?.port ?? 3306);
+    mysqlDatabase = String(resource.config?.database ?? '');
+    mysqlUsername = '';
+    mysqlPassword = '';
+    mysqlMCPServerResourceId = resource.agent_ref ?? '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openPostgreSQLWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'PostgreSQL';
+    resourceAddCategory = 'PostgreSQL';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingPostgreSQLResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    syncPostgreSQLEditor(resource);
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openRedisWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Redis';
+    resourceAddCategory = 'Redis';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingRedisResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    redisAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    redisHost = String(resource.config?.host ?? '');
+    redisPort = Number(resource.config?.port ?? 6379);
+    redisDatabase = Number(resource.config?.database ?? 0);
+    redisUsername = '';
+    redisPassword = '';
+    redisMCPServerResourceId = resource.agent_ref ?? '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
+  function openNacosWorkflowForEdit(resource: Resource) {
+    onSelectResourceScope(resource.scope_id);
+    selectedScopeId = resource.scope_id;
+    selectedResourceId = resource.id;
+    resourceKind = 'Nacos';
+    resourceAddCategory = 'Nacos';
+    resourceAddSubtype = resourceSubtypeFor(resource);
+    editingNacosResourceId = resource.id;
+    editingResourceId = '';
+    editingDockerResourceId = '';
+    editingKubernetesResourceId = '';
+    editingHostResourceId = '';
+    nacosAccessMode =
+      String(resource.subtype ?? '').toLowerCase() === 'agent'
+        ? 'agent'
+        : 'direct';
+    nacosHost = String(resource.config?.host ?? '');
+    nacosPort = Number(resource.config?.port ?? 8848);
+    nacosScheme = String(resource.config?.scheme ?? 'http');
+    nacosContextPath = String(resource.config?.context_path ?? '/nacos');
+    nacosUsername = '';
+    nacosPassword = '';
+    nacosAccessToken = '';
+    nacosMCPServerResourceId = resource.agent_ref ?? '';
+    resourceAddStep = 1;
+    resourceAddMenuOpen = true;
+    resourceEditorOpen = false;
+  }
   function hostConfigurationIssues() {
     const issues: string[] = [];
     if (hostCredentialLoading) issues.push('正在读取 Host 凭据');
@@ -1790,9 +3164,7 @@
       const server = resources.find(
         (resource) => resource.id === dockerMCPServerResourceId
       );
-      return Boolean(
-        server && server.kind === 'MCPServer'
-      );
+      return Boolean(server && server.kind === 'MCPServer');
     }
     return true;
   }
@@ -1954,13 +3326,55 @@
     autoSummaryTestKey = '';
     resourceAddStep = 3;
   }
-  function continueRedisAdd() { redisConfigurationAttempted=true; if(!redisConfigurationComplete()) return; redisConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueNacosAdd() { nacosConfigurationAttempted=true; if(!nacosConfigurationComplete()) return; nacosConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueKafkaAdd() { kafkaConfigurationAttempted=true; if(!kafkaConfigurationComplete()) return; kafkaConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueElasticsearchAdd() { elasticsearchConfigurationAttempted=true; if(!elasticsearchConfigurationComplete()) return; elasticsearchConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueRabbitMQAdd() { rabbitMQConfigurationAttempted=true; if(!rabbitMQConfigurationComplete()) return; rabbitMQConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueMinIOAdd() { minIOConfigurationAttempted=true; if(!minIOConfigurationComplete()) return; minIOConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
-  function continueMySQLAdd() { mysqlConfigurationAttempted=true; if(!mysqlConfigurationComplete()) return; mysqlConfigurationAttempted=false; autoSummaryTestKey=''; resourceAddStep=3; }
+  function continueRedisAdd() {
+    redisConfigurationAttempted = true;
+    if (!redisConfigurationComplete()) return;
+    redisConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueNacosAdd() {
+    nacosConfigurationAttempted = true;
+    if (!nacosConfigurationComplete()) return;
+    nacosConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueKafkaAdd() {
+    kafkaConfigurationAttempted = true;
+    if (!kafkaConfigurationComplete()) return;
+    kafkaConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueElasticsearchAdd() {
+    elasticsearchConfigurationAttempted = true;
+    if (!elasticsearchConfigurationComplete()) return;
+    elasticsearchConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueRabbitMQAdd() {
+    rabbitMQConfigurationAttempted = true;
+    if (!rabbitMQConfigurationComplete()) return;
+    rabbitMQConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueMinIOAdd() {
+    minIOConfigurationAttempted = true;
+    if (!minIOConfigurationComplete()) return;
+    minIOConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
+  function continueMySQLAdd() {
+    mysqlConfigurationAttempted = true;
+    if (!mysqlConfigurationComplete()) return;
+    mysqlConfigurationAttempted = false;
+    autoSummaryTestKey = '';
+    resourceAddStep = 3;
+  }
 
   async function updateSelectedResource() {
     if (!selectedResource) return;
@@ -2018,16 +3432,46 @@
       await runResourceAction(savePostgreSQLWorkflow);
       return;
     }
-    if (resourceKind === 'MySQL') { await runResourceAction(saveMySQLWorkflow); return; }
-    if (resourceKind === 'Oracle') { await runResourceAction(saveOracleWorkflow); return; }
-    if (resourceKind === 'OceanBase') { await runResourceAction(saveOceanBaseWorkflow); return; }
-    if (resourceKind === 'Redis') { await runResourceAction(saveRedisWorkflow); return; }
-    if (resourceKind === 'Nacos') { await runResourceAction(saveNacosWorkflow); return; }
-    if (resourceKind === 'Kafka') { await runResourceAction(saveKafkaWorkflow); return; }
-    if (resourceKind === 'Elasticsearch') { await runResourceAction(saveElasticsearchWorkflow); return; }
-    if (resourceKind === 'RabbitMQ') { await runResourceAction(saveRabbitMQWorkflow); return; }
-    if (resourceKind === 'MinIO') { await runResourceAction(saveMinIOWorkflow); return; }
-    if (resourceKind === 'Repository') { await runResourceAction(saveRepositoryWorkflow); return; }
+    if (resourceKind === 'MySQL') {
+      await runResourceAction(saveMySQLWorkflow);
+      return;
+    }
+    if (resourceKind === 'Oracle') {
+      await runResourceAction(saveOracleWorkflow);
+      return;
+    }
+    if (resourceKind === 'OceanBase') {
+      await runResourceAction(saveOceanBaseWorkflow);
+      return;
+    }
+    if (resourceKind === 'Redis') {
+      await runResourceAction(saveRedisWorkflow);
+      return;
+    }
+    if (resourceKind === 'Nacos') {
+      await runResourceAction(saveNacosWorkflow);
+      return;
+    }
+    if (resourceKind === 'Kafka') {
+      await runResourceAction(saveKafkaWorkflow);
+      return;
+    }
+    if (resourceKind === 'Elasticsearch') {
+      await runResourceAction(saveElasticsearchWorkflow);
+      return;
+    }
+    if (resourceKind === 'RabbitMQ') {
+      await runResourceAction(saveRabbitMQWorkflow);
+      return;
+    }
+    if (resourceKind === 'MinIO') {
+      await runResourceAction(saveMinIOWorkflow);
+      return;
+    }
+    if (resourceKind === 'Repository') {
+      await runResourceAction(saveRepositoryWorkflow);
+      return;
+    }
     try {
       if (!resourceSchemaConfigurationComplete()) {
         resourceBasicConfigurationAttempted = true;
@@ -2206,13 +3650,16 @@
     if (resourceKind === 'Repository') repositoryWorkflowError = '';
     try {
       await operation();
-      const saved = resources.find((resource) => resource.id === selectedResourceId);
+      const saved = resources.find(
+        (resource) => resource.id === selectedResourceId
+      );
       if (saved && resourceHasConnector(saved)) {
         await testResourceConnection(saved, false);
       }
     } catch (error) {
       const message = describeError(error, '操作失败');
-      if (resourceKind === 'Repository' && resourceAddMenuOpen) repositoryWorkflowError = message;
+      if (resourceKind === 'Repository' && resourceAddMenuOpen)
+        repositoryWorkflowError = message;
       else onError(message);
     } finally {
       busy = false;
@@ -2229,7 +3676,8 @@
       if (resourceKind === 'MCPServer' && !mcpConfigurationValid()) {
         throw new Error('请填写有效的 MCP Server 地址和配置。');
       }
-      const config = resourceKind === 'MCPServer'
+      const config =
+        resourceKind === 'MCPServer'
           ? mcpConfigForSave()
           : buildSchemaConfig(
               createSchema,
@@ -2241,7 +3689,8 @@
         resourceSupportsEndpointTimeout(resourceKind)
       )
         config.timeout_seconds = genericTimeoutSeconds;
-      const credentialDraft = resourceKind === 'MCPServer'
+      const credentialDraft =
+        resourceKind === 'MCPServer'
           ? await createMCPCredential()
           : await createResourceCredential(
               createSchema,
@@ -2425,87 +3874,673 @@
   }
 
   async function savePostgreSQLWorkflow() {
-    if (!postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = true; throw new Error('请检查 PostgreSQL 配置。'); }
-    const existing = resources.find((r) => r.id === editingPostgreSQLResourceId);
-      let credentialDraft: Record<string, unknown> | null | undefined = undefined;
-    if (postgresqlAccessMode === 'direct' && postgresqlUsername.trim() && postgresqlPassword) {
-      const secret = JSON.stringify({ username: postgresqlUsername.trim(), password: postgresqlPassword });
+    if (!postgresqlConfigurationComplete()) {
+      postgresqlConfigurationAttempted = true;
+      throw new Error('请检查 PostgreSQL 配置。');
+    }
+    const existing = resources.find(
+      (r) => r.id === editingPostgreSQLResourceId
+    );
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      postgresqlAccessMode === 'direct' &&
+      postgresqlUsername.trim() &&
+      postgresqlPassword
+    ) {
+      const secret = JSON.stringify({
+        username: postgresqlUsername.trim(),
+        password: postgresqlPassword
+      });
       credentialDraft = stageCredential('PostgreSQL 数据库凭据', secret);
     }
     if (postgresqlAccessMode === 'agent') credentialDraft = null;
-    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null, labels: parseLabels(resourceLabels), credential: credentialDraft, config: postgresqlAccessMode === 'agent' ? {} : { host: postgresqlHost.trim(), port: Number(postgresqlPort), database: postgresqlDatabase.trim(), timeout_seconds: Number(postgresqlTimeoutSeconds) } };
-    if (!existing) { const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'PostgreSQL', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string,string>, config: body.config as Record<string,unknown> }); resources=[created,...resources]; selectedResourceId=created.id; onNotice(`PostgreSQL 资源“${created.name}”已创建`); }
-    else { const updated = await updateResourceRecord(existing.id, body); resources=resources.map((r)=>r.id===updated.id?updated:r); selectedResourceId=updated.id; onNotice(`PostgreSQL 资源“${updated.name}”已更新`); }
-    resourceAddMenuOpen=false; editingPostgreSQLResourceId=''; resourceAddStep=1;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: postgresqlAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref:
+        postgresqlAccessMode === 'agent' ? postgresqlMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        postgresqlAccessMode === 'agent'
+          ? {}
+          : {
+              host: postgresqlHost.trim(),
+              port: Number(postgresqlPort),
+              database: postgresqlDatabase.trim(),
+              timeout_seconds: Number(postgresqlTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const created = await createResourceRecord({
+        scope_id: resourceCreateScopeId,
+        kind: 'PostgreSQL',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [created, ...resources];
+      selectedResourceId = created.id;
+      onNotice(`PostgreSQL 资源“${created.name}”已创建`);
+    } else {
+      const updated = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === updated.id ? updated : r));
+      selectedResourceId = updated.id;
+      onNotice(`PostgreSQL 资源“${updated.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingPostgreSQLResourceId = '';
+    resourceAddStep = 1;
   }
-  async function saveOracleWorkflow() { if(!oracleConfigurationComplete()){oracleConfigurationAttempted=true;throw new Error('请检查 Oracle 配置。')} const existing=resources.find(r=>r.id===editingOracleResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(oracleAccessMode==='direct'&&oracleUsername.trim()&&oraclePassword){const secret=JSON.stringify({username:oracleUsername.trim(),password:oraclePassword});credentialDraft=stageCredential('Oracle 数据库凭据',secret);} if(oracleAccessMode==='agent')credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:oracleAccessMode==='agent'?'Agent':'Direct',agent_ref:oracleAccessMode==='agent'?oracleMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:oracleAccessMode==='agent'?{}:{host:oracleHost.trim(),port:Number(oraclePort),service_name:oracleServiceName.trim(),sid:oracleSID.trim(),tls:oracleTLS,timeout_seconds:Number(oracleTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Oracle',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Oracle 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Oracle 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingOracleResourceId='';resourceAddStep=1; }
-  async function saveOceanBaseWorkflow() { if(!oceanBaseConfigurationComplete()){oceanBaseConfigurationAttempted=true;throw new Error('请检查 OceanBase 配置。')} const existing=resources.find(r=>r.id===editingOceanBaseResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(oceanBaseAccessMode==='direct'&&oceanBaseUsername.trim()&&oceanBasePassword){credentialDraft=stageCredential('OceanBase 数据库凭据',JSON.stringify({username:oceanBaseUsername.trim(),password:oceanBasePassword}));} if(oceanBaseAccessMode==='agent')credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:oceanBaseAccessMode==='agent'?'Agent':'Direct',agent_ref:oceanBaseAccessMode==='agent'?oceanBaseMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:oceanBaseAccessMode==='agent'?{}:{host:oceanBaseHost.trim(),port:Number(oceanBasePort),mode:oceanBaseMode,database:oceanBaseDatabase.trim(),service_name:oceanBaseServiceName.trim(),timeout_seconds:Number(oceanBaseTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'OceanBase',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`OceanBase 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`OceanBase 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingOceanBaseResourceId='';resourceAddStep=1; }
-  async function saveMySQLWorkflow() { if(!mysqlConfigurationComplete()){mysqlConfigurationAttempted=true;throw new Error('请检查 MySQL 配置。')} const existing=resources.find(r=>r.id===editingMySQLResourceId);let credentialDraft:Record<string, unknown> | null | undefined = undefined;if(mysqlAccessMode==='direct'&&mysqlUsername.trim()&&mysqlPassword){const secret=JSON.stringify({username:mysqlUsername.trim(),password:mysqlPassword});credentialDraft=stageCredential('MySQL 数据库凭据',secret);}if(mysqlAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:mysqlAccessMode==='agent'?'Agent':'Direct',agent_ref:mysqlAccessMode==='agent'?mysqlMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:mysqlAccessMode==='agent'?{}:{host:mysqlHost.trim(),port:Number(mysqlPort),database:mysqlDatabase.trim(),timeout_seconds:Number(mysqlTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'MySQL',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`MySQL 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`MySQL 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingMySQLResourceId='';resourceAddStep=1; }
-  async function saveKafkaWorkflow() { if(!kafkaConfigurationComplete()){kafkaConfigurationAttempted=true;throw new Error('请检查 Kafka 配置。')} const existing=resources.find(r=>r.id===editingKafkaResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(kafkaAccessMode==='direct'&&(kafkaUsername.trim()||kafkaPassword)){const secret=JSON.stringify({username:kafkaUsername.trim(),password:kafkaPassword});credentialDraft=stageCredential('Kafka 凭据',secret);} if(kafkaAccessMode==='agent')credentialDraft=null; const brokers=kafkaBrokers.split(/[\n,]+/).map(v=>v.trim()).filter(Boolean); const body:Record<string,unknown>={name:resourceName.trim(),subtype:kafkaAccessMode==='agent'?'Agent':'Direct',agent_ref:kafkaAccessMode==='agent'?kafkaMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:kafkaAccessMode==='agent'?{}:{brokers,tls:kafkaTLS,tls_server_name:kafkaTLSServerName.trim(),timeout_seconds:Number(kafkaTimeoutSeconds)}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Kafka',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Kafka 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Kafka 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingKafkaResourceId='';resourceAddStep=1; }
-  async function saveElasticsearchWorkflow() { if(!elasticsearchConfigurationComplete()){elasticsearchConfigurationAttempted=true;throw new Error('请检查 Elasticsearch 配置。')} const existing=resources.find(r=>r.id===editingElasticsearchResourceId);let credentialDraft:Record<string, unknown> | null | undefined = undefined;if(elasticsearchAccessMode==='direct'&&(elasticsearchUsername.trim()||elasticsearchPassword)){const secret=JSON.stringify({username:elasticsearchUsername.trim(),password:elasticsearchPassword});credentialDraft=stageCredential('Elasticsearch API 凭据',secret);}if(elasticsearchAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:elasticsearchAccessMode==='agent'?'Agent':'Direct',agent_ref:elasticsearchAccessMode==='agent'?elasticsearchMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:elasticsearchAccessMode==='agent'?{}:{url:elasticsearchURL.trim(),tls_insecure:elasticsearchTLSInsecure,timeout_seconds:Number(elasticsearchTimeoutSeconds)}};if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Elasticsearch',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Elasticsearch 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Elasticsearch 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingElasticsearchResourceId='';resourceAddStep=1; }
-  async function saveRabbitMQWorkflow() { if(!rabbitMQConfigurationComplete()){rabbitMQConfigurationAttempted=true;throw new Error('请检查 RabbitMQ 配置。')} const existing=resources.find(r=>r.id===editingRabbitMQResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined; if(rabbitMQAccessMode==='direct'&&(rabbitMQUsername.trim()||rabbitMQPassword)){const secret=JSON.stringify({username:rabbitMQUsername.trim(),password:rabbitMQPassword});credentialDraft=stageCredential('RabbitMQ Management API 凭据',secret);} if(rabbitMQAccessMode==='agent') credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:rabbitMQAccessMode==='agent'?'Agent':'Direct',agent_ref:rabbitMQAccessMode==='agent'?rabbitMQMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:rabbitMQAccessMode==='agent'?{}:{url:rabbitMQURL.trim(),timeout_seconds:Number(rabbitMQTimeoutSeconds),tls_insecure:rabbitMQTLSInsecure}}; if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'RabbitMQ',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`RabbitMQ 资源“${c.name}”已创建`);} else {const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`RabbitMQ 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRabbitMQResourceId='';resourceAddStep=1; }
+  async function saveOracleWorkflow() {
+    if (!oracleConfigurationComplete()) {
+      oracleConfigurationAttempted = true;
+      throw new Error('请检查 Oracle 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingOracleResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      oracleAccessMode === 'direct' &&
+      oracleUsername.trim() &&
+      oraclePassword
+    ) {
+      const secret = JSON.stringify({
+        username: oracleUsername.trim(),
+        password: oraclePassword
+      });
+      credentialDraft = stageCredential('Oracle 数据库凭据', secret);
+    }
+    if (oracleAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: oracleAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref:
+        oracleAccessMode === 'agent' ? oracleMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        oracleAccessMode === 'agent'
+          ? {}
+          : {
+              host: oracleHost.trim(),
+              port: Number(oraclePort),
+              service_name: oracleServiceName.trim(),
+              sid: oracleSID.trim(),
+              tls: oracleTLS,
+              timeout_seconds: Number(oracleTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Oracle',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`Oracle 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`Oracle 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingOracleResourceId = '';
+    resourceAddStep = 1;
+  }
+  async function saveOceanBaseWorkflow() {
+    if (!oceanBaseConfigurationComplete()) {
+      oceanBaseConfigurationAttempted = true;
+      throw new Error('请检查 OceanBase 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingOceanBaseResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      oceanBaseAccessMode === 'direct' &&
+      oceanBaseUsername.trim() &&
+      oceanBasePassword
+    ) {
+      credentialDraft = stageCredential(
+        'OceanBase 数据库凭据',
+        JSON.stringify({
+          username: oceanBaseUsername.trim(),
+          password: oceanBasePassword
+        })
+      );
+    }
+    if (oceanBaseAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: oceanBaseAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref:
+        oceanBaseAccessMode === 'agent' ? oceanBaseMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        oceanBaseAccessMode === 'agent'
+          ? {}
+          : {
+              host: oceanBaseHost.trim(),
+              port: Number(oceanBasePort),
+              mode: oceanBaseMode,
+              database: oceanBaseDatabase.trim(),
+              service_name: oceanBaseServiceName.trim(),
+              timeout_seconds: Number(oceanBaseTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'OceanBase',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`OceanBase 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`OceanBase 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingOceanBaseResourceId = '';
+    resourceAddStep = 1;
+  }
+  async function saveMySQLWorkflow() {
+    if (!mysqlConfigurationComplete()) {
+      mysqlConfigurationAttempted = true;
+      throw new Error('请检查 MySQL 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingMySQLResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (mysqlAccessMode === 'direct' && mysqlUsername.trim() && mysqlPassword) {
+      const secret = JSON.stringify({
+        username: mysqlUsername.trim(),
+        password: mysqlPassword
+      });
+      credentialDraft = stageCredential('MySQL 数据库凭据', secret);
+    }
+    if (mysqlAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: mysqlAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref: mysqlAccessMode === 'agent' ? mysqlMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        mysqlAccessMode === 'agent'
+          ? {}
+          : {
+              host: mysqlHost.trim(),
+              port: Number(mysqlPort),
+              database: mysqlDatabase.trim(),
+              timeout_seconds: Number(mysqlTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'MySQL',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`MySQL 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`MySQL 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingMySQLResourceId = '';
+    resourceAddStep = 1;
+  }
+  async function saveKafkaWorkflow() {
+    if (!kafkaConfigurationComplete()) {
+      kafkaConfigurationAttempted = true;
+      throw new Error('请检查 Kafka 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingKafkaResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      kafkaAccessMode === 'direct' &&
+      (kafkaUsername.trim() || kafkaPassword)
+    ) {
+      const secret = JSON.stringify({
+        username: kafkaUsername.trim(),
+        password: kafkaPassword
+      });
+      credentialDraft = stageCredential('Kafka 凭据', secret);
+    }
+    if (kafkaAccessMode === 'agent') credentialDraft = null;
+    const brokers = kafkaBrokers
+      .split(/[\n,]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: kafkaAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref: kafkaAccessMode === 'agent' ? kafkaMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        kafkaAccessMode === 'agent'
+          ? {}
+          : {
+              brokers,
+              tls: kafkaTLS,
+              tls_server_name: kafkaTLSServerName.trim(),
+              timeout_seconds: Number(kafkaTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Kafka',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`Kafka 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`Kafka 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingKafkaResourceId = '';
+    resourceAddStep = 1;
+  }
+  async function saveElasticsearchWorkflow() {
+    if (!elasticsearchConfigurationComplete()) {
+      elasticsearchConfigurationAttempted = true;
+      throw new Error('请检查 Elasticsearch 配置。');
+    }
+    const existing = resources.find(
+      (r) => r.id === editingElasticsearchResourceId
+    );
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      elasticsearchAccessMode === 'direct' &&
+      (elasticsearchUsername.trim() || elasticsearchPassword)
+    ) {
+      const secret = JSON.stringify({
+        username: elasticsearchUsername.trim(),
+        password: elasticsearchPassword
+      });
+      credentialDraft = stageCredential('Elasticsearch API 凭据', secret);
+    }
+    if (elasticsearchAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: elasticsearchAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref:
+        elasticsearchAccessMode === 'agent'
+          ? elasticsearchMCPServerResourceId
+          : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        elasticsearchAccessMode === 'agent'
+          ? {}
+          : {
+              url: elasticsearchURL.trim(),
+              tls_insecure: elasticsearchTLSInsecure,
+              timeout_seconds: Number(elasticsearchTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Elasticsearch',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`Elasticsearch 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`Elasticsearch 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingElasticsearchResourceId = '';
+    resourceAddStep = 1;
+  }
+  async function saveRabbitMQWorkflow() {
+    if (!rabbitMQConfigurationComplete()) {
+      rabbitMQConfigurationAttempted = true;
+      throw new Error('请检查 RabbitMQ 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingRabbitMQResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      rabbitMQAccessMode === 'direct' &&
+      (rabbitMQUsername.trim() || rabbitMQPassword)
+    ) {
+      const secret = JSON.stringify({
+        username: rabbitMQUsername.trim(),
+        password: rabbitMQPassword
+      });
+      credentialDraft = stageCredential('RabbitMQ Management API 凭据', secret);
+    }
+    if (rabbitMQAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: rabbitMQAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref:
+        rabbitMQAccessMode === 'agent' ? rabbitMQMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        rabbitMQAccessMode === 'agent'
+          ? {}
+          : {
+              url: rabbitMQURL.trim(),
+              timeout_seconds: Number(rabbitMQTimeoutSeconds),
+              tls_insecure: rabbitMQTLSInsecure
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'RabbitMQ',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`RabbitMQ 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`RabbitMQ 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingRabbitMQResourceId = '';
+    resourceAddStep = 1;
+  }
   async function saveMinIOWorkflow() {
-    if (!minIOConfigurationComplete()) { minIOConfigurationAttempted = true; throw new Error('请检查 MinIO 配置。'); }
+    if (!minIOConfigurationComplete()) {
+      minIOConfigurationAttempted = true;
+      throw new Error('请检查 MinIO 配置。');
+    }
     const existing = resources.find((r) => r.id === editingMinIOResourceId);
     let credentialDraft: Record<string, unknown> | null | undefined = undefined;
-    if (minIOAccessMode === 'direct' && (minIOAccessKey.trim() || minIOSecretKey || minIOSessionToken)) {
-      const secret = JSON.stringify({ access_key: minIOAccessKey.trim(), secret_key: minIOSecretKey, session_token: minIOSessionToken });
+    if (
+      minIOAccessMode === 'direct' &&
+      (minIOAccessKey.trim() || minIOSecretKey || minIOSessionToken)
+    ) {
+      const secret = JSON.stringify({
+        access_key: minIOAccessKey.trim(),
+        secret_key: minIOSecretKey,
+        session_token: minIOSessionToken
+      });
       credentialDraft = stageCredential('MinIO S3 凭据', secret);
     }
     if (minIOAccessMode === 'agent') credentialDraft = null;
-    const body: Record<string, unknown> = { name: resourceName.trim(), subtype: minIOAccessMode === 'agent' ? 'Agent' : 'Direct', agent_ref: minIOAccessMode === 'agent' ? minIOMCPServerResourceId : null, labels: parseLabels(resourceLabels), credential: credentialDraft, config: minIOAccessMode === 'agent' ? {} : { endpoint: minIOEndpoint.trim(), region: minIORegion.trim(), secure: minIOSecure, timeout_seconds: Number(minIOTimeoutSeconds) } };
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: minIOAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref: minIOAccessMode === 'agent' ? minIOMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        minIOAccessMode === 'agent'
+          ? {}
+          : {
+              endpoint: minIOEndpoint.trim(),
+              region: minIORegion.trim(),
+              secure: minIOSecure,
+              timeout_seconds: Number(minIOTimeoutSeconds)
+            }
+    };
     if (!existing) {
-      const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'MinIO', subtype: body.subtype as string, agent_ref: body.agent_ref as string | null, credential: credentialDraft, name: body.name as string, labels: body.labels as Record<string, string>, config: body.config as Record<string, unknown> });
-      resources = [created, ...resources]; selectedResourceId = created.id; onNotice(`MinIO 资源“${created.name}”已创建`);
+      const created = await createResourceRecord({
+        scope_id: resourceCreateScopeId,
+        kind: 'MinIO',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [created, ...resources];
+      selectedResourceId = created.id;
+      onNotice(`MinIO 资源“${created.name}”已创建`);
     } else {
-      const updated = await updateResourceRecord(existing.id, body); resources = resources.map((r) => r.id === updated.id ? updated : r); selectedResourceId = updated.id; onNotice(`MinIO 资源“${updated.name}”已更新`);
+      const updated = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === updated.id ? updated : r));
+      selectedResourceId = updated.id;
+      onNotice(`MinIO 资源“${updated.name}”已更新`);
     }
-    resourceAddMenuOpen = false; editingMinIOResourceId = ''; resourceAddStep = 1;
+    resourceAddMenuOpen = false;
+    editingMinIOResourceId = '';
+    resourceAddStep = 1;
   }
   async function saveRedisWorkflow() {
-    if (!redisConfigurationComplete()) { redisConfigurationAttempted=true; throw new Error('请检查 Redis 配置。'); }
-    const existing=resources.find(r=>r.id===editingRedisResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined;
-    if(redisAccessMode==='direct'&&redisPassword.trim()){const secret=JSON.stringify({username:redisUsername.trim(),password:redisPassword}); credentialDraft=stageCredential('Redis 数据库凭据',secret);}
-    if(redisAccessMode==='agent')credentialDraft=null; const body:Record<string,unknown>={name:resourceName.trim(),subtype:redisAccessMode==='agent'?'Agent':'Direct',agent_ref:redisAccessMode==='agent'?redisMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:redisAccessMode==='agent'?{}:{host:redisHost.trim(),port:Number(redisPort),database:Number(redisDatabase),timeout_seconds:Number(redisTimeoutSeconds)}};
-    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Redis',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Redis 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Redis 资源“${u.name}”已更新`);} resourceAddMenuOpen=false;editingRedisResourceId='';resourceAddStep=1;
+    if (!redisConfigurationComplete()) {
+      redisConfigurationAttempted = true;
+      throw new Error('请检查 Redis 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingRedisResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (redisAccessMode === 'direct' && redisPassword.trim()) {
+      const secret = JSON.stringify({
+        username: redisUsername.trim(),
+        password: redisPassword
+      });
+      credentialDraft = stageCredential('Redis 数据库凭据', secret);
+    }
+    if (redisAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: redisAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref: redisAccessMode === 'agent' ? redisMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        redisAccessMode === 'agent'
+          ? {}
+          : {
+              host: redisHost.trim(),
+              port: Number(redisPort),
+              database: Number(redisDatabase),
+              timeout_seconds: Number(redisTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Redis',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`Redis 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`Redis 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingRedisResourceId = '';
+    resourceAddStep = 1;
   }
   async function saveNacosWorkflow() {
-    if (!nacosConfigurationComplete()) { nacosConfigurationAttempted=true; throw new Error('请检查 Nacos 配置。'); }
-    const existing=resources.find(r=>r.id===editingNacosResourceId); let credentialDraft:Record<string, unknown> | null | undefined = undefined;
-    if(nacosAccessMode==='direct'&&(nacosUsername.trim()||nacosPassword||nacosAccessToken)){const secret=JSON.stringify({username:nacosUsername.trim(),password:nacosPassword,access_token:nacosAccessToken});credentialDraft=stageCredential('Nacos API 凭据',secret);}
-    if(nacosAccessMode==='agent')credentialDraft=null;const body:Record<string,unknown>={name:resourceName.trim(),subtype:nacosAccessMode==='agent'?'Agent':'Direct',agent_ref:nacosAccessMode==='agent'?nacosMCPServerResourceId:null,labels:parseLabels(resourceLabels),credential:credentialDraft,config:nacosAccessMode==='agent'?{}:{host:nacosHost.trim(),port:Number(nacosPort),scheme:nacosScheme,context_path:nacosContextPath,timeout_seconds:Number(nacosTimeoutSeconds)}};
-    if(!existing){const c=await createResourceRecord({scope_id:selectedScopeId,kind:'Nacos',subtype:body.subtype as string,agent_ref:body.agent_ref as string|null,credential:credentialDraft,name:body.name as string,labels:body.labels as Record<string,string>,config:body.config as Record<string,unknown>});resources=[c,...resources];selectedResourceId=c.id;onNotice(`Nacos 资源“${c.name}”已创建`);}else{const u=await updateResourceRecord(existing.id,body);resources=resources.map(r=>r.id===u.id?u:r);selectedResourceId=u.id;onNotice(`Nacos 资源“${u.name}”已更新`);}resourceAddMenuOpen=false;editingNacosResourceId='';resourceAddStep=1;
+    if (!nacosConfigurationComplete()) {
+      nacosConfigurationAttempted = true;
+      throw new Error('请检查 Nacos 配置。');
+    }
+    const existing = resources.find((r) => r.id === editingNacosResourceId);
+    let credentialDraft: Record<string, unknown> | null | undefined = undefined;
+    if (
+      nacosAccessMode === 'direct' &&
+      (nacosUsername.trim() || nacosPassword || nacosAccessToken)
+    ) {
+      const secret = JSON.stringify({
+        username: nacosUsername.trim(),
+        password: nacosPassword,
+        access_token: nacosAccessToken
+      });
+      credentialDraft = stageCredential('Nacos API 凭据', secret);
+    }
+    if (nacosAccessMode === 'agent') credentialDraft = null;
+    const body: Record<string, unknown> = {
+      name: resourceName.trim(),
+      subtype: nacosAccessMode === 'agent' ? 'Agent' : 'Direct',
+      agent_ref: nacosAccessMode === 'agent' ? nacosMCPServerResourceId : null,
+      labels: parseLabels(resourceLabels),
+      credential: credentialDraft,
+      config:
+        nacosAccessMode === 'agent'
+          ? {}
+          : {
+              host: nacosHost.trim(),
+              port: Number(nacosPort),
+              scheme: nacosScheme,
+              context_path: nacosContextPath,
+              timeout_seconds: Number(nacosTimeoutSeconds)
+            }
+    };
+    if (!existing) {
+      const c = await createResourceRecord({
+        scope_id: selectedScopeId,
+        kind: 'Nacos',
+        subtype: body.subtype as string,
+        agent_ref: body.agent_ref as string | null,
+        credential: credentialDraft,
+        name: body.name as string,
+        labels: body.labels as Record<string, string>,
+        config: body.config as Record<string, unknown>
+      });
+      resources = [c, ...resources];
+      selectedResourceId = c.id;
+      onNotice(`Nacos 资源“${c.name}”已创建`);
+    } else {
+      const u = await updateResourceRecord(existing.id, body);
+      resources = resources.map((r) => (r.id === u.id ? u : r));
+      selectedResourceId = u.id;
+      onNotice(`Nacos 资源“${u.name}”已更新`);
+    }
+    resourceAddMenuOpen = false;
+    editingNacosResourceId = '';
+    resourceAddStep = 1;
   }
   async function persistRepositoryWorkflow() {
     repositoryConfigurationAttempted = true;
-    if (resourceAddSubtype === 'Git' && !repositoryConfigurationComplete()) throw new Error('请检查 Git 配置。');
-    if (resourceAddSubtype === 'Git' && /^https?:\/\//i.test(repositoryURL.trim())) {
+    if (resourceAddSubtype === 'Git' && !repositoryConfigurationComplete())
+      throw new Error('请检查 Git 配置。');
+    if (
+      resourceAddSubtype === 'Git' &&
+      /^https?:\/\//i.test(repositoryURL.trim())
+    ) {
       let parsed: URL;
-      try { parsed = new URL(repositoryURL.trim()); }
-      catch { throw new Error('Git 仓库 URL 格式无效。'); }
-      if (parsed.username || parsed.password) throw new Error('Git 凭据不得写入 URL，请使用凭据字段。');
+      try {
+        parsed = new URL(repositoryURL.trim());
+      } catch {
+        throw new Error('Git 仓库 URL 格式无效。');
+      }
+      if (parsed.username || parsed.password)
+        throw new Error('Git 凭据不得写入 URL，请使用凭据字段。');
     }
-    const existingID = repositoryBundleUploadedResourceId || editingRepositoryResourceId;
-    const existing = existingID ? resources.find((resource) => resource.id === existingID) : undefined;
-    const config = resourceAddSubtype === 'Git'
-      ? { url: repositoryURL.trim(), default_branch: repositoryDefaultBranch.trim() || 'main' }
-      : { ...(existing?.config ?? {}) };
-    const credential = repositoryUsername.trim() || repositoryPassword ? stageCredential('Git HTTPS 凭据', JSON.stringify({ username: repositoryUsername.trim(), password: repositoryPassword })) : undefined;
+    const existingID =
+      repositoryBundleUploadedResourceId || editingRepositoryResourceId;
+    const existing = existingID
+      ? resources.find((resource) => resource.id === existingID)
+      : undefined;
+    const config =
+      resourceAddSubtype === 'Git'
+        ? {
+            url: repositoryURL.trim(),
+            default_branch: repositoryDefaultBranch.trim() || 'main'
+          }
+        : { ...(existing?.config ?? {}) };
+    const credential =
+      repositoryUsername.trim() || repositoryPassword
+        ? stageCredential(
+            'Git HTTPS 凭据',
+            JSON.stringify({
+              username: repositoryUsername.trim(),
+              password: repositoryPassword
+            })
+          )
+        : undefined;
     const body: Record<string, unknown> = {
-      name: resourceName.trim(), subtype: resourceAddSubtype, labels: parseLabels(resourceLabels),
-      ...(resourceAddSubtype === 'Git' || !existing || repositoryBundleFile ? { config } : {}),
+      name: resourceName.trim(),
+      subtype: resourceAddSubtype,
+      labels: parseLabels(resourceLabels),
+      ...(resourceAddSubtype === 'Git' || !existing || repositoryBundleFile
+        ? { config }
+        : {}),
       ...(credential ? { credential } : {})
     };
     if (!existing) {
-      const created = await createResourceRecord({ scope_id: resourceCreateScopeId, kind: 'Repository', subtype: resourceAddSubtype, name: resourceName.trim(), labels: body.labels as Record<string,string>, config, credential });
+      const created = await createResourceRecord({
+        scope_id: resourceCreateScopeId,
+        kind: 'Repository',
+        subtype: resourceAddSubtype,
+        name: resourceName.trim(),
+        labels: body.labels as Record<string, string>,
+        config,
+        credential
+      });
       resources = [created, ...resources];
       selectedResourceId = created.id;
-      if (resourceAddSubtype === 'Bundle') editingRepositoryResourceId = created.id;
+      if (resourceAddSubtype === 'Bundle')
+        editingRepositoryResourceId = created.id;
       onNotice(`Repository“${created.name}”已创建`);
       return created;
     }
     const updated = await updateResourceRecord(existing.id, body);
-    resources = resources.map((resource) => resource.id === updated.id ? updated : resource);
+    resources = resources.map((resource) =>
+      resource.id === updated.id ? updated : resource
+    );
     selectedResourceId = updated.id;
     onNotice(`Repository“${updated.name}”已更新`);
     return updated;
@@ -2515,11 +4550,19 @@
     if (!repositoryBundleFile) return;
     const body = new FormData();
     body.append('bundle', repositoryBundleFile);
-    const response = await fetch(appURL(`api/v1/resources/${resourceID}/bundle`), {
-      method: 'POST', body, credentials: 'include'
-    });
+    const response = await fetch(
+      appURL(`api/v1/resources/${resourceID}/bundle`),
+      {
+        method: 'POST',
+        body,
+        credentials: 'include'
+      }
+    );
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? 'Bundle 上传失败');
+    if (!response.ok)
+      throw new Error(
+        data?.error?.message ?? data?.message ?? 'Bundle 上传失败'
+      );
   }
 
   async function previewRepository(resourceID: string) {
@@ -2528,14 +4571,29 @@
     repositoryPreviewEntries = [];
     repositoryDraftTest = { busy: true };
     try {
-      const response = await fetch(appURL(`api/v1/resources/${resourceID}/repository/tree`), { credentials: 'include' });
+      const response = await fetch(
+        appURL(`api/v1/resources/${resourceID}/repository/tree`),
+        { credentials: 'include' }
+      );
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.message ?? '仓库预览失败');
-      repositoryPreviewEntries = Array.isArray(data.entries) ? data.entries : [];
-      repositoryDraftTest = { status: 'succeeded', message: '仓库内容读取通过' };
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ?? data?.message ?? '仓库预览失败'
+        );
+      repositoryPreviewEntries = Array.isArray(data.entries)
+        ? data.entries
+        : [];
+      repositoryDraftTest = {
+        status: 'succeeded',
+        message: '仓库内容读取通过'
+      };
     } catch (error) {
-      repositoryPreviewMessage = error instanceof Error ? error.message : '仓库预览失败';
-      repositoryDraftTest = { status: 'failed', error: repositoryPreviewMessage };
+      repositoryPreviewMessage =
+        error instanceof Error ? error.message : '仓库预览失败';
+      repositoryDraftTest = {
+        status: 'failed',
+        error: repositoryPreviewMessage
+      };
     } finally {
       repositoryPreviewBusy = false;
     }
@@ -2694,7 +4752,9 @@
     try {
       await removeResource(resource.id);
       resources = resources.filter((item) => item.id !== resource.id);
-      selectedResourceIds = selectedResourceIds.filter((id) => id !== resource.id);
+      selectedResourceIds = selectedResourceIds.filter(
+        (id) => id !== resource.id
+      );
       if (selectedResourceId === resource.id) {
         selectedResourceId = '';
         relations = [];
@@ -2737,19 +4797,23 @@
   }
 
   function requestResourceDelete(resource: Resource) {
-    if (resourceCanManage(resource, 'resource:delete')) resourceDeleteTargets = [resource];
+    if (resourceCanManage(resource, 'resource:delete'))
+      resourceDeleteTargets = [resource];
   }
 
   function requestSelectedResourcesDelete() {
     resourceDeleteTargets = selectedResourceIds
       .map((id) => resources.find((resource) => resource.id === id))
-      .filter((resource): resource is Resource => Boolean(resource && resourceCanManage(resource, 'resource:delete')));
+      .filter((resource): resource is Resource =>
+        Boolean(resource && resourceCanManage(resource, 'resource:delete'))
+      );
   }
 
   async function confirmResourceDelete() {
     const targets = resourceDeleteTargets;
     if (targets.length === 1) await deleteSelectedResource(targets[0]);
-    else if (targets.length > 1) await deleteSelectedResources(targets.map((resource) => resource.id));
+    else if (targets.length > 1)
+      await deleteSelectedResources(targets.map((resource) => resource.id));
     resourceDeleteTargets = [];
   }
 
@@ -2779,7 +4843,13 @@
     .map((field) => field.key)
     .join('|');
   $: resourceFreeQuery = resourceFilterQuery
-    .replace(new RegExp(`(?:^|\\s)(?:${resourceSearchFieldPattern}):(?:"[^"]*"|'[^']*'|\\S*)`, 'g'), ' ')
+    .replace(
+      new RegExp(
+        `(?:^|\\s)(?:${resourceSearchFieldPattern}):(?:"[^"]*"|'[^']*'|\\S*)`,
+        'g'
+      ),
+      ' '
+    )
     .trim()
     .toLocaleLowerCase();
   $: resourceCatalogItems = visibleResources.filter((resource) => {
@@ -2810,11 +4880,12 @@
         .join(' ')
     };
     if (
-      Object.entries(resourceFieldValues).some(([key, filterValue]) =>
-        key in fieldText &&
-        !fieldText[key as keyof typeof fieldText]
-          .toLocaleLowerCase()
-          .includes(filterValue.toLocaleLowerCase())
+      Object.entries(resourceFieldValues).some(
+        ([key, filterValue]) =>
+          key in fieldText &&
+          !fieldText[key as keyof typeof fieldText]
+            .toLocaleLowerCase()
+            .includes(filterValue.toLocaleLowerCase())
       )
     )
       return false;
@@ -2863,7 +4934,7 @@
     resources={visibleResources}
     category={resourceCategory}
     subtype={resourceSubtype}
-    selectedCatalogTags={selectedCatalogTags}
+    {selectedCatalogTags}
     catalogQuery={resourceSearch}
     onCatalogQuery={(value) => (resourceSearch = value)}
     onToggleCatalogTag={toggleCatalogTag}
@@ -2906,7 +4977,9 @@
           <button
             class="danger-button resource-delete-selected"
             type="button"
-            disabled={busy || resourceActionBusy || selectedResourceIds.length === 0}
+            disabled={busy ||
+              resourceActionBusy ||
+              selectedResourceIds.length === 0}
             on:click={requestSelectedResourcesDelete}
             ><Trash2 size={15} aria-hidden="true" />删除资源</button
           >
@@ -2961,10 +5034,18 @@
     {#if resourceAddMenuOpen}
       <ModalDialog
         title={resourceWorkflowEditing() ? '编辑资源' : '新增资源'}
-        coverage={workflowOnly ? (workflowPositionTarget ? 'target' : 'page') : 'target'}
-        inertTarget={workflowOnly ? workflowPositionTarget : '.resource-catalog-panel'}
+        coverage={workflowOnly
+          ? workflowPositionTarget
+            ? 'target'
+            : 'page'
+          : 'target'}
+        inertTarget={workflowOnly
+          ? workflowPositionTarget
+          : '.resource-catalog-panel'}
         maskTarget={workflowOnly ? workflowPositionTarget : ''}
-        positionTarget={workflowOnly ? workflowPositionTarget : '.resource-catalog-panel'}
+        positionTarget={workflowOnly
+          ? workflowPositionTarget
+          : '.resource-catalog-panel'}
         widthTargetRatio={workflowOnly ? (workflowPositionTarget ? 1 : 0) : 0.9}
         stretchTarget={workflowOnly && Boolean(workflowPositionTarget)}
         description={resourceWorkflowEditing()
@@ -2975,14 +5056,24 @@
         contentInset={false}
         autoHeight
         backLabel={resourceAddStep > 1 ? '上一步' : ''}
-        confirmLabel={resourceAddStep === 1 || (resourceAddStep === 2 && resourceWorkflowNeedsReview()) || (resourceKind === 'Repository' && resourceAddStep === 3)
+        confirmLabel={resourceAddStep === 1 ||
+        (resourceAddStep === 2 && resourceWorkflowNeedsReview()) ||
+        (resourceKind === 'Repository' && resourceAddStep === 3)
           ? '下一步'
-          : resourceWorkflowEditing() ? '保存' : '创建'}
+          : resourceWorkflowEditing()
+            ? '保存'
+            : '创建'}
         busyLabel={resourceWorkflowEditing() ? '保存中…' : '创建中…'}
         confirmDisabled={resourceAddStep === 4 && !selectedScopeId}
         {busy}
-        message={resourceKind === 'Repository' && (repositoryWorkflowError || repositoryPreviewMessage) ? repositoryWorkflowError || repositoryPreviewMessage : activeMessage}
-        messageTone={resourceKind === 'Repository' && (repositoryWorkflowError || repositoryPreviewMessage) ? 'error' : activeMessageTone}
+        message={resourceKind === 'Repository' &&
+        (repositoryWorkflowError || repositoryPreviewMessage)
+          ? repositoryWorkflowError || repositoryPreviewMessage
+          : activeMessage}
+        messageTone={resourceKind === 'Repository' &&
+        (repositoryWorkflowError || repositoryPreviewMessage)
+          ? 'error'
+          : activeMessageTone}
         onCancel={cancelResourceWorkflow}
         onBack={() => {
           resourceAddStep -= 1;
@@ -2990,398 +5081,815 @@
         }}
         onConfirm={confirmResourceWorkflow}
       >
-      <ResourceWorkflowPanel
-        step={resourceAddStep}
-        kind={resourceKind}
-        subtype={resourceAddSubtype}
-        editingResource={Boolean(editingResourceId)}
-        editingDocker={Boolean(editingDockerResourceId)}
-        editingKubernetes={Boolean(editingKubernetesResourceId)}
-        editingHost={Boolean(editingHostResourceId)}
-        editingPostgreSQL={Boolean(editingPostgreSQLResourceId)}
-        editingMySQL={Boolean(editingMySQLResourceId)}
-        editingOracle={Boolean(editingOracleResourceId)}
-        editingOceanBase={Boolean(editingOceanBaseResourceId)}
-        editingRedis={Boolean(editingRedisResourceId)}
-        editingNacos={Boolean(editingNacosResourceId)}
-        editingKafka={Boolean(editingKafkaResourceId)}
-        editingElasticsearch={Boolean(editingElasticsearchResourceId)}
-        editingRabbitMQ={Boolean(editingRabbitMQResourceId)}
-        editingMinIO={Boolean(editingMinIOResourceId)}
-        editingRepository={Boolean(editingRepositoryResourceId)}
-        basicConfigurationComplete={resourceBasicConfigurationComplete()}
-        mcpConfigurationComplete={mcpConfigurationValid()}
-        dockerConfigurationComplete={dockerConfigurationComplete()}
-        kubernetesConfigurationComplete={kubernetesConfigurationComplete()}
-        hostConfigurationComplete={hostConfigurationComplete()}
-        postgresqlConfigurationComplete={postgresqlConfigurationComplete()}
-        mysqlConfigurationComplete={mysqlConfigurationComplete()}
-        oracleConfigurationComplete={oracleConfigurationComplete()}
-        oceanBaseConfigurationComplete={oceanBaseConfigurationComplete()}
-        redisConfigurationComplete={redisConfigurationComplete()}
-        nacosConfigurationComplete={nacosConfigurationComplete()}
-        kafkaConfigurationComplete={kafkaConfigurationComplete()}
-        elasticsearchConfigurationComplete={elasticsearchConfigurationComplete()}
-        rabbitMQConfigurationComplete={rabbitMQConfigurationComplete()}
-        minIOConfigurationComplete={minIOConfigurationComplete()}
-        repositoryConfigurationComplete={repositoryConfigurationComplete()}
-        {busy}
-        scopeSelected={Boolean(selectedScopeId)}
-        stepTitle={resourceAddStepTitle(resourceAddStep, resourceKind, resourceAddSubtype)}
-        stepDescription={resourceAddStepDescription(
-          resourceAddStep,
-          resourceKind,
-          resourceAddSubtype
-        )}
-        validationMessage={resourceAddStepValidationMessage()}
-        onSelectStep={(step: number) => {
-          resourceAddStep = step;
-          autoSummaryTestKey = '';
-        }}
-        onContinueBasic={continueResourceAdd}
-        onContinueMcp={() => {
-          mcpConfigurationAttempted = true;
-          if (mcpConfigurationValid()) {
-            mcpConfigurationAttempted = false;
-            resourceAddStep = 3;
-          }
-        }}
-        onContinueDocker={continueDockerAdd}
-        onContinueKubernetes={continueKubernetesAdd}
-        onContinueHost={continueHostAdd}
-        onContinuePostgreSQL={() => { postgresqlConfigurationAttempted = true; if (postgresqlConfigurationComplete()) { postgresqlConfigurationAttempted = false; resourceAddStep = 3; } }}
-        onContinueMySQL={continueMySQLAdd}
-        onContinueOracle={continueOracleAdd}
-        onContinueOceanBase={continueOceanBaseAdd}
-        onContinueRedis={continueRedisAdd}
-        onContinueNacos={continueNacosAdd}
-        onContinueKafka={continueKafkaAdd}
-        onContinueElasticsearch={continueElasticsearchAdd}
-        onContinueRabbitMQ={continueRabbitMQAdd}
-        onContinueMinIO={continueMinIOAdd}
-        onContinueRepository={() => void continueRepositoryWorkflow()}
-        onSubmitMcp={() =>
-          void (editingResourceId ? updateMCPFromWorkflow() : createResource())}
-        onSubmitDocker={() =>
-          void (editingDockerResourceId
-            ? updateDockerFromWorkflow()
-            : editingKubernetesResourceId
-              ? updateKubernetesFromWorkflow()
-              : resourceKind === 'Kubernetes'
-                ? createKubernetesFromWorkflow()
-                : createDockerFromWorkflow())}
-        onSubmitHost={() =>
-          void (editingHostResourceId
-            ? updateHostFromWorkflow()
-            : createHostFromWorkflow())}
-        onSubmitPostgreSQL={() => void runResourceAction(savePostgreSQLWorkflow)}
-        onSubmitMySQL={() => void runResourceAction(saveMySQLWorkflow)}
-        onSubmitOracle={() => void runResourceAction(saveOracleWorkflow)}
-        onSubmitOceanBase={() => void runResourceAction(saveOceanBaseWorkflow)}
-        onSubmitRedis={() => void runResourceAction(saveRedisWorkflow)}
-        onSubmitNacos={() => void runResourceAction(saveNacosWorkflow)}
-        onSubmitKafka={() => void runResourceAction(saveKafkaWorkflow)}
-        onSubmitElasticsearch={() => void runResourceAction(saveElasticsearchWorkflow)}
-        onSubmitRabbitMQ={() => void runResourceAction(saveRabbitMQWorkflow)}
-        onSubmitMinIO={() => void runResourceAction(saveMinIOWorkflow)}
-        onSubmitRepository={() => void runResourceAction(saveRepositoryWorkflow)}
-      >
-        {#if resourceAddStep === 1}
-          <ResourceBasicConfigStep
-            bind:category={resourceAddCategory}
-            bind:subtype={resourceAddSubtype}
-            bind:name={resourceName}
-            bind:labels={resourceLabels}
-            scopeId={resourceCreateScopeId}
-            scopeOptions={resourceCreateScopeOptions}
-            categoryOptions={resourceCategoryOptions}
-            subtypeOptions={resourceAddSubtypeOptions}
-            bind:typeSelectionAttempted={resourceTypeSelectionAttempted}
-            basicConfigurationAttempted={resourceBasicConfigurationAttempted}
-            editing={resourceWorkflowEditing()}
-            scopeSummary={activeScopeSummary()}
-            onSelectCategory={selectResourceAddCategory}
-            onSelectSubtype={(subtype) => {
-              resourceKind = resourceKindForSelection(
-                resourceAddCategory,
-                subtype
-              );
-              if (resourceKind === 'Kubernetes')
-                kubernetesConnectionOverride = false;
-              if (resourceKind === 'Host')
-                hostAccessMode =
-                  subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'PostgreSQL')
-                postgresqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'MySQL') mysqlAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'Oracle') oracleAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'OceanBase') oceanBaseAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'Redis') redisAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'Nacos') nacosAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'Kafka') kafkaAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'Elasticsearch') elasticsearchAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'RabbitMQ') rabbitMQAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-              if (resourceKind === 'MinIO') minIOAccessMode = subtype.trim().toLowerCase() === 'agent' ? 'agent' : 'direct';
-            }}
-            onSelectScope={(scopeId) => (resourceCreateScopeId = scopeId)}
-          />
-        {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
-          <form
-            id="resource-create-form"
-            class="stack-form resource-create-form"
-            on:submit|preventDefault={createResource}
-          >
-            <McpConnectionFields
-              bind:url={mcpURL}
-              bind:token={mcpToken}
-              bind:requestHeaders={mcpRequestHeaders}
-              bind:toolAllowlist={mcpToolAllowlist}
-              bind:timeoutSeconds={mcpTimeoutSeconds}
-              bind:maxResponseBytes={mcpMaxResponseBytes}
-              bind:tlsCA={mcpTLSCA}
-              bind:tlsCert={mcpTLSCert}
-              bind:tlsKey={mcpTLSKey}
-              bind:skipTLSVerify={mcpTLSSkipVerify}
-              configurationAttempted={mcpConfigurationAttempted}
-            />
-          </form>
-        {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
-          <McpReviewStep
-            transport={mcpTransport}
-            url={mcpURL}
-            tokenConfigured={Boolean(mcpToken.trim())}
-            headerCount={mcpHeaderCount()}
-            toolAllowlist={mcpToolAllowlist}
-            timeoutSeconds={mcpTimeoutSeconds}
-            maxResponseBytes={mcpMaxResponseBytes}
-            testStatus={mcpDraftTest?.result?.status ?? ''}
-            testError={mcpDraftTest?.error ?? ''}
-            toolCount={mcpDraftTest?.result?.tools.length ?? 0}
-            latency={mcpDraftTest?.result?.latency_ms}
-          />
-        {:else if resourceKind === 'Docker' && resourceAddStep === 2}
-          <DockerConnectionStep
-            bind:accessMode={dockerAccessMode}
-            bind:host={dockerHost}
-            bind:timeoutSeconds={dockerTimeoutSeconds}
-            bind:caBase64={dockerCABase64}
-            bind:certBase64={dockerCertBase64}
-            bind:keyBase64={dockerKeyBase64}
-            bind:skipTLSVerify={dockerSkipTLSVerify}
-            bind:connectionOverride={dockerAgentConnectionOverride}
-            bind:mcpServerResourceId={dockerMCPServerResourceId}
-            mcpServers={dockerMCPServers}
-            allowAddMCPServer={!editingDockerResourceId}
-            configurationAttempted={dockerConfigurationAttempted}
-            credentialLoading={dockerCredentialLoading}
-            onConfigurationChange={resetDockerDraftTest}
-            onAddMCPServer={openMCPServerWorkflowFromConnection}
-          />
-        {:else if resourceKind === 'Docker' && resourceAddStep === 3}
-          <DockerReviewStep
-            accessMode={dockerAccessMode}
-            connectionOverride={dockerAgentConnectionOverride}
-            host={dockerHost}
-            skipTLSVerify={dockerSkipTLSVerify}
-            mcpServerName={dockerMCPServerName()}
-            credentialConfigured={Boolean(
-              dockerCABase64.trim() ||
-              dockerCertBase64.trim() ||
-              dockerKeyBase64.trim()
-            )}
-            scopeSummary={activeScopeSummary()}
-            labelsConfigured={Boolean(resourceLabels.trim())}
-            testBusy={dockerDraftTestBusy}
-            testStatus={dockerDraftTest?.status ?? ''}
-            testMessage={dockerDraftTest?.message ?? ''}
-            testError={dockerDraftTest?.error ?? ''}
-            testLatency={dockerDraftTest?.latency}
-            testToolCount={dockerDraftTest?.toolCount ?? 0}
-            onSubmit={() =>
-              void (editingDockerResourceId
-                ? updateDockerFromWorkflow()
-                : createDockerFromWorkflow())}
-          />
-        {:else if resourceKind === 'Kubernetes' && resourceAddStep === 2}
-          <KubernetesConnectionStep
-            isAgent={kubernetesIsAgent()}
-            bind:connectionOverride={kubernetesConnectionOverride}
-            bind:connectionMode={kubernetesConnectionMode}
-            bind:server={kubernetesServer}
-            bind:caBase64={kubernetesCABase64}
-            bind:token={kubernetesToken}
-            bind:certBase64={kubernetesCertBase64}
-            bind:keyBase64={kubernetesKeyBase64}
-            bind:kubeconfig={kubernetesKubeconfig}
-            bind:skipTLSVerify={kubernetesSkipTLSVerify}
-            bind:mcpServerResourceId={kubernetesMCPServerResourceId}
-            mcpServers={kubernetesMCPServers}
-            allowAddMCPServer={!editingKubernetesResourceId}
-            configurationAttempted={kubernetesConfigurationAttempted}
-            credentialLoading={kubernetesCredentialLoading}
-            onConfigurationChange={() => (kubernetesDraftTest = null)}
-            onAddMCPServer={openMCPServerWorkflowFromConnection}
-          />
-        {:else if resourceKind === 'Kubernetes' && resourceAddStep === 3}
-          <KubernetesReviewStep
-            {resourceName}
-            isAgent={kubernetesIsAgent()}
-            connectionOverride={kubernetesConnectionOverride}
-            connectionMode={kubernetesConnectionMode}
-            server={kubernetesServer}
-            mcpServerName={resources.find(
-              (r) => r.id === kubernetesMCPServerResourceId
-            )?.name ?? ''}
-            credentialConfigured={Boolean(
-              kubernetesKubeconfig.trim() ||
-              kubernetesToken.trim() ||
-              kubernetesCABase64.trim() ||
-              kubernetesCertBase64.trim() ||
-              kubernetesKeyBase64.trim()
-            )}
-            scopeSummary={activeScopeSummary()}
-            labelsConfigured={Boolean(resourceLabels.trim())}
-            testBusy={kubernetesDraftTestBusy}
-            testStatus={kubernetesDraftTest?.status ?? ''}
-            testMessage={kubernetesDraftTest?.message ?? ''}
-            testError={kubernetesDraftTest?.error ?? ''}
-            testLatency={kubernetesDraftTest?.latency}
-            onSubmit={() =>
-              void (editingKubernetesResourceId
+        <ResourceWorkflowPanel
+          step={resourceAddStep}
+          kind={resourceKind}
+          subtype={resourceAddSubtype}
+          editingResource={Boolean(editingResourceId)}
+          editingDocker={Boolean(editingDockerResourceId)}
+          editingKubernetes={Boolean(editingKubernetesResourceId)}
+          editingHost={Boolean(editingHostResourceId)}
+          editingPostgreSQL={Boolean(editingPostgreSQLResourceId)}
+          editingMySQL={Boolean(editingMySQLResourceId)}
+          editingOracle={Boolean(editingOracleResourceId)}
+          editingOceanBase={Boolean(editingOceanBaseResourceId)}
+          editingRedis={Boolean(editingRedisResourceId)}
+          editingNacos={Boolean(editingNacosResourceId)}
+          editingKafka={Boolean(editingKafkaResourceId)}
+          editingElasticsearch={Boolean(editingElasticsearchResourceId)}
+          editingRabbitMQ={Boolean(editingRabbitMQResourceId)}
+          editingMinIO={Boolean(editingMinIOResourceId)}
+          editingRepository={Boolean(editingRepositoryResourceId)}
+          basicConfigurationComplete={resourceBasicConfigurationComplete()}
+          mcpConfigurationComplete={mcpConfigurationValid()}
+          dockerConfigurationComplete={dockerConfigurationComplete()}
+          kubernetesConfigurationComplete={kubernetesConfigurationComplete()}
+          hostConfigurationComplete={hostConfigurationComplete()}
+          postgresqlConfigurationComplete={postgresqlConfigurationComplete()}
+          mysqlConfigurationComplete={mysqlConfigurationComplete()}
+          oracleConfigurationComplete={oracleConfigurationComplete()}
+          oceanBaseConfigurationComplete={oceanBaseConfigurationComplete()}
+          redisConfigurationComplete={redisConfigurationComplete()}
+          nacosConfigurationComplete={nacosConfigurationComplete()}
+          kafkaConfigurationComplete={kafkaConfigurationComplete()}
+          elasticsearchConfigurationComplete={elasticsearchConfigurationComplete()}
+          rabbitMQConfigurationComplete={rabbitMQConfigurationComplete()}
+          minIOConfigurationComplete={minIOConfigurationComplete()}
+          repositoryConfigurationComplete={repositoryConfigurationComplete()}
+          {busy}
+          scopeSelected={Boolean(selectedScopeId)}
+          stepTitle={resourceAddStepTitle(
+            resourceAddStep,
+            resourceKind,
+            resourceAddSubtype
+          )}
+          stepDescription={resourceAddStepDescription(
+            resourceAddStep,
+            resourceKind,
+            resourceAddSubtype
+          )}
+          validationMessage={resourceAddStepValidationMessage()}
+          onSelectStep={(step: number) => {
+            resourceAddStep = step;
+            autoSummaryTestKey = '';
+          }}
+          onContinueBasic={continueResourceAdd}
+          onContinueMcp={() => {
+            mcpConfigurationAttempted = true;
+            if (mcpConfigurationValid()) {
+              mcpConfigurationAttempted = false;
+              resourceAddStep = 3;
+            }
+          }}
+          onContinueDocker={continueDockerAdd}
+          onContinueKubernetes={continueKubernetesAdd}
+          onContinueHost={continueHostAdd}
+          onContinuePostgreSQL={() => {
+            postgresqlConfigurationAttempted = true;
+            if (postgresqlConfigurationComplete()) {
+              postgresqlConfigurationAttempted = false;
+              resourceAddStep = 3;
+            }
+          }}
+          onContinueMySQL={continueMySQLAdd}
+          onContinueOracle={continueOracleAdd}
+          onContinueOceanBase={continueOceanBaseAdd}
+          onContinueRedis={continueRedisAdd}
+          onContinueNacos={continueNacosAdd}
+          onContinueKafka={continueKafkaAdd}
+          onContinueElasticsearch={continueElasticsearchAdd}
+          onContinueRabbitMQ={continueRabbitMQAdd}
+          onContinueMinIO={continueMinIOAdd}
+          onContinueRepository={() => void continueRepositoryWorkflow()}
+          onSubmitMcp={() =>
+            void (editingResourceId
+              ? updateMCPFromWorkflow()
+              : createResource())}
+          onSubmitDocker={() =>
+            void (editingDockerResourceId
+              ? updateDockerFromWorkflow()
+              : editingKubernetesResourceId
                 ? updateKubernetesFromWorkflow()
-                : createKubernetesFromWorkflow())}
-          />
-        {:else if resourceKind === 'Host' && resourceAddStep === 2}
-          <HostConnectionStep
-            accessMode={hostAccessMode}
-            bind:host={hostHost}
-            bind:port={hostPort}
-            bind:username={hostUsername}
-            bind:authMethod={hostAuthMethod}
-            bind:password={hostPassword}
-            bind:privateKey={hostPrivateKey}
-            bind:passphrase={hostPassphrase}
-            bind:knownHosts={hostKnownHosts}
-            bind:timeoutSeconds={hostTimeoutSeconds}
-            bind:mcpServerResourceId={hostMCPServerResourceId}
-            bind:connectionOverride={hostConnectionOverride}
-            mcpServers={dockerMCPServers}
-            allowAddMCPServer={!editingHostResourceId}
-            configurationAttempted={hostConfigurationAttempted}
-            credentialLoading={hostCredentialLoading}
-            onConfigurationChange={resetHostDraftTest}
-            onAddMCPServer={openMCPServerWorkflowFromConnection}
-          />
-        {:else if resourceKind === 'Host' && resourceAddStep === 3}
-          <HostReviewStep
-            {resourceName}
-            accessMode={hostAccessMode}
-            connectionOverride={hostConnectionOverride}
-            host={hostHost}
-            authMethod={hostAuthMethod}
-            credentialConfigured={Boolean(
-              hostPassword.trim() ||
-              hostPrivateKey.trim() ||
-              hostKnownHosts.trim()
-            )}
-            mcpServerName={hostMCPServerName()}
-            scopeSummary={activeScopeSummary()}
-            labelsConfigured={Boolean(resourceLabels.trim())}
-            testBusy={hostDraftTestBusy}
-            testStatus={hostDraftTest?.status ?? ''}
-            testMessage={hostDraftTest?.message ?? ''}
-            testError={hostDraftTest?.error ?? ''}
-            testLatency={hostDraftTest?.latency}
-            onSubmit={() =>
-              void (editingHostResourceId
-                ? updateHostFromWorkflow()
-                : createHostFromWorkflow())}
-          />
-        {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 2}
-          <PostgreSQLConnectionStep accessMode={postgresqlAccessMode} bind:host={postgresqlHost} bind:port={postgresqlPort} bind:database={postgresqlDatabase} bind:username={postgresqlUsername} bind:password={postgresqlPassword} bind:timeoutSeconds={postgresqlTimeoutSeconds} bind:mcpServerResourceId={postgresqlMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={postgresqlConfigurationAttempted} editing={Boolean(editingPostgreSQLResourceId)} credentialConfigured={hasSavedResourceCredential(editingPostgreSQLResourceId)} onConfigurationChange={resetPostgreSQLDraftTest} />
-        {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 3}
-          <PostgreSQLReviewStep resourceName={resourceName} accessMode={postgresqlAccessMode} host={postgresqlHost} database={postgresqlDatabase} mcpServerName={resources.find((r) => r.id === postgresqlMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(postgresqlUsername.trim() && postgresqlPassword) || hasSavedResourceCredential(editingPostgreSQLResourceId)} testBusy={Boolean(postgresqlDraftTest?.busy)} testStatus={postgresqlDraftTest?.status ?? ''} testMessage={postgresqlDraftTest?.message ?? ''} testError={postgresqlDraftTest?.error ?? ''} testLatency={postgresqlDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(savePostgreSQLWorkflow)} />
-        {:else if resourceKind === 'MySQL' && resourceAddStep === 2}
-          <MySQLConnectionStep accessMode={mysqlAccessMode} bind:host={mysqlHost} bind:port={mysqlPort} bind:database={mysqlDatabase} bind:username={mysqlUsername} bind:password={mysqlPassword} bind:timeoutSeconds={mysqlTimeoutSeconds} bind:mcpServerResourceId={mysqlMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={mysqlConfigurationAttempted} editing={Boolean(editingMySQLResourceId)} credentialConfigured={hasSavedResourceCredential(editingMySQLResourceId)} onConfigurationChange={resetMySQLDraftTest} />
-        {:else if resourceKind === 'MySQL' && resourceAddStep === 3}
-          <MySQLReviewStep resourceName={resourceName} accessMode={mysqlAccessMode} host={mysqlHost} database={mysqlDatabase} mcpServerName={resources.find((r) => r.id === mysqlMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(mysqlUsername.trim() && mysqlPassword) || hasSavedResourceCredential(editingMySQLResourceId)} testBusy={Boolean(mysqlDraftTest?.busy)} testStatus={mysqlDraftTest?.status ?? ''} testMessage={mysqlDraftTest?.message ?? ''} testError={mysqlDraftTest?.error ?? ''} testLatency={Number(mysqlDraftTest?.latency ?? 0)} onSubmit={() => void runResourceAction(saveMySQLWorkflow)} />
-        {:else if resourceKind === 'Oracle' && resourceAddStep === 2}
-          <OracleConnectionStep accessMode={oracleAccessMode} bind:host={oracleHost} bind:port={oraclePort} bind:serviceName={oracleServiceName} bind:sid={oracleSID} bind:username={oracleUsername} bind:password={oraclePassword} bind:timeoutSeconds={oracleTimeoutSeconds} bind:tls={oracleTLS} bind:mcpServerResourceId={oracleMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={oracleConfigurationAttempted} editing={Boolean(editingOracleResourceId)} credentialConfigured={hasSavedResourceCredential(editingOracleResourceId)} onConfigurationChange={resetOracleDraftTest} />
-        {:else if resourceKind === 'Oracle' && resourceAddStep === 3}
-          <OracleReviewStep resourceName={resourceName} accessMode={oracleAccessMode} host={oracleHost} serviceName={oracleServiceName} sid={oracleSID} mcpServerName={resources.find((r) => r.id === oracleMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(oracleUsername.trim() && oraclePassword) || hasSavedResourceCredential(editingOracleResourceId)} testBusy={Boolean(oracleDraftTest?.busy)} testStatus={oracleDraftTest?.status ?? ''} testMessage={oracleDraftTest?.message ?? ''} testError={oracleDraftTest?.error ?? ''} testLatency={Number(oracleDraftTest?.latency ?? 0)} onSubmit={() => void runResourceAction(saveOracleWorkflow)} />
-        {:else if resourceKind === 'OceanBase' && resourceAddStep === 2}
-          <OceanBaseConnectionStep accessMode={oceanBaseAccessMode} bind:mode={oceanBaseMode} bind:host={oceanBaseHost} bind:port={oceanBasePort} bind:database={oceanBaseDatabase} bind:serviceName={oceanBaseServiceName} bind:username={oceanBaseUsername} bind:password={oceanBasePassword} bind:timeoutSeconds={oceanBaseTimeoutSeconds} bind:mcpServerResourceId={oceanBaseMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={oceanBaseConfigurationAttempted} editing={Boolean(editingOceanBaseResourceId)} credentialConfigured={hasSavedResourceCredential(editingOceanBaseResourceId)} onConfigurationChange={resetOceanBaseDraftTest} />
-        {:else if resourceKind === 'OceanBase' && resourceAddStep === 3}
-          <OceanBaseReviewStep resourceName={resourceName} accessMode={oceanBaseAccessMode} mode={oceanBaseMode} host={oceanBaseHost} database={oceanBaseDatabase} serviceName={oceanBaseServiceName} mcpServerName={resources.find((r) => r.id === oceanBaseMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(oceanBaseUsername.trim() && oceanBasePassword) || hasSavedResourceCredential(editingOceanBaseResourceId)} testBusy={Boolean(oceanBaseDraftTest?.busy)} testStatus={oceanBaseDraftTest?.status ?? ''} testMessage={oceanBaseDraftTest?.message ?? ''} testError={oceanBaseDraftTest?.error ?? ''} testLatency={Number(oceanBaseDraftTest?.latency ?? 0)} onSubmit={() => void runResourceAction(saveOceanBaseWorkflow)} />
-        {:else if resourceKind === 'Redis' && resourceAddStep === 2}
-          <RedisConnectionStep accessMode={redisAccessMode} bind:host={redisHost} bind:port={redisPort} bind:database={redisDatabase} bind:username={redisUsername} bind:password={redisPassword} bind:timeoutSeconds={redisTimeoutSeconds} bind:mcpServerResourceId={redisMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={redisConfigurationAttempted} onConfigurationChange={resetRedisDraftTest} />
-        {:else if resourceKind === 'Redis' && resourceAddStep === 3}
-          <RedisReviewStep resourceName={resourceName} accessMode={redisAccessMode} host={redisHost} database={redisDatabase} mcpServerName={resources.find((r) => r.id === redisMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(redisUsername.trim() && redisPassword.trim())} testBusy={Boolean(redisDraftTest?.busy)} testStatus={redisDraftTest?.status ?? ''} testMessage={redisDraftTest?.message ?? ''} testError={redisDraftTest?.error ?? ''} testLatency={redisDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(saveRedisWorkflow)} />
-        {:else if resourceKind === 'Nacos' && resourceAddStep === 2}
-          <NacosConnectionStep accessMode={nacosAccessMode} bind:host={nacosHost} bind:port={nacosPort} bind:scheme={nacosScheme} bind:contextPath={nacosContextPath} bind:username={nacosUsername} bind:password={nacosPassword} bind:accessToken={nacosAccessToken} bind:timeoutSeconds={nacosTimeoutSeconds} bind:mcpServerResourceId={nacosMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={nacosConfigurationAttempted} onConfigurationChange={resetNacosDraftTest} />
-        {:else if resourceKind === 'Nacos' && resourceAddStep === 3}
-          <NacosReviewStep resourceName={resourceName} accessMode={nacosAccessMode} host={nacosHost} port={nacosPort} mcpServerName={resources.find((r) => r.id === nacosMCPServerResourceId)?.name ?? ''} credentialConfigured={Boolean(nacosUsername.trim() || nacosPassword || nacosAccessToken)} testBusy={Boolean(nacosDraftTest?.busy)} testStatus={nacosDraftTest?.status ?? ''} testMessage={nacosDraftTest?.message ?? ''} testError={nacosDraftTest?.error ?? ''} testLatency={nacosDraftTest?.latency ?? 0} onSubmit={() => void runResourceAction(saveNacosWorkflow)} />
-        {:else if resourceKind === 'Kafka' && resourceAddStep === 2}
-          <KafkaConnectionStep accessMode={kafkaAccessMode} bind:brokers={kafkaBrokers} bind:tls={kafkaTLS} bind:tlsServerName={kafkaTLSServerName} bind:username={kafkaUsername} bind:password={kafkaPassword} bind:timeoutSeconds={kafkaTimeoutSeconds} bind:mcpServerResourceId={kafkaMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={kafkaConfigurationAttempted} onConfigurationChange={resetKafkaDraftTest} />
-        {:else if resourceKind === 'Kafka' && resourceAddStep === 3}
-          <KafkaReviewStep resourceName={resourceName} accessMode={kafkaAccessMode} brokers={kafkaBrokers} mcpServerName={resources.find((r) => r.id === kafkaMCPServerResourceId)?.name ?? ''} testBusy={Boolean(kafkaDraftTest?.busy)} testStatus={kafkaDraftTest?.status ?? ''} testMessage={kafkaDraftTest?.message ?? ''} testError={kafkaDraftTest?.error ?? ''} testLatency={Number(kafkaDraftTest?.latency ?? 0)} />
-        {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 2}
-          <ElasticsearchConnectionStep accessMode={elasticsearchAccessMode} bind:url={elasticsearchURL} bind:username={elasticsearchUsername} bind:password={elasticsearchPassword} bind:tlsInsecure={elasticsearchTLSInsecure} bind:timeoutSeconds={elasticsearchTimeoutSeconds} bind:mcpServerResourceId={elasticsearchMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={elasticsearchConfigurationAttempted} onConfigurationChange={resetElasticsearchDraftTest} />
-        {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 3}
-          <ElasticsearchReviewStep resourceName={resourceName} accessMode={elasticsearchAccessMode} url={elasticsearchURL} mcpServerName={resources.find((r) => r.id === elasticsearchMCPServerResourceId)?.name ?? ''} testBusy={Boolean(elasticsearchDraftTest?.busy)} testStatus={elasticsearchDraftTest?.status ?? ''} testMessage={elasticsearchDraftTest?.message ?? ''} testError={elasticsearchDraftTest?.error ?? ''} testLatency={Number(elasticsearchDraftTest?.latency ?? 0)} />
-        {:else if resourceKind === 'RabbitMQ' && resourceAddStep === 2}
-          <RabbitMQConnectionStep accessMode={rabbitMQAccessMode} bind:url={rabbitMQURL} bind:username={rabbitMQUsername} bind:password={rabbitMQPassword} bind:timeoutSeconds={rabbitMQTimeoutSeconds} bind:tlsInsecure={rabbitMQTLSInsecure} bind:mcpServerResourceId={rabbitMQMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={rabbitMQConfigurationAttempted} onConfigurationChange={resetRabbitMQDraftTest} />
-        {:else if resourceKind === 'RabbitMQ' && resourceAddStep === 3}
-          <RabbitMQReviewStep resourceName={resourceName} accessMode={rabbitMQAccessMode} url={rabbitMQURL} mcpServerName={resources.find((r) => r.id === rabbitMQMCPServerResourceId)?.name ?? ''} testBusy={Boolean(rabbitMQDraftTest?.busy)} testStatus={rabbitMQDraftTest?.status ?? ''} testMessage={rabbitMQDraftTest?.message ?? ''} testError={rabbitMQDraftTest?.error ?? ''} testLatency={Number(rabbitMQDraftTest?.latency ?? 0)} />
-        {:else if resourceKind === 'MinIO' && resourceAddStep === 2}
-          <MinIOConnectionStep accessMode={minIOAccessMode} bind:endpoint={minIOEndpoint} bind:accessKey={minIOAccessKey} bind:secretKey={minIOSecretKey} bind:sessionToken={minIOSessionToken} bind:region={minIORegion} bind:secure={minIOSecure} bind:timeoutSeconds={minIOTimeoutSeconds} bind:mcpServerResourceId={minIOMCPServerResourceId} mcpServers={dockerMCPServers} configurationAttempted={minIOConfigurationAttempted} onConfigurationChange={resetMinIODraftTest} />
-        {:else if resourceKind === 'MinIO' && resourceAddStep === 3}
-          <MinIOReviewStep resourceName={resourceName} accessMode={minIOAccessMode} endpoint={minIOEndpoint} mcpServerName={resources.find((r) => r.id === minIOMCPServerResourceId)?.name ?? ''} testBusy={Boolean(minIODraftTest?.busy)} testStatus={minIODraftTest?.status ?? ''} testMessage={minIODraftTest?.message ?? ''} testError={minIODraftTest?.error ?? ''} testLatency={Number(minIODraftTest?.latency ?? 0)} onSubmit={() => void runResourceAction(saveMinIOWorkflow)} />
-        {:else if resourceKind === 'Repository' && resourceAddStep === 2}
-          <RepositoryConnectionStep subtype={resourceAddSubtype} bind:url={repositoryURL} bind:username={repositoryUsername} bind:password={repositoryPassword} bind:bundleFile={repositoryBundleFile} credentialConfigured={Boolean(repositoryExistingResource?.credential_configured)} editing={Boolean(editingRepositoryResourceId)} bundleConfigured={repositoryBundleConfigured} bind:defaultBranch={repositoryDefaultBranch} configurationAttempted={repositoryConfigurationAttempted} />
-        {:else if resourceKind === 'Repository' && resourceAddStep === 3}
-          <RepositoryPreviewStep entries={repositoryPreviewEntries} busy={repositoryPreviewBusy} failed={Boolean(repositoryPreviewMessage)} />
-        {:else if resourceKind === 'Repository' && resourceAddStep === 4}
-          <RepositoryReviewStep resourceName={resourceName} subtype={resourceAddSubtype} url={repositoryURL} defaultBranch={repositoryDefaultBranch} credentialConfigured={Boolean(repositoryUsername.trim() || repositoryPassword || repositoryExistingResource?.credential_configured)} scopeSummary={activeScopeSummary()} labelsConfigured={Boolean(Object.keys(parseLabels(resourceLabels)).length)} bundleConfigured={repositoryBundleConfigured} storageBackend={repositoryConnectionCheck?.endpoint ?? ''} testBusy={resourceAddSubtype === 'Git' ? Boolean(repositoryDraftTest?.busy) : connectionBusyResourceIds.includes(repositoryActiveResourceId)} testStatus={resourceAddSubtype === 'Git' ? repositoryDraftTest?.status ?? '' : repositoryConnectionCheck?.status ?? ''} testMessage={resourceAddSubtype === 'Git' ? repositoryDraftTest?.message ?? '' : repositoryConnectionCheck?.message ?? ''} testError={resourceAddSubtype === 'Git' ? repositoryDraftTest?.error ?? repositoryPreviewMessage : repositoryConnectionCheck?.status === 'failed' ? repositoryConnectionCheck.message : ''} testLatency={resourceAddSubtype === 'Git' ? repositoryDraftTest?.latency ?? 0 : repositoryConnectionCheck?.latency_ms ?? 0} />
-        {:else if selectedResource?.kind === 'MCPServer'}
-          <div class="mcp-resource-form editor-mcp-form">
-            <div class="form-row">
-              <FormField label="资源名称" required><TextInput bind:value={editResourceName} required ariaLabel="资源名称" /></FormField>
+                : resourceKind === 'Kubernetes'
+                  ? createKubernetesFromWorkflow()
+                  : createDockerFromWorkflow())}
+          onSubmitHost={() =>
+            void (editingHostResourceId
+              ? updateHostFromWorkflow()
+              : createHostFromWorkflow())}
+          onSubmitPostgreSQL={() =>
+            void runResourceAction(savePostgreSQLWorkflow)}
+          onSubmitMySQL={() => void runResourceAction(saveMySQLWorkflow)}
+          onSubmitOracle={() => void runResourceAction(saveOracleWorkflow)}
+          onSubmitOceanBase={() =>
+            void runResourceAction(saveOceanBaseWorkflow)}
+          onSubmitRedis={() => void runResourceAction(saveRedisWorkflow)}
+          onSubmitNacos={() => void runResourceAction(saveNacosWorkflow)}
+          onSubmitKafka={() => void runResourceAction(saveKafkaWorkflow)}
+          onSubmitElasticsearch={() =>
+            void runResourceAction(saveElasticsearchWorkflow)}
+          onSubmitRabbitMQ={() => void runResourceAction(saveRabbitMQWorkflow)}
+          onSubmitMinIO={() => void runResourceAction(saveMinIOWorkflow)}
+          onSubmitRepository={() =>
+            void runResourceAction(saveRepositoryWorkflow)}
+        >
+          {#if resourceAddStep === 1}
+            <ResourceBasicConfigStep
+              bind:category={resourceAddCategory}
+              bind:subtype={resourceAddSubtype}
+              bind:name={resourceName}
+              bind:labels={resourceLabels}
+              scopeId={resourceCreateScopeId}
+              scopeOptions={resourceCreateScopeOptions}
+              categoryOptions={resourceCategoryOptions}
+              subtypeOptions={resourceAddSubtypeOptions}
+              bind:typeSelectionAttempted={resourceTypeSelectionAttempted}
+              basicConfigurationAttempted={resourceBasicConfigurationAttempted}
+              editing={resourceWorkflowEditing()}
+              scopeSummary={activeScopeSummary()}
+              onSelectCategory={selectResourceAddCategory}
+              onSelectSubtype={(subtype) => {
+                resourceKind = resourceKindForSelection(
+                  resourceAddCategory,
+                  subtype
+                );
+                if (resourceKind === 'Kubernetes')
+                  kubernetesConnectionOverride = false;
+                if (resourceKind === 'Host')
+                  hostAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'PostgreSQL')
+                  postgresqlAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'MySQL')
+                  mysqlAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'Oracle')
+                  oracleAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'OceanBase')
+                  oceanBaseAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'Redis')
+                  redisAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'Nacos')
+                  nacosAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'Kafka')
+                  kafkaAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'Elasticsearch')
+                  elasticsearchAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'RabbitMQ')
+                  rabbitMQAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+                if (resourceKind === 'MinIO')
+                  minIOAccessMode =
+                    subtype.trim().toLowerCase() === 'agent'
+                      ? 'agent'
+                      : 'direct';
+              }}
+              onSelectScope={(scopeId) => (resourceCreateScopeId = scopeId)}
+            />
+          {:else if resourceKind === 'MCPServer' && resourceAddStep === 2}
+            <form
+              id="resource-create-form"
+              class="stack-form resource-create-form"
+              on:submit|preventDefault={createResource}
+            >
+              <McpConnectionFields
+                bind:url={mcpURL}
+                bind:token={mcpToken}
+                bind:requestHeaders={mcpRequestHeaders}
+                bind:toolAllowlist={mcpToolAllowlist}
+                bind:timeoutSeconds={mcpTimeoutSeconds}
+                bind:maxResponseBytes={mcpMaxResponseBytes}
+                bind:tlsCA={mcpTLSCA}
+                bind:tlsCert={mcpTLSCert}
+                bind:tlsKey={mcpTLSKey}
+                bind:skipTLSVerify={mcpTLSSkipVerify}
+                configurationAttempted={mcpConfigurationAttempted}
+              />
+            </form>
+          {:else if resourceKind === 'MCPServer' && resourceAddStep === 3}
+            <McpReviewStep
+              transport={mcpTransport}
+              url={mcpURL}
+              tokenConfigured={Boolean(mcpToken.trim())}
+              headerCount={mcpHeaderCount()}
+              toolAllowlist={mcpToolAllowlist}
+              timeoutSeconds={mcpTimeoutSeconds}
+              maxResponseBytes={mcpMaxResponseBytes}
+              testStatus={mcpDraftTest?.result?.status ?? ''}
+              testError={mcpDraftTest?.error ?? ''}
+              toolCount={mcpDraftTest?.result?.tools.length ?? 0}
+              latency={mcpDraftTest?.result?.latency_ms}
+            />
+          {:else if resourceKind === 'Docker' && resourceAddStep === 2}
+            <DockerConnectionStep
+              bind:accessMode={dockerAccessMode}
+              bind:host={dockerHost}
+              bind:timeoutSeconds={dockerTimeoutSeconds}
+              bind:caBase64={dockerCABase64}
+              bind:certBase64={dockerCertBase64}
+              bind:keyBase64={dockerKeyBase64}
+              bind:skipTLSVerify={dockerSkipTLSVerify}
+              bind:connectionOverride={dockerAgentConnectionOverride}
+              bind:mcpServerResourceId={dockerMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              allowAddMCPServer={!editingDockerResourceId}
+              configurationAttempted={dockerConfigurationAttempted}
+              credentialLoading={dockerCredentialLoading}
+              onConfigurationChange={resetDockerDraftTest}
+              onAddMCPServer={openMCPServerWorkflowFromConnection}
+            />
+          {:else if resourceKind === 'Docker' && resourceAddStep === 3}
+            <DockerReviewStep
+              accessMode={dockerAccessMode}
+              connectionOverride={dockerAgentConnectionOverride}
+              host={dockerHost}
+              skipTLSVerify={dockerSkipTLSVerify}
+              mcpServerName={dockerMCPServerName()}
+              credentialConfigured={Boolean(
+                dockerCABase64.trim() ||
+                dockerCertBase64.trim() ||
+                dockerKeyBase64.trim()
+              )}
+              scopeSummary={activeScopeSummary()}
+              labelsConfigured={Boolean(resourceLabels.trim())}
+              testBusy={dockerDraftTestBusy}
+              testStatus={dockerDraftTest?.status ?? ''}
+              testMessage={dockerDraftTest?.message ?? ''}
+              testError={dockerDraftTest?.error ?? ''}
+              testLatency={dockerDraftTest?.latency}
+              testToolCount={dockerDraftTest?.toolCount ?? 0}
+              onSubmit={() =>
+                void (editingDockerResourceId
+                  ? updateDockerFromWorkflow()
+                  : createDockerFromWorkflow())}
+            />
+          {:else if resourceKind === 'Kubernetes' && resourceAddStep === 2}
+            <KubernetesConnectionStep
+              isAgent={kubernetesIsAgent()}
+              bind:connectionOverride={kubernetesConnectionOverride}
+              bind:connectionMode={kubernetesConnectionMode}
+              bind:server={kubernetesServer}
+              bind:caBase64={kubernetesCABase64}
+              bind:token={kubernetesToken}
+              bind:certBase64={kubernetesCertBase64}
+              bind:keyBase64={kubernetesKeyBase64}
+              bind:kubeconfig={kubernetesKubeconfig}
+              bind:skipTLSVerify={kubernetesSkipTLSVerify}
+              bind:mcpServerResourceId={kubernetesMCPServerResourceId}
+              mcpServers={kubernetesMCPServers}
+              allowAddMCPServer={!editingKubernetesResourceId}
+              configurationAttempted={kubernetesConfigurationAttempted}
+              credentialLoading={kubernetesCredentialLoading}
+              onConfigurationChange={() => (kubernetesDraftTest = null)}
+              onAddMCPServer={openMCPServerWorkflowFromConnection}
+            />
+          {:else if resourceKind === 'Kubernetes' && resourceAddStep === 3}
+            <KubernetesReviewStep
+              {resourceName}
+              isAgent={kubernetesIsAgent()}
+              connectionOverride={kubernetesConnectionOverride}
+              connectionMode={kubernetesConnectionMode}
+              server={kubernetesServer}
+              mcpServerName={resources.find(
+                (r) => r.id === kubernetesMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                kubernetesKubeconfig.trim() ||
+                kubernetesToken.trim() ||
+                kubernetesCABase64.trim() ||
+                kubernetesCertBase64.trim() ||
+                kubernetesKeyBase64.trim()
+              )}
+              scopeSummary={activeScopeSummary()}
+              labelsConfigured={Boolean(resourceLabels.trim())}
+              testBusy={kubernetesDraftTestBusy}
+              testStatus={kubernetesDraftTest?.status ?? ''}
+              testMessage={kubernetesDraftTest?.message ?? ''}
+              testError={kubernetesDraftTest?.error ?? ''}
+              testLatency={kubernetesDraftTest?.latency}
+              onSubmit={() =>
+                void (editingKubernetesResourceId
+                  ? updateKubernetesFromWorkflow()
+                  : createKubernetesFromWorkflow())}
+            />
+          {:else if resourceKind === 'Host' && resourceAddStep === 2}
+            <HostConnectionStep
+              accessMode={hostAccessMode}
+              bind:host={hostHost}
+              bind:port={hostPort}
+              bind:username={hostUsername}
+              bind:authMethod={hostAuthMethod}
+              bind:password={hostPassword}
+              bind:privateKey={hostPrivateKey}
+              bind:passphrase={hostPassphrase}
+              bind:knownHosts={hostKnownHosts}
+              bind:timeoutSeconds={hostTimeoutSeconds}
+              bind:mcpServerResourceId={hostMCPServerResourceId}
+              bind:connectionOverride={hostConnectionOverride}
+              mcpServers={dockerMCPServers}
+              allowAddMCPServer={!editingHostResourceId}
+              configurationAttempted={hostConfigurationAttempted}
+              credentialLoading={hostCredentialLoading}
+              onConfigurationChange={resetHostDraftTest}
+              onAddMCPServer={openMCPServerWorkflowFromConnection}
+            />
+          {:else if resourceKind === 'Host' && resourceAddStep === 3}
+            <HostReviewStep
+              {resourceName}
+              accessMode={hostAccessMode}
+              connectionOverride={hostConnectionOverride}
+              host={hostHost}
+              authMethod={hostAuthMethod}
+              credentialConfigured={Boolean(
+                hostPassword.trim() ||
+                hostPrivateKey.trim() ||
+                hostKnownHosts.trim()
+              )}
+              mcpServerName={hostMCPServerName()}
+              scopeSummary={activeScopeSummary()}
+              labelsConfigured={Boolean(resourceLabels.trim())}
+              testBusy={hostDraftTestBusy}
+              testStatus={hostDraftTest?.status ?? ''}
+              testMessage={hostDraftTest?.message ?? ''}
+              testError={hostDraftTest?.error ?? ''}
+              testLatency={hostDraftTest?.latency}
+              onSubmit={() =>
+                void (editingHostResourceId
+                  ? updateHostFromWorkflow()
+                  : createHostFromWorkflow())}
+            />
+          {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 2}
+            <PostgreSQLConnectionStep
+              accessMode={postgresqlAccessMode}
+              bind:host={postgresqlHost}
+              bind:port={postgresqlPort}
+              bind:database={postgresqlDatabase}
+              bind:username={postgresqlUsername}
+              bind:password={postgresqlPassword}
+              bind:timeoutSeconds={postgresqlTimeoutSeconds}
+              bind:mcpServerResourceId={postgresqlMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={postgresqlConfigurationAttempted}
+              editing={Boolean(editingPostgreSQLResourceId)}
+              credentialConfigured={hasSavedResourceCredential(
+                editingPostgreSQLResourceId
+              )}
+              onConfigurationChange={resetPostgreSQLDraftTest}
+            />
+          {:else if resourceKind === 'PostgreSQL' && resourceAddStep === 3}
+            <PostgreSQLReviewStep
+              {resourceName}
+              accessMode={postgresqlAccessMode}
+              host={postgresqlHost}
+              database={postgresqlDatabase}
+              mcpServerName={resources.find(
+                (r) => r.id === postgresqlMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                postgresqlUsername.trim() && postgresqlPassword
+              ) || hasSavedResourceCredential(editingPostgreSQLResourceId)}
+              testBusy={Boolean(postgresqlDraftTest?.busy)}
+              testStatus={postgresqlDraftTest?.status ?? ''}
+              testMessage={postgresqlDraftTest?.message ?? ''}
+              testError={postgresqlDraftTest?.error ?? ''}
+              testLatency={postgresqlDraftTest?.latency ?? 0}
+              onSubmit={() => void runResourceAction(savePostgreSQLWorkflow)}
+            />
+          {:else if resourceKind === 'MySQL' && resourceAddStep === 2}
+            <MySQLConnectionStep
+              accessMode={mysqlAccessMode}
+              bind:host={mysqlHost}
+              bind:port={mysqlPort}
+              bind:database={mysqlDatabase}
+              bind:username={mysqlUsername}
+              bind:password={mysqlPassword}
+              bind:timeoutSeconds={mysqlTimeoutSeconds}
+              bind:mcpServerResourceId={mysqlMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={mysqlConfigurationAttempted}
+              editing={Boolean(editingMySQLResourceId)}
+              credentialConfigured={hasSavedResourceCredential(
+                editingMySQLResourceId
+              )}
+              onConfigurationChange={resetMySQLDraftTest}
+            />
+          {:else if resourceKind === 'MySQL' && resourceAddStep === 3}
+            <MySQLReviewStep
+              {resourceName}
+              accessMode={mysqlAccessMode}
+              host={mysqlHost}
+              database={mysqlDatabase}
+              mcpServerName={resources.find(
+                (r) => r.id === mysqlMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                mysqlUsername.trim() && mysqlPassword
+              ) || hasSavedResourceCredential(editingMySQLResourceId)}
+              testBusy={Boolean(mysqlDraftTest?.busy)}
+              testStatus={mysqlDraftTest?.status ?? ''}
+              testMessage={mysqlDraftTest?.message ?? ''}
+              testError={mysqlDraftTest?.error ?? ''}
+              testLatency={Number(mysqlDraftTest?.latency ?? 0)}
+              onSubmit={() => void runResourceAction(saveMySQLWorkflow)}
+            />
+          {:else if resourceKind === 'Oracle' && resourceAddStep === 2}
+            <OracleConnectionStep
+              accessMode={oracleAccessMode}
+              bind:host={oracleHost}
+              bind:port={oraclePort}
+              bind:serviceName={oracleServiceName}
+              bind:sid={oracleSID}
+              bind:username={oracleUsername}
+              bind:password={oraclePassword}
+              bind:timeoutSeconds={oracleTimeoutSeconds}
+              bind:tls={oracleTLS}
+              bind:mcpServerResourceId={oracleMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={oracleConfigurationAttempted}
+              editing={Boolean(editingOracleResourceId)}
+              credentialConfigured={hasSavedResourceCredential(
+                editingOracleResourceId
+              )}
+              onConfigurationChange={resetOracleDraftTest}
+            />
+          {:else if resourceKind === 'Oracle' && resourceAddStep === 3}
+            <OracleReviewStep
+              {resourceName}
+              accessMode={oracleAccessMode}
+              host={oracleHost}
+              serviceName={oracleServiceName}
+              sid={oracleSID}
+              mcpServerName={resources.find(
+                (r) => r.id === oracleMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                oracleUsername.trim() && oraclePassword
+              ) || hasSavedResourceCredential(editingOracleResourceId)}
+              testBusy={Boolean(oracleDraftTest?.busy)}
+              testStatus={oracleDraftTest?.status ?? ''}
+              testMessage={oracleDraftTest?.message ?? ''}
+              testError={oracleDraftTest?.error ?? ''}
+              testLatency={Number(oracleDraftTest?.latency ?? 0)}
+              onSubmit={() => void runResourceAction(saveOracleWorkflow)}
+            />
+          {:else if resourceKind === 'OceanBase' && resourceAddStep === 2}
+            <OceanBaseConnectionStep
+              accessMode={oceanBaseAccessMode}
+              bind:mode={oceanBaseMode}
+              bind:host={oceanBaseHost}
+              bind:port={oceanBasePort}
+              bind:database={oceanBaseDatabase}
+              bind:serviceName={oceanBaseServiceName}
+              bind:username={oceanBaseUsername}
+              bind:password={oceanBasePassword}
+              bind:timeoutSeconds={oceanBaseTimeoutSeconds}
+              bind:mcpServerResourceId={oceanBaseMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={oceanBaseConfigurationAttempted}
+              editing={Boolean(editingOceanBaseResourceId)}
+              credentialConfigured={hasSavedResourceCredential(
+                editingOceanBaseResourceId
+              )}
+              onConfigurationChange={resetOceanBaseDraftTest}
+            />
+          {:else if resourceKind === 'OceanBase' && resourceAddStep === 3}
+            <OceanBaseReviewStep
+              {resourceName}
+              accessMode={oceanBaseAccessMode}
+              mode={oceanBaseMode}
+              host={oceanBaseHost}
+              database={oceanBaseDatabase}
+              serviceName={oceanBaseServiceName}
+              mcpServerName={resources.find(
+                (r) => r.id === oceanBaseMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                oceanBaseUsername.trim() && oceanBasePassword
+              ) || hasSavedResourceCredential(editingOceanBaseResourceId)}
+              testBusy={Boolean(oceanBaseDraftTest?.busy)}
+              testStatus={oceanBaseDraftTest?.status ?? ''}
+              testMessage={oceanBaseDraftTest?.message ?? ''}
+              testError={oceanBaseDraftTest?.error ?? ''}
+              testLatency={Number(oceanBaseDraftTest?.latency ?? 0)}
+              onSubmit={() => void runResourceAction(saveOceanBaseWorkflow)}
+            />
+          {:else if resourceKind === 'Redis' && resourceAddStep === 2}
+            <RedisConnectionStep
+              accessMode={redisAccessMode}
+              bind:host={redisHost}
+              bind:port={redisPort}
+              bind:database={redisDatabase}
+              bind:username={redisUsername}
+              bind:password={redisPassword}
+              bind:timeoutSeconds={redisTimeoutSeconds}
+              bind:mcpServerResourceId={redisMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={redisConfigurationAttempted}
+              onConfigurationChange={resetRedisDraftTest}
+            />
+          {:else if resourceKind === 'Redis' && resourceAddStep === 3}
+            <RedisReviewStep
+              {resourceName}
+              accessMode={redisAccessMode}
+              host={redisHost}
+              database={redisDatabase}
+              mcpServerName={resources.find(
+                (r) => r.id === redisMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                redisUsername.trim() && redisPassword.trim()
+              )}
+              testBusy={Boolean(redisDraftTest?.busy)}
+              testStatus={redisDraftTest?.status ?? ''}
+              testMessage={redisDraftTest?.message ?? ''}
+              testError={redisDraftTest?.error ?? ''}
+              testLatency={redisDraftTest?.latency ?? 0}
+              onSubmit={() => void runResourceAction(saveRedisWorkflow)}
+            />
+          {:else if resourceKind === 'Nacos' && resourceAddStep === 2}
+            <NacosConnectionStep
+              accessMode={nacosAccessMode}
+              bind:host={nacosHost}
+              bind:port={nacosPort}
+              bind:scheme={nacosScheme}
+              bind:contextPath={nacosContextPath}
+              bind:username={nacosUsername}
+              bind:password={nacosPassword}
+              bind:accessToken={nacosAccessToken}
+              bind:timeoutSeconds={nacosTimeoutSeconds}
+              bind:mcpServerResourceId={nacosMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={nacosConfigurationAttempted}
+              onConfigurationChange={resetNacosDraftTest}
+            />
+          {:else if resourceKind === 'Nacos' && resourceAddStep === 3}
+            <NacosReviewStep
+              {resourceName}
+              accessMode={nacosAccessMode}
+              host={nacosHost}
+              port={nacosPort}
+              mcpServerName={resources.find(
+                (r) => r.id === nacosMCPServerResourceId
+              )?.name ?? ''}
+              credentialConfigured={Boolean(
+                nacosUsername.trim() || nacosPassword || nacosAccessToken
+              )}
+              testBusy={Boolean(nacosDraftTest?.busy)}
+              testStatus={nacosDraftTest?.status ?? ''}
+              testMessage={nacosDraftTest?.message ?? ''}
+              testError={nacosDraftTest?.error ?? ''}
+              testLatency={nacosDraftTest?.latency ?? 0}
+              onSubmit={() => void runResourceAction(saveNacosWorkflow)}
+            />
+          {:else if resourceKind === 'Kafka' && resourceAddStep === 2}
+            <KafkaConnectionStep
+              accessMode={kafkaAccessMode}
+              bind:brokers={kafkaBrokers}
+              bind:tls={kafkaTLS}
+              bind:tlsServerName={kafkaTLSServerName}
+              bind:username={kafkaUsername}
+              bind:password={kafkaPassword}
+              bind:timeoutSeconds={kafkaTimeoutSeconds}
+              bind:mcpServerResourceId={kafkaMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={kafkaConfigurationAttempted}
+              onConfigurationChange={resetKafkaDraftTest}
+            />
+          {:else if resourceKind === 'Kafka' && resourceAddStep === 3}
+            <KafkaReviewStep
+              {resourceName}
+              accessMode={kafkaAccessMode}
+              brokers={kafkaBrokers}
+              mcpServerName={resources.find(
+                (r) => r.id === kafkaMCPServerResourceId
+              )?.name ?? ''}
+              testBusy={Boolean(kafkaDraftTest?.busy)}
+              testStatus={kafkaDraftTest?.status ?? ''}
+              testMessage={kafkaDraftTest?.message ?? ''}
+              testError={kafkaDraftTest?.error ?? ''}
+              testLatency={Number(kafkaDraftTest?.latency ?? 0)}
+            />
+          {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 2}
+            <ElasticsearchConnectionStep
+              accessMode={elasticsearchAccessMode}
+              bind:url={elasticsearchURL}
+              bind:username={elasticsearchUsername}
+              bind:password={elasticsearchPassword}
+              bind:tlsInsecure={elasticsearchTLSInsecure}
+              bind:timeoutSeconds={elasticsearchTimeoutSeconds}
+              bind:mcpServerResourceId={elasticsearchMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={elasticsearchConfigurationAttempted}
+              onConfigurationChange={resetElasticsearchDraftTest}
+            />
+          {:else if resourceKind === 'Elasticsearch' && resourceAddStep === 3}
+            <ElasticsearchReviewStep
+              {resourceName}
+              accessMode={elasticsearchAccessMode}
+              url={elasticsearchURL}
+              mcpServerName={resources.find(
+                (r) => r.id === elasticsearchMCPServerResourceId
+              )?.name ?? ''}
+              testBusy={Boolean(elasticsearchDraftTest?.busy)}
+              testStatus={elasticsearchDraftTest?.status ?? ''}
+              testMessage={elasticsearchDraftTest?.message ?? ''}
+              testError={elasticsearchDraftTest?.error ?? ''}
+              testLatency={Number(elasticsearchDraftTest?.latency ?? 0)}
+            />
+          {:else if resourceKind === 'RabbitMQ' && resourceAddStep === 2}
+            <RabbitMQConnectionStep
+              accessMode={rabbitMQAccessMode}
+              bind:url={rabbitMQURL}
+              bind:username={rabbitMQUsername}
+              bind:password={rabbitMQPassword}
+              bind:timeoutSeconds={rabbitMQTimeoutSeconds}
+              bind:tlsInsecure={rabbitMQTLSInsecure}
+              bind:mcpServerResourceId={rabbitMQMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={rabbitMQConfigurationAttempted}
+              onConfigurationChange={resetRabbitMQDraftTest}
+            />
+          {:else if resourceKind === 'RabbitMQ' && resourceAddStep === 3}
+            <RabbitMQReviewStep
+              {resourceName}
+              accessMode={rabbitMQAccessMode}
+              url={rabbitMQURL}
+              mcpServerName={resources.find(
+                (r) => r.id === rabbitMQMCPServerResourceId
+              )?.name ?? ''}
+              testBusy={Boolean(rabbitMQDraftTest?.busy)}
+              testStatus={rabbitMQDraftTest?.status ?? ''}
+              testMessage={rabbitMQDraftTest?.message ?? ''}
+              testError={rabbitMQDraftTest?.error ?? ''}
+              testLatency={Number(rabbitMQDraftTest?.latency ?? 0)}
+            />
+          {:else if resourceKind === 'MinIO' && resourceAddStep === 2}
+            <MinIOConnectionStep
+              accessMode={minIOAccessMode}
+              bind:endpoint={minIOEndpoint}
+              bind:accessKey={minIOAccessKey}
+              bind:secretKey={minIOSecretKey}
+              bind:sessionToken={minIOSessionToken}
+              bind:region={minIORegion}
+              bind:secure={minIOSecure}
+              bind:timeoutSeconds={minIOTimeoutSeconds}
+              bind:mcpServerResourceId={minIOMCPServerResourceId}
+              mcpServers={dockerMCPServers}
+              configurationAttempted={minIOConfigurationAttempted}
+              onConfigurationChange={resetMinIODraftTest}
+            />
+          {:else if resourceKind === 'MinIO' && resourceAddStep === 3}
+            <MinIOReviewStep
+              {resourceName}
+              accessMode={minIOAccessMode}
+              endpoint={minIOEndpoint}
+              mcpServerName={resources.find(
+                (r) => r.id === minIOMCPServerResourceId
+              )?.name ?? ''}
+              testBusy={Boolean(minIODraftTest?.busy)}
+              testStatus={minIODraftTest?.status ?? ''}
+              testMessage={minIODraftTest?.message ?? ''}
+              testError={minIODraftTest?.error ?? ''}
+              testLatency={Number(minIODraftTest?.latency ?? 0)}
+              onSubmit={() => void runResourceAction(saveMinIOWorkflow)}
+            />
+          {:else if resourceKind === 'Repository' && resourceAddStep === 2}
+            <RepositoryConnectionStep
+              subtype={resourceAddSubtype}
+              bind:url={repositoryURL}
+              bind:username={repositoryUsername}
+              bind:password={repositoryPassword}
+              bind:bundleFile={repositoryBundleFile}
+              credentialConfigured={Boolean(
+                repositoryExistingResource?.credential_configured
+              )}
+              editing={Boolean(editingRepositoryResourceId)}
+              bundleConfigured={repositoryBundleConfigured}
+              bind:defaultBranch={repositoryDefaultBranch}
+              configurationAttempted={repositoryConfigurationAttempted}
+            />
+          {:else if resourceKind === 'Repository' && resourceAddStep === 3}
+            <RepositoryPreviewStep
+              entries={repositoryPreviewEntries}
+              busy={repositoryPreviewBusy}
+              failed={Boolean(repositoryPreviewMessage)}
+            />
+          {:else if resourceKind === 'Repository' && resourceAddStep === 4}
+            <RepositoryReviewStep
+              {resourceName}
+              subtype={resourceAddSubtype}
+              url={repositoryURL}
+              defaultBranch={repositoryDefaultBranch}
+              credentialConfigured={Boolean(
+                repositoryUsername.trim() ||
+                repositoryPassword ||
+                repositoryExistingResource?.credential_configured
+              )}
+              scopeSummary={activeScopeSummary()}
+              labelsConfigured={Boolean(
+                Object.keys(parseLabels(resourceLabels)).length
+              )}
+              bundleConfigured={repositoryBundleConfigured}
+              storageBackend={repositoryConnectionCheck?.endpoint ?? ''}
+              testBusy={resourceAddSubtype === 'Git'
+                ? Boolean(repositoryDraftTest?.busy)
+                : connectionBusyResourceIds.includes(
+                    repositoryActiveResourceId
+                  )}
+              testStatus={resourceAddSubtype === 'Git'
+                ? (repositoryDraftTest?.status ?? '')
+                : (repositoryConnectionCheck?.status ?? '')}
+              testMessage={resourceAddSubtype === 'Git'
+                ? (repositoryDraftTest?.message ?? '')
+                : (repositoryConnectionCheck?.message ?? '')}
+              testError={resourceAddSubtype === 'Git'
+                ? (repositoryDraftTest?.error ?? repositoryPreviewMessage)
+                : repositoryConnectionCheck?.status === 'failed'
+                  ? repositoryConnectionCheck.message
+                  : ''}
+              testLatency={resourceAddSubtype === 'Git'
+                ? (repositoryDraftTest?.latency ?? 0)
+                : (repositoryConnectionCheck?.latency_ms ?? 0)}
+            />
+          {:else if selectedResource?.kind === 'MCPServer'}
+            <div class="mcp-resource-form editor-mcp-form">
+              <div class="form-row">
+                <FormField label="资源名称" required
+                  ><TextInput
+                    bind:value={editResourceName}
+                    required
+                    ariaLabel="资源名称"
+                  /></FormField
+                >
+              </div>
+              <FormField label="标签" asLabel={false}
+                ><TextInput
+                  bind:value={editResourceLabels}
+                  tagged
+                  placeholder="填写 key=value、key:value 或 key，按回车确认"
+                  ariaLabel="资源标签"
+                /></FormField
+              >
+              <McpConnectionFields
+                bind:url={mcpURL}
+                bind:token={mcpToken}
+                bind:requestHeaders={mcpRequestHeaders}
+                bind:toolAllowlist={mcpToolAllowlist}
+                bind:timeoutSeconds={mcpTimeoutSeconds}
+                bind:maxResponseBytes={mcpMaxResponseBytes}
+                bind:tlsCA={mcpTLSCA}
+                bind:tlsCert={mcpTLSCert}
+                bind:tlsKey={mcpTLSKey}
+                bind:skipTLSVerify={mcpTLSSkipVerify}
+                tokenPlaceholder="留空保持原凭据"
+              />
             </div>
-            <FormField label="标签" asLabel={false}><TextInput bind:value={editResourceLabels} tagged placeholder="填写 key=value、key:value 或 key，按回车确认" ariaLabel="资源标签" /></FormField>
-            <McpConnectionFields
-              bind:url={mcpURL}
-              bind:token={mcpToken}
-              bind:requestHeaders={mcpRequestHeaders}
-              bind:toolAllowlist={mcpToolAllowlist}
-              bind:timeoutSeconds={mcpTimeoutSeconds}
-              bind:maxResponseBytes={mcpMaxResponseBytes}
-              bind:tlsCA={mcpTLSCA}
-              bind:tlsCert={mcpTLSCert}
-              bind:tlsKey={mcpTLSKey}
-              bind:skipTLSVerify={mcpTLSSkipVerify}
-              tokenPlaceholder="留空保持原凭据"
-            />
-          </div>
-        {:else}
-          <form
-            id="resource-create-form"
-            class="stack-form resource-create-form"
-            on:submit|preventDefault={createResource}
-          >
-            <ResourceSchemaFields
-              schema={createSchema}
-              showTimeout={resourceSupportsEndpointTimeout(resourceKind)}
-              bind:timeoutSeconds={genericTimeoutSeconds}
-              bind:values={resourceConfigValues}
-              bind:sensitiveValues={resourceSensitiveValues}
-              bind:rawConfig={resourceConfig}
-              isRequired={resourceSchemaFieldRequired}
-              configurationAttempted={resourceBasicConfigurationAttempted}
-            />
-          </form>
-        {/if}
-      </ResourceWorkflowPanel>
+          {:else}
+            <form
+              id="resource-create-form"
+              class="stack-form resource-create-form"
+              on:submit|preventDefault={createResource}
+            >
+              <ResourceSchemaFields
+                schema={createSchema}
+                showTimeout={resourceSupportsEndpointTimeout(resourceKind)}
+                bind:timeoutSeconds={genericTimeoutSeconds}
+                bind:values={resourceConfigValues}
+                bind:sensitiveValues={resourceSensitiveValues}
+                bind:rawConfig={resourceConfig}
+                isRequired={resourceSchemaFieldRequired}
+                configurationAttempted={resourceBasicConfigurationAttempted}
+              />
+            </form>
+          {/if}
+        </ResourceWorkflowPanel>
       </ModalDialog>
     {/if}
     <ResourceDetailPanel
@@ -3423,7 +5931,8 @@
       {resourceCategoryFor}
       {resourceSubtypeFor}
       {resourceSchemaFieldRequired}
-      onDelete={() => selectedResource && requestResourceDelete(selectedResource)}
+      onDelete={() =>
+        selectedResource && requestResourceDelete(selectedResource)}
       onTestConnection={testSelectedResourceConnection}
       onUpdate={updateSelectedResource}
       onCreateRelation={createRelation}

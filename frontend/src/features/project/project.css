@@ -376,7 +376,8 @@
 .kubernetes-runtime-half.kubernetes-runtime-filter-half {
   grid-template-columns: minmax(0, 1fr) 34px;
 }
-.kubernetes-runtime-half.kubernetes-runtime-filter-half .runtime-continue-button {
+.kubernetes-runtime-half.kubernetes-runtime-filter-half
+  .runtime-continue-button {
   align-self: end;
   justify-self: end;
 }
@@ -441,7 +442,7 @@
   height: 28px;
 }
 .application-candidate-pane-actions .icon-button:disabled {
-  opacity: .45;
+  opacity: 0.45;
 }
 .application-candidate-list {
   display: grid;
@@ -495,8 +496,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.application-candidate strong { font-size: 12px; }
-.application-candidate small { color: var(--theme-fg-muted); font-size: 10px; }
+.application-candidate strong {
+  font-size: 12px;
+}
+.application-candidate small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
 .application-clear-bindings {
   margin-top: 10px;
   padding: 4px 0;
@@ -562,19 +568,42 @@
   justify-content: space-between;
   gap: 8px;
 }
-.application-binding-detail-heading span { display: grid; gap: 2px; min-width: 0; }
-.application-binding-detail-heading strong { color: var(--theme-fg-strong); font-size: 12px; }
-.application-binding-detail-heading small { color: var(--theme-fg-muted); font-size: 10px; }
-.application-binding-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.application-bindings-panel, .application-relations-config { display: grid; gap: 10px; }
-.application-bindings-panel > p, .application-relations-config > p { margin: 0 0 2px; }
+.application-binding-detail-heading span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.application-binding-detail-heading strong {
+  color: var(--theme-fg-strong);
+  font-size: 12px;
+}
+.application-binding-detail-heading small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
+.application-binding-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.application-bindings-panel,
+.application-relations-config {
+  display: grid;
+  gap: 10px;
+}
+.application-bindings-panel > p,
+.application-relations-config > p {
+  margin: 0 0 2px;
+}
 .application-dependency-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
   align-items: end;
   gap: 10px;
 }
-.application-add-dependency { justify-self: start; }
+.application-add-dependency {
+  justify-self: start;
+}
 .kubernetes-application-heading :global(.icon-picker) {
   flex: 0 0 auto;
   margin-top: 1px;
@@ -1513,7 +1542,7 @@
   bottom: -1px;
   left: 10px;
   height: 3px;
-  content: "";
+  content: '';
   background: var(--color-primary);
   border-radius: 3px 3px 0 0;
 }
@@ -1581,7 +1610,9 @@
   min-width: 0;
 }
 
-.map-side-column.topology-configuring > .map-side-panel { visibility: hidden; }
+.map-side-column.topology-configuring > .map-side-panel {
+  visibility: hidden;
+}
 
 .topology-config-overlay {
   position: absolute;
@@ -1621,16 +1652,50 @@
   gap: 3px;
 }
 
-.topology-config-window header strong { font-size: 13px; }
-.topology-config-window header small { color: var(--theme-fg-muted); font-size: 10px; }
-.topology-config-icon { display: grid; place-items: center; color: var(--theme-accent); }
-.topology-config-body { display: grid; gap: 12px; padding: 14px; }
-.topology-config-body label { display: grid; gap: 5px; color: var(--theme-fg-muted); font-size: 11px; }
+.topology-config-window header strong {
+  font-size: 13px;
+}
+.topology-config-window header small {
+  color: var(--theme-fg-muted);
+  font-size: 10px;
+}
+.topology-config-icon {
+  display: grid;
+  place-items: center;
+  color: var(--theme-accent);
+}
+.topology-config-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+.topology-config-body label {
+  display: grid;
+  gap: 5px;
+  color: var(--theme-fg-muted);
+  font-size: 11px;
+}
 .topology-config-body input,
 .topology-config-body textarea,
-.topology-config-body select { width: 100%; box-sizing: border-box; padding: 7px 8px; color: var(--theme-fg); background: var(--theme-bg); border: 1px solid var(--theme-border-strong); border-radius: 4px; font: inherit; }
-.topology-config-window footer { justify-content: flex-end; border-top: 1px solid var(--theme-divider); }
-.topology-config-window footer button { display: inline-flex; align-items: center; gap: 6px; }
+.topology-config-body select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  color: var(--theme-fg);
+  background: var(--theme-bg);
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 4px;
+  font: inherit;
+}
+.topology-config-window footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--theme-divider);
+}
+.topology-config-window footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 .application-map-card {
   overflow: hidden;
@@ -2058,7 +2123,8 @@
 .topology-alert-indicator {
   padding: 3px 5px;
   background: var(--theme-bg-warning-soft);
-  border: 1px solid color-mix(in srgb, var(--theme-warning) 28%, var(--theme-border));
+  border: 1px solid
+    color-mix(in srgb, var(--theme-warning) 28%, var(--theme-border));
   border-radius: 10px;
 }
 

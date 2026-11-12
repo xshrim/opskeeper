@@ -9,10 +9,20 @@
   export let asLabel = true;
 </script>
 
-<svelte:element this={asLabel ? 'label' : 'div'} class={`form-field ${className}`.trim()} class:invalid={invalid || Boolean(error)}>
-  <FieldLabel text={label} {required} invalid={invalid || Boolean(error)} className="form-field-label" />
+<svelte:element
+  this={asLabel ? 'label' : 'div'}
+  class={`form-field ${className}`.trim()}
+  class:invalid={invalid || Boolean(error)}
+>
+  <FieldLabel
+    text={label}
+    {required}
+    invalid={invalid || Boolean(error)}
+    className="form-field-label"
+  />
   <slot />
-  {#if error}<small class="form-field-message form-field-error">{error}</small>{:else if help}<small class="form-field-message">{help}</small>{/if}
+  {#if error}<small class="form-field-message form-field-error">{error}</small
+    >{:else if help}<small class="form-field-message">{help}</small>{/if}
 </svelte:element>
 
 <style>
@@ -24,14 +34,18 @@
     font-size: 12px;
     font-weight: 400;
   }
-  .form-field-label { display: block; }
+  .form-field-label {
+    display: block;
+  }
   .form-field-message {
     color: var(--theme-fg-muted);
     font-size: 11px;
     font-weight: 400;
     line-height: 1.35;
   }
-  .form-field-error { color: var(--theme-danger); }
+  .form-field-error {
+    color: var(--theme-danger);
+  }
   .form-field.invalid :global(.textarea-wrap textarea),
   .form-field.invalid :global(.password-control input) {
     border-color: var(--theme-danger);

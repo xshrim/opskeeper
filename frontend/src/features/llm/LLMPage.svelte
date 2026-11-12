@@ -1,15 +1,7 @@
 <script lang="ts">
   import EmptyState from '../../components/EmptyState.svelte';
   import { tick } from 'svelte';
-  import {
-    Cpu,
-    Plus,
-    Pencil,
-    X,
-    RefreshCw,
-    Save,
-    Trash2
-  } from 'lucide-svelte';
+  import { Cpu, Plus, Pencil, X, RefreshCw, Save, Trash2 } from 'lucide-svelte';
   import DropdownSelect from '../../components/DropdownSelect.svelte';
   import ConnectionTest from '../../components/ConnectionTest.svelte';
   import EntityBrandIcon from '../../components/EntityBrandIcon.svelte';
@@ -45,7 +37,8 @@
   export let providerManageScopeOptions: ScopeChoice[] = [];
   export let canManageProvider = false;
   export let canManageEngine = false;
-  export let providerPermissionLabel: (provider: Provider) => string = () => '可查看';
+  export let providerPermissionLabel: (provider: Provider) => string = () =>
+    '可查看';
   export let onProvidersChanged: (items: Provider[]) => void = () => {};
   export let onNotice: (message: string) => void = () => {};
   export let onError: (message: string) => void = () => {};
@@ -207,7 +200,8 @@
           (item) => item.toLowerCase() === term.toLowerCase()
         )
     );
-    if (missingTerms.length) capabilityTerms = [...capabilityTerms, ...missingTerms];
+    if (missingTerms.length)
+      capabilityTerms = [...capabilityTerms, ...missingTerms];
     engineDraft = {
       name: engine?.name ?? '',
       description: engine?.description ?? '',
@@ -237,12 +231,17 @@
   function providerModelSummary(provider: Provider) {
     const models = [...(provider.config.models ?? [])];
     const defaultName = provider.config.default_model || models[0]?.name;
-    const defaultIndex = models.findIndex((model) => model.name === defaultName);
+    const defaultIndex = models.findIndex(
+      (model) => model.name === defaultName
+    );
     if (defaultIndex > 0) {
       const [defaultModel] = models.splice(defaultIndex, 1);
       models.unshift(defaultModel);
     }
-    return { visible: models.slice(0, 2), hidden: Math.max(0, models.length - 2) };
+    return {
+      visible: models.slice(0, 2),
+      hidden: Math.max(0, models.length - 2)
+    };
   }
   function modelCapabilityLabels(model: ProviderModel | undefined) {
     return (model ? modelTagsOf(model) : []).map(
@@ -257,19 +256,32 @@
       ...modelTagsOf(model),
       ...modelCapabilityLabels(model)
     ]);
-    return [
-      provider.name,
-      provider.config.base_url,
-      ...modelValues
-    ].some((value) => String(value ?? '').toLowerCase().includes(query));
+    return [provider.name, provider.config.base_url, ...modelValues].some(
+      (value) =>
+        String(value ?? '')
+          .toLowerCase()
+          .includes(query)
+    );
   }
   function scopeLevelLabel(type: string) {
-    return ({ platform: '平台', team: '团队', project: '项目' } as Record<string, string>)[type] ?? '当前级别';
+    return (
+      (
+        { platform: '平台', team: '团队', project: '项目' } as Record<
+          string,
+          string
+        >
+      )[type] ?? '当前级别'
+    );
   }
   function providerScopeDropdownOptions(currentScopeId: string) {
-    const scopes = providerManageScopeOptions.some((item) => item.id === currentScopeId)
+    const scopes = providerManageScopeOptions.some(
+      (item) => item.id === currentScopeId
+    )
       ? providerManageScopeOptions
-      : [...providerManageScopeOptions, ...scopeChoices.filter((item) => item.id === currentScopeId)];
+      : [
+          ...providerManageScopeOptions,
+          ...scopeChoices.filter((item) => item.id === currentScopeId)
+        ];
     return scopes.map((scope) => ({
       value: scope.id,
       label: `${scopeLevelLabel(scope.type)} · ${scope.name}`
@@ -285,6 +297,10 @@
   $: selectedProvider = sourceProviders.find(
     (item) => item.id === selectedProviderId
   );
+  $: providerDraftTest = providerDraft.id
+    ? sourceProviders.find((item) => item.id === providerDraft.id)
+        ?.last_connection_test
+    : undefined;
   $: filteredProviders = sourceProviders.filter(providerMatches);
   $: selectedEngine =
     engines.find((item) => item.id === selectedEngineId) ?? engines[0];
@@ -315,8 +331,7 @@
         engines.find((item) => item.tags?.includes('general'))?.id ??
         engines[0]?.id ??
         '';
-      selectedProviderId =
-        sourceProviders[0]?.id ?? '';
+      selectedProviderId = sourceProviders[0]?.id ?? '';
       drawerOpen = Boolean(sourceProviders[0]);
     } catch (error) {
       onError(describeError(error, '大模型目录加载失败'));
@@ -346,7 +361,10 @@
     onNotice('');
     onError('');
   }
-  function setProviderEditorMessage(message: string, tone: 'success' | 'error') {
+  function setProviderEditorMessage(
+    message: string,
+    tone: 'success' | 'error'
+  ) {
     if (providerEditorMessageTimer !== null) {
       window.clearTimeout(providerEditorMessageTimer);
     }
@@ -411,7 +429,9 @@
         return {
           ...model,
           tags: effectiveTags,
-          capabilities: model.capabilities?.length ? model.capabilities : effectiveTags
+          capabilities: model.capabilities?.length
+            ? model.capabilities
+            : effectiveTags
         };
       })
     };
@@ -544,8 +564,7 @@
   function openCapabilityMenu() {
     capabilitySearch = '';
     capabilityMenuOpen = !capabilityMenuOpen;
-    if (capabilityMenuOpen)
-      void tick().then(() => capabilityInput?.focus());
+    if (capabilityMenuOpen) void tick().then(() => capabilityInput?.focus());
   }
   async function persistCapabilityTerms(values: string[]) {
     for (const term of values) {
@@ -599,7 +618,10 @@
     };
   }
   function providerTypeLabel(value: string) {
-    return providerTypeOptions.find((option) => option.value === value)?.label ?? 'OpenAI 兼容';
+    return (
+      providerTypeOptions.find((option) => option.value === value)?.label ??
+      'OpenAI 兼容'
+    );
   }
   function selectProviderType(value: string) {
     const option = providerTypeOptions.find((item) => item.value === value);
@@ -617,7 +639,10 @@
   function validBaseURL(value: string) {
     try {
       const url = new URL(value.trim());
-      return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname);
+      return (
+        (url.protocol === 'http:' || url.protocol === 'https:') &&
+        Boolean(url.hostname)
+      );
     } catch {
       return false;
     }
@@ -630,16 +655,24 @@
   function validateProviderDraft() {
     const errors: Record<string, string> = {};
     if (!providerDraft.name.trim()) errors.name = 'required';
-    if (!providerTypeOptions.some((option) => option.value === providerDraft.providerType)) errors.providerType = 'invalid';
+    if (
+      !providerTypeOptions.some(
+        (option) => option.value === providerDraft.providerType
+      )
+    )
+      errors.providerType = 'invalid';
     if (!providerDraft.baseUrl.trim()) errors.baseUrl = 'required';
     else if (!validBaseURL(providerDraft.baseUrl)) errors.baseUrl = 'invalid';
 
     const timeout = parseNumber(providerDraft.timeoutSeconds);
-    if (timeout === null || timeout < 0 || timeout > 300) errors.timeoutSeconds = 'invalid';
+    if (timeout === null || timeout < 0 || timeout > 300)
+      errors.timeoutSeconds = 'invalid';
     const concurrency = parseNumber(providerDraft.maxConcurrency);
-    if (concurrency === null || concurrency < 1) errors.maxConcurrency = 'invalid';
+    if (concurrency === null || concurrency < 1)
+      errors.maxConcurrency = 'invalid';
     const rateLimit = parseNumber(providerDraft.rateLimitPerMinute);
-    if (rateLimit === null || rateLimit < 0) errors.rateLimitPerMinute = 'invalid';
+    if (rateLimit === null || rateLimit < 0)
+      errors.rateLimitPerMinute = 'invalid';
 
     if (providerDraft.models.length === 0) {
       errors.models = 'required';
@@ -649,7 +682,8 @@
       const name = model.name.trim();
       const nameKey = name.toLowerCase();
       if (!name) errors[`models.${index}.name`] = 'required';
-      else if (seenNames.has(nameKey)) errors[`models.${index}.name`] = 'duplicate';
+      else if (seenNames.has(nameKey))
+        errors[`models.${index}.name`] = 'duplicate';
       else seenNames.set(nameKey, index);
 
       const contextWindow = parseNumber(model.context_window_tokens);
@@ -665,7 +699,8 @@
     if (
       providerDraft.defaultModel.trim() &&
       !providerDraft.models.some(
-        (model) => model.name === providerDraft.defaultModel && model.enabled !== false
+        (model) =>
+          model.name === providerDraft.defaultModel && model.enabled !== false
       )
     ) {
       errors.defaultModel = 'invalid';
@@ -717,7 +752,11 @@
   }
   async function deleteProvider(provider: Provider) {
     if (!canManageProvider || busy) return;
-    if (typeof window !== 'undefined' && !window.confirm(`确定删除渠道“${provider.name}”吗？`)) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`确定删除渠道“${provider.name}”吗？`)
+    )
+      return;
     busy = true;
     try {
       await api.deleteProvider(provider.id);
@@ -758,7 +797,11 @@
     for (const tag of scenarioTags) {
       if (selected.has(tag.value)) {
         await api.setProviderBinding(bindingScopeId, tag.value, providerId);
-      } else if (localBindings.some((item) => item.tag === tag.value && item.provider_id === providerId)) {
+      } else if (
+        localBindings.some(
+          (item) => item.tag === tag.value && item.provider_id === providerId
+        )
+      ) {
         await api.removeProviderBinding(bindingScopeId, tag.value);
       }
     }
@@ -919,7 +962,7 @@
           </div>
           <div class="engine-tag-line">
             <div class="tag-row">
-              {#each scenarioTags.filter((tag) => isBound(engine.tags, tag.value)) as tag}<button
+              {#each scenarioTags.filter( (tag) => isBound(engine.tags, tag.value) ) as tag}<button
                   type="button"
                   class={`tag-chip active ${capabilityTagClass(tag.value)}`}
                   disabled={!canManageEngine || busy}
@@ -939,7 +982,11 @@
       {:else}<EmptyState>当前级别暂无 AI 引擎。</EmptyState>{/each}
     </div>
     {#if editingEngine}
-      <form class="engine-editor panel" novalidate on:submit|preventDefault={saveEngine}>
+      <form
+        class="engine-editor panel"
+        novalidate
+        on:submit|preventDefault={saveEngine}
+      >
         <div class="editor-heading">
           <div>
             <p class="eyebrow">ENGINE EDITOR</p>
@@ -952,15 +999,11 @@
               />
             </div>{/if}
           <div class="editor-heading-actions">
-            <button
-              class="secondary"
-              type="button"
-              on:click={cancelEngineEdit}
+            <button class="secondary" type="button" on:click={cancelEngineEdit}
               ><X size={14} />取消</button
             ><button class="primary" type="submit" disabled={busy}
-              >保存引擎<Save
-                size={14}
-              /></button>
+              >保存引擎<Save size={14} /></button
+            >
           </div>
         </div>
         <div class="engine-editor-identity-row">
@@ -971,7 +1014,19 @@
               ariaLabel="选择引擎图标"
             />
           </div>
-          <label class="engine-name-field"><FieldLabel text="引擎名称" required invalid={Boolean(engineErrors.name)} /><TextInput bind:value={engineDraft.name} ariaLabel="引擎名称" invalid={Boolean(engineErrors.name)} placeholder="引擎名称" required /></label>
+          <label class="engine-name-field"
+            ><FieldLabel
+              text="引擎名称"
+              required
+              invalid={Boolean(engineErrors.name)}
+            /><TextInput
+              bind:value={engineDraft.name}
+              ariaLabel="引擎名称"
+              invalid={Boolean(engineErrors.name)}
+              placeholder="引擎名称"
+              required
+            /></label
+          >
           <div class="engine-tag-editor">
             <FieldLabel text="场景" />
             <div class="tag-row">
@@ -986,7 +1041,14 @@
                 >{/each}
             </div>
           </div>
-          <div class="engine-status-switch"><FieldLabel text="状态" /><Switch checked={engineDraft.status === 'active'} ariaLabel="启用引擎" on:change={(event) => (engineDraft.status = event.detail ? 'active' : 'disabled')} /></div>
+          <div class="engine-status-switch">
+            <FieldLabel text="状态" /><Switch
+              checked={engineDraft.status === 'active'}
+              ariaLabel="启用引擎"
+              on:change={(event) =>
+                (engineDraft.status = event.detail ? 'active' : 'disabled')}
+            />
+          </div>
         </div>
         <div class="engine-editor-content">
           <div class="capability-field">
@@ -1022,7 +1084,9 @@
                           role="option"
                           aria-selected="false"
                           on:click={() => selectCapability(term)}>{term}</button
-                        >{/each}{#if capabilitySearch.trim() && !capabilityTerms.some((term) => term.toLowerCase() === capabilitySearch.trim().toLowerCase())}<button
+                        >{/each}{#if capabilitySearch.trim() && !capabilityTerms.some((term) => term.toLowerCase() === capabilitySearch
+                              .trim()
+                              .toLowerCase())}<button
                           class="capability-create"
                           type="button"
                           role="option"
@@ -1075,8 +1139,16 @@
     <div class="provider-workspace" class:drawer-open={drawerOpen}>
       <section class="provider-list panel">
         <div class="list-toolbar">
-          <strong>{filteredProviders.length} 个渠道</strong><span class="list-toolbar-actions"
-            ><SearchInput className="provider-search" bind:value={providerSearch} width="100%" height="30px" placeholder="搜索渠道、模型或能力" ariaLabel="搜索渠道" /><button
+          <strong>{filteredProviders.length} 个渠道</strong><span
+            class="list-toolbar-actions"
+            ><SearchInput
+              className="provider-search"
+              bind:value={providerSearch}
+              width="100%"
+              height="30px"
+              placeholder="搜索渠道、模型或能力"
+              ariaLabel="搜索渠道"
+            /><button
               class="icon-button"
               type="button"
               on:click={reloadProviders}
@@ -1087,9 +1159,8 @@
                 on:click={openNewProvider}
                 data-tooltip="新增渠道"
                 aria-label="新增渠道"><Plus size={14} /></button
-            >{/if}
-            </span
-          >
+              >{/if}
+          </span>
         </div>
         <div class="provider-list-scroll">
           {#each filteredProviders as provider}
@@ -1103,80 +1174,115 @@
               type="button"
               on:click={() => selectProvider(provider)}
             >
-            <span class="provider-row-head">
-              <span class="provider-title">
-                <EntityBrandIcon
-                  kind="AIProvider"
-                  fallback={provider.config.icon || providerBrandIconValue(provider.config.provider_type) || 'lucide:Bot'}
-                  size={24}
-                  className="provider-icon"
-                />
-                <span class="provider-title-copy">
-                  <span class="provider-name-line">
-                    <strong>{provider.name}</strong>
-                    <span class="provider-scenario-tags">
-                      {#each scenarioTags.filter((tag) => isBound(provider.tags, tag.value)) as tag}
-                        <span class={`tag-chip ${capabilityTagClass(tag.value)} active`}>{tag.label}</span>
-                      {/each}
+              <span class="provider-row-head">
+                <span class="provider-title">
+                  <EntityBrandIcon
+                    kind="AIProvider"
+                    fallback={provider.config.icon ||
+                      providerBrandIconValue(provider.config.provider_type) ||
+                      'lucide:Bot'}
+                    size={24}
+                    className="provider-icon"
+                  />
+                  <span class="provider-title-copy">
+                    <span class="provider-name-line">
+                      <strong>{provider.name}</strong>
+                      <span class="provider-scenario-tags">
+                        {#each scenarioTags.filter( (tag) => isBound(provider.tags, tag.value) ) as tag}
+                          <span
+                            class={`tag-chip ${capabilityTagClass(tag.value)} active`}
+                            >{tag.label}</span
+                          >
+                        {/each}
+                      </span>
                     </span>
+                    <small
+                      data-tooltip={provider.config.base_url ||
+                        '未填写 Base URL'}
+                      >{provider.config.base_url || '未填写 Base URL'}</small
+                    >
                   </span>
-                  <small data-tooltip={provider.config.base_url || '未填写 Base URL'}>{provider.config.base_url || '未填写 Base URL'}</small>
                 </span>
               </span>
-            </span>
-            <span class="provider-row-meta">
-              <span>
-                <ScopeLevelBadge type={scopeType(provider.scope_id) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(scopeType(provider.scope_id))} />
-                <small>{providerPermissionLabel(provider)}</small>
+              <span class="provider-row-meta">
+                <span>
+                  <ScopeLevelBadge
+                    type={scopeType(provider.scope_id) as
+                      'platform' | 'team' | 'project'}
+                    label={scopeLevelLabel(scopeType(provider.scope_id))}
+                  />
+                  <small>{providerPermissionLabel(provider)}</small>
+                </span>
               </span>
-            </span>
-            <span class="provider-row-foot">
-              <span class="provider-default-capabilities">
-                {#each modelCapabilityLabels(defaultModelOf(provider)) as capability}
-                  <span class="tag-chip active">{capability}</span>
+              <span class="provider-row-foot">
+                <span class="provider-default-capabilities">
+                  {#each modelCapabilityLabels(defaultModelOf(provider)) as capability}
+                    <span class="tag-chip active">{capability}</span>
+                  {/each}
+                </span>
+                <span class="provider-health"
+                  ><ConnectionTest
+                    status={test?.status === 'succeeded'
+                      ? 'succeeded'
+                      : test
+                        ? 'failed'
+                        : ''}
+                    latencyMs={test?.latency_ms ?? 0}
+                    message={test?.message ?? ''}
+                    checkedAt={test?.checked_at ?? ''}
+                    busy={busy || isTesting}
+                    onTest={() => void testProvider(provider)}
+                  /></span
+                >
+              </span>
+              <span class="provider-row-models">
+                {#each modelSummary.visible as model}
+                  <span class="model-chip">
+                    {model.name}<em
+                      >{(provider.config.default_model ||
+                        provider.config.models?.[0]?.name) === model.name
+                        ? '默认'
+                        : ''}</em
+                    >
+                  </span>
                 {/each}
+                {#if modelSummary.hidden > 0}<span
+                    class="model-chip model-overflow"
+                    >+{modelSummary.hidden}</span
+                  >{/if}
+                {#if canManageProvider}<span
+                    class="icon-action provider-models-action edit-action"
+                    role="button"
+                    tabindex="0"
+                    aria-label={`编辑${provider.name}`}
+                    data-tooltip={`编辑${provider.name}`}
+                    on:click|stopPropagation={() =>
+                      editProviderFromList(provider)}
+                    on:keydown|stopPropagation={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        editProviderFromList(provider);
+                      }
+                    }}><Pencil size={14} /></span
+                  ><span
+                    class="icon-action provider-models-action provider-delete-action delete-action"
+                    role="button"
+                    tabindex="0"
+                    aria-label={`删除${provider.name}`}
+                    data-tooltip={`删除${provider.name}`}
+                    on:click|stopPropagation={() =>
+                      void deleteProvider(provider)}
+                    on:keydown|stopPropagation={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        void deleteProvider(provider);
+                      }
+                    }}><Trash2 size={14} /></span
+                  >{/if}
               </span>
-              <span class="provider-health"><ConnectionTest status={test?.status === 'succeeded' ? 'succeeded' : test ? 'failed' : ''} latencyMs={test?.latency_ms ?? 0} message={test?.message ?? ''} checkedAt={test?.checked_at ?? ''} busy={busy || isTesting} onTest={() => void testProvider(provider)} /></span>
-            </span>
-            <span class="provider-row-models">
-              {#each modelSummary.visible as model}
-                <span class="model-chip">
-                  {model.name}<em>{(provider.config.default_model || provider.config.models?.[0]?.name) === model.name ? '默认' : ''}</em>
-                </span>
-              {/each}
-              {#if modelSummary.hidden > 0}<span class="model-chip model-overflow">+{modelSummary.hidden}</span>{/if}
-              {#if canManageProvider}<span
-                  class="icon-action provider-models-action edit-action"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`编辑${provider.name}`}
-                  data-tooltip={`编辑${provider.name}`}
-                  on:click|stopPropagation={() => editProviderFromList(provider)}
-                  on:keydown|stopPropagation={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      editProviderFromList(provider);
-                    }
-                  }}
-                  ><Pencil size={14} /></span
-                ><span
-                  class="icon-action provider-models-action provider-delete-action delete-action"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`删除${provider.name}`}
-                  data-tooltip={`删除${provider.name}`}
-                  on:click|stopPropagation={() => void deleteProvider(provider)}
-                  on:keydown|stopPropagation={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      void deleteProvider(provider);
-                    }
-                  }}
-                  ><Trash2 size={14} /></span
-                >{/if}
-            </span>
-            </button
-            >{:else}<EmptyState>{#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}</EmptyState>{/each}
+            </button>{:else}<EmptyState
+              >{#if providerSearch.trim()}没有匹配的渠道。{:else}当前级别暂无渠道，添加一个渠道开始配置。{/if}</EmptyState
+            >{/each}
         </div>
       </section>
       {#if drawerOpen}
@@ -1207,10 +1313,18 @@
                   class="secondary"
                   type="button"
                   on:click={cancelProviderEdit}><X size={14} />取消</button
-                ><button class="primary" type="submit" form="provider-editor" disabled={busy}
-                  ><Save size={14} />{providerDraft.id ? '保存' : '创建'}</button
+                ><button
+                  class="primary"
+                  type="submit"
+                  form="provider-editor"
+                  disabled={busy}
+                  ><Save size={14} />{providerDraft.id
+                    ? '保存'
+                    : '创建'}</button
                 >
-              </div>{:else if selectedProvider}<div class="drawer-heading-actions">
+              </div>{:else if selectedProvider}<div
+                class="drawer-heading-actions"
+              >
                 {#if canManageProvider}<button
                     class="secondary"
                     type="button"
@@ -1218,391 +1332,557 @@
                   ><button
                     class="secondary danger-action"
                     type="button"
-                    on:click={() => selectedProvider && void deleteProvider(selectedProvider)}
+                    on:click={() =>
+                      selectedProvider && void deleteProvider(selectedProvider)}
                     ><Trash2 size={14} />删除</button
                   >{/if}
               </div>{/if}
           </header>
           <div class="provider-drawer-scroll">
             {#if editingProvider}
-              <form id="provider-editor" class="drawer-form" novalidate on:submit|preventDefault={saveProvider}>
-              <div class="drawer-section">
+              <form
+                id="provider-editor"
+                class="drawer-form"
+                novalidate
+                on:submit|preventDefault={saveProvider}
+              >
+                <div class="drawer-section">
+                  <div class="section-title">
+                    <h3>基本信息</h3>
+                  </div>
+                  <div class="provider-identity-row">
+                    <div class="provider-identity-primary">
+                      <div class="provider-identity-name">
+                        <div class="provider-icon-field">
+                          <FieldLabel text="图标" /><IconPicker
+                            value={providerDraft.icon}
+                            onSelect={(icon) => (providerDraft.icon = icon)}
+                            ariaLabel="选择图标"
+                          />
+                        </div>
+                        <label class="provider-name-field"
+                          ><FieldLabel
+                            text="名称"
+                            required
+                            invalid={Boolean(providerErrors.name)}
+                          /><TextInput
+                            bind:value={providerDraft.name}
+                            invalid={Boolean(providerErrors.name)}
+                            required
+                            placeholder="名称"
+                          /></label
+                        >
+                      </div>
+                      <label class="provider-level-field"
+                        ><FieldLabel text="级别" /><DropdownSelect
+                          bind:value={providerDraft.scopeId}
+                          options={providerScopeDropdownOptions(
+                            providerDraft.scopeId || scopeId
+                          )}
+                          placeholder="请选择级别"
+                          ariaLabel="渠道级别"
+                          disabled={!canManageProvider || busy}
+                        /></label
+                      >
+                    </div>
+                    <div class="provider-identity-secondary">
+                      <div class="provider-tag-editor">
+                        <FieldLabel text="场景" />
+                        <div class="tag-row">
+                          {#each scenarioTags as tag}<button
+                              class={`tag-chip ${capabilityTagClass(tag.value)}`}
+                              class:active={isBound(
+                                providerDraft.tags,
+                                tag.value
+                              )}
+                              type="button"
+                              disabled={!canManageProvider || busy}
+                              on:click={() => toggleProviderTag(tag.value)}
+                              >{tag.label}</button
+                            >{/each}
+                        </div>
+                      </div>
+                      <div class="provider-connection-test">
+                        <FieldLabel text="连接" /><ConnectionTest
+                          status={providerDraftTest?.status === 'succeeded'
+                            ? 'succeeded'
+                            : providerDraftTest
+                              ? 'failed'
+                              : ''}
+                          latencyMs={providerDraftTest?.latency_ms ?? 0}
+                          message={providerDraftTest?.message ?? ''}
+                          checkedAt={providerDraftTest?.checked_at ?? ''}
+                          busy={Boolean(
+                            providerDraft.id &&
+                            testingProviders[providerDraft.id]
+                          )}
+                          disabled={!providerDraft.id}
+                          onTest={() => void testProvider()}
+                        />
+                      </div>
+                      <div class="provider-status-switch">
+                        <FieldLabel text="状态" /><Switch
+                          checked={providerDraft.status === 'active'}
+                          ariaLabel="启用渠道"
+                          on:change={(event) => {
+                            const enabled = event.detail;
+                            providerDraft.status = enabled
+                              ? 'active'
+                              : 'disabled';
+                            providerDraft.enabled = enabled;
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="provider-runtime-grid">
+                    <label
+                      class:invalid={Boolean(providerErrors.timeoutSeconds)}
+                      ><FieldLabel text="超时（秒）" /><TextInput
+                        bind:value={providerDraft.timeoutSeconds}
+                        invalid={Boolean(providerErrors.timeoutSeconds)}
+                        type="number"
+                        min="1"
+                        max="300"
+                      /></label
+                    >
+                    <label
+                      class:invalid={Boolean(providerErrors.maxConcurrency)}
+                      ><FieldLabel text="最大并发" /><TextInput
+                        bind:value={providerDraft.maxConcurrency}
+                        invalid={Boolean(providerErrors.maxConcurrency)}
+                        type="number"
+                        min="1"
+                      /></label
+                    >
+                    <label
+                      class:invalid={Boolean(providerErrors.rateLimitPerMinute)}
+                      ><FieldLabel text="限流（请求 / 分钟）" /><TextInput
+                        bind:value={providerDraft.rateLimitPerMinute}
+                        invalid={Boolean(providerErrors.rateLimitPerMinute)}
+                        type="number"
+                        min="0"
+                      /></label
+                    >
+                  </div>
+                </div>
+                <div class="drawer-section">
+                  <div class="section-title">
+                    <h3>连接凭据</h3>
+                  </div>
+                  <div class="provider-connection-row">
+                    <label class:invalid={Boolean(providerErrors.providerType)}
+                      ><FieldLabel text="类型" required />
+                      <DropdownSelect
+                        options={providerSelectOptions}
+                        value={providerDraft.providerType}
+                        showIcons
+                        searchable
+                        invalid={Boolean(providerErrors.providerType)}
+                        ariaLabel="连接凭据类型"
+                        on:change={(event) =>
+                          selectProviderType(String(event.detail))}
+                      />
+                    </label><label
+                      class:invalid={Boolean(providerErrors.baseUrl)}
+                      ><FieldLabel text="Base URL" required /><TextInput
+                        bind:value={providerDraft.baseUrl}
+                        invalid={Boolean(providerErrors.baseUrl)}
+                        required
+                        placeholder="https://api.example.com/v1"
+                      /></label
+                    >
+                  </div>
+                  <div class="provider-connection-row">
+                    <label
+                      ><FieldLabel text="协议" /><DropdownSelect
+                        options={[
+                          {
+                            value: 'chat_completions',
+                            label: 'Chat Completions'
+                          },
+                          { value: 'messages', label: 'Messages API' }
+                        ]}
+                        bind:value={providerDraft.protocol}
+                        ariaLabel="协议"
+                      /></label
+                    ><label
+                      ><FieldLabel text="API Key" /><PasswordInput
+                        bind:value={providerDraft.apiKey}
+                        placeholder={providerDraft.id
+                          ? '留空表示保持现有凭据'
+                          : '输入 API Key'}
+                        autocomplete="new-password"
+                        ariaLabel="API Key"
+                        secretLabel="API Key"
+                      /></label
+                    >
+                  </div>
+                </div>
+                <div class="drawer-section">
+                  <div class="section-title">
+                    <h3>模型能力</h3>
+                    <button
+                      class="primary section-title-action"
+                      type="button"
+                      on:click={addModel}
+                    >
+                      <Plus size={13} />新增模型
+                    </button>
+                  </div>
+                  <div class="model-editor-list">
+                    <div class="model-columns-header" aria-hidden="true">
+                      <span
+                        >模型<i class="required-mark" aria-hidden="true">*</i
+                        ></span
+                      ><span>能力</span><span
+                        >上下文<i class="required-mark" aria-hidden="true">*</i
+                        ></span
+                      ><span>最大输出</span><span>温度</span><span>默认</span
+                      ><span>状态</span>
+                    </div>
+                    {#each providerDraft.models as model, index}<div
+                        class="model-editor model-card"
+                        class:is-default={providerDraft.defaultModel ===
+                          model.name}
+                      >
+                        <div class="model-primary-row">
+                          <label
+                            class="model-name-field"
+                            class:invalid={Boolean(
+                              providerErrors[`models.${index}.name`]
+                            )}
+                            ><FieldLabel text="模型" required /><TextInput
+                              bind:value={model.name}
+                              invalid={Boolean(
+                                providerErrors[`models.${index}.name`]
+                              )}
+                              required
+                            /></label
+                          >
+                          <div class="model-capability-editor">
+                            <FieldLabel text="能力" />
+                            <div class="tag-row">
+                              {#each modelTags as tag}<button
+                                  class={`tag-chip ${capabilityTagClass(tag.value)}`}
+                                  class:active={model.tags.includes(tag.value)}
+                                  type="button"
+                                  on:click={() =>
+                                    toggleModelTag(model, tag.value)}
+                                  >{tag.label}</button
+                                >{/each}
+                            </div>
+                          </div>
+                          <label
+                            class="model-runtime-field"
+                            class:invalid={Boolean(
+                              providerErrors[`models.${index}.context`]
+                            )}
+                            ><FieldLabel text="上下文" required /><TextInput
+                              bind:value={model.context_window_tokens}
+                              invalid={Boolean(
+                                providerErrors[`models.${index}.context`]
+                              )}
+                              required
+                              type="number"
+                              min="1"
+                            /></label
+                          ><label
+                            class="model-runtime-field"
+                            class:invalid={Boolean(
+                              providerErrors[`models.${index}.maxOutput`]
+                            )}
+                            ><FieldLabel text="最大输出" /><TextInput
+                              bind:value={model.max_output_tokens}
+                              invalid={Boolean(
+                                providerErrors[`models.${index}.maxOutput`]
+                              )}
+                              type="number"
+                              min="1"
+                            /></label
+                          ><label
+                            class="model-runtime-field"
+                            class:invalid={Boolean(
+                              providerErrors[`models.${index}.temperature`]
+                            )}
+                            ><FieldLabel text="温度" /><TextInput
+                              bind:value={model.temperature}
+                              invalid={Boolean(
+                                providerErrors[`models.${index}.temperature`]
+                              )}
+                              type="number"
+                              min="0"
+                              max="2"
+                              step={0.1}
+                            /></label
+                          ><label class="model-default-control"
+                            ><FieldLabel text="默认" /><input
+                              type="radio"
+                              name="default-model"
+                              checked={providerDraft.defaultModel ===
+                                model.name}
+                              on:change={() => setDraftDefault(model)}
+                            /></label
+                          ><label class="model-enabled-control"
+                            ><FieldLabel text="状态" /><Switch
+                              checked={model.enabled !== false}
+                              ariaLabel="启用模型"
+                              on:change={(event) => {
+                                model.enabled = event.detail;
+                                providerDraft.models = providerDraft.models;
+                              }}
+                            /></label
+                          >
+                        </div>
+                        <button
+                          class="icon-action model-remove"
+                          type="button"
+                          data-tooltip="删除模型"
+                          aria-label="删除模型"
+                          on:click={() => removeModel(index)}
+                          disabled={providerDraft.models.length === 1}
+                          ><X size={14} /></button
+                        >
+                      </div>{/each}
+                  </div>
+                </div>
+              </form>
+            {:else if selectedProvider}
+              <div class="drawer-section provider-preview-section">
                 <div class="section-title">
                   <h3>基本信息</h3>
                 </div>
-                <div class="provider-identity-row">
-                  <div class="provider-identity-primary">
-                  <div class="provider-identity-name">
-                    <div class="provider-icon-field">
-                      <FieldLabel text="图标" /><IconPicker
-                        value={providerDraft.icon}
-                        onSelect={(icon) => (providerDraft.icon = icon)}
-                        ariaLabel="选择图标"
+                <div class="provider-preview-identity-row">
+                  <div class="provider-preview-primary">
+                    <div class="provider-preview-name">
+                      <div class="provider-preview-field">
+                        <FieldLabel text="图标" /><span
+                          class="provider-preview-value provider-preview-icon"
+                          ><IconValue
+                            value={selectedProvider.config.icon || 'lucide:Bot'}
+                            size={18}
+                          /></span
+                        >
+                      </div>
+                      <div class="provider-preview-field">
+                        <FieldLabel text="名称" required /><strong
+                          class="provider-preview-value"
+                          >{selectedProvider.name}</strong
+                        >
+                      </div>
+                    </div>
+                    <div
+                      class="provider-preview-field provider-preview-level-field"
+                    >
+                      <FieldLabel text="级别" /><strong
+                        class="provider-preview-value provider-preview-plain"
+                        >{scopeLevelLabel(scopeType(selectedProvider.scope_id))} ·
+                        {scopeName(selectedProvider.scope_id)}</strong
+                      >
+                    </div>
+                  </div>
+                  <div class="provider-preview-secondary">
+                    <div class="provider-preview-field provider-preview-tags">
+                      <FieldLabel text="场景" /><span class="tag-row"
+                        >{#each scenarioTags as tag}<span
+                            class={`tag-chip ${capabilityTagClass(tag.value)}`}
+                            class:active={isBound(
+                              selectedProvider.tags,
+                              tag.value
+                            )}
+                            class:preview-tag-hidden={!isBound(
+                              selectedProvider.tags,
+                              tag.value
+                            )}
+                            aria-hidden={!isBound(
+                              selectedProvider.tags,
+                              tag.value
+                            )}>{tag.label}</span
+                          >{/each}</span
+                      >
+                    </div>
+                    <div
+                      class="provider-preview-field provider-preview-connection-test"
+                    >
+                      <FieldLabel text="连接" /><ConnectionTest
+                        status={selectedProvider.last_connection_test
+                          ?.status === 'succeeded'
+                          ? 'succeeded'
+                          : selectedProvider.last_connection_test
+                            ? 'failed'
+                            : ''}
+                        latencyMs={selectedProvider.last_connection_test
+                          ?.latency_ms ?? 0}
+                        message={selectedProvider.last_connection_test
+                          ?.message ?? ''}
+                        checkedAt={selectedProvider.last_connection_test
+                          ?.checked_at ?? ''}
+                        busy={Boolean(testingProviders[selectedProvider.id])}
+                        onTest={() => void testProvider()}
                       />
                     </div>
-                    <label class="provider-name-field"><FieldLabel text="名称" required invalid={Boolean(providerErrors.name)} /><TextInput bind:value={providerDraft.name} invalid={Boolean(providerErrors.name)} required placeholder="名称" /></label>
-                  </div>
-                  <label class="provider-level-field"
-                    ><FieldLabel text="级别" /><DropdownSelect
-                      bind:value={providerDraft.scopeId}
-                      options={providerScopeDropdownOptions(providerDraft.scopeId || scopeId)}
-                      placeholder="请选择级别"
-                      ariaLabel="渠道级别"
-                      disabled={!canManageProvider || busy}
-                    /></label
-                  >
-                  </div>
-                  <div class="provider-identity-secondary">
-                  <div class="provider-tag-editor">
-                    <FieldLabel text="场景" />
-                    <div class="tag-row">
-                      {#each scenarioTags as tag}<button
-                          class={`tag-chip ${capabilityTagClass(tag.value)}`}
-                          class:active={isBound(providerDraft.tags, tag.value)}
-                          type="button"
-                          disabled={!canManageProvider || busy}
-                          on:click={() => toggleProviderTag(tag.value)}
-                          >{tag.label}</button
-                        >{/each}
+                    <div class="provider-preview-field provider-preview-status">
+                      <FieldLabel text="状态" /><span
+                        class="provider-preview-value provider-preview-switch-value"
+                        ><Switch
+                          checked={selectedProvider.status === 'active'}
+                          disabled
+                          ariaLabel="渠道状态"
+                        /></span
+                      >
                     </div>
-                  </div>
-                  <div class="provider-connection-test"
-                    ><FieldLabel text="连接" /><ConnectionTest status={selectedProvider?.last_connection_test?.status === 'succeeded' ? 'succeeded' : selectedProvider?.last_connection_test ? 'failed' : ''} latencyMs={selectedProvider?.last_connection_test?.latency_ms ?? 0} message={selectedProvider?.last_connection_test?.message ?? ''} checkedAt={selectedProvider?.last_connection_test?.checked_at ?? ''} busy={Boolean(selectedProvider?.id && testingProviders[selectedProvider.id])} disabled={!providerDraft.id} onTest={() => void testProvider()} /></div
-                  ><div class="provider-status-switch"
-                    ><FieldLabel text="状态" /><Switch checked={providerDraft.status === 'active'} ariaLabel="启用渠道" on:change={(event) => { const enabled = event.detail; providerDraft.status = enabled ? 'active' : 'disabled'; providerDraft.enabled = enabled; }} /></div
-                  >
                   </div>
                 </div>
                 <div class="provider-runtime-grid">
-                  <label class:invalid={Boolean(providerErrors.timeoutSeconds)}
-                    ><FieldLabel text="超时（秒）" /><TextInput
-                      bind:value={providerDraft.timeoutSeconds}
-                      invalid={Boolean(providerErrors.timeoutSeconds)}
-                      type="number"
-                      min="1"
-                      max="300"
-                    /></label>
-                  <label class:invalid={Boolean(providerErrors.maxConcurrency)}
-                    ><FieldLabel text="最大并发" /><TextInput
-                      bind:value={providerDraft.maxConcurrency}
-                      invalid={Boolean(providerErrors.maxConcurrency)}
-                      type="number"
-                      min="1"
-                    /></label>
-                  <label class:invalid={Boolean(providerErrors.rateLimitPerMinute)}
-                    ><FieldLabel text="限流（请求 / 分钟）" /><TextInput
-                      bind:value={providerDraft.rateLimitPerMinute}
-                      invalid={Boolean(providerErrors.rateLimitPerMinute)}
-                      type="number"
-                      min="0"
-                    /></label>
+                  <div class="provider-preview-field">
+                    <FieldLabel text="超时（秒）" /><strong
+                      class="provider-preview-value"
+                      >{selectedProvider.config.timeout_seconds ?? 60}</strong
+                    >
+                  </div>
+                  <div class="provider-preview-field">
+                    <FieldLabel text="最大并发" /><strong
+                      class="provider-preview-value"
+                      >{selectedProvider.config.max_concurrency ??
+                        '未限制'}</strong
+                    >
+                  </div>
+                  <div class="provider-preview-field">
+                    <FieldLabel text="限流（请求 / 分钟）" /><strong
+                      class="provider-preview-value"
+                      >{selectedProvider.config.rate_limit_per_minute ??
+                        0}</strong
+                    >
+                  </div>
                 </div>
               </div>
-              <div class="drawer-section">
+              <div class="drawer-section provider-preview-section">
                 <div class="section-title">
                   <h3>连接凭据</h3>
                 </div>
                 <div class="provider-connection-row">
-                  <label class:invalid={Boolean(providerErrors.providerType)}
-                    ><FieldLabel text="类型" required />
-                    <DropdownSelect
-                      options={providerSelectOptions}
-                      value={providerDraft.providerType}
-                      showIcons
-                      searchable
-                      invalid={Boolean(providerErrors.providerType)}
-                      ariaLabel="连接凭据类型"
-                      on:change={(event) => selectProviderType(String(event.detail))}
-                    />
-                  </label
-                  ><label class:invalid={Boolean(providerErrors.baseUrl)}
-                    ><FieldLabel text="Base URL" required /><TextInput
-                      bind:value={providerDraft.baseUrl}
-                      invalid={Boolean(providerErrors.baseUrl)}
-                      required
-                      placeholder="https://api.example.com/v1"
-                    /></label
-                  >
+                  <div class="provider-preview-field">
+                    <FieldLabel text="类型" required /><strong
+                      class="provider-preview-value provider-preview-type"
+                      ><ProviderBrandIcon
+                        providerType={selectedProvider.config.provider_type}
+                        label={providerTypeLabel(
+                          selectedProvider.config.provider_type
+                        )}
+                        size={16}
+                      /><span
+                        >{providerTypeLabel(
+                          selectedProvider.config.provider_type
+                        )}</span
+                      ></strong
+                    >
+                  </div>
+                  <div class="provider-preview-field">
+                    <FieldLabel text="Base URL" required /><strong
+                      class="provider-preview-value mono"
+                      >{selectedProvider.config.base_url}</strong
+                    >
+                  </div>
                 </div>
                 <div class="provider-connection-row">
-                  <label
-                    ><FieldLabel text="协议" /><DropdownSelect
-                      options={[{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'messages', label: 'Messages API' }]}
-                      bind:value={providerDraft.protocol}
-                      ariaLabel="协议"
-                    /></label
-                  ><label
-                    ><FieldLabel text="API Key" /><PasswordInput
-                      bind:value={providerDraft.apiKey}
-                      placeholder={providerDraft.id
-                        ? '留空表示保持现有凭据'
-                        : '输入 API Key'}
-                      autocomplete="new-password"
-                      ariaLabel="API Key"
-                      secretLabel="API Key"
-                    /></label
-                  >
+                  <div class="provider-preview-field">
+                    <FieldLabel text="协议" /><strong
+                      class="provider-preview-value"
+                      >{selectedProvider.config.protocol ||
+                        'Chat Completions'}</strong
+                    >
+                  </div>
+                  <div class="provider-preview-field">
+                    <FieldLabel text="API Key" /><strong
+                      class="provider-preview-value">服务端加密保存</strong
+                    >
+                  </div>
                 </div>
               </div>
-                <div class="drawer-section">
-                  <div class="section-title">
-                    <h3>模型能力</h3>
-                    <button class="primary section-title-action" type="button" on:click={addModel}>
-                      <Plus size={13} />新增模型
-                    </button>
-                  </div>
+              <div class="drawer-section provider-preview-section">
+                <div class="section-title">
+                  <h3>模型能力</h3>
+                </div>
                 <div class="model-editor-list">
                   <div class="model-columns-header" aria-hidden="true">
-                    <span>模型<i class="required-mark" aria-hidden="true">*</i></span><span>能力</span><span>上下文<i class="required-mark" aria-hidden="true">*</i></span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
+                    <span
+                      >模型<i class="required-mark" aria-hidden="true">*</i
+                      ></span
+                    ><span>能力</span><span
+                      >上下文<i class="required-mark" aria-hidden="true">*</i
+                      ></span
+                    ><span>最大输出</span><span>温度</span><span>默认</span
+                    ><span>状态</span>
                   </div>
-                  {#each providerDraft.models as model, index}<div
-                      class="model-editor model-card"
-                      class:is-default={providerDraft.defaultModel === model.name}
+                  {#each selectedProvider.config.models ?? [] as model}
+                    {@const selectedModelTags = new Set(modelTagsOf(model))}
+                    <div
+                      class="model-editor model-card model-preview"
+                      class:is-default={(selectedProvider.config
+                        .default_model ||
+                        selectedProvider.config.models[0]?.name) === model.name}
                     >
                       <div class="model-primary-row">
-                        <label class="model-name-field" class:invalid={Boolean(providerErrors[`models.${index}.name`])}
-                          ><FieldLabel text="模型" required /><TextInput
-                            bind:value={model.name}
-                            invalid={Boolean(providerErrors[`models.${index}.name`])}
-                            required
-                          /></label
-                        ><div class="model-capability-editor">
+                        <div class="model-name-field provider-preview-field">
+                          <FieldLabel text="模型" required /><strong
+                            class="provider-preview-value">{model.name}</strong
+                          >
+                        </div>
+                        <div class="model-capability-editor">
                           <FieldLabel text="能力" />
                           <div class="tag-row">
-                            {#each modelTags as tag}<button
-                                class={`tag-chip ${capabilityTagClass(tag.value)}`}
-                                class:active={model.tags.includes(tag.value)}
-                                type="button"
-                                on:click={() => toggleModelTag(model, tag.value)}
-                                >{tag.label}</button
+                            {#each modelTags as tag}<span
+                                class="tag-chip"
+                                class:active={selectedModelTags.has(tag.value)}
+                                class:preview-tag-hidden={!selectedModelTags.has(
+                                  tag.value
+                                )}
+                                aria-hidden={!selectedModelTags.has(tag.value)}
+                                >{tag.label}</span
                               >{/each}
                           </div>
                         </div>
-                        <label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.context`])}
-                          ><FieldLabel text="上下文" required /><TextInput
-                            bind:value={model.context_window_tokens}
-                            invalid={Boolean(providerErrors[`models.${index}.context`])}
-                            required
-                            type="number"
-                            min="1"
-                          /></label
-                        ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
-                          ><FieldLabel text="最大输出" /><TextInput
-                            bind:value={model.max_output_tokens}
-                            invalid={Boolean(providerErrors[`models.${index}.maxOutput`])}
-                            type="number"
-                            min="1"
-                          /></label
-                        ><label class="model-runtime-field" class:invalid={Boolean(providerErrors[`models.${index}.temperature`])}
-                          ><FieldLabel text="温度" /><TextInput
-                            bind:value={model.temperature}
-                            invalid={Boolean(providerErrors[`models.${index}.temperature`])}
-                            type="number"
-                            min="0"
-                            max="2"
-                            step={0.1}
-                          /></label
-                        ><label class="model-default-control"
-                          ><FieldLabel text="默认" /><input
+                        <div class="model-runtime-field provider-preview-field">
+                          <FieldLabel text="上下文" required /><strong
+                            class="provider-preview-value"
+                            >{model.context_window_tokens?.toLocaleString()}</strong
+                          >
+                        </div>
+                        <div class="model-runtime-field provider-preview-field">
+                          <FieldLabel text="最大输出" /><strong
+                            class="provider-preview-value"
+                            >{model.max_output_tokens?.toLocaleString() ||
+                              '未限制'}</strong
+                          >
+                        </div>
+                        <div class="model-runtime-field provider-preview-field">
+                          <FieldLabel text="温度" /><strong
+                            class="provider-preview-value"
+                            >{model.temperature ?? 0.2}</strong
+                          >
+                        </div>
+                        <div class="model-default-control">
+                          <FieldLabel text="默认" /><input
                             type="radio"
-                            name="default-model"
-                            checked={providerDraft.defaultModel === model.name}
-                            on:change={() => setDraftDefault(model)}
-                          /></label
-                        ><label class="model-enabled-control"
-                          ><FieldLabel text="状态" /><Switch checked={model.enabled !== false} ariaLabel="启用模型" on:change={(event) => { model.enabled = event.detail; providerDraft.models = providerDraft.models; }} /></label
-                        >
+                            name="preview-default-model"
+                            checked={(selectedProvider.config.default_model ||
+                              selectedProvider.config.models[0]?.name) ===
+                              model.name}
+                            disabled
+                            tabindex="-1"
+                            aria-label="默认模型"
+                          />
+                        </div>
+                        <div class="model-enabled-control">
+                          <FieldLabel text="状态" /><Switch
+                            checked={model.enabled !== false}
+                            disabled
+                            ariaLabel="模型状态"
+                          />
+                        </div>
                       </div>
-                      <button
-                        class="icon-action model-remove"
-                        type="button"
-                        data-tooltip="删除模型"
-                        aria-label="删除模型"
-                        on:click={() => removeModel(index)}
-                        disabled={providerDraft.models.length === 1}
-                        ><X size={14} /></button
-                      >
                     </div>{/each}
                 </div>
-              </div>
-              </form>
-            {:else if selectedProvider}
-              <div class="drawer-section provider-preview-section">
-              <div class="section-title">
-                <h3>基本信息</h3>
-              </div>
-              <div class="provider-preview-identity-row">
-                  <div class="provider-preview-primary">
-                  <div class="provider-preview-name">
-                    <div class="provider-preview-field">
-                      <FieldLabel text="图标" /><span
-                        class="provider-preview-value provider-preview-icon"><IconValue
-                          value={selectedProvider.config.icon || 'lucide:Bot'}
-                          size={18}
-                        /></span
-                      >
-                    </div>
-                    <div class="provider-preview-field">
-                      <FieldLabel text="名称" required /><strong
-                        class="provider-preview-value"
-                        >{selectedProvider.name}</strong
-                      >
-                    </div>
-                  </div>
-                  <div class="provider-preview-field provider-preview-level-field">
-                    <FieldLabel text="级别" /><strong
-                      class="provider-preview-value provider-preview-plain"
-                      >{scopeLevelLabel(scopeType(selectedProvider.scope_id))} · {scopeName(selectedProvider.scope_id)}</strong
-                    >
-                  </div>
-                </div>
-                <div class="provider-preview-secondary">
-                  <div class="provider-preview-field provider-preview-tags">
-                    <FieldLabel text="场景" /><span class="tag-row"
-                      >{#each scenarioTags as tag}<span
-                          class={`tag-chip ${capabilityTagClass(tag.value)}`}
-                          class:active={isBound(selectedProvider.tags, tag.value)}
-                          class:preview-tag-hidden={!isBound(selectedProvider.tags, tag.value)}
-                          aria-hidden={!isBound(selectedProvider.tags, tag.value)}
-                          >{tag.label}</span
-                        >{/each}</span
-                    >
-                  </div>
-                  <div class="provider-preview-field provider-preview-connection-test">
-                    <FieldLabel text="连接" /><ConnectionTest status={selectedProvider.last_connection_test?.status === 'succeeded' ? 'succeeded' : selectedProvider.last_connection_test ? 'failed' : ''} latencyMs={selectedProvider.last_connection_test?.latency_ms ?? 0} message={selectedProvider.last_connection_test?.message ?? ''} checkedAt={selectedProvider.last_connection_test?.checked_at ?? ''} busy={Boolean(testingProviders[selectedProvider.id])} onTest={() => void testProvider()} />
-                  </div>
-                  <div class="provider-preview-field provider-preview-status">
-                    <FieldLabel text="状态" /><span class="provider-preview-value provider-preview-switch-value"><Switch checked={selectedProvider.status === 'active'} disabled ariaLabel="渠道状态" /></span>
-                  </div>
-                </div>
-              </div>
-              <div class="provider-runtime-grid">
-                <div class="provider-preview-field">
-                  <FieldLabel text="超时（秒）" /><strong
-                    class="provider-preview-value"
-                    >{selectedProvider.config.timeout_seconds ?? 60}</strong
-                  >
-                </div>
-                <div class="provider-preview-field">
-                  <FieldLabel text="最大并发" /><strong
-                    class="provider-preview-value"
-                    >{selectedProvider.config.max_concurrency ?? '未限制'}</strong
-                  >
-                </div>
-                <div class="provider-preview-field">
-                  <FieldLabel text="限流（请求 / 分钟）" /><strong
-                    class="provider-preview-value"
-                    >{selectedProvider.config.rate_limit_per_minute ?? 0}</strong
-                  >
-                </div>
-              </div>
-            </div>
-            <div class="drawer-section provider-preview-section">
-              <div class="section-title">
-                <h3>连接凭据</h3>
-              </div>
-              <div class="provider-connection-row">
-                <div class="provider-preview-field">
-                  <FieldLabel text="类型" required /><strong
-                    class="provider-preview-value provider-preview-type"
-                    ><ProviderBrandIcon
-                      providerType={selectedProvider.config.provider_type}
-                      label={providerTypeLabel(selectedProvider.config.provider_type)}
-                      size={16}
-                    /><span>{providerTypeLabel(selectedProvider.config.provider_type)}</span></strong
-                  >
-                </div>
-                <div class="provider-preview-field">
-                  <FieldLabel text="Base URL" required /><strong
-                    class="provider-preview-value mono"
-                    >{selectedProvider.config.base_url}</strong
-                  >
-                </div>
-              </div>
-              <div class="provider-connection-row">
-                <div class="provider-preview-field">
-                  <FieldLabel text="协议" /><strong
-                    class="provider-preview-value"
-                    >{selectedProvider.config.protocol || 'Chat Completions'}</strong
-                  >
-                </div>
-                <div class="provider-preview-field">
-                  <FieldLabel text="API Key" /><strong
-                    class="provider-preview-value"
-                    >服务端加密保存</strong
-                  >
-                </div>
-              </div>
-            </div>
-            <div class="drawer-section provider-preview-section">
-              <div class="section-title">
-                <h3>模型能力</h3>
-              </div>
-              <div class="model-editor-list">
-                <div class="model-columns-header" aria-hidden="true">
-                  <span>模型<i class="required-mark" aria-hidden="true">*</i></span><span>能力</span><span>上下文<i class="required-mark" aria-hidden="true">*</i></span><span>最大输出</span><span>温度</span><span>默认</span><span>状态</span>
-                </div>
-                {#each selectedProvider.config.models ?? [] as model}
-                  {@const selectedModelTags = new Set(modelTagsOf(model))}
-                  <div
-                    class="model-editor model-card model-preview"
-                    class:is-default={(selectedProvider.config.default_model || selectedProvider.config.models[0]?.name) === model.name}
-                  >
-                    <div class="model-primary-row">
-                      <div class="model-name-field provider-preview-field">
-                        <FieldLabel text="模型" required /><strong
-                          class="provider-preview-value"
-                          >{model.name}</strong
-                        >
-                      </div>
-                      <div class="model-capability-editor">
-                        <FieldLabel text="能力" />
-                        <div class="tag-row">
-                          {#each modelTags as tag}<span
-                              class="tag-chip"
-                              class:active={selectedModelTags.has(tag.value)}
-                              class:preview-tag-hidden={!selectedModelTags.has(tag.value)}
-                              aria-hidden={!selectedModelTags.has(tag.value)}
-                              >{tag.label}</span
-                            >{/each}
-                        </div>
-                        </div>
-                      <div class="model-runtime-field provider-preview-field">
-                        <FieldLabel text="上下文" required /><strong
-                          class="provider-preview-value"
-                          >{model.context_window_tokens?.toLocaleString()}</strong
-                        >
-                      </div>
-                      <div class="model-runtime-field provider-preview-field">
-                        <FieldLabel text="最大输出" /><strong
-                          class="provider-preview-value"
-                          >{model.max_output_tokens?.toLocaleString() ||
-                            '未限制'}</strong
-                        >
-                      </div>
-                      <div class="model-runtime-field provider-preview-field">
-                        <FieldLabel text="温度" /><strong
-                          class="provider-preview-value"
-                          >{model.temperature ?? 0.2}</strong
-                        >
-                      </div>
-                      <div class="model-default-control">
-                        <FieldLabel text="默认" /><input
-                          type="radio"
-                          name="preview-default-model"
-                          checked={(selectedProvider.config.default_model ||
-                            selectedProvider.config.models[0]?.name) === model.name}
-                          disabled
-                          tabindex="-1"
-                          aria-label="默认模型"
-                        />
-                      </div>
-                      <div class="model-enabled-control">
-                        <FieldLabel text="状态" /><Switch checked={model.enabled !== false} disabled ariaLabel="模型状态" />
-                      </div>
-                    </div>
-                  </div>{/each}
-              </div>
               </div>
             {:else}<EmptyState>选择一个渠道查看详情。</EmptyState>{/if}
           </div>
@@ -2401,7 +2681,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .provider-preview-field > .provider-preview-value:not(.provider-preview-icon):not(.provider-preview-switch-value) {
+  .provider-preview-field
+    > .provider-preview-value:not(.provider-preview-icon):not(
+      .provider-preview-switch-value
+    ) {
     height: 35px;
     min-height: 35px;
     justify-content: flex-start;
@@ -2496,7 +2779,9 @@
     visibility: hidden;
     pointer-events: none;
   }
-  .provider-preview-section .provider-connection-row + .provider-connection-row {
+  .provider-preview-section
+    .provider-connection-row
+    + .provider-connection-row {
     margin-top: 10px;
   }
   .model-preview .model-capability-editor .tag-row {

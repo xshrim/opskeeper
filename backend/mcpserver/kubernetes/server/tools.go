@@ -18,9 +18,9 @@ type listInput struct {
 }
 type getInput struct {
 	client.ConnectionInput
-	Resource  string `json:"resource"`
-	Namespace string `json:"namespace,omitempty"`
-	Name      string `json:"name,omitempty"`
+	Resource   string `json:"resource"`
+	Namespace  string `json:"namespace,omitempty"`
+	ObjectName string `json:"object_name,omitempty"`
 }
 type searchInput struct {
 	client.ConnectionInput
@@ -139,7 +139,7 @@ func RegisterTools(s *mcp.Server) {
 		return nil, out, err
 	})
 	add("kubernetes_resource_get", "Get an allowlisted Kubernetes resource by name.", kt.GetInputProperties(), func(ctx context.Context, _ *mcp.CallToolRequest, in getInput) (*mcp.CallToolResult, any, error) {
-		out, err := kt.Get(ctx, in.ConnectionInput, in.Resource, in.Namespace, in.Name)
+		out, err := kt.Get(ctx, in.ConnectionInput, in.Resource, in.Namespace, in.ObjectName)
 		return nil, out, err
 	})
 	add("kubernetes_health", "Check Kubernetes API health.", nil, func(ctx context.Context, _ *mcp.CallToolRequest, in baseInput) (*mcp.CallToolResult, any, error) {

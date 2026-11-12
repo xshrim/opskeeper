@@ -2,10 +2,8 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,14 +11,18 @@ import (
 )
 
 type Runtime struct {
-	runner          Runner
-	resolver        ContextResolver
-	personaResolver PersonaResolver
-	plans           PlanResolver
-	gateway         *PolicyGateway
-	store           EventStore
-	active          sync.Map
+	runner             Runner
+	resolver           ContextResolver
+	personaResolver    PersonaResolver
+	plans              PlanResolver
+	gateway            *PolicyGateway
+	store              EventStore
+	active             sync.Map
+	executionSlotsOnce sync.Once
+	executionSlots     chan struct{}
 }
+
+const maxConcurrentExecutions = 8
 
 type activeExecution struct{ cancel context.CancelFunc }
 
@@ -39,6 +41,14 @@ func NewWithContextAndStore(runner Runner, resolver ContextResolver, gateway *Po
 func (r *Runtime) WithPersonaResolver(resolver PersonaResolver) *Runtime {
 	r.personaResolver = resolver
 	return r
+}
+
+// ResolvePersona lets business orchestrators select an authorized expert without executing it.
+func (r *Runtime) ResolvePersona(ctx context.Context, scopeID, personaID string) (Persona, error) {
+	if r.personaResolver == nil {
+		return Persona{}, errors.New("persona resolver is unavailable")
+	}
+	return r.personaResolver.Resolve(ctx, scopeID, personaID)
 }
 
 // WithPlanResolver attaches a side-effect-free source of execution plans.
@@ -65,11 +75,23 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		request.ExecutionID = fmt.Sprintf("exec-%d", time.Now().UnixNano())
 	}
 	budget := executionBudgetFromContext(parent)
+	nestedExecution := budget != nil
 	if budget == nil {
 		budget = newExecutionBudget(request.Budget)
 	}
 	parent = context.WithValue(parent, executionBudgetContextKey{}, budget)
 	ctx, cancel := context.WithTimeout(parent, request.Budget.Timeout)
+	if !nestedExecution {
+		r.executionSlotsOnce.Do(func() { r.executionSlots = make(chan struct{}, maxConcurrentExecutions) })
+		select {
+		case r.executionSlots <- struct{}{}:
+			defer func() { <-r.executionSlots }()
+		case <-ctx.Done():
+			err := ctx.Err()
+			cancel()
+			return Result{ExecutionID: request.ExecutionID, Status: StatusCancelled, ErrorCode: "execution_queue_timeout", ErrorMessage: publicError(err)}, err
+		}
+	}
 	if _, loaded := r.active.LoadOrStore(request.ExecutionID, activeExecution{cancel: cancel}); loaded {
 		cancel()
 		return Result{}, ErrAlreadyRunning
@@ -127,10 +149,12 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		event.Payload["elapsed_ms"] = time.Since(executionStartedAt).Milliseconds()
 		var persistenceErr error
 		if r.store != nil {
-			if err := r.store.AppendEvent(context.Background(), event); err != nil {
+			persistCtx, persistCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			if err := r.store.AppendEvent(persistCtx, event); err != nil {
 				persistenceErr = fmt.Errorf("persist Engine event: %w", err)
 				recordSinkErr(persistenceErr)
 			}
+			persistCancel()
 		}
 		if originalSink == nil {
 			return persistenceErr
@@ -181,7 +205,6 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		}
 		_ = sink(Event{Type: "execution.plan.resolved", Status: StatusRunning, Payload: map[string]any{"source_skill_id": plan.SourceSkillID, "source_version_id": plan.SourceVersionID, "name": plan.Name, "tool_count": len(plan.Tools)}})
 	}
-	executionBaseInstruction := request.Instruction
 	if request.PersonaID != "" {
 		if r.personaResolver == nil {
 			result := Result{ExecutionID: request.ExecutionID, Status: StatusFailed, ErrorCode: "persona_unavailable", ErrorMessage: "persona resolver is unavailable"}
@@ -209,9 +232,6 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 			if strings.TrimSpace(request.ResolvedPersona.Domain) != "" {
 				request.Context.AllowedKinds = []string{request.ResolvedPersona.Domain}
 			}
-		}
-		if request.ResolvedPersona != nil && request.ResolvedPersona.Role == "manager" {
-			request.Context.MetadataOnly = true
 		}
 		resolved, resolveErr := r.resolver.Resolve(ctx, request.Context)
 		if resolveErr != nil {
@@ -241,21 +261,8 @@ func (r *Runtime) Execute(parent context.Context, request Request) (Result, erro
 		}
 		_ = sink(Event{Type: "context.loaded", Status: StatusRunning, Payload: map[string]any{"resource_count": len(request.ResolvedContext.Resources), "tool_count": len(request.ResolvedContext.Tools), "fact_count": len(request.ResolvedContext.Facts)}})
 	}
-	if request.ResolvedPersona != nil && request.ResolvedPersona.Role == "manager" && request.DelegationDepth == 0 {
-		delegationTools, delegationErr := r.personaDelegationTools(ctx, request, executionBaseInstruction, sink)
-		if delegationErr != nil {
-			return failedRuntimeError(request, sink, "persona_delegation", delegationErr)
-		}
-		request.InternalTools = delegationTools
-		if len(delegationTools) > 0 {
-			request.Requirements.Capabilities = append(request.Requirements.Capabilities, "tool_calling")
-		}
-		request.Context.ResourceIDs = nil
-		request.ResolvedContext = &ResolvedContext{}
-		request.Input = maps.Clone(request.Input)
-		delete(request.Input, "target_resource_ids")
-		request.Instruction += "\n\n职能专家约束：负责拆解诊断问题，并按需调用已提供的资源专家委派工具。只基于资源专家返回的报告汇总结论，明确指出未能检查或证据不足的部分；不得直接声称检查了资源，也不得臆造检查结果。"
-		// Managers reason over worker reports; they do not receive selected resource IDs or raw context snapshots.
+	if len(request.InternalTools) > 0 {
+		request.Requirements.Capabilities = append(request.Requirements.Capabilities, "tool_calling")
 	}
 
 	var result Result
@@ -338,7 +345,7 @@ func filterPersonaDomain(resolved ResolvedContext, domain string) *ResolvedConte
 	filtered := &ResolvedContext{implementations: make(map[string]Tool)}
 	resourceIDs := make(map[string]struct{})
 	for _, resource := range resolved.Resources {
-		if personaDomainMatches(domain, resource.Kind) {
+		if PersonaDomainMatches(domain, resource.Kind) {
 			filtered.Resources = append(filtered.Resources, resource)
 			resourceIDs[resource.ID] = struct{}{}
 		}
@@ -359,110 +366,8 @@ func filterPersonaDomain(resolved ResolvedContext, domain string) *ResolvedConte
 	return filtered
 }
 
-func (r *Runtime) personaDelegationTools(parent context.Context, request Request, baseInstruction string, sink EventSink) ([]Tool, error) {
-	manager := request.ResolvedPersona
-	if manager == nil || r.personaResolver == nil || request.ResolvedContext == nil {
-		return nil, nil
-	}
-	resources := append([]ContextResource(nil), request.ResolvedContext.Resources...)
-	usedNames := make(map[string]struct{})
-	for _, binding := range buildToolBindings(request.ResolvedContext.Tools) {
-		usedNames[binding.modelName] = struct{}{}
-	}
-	tools := make([]Tool, 0, len(manager.WorkerPersonaIDs))
-	for index, workerID := range manager.WorkerPersonaIDs {
-		worker, err := r.personaResolver.Resolve(parent, request.ScopeID, workerID)
-		if err != nil {
-			return nil, fmt.Errorf("resolve worker Persona %s: %w", workerID, err)
-		}
-		if worker.Role != "worker" {
-			return nil, fmt.Errorf("delegated Persona %s must be a domain worker", workerID)
-		}
-		if worker.ScopeID != request.ScopeID {
-			return nil, fmt.Errorf("delegated Persona %s must belong to the current scope", workerID)
-		}
-		if strings.TrimSpace(worker.Domain) == "" {
-			return nil, fmt.Errorf("delegated Persona %s has no resource domain", workerID)
-		}
-		resourceIDs := make([]string, 0)
-		resourceNames := make([]string, 0)
-		for _, resource := range resources {
-			if personaDomainMatches(worker.Domain, resource.Kind) {
-				resourceIDs = append(resourceIDs, resource.ID)
-				resourceNames = append(resourceNames, resource.Name)
-			}
-		}
-		if len(resourceIDs) == 0 {
-			_ = sink(Event{ExecutionID: request.ExecutionID, Type: "persona.delegation.skipped", Status: StatusRunning, Payload: map[string]any{"persona_id": worker.PersonaID, "reason": "no selected resources match worker domain"}})
-			continue
-		}
-		// Persona IDs are internal database identities; keep them in the server
-		// binding only and expose an execution-local ordinal to the model.
-		name := uniqueModelToolName(fmt.Sprintf("delegate_%d", index+1), usedNames)
-		usedNames[name] = struct{}{}
-		workerProfile := worker
-		workerResourceIDs := append([]string(nil), resourceIDs...)
-		workerResourceNames := append([]string(nil), resourceNames...)
-		var dispatchSequence atomic.Int64
-		def := ToolDefinition{
-			Name: name, Source: "persona-delegation", ReadOnly: true,
-			Description: fmt.Sprintf("委派给%s（%s领域）检查已选且已授权资源：%s。传入具体诊断问题。", worker.Name, worker.Domain, strings.Join(resourceNames, "、")),
-			InputSchema: json.RawMessage(`{"type":"object","required":["question"],"properties":{"question":{"type":"string","minLength":1,"maxLength":4000}},"additionalProperties":false}`),
-		}
-		tools = append(tools, ToolFunc{Def: def, Fn: func(toolCtx context.Context, args map[string]any) (ToolResult, error) {
-			question, _ := args["question"].(string)
-			question = strings.TrimSpace(question)
-			if question == "" {
-				return ToolResult{Output: map[string]any{"status": "rejected", "reason": "question is required"}}, nil
-			}
-			childID := request.ExecutionID + ":worker:" + sanitizeToolNamePart(workerProfile.PersonaID) + ":" + fmt.Sprint(dispatchSequence.Add(1))
-			if err := sink(Event{ExecutionID: request.ExecutionID, Type: "persona.delegation.started", Status: StatusRunning, Payload: map[string]any{"persona_id": workerProfile.PersonaID, "persona_name": workerProfile.Name, "domain": workerProfile.Domain, "resource_ids": workerResourceIDs, "child_execution_id": childID}}); err != nil {
-				return ToolResult{}, err
-			}
-			childBudget := request.Budget
-			if childBudget.MaxOutputTokens > 8192 {
-				childBudget.MaxOutputTokens = 8192
-			}
-			if childBudget.MaxOutputBytes > 64<<10 {
-				childBudget.MaxOutputBytes = 64 << 10
-			}
-			workerInput := maps.Clone(request.Input)
-			if workerInput == nil {
-				workerInput = make(map[string]any)
-			}
-			workerInput["question"] = question
-			workerInput["target_resource_ids"] = workerResourceIDs
-			result, runErr := r.Execute(toolCtx, Request{
-				ExecutionID: childID, ActorID: request.ActorID, ScopeID: request.ScopeID,
-				Purpose: request.Purpose, ProviderID: request.ProviderID, ModelName: request.ModelName,
-				Profile: request.Profile, PersonaID: workerProfile.PersonaID, Task: question, Instruction: baseInstruction, Input: workerInput,
-				Context: ContextRequest{ResourceIDs: workerResourceIDs},
-				SkillID: request.SkillID, Budget: childBudget, DelegationDepth: 1,
-			})
-			status := result.Status
-			if runErr != nil && status != StatusCancelled {
-				status = StatusFailed
-			} else if status == "" {
-				status = StatusFailed
-			}
-			output := map[string]any{"persona_id": workerProfile.PersonaID, "persona_name": workerProfile.Name, "domain": workerProfile.Domain, "resource_names": workerResourceNames, "status": string(status), "report": result.Output}
-			if runErr != nil {
-				output["error"] = publicError(runErr)
-			} else if result.Status != StatusSucceeded && strings.TrimSpace(result.ErrorMessage) != "" {
-				output["error"] = result.ErrorMessage
-			}
-			eventType := "persona.delegation.completed"
-			if status != StatusSucceeded {
-				eventType = "persona.delegation.failed"
-			}
-			_ = sink(Event{ExecutionID: request.ExecutionID, Type: eventType, Status: status, Payload: map[string]any{"persona_id": workerProfile.PersonaID, "status": status, "resource_ids": workerResourceIDs, "child_execution_id": childID}})
-			return ToolResult{Output: output, Untrusted: true}, nil
-		}})
-	}
-	return tools, nil
-}
-
-func personaDomainMatches(domain, kind string) bool {
+// PersonaDomainMatches checks a resource kind against an expert's domain aliases.
+func PersonaDomainMatches(domain, kind string) bool {
 	normalize := func(value string) string {
 		value = strings.ToLower(strings.TrimSpace(value))
 		switch value {

@@ -25,8 +25,10 @@ import (
 )
 
 type executionState struct {
+	budget           *executionBudget
 	mu               sync.RWMutex
 	observations     map[string]any
+	observationBytes int
 	observationIndex map[string]compactedObservation
 	compactedIDs     map[string]struct{}
 	compacted        []compactedObservation
@@ -56,12 +58,31 @@ func newExecutionState() *executionState {
 	}
 }
 
-func (s *executionState) save(value any) string {
-	id := fmt.Sprintf("obs-%d", time.Now().UnixNano())
+func (s *executionState) save(value any) (string, bool) {
+	encoded, err := json.Marshal(value)
+	if err != nil || len(encoded) > maxObservationStoreBytes {
+		return "", false
+	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.observationBytes+len(encoded) > maxObservationStoreBytes {
+		return "", false
+	}
+	if s.budget != nil {
+		for {
+			used := s.budget.observationBytes.Load()
+			if used+int64(len(encoded)) > maxObservationStoreBytes {
+				return "", false
+			}
+			if s.budget.observationBytes.CompareAndSwap(used, used+int64(len(encoded))) {
+				break
+			}
+		}
+	}
+	id := fmt.Sprintf("obs-%d", time.Now().UnixNano())
 	s.observations[id] = value
-	s.mu.Unlock()
-	return id
+	s.observationBytes += len(encoded)
+	return id, true
 }
 
 func (s *executionState) read(id string, offset, limit int) (any, bool) {
@@ -364,6 +385,7 @@ func (r *AgentRunner) execute(parent context.Context, request Request, sink Even
 	var startedToolCalls sync.Map
 	sharedBudget := executionBudgetFromContext(ctx)
 	state := newExecutionState()
+	state.budget = sharedBudget
 	tools, err := r.agentTools(ctx, request, &toolCalls, &modelIteration, loopCancel, &toolBudgetExceeded, &startedToolCalls, state)
 	if err != nil {
 		return Result{}, err
@@ -896,7 +918,7 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 	sharedBudget := executionBudgetFromContext(ctx)
 	// A controlled paging tool lets the model retrieve large observations only
 	// when needed, keeping the normal context compact.
-	if request.ResolvedContext != nil && request.ToolGateway != nil && len(request.ResolvedContext.Tools) > 0 {
+	if len(request.InternalTools) > 0 || request.ResolvedContext != nil && request.ToolGateway != nil && len(request.ResolvedContext.Tools) > 0 {
 		readTool, _ := functiontool.New(functiontool.Config{Name: "read_observation", Description: "按 observation_id、offset、limit 分页读取之前工具结果"}, func(toolCtx agent.Context, args map[string]any) (map[string]any, error) {
 			count := calls.Add(1)
 			if sharedBudget != nil {
@@ -1027,8 +1049,11 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 				// The replay store is still bounded by execution lifetime, but stores
 				// the complete recursively redacted value so paging never reintroduces
 				// credentials that were removed from the model-facing summary.
-				observationID := state.save(scrubObservationText(redactValue(toolResult.Output)))
+				observationID, stored := state.save(scrubObservationText(redactValue(toolResult.Output)))
 				state.observe(definition.Name, observationID, toolResult.Output)
+				if !stored {
+					return map[string]any{"output": map[string]any{"summary": observation, "detail_unavailable": true, "reason": "execution observation storage budget exceeded"}, "untrusted": toolResult.Untrusted, "truncated": true, "engine_observation": true}, nil
+				}
 				// Preserve the original result for Evidence/audit sinks, but pass only
 				// the bounded, recursively redacted observation to the model.
 				return map[string]any{"output": map[string]any{"observation_id": observationID, "summary": observation, "read_tool": "read_observation"}, "untrusted": toolResult.Untrusted, "truncated": toolResult.Truncated, "engine_observation": true}, nil
@@ -1080,7 +1105,7 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 				_ = request.EventSink(Event{ExecutionID: request.ExecutionID, Type: "tool.requested", Status: StatusRunning, Payload: toolEventPayload(call, def.Name, map[string]any{"arguments": redactValue(args)})})
 			}
 			started := time.Now()
-			toolResult, invokeErr := toolImpl.Invoke(toolCtx, args)
+			toolResult, invokeErr := toolImpl.Invoke(InheritExecutionBudget(toolCtx, ctx), args)
 			if invokeErr != nil {
 				message := publicError(invokeErr)
 				if request.EventSink != nil {
@@ -1089,9 +1114,17 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 				return map[string]any{"error": message, "untrusted": true}, nil
 			}
 			output := summarizeObservation(toolResult.Output)
+			if def.Source == "diagnosis-investigation" {
+				id, stored := state.save(scrubObservationText(redactValue(toolResult.Output)))
+				if stored {
+					output = map[string]any{"observation_id": id, "results": toolResult.Output, "read_tool": "read_observation"}
+				} else {
+					output = map[string]any{"summary": output, "truncated": true, "unchecked": "shared observation budget exhausted"}
+				}
+			}
 			if encoded, marshalErr := json.Marshal(output); marshalErr == nil {
 				if len(encoded) > 12000 {
-					output = map[string]any{"summary": truncateBytesUTF8(string(encoded), 12000), "truncated": true}
+					output = map[string]any{"summary": truncateBytesUTF8(string(encoded), 12000), "truncated": true, "observation_id": observationReference(output), "read_tool": "read_observation"}
 				}
 			}
 			if request.EventSink != nil {
@@ -1107,9 +1140,17 @@ func (r *AgentRunner) agentTools(ctx context.Context, request Request, calls, it
 	return result, nil
 }
 
+func observationReference(value any) string {
+	if object, ok := value.(map[string]any); ok {
+		id, _ := object["observation_id"].(string)
+		return id
+	}
+	return ""
+}
+
 func allowedInternalToolSource(source string) bool {
 	switch strings.TrimSpace(source) {
-	case "persona-delegation", "diagnosis-scope":
+	case "diagnosis-investigation", "diagnosis-scope":
 		return true
 	default:
 		return false
@@ -1427,6 +1468,7 @@ func summarizeObservation(value any) any {
 // read_observation paging tool.
 const maxObservationBytes = 256 << 10
 const maxObservationTextRunes = 64000
+const maxObservationStoreBytes = 32 << 20
 
 var sensitiveProgressPattern = regexp.MustCompile(`(?i)(\b(?:bearer|token|password|secret|credential|api[\s_-]*key|authorization|private[\s_-]*key|access[\s_-]*key|client[\s_-]*secret)\b\s*(?:[:=]\s*))(?:bearer\s+)?[^\s,;]+`)
 var sensitiveJSONPattern = regexp.MustCompile(`(?i)(["']?(?:bearer|token|password|secret|credential|api[\s_-]*key|authorization|private[\s_-]*key|access[\s_-]*key|client[\s_-]*secret)["']?\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)

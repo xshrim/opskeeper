@@ -37,9 +37,9 @@ type Service struct {
 	storage StorageConfig
 }
 type StorageConfig struct {
-	Backend, Root, Endpoint, Bucket, Prefix, AccessKey, SecretKey, Provider string
-	UseSSL                                                                  bool
-	Postgres                                                                *pgxpool.Pool
+	Backend, Root, Endpoint, Bucket, Prefix, AccessKey, SecretKey string
+	UseSSL                                                        bool
+	Postgres                                                      *pgxpool.Pool
 }
 type UploadResult struct {
 	ResourceID   string   `json:"resource_id"`

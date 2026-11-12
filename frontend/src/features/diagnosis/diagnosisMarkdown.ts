@@ -20,11 +20,17 @@ export function normalizeDiagnosisMarkdown(value: string) {
 }
 
 function renderCode(source: string, language = '') {
-  const normalized = language.trim().toLowerCase().replace(/[^a-z0-9_+-]/g, '');
+  const normalized = language
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_+-]/g, '');
   let rendered = escapeHTML(source);
   if (normalized) {
     try {
-      rendered = hljs.highlight(source, { language: normalized, ignoreIllegals: true }).value;
+      rendered = hljs.highlight(source, {
+        language: normalized,
+        ignoreIllegals: true
+      }).value;
     } catch {
       // Unknown language: keep a safe plain-text block.
     }
@@ -49,7 +55,9 @@ export function renderDiagnosisMarkdown(value: string) {
   };
   const parser = new Marked({ gfm: true, breaks: true, renderer });
   try {
-    return parser.parse(normalizeDiagnosisMarkdown(value), { async: false }) as string;
+    return parser.parse(normalizeDiagnosisMarkdown(value), {
+      async: false
+    }) as string;
   } catch {
     return `<p>${escapeHTML(String(value ?? ''))}</p>`;
   }

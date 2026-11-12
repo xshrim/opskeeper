@@ -25,10 +25,23 @@
     UserRound,
     UsersRound
   } from 'lucide-svelte';
-  import { resourceHasConnector, resourceIcon as getResourceIcon, resourceSchemaName as getResourceSchemaName } from './lib/resources';
+  import {
+    resourceHasConnector,
+    resourceIcon as getResourceIcon,
+    resourceSchemaName as getResourceSchemaName
+  } from './lib/resources';
   import { loadResourceConnectionChecks as loadResourceConnectionChecksData } from './features/resource/resourceData';
-  import { buildScopeChoices, scopesInWorkspace, scopeName as getScopeName, scopeType as getScopeType, type ScopeChoice } from './lib/scope';
-  import { viewBreadcrumb as getViewBreadcrumb, viewTitle as getViewTitle } from './lib/navigation';
+  import {
+    buildScopeChoices,
+    scopesInWorkspace,
+    scopeName as getScopeName,
+    scopeType as getScopeType,
+    type ScopeChoice
+  } from './lib/scope';
+  import {
+    viewBreadcrumb as getViewBreadcrumb,
+    viewTitle as getViewTitle
+  } from './lib/navigation';
   import {
     initialWorkspaceSelection,
     projectSelection,
@@ -59,9 +72,9 @@
   import AccessPage from './features/access/AccessPage.svelte';
   import Topbar from './layouts/Topbar.svelte';
   import AppShell from './layouts/AppShell.svelte';
-import {
-  api,
-  ApiError,
+  import {
+    api,
+    ApiError,
     type ConnectionCheck,
     type ConnectorCapability,
     type Group,
@@ -81,12 +94,12 @@ import {
     type User,
     type UserPreferences,
     type Provider
-} from './lib/api';
-import { errorMessage as formatErrorMessage } from './lib/errorMessage';
-import type {
-  ApplicationResourceCreationRequest,
-  ApplicationResourceCreationResult
-} from './features/project/projectTypes';
+  } from './lib/api';
+  import { errorMessage as formatErrorMessage } from './lib/errorMessage';
+  import type {
+    ApplicationResourceCreationRequest,
+    ApplicationResourceCreationResult
+  } from './features/project/projectTypes';
 
   type View =
     | 'overview'
@@ -156,8 +169,10 @@ import type {
   let resourceRoleBindings: ResourceRoleBinding[] = [];
   let accessTab: AccessTab = 'teams';
   let openCreateTeamRequest = 0;
-  let applicationResourceRequest: ApplicationResourceCreationRequest | null = null;
-  let applicationResourceResult: ApplicationResourceCreationResult | null = null;
+  let applicationResourceRequest: ApplicationResourceCreationRequest | null =
+    null;
+  let applicationResourceResult: ApplicationResourceCreationResult | null =
+    null;
   let applicationResourceCancelledId = '';
 
   $: scopeChoices = buildScopeChoices(platform, teams, projects);
@@ -181,14 +196,31 @@ import type {
   $: visibleResources = selectedScopeId
     ? resources.filter((resource) => resourceInActiveWorkspace(resource))
     : resources;
-  $: overviewMemberScopeIDs = activeScope?.type === 'platform'
-    ? scopeChoices.map((scope) => scope.id)
-    : activeScope?.type === 'team'
-      ? [activeScope.id, ...visibleProjects.map((project) => project.scope.id)]
-      : selectedScopeId ? [selectedScopeId] : [];
-  $: overviewTeamCount = activeScope?.type === 'platform' ? teams.length : selectedScopeId ? 1 : teams.length;
+  $: overviewMemberScopeIDs =
+    activeScope?.type === 'platform'
+      ? scopeChoices.map((scope) => scope.id)
+      : activeScope?.type === 'team'
+        ? [
+            activeScope.id,
+            ...visibleProjects.map((project) => project.scope.id)
+          ]
+        : selectedScopeId
+          ? [selectedScopeId]
+          : [];
+  $: overviewTeamCount =
+    activeScope?.type === 'platform'
+      ? teams.length
+      : selectedScopeId
+        ? 1
+        : teams.length;
   $: overviewMemberCount = workspaceUsers
-    ? usersAtScopes(overviewMemberScopeIDs, workspaceUsers, bindings, groups, groupMembers).length
+    ? usersAtScopes(
+        overviewMemberScopeIDs,
+        workspaceUsers,
+        bindings,
+        groups,
+        groupMembers
+      ).length
     : null;
   $: selectedResource =
     resources.find((resource) => resource.id === selectedResourceId) ?? null;
@@ -292,20 +324,47 @@ import type {
       const contextPage = contextResourceResult[0];
       contextResources =
         contextPage.status === 'fulfilled' ? contextPage.value.items : [];
-      resourceRoles = contextResourceResult[1].status === 'fulfilled' ? contextResourceResult[1].value : [];
-      resourceRoleBindings = contextResourceResult[2].status === 'fulfilled' ? contextResourceResult[2].value : [];
-      const permissionResult = await Promise.allSettled([api.groups(), api.roles(), api.bindings(), api.users()]);
-      groups = permissionResult[0].status === 'fulfilled' ? permissionResult[0].value : [];
-      roles = permissionResult[1].status === 'fulfilled' ? permissionResult[1].value : [];
-      bindings = permissionResult[2].status === 'fulfilled' ? permissionResult[2].value : [];
-      workspaceUsers = permissionResult[3].status === 'fulfilled' ? permissionResult[3].value : null;
-      const memberResults = await Promise.allSettled(groups.map((group) => api.groupMembers(group.id)));
-      groupMembers = Object.fromEntries(groups.map((group, index) => [
-        group.id,
-        memberResults[index]?.status === 'fulfilled'
-          ? memberResults[index].value.map((member) => member.user_id)
-          : []
-      ]));
+      resourceRoles =
+        contextResourceResult[1].status === 'fulfilled'
+          ? contextResourceResult[1].value
+          : [];
+      resourceRoleBindings =
+        contextResourceResult[2].status === 'fulfilled'
+          ? contextResourceResult[2].value
+          : [];
+      const permissionResult = await Promise.allSettled([
+        api.groups(),
+        api.roles(),
+        api.bindings(),
+        api.users()
+      ]);
+      groups =
+        permissionResult[0].status === 'fulfilled'
+          ? permissionResult[0].value
+          : [];
+      roles =
+        permissionResult[1].status === 'fulfilled'
+          ? permissionResult[1].value
+          : [];
+      bindings =
+        permissionResult[2].status === 'fulfilled'
+          ? permissionResult[2].value
+          : [];
+      workspaceUsers =
+        permissionResult[3].status === 'fulfilled'
+          ? permissionResult[3].value
+          : null;
+      const memberResults = await Promise.allSettled(
+        groups.map((group) => api.groupMembers(group.id))
+      );
+      groupMembers = Object.fromEntries(
+        groups.map((group, index) => [
+          group.id,
+          memberResults[index]?.status === 'fulfilled'
+            ? memberResults[index].value.map((member) => member.user_id)
+            : []
+        ])
+      );
       await loadResourceConnectionChecks(resources);
       const projectPages = await Promise.all(
         teams.map((team) => api.projects(team.id))
@@ -485,7 +544,12 @@ import type {
   }
 
   function chooseTeam(teamID: string) {
-    const selection = teamSelection(teamID, hasPlatformRole, platform?.scope.id, teams);
+    const selection = teamSelection(
+      teamID,
+      hasPlatformRole,
+      platform?.scope.id,
+      teams
+    );
     if (!selection) return;
     selectedTeamId = selection.teamId;
     selectedProjectId = selection.projectId;
@@ -554,7 +618,8 @@ import type {
   }
 
   const viewTitle = (currentView: View) => getViewTitle(currentView, accessTab);
-  const viewBreadcrumb = (currentView: View) => getViewBreadcrumb(currentView, accessTab);
+  const viewBreadcrumb = (currentView: View) =>
+    getViewBreadcrumb(currentView, accessTab);
 
   const scopeName = (id: string) => getScopeName(scopeChoices, id);
   const scopeType = (id: string) => getScopeType(scopeChoices, id);
@@ -571,22 +636,49 @@ import type {
   ): ScopeChoice[] {
     if (!workspaceScopeId) return [];
     return scopesInWorkspace(scopes, workspaceScopeId).filter((scope) => {
-      const canCreate = platformAdmin || getActorPermissionsAtScope(
-        scope.id, userId, platformAdmin, roleList, groupList, memberships, roleBindings, scopes
-      ).includes('resource:create');
+      const canCreate =
+        platformAdmin ||
+        getActorPermissionsAtScope(
+          scope.id,
+          userId,
+          platformAdmin,
+          roleList,
+          groupList,
+          memberships,
+          roleBindings,
+          scopes
+        ).includes('resource:create');
       return canCreate;
     });
   }
 
   $: resourceCreateScopeOptions = resourceCreateScopeChoices(
-    selectedScopeId, scopeChoices, isPlatformAdmin, currentUser?.id,
-    roles, groups, groupMembers, bindings
+    selectedScopeId,
+    scopeChoices,
+    isPlatformAdmin,
+    currentUser?.id,
+    roles,
+    groups,
+    groupMembers,
+    bindings
   );
 
-  $: providerManageScopeOptions = scopesInWorkspace(scopeChoices, selectedScopeId).filter((scope) =>
-    isPlatformAdmin || getActorPermissionsAtScope(
-      scope.id, currentUser?.id, isPlatformAdmin, roles, groups, groupMembers, bindings, scopeChoices
-    ).includes('provider:manage')
+  $: providerManageScopeOptions = scopesInWorkspace(
+    scopeChoices,
+    selectedScopeId
+  ).filter(
+    (scope) =>
+      isPlatformAdmin ||
+      getActorPermissionsAtScope(
+        scope.id,
+        currentUser?.id,
+        isPlatformAdmin,
+        roles,
+        groups,
+        groupMembers,
+        bindings,
+        scopeChoices
+      ).includes('provider:manage')
   );
 
   function resourceCanManage(resource: Resource, permission: string) {
@@ -602,13 +694,33 @@ import type {
   function resourcePermissionLabel(resource: Resource) {
     if (isPlatformAdmin) return '可管理';
     const permissions = new Set(actorPermissionsAtScope(resource.scope_id));
-    const rolePermissions = new Map(resourceRoles.map((role) => [role.id, role.permissions]));
-    const groupIDs = new Set(groups.filter((group) => groupMembers[group.id]?.includes(currentUser?.id ?? '')).map((group) => group.id));
+    const rolePermissions = new Map(
+      resourceRoles.map((role) => [role.id, role.permissions])
+    );
+    const groupIDs = new Set(
+      groups
+        .filter((group) =>
+          groupMembers[group.id]?.includes(currentUser?.id ?? '')
+        )
+        .map((group) => group.id)
+    );
     for (const binding of resourceRoleBindings) {
-      if (binding.resource_id !== resource.id || (binding.subject_type === 'user' && binding.subject_id !== currentUser?.id) || (binding.subject_type === 'group' && !groupIDs.has(binding.subject_id))) continue;
-      for (const permission of rolePermissions.get(binding.role_id) ?? []) permissions.add(String(permission));
+      if (
+        binding.resource_id !== resource.id ||
+        (binding.subject_type === 'user' &&
+          binding.subject_id !== currentUser?.id) ||
+        (binding.subject_type === 'group' && !groupIDs.has(binding.subject_id))
+      )
+        continue;
+      for (const permission of rolePermissions.get(binding.role_id) ?? [])
+        permissions.add(String(permission));
     }
-    if (['resource:create', 'resource:update', 'resource:delete'].some((permission) => permissions.has(permission))) return '可管理';
+    if (
+      ['resource:create', 'resource:update', 'resource:delete'].some(
+        (permission) => permissions.has(permission)
+      )
+    )
+      return '可管理';
     if (permissions.has('resource:use')) return '可使用';
     if (permissions.has('resource:read')) return '可查看';
     return '无权限';
@@ -631,8 +743,12 @@ import type {
     );
   }
 
-  $: providerManage = isPlatformAdmin || actorPermissionsAtScope(selectedScopeId).includes('provider:manage');
-  $: aiEngineManage = isPlatformAdmin || actorPermissionsAtScope(selectedScopeId).includes('engine:manage');
+  $: providerManage =
+    isPlatformAdmin ||
+    actorPermissionsAtScope(selectedScopeId).includes('provider:manage');
+  $: aiEngineManage =
+    isPlatformAdmin ||
+    actorPermissionsAtScope(selectedScopeId).includes('engine:manage');
 
   function providerPermissionLabel(provider: Provider) {
     if (isPlatformAdmin) return '可管理';
@@ -676,8 +792,8 @@ import type {
       on:mouseleave={() => (sidebarHovered = false)}
     >
       <div class="brand">
-        <OpsKeeperLogo size={30} /><span
-          class="brand-copy">OpsKeeper<small>智能值守平台</small></span
+        <OpsKeeperLogo size={30} /><span class="brand-copy"
+          >OpsKeeper<small>智能值守平台</small></span
         >
       </div>
       <div class="workspace-label">WORKSPACE</div>
@@ -720,7 +836,9 @@ import type {
           class="nav-item"
           on:click={() => chooseView('llm')}
           data-tooltip={sidebarCompact ? '模型' : undefined}
-          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span class="nav-item-label">模型</span></button
+          ><Bot size={18} strokeWidth={1.8} aria-hidden="true" /><span
+            class="nav-item-label">模型</span
+          ></button
         >
         <button
           aria-label="技能"
@@ -782,7 +900,9 @@ import type {
             on:click={() => chooseView('access')}
             data-tooltip={sidebarCompact ? '权限' : undefined}
             ><UsersRound size={18} strokeWidth={1.8} aria-hidden="true" /><span
-              class="nav-item-label">权限</span></button>
+              class="nav-item-label">权限</span
+            ></button
+          >
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -903,16 +1023,35 @@ import type {
           bind:projectAreaTab
           allTeamsSelected={!selectedTeamId}
           {busy}
-          onSelectTeam={(team) => { selectedTeamId = team.id; selectedProjectId = ''; selectedScopeId = team.scope.id; }}
+          onSelectTeam={(team) => {
+            selectedTeamId = team.id;
+            selectedProjectId = '';
+            selectedScopeId = team.scope.id;
+          }}
           onSelectAllTeams={() => chooseTeam('')}
-          onSelectProject={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedTeamId = project.team_id; }}
+          onSelectProject={(project) => {
+            selectedProjectId = project.id;
+            selectedScopeId = project.scope.id;
+            selectedTeamId = project.team_id;
+          }}
           onOpenTeamDialog={openTeamDialog}
           onProjectCreated={(project) => (projects = [...projects, project])}
-          onProjectUpdated={(project) => (projects = projects.map((item) => item.id === project.id ? project : item))}
-          onProjectDeleted={(project) => (projects = projects.filter((item) => item.id !== project.id))}
-          canManageProject={(project) => isPlatformAdmin || actorPermissionsAtScope(project.scope.id).includes('project:manage')}
+          onProjectUpdated={(project) =>
+            (projects = projects.map((item) =>
+              item.id === project.id ? project : item
+            ))}
+          onProjectDeleted={(project) =>
+            (projects = projects.filter((item) => item.id !== project.id))}
+          canManageProject={(project) =>
+            isPlatformAdmin ||
+            actorPermissionsAtScope(project.scope.id).includes(
+              'project:manage'
+            )}
           onResourceCreated={(resource) => {
-            resources = [resource, ...resources.filter((item) => item.id !== resource.id)];
+            resources = [
+              resource,
+              ...resources.filter((item) => item.id !== resource.id)
+            ];
           }}
           onRequestResourceCreate={(request) => {
             applicationResourceResult = null;
@@ -923,8 +1062,18 @@ import type {
           resourceCreationCancelledId={applicationResourceCancelledId}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
-          onOpenDiagnosis={(project) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = ''; chooseView('diagnosis'); }}
-          onOpenApplicationDiagnosis={(project, application) => { selectedProjectId = project.id; selectedScopeId = project.scope.id; selectedApplicationId = application.id; chooseView('diagnosis'); }}
+          onOpenDiagnosis={(project) => {
+            selectedProjectId = project.id;
+            selectedScopeId = project.scope.id;
+            selectedApplicationId = '';
+            chooseView('diagnosis');
+          }}
+          onOpenApplicationDiagnosis={(project, application) => {
+            selectedProjectId = project.id;
+            selectedScopeId = project.scope.id;
+            selectedApplicationId = application.id;
+            chooseView('diagnosis');
+          }}
         />
         {#if applicationResourceRequest}
           <ResourcePage
@@ -934,7 +1083,9 @@ import type {
             bind:busy
             onSelectResourceScope={(scopeId) => {
               selectedScopeId = scopeId;
-              const project = projects.find((item) => item.scope.id === scopeId);
+              const project = projects.find(
+                (item) => item.scope.id === scopeId
+              );
               const team = teams.find((item) => item.scope.id === scopeId);
               selectedTeamId = project?.team_id ?? team?.id ?? '';
               selectedProjectId = project?.id ?? '';
@@ -943,7 +1094,7 @@ import type {
             {resourceCanManage}
             {resourcePermissionLabel}
             {scopeType}
-            resourceCreateScopeOptions={resourceCreateScopeOptions}
+            {resourceCreateScopeOptions}
             {formatDate}
             {resourceIcon}
             {selectedScopeId}
@@ -955,7 +1106,8 @@ import type {
             {activeMessage}
             {activeMessageTone}
             workflowOnly
-            workflowPositionTarget={applicationResourceRequest.coverageTarget ?? ''}
+            workflowPositionTarget={applicationResourceRequest.coverageTarget ??
+              ''}
             workflowRequest={applicationResourceRequest}
             onWorkflowComplete={(requestId, resource) => {
               const request = applicationResourceRequest;
@@ -987,7 +1139,7 @@ import type {
           {resourceCanManage}
           {resourcePermissionLabel}
           {scopeType}
-          resourceCreateScopeOptions={resourceCreateScopeOptions}
+          {resourceCreateScopeOptions}
           {formatDate}
           {resourceIcon}
           {selectedResource}
@@ -1010,7 +1162,7 @@ import type {
           {scopeName}
           {scopeType}
           {scopeChoices}
-          providerManageScopeOptions={providerManageScopeOptions}
+          {providerManageScopeOptions}
           canManageProvider={providerManage}
           canManageEngine={aiEngineManage}
           {providerPermissionLabel}
@@ -1022,7 +1174,7 @@ import type {
         <InspectionPage
           scopeId={selectedScopeId}
           {executableTargets}
-          personas={personas}
+          {personas}
           {scopeName}
           onNotice={(message) => (notice = message)}
           onError={(message) => (errorMessage = message)}
@@ -1037,7 +1189,13 @@ import type {
         <DiagnosisPage
           scopeId={selectedScopeId}
           projectId={selectedProjectId}
-          applicationProjects={activeScope?.type === 'platform' ? projects : activeScope?.type === 'team' ? selectedTeamProjects : selectedProject ? [selectedProject] : []}
+          applicationProjects={activeScope?.type === 'platform'
+            ? projects
+            : activeScope?.type === 'team'
+              ? selectedTeamProjects
+              : selectedProject
+                ? [selectedProject]
+                : []}
           activeScopeType={activeScope?.type ?? ''}
           platformScopeId={platform?.scope.id ?? ''}
           applicationId={selectedApplicationId}
@@ -1070,7 +1228,7 @@ import type {
         />
       {:else if view === 'skill'}
         <SkillRegistryPage
-          skills={skills}
+          {skills}
           scopeId={selectedScopeId}
           {scopeName}
           onReload={() => loadDomainCatalogs(selectedScopeId)}
@@ -1085,7 +1243,9 @@ import type {
           bind:teams
           {projects}
           onTeamDeleted={(team) => {
-            projects = projects.filter((project) => project.team_id !== team.id);
+            projects = projects.filter(
+              (project) => project.team_id !== team.id
+            );
             if (selectedTeamId === team.id) chooseTeam('');
           }}
           platformName={platform?.name ?? '平台'}

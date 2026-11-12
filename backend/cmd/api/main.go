@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"opskeeper/backend/application"
 	"opskeeper/backend/audit"
 	"opskeeper/backend/authorization"
 	"opskeeper/backend/config"
 	"opskeeper/backend/connector"
+	"opskeeper/backend/database"
 	"opskeeper/backend/diagnosis"
 	"opskeeper/backend/engine"
 	"opskeeper/backend/health"
@@ -30,6 +30,7 @@ import (
 	"opskeeper/backend/llm"
 	"opskeeper/backend/logging"
 	"opskeeper/backend/mcp"
+	"opskeeper/backend/migrations"
 	"opskeeper/backend/notification"
 	"opskeeper/backend/observability"
 	"opskeeper/backend/organization"
@@ -106,11 +107,17 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		}
 	}()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := database.OpenPool(ctx, cfg.DatabaseURL, logger)
 	if err != nil {
 		return errors.Join(errors.New("configure PostgreSQL client"), err)
 	}
 	defer pool.Close()
+	migrationCtx, cancelMigration := context.WithTimeout(ctx, 10*time.Minute)
+	err = migrations.Apply(migrationCtx, pool)
+	cancelMigration()
+	if err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
 
 	checks := []health.Check{{Name: "postgres", Run: pool.Ping}}
 	var redisClient *redis.Client
@@ -133,6 +140,13 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	identityStore := identity.NewStore(pool)
 	auditService := audit.NewService(audit.NewStore(pool))
 	identityService := identity.NewService(identityStore, cfg.SessionAccessTTL, cfg.SessionRefreshTTL, auditService)
+	bootstrapRequired, err := identityService.BootstrapRequired(ctx)
+	if err != nil {
+		return fmt.Errorf("check administrator initialization: %w", err)
+	}
+	if bootstrapRequired {
+		logger.Warn("administrator initialization required; open the login page to set the admin password")
+	}
 	var authorizationCache authorization.ScopeCache
 	switch cfg.CacheBackend {
 	case "memory":
@@ -152,10 +166,10 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	resourceService := resource.NewService(resource.NewStore(pool), credentialEncryptor)
 	applicationService := application.NewService(application.NewStore(pool))
-	if cfg.RepositoryStorageBackend == "s3" {
-		logger.Warn("repository S3-compatible backend configured", "kind", "repository-storage", "provider", cfg.RepositoryS3Provider)
+	if cfg.StorageBackend == "s3" {
+		logger.Warn("S3-compatible object storage backend configured", "kind", "object-storage", "provider", cfg.StorageS3Provider)
 	}
-	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, Provider: cfg.RepositoryS3Provider, UseSSL: cfg.RepositoryS3UseSSL, Postgres: pool}, cfg.RepositoryMaxBundleBytes, resourceService)
+	repositoryService := repositorysvc.NewServiceWithStorage(repositorysvc.StorageConfig{Backend: cfg.StorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.StorageS3Endpoint, Bucket: cfg.StorageS3Bucket, Prefix: cfg.StorageS3Prefix, AccessKey: cfg.StorageS3AccessKey, SecretKey: cfg.StorageS3SecretKey, UseSSL: cfg.StorageS3UseSSL, Postgres: pool}, cfg.RepositoryMaxBundleBytes, resourceService)
 	connectorLimits := connector.DefaultLimits()
 	connectorLimits.Timeout = cfg.ConnectorTimeout
 	connectorLimits.MaxConcurrent = cfg.ConnectorMaxConcurrency
@@ -166,7 +180,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	}
 	connectorService := connector.NewService(connectorRegistry, resourceService, connector.NewStore(pool), connectorLimits)
 	connectorService.SetPostgresPool(pool)
-	connectorService.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.RepositoryStorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.RepositoryS3Endpoint, Bucket: cfg.RepositoryS3Bucket, Prefix: cfg.RepositoryS3Prefix, AccessKey: cfg.RepositoryS3AccessKey, SecretKey: cfg.RepositoryS3SecretKey, UseSSL: cfg.RepositoryS3UseSSL})
+	connectorService.SetRepositoryStorage(connector.RepositoryStorageConfig{Backend: cfg.StorageBackend, Root: cfg.RepositoryLocalRoot, Endpoint: cfg.StorageS3Endpoint, Bucket: cfg.StorageS3Bucket, Prefix: cfg.StorageS3Prefix, AccessKey: cfg.StorageS3AccessKey, SecretKey: cfg.StorageS3SecretKey, UseSSL: cfg.StorageS3UseSSL})
 	applicationService.SetBindingValidator(connectorService)
 	llmService := llm.NewService(llm.NewStore(pool), llm.NewProviderStore(pool, credentialEncryptor))
 	skillStore := skill.NewStore(pool)
@@ -175,7 +189,7 @@ func run(logger *slog.Logger, cfg config.Config) error {
 	personaCatalog := persona.NewPersonaCatalog(pool)
 	personaService := persona.NewService(personaVersions, personaCatalog)
 	personaResolver := persona.NewResolver(personaCatalog, personaVersions)
-	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService, personaCatalog).WithNotificationSecurity(credentialEncryptor, notification.DefaultProviderRegistry())
+	inspectionService := inspection.NewService(inspection.NewStore(pool), resourceService, personaCatalog).WithApplications(applicationService).WithNotificationSecurity(credentialEncryptor, notification.DefaultProviderRegistry())
 	mcpService := mcp.NewServiceWithSecurity(resourceService, mcp.NewStore(pool), cfg.MCPEnhancedSecurity)
 	connectorProvider := connectorService.EngineProvider()
 	mcpProvider := mcpService.EngineProvider()
@@ -216,11 +230,14 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		WithPersonaResolver(personaResolver).
 		WithPlanResolver(skillService)
 	engineCatalog := engine.NewCatalogService(engine.NewCatalogStore(pool))
-	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService, applicationService), engineRuntime, 30*time.Minute)
+	diagnosisService := diagnosis.NewOrchestrator(diagnosis.NewService(diagnosis.NewStore(pool), resourceService, applicationService).WithDefaultCollaboration(cfg.DiagnosisCollaboration), engineRuntime, 30*time.Minute).
+		WithSubagentLimits(cfg.DiagnosisMaxSubagents, cfg.DiagnosisSubagentConcurrency)
+	diagnosisService.StartRecoveryWorker(ctx)
 	workflowService := engine.NewWorkflowService(workflowRunStore, engineRuntime, contextTooling.Gateway, workflowRetriever, aiStore)
 
+	listenAddress := fmt.Sprintf(":%d", cfg.ListenPort)
 	server := &http.Server{
-		Addr: cfg.HTTPAddress,
+		Addr: listenAddress,
 		Handler: httpapi.NewRouter(logger, healthService, build, httpapi.Options{
 			BasePath:                 cfg.BasePath,
 			TrustedProxies:           cfg.TrustedProxies,
@@ -259,16 +276,16 @@ func run(logger *slog.Logger, cfg config.Config) error {
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
 	}
-	listener, err := net.Listen("tcp", cfg.HTTPAddress)
+	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", cfg.HTTPAddress, err)
+		return fmt.Errorf("listen on %s: %w", listenAddress, err)
 	}
 	defer listener.Close()
-	listenAddress := listener.Addr().String()
-	accessAddress := accessURL(listenAddress, cfg.BasePath)
+	boundAddress := listener.Addr().String()
+	accessAddress := accessURL(boundAddress, cfg.BasePath)
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("api listening", "kind", "service-start", "listen", listenAddress, "url", accessAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
+		logger.Info("api listening", "kind", "service-start", "listen", boundAddress, "url", accessAddress, "base_path", cfg.BasePath, "environment", cfg.Environment)
 		serverErr <- server.Serve(listener)
 	}()
 

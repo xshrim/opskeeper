@@ -7,7 +7,14 @@
   import ResourceConnectionStatus from './ResourceConnectionStatus.svelte';
   import ResourceConfigPreview from './ResourceConfigPreview.svelte';
   import ResourceRelationsSection from './ResourceRelationsSection.svelte';
-  import type { ConnectionCheck, ConnectorCapability, Relation, Resource, ResourceSchema, TopologyNode } from '../../lib/api';
+  import type {
+    ConnectionCheck,
+    ConnectorCapability,
+    Relation,
+    Resource,
+    ResourceSchema,
+    TopologyNode
+  } from '../../lib/api';
 
   export let selectedResource: Resource | null = null;
   export let selectedSchema: ResourceSchema | null = null;
@@ -62,37 +69,108 @@
         <h2 class="resource-editor-title">
           <span>编辑资源</span>
           {#if resourceCategoryFor(selectedResource) && resourceSubtypeFor(selectedResource)}
-            <small>{resourceCategoryFor(selectedResource)} · {resourceSubtypeFor(selectedResource)}</small>
+            <small
+              >{resourceCategoryFor(selectedResource)} · {resourceSubtypeFor(
+                selectedResource
+              )}</small
+            >
           {/if}
         </h2>
         <p class="resource-editor-name">{selectedResource.name}</p>
-        <p class="muted">{selectedResource.kind} · {scopeName(selectedResource.scope_id)}</p>
+        <p class="muted">
+          {selectedResource.kind} · {scopeName(selectedResource.scope_id)}
+        </p>
       </div>
-      <button class="danger-button" on:click={onDelete} disabled={busy || resourceActionBusy || !selectedResourceCanDelete} data-tooltip={selectedResourceCanDelete ? '删除资源' : '继承资源仅可查看'}>删除</button>
+      <button
+        class="danger-button"
+        on:click={onDelete}
+        disabled={busy || resourceActionBusy || !selectedResourceCanDelete}
+        data-tooltip={selectedResourceCanDelete
+          ? '删除资源'
+          : '继承资源仅可查看'}>删除</button
+      >
     </div>
     <div class="detail-meta">
       <span>Schema v{selectedResource.schema_version}</span>
       <span>更新于 {formatDate(selectedResource.updated_at)}</span>
     </div>
     {#if selectedResourceHasConnector}
-      <ResourceConnectionStatus check={connectionCheck} {busy} {connectionBusy} {capabilityName} onTest={onTestConnection} />
+      <ResourceConnectionStatus
+        check={connectionCheck}
+        {busy}
+        {connectionBusy}
+        {capabilityName}
+        onTest={onTestConnection}
+      />
     {/if}
     <form class="stack-form editor-form" on:submit|preventDefault={onUpdate}>
-      <ResourceBasicEditFields resource={selectedResource} bind:name={editResourceName} bind:labels={editResourceLabels} {scopeName} />
-        {#if selectedResource.kind === 'MCPServer'}
-          <div class="mcp-resource-form editor-mcp-form">
-            <McpConnectionFields bind:url={mcpURL} bind:token={mcpToken} bind:requestHeaders={mcpRequestHeaders} bind:toolAllowlist={mcpToolAllowlist} bind:timeoutSeconds={mcpTimeoutSeconds} bind:maxResponseBytes={mcpMaxResponseBytes} bind:tlsCA={mcpTLSCA} bind:tlsCert={mcpTLSCert} bind:tlsKey={mcpTLSKey} bind:skipTLSVerify={mcpTLSSkipVerify} tokenPlaceholder="留空保持原资源密文" />
-          </div>
-        {:else}
-          <ResourceSchemaFields schema={selectedSchema} bind:values={resourceConfigValues} bind:sensitiveValues={editResourceSensitiveValues} bind:rawConfig={editResourceConfig} bind:timeoutSeconds={genericTimeoutSeconds} showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)} editMode credentialConfigured={Boolean(selectedResource.credential_configured)} isRequired={resourceSchemaFieldRequired} />
-        {/if}
-      <button class="secondary" disabled={busy || !selectedResourceCanUpdate} data-tooltip={selectedResourceCanUpdate ? '保存资源修改' : '继承资源仅可查看'}>保存</button>
+      <ResourceBasicEditFields
+        resource={selectedResource}
+        bind:name={editResourceName}
+        bind:labels={editResourceLabels}
+        {scopeName}
+      />
+      {#if selectedResource.kind === 'MCPServer'}
+        <div class="mcp-resource-form editor-mcp-form">
+          <McpConnectionFields
+            bind:url={mcpURL}
+            bind:token={mcpToken}
+            bind:requestHeaders={mcpRequestHeaders}
+            bind:toolAllowlist={mcpToolAllowlist}
+            bind:timeoutSeconds={mcpTimeoutSeconds}
+            bind:maxResponseBytes={mcpMaxResponseBytes}
+            bind:tlsCA={mcpTLSCA}
+            bind:tlsCert={mcpTLSCert}
+            bind:tlsKey={mcpTLSKey}
+            bind:skipTLSVerify={mcpTLSSkipVerify}
+            tokenPlaceholder="留空保持原资源密文"
+          />
+        </div>
+      {:else}
+        <ResourceSchemaFields
+          schema={selectedSchema}
+          bind:values={resourceConfigValues}
+          bind:sensitiveValues={editResourceSensitiveValues}
+          bind:rawConfig={editResourceConfig}
+          bind:timeoutSeconds={genericTimeoutSeconds}
+          showTimeout={resourceSupportsEndpointTimeout(selectedResource.kind)}
+          editMode
+          credentialConfigured={Boolean(selectedResource.credential_configured)}
+          isRequired={resourceSchemaFieldRequired}
+        />
+      {/if}
+      <button
+        class="secondary"
+        disabled={busy || !selectedResourceCanUpdate}
+        data-tooltip={selectedResourceCanUpdate
+          ? '保存资源修改'
+          : '继承资源仅可查看'}>保存</button
+      >
     </form>
-    <ResourceConfigPreview resource={selectedResource} schema={selectedSchema} />
-    <ResourceRelationsSection resource={selectedResource} {resources} {relations} {topology} bind:target={relationTarget} bind:relationType {busy} {relationBusy} onCreate={onCreateRelation} onDelete={onDeleteRelation} />
+    <ResourceConfigPreview
+      resource={selectedResource}
+      schema={selectedSchema}
+    />
+    <ResourceRelationsSection
+      resource={selectedResource}
+      {resources}
+      {relations}
+      {topology}
+      bind:target={relationTarget}
+      bind:relationType
+      {busy}
+      {relationBusy}
+      onCreate={onCreateRelation}
+      onDelete={onDeleteRelation}
+    />
   </section>
 {:else}
   <section class="panel empty-detail">
-    <EmptyState className="empty-state" title="选择一个资源" description="从左侧目录选择资源查看作用域、配置和关系。"><span slot="icon" class="empty-icon">◇</span></EmptyState>
+    <EmptyState
+      className="empty-state"
+      title="选择一个资源"
+      description="从左侧目录选择资源查看作用域、配置和关系。"
+      ><span slot="icon" class="empty-icon">◇</span></EmptyState
+    >
   </section>
 {/if}

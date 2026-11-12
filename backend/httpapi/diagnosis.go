@@ -49,12 +49,17 @@ type diagnosisShareUpdater interface {
 	SetScopeShared(context.Context, string, bool) (diagnosis.Session, error)
 }
 
+type diagnosisCollaborationUpdater interface {
+	SetCollaboration(context.Context, string, int) (diagnosis.Session, error)
+}
+
 type diagnosisHandler struct {
 	service diagnosisService
 	auditor audit.Logger
 }
 
 type startDiagnosisRequest struct {
+	Collaboration     int                    `json:"collaboration,omitempty"`
 	ScopeID           string                 `json:"scope_id"`
 	ApplicationID     string                 `json:"application_id,omitempty"`
 	ApplicationIDs    []string               `json:"application_ids,omitempty"`
@@ -107,7 +112,29 @@ func registerDiagnosisRoutes(router chi.Router, service diagnosisService, audito
 		router.With(guard(authorization.DiagnosisStart)).Delete("/", h.delete)
 		router.With(guard(authorization.DiagnosisStart)).Patch("/sharing", h.setSharing)
 		router.With(guard(authorization.DiagnosisRead)).Get("/events", h.events)
+		router.With(guard(authorization.DiagnosisStart)).Patch("/collaboration", h.setCollaboration)
 	})
+}
+
+func (h diagnosisHandler) setCollaboration(w http.ResponseWriter, r *http.Request) {
+	updater, ok := h.service.(diagnosisCollaborationUpdater)
+	if !ok {
+		writeError(w, r, http.StatusNotImplemented, "collaboration_unavailable", "Diagnosis collaboration is unavailable")
+		return
+	}
+	var body struct {
+		Collaboration int `json:"collaboration"`
+	}
+	if !decodeRequest(w, r, &body) {
+		return
+	}
+	item, err := updater.SetCollaboration(r.Context(), chi.URLParam(r, "sessionID"), body.Collaboration)
+	if err != nil {
+		writeDiagnosisError(w, r, err)
+		return
+	}
+	h.record(r, "diagnosis.collaboration.update", "diagnosis_session", item.ID, item.ScopeID)
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (h diagnosisHandler) setSharing(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +187,7 @@ func (h diagnosisHandler) start(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequest(w, r, &body) {
 		return
 	}
-	item, err := h.service.Start(r.Context(), diagnosis.StartInput{ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ApplicationIDs: body.ApplicationIDs, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments, ScopeShared: body.ScopeShared})
+	item, err := h.service.Start(r.Context(), diagnosis.StartInput{Collaboration: body.Collaboration, ScopeID: body.ScopeID, ApplicationID: body.ApplicationID, ApplicationIDs: body.ApplicationIDs, ActorUserID: currentUser(r).ID, Title: body.Title, Question: body.Question, TargetResourceIDs: body.TargetResourceIDs, ProviderID: body.ProviderID, ModelName: body.ModelName, SkillID: body.SkillID, PersonaID: body.PersonaID, Links: body.Links, Attachments: body.Attachments, ScopeShared: body.ScopeShared})
 	if err != nil {
 		writeDiagnosisError(w, r, err)
 		return

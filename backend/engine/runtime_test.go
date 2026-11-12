@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 )
@@ -44,6 +43,37 @@ func TestRuntimeSharesExecutionBudgetsWithNestedRuns(t *testing.T) {
 	if got := rootBudget.tokens.Load(); got != 17 {
 		t.Fatalf("shared tokens = %d, want 17", got)
 	}
+}
+
+func TestRuntimeBoundsConcurrentExecutionsAndHonorsQueueCancellation(t *testing.T) {
+	started := make(chan struct{}, maxConcurrentExecutions)
+	release := make(chan struct{})
+	runtime := New(fakeRunner{run: func(ctx context.Context, _ Request) (Result, error) {
+		started <- struct{}{}
+		select {
+		case <-release:
+			return Result{Status: StatusSucceeded}, nil
+		case <-ctx.Done():
+			return Result{Status: StatusCancelled}, ctx.Err()
+		}
+	}})
+	for i := 0; i < maxConcurrentExecutions; i++ {
+		go func() { _, _ = runtime.Execute(context.Background(), Request{ScopeID: "scope", Task: "wait"}) }()
+	}
+	for i := 0; i < maxConcurrentExecutions; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("execution failed to acquire a concurrency slot")
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	result, err := runtime.Execute(ctx, Request{ScopeID: "scope", Task: "queued"})
+	if err == nil || result.ErrorCode != "execution_queue_timeout" && result.ErrorCode != "timeout" {
+		t.Fatalf("queued execution result=%+v err=%v, expected bounded wait cancellation", result, err)
+	}
+	close(release)
 }
 
 type fakePlanResolver struct{ calls int }
@@ -315,7 +345,7 @@ func TestRuntimeResolvesPersonaBeforeRunner(t *testing.T) {
 	}
 }
 
-func TestManagerDelegatesOnlyMatchingSelectedResourcesToWorker(t *testing.T) {
+func TestManagerKeepsSerialToolsAndDoesNotCreateSubagents(t *testing.T) {
 	manager := Persona{PersonaID: "manager", ScopeID: "scope-1", Name: "Operations Lead", Enabled: true, Role: "manager", WorkerPersonaIDs: []string{"postgres-worker"}}
 	worker := Persona{PersonaID: "postgres-worker", ScopeID: "scope-1", Name: "PostgreSQL Expert", Enabled: true, Role: "worker", Domain: "postgresql", Instruction: "Inspect PostgreSQL."}
 	var lastContextRequest ContextRequest
@@ -329,24 +359,9 @@ func TestManagerDelegatesOnlyMatchingSelectedResourcesToWorker(t *testing.T) {
 		{ResourceID: "db-1", Kind: "postgres"},
 		{ResourceID: "cache-1", Kind: "redis"},
 	}}}
-	var workerRequest Request
 	runtime := NewWithContext(fakeRunner{run: func(ctx context.Context, request Request) (Result, error) {
-		if request.PersonaID == worker.PersonaID {
-			workerRequest = request
-			return Result{Output: "database report", Status: StatusSucceeded}, nil
-		}
-		if len(request.Context.ResourceIDs) != 0 || len(request.ResolvedContext.Resources) != 0 || len(request.ResolvedContext.Tools) != 0 || !strings.Contains(request.Instruction, "职能专家约束") {
-			t.Fatalf("manager received raw resources or missed its role contract: %+v", request)
-		}
-		if len(request.InternalTools) != 1 {
-			t.Fatalf("manager got %d internal tools, want one matching worker", len(request.InternalTools))
-		}
-		output, err := request.InternalTools[0].Invoke(ctx, map[string]any{"question": "check database availability"})
-		if err != nil {
-			t.Fatalf("invoke delegation: %v", err)
-		}
-		if output.Output == nil {
-			t.Fatal("delegation returned no worker report")
+		if len(request.Context.ResourceIDs) != 2 || len(request.ResolvedContext.Tools) != 2 || len(request.InternalTools) != 0 {
+			t.Fatalf("manager must retain serial tools without automatic delegation: %+v", request)
 		}
 		return Result{Output: "summary", Status: StatusSucceeded}, nil
 	}}, contextResolver, nil).WithPersonaResolver(personaMapResolver{profiles: map[string]Persona{
@@ -360,17 +375,8 @@ func TestManagerDelegatesOnlyMatchingSelectedResourcesToWorker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("manager execution: %v", err)
 	}
-	if workerRequest.PersonaID != worker.PersonaID || workerRequest.Task != "check database availability" {
-		t.Fatalf("worker request did not use configured Persona/task: %+v", workerRequest)
-	}
-	if len(workerRequest.Context.ResourceIDs) != 1 || workerRequest.Context.ResourceIDs[0] != "db-1" {
-		t.Fatalf("worker received resources outside its domain: %+v", workerRequest.Context.ResourceIDs)
-	}
-	if len(workerRequest.ResolvedContext.Resources) != 1 || len(workerRequest.ResolvedContext.Tools) != 1 || workerRequest.ResolvedContext.Tools[0].ResourceID != "db-1" || len(workerRequest.ResolvedContext.Facts) != 1 {
-		t.Fatalf("worker received non-domain context: %+v", workerRequest.ResolvedContext)
-	}
-	if !lastContextRequest.RestrictKinds || len(lastContextRequest.AllowedKinds) != 1 || lastContextRequest.AllowedKinds[0] != "postgresql" {
-		t.Fatalf("worker domain was not applied before resource providers: %+v", lastContextRequest)
+	if lastContextRequest.MetadataOnly {
+		t.Fatal("manager was forced into delegation-only mode")
 	}
 }
 

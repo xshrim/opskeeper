@@ -14,7 +14,14 @@
 
   type DiagnosisEvidenceTimelineItem = {
     id: string;
-    kind: 'turn' | 'analysis' | 'observation' | 'phase' | 'tool-group' | 'tool' | 'status';
+    kind:
+      | 'turn'
+      | 'analysis'
+      | 'observation'
+      | 'phase'
+      | 'tool-group'
+      | 'tool'
+      | 'status';
     title: string;
     detail?: string;
     status?: string;
@@ -41,18 +48,34 @@
   export let scopeType: (id: string) => string;
   export let applicationProjectName: (application: Application) => string;
   export let applicationScopeType: (application: Application) => string;
-  export let diagnosisActiveCausalChain: (snapshot: DiagnosisSnapshot | null) => DiagnosisCausalChain | null;
-  export let diagnosisCausalNodes: (chain: DiagnosisCausalChain) => DiagnosisCausalChain['nodes'];
-  export let diagnosisCausalEvidenceIDs: (chain: DiagnosisCausalChain, nodeID: string) => string[];
+  export let diagnosisActiveCausalChain: (
+    snapshot: DiagnosisSnapshot | null
+  ) => DiagnosisCausalChain | null;
+  export let diagnosisCausalNodes: (
+    chain: DiagnosisCausalChain
+  ) => DiagnosisCausalChain['nodes'];
+  export let diagnosisCausalEvidenceIDs: (
+    chain: DiagnosisCausalChain,
+    nodeID: string
+  ) => string[];
   export let scrollToDiagnosisEvidence: (id: string) => void;
-  export let diagnosisEvidenceTimeline: (snapshot: DiagnosisSnapshot | null) => DiagnosisEvidenceTimelineItem[];
-  export let diagnosisEvidenceSourceTools: (snapshot: DiagnosisSnapshot, evidence: DiagnosisEvidence) => string[];
+  export let diagnosisEvidenceTimeline: (
+    snapshot: DiagnosisSnapshot | null
+  ) => DiagnosisEvidenceTimelineItem[];
+  export let diagnosisEvidenceSourceTools: (
+    snapshot: DiagnosisSnapshot,
+    evidence: DiagnosisEvidence
+  ) => string[];
   export let diagnosisEvidenceSummary: (evidence: DiagnosisEvidence) => string;
   export let diagnosisResourceName: (resourceID?: string) => string;
   export let formatDate: (value: string) => string;
 
   function visibleResourceCount(application: Application) {
-    const ids = new Set([...application.instances, ...application.dependencies].map((item) => item.target_resource_id));
+    const ids = new Set(
+      [...application.instances, ...application.dependencies].map(
+        (item) => item.target_resource_id
+      )
+    );
     return diagnosisTargets.filter((resource) => ids.has(resource.id)).length;
   }
 
@@ -65,46 +88,115 @@
   <div class="diagnosis-panel-top">
     <div>
       <h2>诊断工作台</h2>
-      <small>{diagnosisApplicationIds.length} 个应用 · {diagnosisTargetIds.length} 个资源已选</small>
+      <small
+        >{diagnosisApplicationIds.length} 个应用 · {diagnosisTargetIds.length} 个资源已选</small
+      >
     </div>
   </div>
-  <Tabs className="diagnosis-context-tabs" value={diagnosisContextTab} ariaLabel="诊断面板" items={[{ value: 'context', label: '上下文' }, { value: 'evidence', label: '证据链' }]} onChange={(value) => (diagnosisContextTab = value as 'context' | 'evidence')} />
+  <Tabs
+    className="diagnosis-context-tabs"
+    value={diagnosisContextTab}
+    ariaLabel="诊断面板"
+    items={[
+      { value: 'context', label: '上下文' },
+      { value: 'evidence', label: '证据链' }
+    ]}
+    onChange={(value) =>
+      (diagnosisContextTab = value as 'context' | 'evidence')}
+  />
   {#if diagnosisContextTab === 'context'}
     <div class="diagnosis-context-budget" aria-label="上下文窗口使用量">
-      <div class="diagnosis-context-budget-head"><strong>上下文窗口</strong><span>{contextUsage.used.toLocaleString()} / {contextUsage.total.toLocaleString()} Token</span></div>
-      <div class="diagnosis-context-budget-track"><span style={`width: ${contextUsage.total ? Math.min(100, contextUsage.used / contextUsage.total * 100) : 0}%`}></span></div>
+      <div class="diagnosis-context-budget-head">
+        <strong>上下文窗口</strong><span
+          >{contextUsage.used.toLocaleString()} / {contextUsage.total.toLocaleString()}
+          Token</span
+        >
+      </div>
+      <div class="diagnosis-context-budget-track">
+        <span
+          style={`width: ${contextUsage.total ? Math.min(100, (contextUsage.used / contextUsage.total) * 100) : 0}%`}
+        ></span>
+      </div>
     </div>
     <section class="diagnosis-context-section">
-      <div class="diagnosis-context-section-title"><strong>应用</strong><small>{diagnosisApplicationIds.length} 已选</small></div>
-      <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选应用">
+      <div class="diagnosis-context-section-title">
+        <strong>应用</strong><small>{diagnosisApplicationIds.length} 已选</small
+        >
+      </div>
+      <SelectableList
+        className="diagnosis-resource-list-f"
+        ariaLabel="可选应用"
+      >
         {#each diagnosisApplications as application}
-            <label class:selected={diagnosisApplicationIds.includes(application.id)}>
-            <span class="diagnosis-resource-icon"><EntityBrandIcon kind="Application" fallback={application.icon || 'lucide:AppWindow'} size={16} /></span><span><span class="diagnosis-resource-title"><strong>{application.name}</strong><ScopeLevelBadge type={applicationScopeType(application) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(applicationScopeType(application))} /></span><small>{applicationProjectName(application)} · {visibleResourceCount(application)} 个可用关联资源</small></span>
-            <input type="checkbox" checked={diagnosisApplicationIds.includes(application.id)} on:change={() => toggleDiagnosisApplication(application)} />
+          <label
+            class:selected={diagnosisApplicationIds.includes(application.id)}
+          >
+            <span class="diagnosis-resource-icon"
+              ><EntityBrandIcon
+                kind="Application"
+                fallback={application.icon || 'lucide:AppWindow'}
+                size={16}
+              /></span
+            ><span
+              ><span class="diagnosis-resource-title"
+                ><strong>{application.name}</strong><ScopeLevelBadge
+                  type={applicationScopeType(application) as
+                    'platform' | 'team' | 'project'}
+                  label={scopeLevelLabel(applicationScopeType(application))}
+                /></span
+              ><small
+                >{applicationProjectName(application)} · {visibleResourceCount(
+                  application
+                )} 个可用关联资源</small
+              ></span
+            >
+            <input
+              type="checkbox"
+              checked={diagnosisApplicationIds.includes(application.id)}
+              on:change={() => toggleDiagnosisApplication(application)}
+            />
           </label>
-        {:else}<p class="diagnosis-empty">当前项目没有可用于诊断的应用。</p>{/each}
+        {:else}<p class="diagnosis-empty">
+            当前项目没有可用于诊断的应用。
+          </p>{/each}
       </SelectableList>
     </section>
     <section class="diagnosis-context-section">
-      <div class="diagnosis-context-section-title"><strong>资源</strong><small>{diagnosisTargetIds.length} 已选</small></div>
-      <SelectableList className="diagnosis-resource-list-f" ariaLabel="可选资源">
-      {#each diagnosisTargets as resource}
-        <label
-          class:selected={diagnosisTargetIds.includes(resource.id)}
-          ><span class="diagnosis-resource-icon"><ResourceBrandIcon resource={resource} fallback={resourceIcon(resource.kind)} /></span
-          ><span
-            ><span class="diagnosis-resource-title"><strong>{resource.name}</strong><ScopeLevelBadge type={scopeType(resource.scope_id) as 'platform' | 'team' | 'project'} label={scopeLevelLabel(scopeType(resource.scope_id))} /></span><small
-              >{resourceSchemaName(resource.kind)} · {scopeName(resource.scope_id)}</small
-            ></span
-          ><input
-            type="checkbox"
-            checked={diagnosisTargetIds.includes(resource.id)}
-            on:change={() => toggleDiagnosisContext(resource.id)}
-          /></label
-        >
-      {:else}
-        <p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>
-      {/each}
+      <div class="diagnosis-context-section-title">
+        <strong>资源</strong><small>{diagnosisTargetIds.length} 已选</small>
+      </div>
+      <SelectableList
+        className="diagnosis-resource-list-f"
+        ariaLabel="可选资源"
+      >
+        {#each diagnosisTargets as resource}
+          <label class:selected={diagnosisTargetIds.includes(resource.id)}
+            ><span class="diagnosis-resource-icon"
+              ><ResourceBrandIcon
+                {resource}
+                fallback={resourceIcon(resource.kind)}
+              /></span
+            ><span
+              ><span class="diagnosis-resource-title"
+                ><strong>{resource.name}</strong><ScopeLevelBadge
+                  type={scopeType(resource.scope_id) as
+                    'platform' | 'team' | 'project'}
+                  label={scopeLevelLabel(scopeType(resource.scope_id))}
+                /></span
+              ><small
+                >{resourceSchemaName(resource.kind)} · {scopeName(
+                  resource.scope_id
+                )}</small
+              ></span
+            ><input
+              type="checkbox"
+              checked={diagnosisTargetIds.includes(resource.id)}
+              on:change={() => toggleDiagnosisContext(resource.id)}
+            /></label
+          >
+        {:else}
+          <p class="diagnosis-empty">当前作用域没有可用于诊断的活动资源。</p>
+        {/each}
       </SelectableList>
     </section>
   {:else}
@@ -113,52 +205,112 @@
         <div class="diagnosis-evidence-section-title">
           <span>精选因果证据链</span>
           {#if diagnosisActiveCausalChain(diagnosisSnapshot)}
-            <small>当前结论 · 第 {diagnosisActiveCausalChain(diagnosisSnapshot)?.version} 轮</small>
+            <small
+              >当前结论 · 第 {diagnosisActiveCausalChain(diagnosisSnapshot)
+                ?.version} 轮</small
+            >
           {/if}
         </div>
         {#if diagnosisActiveCausalChain(diagnosisSnapshot)}
-          <p class="diagnosis-causal-summary">{diagnosisActiveCausalChain(diagnosisSnapshot)?.summary}</p>
+          <p class="diagnosis-causal-summary">
+            {diagnosisActiveCausalChain(diagnosisSnapshot)?.summary}
+          </p>
           <div class="diagnosis-causal-path">
             {#each diagnosisCausalNodes(diagnosisActiveCausalChain(diagnosisSnapshot)!) as node, index (node.id)}
-              {#if index > 0}<span class="diagnosis-causal-arrow" aria-hidden="true">↓</span>{/if}
-              {@const evidenceIDs = diagnosisCausalEvidenceIDs(diagnosisActiveCausalChain(diagnosisSnapshot)!, node.id)}
-              <article class="diagnosis-causal-node {node.kind}" class:unverified={node.status === 'unverified'}>
+              {#if index > 0}<span
+                  class="diagnosis-causal-arrow"
+                  aria-hidden="true">↓</span
+                >{/if}
+              {@const evidenceIDs = diagnosisCausalEvidenceIDs(
+                diagnosisActiveCausalChain(diagnosisSnapshot)!,
+                node.id
+              )}
+              <article
+                class="diagnosis-causal-node {node.kind}"
+                class:unverified={node.status === 'unverified'}
+              >
                 <div>
-                  <small>{node.kind === 'cause' ? '原因' : node.kind === 'mechanism' ? '作用机制' : node.kind === 'effect' ? '结果' : node.kind === 'exclusion' ? '已排除' : '待核验'}</small>
+                  <small
+                    >{node.kind === 'cause'
+                      ? '原因'
+                      : node.kind === 'mechanism'
+                        ? '作用机制'
+                        : node.kind === 'effect'
+                          ? '结果'
+                          : node.kind === 'exclusion'
+                            ? '已排除'
+                            : '待核验'}</small
+                  >
                   <strong>{node.statement}</strong>
                 </div>
-                <span class="diagnosis-causal-status {node.status}">{node.status === 'confirmed' ? '已确认' : node.status === 'likely' ? '较可能' : node.status === 'refuted' ? '已推翻' : '待核验'}</span>
+                <span class="diagnosis-causal-status {node.status}"
+                  >{node.status === 'confirmed'
+                    ? '已确认'
+                    : node.status === 'likely'
+                      ? '较可能'
+                      : node.status === 'refuted'
+                        ? '已推翻'
+                        : '待核验'}</span
+                >
                 {#if evidenceIDs.length}
                   <div class="diagnosis-causal-references">
-                    {#each evidenceIDs as id (id)}<button type="button" on:click={() => scrollToDiagnosisEvidence(id)}>E{ id.slice(0, 8) }</button>{/each}
+                    {#each evidenceIDs as id (id)}<button
+                        type="button"
+                        on:click={() => scrollToDiagnosisEvidence(id)}
+                        >E{id.slice(0, 8)}</button
+                      >{/each}
                   </div>
                 {/if}
               </article>
             {/each}
           </div>
         {:else}
-          <p class="diagnosis-empty">完成一轮带工具证据的诊断后，这里会显示与当前结论直接相关的因果证据链。</p>
+          <p class="diagnosis-empty">
+            完成一轮带工具证据的诊断后，这里会显示与当前结论直接相关的因果证据链。
+          </p>
         {/if}
       </section>
       {#if diagnosisSnapshot?.causal_chains && diagnosisSnapshot.causal_chains.length > 1}
         <details class="diagnosis-causal-history">
-          <summary>诊断演进 <small>{diagnosisSnapshot.causal_chains.length} 个版本</small></summary>
+          <summary
+            >诊断演进 <small
+              >{diagnosisSnapshot.causal_chains.length} 个版本</small
+            ></summary
+          >
           {#each diagnosisSnapshot.causal_chains as chain (chain.id)}
-            <div class:active={chain.id === diagnosisActiveCausalChain(diagnosisSnapshot)?.id}>
-              <strong>第 {chain.version} 轮</strong><small>{chain.status === 'active' ? '当前结论' : chain.status === 'partial' ? '结论不完整' : '已被后续证据更新'}</small><p>{chain.summary}</p>
+            <div
+              class:active={chain.id ===
+                diagnosisActiveCausalChain(diagnosisSnapshot)?.id}
+            >
+              <strong>第 {chain.version} 轮</strong><small
+                >{chain.status === 'active'
+                  ? '当前结论'
+                  : chain.status === 'partial'
+                    ? '结论不完整'
+                    : '已被后续证据更新'}</small
+              >
+              <p>{chain.summary}</p>
             </div>
           {/each}
         </details>
       {/if}
       <details class="diagnosis-evidence-record">
-        <summary>完整取证记录 <small>分析观察、工具调用与环境反馈</small></summary>
+        <summary
+          >完整取证记录 <small>分析观察、工具调用与环境反馈</small></summary
+        >
         <div class="diagnosis-evidence-timeline">
           {#each diagnosisEvidenceTimeline(diagnosisSnapshot) as item (item.id)}
             {#if item.kind === 'turn'}
               <details class="diagnosis-evidence-chain">
                 <summary>
-                  <span class="diagnosis-evidence-chain-marker" aria-hidden="true"></span>
-                  <span class="diagnosis-evidence-chain-title" data-tooltip={item.title}>{item.title}</span>
+                  <span
+                    class="diagnosis-evidence-chain-marker"
+                    aria-hidden="true"
+                  ></span>
+                  <span
+                    class="diagnosis-evidence-chain-title"
+                    data-tooltip={item.title}>{item.title}</span
+                  >
                   <small>{item.detail}</small>
                   <span class="diagnosis-evidence-chevron">›</span>
                 </summary>
@@ -166,24 +318,53 @@
                   {#each item.children ?? [] as child (child.id)}
                     {#if child.kind === 'tool-group'}
                       {@const group = child}
-                      <details class="diagnosis-evidence-event tool-event tool-group">
+                      <details
+                        class="diagnosis-evidence-event tool-event tool-group"
+                      >
                         <summary>
                           <span class="diagnosis-evidence-marker tool"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{group.title}</strong><small>{group.status}{#if group.detail} · {group.detail}{/if}</small></span>
+                          <span class="diagnosis-evidence-event-main"
+                            ><strong>{group.title}</strong><small
+                              >{group.status}{#if group.detail}
+                                · {group.detail}{/if}</small
+                            ></span
+                          >
                           <span class="diagnosis-evidence-chevron">›</span>
                         </summary>
                         <div class="diagnosis-evidence-tool-group">
                           {#each group.children ?? [] as tool (tool.id)}
-                            <details class="diagnosis-evidence-event tool-event">
+                            <details
+                              class="diagnosis-evidence-event tool-event"
+                            >
                               <summary>
-                                <span class="diagnosis-evidence-marker tool"></span>
-                                <span class="diagnosis-evidence-event-main"><strong>{tool.tool ?? tool.title}</strong><small>{tool.status}{#if tool.duration} · {tool.duration}{/if}{#if tool.evidenceIds?.length} · 已生成证据 {tool.evidenceIds.length} 条{/if}</small></span>
-                                <span class="diagnosis-evidence-chevron">›</span>
+                                <span class="diagnosis-evidence-marker tool"
+                                ></span>
+                                <span class="diagnosis-evidence-event-main"
+                                  ><strong>{tool.tool ?? tool.title}</strong
+                                  ><small
+                                    >{tool.status}{#if tool.duration}
+                                      · {tool.duration}{/if}{#if tool.evidenceIds?.length}
+                                      · 已生成证据 {tool.evidenceIds.length} 条{/if}</small
+                                  ></span
+                                >
+                                <span class="diagnosis-evidence-chevron">›</span
+                                >
                               </summary>
                               <div class="diagnosis-evidence-tool-detail">
-                                {#if tool.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{tool.evidenceIds.join('、')}</small>{/if}
-                                <div><small>入参 JSON</small><pre>{tool.input ?? '暂无入参'}</pre></div>
-                                <div><small>出参 JSON</small><pre>{tool.output ?? '暂无出参'}</pre></div>
+                                {#if tool.evidenceIds?.length}<small
+                                    class="diagnosis-evidence-links"
+                                    >关联证据：{tool.evidenceIds.join(
+                                      '、'
+                                    )}</small
+                                  >{/if}
+                                <div>
+                                  <small>入参 JSON</small>
+                                  <pre>{tool.input ?? '暂无入参'}</pre>
+                                </div>
+                                <div>
+                                  <small>出参 JSON</small>
+                                  <pre>{tool.output ?? '暂无出参'}</pre>
+                                </div>
                               </div>
                             </details>
                           {/each}
@@ -193,58 +374,124 @@
                       <details class="diagnosis-evidence-event tool-event">
                         <summary>
                           <span class="diagnosis-evidence-marker tool"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{child.tool}</strong><small>{child.status}{#if child.duration} · {child.duration}{/if}{#if child.evidenceIds?.length} · 已生成证据 {child.evidenceIds.length} 条{/if}</small></span>
+                          <span class="diagnosis-evidence-event-main"
+                            ><strong>{child.tool}</strong><small
+                              >{child.status}{#if child.duration}
+                                · {child.duration}{/if}{#if child.evidenceIds?.length}
+                                · 已生成证据 {child.evidenceIds.length} 条{/if}</small
+                            ></span
+                          >
                           <span class="diagnosis-evidence-chevron">›</span>
                         </summary>
                         <div class="diagnosis-evidence-tool-detail">
-                          {#if child.evidenceIds?.length}<small class="diagnosis-evidence-links">关联证据：{child.evidenceIds.join('、')}</small>{/if}
-                          <div><small>入参 JSON</small><pre>{child.input ?? '暂无入参'}</pre></div>
-                          <div><small>出参 JSON</small><pre>{child.output ?? '暂无出参'}</pre></div>
+                          {#if child.evidenceIds?.length}<small
+                              class="diagnosis-evidence-links"
+                              >关联证据：{child.evidenceIds.join('、')}</small
+                            >{/if}
+                          <div>
+                            <small>入参 JSON</small>
+                            <pre>{child.input ?? '暂无入参'}</pre>
+                          </div>
+                          <div>
+                            <small>出参 JSON</small>
+                            <pre>{child.output ?? '暂无出参'}</pre>
+                          </div>
                         </div>
                       </details>
                     {:else if child.kind === 'observation' && child.detail}
-                      <details class="diagnosis-evidence-event tool-event observation-event">
+                      <details
+                        class="diagnosis-evidence-event tool-event observation-event"
+                      >
                         <summary>
-                          <span class="diagnosis-evidence-marker observation"></span>
-                          <span class="diagnosis-evidence-event-main"><strong>{child.title}</strong><small>环境反馈</small></span>
+                          <span class="diagnosis-evidence-marker observation"
+                          ></span>
+                          <span class="diagnosis-evidence-event-main"
+                            ><strong>{child.title}</strong><small
+                              >环境反馈</small
+                            ></span
+                          >
                           <span class="diagnosis-evidence-chevron">›</span>
                         </summary>
-                        <div class="diagnosis-evidence-tool-detail observation-detail"><pre>{child.detail}</pre></div>
+                        <div
+                          class="diagnosis-evidence-tool-detail observation-detail"
+                        >
+                          <pre>{child.detail}</pre>
+                        </div>
                       </details>
                     {:else}
                       <div class="diagnosis-evidence-event">
-                        <span class="diagnosis-evidence-marker {child.kind}"></span>
-                        <div class="diagnosis-evidence-event-main"><strong>{child.title}</strong>{#if child.detail}<p>{child.detail}</p>{/if}</div>
+                        <span class="diagnosis-evidence-marker {child.kind}"
+                        ></span>
+                        <div class="diagnosis-evidence-event-main">
+                          <strong>{child.title}</strong>{#if child.detail}<p>
+                              {child.detail}
+                            </p>{/if}
+                        </div>
                       </div>
                     {/if}
                   {/each}
                 </div>
               </details>
             {:else}
-              <p class="diagnosis-empty">开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。</p>
+              <p class="diagnosis-empty">
+                开始诊断后，模型思考、工具调用和环境观察会按时间顺序显示在这里。
+              </p>
             {/if}
           {/each}
         </div>
       </details>
       {#if diagnosisSnapshot?.evidence?.length}
         <div class="diagnosis-evidence-snapshots">
-          <div class="diagnosis-evidence-section-title"><span>证据快照（原始结果）</span><small>可由上方因果链直接引用</small><b>{diagnosisSnapshot.evidence.length} 条</b></div>
+          <div class="diagnosis-evidence-section-title">
+            <span>证据快照（原始结果）</span><small
+              >可由上方因果链直接引用</small
+            ><b>{diagnosisSnapshot.evidence.length} 条</b>
+          </div>
           {#each diagnosisSnapshot.evidence as evidence (evidence.id)}
-            {@const sourceTools = diagnosisEvidenceSourceTools(diagnosisSnapshot, evidence)}
-            <details class="diagnosis-evidence-snapshot" id={`evidence-${evidence.id}`}>
+            {@const sourceTools = diagnosisEvidenceSourceTools(
+              diagnosisSnapshot,
+              evidence
+            )}
+            <details
+              class="diagnosis-evidence-snapshot"
+              id={`evidence-${evidence.id}`}
+            >
               <summary>
-                <span class="diagnosis-evidence-snapshot-marker" aria-hidden="true"></span>
+                <span
+                  class="diagnosis-evidence-snapshot-marker"
+                  aria-hidden="true"
+                ></span>
                 <span class="diagnosis-evidence-snapshot-main">
                   <strong>Evidence {evidence.id.slice(0, 8)}</strong>
-                  <small>{evidence.capability || 'Connector 只读结果'} · {diagnosisResourceName(evidence.source_resource_id ?? evidence.target_resource_id)} · {formatDate(evidence.collected_at)} · {evidence.partial ? '部分结果' : '完整结果'}{#if evidence.untrusted} · 外部结果，需核验{/if}</small>
+                  <small
+                    >{evidence.capability || 'Connector 只读结果'} · {diagnosisResourceName(
+                      evidence.source_resource_id ?? evidence.target_resource_id
+                    )} · {formatDate(evidence.collected_at)} · {evidence.partial
+                      ? '部分结果'
+                      : '完整结果'}{#if evidence.untrusted}
+                      · 外部结果，需核验{/if}</small
+                  >
                 </span>
                 <span class="diagnosis-evidence-chevron">›</span>
               </summary>
               <div class="diagnosis-evidence-snapshot-detail">
                 <p>{diagnosisEvidenceSummary(evidence)}</p>
-                {#if evidence.window_start || evidence.window_end}<small class="diagnosis-evidence-window">时间窗口：{evidence.window_start ? formatDate(evidence.window_start) : '—'} 至 {evidence.window_end ? formatDate(evidence.window_end) : '—'}</small>{/if}
-                <small class="diagnosis-evidence-source">来源工具：{sourceTools.length ? sourceTools.join('、') : '未关联具体调用'}</small>
-                <small class="diagnosis-evidence-id">Evidence ID：{evidence.id}</small>
+                {#if evidence.window_start || evidence.window_end}<small
+                    class="diagnosis-evidence-window"
+                    >时间窗口：{evidence.window_start
+                      ? formatDate(evidence.window_start)
+                      : '—'} 至 {evidence.window_end
+                      ? formatDate(evidence.window_end)
+                      : '—'}</small
+                  >{/if}
+                <small class="diagnosis-evidence-source"
+                  >来源工具：{sourceTools.length
+                    ? sourceTools.join('、')
+                    : '未关联具体调用'}</small
+                >
+                <small class="diagnosis-evidence-id"
+                  >Evidence ID：{evidence.id}</small
+                >
                 <pre>{JSON.stringify(evidence.content, null, 2)}</pre>
               </div>
             </details>

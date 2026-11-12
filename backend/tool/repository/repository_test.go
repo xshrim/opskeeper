@@ -68,6 +68,36 @@ func TestRepositoryReadTools(t *testing.T) {
 	}
 }
 
+func TestRepositorySearchSupportsExtendedRegularExpressionsAndIgnoreCase(t *testing.T) {
+	d := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", d}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, output)
+		}
+	}
+	run("init")
+	if err := os.WriteFile(filepath.Join(d, "main.go"), []byte("func StartServer() {}\nfunc stopServer() {}\nconst ignored = 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", ".")
+	run("commit", "-m", "initial")
+
+	page, err := SearchPageWithOptionsAt(context.Background(), ConnectionInput{Path: d}, SearchOptions{
+		Pattern: `func (Start|stop)Server`, Limit: 10, RegularExpression: true, IgnoreCase: true,
+	})
+	if err != nil || len(page.Items) != 2 || !page.Done || !page.Complete {
+		t.Fatalf("regex search page=%+v err=%v; want two complete matches", page, err)
+	}
+	if page.Items[0]["line"] != 1 || page.Items[1]["line"] != 2 {
+		t.Fatalf("regex matches=%v; want lines 1 and 2", page.Items)
+	}
+	if _, err := SearchPageWithOptionsAt(context.Background(), ConnectionInput{Path: d}, SearchOptions{Pattern: "[", RegularExpression: true}); err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid regular expression") {
+		t.Fatalf("invalid regex error=%v; want Git's actionable syntax error", err)
+	}
+}
+
 func TestRepositoryTreeAllReturnsMoreThanPreviewToolLimit(t *testing.T) {
 	d := t.TempDir()
 	git := func(args ...string) {
@@ -93,6 +123,10 @@ func TestRepositoryTreeAllReturnsMoreThanPreviewToolLimit(t *testing.T) {
 	entries, err := TreeAll(context.Background(), ConnectionInput{Path: d}, "")
 	if err != nil || len(entries) != 205 {
 		t.Fatalf("TreeAll returned %d files, err=%v; want 205", len(entries), err)
+	}
+	defaultPage, err := TreePageAt(context.Background(), ConnectionInput{Path: d}, "", 0, 0, "")
+	if err != nil || len(defaultPage.Items) != 205 || defaultPage.Total != 205 || !defaultPage.Done {
+		t.Fatalf("default tree page=%+v err=%v; want all 205 entries in one page", defaultPage, err)
 	}
 	page, err := TreePageAt(context.Background(), ConnectionInput{Path: d}, "", 0, 100, "")
 	if err != nil || len(page.Items) != 100 || page.Total != 205 || page.Done || page.NextOffset != 100 {
@@ -293,11 +327,11 @@ func TestPreparePinsOneRepositorySnapshot(t *testing.T) {
 }
 
 func TestConfiguredBundleStorageUsesProcessEnvironment(t *testing.T) {
-	t.Setenv("OPSK_REPOSITORY_STORAGE_BACKEND", "local")
+	t.Setenv("OPSK_STORAGE_BACKEND", "local")
 	t.Setenv("OPSK_REPOSITORY_LOCAL_ROOT", t.TempDir())
-	t.Setenv("OPSK_REPOSITORY_S3_ENDPOINT", "https://storage.example.com")
-	t.Setenv("OPSK_REPOSITORY_S3_BUCKET", "opskeeper")
-	t.Setenv("OPSK_REPOSITORY_S3_PREFIX", "bundles")
+	t.Setenv("OPSK_STORAGE_S3_ENDPOINT", "https://storage.example.com")
+	t.Setenv("OPSK_STORAGE_S3_BUCKET", "opskeeper")
+	t.Setenv("OPSK_STORAGE_S3_PREFIX", "bundles")
 
 	bundle := configuredBundleStorage(ConnectionInput{
 		Path:           "/resource-selected-path",

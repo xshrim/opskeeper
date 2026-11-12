@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+POSTGRES_USER=${POSTGRES_USER:-postgres}
+POSTGRES_DB=${POSTGRES_DB:-$POSTGRES_USER}
+OPSK_DB_NAME=${OPSK_DB_NAME:-opskeeper}
+OPSK_DB_USER=${OPSK_DB_USER:-opskeeper}
+
 pg_isready --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" >/dev/null
 
 admin_count="$(

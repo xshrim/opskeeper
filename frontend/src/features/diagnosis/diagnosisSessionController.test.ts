@@ -31,11 +31,23 @@ class ControllerEventSource {
   }
 }
 
-function message(id: string, role: DiagnosisMessage['role'], content: string): DiagnosisMessage {
-  return { id, session_id: 'session-1', role, content, created_at: `2026-01-01T00:00:${id.slice(-1).padStart(2, '0')}Z` };
+function message(
+  id: string,
+  role: DiagnosisMessage['role'],
+  content: string
+): DiagnosisMessage {
+  return {
+    id,
+    session_id: 'session-1',
+    role,
+    content,
+    created_at: `2026-01-01T00:00:${id.slice(-1).padStart(2, '0')}Z`
+  };
 }
 
-function snapshot(overrides: Partial<DiagnosisSnapshot> = {}): DiagnosisSnapshot {
+function snapshot(
+  overrides: Partial<DiagnosisSnapshot> = {}
+): DiagnosisSnapshot {
   return {
     session: {
       id: 'session-1',
@@ -77,6 +89,7 @@ function createHarness(remote: DiagnosisSnapshot) {
     diagnosisEventsURL: vi.fn(() => '/events'),
     cancelDiagnosis: vi.fn(async () => {}),
     startDiagnosis: vi.fn(),
+    setDiagnosisCollaboration: vi.fn(),
     askDiagnosis: vi.fn(),
     addDiagnosisTarget: vi.fn(),
     deleteDiagnosis: vi.fn()
@@ -99,9 +112,16 @@ function createHarness(remote: DiagnosisSnapshot) {
     updateSession: (value) => updatedSessions.push(value),
     onError: vi.fn(),
     formatError: (error) => String(error),
-    isDiagnosisRunning: (status) => ['queued', 'planning', 'collecting', 'analyzing'].includes(status)
+    isDiagnosisRunning: (status) =>
+      ['queued', 'planning', 'collecting', 'analyzing'].includes(status)
   });
-  return { controller, api, getSnapshot: () => current, getStreamState: () => streamState, updatedSessions };
+  return {
+    controller,
+    api,
+    getSnapshot: () => current,
+    getStreamState: () => streamState,
+    updatedSessions
+  };
 }
 
 describe('diagnosis session controller lifecycle', () => {
@@ -114,19 +134,53 @@ describe('diagnosis session controller lifecycle', () => {
     vi.stubGlobal('EventSource', ControllerEventSource);
     const remote = snapshot({
       session: { ...snapshot().session, status: 'analyzing' },
-      messages: [message('q1', 'user', '检查状态'), message('a1', 'assistant', '已完成')],
-      runs: [{ id: 'run-1', session_id: 'session-1', sequence: 1, question_message_id: 'q1', status: 'succeeded', started_at: '' }],
+      messages: [
+        message('q1', 'user', '检查状态'),
+        message('a1', 'assistant', '已完成')
+      ],
+      runs: [
+        {
+          id: 'run-1',
+          session_id: 'session-1',
+          sequence: 1,
+          question_message_id: 'q1',
+          status: 'succeeded',
+          started_at: ''
+        }
+      ],
       events: [
-        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '' },
-        { id: 2, session_id: 'session-1', type: 'assistant.completed', payload: { text: '已完成' }, created_at: '' },
-        { id: 3, session_id: 'session-1', type: 'report.ready', payload: {}, created_at: '' }
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: ''
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'assistant.completed',
+          payload: { text: '已完成' },
+          created_at: ''
+        },
+        {
+          id: 3,
+          session_id: 'session-1',
+          type: 'report.ready',
+          payload: {},
+          created_at: ''
+        }
       ]
     });
     const harness = createHarness(remote);
-    harness.controller.syncCursor(snapshot({ events: remote.events?.slice(0, 1) }));
+    harness.controller.syncCursor(
+      snapshot({ events: remote.events?.slice(0, 1) })
+    );
     harness.controller.open('session-1');
     ControllerEventSource.current?.emit('report.ready', 3, {});
-    await vi.waitFor(() => expect(harness.getStreamState().generating).toBe(false));
+    await vi.waitFor(() =>
+      expect(harness.getStreamState().generating).toBe(false)
+    );
     expect(harness.getSnapshot().session.status).toBe('succeeded');
     expect(harness.updatedSessions.at(-1)?.status).toBe('succeeded');
     expect(ControllerEventSource.current?.close).toHaveBeenCalled();
@@ -136,11 +190,36 @@ describe('diagnosis session controller lifecycle', () => {
     vi.stubGlobal('EventSource', ControllerEventSource);
     const remote = snapshot({
       session: { ...snapshot().session, status: 'queued' },
-      messages: [message('q1', 'user', '旧问题'), message('a1', 'assistant', '旧回答'), message('q2', 'user', '追问')],
-      runs: [{ id: 'run-1', session_id: 'session-1', sequence: 1, question_message_id: 'q1', status: 'succeeded', started_at: '' }],
+      messages: [
+        message('q1', 'user', '旧问题'),
+        message('a1', 'assistant', '旧回答'),
+        message('q2', 'user', '追问')
+      ],
+      runs: [
+        {
+          id: 'run-1',
+          session_id: 'session-1',
+          sequence: 1,
+          question_message_id: 'q1',
+          status: 'succeeded',
+          started_at: ''
+        }
+      ],
       events: [
-        { id: 1, session_id: 'session-1', type: 'execution.started', payload: {}, created_at: '' },
-        { id: 2, session_id: 'session-1', type: 'diagnosis.failed', payload: { message: '旧轮次失败' }, created_at: '' }
+        {
+          id: 1,
+          session_id: 'session-1',
+          type: 'execution.started',
+          payload: {},
+          created_at: ''
+        },
+        {
+          id: 2,
+          session_id: 'session-1',
+          type: 'diagnosis.failed',
+          payload: { message: '旧轮次失败' },
+          created_at: ''
+        }
       ]
     });
     const harness = createHarness(remote);
@@ -153,7 +232,9 @@ describe('diagnosis session controller lifecycle', () => {
     harness.controller.open('session-1');
     const firstStream = ControllerEventSource.current;
     firstStream?.emit('diagnosis.failed', 2, { message: '旧轮次失败' });
-    await vi.waitFor(() => expect(harness.getStreamState().generating).toBe(true));
+    await vi.waitFor(() =>
+      expect(harness.getStreamState().generating).toBe(true)
+    );
     expect(harness.getStreamState().interruptedReason).toBe('');
     expect(ControllerEventSource.current).not.toBe(firstStream);
   });

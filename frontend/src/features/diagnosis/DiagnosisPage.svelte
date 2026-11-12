@@ -32,10 +32,7 @@
     DiagnosisAttachment,
     Project
   } from '../../lib/api';
-  import {
-    api,
-    type DiagnosisStatus
-  } from '../../lib/api';
+  import { api, type DiagnosisStatus } from '../../lib/api';
   import { providerModelSelection } from '../../lib/workspace';
   import { renderDiagnosisMarkdown } from './diagnosisMarkdown';
   import { createDiagnosisSessionController } from './diagnosisSessionController';
@@ -121,7 +118,9 @@
   let diagnosisApplications: Application[] = [];
   let diagnosisApplicationCandidates: Application[] = [];
   let selectedApplicationResourceIDs = new Set<string>();
-	let diagnosisScopeShared = false;
+  let diagnosisScopeShared = false;
+  let diagnosisCollaboration = 2;
+  let diagnosisCollaborationExplicit = false;
   let diagnosisGenerating = false;
   export let busy = false;
   let diagnosisMessageListElement: HTMLDivElement | null = null;
@@ -196,7 +195,8 @@
     setSnapshot: (snapshot) => (diagnosisSnapshot = snapshot),
     getHiddenMessageIds: () => diagnosisHiddenMessageIds,
     getAssistantMessageBaseline: () => diagnosisStreamingAssistantBaseline,
-    setAssistantMessageBaseline: (count) => (diagnosisStreamingAssistantBaseline = count),
+    setAssistantMessageBaseline: (count) =>
+      (diagnosisStreamingAssistantBaseline = count),
     resetStreamState: resetDiagnosisStreamState,
     setSubmissionPending: (pending) => (diagnosisSubmissionPending = pending),
     getStreamState: () => ({
@@ -246,7 +246,9 @@
       targetIDs: diagnosisTargetIds,
       providerID: selectedProviderId,
       modelName: llmModelName,
-		scopeShared: diagnosisScopeShared,
+      scopeShared: diagnosisScopeShared,
+      collaboration: diagnosisCollaboration,
+      collaborationExplicit: diagnosisCollaborationExplicit,
       generating: diagnosisGenerating,
       stopRequested: diagnosisStopRequested,
       submissionPending: diagnosisSubmissionPending,
@@ -259,23 +261,37 @@
 
   function updateDiagnosisCommandState(patch: Partial<DiagnosisCommandState>) {
     if (patch.sessions !== undefined) diagnosisSessions = patch.sessions;
-    if (patch.selectedSessionID !== undefined) selectedDiagnosisId = patch.selectedSessionID;
+    if (patch.selectedSessionID !== undefined)
+      selectedDiagnosisId = patch.selectedSessionID;
     if ('snapshot' in patch) diagnosisSnapshot = patch.snapshot ?? null;
-    if (patch.composerText !== undefined) diagnosisComposerText = patch.composerText;
+    if (patch.composerText !== undefined)
+      diagnosisComposerText = patch.composerText;
     if (patch.skillID !== undefined) diagnosisComposerSkillID = patch.skillID;
-    if (patch.personaID !== undefined) diagnosisComposerPersonaID = patch.personaID;
+    if (patch.personaID !== undefined)
+      diagnosisComposerPersonaID = patch.personaID;
     if (patch.links !== undefined) diagnosisComposerLinks = patch.links;
-    if (patch.attachments !== undefined) diagnosisComposerAttachments = patch.attachments;
+    if (patch.attachments !== undefined)
+      diagnosisComposerAttachments = patch.attachments;
     if (patch.targetIDs !== undefined) diagnosisTargetIds = patch.targetIDs;
     if (patch.providerID !== undefined) selectedProviderId = patch.providerID;
     if (patch.modelName !== undefined) llmModelName = patch.modelName;
-		if (patch.scopeShared !== undefined) diagnosisScopeShared = patch.scopeShared;
+    if (patch.scopeShared !== undefined)
+      diagnosisScopeShared = patch.scopeShared;
+    if (patch.collaboration !== undefined)
+      diagnosisCollaboration = patch.collaboration;
+    if (patch.collaborationExplicit !== undefined)
+      diagnosisCollaborationExplicit = patch.collaborationExplicit;
     if (patch.generating !== undefined) diagnosisGenerating = patch.generating;
-    if (patch.stopRequested !== undefined) diagnosisStopRequested = patch.stopRequested;
-    if (patch.submissionPending !== undefined) diagnosisSubmissionPending = patch.submissionPending;
-    if (patch.interruptedReason !== undefined) diagnosisInterruptedReason = patch.interruptedReason;
-    if (patch.hiddenMessageIDs !== undefined) diagnosisHiddenMessageIds = patch.hiddenMessageIDs;
-    if (patch.editingMessageID !== undefined) diagnosisEditingMessageId = patch.editingMessageID;
+    if (patch.stopRequested !== undefined)
+      diagnosisStopRequested = patch.stopRequested;
+    if (patch.submissionPending !== undefined)
+      diagnosisSubmissionPending = patch.submissionPending;
+    if (patch.interruptedReason !== undefined)
+      diagnosisInterruptedReason = patch.interruptedReason;
+    if (patch.hiddenMessageIDs !== undefined)
+      diagnosisHiddenMessageIds = patch.hiddenMessageIDs;
+    if (patch.editingMessageID !== undefined)
+      diagnosisEditingMessageId = patch.editingMessageID;
     if (patch.editDraft !== undefined) diagnosisEditDraft = patch.editDraft;
   }
 
@@ -291,25 +307,38 @@
     confirm: (message) => window.confirm(message),
     prompt: (message, initialValue) => window.prompt(message, initialValue),
     onError,
-    setAssistantMessageBaseline: (count) => (diagnosisStreamingAssistantBaseline = count)
+    setAssistantMessageBaseline: (count) =>
+      (diagnosisStreamingAssistantBaseline = count)
   });
 
   async function loadDiagnosis() {
     if (!scopeId) return;
-	try {
-		diagnosisApplicationCandidates = (await api.diagnosisApplications(scopeId))
-			.filter((item) => item.status !== 'disabled');
-		if (applicationId && !diagnosisApplicationCandidates.some((item) => item.id === applicationId)) applicationId = '';
-	} catch (error) {
-		diagnosisApplicationCandidates = [];
-		onError(describeError(error, '可用应用加载失败'));
-	}
     try {
-      diagnosisAvailableProviders = await api.availableProviders(scopeId, 'diagnosis');
+      diagnosisApplicationCandidates = (
+        await api.diagnosisApplications(scopeId)
+      ).filter((item) => item.status !== 'disabled');
+      if (
+        applicationId &&
+        !diagnosisApplicationCandidates.some(
+          (item) => item.id === applicationId
+        )
+      )
+        applicationId = '';
+    } catch (error) {
+      diagnosisApplicationCandidates = [];
+      onError(describeError(error, '可用应用加载失败'));
+    }
+    try {
+      diagnosisAvailableProviders = await api.availableProviders(
+        scopeId,
+        'diagnosis'
+      );
       if (
         diagnosisAvailableProviders.length > 0 &&
         (!selectedProviderId ||
-          !diagnosisAvailableProviders.some((item) => item.provider_id === selectedProviderId))
+          !diagnosisAvailableProviders.some(
+            (item) => item.provider_id === selectedProviderId
+          ))
       ) {
         selectedProviderId = diagnosisAvailableProviders[0].provider_id;
         llmModelName = diagnosisAvailableProviders[0].models[0]?.name ?? '';
@@ -324,8 +353,10 @@
   async function loadDiagnosisSessions() {
     if (!scopeId) return;
     try {
-      diagnosisSessions = await diagnosisSessionController.loadSessions(scopeId);
-      if (!selectedDiagnosisId && diagnosisSessions[0]) await openDiagnosis(diagnosisSessions[0].id);
+      diagnosisSessions =
+        await diagnosisSessionController.loadSessions(scopeId);
+      if (!selectedDiagnosisId && diagnosisSessions[0])
+        await openDiagnosis(diagnosisSessions[0].id);
     } catch (error) {
       onError(describeError(error, '诊断会话历史加载失败'));
     }
@@ -342,19 +373,32 @@
       diagnosisSnapshot = await diagnosisSessionController.loadSnapshot(id);
       diagnosisSnapshot = {
         ...diagnosisSnapshot,
-        messages: diagnosisSnapshot.messages.filter((message) => !diagnosisHiddenMessageIds.includes(message.id))
+        messages: diagnosisSnapshot.messages.filter(
+          (message) => !diagnosisHiddenMessageIds.includes(message.id)
+        )
       };
-      diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter((message) => message.role === 'assistant').length;
-      diagnosisTargetIds = diagnosisSnapshot.targets.map((target) => target.resource_id);
-      diagnosisApplicationIds = diagnosisSnapshot.session.application_ids?.length
+      diagnosisStreamingAssistantBaseline = diagnosisSnapshot.messages.filter(
+        (message) => message.role === 'assistant'
+      ).length;
+      diagnosisCollaboration = diagnosisSnapshot.session.collaboration || 2;
+      diagnosisCollaborationExplicit = false;
+      diagnosisTargetIds = diagnosisSnapshot.targets.map(
+        (target) => target.resource_id
+      );
+      diagnosisApplicationIds = diagnosisSnapshot.session.application_ids
+        ?.length
         ? diagnosisSnapshot.session.application_ids
         : diagnosisSnapshot.session.application_id
           ? [diagnosisSnapshot.session.application_id]
           : [];
-      if (diagnosisSnapshot.session. provider_id) selectedProviderId = diagnosisSnapshot.session. provider_id;
-      if (diagnosisSnapshot.session.model_name) llmModelName = diagnosisSnapshot.session.model_name;
+      if (diagnosisSnapshot.session.provider_id)
+        selectedProviderId = diagnosisSnapshot.session.provider_id;
+      if (diagnosisSnapshot.session.model_name)
+        llmModelName = diagnosisSnapshot.session.model_name;
       applicationId = diagnosisSnapshot.session.application_id ?? '';
-      diagnosisGenerating = isDiagnosisRunning(diagnosisSnapshot.session.status);
+      diagnosisGenerating = isDiagnosisRunning(
+        diagnosisSnapshot.session.status
+      );
       diagnosisSessionController.syncCursor(diagnosisSnapshot);
       // Reconcile a snapshot that may already contain a terminal event while
       // its session row still reports an active phase, then subscribe for any
@@ -374,13 +418,19 @@
     diagnosisAutoScrollEnabled = true;
     diagnosisQuestionAnchorPending = true;
     try {
-      await diagnosisCommands.submitDiagnosisMessage(diagnosisComposerText, (value) => (diagnosisComposerText = value));
+      await diagnosisCommands.submitDiagnosisMessage(
+        diagnosisComposerText,
+        (value) => (diagnosisComposerText = value)
+      );
     } finally {
       diagnosisQuestionAnchorPending = false;
     }
   }
 
-  function updateDiagnosisComposer(value: string, element: HTMLTextAreaElement) {
+  function updateDiagnosisComposer(
+    value: string,
+    element: HTMLTextAreaElement
+  ) {
     diagnosisComposerText = value;
     const before = value.slice(0, element.selectionStart);
     const match = before.match(/(?:^|\s)([\/@])([^\s]*)$/);
@@ -392,26 +442,37 @@
     }
     diagnosisComposerMenu = match[1] === '/' ? 'skill' : 'persona';
     diagnosisComposerMenuSearch = match[2];
-    diagnosisComposerTokenStart = before.length - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+    diagnosisComposerTokenStart =
+      before.length - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
   }
 
-  function chooseComposerItem(kind: 'skill' | 'persona', item: SkillCatalogItem | PersonaCatalogItem) {
+  function chooseComposerItem(
+    kind: 'skill' | 'persona',
+    item: SkillCatalogItem | PersonaCatalogItem
+  ) {
     const textarea = diagnosisComposerTextarea;
     const start = diagnosisComposerTokenStart;
     if (!textarea || start < 0) return;
-    const skill = kind === 'skill' ? item as SkillCatalogItem : null;
-    const persona = kind === 'persona' ? item as PersonaCatalogItem : null;
+    const skill = kind === 'skill' ? (item as SkillCatalogItem) : null;
+    const persona = kind === 'persona' ? (item as PersonaCatalogItem) : null;
     const tokenValue = skill?.identifier ?? persona?.identifier ?? '';
     const tokenName = skill?.name ?? persona?.name ?? '';
     const token = `${kind === 'skill' ? '/' : '@'}${tokenValue}(${tokenName})`;
     const cursor = textarea.selectionStart;
-    const selectedID = kind === 'skill' ? diagnosisComposerSkillID : diagnosisComposerPersonaID;
-    const previous = kind === 'skill'
-      ? skills.find((candidate) => candidate.id === selectedID)
-      : personas.find((candidate) => candidate.id === selectedID);
-    const previousToken = kind === 'skill'
-      ? previous ? `/${(previous as SkillCatalogItem).identifier}(${(previous as SkillCatalogItem).name})` : ''
-      : previous ? `@${(previous as PersonaCatalogItem).identifier}(${(previous as PersonaCatalogItem).name})` : '';
+    const selectedID =
+      kind === 'skill' ? diagnosisComposerSkillID : diagnosisComposerPersonaID;
+    const previous =
+      kind === 'skill'
+        ? skills.find((candidate) => candidate.id === selectedID)
+        : personas.find((candidate) => candidate.id === selectedID);
+    const previousToken =
+      kind === 'skill'
+        ? previous
+          ? `/${(previous as SkillCatalogItem).identifier}(${(previous as SkillCatalogItem).name})`
+          : ''
+        : previous
+          ? `@${(previous as PersonaCatalogItem).identifier}(${(previous as PersonaCatalogItem).name})`
+          : '';
     const currentSelected = selectedID === item.id;
     let baseText = diagnosisComposerText;
     let insertion = Math.max(0, start >= 0 ? start : cursor);
@@ -446,7 +507,10 @@
     requestAnimationFrame(() => {
       if (!currentSelected) {
         textarea.focus();
-        textarea.setSelectionRange(diagnosisComposerTokenStart, diagnosisComposerTokenStart);
+        textarea.setSelectionRange(
+          diagnosisComposerTokenStart,
+          diagnosisComposerTokenStart
+        );
       }
     });
   }
@@ -466,7 +530,10 @@
     const files = Array.from(input.files ?? []);
     input.value = '';
     const accepted = /\.(txt|log|json|ya?ml|md|csv|xml|sql|toml|ini|conf)$/i;
-    const currentSize = diagnosisComposerAttachments.reduce((sum, item) => sum + item.content.length, 0);
+    const currentSize = diagnosisComposerAttachments.reduce(
+      (sum, item) => sum + item.content.length,
+      0
+    );
     if (diagnosisComposerAttachments.length + files.length > 10) {
       onError('每条诊断消息最多添加 10 个附件。');
       return;
@@ -486,13 +553,27 @@
       usedBytes += content.length;
       additions.push({ name: file.name, media_type: file.type, content });
     }
-    diagnosisComposerAttachments = [...diagnosisComposerAttachments, ...additions];
+    diagnosisComposerAttachments = [
+      ...diagnosisComposerAttachments,
+      ...additions
+    ];
   }
 
   function modelCapabilityTooltip() {
-    const labels: Record<string, string> = { text: '文本', stream: '流式', tool_calling: '工具调用', reasoning: '推理', embedding: '向量', audio: '音频', vision: '视觉', structured_output: '结构化输出' };
+    const labels: Record<string, string> = {
+      text: '文本',
+      stream: '流式',
+      tool_calling: '工具调用',
+      reasoning: '推理',
+      embedding: '向量',
+      audio: '音频',
+      vision: '视觉',
+      structured_output: '结构化输出'
+    };
     const tags: string[] = selectedDiagnosisModel?.capabilities ?? [];
-    return tags.length ? `模型能力：${tags.map((tag) => labels[tag] ?? tag).join('、')}` : '模型能力：未声明';
+    return tags.length
+      ? `模型能力：${tags.map((tag) => labels[tag] ?? tag).join('、')}`
+      : '模型能力：未声明';
   }
 
   function handleDiagnosisComposerKeydown(event: KeyboardEvent) {
@@ -513,25 +594,40 @@
     diagnosisQuestionAnchorPending = true;
     try {
       await tick();
-      if (typeof requestAnimationFrame === 'function') await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const list = diagnosisMessageListElement ?? document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
+      if (typeof requestAnimationFrame === 'function')
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve())
+        );
+      const list =
+        diagnosisMessageListElement ??
+        document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
       if (!list) return;
-      const candidates = Array.from(list.querySelectorAll<HTMLElement>('[data-diagnosis-message-id]'));
-      const target = [...candidates].reverse().find((item) =>
-        (messageID && item.dataset.diagnosisMessageId === messageID) ||
-        Boolean(content && item.dataset.diagnosisMessageContent === content)
+      const candidates = Array.from(
+        list.querySelectorAll<HTMLElement>('[data-diagnosis-message-id]')
       );
+      const target = [...candidates]
+        .reverse()
+        .find(
+          (item) =>
+            (messageID && item.dataset.diagnosisMessageId === messageID) ||
+            Boolean(content && item.dataset.diagnosisMessageContent === content)
+        );
       if (!target) return;
       list.style.removeProperty('padding-bottom');
       const listRect = list.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const targetOffset = list.clientHeight / 6;
-      const nextTop = list.scrollTop + targetRect.top - listRect.top - targetOffset;
+      const nextTop =
+        list.scrollTop + targetRect.top - listRect.top - targetOffset;
       const maxScroll = Math.max(0, list.scrollHeight - list.clientHeight);
-      if (nextTop > maxScroll) list.style.paddingBottom = `${Math.ceil(nextTop - maxScroll)}px`;
+      if (nextTop > maxScroll)
+        list.style.paddingBottom = `${Math.ceil(nextTop - maxScroll)}px`;
       const reachableMax = Math.max(0, list.scrollHeight - list.clientHeight);
       diagnosisProgrammaticScrollUntil = performance.now() + 50;
-      list.scrollTo({ top: Math.min(Math.max(0, nextTop), reachableMax), behavior: 'auto' });
+      list.scrollTo({
+        top: Math.min(Math.max(0, nextTop), reachableMax),
+        behavior: 'auto'
+      });
       diagnosisQuestionAnchorActive = true;
     } finally {
       diagnosisQuestionAnchorPending = false;
@@ -540,19 +636,33 @@
 
   async function scrollDiagnosisAnswerToBottom() {
     await tick();
-    if (typeof requestAnimationFrame === 'function') await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const list = diagnosisMessageListElement ?? document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
+    if (typeof requestAnimationFrame === 'function')
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve())
+      );
+    const list =
+      diagnosisMessageListElement ??
+      document.querySelector<HTMLDivElement>('.diagnosis-message-list-f');
     if (!list || !diagnosisGenerating || !diagnosisAutoScrollEnabled) return;
-    const streamingMessage = list.querySelector<HTMLElement>('.diagnosis-streaming-message');
+    const streamingMessage = list.querySelector<HTMLElement>(
+      '.diagnosis-streaming-message'
+    );
     if (streamingMessage) {
       const listRect = list.getBoundingClientRect();
       const answerRect = streamingMessage.getBoundingClientRect();
-      if (diagnosisQuestionAnchorActive && answerRect.bottom <= listRect.bottom + 1) return;
+      if (
+        diagnosisQuestionAnchorActive &&
+        answerRect.bottom <= listRect.bottom + 1
+      )
+        return;
       diagnosisQuestionAnchorActive = false;
       if (list.style.paddingBottom) list.style.removeProperty('padding-bottom');
     }
     diagnosisProgrammaticScrollUntil = performance.now() + 50;
-    list.scrollTo({ top: Math.max(0, list.scrollHeight - list.clientHeight), behavior: 'auto' });
+    list.scrollTo({
+      top: Math.max(0, list.scrollHeight - list.clientHeight),
+      behavior: 'auto'
+    });
   }
 
   function stopDiagnosisGeneration() {
@@ -560,13 +670,20 @@
   }
 
   function selectDiagnosisModelProvider(providerID: string) {
-    const selection = providerModelSelection(diagnosisAvailableProviders, providerID, llmModelName);
+    const selection = providerModelSelection(
+      diagnosisAvailableProviders,
+      providerID,
+      llmModelName
+    );
     selectedProviderId = selection.providerId;
     llmModelName = selection.modelName;
   }
 
   function selectDiagnosisModel(modelName: string) {
-    const provider = diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId) ?? diagnosisAvailableProviders[0];
+    const provider =
+      diagnosisAvailableProviders.find(
+        (item) => item.provider_id === selectedProviderId
+      ) ?? diagnosisAvailableProviders[0];
     if (!provider) return;
     selectedProviderId = provider.provider_id;
     llmModelName = modelName;
@@ -599,7 +716,9 @@
         .flatMap(applicationResourceIDs)
     );
     diagnosisTargetIds = selected
-      ? diagnosisTargetIds.filter((id) => remainingAssociated.has(id) || !associated.includes(id))
+      ? diagnosisTargetIds.filter(
+          (id) => remainingAssociated.has(id) || !associated.includes(id)
+        )
       : [...new Set([...diagnosisTargetIds, ...associated])];
   }
 
@@ -610,11 +729,17 @@
   }
 
   function diagnosisApplicationProjectName(application: Application) {
-    return applicationProjects.find((project) => project.id === application.project_id)?.name ?? '所属项目未知';
+    return (
+      applicationProjects.find(
+        (project) => project.id === application.project_id
+      )?.name ?? '所属项目未知'
+    );
   }
 
   function diagnosisApplicationScopeType(application: Application) {
-    const project = applicationProjects.find((item) => item.id === application.project_id);
+    const project = applicationProjects.find(
+      (item) => item.id === application.project_id
+    );
     return project ? scopeType(project.scope.id) : 'project';
   }
 
@@ -626,7 +751,7 @@
     diagnosisCommands.newDiagnosisSession();
     diagnosisApplicationIds = [];
     applicationId = '';
-		diagnosisScopeShared = false;
+    diagnosisScopeShared = false;
   }
 
   function renameDiagnosisSession(session: DiagnosisSession) {
@@ -637,7 +762,11 @@
     return diagnosisCommands.deleteDiagnosisSession(session);
   }
 
-  $: if (scopeId && (scopeId !== diagnosisLoadedScopeId || projectId !== diagnosisLoadedProjectId)) {
+  $: if (
+    scopeId &&
+    (scopeId !== diagnosisLoadedScopeId ||
+      projectId !== diagnosisLoadedProjectId)
+  ) {
     diagnosisLoadedScopeId = scopeId;
     diagnosisLoadedProjectId = projectId;
     diagnosisSessionController.close();
@@ -650,14 +779,22 @@
     void loadDiagnosis();
   }
   $: diagnosisApplications = diagnosisApplicationCandidates;
-  $: associatedDiagnosisResourceIDs = new Set(diagnosisApplications.flatMap((application) =>
-    [...application.instances, ...application.dependencies].map((item) => item.target_resource_id)
-  ));
+  $: associatedDiagnosisResourceIDs = new Set(
+    diagnosisApplications.flatMap((application) =>
+      [...application.instances, ...application.dependencies].map(
+        (item) => item.target_resource_id
+      )
+    )
+  );
   $: diagnosisTargets = contextResources.filter((resource) => {
     if (activeScopeType === 'platform') return true;
     if (associatedDiagnosisResourceIDs.has(resource.id)) return true;
-    if (activeScopeType === 'project') return resourceInActiveWorkspace(resource);
-    return resource.scope_id !== platformScopeId && resourceInActiveWorkspace(resource);
+    if (activeScopeType === 'project')
+      return resourceInActiveWorkspace(resource);
+    return (
+      resource.scope_id !== platformScopeId &&
+      resourceInActiveWorkspace(resource)
+    );
   });
   $: selectedApplicationResourceIDs = new Set(
     diagnosisApplications
@@ -665,50 +802,104 @@
       .flatMap(applicationResourceIDs)
   );
   $: if (!selectedDiagnosisId && !diagnosisSnapshot && applicationId) {
-    const initialApplication = diagnosisApplications.find((item) => item.id === applicationId);
-    if (initialApplication && !diagnosisApplicationIds.includes(initialApplication.id)) {
+    const initialApplication = diagnosisApplications.find(
+      (item) => item.id === applicationId
+    );
+    if (
+      initialApplication &&
+      !diagnosisApplicationIds.includes(initialApplication.id)
+    ) {
       diagnosisApplicationIds = [initialApplication.id];
       diagnosisTargetIds = applicationResourceIDs(initialApplication);
     }
   }
   $: if (!llmModelName && selectedProviderId) {
-    const available = diagnosisAvailableProviders.find((item) => item.provider_id === selectedProviderId);
+    const available = diagnosisAvailableProviders.find(
+      (item) => item.provider_id === selectedProviderId
+    );
     llmModelName = String(available?.models[0]?.name ?? '');
   }
   $: selectedDiagnosisModel = diagnosisAvailableProviders
     .find((item) => item.provider_id === selectedProviderId)
     ?.models.find((item) => item.name === llmModelName);
-  function composerReferenceMatches(identifier: string, name: string, tags: string[], query: string) {
-    const parts = query.trim().toLowerCase().replace(/^[/@]/, '').split('(').filter(Boolean);
+  function composerReferenceMatches(
+    identifier: string,
+    name: string,
+    tags: string[],
+    query: string
+  ) {
+    const parts = query
+      .trim()
+      .toLowerCase()
+      .replace(/^[/@]/, '')
+      .split('(')
+      .filter(Boolean);
     const searchable = [identifier, name, ...tags].join(' ').toLowerCase();
     return !parts.length || parts.some((part) => searchable.includes(part));
   }
   $: filteredComposerSkills = skills.filter((item) =>
-    composerReferenceMatches(item.identifier, item.name, item.tags, diagnosisComposerMenuSearch)
+    composerReferenceMatches(
+      item.identifier,
+      item.name,
+      item.tags,
+      diagnosisComposerMenuSearch
+    )
   );
   $: filteredComposerPersonas = personas.filter((item) =>
-    composerReferenceMatches(item.identifier, item.name, item.tags, diagnosisComposerMenuSearch)
+    composerReferenceMatches(
+      item.identifier,
+      item.name,
+      item.tags,
+      diagnosisComposerMenuSearch
+    )
   );
   function escapeComposerHTML(value: string) {
-    return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char));
+    return value.replace(
+      /[&<>"']/g,
+      (char) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        })[char] ?? char
+    );
   }
   $: composerMarkup = escapeComposerHTML(diagnosisComposerText)
-    .replace(/(^|\s)(\/[^\s]+)/g, '$1<span class="composer-skill-token">$2</span>')
-    .replace(/(^|\s)(@[^\s]+)/g, '$1<span class="composer-persona-token">$2</span>')
+    .replace(
+      /(^|\s)(\/[^\s]+)/g,
+      '$1<span class="composer-skill-token">$2</span>'
+    )
+    .replace(
+      /(^|\s)(@[^\s]+)/g,
+      '$1<span class="composer-persona-token">$2</span>'
+    )
     .replace(/\n/g, '<br>');
   $: diagnosisContextUsage = {
-    used: Math.max(1, Math.ceil((
-      diagnosisComposerText.length
-      + (diagnosisSnapshot?.messages ?? []).reduce((sum, message) => sum + message.content.length, 0)
-      + diagnosisTargetIds.reduce((sum, id) => {
-        const resource = diagnosisTargets.find((item) => item.id === id);
-        return sum + JSON.stringify(resource?.config ?? {}).length + 160;
-      }, 0)
-      + diagnosisApplicationIds.length * 120
-      + (diagnosisSnapshot?.events ?? [])
-        .filter((event) => /skill|persona|agent/i.test(event.type))
-        .reduce((sum, event) => sum + JSON.stringify(event.payload ?? {}).length + 320, 0)
-    ) / 4)),
+    used: Math.max(
+      1,
+      Math.ceil(
+        (diagnosisComposerText.length +
+          (diagnosisSnapshot?.messages ?? []).reduce(
+            (sum, message) => sum + message.content.length,
+            0
+          ) +
+          diagnosisTargetIds.reduce((sum, id) => {
+            const resource = diagnosisTargets.find((item) => item.id === id);
+            return sum + JSON.stringify(resource?.config ?? {}).length + 160;
+          }, 0) +
+          diagnosisApplicationIds.length * 120 +
+          (diagnosisSnapshot?.events ?? [])
+            .filter((event) => /skill|persona|agent/i.test(event.type))
+            .reduce(
+              (sum, event) =>
+                sum + JSON.stringify(event.payload ?? {}).length + 320,
+              0
+            )) /
+          4
+      )
+    ),
     total: Number(selectedDiagnosisModel?.context_window_tokens ?? 128000)
   };
   $: {
@@ -719,11 +910,13 @@
       if (list) {
         const onScroll = () => {
           if (performance.now() < diagnosisProgrammaticScrollUntil) return;
-          const distanceFromBottom = list.scrollHeight - list.clientHeight - list.scrollTop;
+          const distanceFromBottom =
+            list.scrollHeight - list.clientHeight - list.scrollTop;
           diagnosisAutoScrollEnabled = distanceFromBottom <= 8;
         };
         list.addEventListener('scroll', onScroll, { passive: true });
-        diagnosisScrollListenerCleanup = () => list.removeEventListener('scroll', onScroll);
+        diagnosisScrollListenerCleanup = () =>
+          list.removeEventListener('scroll', onScroll);
       }
     }
   }
@@ -736,7 +929,13 @@
     const nextKey = `${diagnosisGenerating}:${diagnosisStreamingText.length}`;
     if (nextKey !== diagnosisAutoScrollKey) {
       diagnosisAutoScrollKey = nextKey;
-      if (diagnosisGenerating && diagnosisAutoScrollEnabled && !diagnosisQuestionAnchorPending && diagnosisStreamingText) void scrollDiagnosisAnswerToBottom();
+      if (
+        diagnosisGenerating &&
+        diagnosisAutoScrollEnabled &&
+        !diagnosisQuestionAnchorPending &&
+        diagnosisStreamingText
+      )
+        void scrollDiagnosisAnswerToBottom();
     }
   }
 
@@ -764,14 +963,18 @@
     document.addEventListener('pointerdown', closeComposerMenuOnOutsideClick);
     return () => {
       cleanupDocumentListeners();
-      document.removeEventListener('pointerdown', closeComposerMenuOnOutsideClick);
+      document.removeEventListener(
+        'pointerdown',
+        closeComposerMenuOnOutsideClick
+      );
     };
   });
 
   function toggleDiagnosisModelMenu() {
     diagnosisModelMenuOpen = !diagnosisModelMenuOpen;
     if (diagnosisModelMenuOpen) {
-      diagnosisModelMenuProviderId = selectedProviderId || diagnosisAvailableProviders[0]?.provider_id || '';
+      diagnosisModelMenuProviderId =
+        selectedProviderId || diagnosisAvailableProviders[0]?.provider_id || '';
     }
   }
 
@@ -785,46 +988,88 @@
     diagnosisModelMenuOpen = false;
   }
 
-  const diagnosisResourceName = (resourceID?: string) => getDiagnosisResourceName(resources, diagnosisTargets, resourceID);
-  const isLastDiagnosisUser = (index: number) => getIsLastDiagnosisUser(diagnosisSnapshot, index);
-  const diagnosisHasPersistedNewAnswer = (snapshot: DiagnosisSnapshot | null) => getDiagnosisHasPersistedNewAnswer(snapshot, diagnosisStreamingAssistantBaseline);
-  const diagnosisLiveTimelineForDisplay = (snapshot: DiagnosisSnapshot | null) => diagnosisLiveTimeline(snapshot);
-  const diagnosisHistoryTimelineForDisplay = (snapshot: DiagnosisSnapshot | null, assistantIndex: number) =>
-    diagnosisAssistantTimeline(snapshot, assistantIndex);
-  const diagnosisEvidenceSummary = (evidence: DiagnosisEvidence) => getDiagnosisEvidenceSummary(evidence);
-  const diagnosisEvidenceSourceTools = (snapshot: DiagnosisSnapshot, evidence: DiagnosisEvidence) => getDiagnosisEvidenceSourceTools(snapshot, evidence);
-  const diagnosisShouldShowEmptyAnswer = () => shouldShowEmptyDiagnosisAnswer(diagnosisSnapshot, diagnosisAnswerCompleted, diagnosisStreamingText, diagnosisGenerating);
+  const diagnosisResourceName = (resourceID?: string) =>
+    getDiagnosisResourceName(resources, diagnosisTargets, resourceID);
+  const isLastDiagnosisUser = (index: number) =>
+    getIsLastDiagnosisUser(diagnosisSnapshot, index);
+  const diagnosisHasPersistedNewAnswer = (snapshot: DiagnosisSnapshot | null) =>
+    getDiagnosisHasPersistedNewAnswer(
+      snapshot,
+      diagnosisStreamingAssistantBaseline
+    );
+  const diagnosisLiveTimelineForDisplay = (
+    snapshot: DiagnosisSnapshot | null
+  ) => diagnosisLiveTimeline(snapshot);
+  const diagnosisHistoryTimelineForDisplay = (
+    snapshot: DiagnosisSnapshot | null,
+    assistantIndex: number
+  ) => diagnosisAssistantTimeline(snapshot, assistantIndex);
+  const diagnosisEvidenceSummary = (evidence: DiagnosisEvidence) =>
+    getDiagnosisEvidenceSummary(evidence);
+  const diagnosisEvidenceSourceTools = (
+    snapshot: DiagnosisSnapshot,
+    evidence: DiagnosisEvidence
+  ) => getDiagnosisEvidenceSourceTools(snapshot, evidence);
+  const diagnosisShouldShowEmptyAnswer = () =>
+    shouldShowEmptyDiagnosisAnswer(
+      diagnosisSnapshot,
+      diagnosisAnswerCompleted,
+      diagnosisStreamingText,
+      diagnosisGenerating
+    );
 
-  const diagnosisProcessText = (snapshot: DiagnosisSnapshot | null) => getDiagnosisProcessText(snapshot);
+  const diagnosisProcessText = (snapshot: DiagnosisSnapshot | null) =>
+    getDiagnosisProcessText(snapshot);
 
-  function copyDiagnosisMessage(message: DiagnosisMessage, processExpanded: boolean) {
+  function copyDiagnosisMessage(
+    message: DiagnosisMessage,
+    processExpanded: boolean
+  ) {
     copyDiagnosisText(
-      diagnosisMessageClipboardText(message, processExpanded, diagnosisSnapshot),
+      diagnosisMessageClipboardText(
+        message,
+        processExpanded,
+        diagnosisSnapshot
+      ),
       message.role === 'user' ? '问题已复制。' : '回答已复制。',
       onNotice
     );
   }
 
   function copyStreamingAnswer() {
-    copyDiagnosisText(diagnosisStreamingClipboardText(diagnosisStreamingText, diagnosisSnapshot), '回答已复制。', onNotice);
+    copyDiagnosisText(
+      diagnosisStreamingClipboardText(
+        diagnosisStreamingText,
+        diagnosisSnapshot
+      ),
+      '回答已复制。',
+      onNotice
+    );
   }
 
   function copyDiagnosisCode(encoded: string) {
     copyDiagnosisText(decodeDiagnosisCode(encoded), '代码已复制。', onNotice);
   }
 
-
   const diagnosisActiveCausalChain = activeDiagnosisCausalChain;
 
   function scrollToDiagnosisEvidence(id: string) {
-    document.getElementById(`evidence-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document
+      .getElementById(`evidence-${id}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function startDiagnosisResize(side: 'history' | 'context', event: PointerEvent) {
+  function startDiagnosisResize(
+    side: 'history' | 'context',
+    event: PointerEvent
+  ) {
     startDiagnosisPanelResize(
       side,
       event,
-      () => ({ history: diagnosisHistoryWidth, context: diagnosisContextWidth }),
+      () => ({
+        history: diagnosisHistoryWidth,
+        context: diagnosisContextWidth
+      }),
       (resizingSide, width) => {
         if (resizingSide === 'history') diagnosisHistoryWidth = width;
         else diagnosisContextWidth = width;
@@ -871,7 +1116,14 @@
           >
         </div>
       </div>
-      <SearchInput className="diagnosis-session-search" bind:value={diagnosisSessionSearch} width="100%" height="31px" placeholder="搜索会话" ariaLabel="搜索会话" />
+      <SearchInput
+        className="diagnosis-session-search"
+        bind:value={diagnosisSessionSearch}
+        width="100%"
+        height="31px"
+        placeholder="搜索会话"
+        ariaLabel="搜索会话"
+      />
       <div class="diagnosis-session-list-f">
         {#each diagnosisSessions.filter((session) => !diagnosisSessionSearch.trim() || (session.title || '')
               .toLowerCase()
@@ -887,8 +1139,11 @@
               ><span class="diagnosis-session-meta-f"
                 ><small>{formatDate(session.created_at)}</small><em
                   class={`diagnosis-session-status-f ${session.status}`}
-                  title={diagnosisInterruptionReason(session.status, session.error_message, '') || undefined}
-                  >{diagnosisStatusLabel(session.status)}</em
+                  title={diagnosisInterruptionReason(
+                    session.status,
+                    session.error_message,
+                    ''
+                  ) || undefined}>{diagnosisStatusLabel(session.status)}</em
                 ></span
               ></button
             >
@@ -932,21 +1187,25 @@
         <small>{scopeLabel} · 只读证据链</small>
       </div>
       {#if diagnosisTargetIds.length > 0}<div class="diagnosis-loaded-context">
-        <div class="diagnosis-context-resources">
-          {#each diagnosisTargets
-            .filter((resource) => diagnosisTargetIds.includes(resource.id))
-            .slice(0, 3) as resource}<span class="diagnosis-context-chip"
-              >{resource.name}</span
-            >{/each}{#if diagnosisTargetIds.length > 3}<span
-              class="diagnosis-context-chip accent"
-              >+{diagnosisTargetIds.length - 3}</span
-            >{/if}
-        </div>
-      </div>{/if}
+          <div class="diagnosis-context-resources">
+            {#each diagnosisTargets
+              .filter((resource) => diagnosisTargetIds.includes(resource.id))
+              .slice(0, 3) as resource}<span class="diagnosis-context-chip"
+                >{resource.name}</span
+              >{/each}{#if diagnosisTargetIds.length > 3}<span
+                class="diagnosis-context-chip accent"
+                >+{diagnosisTargetIds.length - 3}</span
+              >{/if}
+          </div>
+        </div>{/if}
       <div class="diagnosis-head-actions">
         <span
           class="diagnosis-head-status"
-          title={diagnosisInterruptionReason(diagnosisSnapshot?.session.status, diagnosisSnapshot?.session.error_message, diagnosisInterruptedReason) || undefined}
+          title={diagnosisInterruptionReason(
+            diagnosisSnapshot?.session.status,
+            diagnosisSnapshot?.session.error_message,
+            diagnosisInterruptedReason
+          ) || undefined}
           ><i class:running={diagnosisGenerating}></i>{diagnosisGenerating
             ? '正在生成回答'
             : diagnosisSnapshot
@@ -982,7 +1241,7 @@
       {diagnosisStatusLabel}
       {diagnosisHasRunningActions}
       {diagnosisHasPersistedNewAnswer}
-      diagnosisShouldShowEmptyAnswer={diagnosisShouldShowEmptyAnswer}
+      {diagnosisShouldShowEmptyAnswer}
       {diagnosisActionLabel}
       {isLastDiagnosisUser}
       {beginDiagnosisEdit}
@@ -995,30 +1254,94 @@
       on:submit|preventDefault={() => void submitDiagnosisMessage()}
     >
       <div class="diagnosis-composer-shell">
-        <div class="diagnosis-composer-highlight" aria-hidden="true">{@html composerMarkup}</div>
+        <div class="diagnosis-composer-highlight" aria-hidden="true">
+          {@html composerMarkup}
+        </div>
         <textarea
           bind:this={diagnosisComposerTextarea}
           value={diagnosisComposerText}
-          on:input={(event) => updateDiagnosisComposer((event.currentTarget as HTMLTextAreaElement).value, event.currentTarget as HTMLTextAreaElement)}
+          on:input={(event) =>
+            updateDiagnosisComposer(
+              (event.currentTarget as HTMLTextAreaElement).value,
+              event.currentTarget as HTMLTextAreaElement
+            )}
           on:keydown={handleDiagnosisComposerKeydown}
           placeholder="描述问题，Enter 发送 · Shift + Enter 换行"
           aria-label="输入诊断问题"
           rows="3"
           maxlength="16000"
         ></textarea>
-        {#if diagnosisComposerMenu}<div class="diagnosis-composer-token-menu" role="listbox" bind:this={diagnosisComposerMenuElement}>
-          <SearchInput bind:value={diagnosisComposerMenuSearch} width="100%" height="28px" placeholder={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} ariaLabel={diagnosisComposerMenu === 'skill' ? '搜索技能' : '搜索专家'} />
-          <div class="diagnosis-composer-token-list">
-            {#if diagnosisComposerMenu === 'skill'}
-              {#each filteredComposerSkills as item}<button type="button" role="option" aria-selected={diagnosisComposerSkillID === item.id} on:click={() => chooseComposerItem('skill', item)}><strong>/{item.identifier}({item.name})</strong><span>{diagnosisComposerSkillID === item.id ? '已选择' : item.category}</span></button>{:else}<span>暂无可用技能</span>{/each}
-            {:else}
-              {#each filteredComposerPersonas as item}<button type="button" role="option" aria-selected={diagnosisComposerPersonaID === item.id} on:click={() => chooseComposerItem('persona', item)}><strong>@{item.identifier}({item.name})</strong><span>{diagnosisComposerPersonaID === item.id ? '已选择' : item.description || '专家'}</span></button>{:else}<span>暂无可用专家</span>{/each}
-            {/if}
-          </div>
-        </div>{/if}
+        {#if diagnosisComposerMenu}<div
+            class="diagnosis-composer-token-menu"
+            role="listbox"
+            bind:this={diagnosisComposerMenuElement}
+          >
+            <SearchInput
+              bind:value={diagnosisComposerMenuSearch}
+              width="100%"
+              height="28px"
+              placeholder={diagnosisComposerMenu === 'skill'
+                ? '搜索技能'
+                : '搜索专家'}
+              ariaLabel={diagnosisComposerMenu === 'skill'
+                ? '搜索技能'
+                : '搜索专家'}
+            />
+            <div class="diagnosis-composer-token-list">
+              {#if diagnosisComposerMenu === 'skill'}
+                {#each filteredComposerSkills as item}<button
+                    type="button"
+                    role="option"
+                    aria-selected={diagnosisComposerSkillID === item.id}
+                    on:click={() => chooseComposerItem('skill', item)}
+                    ><strong>/{item.identifier}({item.name})</strong><span
+                      >{diagnosisComposerSkillID === item.id
+                        ? '已选择'
+                        : item.category}</span
+                    ></button
+                  >{:else}<span>暂无可用技能</span>{/each}
+              {:else}
+                {#each filteredComposerPersonas as item}<button
+                    type="button"
+                    role="option"
+                    aria-selected={diagnosisComposerPersonaID === item.id}
+                    on:click={() => chooseComposerItem('persona', item)}
+                    ><strong>@{item.identifier}({item.name})</strong><span
+                      >{diagnosisComposerPersonaID === item.id
+                        ? '已选择'
+                        : item.description || '专家'}</span
+                    ></button
+                  >{:else}<span>暂无可用专家</span>{/each}
+              {/if}
+            </div>
+          </div>{/if}
         <div class="diagnosis-composer-tools">
           <div>
-            <input bind:this={diagnosisComposerFileInput} class="diagnosis-hidden-file-input" type="file" multiple accept=".txt,.log,.json,.yaml,.yml,.md,.csv,.xml,.sql,.toml,.ini,.conf" on:change={addDiagnosisAttachment} />
+            <label class="diagnosis-collaboration-control"
+              >诊断协同度（下一轮生效）
+              <select
+                aria-label="诊断协同度"
+                value={diagnosisCollaboration}
+                on:change={(event) =>
+                  void diagnosisCommands.setCollaboration(
+                    Number((event.currentTarget as HTMLSelectElement).value)
+                  )}
+              >
+                <option value="1">1 · 严格串行</option>
+                <option value="2">2 · 谨慎协同</option>
+                <option value="3">3 · 适度协同</option>
+                <option value="4">4 · 积极协同</option>
+                <option value="5">5 · 并行优先</option>
+              </select>
+            </label>
+            <input
+              bind:this={diagnosisComposerFileInput}
+              class="diagnosis-hidden-file-input"
+              type="file"
+              multiple
+              accept=".txt,.log,.json,.yaml,.yml,.md,.csv,.xml,.sql,.toml,.ini,.conf"
+              on:change={addDiagnosisAttachment}
+            />
             <button
               type="button"
               class="diagnosis-tool"
@@ -1029,27 +1352,66 @@
               type="button"
               class="diagnosis-tool"
               data-tooltip="添加链接"
-              on:click={addDiagnosisLink}
-              ><Link2 size={15} />链接</button
+              on:click={addDiagnosisLink}><Link2 size={15} />链接</button
             ><button
               type="button"
               class="diagnosis-tool"
               data-tooltip="选择技能"
-              on:click={() => { diagnosisComposerMenu = diagnosisComposerMenu === 'skill' ? '' : 'skill'; diagnosisComposerMenuSearch = ''; diagnosisComposerTokenStart = diagnosisComposerTextarea?.selectionStart ?? diagnosisComposerText.length; }}
-              ><Sparkles size={15} />技能</button
+              on:click={() => {
+                diagnosisComposerMenu =
+                  diagnosisComposerMenu === 'skill' ? '' : 'skill';
+                diagnosisComposerMenuSearch = '';
+                diagnosisComposerTokenStart =
+                  diagnosisComposerTextarea?.selectionStart ??
+                  diagnosisComposerText.length;
+              }}><Sparkles size={15} />技能</button
             ><button
               type="button"
               class="diagnosis-tool"
               data-tooltip="选择专家"
-              on:click={() => { diagnosisComposerMenu = diagnosisComposerMenu === 'persona' ? '' : 'persona'; diagnosisComposerMenuSearch = ''; diagnosisComposerTokenStart = diagnosisComposerTextarea?.selectionStart ?? diagnosisComposerText.length; }}
-              ><Bot size={15} />专家</button
+              on:click={() => {
+                diagnosisComposerMenu =
+                  diagnosisComposerMenu === 'persona' ? '' : 'persona';
+                diagnosisComposerMenuSearch = '';
+                diagnosisComposerTokenStart =
+                  diagnosisComposerTextarea?.selectionStart ??
+                  diagnosisComposerText.length;
+              }}><Bot size={15} />专家</button
             >
-				{#if !selectedDiagnosisId}<label class="diagnosis-share-toggle"><input type="checkbox" bind:checked={diagnosisScopeShared} />按当前范围共享</label>{/if}
+            {#if !selectedDiagnosisId}<label class="diagnosis-share-toggle"
+                ><input
+                  type="checkbox"
+                  bind:checked={diagnosisScopeShared}
+                />按当前范围共享</label
+              >{/if}
           </div>
-          {#if diagnosisComposerAttachments.length || diagnosisComposerLinks.length}<div class="diagnosis-composer-attached-items">
-            {#each diagnosisComposerAttachments as attachment, index}<span class="diagnosis-composer-attachment">{attachment.name}<button type="button" aria-label={`移除附件 ${attachment.name}`} on:click={() => diagnosisComposerAttachments = diagnosisComposerAttachments.filter((_, itemIndex) => itemIndex !== index)}>×</button></span>{/each}
-            {#each diagnosisComposerLinks as link, index}<span class="diagnosis-composer-attachment diagnosis-composer-link">{link}<button type="button" aria-label="移除链接" on:click={() => diagnosisComposerLinks = diagnosisComposerLinks.filter((_, itemIndex) => itemIndex !== index)}>×</button></span>{/each}
-          </div>{/if}
+          {#if diagnosisComposerAttachments.length || diagnosisComposerLinks.length}<div
+              class="diagnosis-composer-attached-items"
+            >
+              {#each diagnosisComposerAttachments as attachment, index}<span
+                  class="diagnosis-composer-attachment"
+                  >{attachment.name}<button
+                    type="button"
+                    aria-label={`移除附件 ${attachment.name}`}
+                    on:click={() =>
+                      (diagnosisComposerAttachments =
+                        diagnosisComposerAttachments.filter(
+                          (_, itemIndex) => itemIndex !== index
+                        ))}>×</button
+                  ></span
+                >{/each}
+              {#each diagnosisComposerLinks as link, index}<span
+                  class="diagnosis-composer-attachment diagnosis-composer-link"
+                  >{link}<button
+                    type="button"
+                    aria-label="移除链接"
+                    on:click={() =>
+                      (diagnosisComposerLinks = diagnosisComposerLinks.filter(
+                        (_, itemIndex) => itemIndex !== index
+                      ))}>×</button
+                  ></span
+                >{/each}
+            </div>{/if}
           <div class="diagnosis-model-picker">
             <button
               class="diagnosis-model-trigger"
@@ -1082,10 +1444,8 @@
                       aria-expanded={provider.provider_id ===
                         (diagnosisModelMenuProviderId || selectedProviderId)}
                       on:click={() =>
-                        chooseDiagnosisModelProvider(
-                          provider.provider_id
-                        )}
-                ><span>{provider.name}</span><ChevronRight
+                        chooseDiagnosisModelProvider(provider.provider_id)}
+                      ><span>{provider.name}</span><ChevronRight
                         size={12}
                         aria-hidden="true"
                       /></button
@@ -1117,7 +1477,10 @@
               class="primary diagnosis-send-button"
               type="button"
               disabled={busy ||
-                (!diagnosisComposerText.trim() && !diagnosisComposerAttachments.length && !diagnosisComposerLinks.length && !diagnosisGenerating)}
+                (!diagnosisComposerText.trim() &&
+                  !diagnosisComposerAttachments.length &&
+                  !diagnosisComposerLinks.length &&
+                  !diagnosisGenerating)}
               on:click={() =>
                 diagnosisGenerating
                   ? stopDiagnosisGeneration()

@@ -4,7 +4,10 @@
   export let className = '';
 </script>
 
-<span class={`scope-level-badge scope-${type} ${className}`} aria-label={label || undefined}>
+<span
+  class={`scope-level-badge scope-${type} ${className}`}
+  aria-label={label || undefined}
+>
   <slot>{label}</slot>
 </span>
 

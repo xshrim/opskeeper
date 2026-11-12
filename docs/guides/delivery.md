@@ -6,9 +6,9 @@
 
 1. 应用临时运行、二进制构建和最终镜像打包只通过根目录 `Makefile` 暴露和编排，不使用独立包装脚本。
 2. 前后端源码保持独立；生产构建将 Vite 制品嵌入 Go API。
-3. API、Worker、Scheduler、Migration 和 Admin 使用同一个不可变镜像及同一个 digest。
-4. 长期运行的应用进程永不自动执行数据库迁移。
-5. 每次部署先运行一个独立 Migration Job；成功后才能滚动发布应用。
+3. API、Worker、Scheduler 使用各自不可变镜像，并使用同一版本标签或 digest 集合。
+4. API 在监听端口前自动执行数据库迁移；Worker 和 Scheduler 只在数据库可连接后运行。
+5. 发布先滚动 API，再滚动 Worker 和 Scheduler。
 6. 迁移失败立即阻断发布；应用回滚不自动执行数据库 `down`。
 7. Schema 变更遵循 Expand/Contract，保证滚动发布期间新旧版本兼容。
 8. 构建阶段不接触数据库凭据；部署阶段按进程最小权限注入。
@@ -26,8 +26,8 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | 入口 | 结果 |
 |---|---|
 | `make quality` | 格式、静态检查、测试、嵌入式前端验证和生产构建全部通过 |
-| `make build` | 在 `backend/bin/` 生成五个本地二进制 |
-| `make image` | 使用 `deploy/Dockerfile` 生成最终不可变镜像 |
+| `make build` | 在 `backend/bin/` 生成三个本地二进制 |
+| `make image` | 使用 `deploy/Dockerfile` 生成三个最终不可变镜像 |
 
 `deploy/Dockerfile` 是由 `make image` 调用的镜像构建描述，不作为开发者或流水线的独立操作入口。Node Builder 调用 Make 的前端构建目标，Go Builder 接收前端制品后调用 Make 的后端构建目标；Dockerfile 不重复维护 npm 构建命令、Go Build Tag、版本注入或二进制清单。不得增加脚本来包装 Go、npm、Make 或 Docker 命令。
 
@@ -39,8 +39,6 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 /app/opskeeper-api
 /app/opskeeper-worker
 /app/opskeeper-scheduler
-/app/opskeeper-migrate
-/app/opskeeper-admin
 ```
 
 `opskeeper-api` 内嵌经过构建和检查的 Vite 制品。最终镜像不包含 Node.js，不依赖独立静态文件服务器，也不读取构建机器的 `.env`。
@@ -63,17 +61,15 @@ make image IMAGE_REPOSITORY=<registry>/opskeeper IMAGE_TAG=<version> VERSION=<ve
 | `OPSK_TRUSTED_PROXIES` | API 运行 | 允许提供客户端转发头的直接代理 IP/CIDR；默认空，不信任任何代理头 |
 | `OPSK_CREDENTIAL_KEY` | API/Worker 运行 | 资源凭据密文加密密钥；生产环境必须设置为 32 字节原值或 Base64 编码值 |
 
-镜像内文件名和五个应用的服务名称固定为：
+镜像内文件名和三个应用的服务名称固定为：
 
 ```text
 opskeeper-api
 opskeeper-worker
 opskeeper-scheduler
-opskeeper-migrate
-opskeeper-admin
 ```
 
-`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入五个二进制，API 健康响应可以返回这三个字段。普通日志遵循后端日志规范，不把这些发布元数据放入固定日志头；需要关联发布版本时使用部署标签、指标或日志平台元数据。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
+`VERSION`、`COMMIT` 和 `BUILD_TIME` 通过 Go `ldflags` 注入三个二进制，API 健康响应可以返回这三个字段。普通日志遵循后端日志规范，不把这些发布元数据放入固定日志头；需要关联发布版本时使用部署标签、指标或日志平台元数据。相同源码需要字节级可复现构建时，流水线必须复用固定的 `BUILD_TIME`。
 
 `OPSK_BASE_PATH` 只改变 API 页面、静态资源、健康检查和业务接口的路径。Ingress Path、健康探针路径和 API 容器中的 `OPSK_BASE_PATH` 必须来自同一个发布配置。生产环境通常设置 `OPSK_LOG_FORMAT=json` 供日志平台解析；不设置时输出默认的 `raw` 日志。`OPSK_LOG_HEALTH_IGNORE` 默认 `true`，用于忽略 API 健康检查访问日志；设为 `false` 可在排障时恢复记录，接口本身和健康探针不受影响。
 
@@ -83,27 +79,26 @@ opskeeper-admin
 检出确定提交
     -> make quality
     -> make image
-    -> 推送镜像并记录 digest
-    -> 使用同一 digest 创建 Migration Job
-    -> 等待 Migration Job 成功
-    -> 滚动发布 API、Worker、Scheduler
+    -> 推送三个镜像并记录 digest
+    -> 滚动发布 API，等待其自动迁移并 readiness
+    -> 滚动发布 Worker、Scheduler
     -> 等待 readiness
     -> 执行关键业务冒烟检查
     -> 记录发布结果
 ```
 
-Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应用代码完全一致。不得使用 `latest`，也不得从工作区临时挂载 SQL。
+API 镜像与迁移 SQL 必须保持同一 digest。不得使用 `latest`，也不得从工作区临时挂载 SQL。
 
 | 结果 | 流水线行为 |
 |---|---|
-| Migration Job 成功 | 继续发布应用 |
-| Migration Job 失败或超时 | 停止发布，保留旧应用并输出 Job 日志 |
+| API 迁移并 readiness 成功 | 继续发布 Worker、Scheduler |
+| API 迁移失败或超时 | 停止发布，保留旧应用并输出 API 日志 |
 | 迁移成功但应用发布失败 | 回滚应用镜像，不执行 `down` |
 | 冒烟检查失败 | 停止扩大发布，回滚应用或前滚修复 |
 
-## 5. Migration Job
+## 5. API 启动迁移
 
-每次测试、预发布和生产部署固定执行一次 `opskeeper-migrate up`。即使没有待处理迁移也照常运行，因为迁移器读取 `schema_migrations` 并跳过已应用版本，外部流水线无需解析 SQL 判断是否需要迁移。当前发布基线为单一的 `0001_initial`；历史迁移仅存档，不会被新迁移器自动读取，已有历史数据库必须在发布前完成受控重建或专项数据迁移。
+每次 API 启动都会检查并应用迁移。即使没有待处理迁移也照常校验 `schema_migrations` 并跳过已应用版本，外部流水线无需解析 SQL 判断是否需要迁移。
 
 迁移器使用 PostgreSQL session advisory lock 保护整个迁移过程：
 
@@ -114,35 +109,7 @@ Migration Job 和应用必须引用同一镜像 digest，确保迁移 SQL 与应
 5. 失败时回滚当前事务并返回非零状态。
 6. 完成后在同一连接释放锁；释放失败时销毁该连接。
 
-advisory lock 是并发误配置的最后防线，不代替发布编排。每个环境和版本仍只应创建一个逻辑 Migration Job。Job 必须监听取消信号并设置总超时、有限重试和可审计日志。
-
-Kubernetes 约束：
-
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: opskeeper-migrate-<release-id>
-spec:
-  backoffLimit: 1
-  activeDeadlineSeconds: 600
-  ttlSecondsAfterFinished: 86400
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: migrate
-          image: <registry>/opskeeper@sha256:<digest>
-          command: ["/app/opskeeper-migrate", "up"]
-          env:
-            - name: OPSK_LOG_FORMAT
-              value: json
-          envFrom:
-            - secretRef:
-                name: opskeeper-database-migration
-```
-
-发布系统必须等待 Job 的 `Complete` 条件，而不是只等待 Pod 启动。可以使用 Helm `pre-install,pre-upgrade` Hook 或 Argo CD `PreSync` Hook，但不得把迁移放入每个应用 Pod 的 Init Container。
+advisory lock 是并发启动时的最后防线，不代替发布编排。发布系统必须等待 API readiness，而不是只等待 Pod 启动；迁移失败的 API 不会进入 ready 状态。
 
 ## 6. CI 中的迁移验证
 
@@ -188,7 +155,7 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 | 角色 | 权限和使用方 |
 |---|---|
 | Cluster 管理员 | 管理实例、角色和数据库，不注入普通流水线和应用 |
-| Migration 角色 | 拥有目标 Schema DDL 权限，只注入 Migration Job |
+| API 角色 | 拥有目标 Schema DDL 权限，在 API 启动时执行迁移 |
 | Application 角色 | 只拥有运行所需查询和 DML 权限，注入 API、Worker、Scheduler |
 
 当前阶段迁移器和应用使用受限的 `opskeeper` 业务数据库所有者，不使用 `postgres` 超级用户。生产环境应继续拆分 Migration 和 Application 角色。构建阶段不得获得任何数据库、缓存、存储或其他运行时 Secret。
@@ -208,8 +175,8 @@ OPSK_TEST_DATABASE_URL='postgres://<user>:<password>@<host>:<port>/<database>?ss
 - [ ] 运行时不依赖 Node.js 或外部静态文件目录。
 - [ ] `OPSK_BASE_PATH` 与 Ingress 和健康探针路径一致。
 - [ ] `OPSK_LOG_FORMAT` 已按环境设为 `json`、`text` 或 `raw`，并符合[后端日志规范](../standards/backend-logging.md)。
-- [ ] Migration Job 与应用使用同一镜像 digest。
-- [ ] Migration Job 成功后才滚动发布应用，失败会阻断发布。
+- [ ] API 镜像与嵌入的迁移 SQL 使用同一 digest。
+- [ ] API 自动迁移成功并 readiness 后才滚动发布 Worker 与 Scheduler。
 - [ ] 数据库迁移通过幂等、回滚、重放和并发互斥验证。
 - [ ] Schema 在新旧版本并存期间兼容。
 - [ ] 应用回滚不会触发数据库 `down`。

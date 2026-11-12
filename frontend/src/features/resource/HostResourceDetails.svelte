@@ -43,10 +43,17 @@
       >
     </div>
     <div>
-      <span>标签</span><TagList tags={tags} emptyText="未设置标签" />
+      <span>标签</span><TagList {tags} emptyText="未设置标签" />
     </div>
     <div class="provider-resource-connection">
-      <span>状态</span><ConnectionTest status={resourceCheck?.status ?? ''} latencyMs={resourceCheck?.latency_ms ?? 0} message={resourceCheck?.message ?? ''} disabled showTime={false} showTooltip={false} />
+      <span>状态</span><ConnectionTest
+        status={resourceCheck?.status ?? ''}
+        latencyMs={resourceCheck?.latency_ms ?? 0}
+        message={resourceCheck?.message ?? ''}
+        disabled
+        showTime={false}
+        showTooltip={false}
+      />
     </div>
   </div>
 </div>

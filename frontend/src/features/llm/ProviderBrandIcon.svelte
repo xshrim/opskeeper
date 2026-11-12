@@ -23,7 +23,11 @@
 {#if iconValue}
   <IconValue value={iconValue} {size} />
 {:else}
-  <span class="provider-brand-monogram" style={`--brand-size: ${size}px`} aria-hidden="true">
+  <span
+    class="provider-brand-monogram"
+    style={`--brand-size: ${size}px`}
+    aria-hidden="true"
+  >
     {monograms[providerType] ?? label.slice(0, 2)}
   </span>
 {/if}

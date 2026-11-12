@@ -8,16 +8,14 @@ imagePullSecrets: []
 basePath: /opskeeper
 logHealthIgnore: true
 existingSecret: opskeeper-runtime
-migrationSecret: opskeeper-migration
 trustedProxies: ""
 otelExporterEndpoint: ""
 cacheBackend: postgres
-repositoryStorageBackend: postgres
-repositoryS3Provider: minio
+storageBackend: postgres
+storageS3Provider: minio
 
 operation:
   enabled: false
-  runnerImage: ""
 
 api:
   replicas: 2
@@ -60,11 +58,6 @@ networkPolicy:
   databaseCIDR: 10.0.0.0/8
   databasePort: 5432
   allowExternalHTTPS: true
-
-migration:
-  activeDeadlineSeconds: 600
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 86400
 
 podAnnotations: {}
 podLabels: {}

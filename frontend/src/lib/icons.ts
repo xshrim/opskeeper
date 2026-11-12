@@ -39,5 +39,10 @@ export function iconGlyph(icon: string | undefined) {
     credential: 'lucide:KeyRound',
     resource: 'lucide:Circle'
   };
-  return glyphs[icon ?? 'resource'] ?? (icon?.startsWith('lucide:') || icon?.startsWith('iconify:') ? icon : 'lucide:Circle');
+  return (
+    glyphs[icon ?? 'resource'] ??
+    (icon?.startsWith('lucide:') || icon?.startsWith('iconify:')
+      ? icon
+      : 'lucide:Circle')
+  );
 }

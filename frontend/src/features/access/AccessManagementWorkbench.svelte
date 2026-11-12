@@ -111,12 +111,32 @@
     { key: 'contact', label: '联络', width: '20%' },
     { key: 'permissions', label: '权限' },
     { key: 'status', label: '状态', width: '50px' },
-    { key: 'actions', label: '操作', width: '60px', className: 'access-member-actions-heading' }
+    {
+      key: 'actions',
+      label: '操作',
+      width: '60px',
+      className: 'access-member-actions-heading'
+    }
   ];
   const roleColumns: ReadonlyTableColumn[] = [
-    { key: 'level', label: '级别', width: '72px', className: 'access-role-nowrap' },
-    { key: 'object', label: '对象', width: '220px', className: 'access-role-nowrap' },
-    { key: 'role', label: '角色', width: '120px', className: 'access-role-nowrap' },
+    {
+      key: 'level',
+      label: '级别',
+      width: '72px',
+      className: 'access-role-nowrap'
+    },
+    {
+      key: 'object',
+      label: '对象',
+      width: '220px',
+      className: 'access-role-nowrap'
+    },
+    {
+      key: 'role',
+      label: '角色',
+      width: '120px',
+      className: 'access-role-nowrap'
+    },
     { key: 'extra', label: '额外授权', width: '130px' }
   ];
   $: globalScopeSelection = globalSelection();
@@ -146,7 +166,10 @@
     ? scopedUsers.filter((user) => projectScopedUserIDs.has(user.id))
     : scopedUsers;
   $: memberFreeQuery = memberQuery
-    .replace(/(?:^|\s)(?:username|name|email|phone|status):(?:"[^"]*"|'[^']*'|\S*)/g, ' ')
+    .replace(
+      /(?:^|\s)(?:username|name|email|phone|status):(?:"[^"]*"|'[^']*'|\S*)/g,
+      ' '
+    )
     .trim()
     .toLocaleLowerCase();
   $: visibleScopedUsers = projectFilteredUsers.filter((user) => {
@@ -158,19 +181,22 @@
       status: `${user.status} ${statusLabel(user.status)}`
     };
     if (
-      Object.entries(memberFieldValues).some(([key, filterValue]) =>
-        key in searchValues &&
-        !searchValues[key as keyof typeof searchValues]
-          .toLocaleLowerCase()
-          .includes(filterValue.toLocaleLowerCase())
+      Object.entries(memberFieldValues).some(
+        ([key, filterValue]) =>
+          key in searchValues &&
+          !searchValues[key as keyof typeof searchValues]
+            .toLocaleLowerCase()
+            .includes(filterValue.toLocaleLowerCase())
       )
     )
       return false;
-    return !memberFreeQuery ||
+    return (
+      !memberFreeQuery ||
       Object.values(searchValues)
         .join(' ')
         .toLocaleLowerCase()
-        .includes(memberFreeQuery);
+        .includes(memberFreeQuery)
+    );
   });
   $: visibleProjects = projects.filter((project) =>
     visibleAccessTeams.some((team) => team.id === project.team_id)
@@ -245,17 +271,20 @@
     return dedupeUsers(accessProjectUsers[project.id] ?? []).length;
   }
   function selectionScopeIDs(selection: Selection) {
-    if (selection.kind === 'platform') return new Set(scopeChoices.map((scope) => scope.id));
+    if (selection.kind === 'platform')
+      return new Set(scopeChoices.map((scope) => scope.id));
     if (selection.kind === 'project') {
       const project = projects.find((item) => item.id === selection.id);
       return new Set(project ? [project.scope.id] : []);
     }
-    const teamScope = visibleAccessTeams.find((item) => item.id === selection.id)?.scope.id;
+    const teamScope = visibleAccessTeams.find(
+      (item) => item.id === selection.id
+    )?.scope.id;
     return new Set([
       ...(teamScope ? [teamScope] : []),
       ...projects
         .filter((project) => project.team_id === selection.id)
-        .map((project) => project.scope.id),
+        .map((project) => project.scope.id)
     ]);
   }
   function userResourceRoleBindings(userID: string, selection: Selection) {
@@ -263,7 +292,8 @@
       groups
         .filter(
           (group) =>
-            group.status === 'active' && groupMembers[group.id]?.includes(userID)
+            group.status === 'active' &&
+            groupMembers[group.id]?.includes(userID)
         )
         .map((group) => group.id)
     );
@@ -273,7 +303,8 @@
       (binding) =>
         scopeIDs.has(binding.scope_id) &&
         ((binding.subject_type === 'user' && binding.subject_id === userID) ||
-          (binding.subject_type === 'group' && groupIDs.has(binding.subject_id))) &&
+          (binding.subject_type === 'group' &&
+            groupIDs.has(binding.subject_id))) &&
         !seen.has(`${binding.resource_id}:${binding.role_id}`) &&
         Boolean(seen.add(`${binding.resource_id}:${binding.role_id}`))
     );
@@ -352,7 +383,12 @@
                   type="button"
                   disabled={Boolean(selectedProjectId)}
                   on:click={() => selectTeam(team)}
-                  ><EntityBrandIcon kind="Team" fallback={team.icon || 'lucide:UsersRound'} size={16} className="scope-tree-icon" /><span
+                  ><EntityBrandIcon
+                    kind="Team"
+                    fallback={team.icon || 'lucide:UsersRound'}
+                    size={16}
+                    className="scope-tree-icon"
+                  /><span
                     ><strong>{team.name}</strong><small class="scope-tree-count"
                       >{teamProjects.length} 个项目 · {teamUsers.length} 位用户</small
                     ></span
@@ -384,7 +420,12 @@
                       class="access-scope-project-row"
                       type="button"
                       on:click={() => selectProject(project)}
-                      ><EntityBrandIcon kind="Project" fallback={project.icon || 'lucide:FolderKanban'} size={14} className="access-project-icon" /><span
+                      ><EntityBrandIcon
+                        kind="Project"
+                        fallback={project.icon || 'lucide:FolderKanban'}
+                        size={14}
+                        className="access-project-icon"
+                      /><span
                         ><strong>{project.name}</strong><small
                           class="scope-tree-count"
                           >{memberCount(project)} 位用户</small
@@ -423,8 +464,7 @@
               disabled={accessLoading || busy}
               data-tooltip="刷新成员列表"
               aria-label="刷新成员列表"
-              on:click={onReload}
-              ><RefreshCw size={15} />刷新</button
+              on:click={onReload}><RefreshCw size={15} />刷新</button
             ><button
               class="danger-button"
               type="button"
@@ -456,110 +496,184 @@
             expandable
             selectable
             selectedIds={selectedAccessUserIds}
-            canSelectRow={(user) => canManageUser(user) && user.status === 'active'}
+            canSelectRow={(user) =>
+              canManageUser(user) && user.status === 'active'}
             onSelectionChange={(ids) => (selectedAccessUserIds = ids)}
             className="access-member-table"
             emptyText="当前范围没有可见成员。"
           >
             <svelte:fragment slot="cell" let:row let:column>
               {@const user = row as User}
-              {@const roleSelection = activeProjectID ? ({ kind: 'project', id: activeProjectID, name: '' } as Selection) : selected}
+              {@const roleSelection = activeProjectID
+                ? ({
+                    kind: 'project',
+                    id: activeProjectID,
+                    name: ''
+                  } as Selection)
+                : selected}
               {@const scopeRoles = userScopeRoles(user.id, roleSelection)}
               {#if column.key === 'user'}
-                  <div class="access-user-main">
-                    <span class="avatar access-avatar">{initials(user)}</span
-                    ><span
-                      ><strong>{user.display_name || user.username}</strong><small
-                        >@{user.username}</small
-                      ></span
-                    >
-                  </div>
+                <div class="access-user-main">
+                  <span class="avatar access-avatar">{initials(user)}</span
+                  ><span
+                    ><strong>{user.display_name || user.username}</strong><small
+                      >@{user.username}</small
+                    ></span
+                  >
+                </div>
               {:else if column.key === 'contact'}
-                  <div class="access-user-contact">
-                    <span>{user.phone || '未填写电话'}</span>
-                    <span>{user.email || '未填写邮箱'}</span>
-                  </div>
+                <div class="access-user-contact">
+                  <span>{user.phone || '未填写电话'}</span>
+                  <span>{user.email || '未填写邮箱'}</span>
+                </div>
               {:else if column.key === 'permissions'}
-                  <div class="access-user-permissions">
-                    {#if scopeRoles.length > 0}
-                      {#each scopeRoles.slice(0, 2) as entry}
-                        <div
-                          class={`permission-card permission-${entry.scopeType} permission-role-${roleTone(entry.roleName)}`}
-                          data-tooltip={`${entry.scopeName} · ${entry.roleName}`}
+                <div class="access-user-permissions">
+                  {#if scopeRoles.length > 0}
+                    {#each scopeRoles.slice(0, 2) as entry}
+                      <div
+                        class={`permission-card permission-${entry.scopeType} permission-role-${roleTone(entry.roleName)}`}
+                        data-tooltip={`${entry.scopeName} · ${entry.roleName}`}
+                      >
+                        <span class="permission-card-object">
+                          <small>{scopeTypeLabel(entry.scopeType)}</small>
+                          <strong>{entry.scopeName}</strong>
+                        </span>
+                        <strong class="permission-card-role"
+                          >{entry.roleName}</strong
                         >
-                          <span class="permission-card-object">
-                            <small>{scopeTypeLabel(entry.scopeType)}</small>
-                            <strong>{entry.scopeName}</strong>
-                          </span>
-                          <strong class="permission-card-role">{entry.roleName}</strong>
-                        </div>
-                      {/each}
-                      {#if scopeRoles.length > 2}
-                        <span
-                          class="permission-overflow"
-                          data-tooltip={`还有 ${scopeRoles.length - 2} 项权限`}
-                          >+{scopeRoles.length - 2}</span
-                        >
-                      {/if}
-                    {:else}
-                      <span class="permission-empty">当前范围无角色</span>
+                      </div>
+                    {/each}
+                    {#if scopeRoles.length > 2}
+                      <span
+                        class="permission-overflow"
+                        data-tooltip={`还有 ${scopeRoles.length - 2} 项权限`}
+                        >+{scopeRoles.length - 2}</span
+                      >
                     {/if}
-                  </div>
+                  {:else}
+                    <span class="permission-empty">当前范围无角色</span>
+                  {/if}
+                </div>
               {:else if column.key === 'status'}
-                  <StatusBadge className="status-label" tone={user.status} label={statusLabel(user.status)} />
+                <StatusBadge
+                  className="status-label"
+                  tone={user.status}
+                  label={statusLabel(user.status)}
+                />
               {:else if column.key === 'actions'}
-                  <div class="access-row-actions">
-                    {#if canManageUser(user)}
-                      <button
-                        class="icon-button edit-action"
-                        type="button"
-                        aria-label={`编辑用户 ${user.display_name || user.username}`}
-                        data-tooltip="编辑用户与授权"
-                        on:click|stopPropagation={() => onEditUser(user)}
-                        ><Pencil size={15} /></button
-                      ><button
-                        class="icon-button danger-action delete-action"
-                        type="button"
-                        aria-label={`禁用用户 ${user.display_name || user.username}`}
-                        data-tooltip="禁用用户"
-                        disabled={user.status !== 'active' ||
-                          user.id === currentUser?.id}
-                        on:click|stopPropagation={() =>
-                          onDisable([user.id])}
-                        ><UserX size={15} /></button
-                      >{:else}
-                      <span class="read-only-label">
-                        {user.id === currentUser?.id ? '当前账号' : '只读'}
-                      </span>
-                    {/if}
-                  </div>
+                <div class="access-row-actions">
+                  {#if canManageUser(user)}
+                    <button
+                      class="icon-button edit-action"
+                      type="button"
+                      aria-label={`编辑用户 ${user.display_name || user.username}`}
+                      data-tooltip="编辑用户与授权"
+                      on:click|stopPropagation={() => onEditUser(user)}
+                      ><Pencil size={15} /></button
+                    ><button
+                      class="icon-button danger-action delete-action"
+                      type="button"
+                      aria-label={`禁用用户 ${user.display_name || user.username}`}
+                      data-tooltip="禁用用户"
+                      disabled={user.status !== 'active' ||
+                        user.id === currentUser?.id}
+                      on:click|stopPropagation={() => onDisable([user.id])}
+                      ><UserX size={15} /></button
+                    >{:else}
+                    <span class="read-only-label">
+                      {user.id === currentUser?.id ? '当前账号' : '只读'}
+                    </span>
+                  {/if}
+                </div>
               {/if}
             </svelte:fragment>
             <svelte:fragment slot="details" let:row>
               {@const user = row as User}
-              {@const roleSelection = activeProjectID ? ({ kind: 'project', id: activeProjectID, name: '' } as Selection) : selected}
+              {@const roleSelection = activeProjectID
+                ? ({
+                    kind: 'project',
+                    id: activeProjectID,
+                    name: ''
+                  } as Selection)
+                : selected}
               {@const scopeRoles = userScopeRoles(user.id, roleSelection)}
-              {@const resourceScopeRoles = userResourceRoleBindings(user.id, roleSelection)}
+              {@const resourceScopeRoles = userResourceRoleBindings(
+                user.id,
+                roleSelection
+              )}
               <div class="access-user-details">
-                  <div class="access-user-details-grid">
-                    <div><span>用户名</span><strong>{user.username}</strong></div>
-                    <div><span>姓名</span><strong>{user.display_name || '未填写'}</strong></div>
-                    <div><span>电话</span><strong>{user.phone || '未填写电话'}</strong></div>
-                    <div><span>邮箱</span><strong>{user.email || '未填写邮箱'}</strong></div>
-                    <div><span>密码状态</span><strong>{user.must_change_password ? '需要修改一次性密码' : '无需强制修改'}</strong></div>
-                    <div><span>创建时间</span><strong>{dateTimeLabel(user.created_at)}</strong></div>
-                    <div><span>更新时间</span><strong>{dateTimeLabel(user.updated_at)}</strong></div>
-                    <div><span>状态</span><strong>{statusLabel(user.status)}</strong></div>
+                <div class="access-user-details-grid">
+                  <div><span>用户名</span><strong>{user.username}</strong></div>
+                  <div>
+                    <span>姓名</span><strong
+                      >{user.display_name || '未填写'}</strong
+                    >
                   </div>
-                  <section class="access-user-details-section access-user-roles-section">
-                    <ReadonlyTable columns={roleColumns} rows={[...scopeRoles.map((entry) => ({ level: scopeTypeLabel(entry.scopeType), object: entry.scopeName, role: entry.roleName, extra: '—', tone: roleTone(entry.roleName) })), ...resourceScopeRoles.map((entry) => ({ level: '资源', object: `${entry.resource_kind} · ${entry.resource_name}`, role: '—', extra: resourceRoleLabel(entry.role_name), tone: roleTone(resourceRoleLabel(entry.role_name)) }))]} emptyText="当前范围无角色">
-                      <svelte:fragment slot="cell" let:row let:column>
-                        {@const roleRow = row as Record<string, string>}
-                        <span class={column.key === 'role' || column.key === 'extra' ? `permission-role-${roleRow.tone}` : ''}>{roleRow[column.key]}</span>
-                      </svelte:fragment>
-                    </ReadonlyTable>
-                  </section>
+                  <div>
+                    <span>电话</span><strong
+                      >{user.phone || '未填写电话'}</strong
+                    >
+                  </div>
+                  <div>
+                    <span>邮箱</span><strong
+                      >{user.email || '未填写邮箱'}</strong
+                    >
+                  </div>
+                  <div>
+                    <span>密码状态</span><strong
+                      >{user.must_change_password
+                        ? '需要修改一次性密码'
+                        : '无需强制修改'}</strong
+                    >
+                  </div>
+                  <div>
+                    <span>创建时间</span><strong
+                      >{dateTimeLabel(user.created_at)}</strong
+                    >
+                  </div>
+                  <div>
+                    <span>更新时间</span><strong
+                      >{dateTimeLabel(user.updated_at)}</strong
+                    >
+                  </div>
+                  <div>
+                    <span>状态</span><strong>{statusLabel(user.status)}</strong>
+                  </div>
                 </div>
+                <section
+                  class="access-user-details-section access-user-roles-section"
+                >
+                  <ReadonlyTable
+                    columns={roleColumns}
+                    rows={[
+                      ...scopeRoles.map((entry) => ({
+                        level: scopeTypeLabel(entry.scopeType),
+                        object: entry.scopeName,
+                        role: entry.roleName,
+                        extra: '—',
+                        tone: roleTone(entry.roleName)
+                      })),
+                      ...resourceScopeRoles.map((entry) => ({
+                        level: '资源',
+                        object: `${entry.resource_kind} · ${entry.resource_name}`,
+                        role: '—',
+                        extra: resourceRoleLabel(entry.role_name),
+                        tone: roleTone(resourceRoleLabel(entry.role_name))
+                      }))
+                    ]}
+                    emptyText="当前范围无角色"
+                  >
+                    <svelte:fragment slot="cell" let:row let:column>
+                      {@const roleRow = row as Record<string, string>}
+                      <span
+                        class={column.key === 'role' || column.key === 'extra'
+                          ? `permission-role-${roleRow.tone}`
+                          : ''}>{roleRow[column.key]}</span
+                      >
+                    </svelte:fragment>
+                  </ReadonlyTable>
+                </section>
+              </div>
             </svelte:fragment>
           </ExpandableTable>
         </div>

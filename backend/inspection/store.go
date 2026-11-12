@@ -71,6 +71,11 @@ func (s *store) CreatePolicy(ctx context.Context, input Policy, actorID string) 
 			return Policy{}, mapError(err)
 		}
 	}
+	for _, target := range input.TargetApplicationIDs {
+		if _, err := tx.Exec(ctx, `INSERT INTO inspection_policy_targets (policy_id,application_id) VALUES ($1::uuid,$2::uuid)`, id, target); err != nil {
+			return Policy{}, mapError(err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Policy{}, err
 	}
@@ -96,7 +101,10 @@ func (s *store) ListPolicies(ctx context.Context, scopeID string) ([]Policy, err
 		item.TimeoutSeconds = seconds
 		_ = json.Unmarshal(labels, &item.TargetLabels)
 		_ = json.Unmarshal(windows, &item.Maintenance)
-		if err := s.pool.QueryRow(ctx, `SELECT COALESCE(array_agg(resource_id::text ORDER BY resource_id::text),'{}') FROM inspection_policy_targets WHERE policy_id=$1::uuid`, item.ID).Scan(&item.TargetResourceIDs); err != nil {
+		if err := s.pool.QueryRow(ctx, `SELECT
+			COALESCE(array_agg(resource_id::text ORDER BY resource_id::text) FILTER (WHERE resource_id IS NOT NULL),'{}'),
+			COALESCE(array_agg(application_id::text ORDER BY application_id::text) FILTER (WHERE application_id IS NOT NULL),'{}')
+			FROM inspection_policy_targets WHERE policy_id=$1::uuid`, item.ID).Scan(&item.TargetResourceIDs, &item.TargetApplicationIDs); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -124,18 +132,24 @@ func resolveTargets(ctx context.Context, db queryer, policy Policy) ([]string, e
 		return nil, err
 	}
 	rows, err := db.Query(ctx, `
-		SELECT resource.id::text
-		  FROM resources resource
-		 WHERE resource.scope_id=$1::uuid
-		   AND resource.deleted_at IS NULL
-		   AND (($2::jsonb = '{}'::jsonb AND resource.id IN (
-		          SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid
-		        )) OR ($2::jsonb <> '{}'::jsonb AND (
-		          resource.labels @> $2::jsonb OR resource.id IN (
-		            SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid
-		          )
-		        )))
-		 ORDER BY resource.id::text`, policy.ScopeID, string(labels), policy.ID)
+		SELECT target_id FROM (
+		  SELECT resource.id AS target_id
+		    FROM resources resource
+		   WHERE resource.deleted_at IS NULL
+		     AND resource_scope_contains($1::uuid,resource.scope_id)
+		     AND (($2::jsonb='{}'::jsonb AND resource.id IN (SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid AND target.resource_id IS NOT NULL))
+		       OR ($2::jsonb<>'{}'::jsonb AND (resource.labels @> $2::jsonb OR resource.id IN (SELECT target.resource_id FROM inspection_policy_targets target WHERE target.policy_id=$3::uuid AND target.resource_id IS NOT NULL))))
+		  UNION
+		  SELECT relation.target_resource_id
+		    FROM inspection_policy_targets app_target
+		    JOIN applications app ON app.id=app_target.application_id AND app.deleted_at IS NULL
+		    JOIN projects project ON project.id=app.project_id AND project.deleted_at IS NULL
+		    JOIN (SELECT application_id,target_resource_id,status FROM application_instances UNION ALL SELECT application_id,target_resource_id,status FROM application_dependencies) relation ON relation.application_id=app.id AND relation.status<>'disabled'
+		    JOIN resources related_resource ON related_resource.id=relation.target_resource_id AND related_resource.deleted_at IS NULL
+		   WHERE app_target.policy_id=$3::uuid AND app_target.application_id IS NOT NULL
+		     AND resource_scope_contains($1::uuid,project.scope_id)
+		     AND resource_scope_contains($1::uuid,related_resource.scope_id)
+		) targets ORDER BY target_id::text`, policy.ScopeID, string(labels), policy.ID)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -149,6 +163,20 @@ func resolveTargets(ctx context.Context, db queryer, policy Policy) ([]string, e
 		targets = append(targets, id)
 	}
 	return targets, rows.Err()
+}
+
+func (s *store) ValidateApplicationTarget(ctx context.Context, scopeID, applicationID string) error {
+	var valid bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM applications app JOIN projects project ON project.id=app.project_id
+		WHERE app.id=$2::uuid AND app.deleted_at IS NULL AND app.status<>'disabled'
+		AND resource_scope_contains($1::uuid,project.scope_id))`, scopeID, applicationID).Scan(&valid); err != nil {
+		return mapError(err)
+	}
+	if !valid {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ScheduleDue is protected by a PostgreSQL advisory lock, so multiple
@@ -201,6 +229,9 @@ func (s *store) ScheduleDue(ctx context.Context, now time.Time) (int, error) {
 		localNow := now.In(location).Truncate(time.Minute)
 		if next := schedule.Next(localNow.Add(-time.Minute)); next.After(localNow) || next.Before(localNow) || IsMaintenance(policy.Maintenance, localNow) {
 			continue
+		}
+		if err := conn.QueryRow(ctx, `SELECT COALESCE(array_agg(application_id::text ORDER BY application_id::text) FILTER (WHERE application_id IS NOT NULL),'{}') FROM inspection_policy_targets WHERE policy_id=$1::uuid`, policy.ID).Scan(&policy.TargetApplicationIDs); err != nil {
+			return created, err
 		}
 		policy.TargetResourceIDs, err = resolveTargets(ctx, conn, policy)
 		if err != nil {
@@ -381,11 +412,31 @@ func (s *store) StartRun(ctx context.Context, id string) error {
 }
 
 func (s *store) SaveResults(ctx context.Context, run Run, policy Policy, results []RuleResult) ([]Finding, []HealthSnapshot, error) {
+	return s.saveResults(ctx, run, policy, results, "", "")
+}
+
+func (s *store) SaveResultsForJob(ctx context.Context, jobID, owner string, run Run, policy Policy, results []RuleResult) ([]Finding, []HealthSnapshot, error) {
+	return s.saveResults(ctx, run, policy, results, jobID, owner)
+}
+
+func (s *store) saveResults(ctx context.Context, run Run, policy Policy, results []RuleResult, jobID, owner string) ([]Finding, []HealthSnapshot, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if jobID != "" {
+		var leaseOwner string
+		if err := tx.QueryRow(ctx, `SELECT lease_owner FROM inspection_jobs WHERE id=$1::uuid AND status='leased' AND lease_owner=$2 AND lease_expires_at>now() FOR UPDATE`, jobID, owner).Scan(&leaseOwner); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, nil, errors.New("inspection job lease lost")
+			}
+			return nil, nil, mapError(err)
+		}
+		if leaseOwner != owner {
+			return nil, nil, errors.New("inspection job lease lost")
+		}
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('inspection-results:'||$1,0))`, policy.ID); err != nil {
 		return nil, nil, err
 	}

@@ -191,7 +191,7 @@ func TestAgentRunnerRunsInternalDelegationWithoutResourceGateway(t *testing.T) {
 			events = append(events, event)
 			return nil
 		},
-		InternalTools: []Tool{ToolFunc{Def: ToolDefinition{Name: "delegate_postgres", Source: "persona-delegation", ReadOnly: true}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
+		InternalTools: []Tool{ToolFunc{Def: ToolDefinition{Name: "delegate_postgres", Source: "diagnosis-investigation", ReadOnly: true}, Fn: func(context.Context, map[string]any) (ToolResult, error) {
 			invoked.Add(1)
 			return ToolResult{Output: map[string]any{"status": "succeeded", "report": "database healthy"}}, nil
 		}}},
@@ -210,7 +210,7 @@ func TestAgentRunnerRunsInternalDelegationWithoutResourceGateway(t *testing.T) {
 }
 
 func TestAllowedInternalToolSource(t *testing.T) {
-	for _, source := range []string{"persona-delegation", "diagnosis-scope"} {
+	for _, source := range []string{"diagnosis-investigation", "diagnosis-scope"} {
 		if !allowedInternalToolSource(source) {
 			t.Fatalf("internal source %q should be allowed", source)
 		}
@@ -222,7 +222,10 @@ func TestAllowedInternalToolSource(t *testing.T) {
 
 func TestTrimContextReturnsEvictedObservationReferences(t *testing.T) {
 	state := newExecutionState()
-	observationID := state.save(map[string]any{"rows": []any{"row-1", "row-2"}})
+	observationID, stored := state.save(map[string]any{"rows": []any{"row-1", "row-2"}})
+	if !stored {
+		t.Fatal("observation was not stored")
+	}
 	state.observe("query", observationID, map[string]any{"status": "ok", "rows": 2})
 	request := &model.LLMRequest{Contents: []*genai.Content{
 		genai.NewContentFromText("initial task", genai.RoleUser),
@@ -245,6 +248,21 @@ func TestTrimContextReturnsEvictedObservationReferences(t *testing.T) {
 	value, ok := state.read(observationID, 0, 1000)
 	if !ok || !strings.Contains(fmt.Sprint(value), "row-1") {
 		t.Fatalf("evicted observation is not readable: %#v", value)
+	}
+}
+
+func TestExecutionObservationStoreHasGenerousAggregateLimit(t *testing.T) {
+	state := newExecutionState()
+	first, stored := state.save(map[string]any{"source": strings.Repeat("x", (24<<20)-32)})
+	if !stored || first == "" {
+		t.Fatal("expected a 24 MiB observation to fit the per-execution store")
+	}
+	second, stored := state.save(map[string]any{"source": strings.Repeat("y", 9<<20)})
+	if stored || second != "" {
+		t.Fatal("expected aggregate observation budget to reject content beyond 32 MiB")
+	}
+	if _, ok := state.read(first, 0, 16); !ok {
+		t.Fatal("existing observation was discarded after the budget was exhausted")
 	}
 }
 

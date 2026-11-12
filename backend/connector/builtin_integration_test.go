@@ -11,15 +11,23 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"opskeeper/backend/config"
 	"opskeeper/backend/resource"
 )
 
 func TestBuiltinPostgreSQLAndRedisSnapshots(t *testing.T) {
 	ctx := context.Background()
-	postgresURL := os.Getenv("OPSK_DATABASE_URL")
+	if os.Getenv("OPSK_DB_HOST") == "" {
+		t.Skip("OPSK_DB_HOST and OPSK_REDIS_URL are required")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	postgresURL := cfg.DatabaseURL
 	redisURL := os.Getenv("OPSK_REDIS_URL")
-	if postgresURL == "" || redisURL == "" {
-		t.Skip("OPSK_DATABASE_URL and OPSK_REDIS_URL are required")
+	if redisURL == "" {
+		t.Skip("OPSK_DB_HOST and OPSK_REDIS_URL are required")
 	}
 	pgConfig, err := pgx.ParseConfig(postgresURL)
 	if err != nil {

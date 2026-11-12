@@ -21,11 +21,7 @@
     Wrench,
     X
   } from 'lucide-svelte';
-  import {
-    api,
-    type SkillCatalogItem,
-    type SkillVersion
-  } from '../../lib/api';
+  import { api, type SkillCatalogItem, type SkillVersion } from '../../lib/api';
   import { errorMessage as formatErrorMessage } from '../../lib/errorMessage';
   import SearchInput from '../../components/SearchInput.svelte';
   import FormField from '../../components/FormField.svelte';
@@ -435,8 +431,7 @@
     <section class="skill-list-panel panel">
       <div class="skill-list-header">
         <label
-          ><input type="checkbox" aria-label="选择全部技能" /><span
-            >名称</span
+          ><input type="checkbox" aria-label="选择全部技能" /><span>名称</span
           ></label
         ><span>分类</span><span>类型</span><span>来源</span><span>上次调用</span
         ><span>平均 TOKEN</span><span>风险</span><span>描述</span><span
@@ -470,7 +465,13 @@
             >
             <div>
               <strong>{skill.name}</strong><small>{skill.identifier}</small>
-              <TagList tags={skill.tags.slice(0, 3)} className="skill-row-tags" textMode="ellipsis" maxWidth="180px" wrap={false} />
+              <TagList
+                tags={skill.tags.slice(0, 3)}
+                className="skill-row-tags"
+                textMode="ellipsis"
+                maxWidth="180px"
+                wrap={false}
+              />
             </div>
           </div>
           <span
@@ -486,7 +487,13 @@
           <span class="skill-token-cost">—</span>
           <span><span class="skill-risk safe">safe</span></span>
           <span class="skill-description"
-            ><TagList tags={skill.tags.slice(0, 2)} className="skill-description" textMode="ellipsis" maxWidth="120px" emptyText="声明式能力" /></span
+            ><TagList
+              tags={skill.tags.slice(0, 2)}
+              className="skill-description"
+              textMode="ellipsis"
+              maxWidth="120px"
+              emptyText="声明式能力"
+            /></span
           >
           <span class="skill-row-actions"
             ><button
@@ -551,7 +558,18 @@
               : selectedSkill.status}</span
           ><span>{selectedSkill.tags.length} 个标签</span>
         </div>
-        <Tabs className="skill-detail-tabs" ariaLabel="Skill 详情" value={detailTab} items={[{ value: 'overview', label: '概览' }, { value: 'schema', label: '输入输出' }, { value: 'versions', label: '版本' }, { value: 'logs', label: '调用日志' }]} onChange={(value) => (detailTab = value as typeof detailTab)} />
+        <Tabs
+          className="skill-detail-tabs"
+          ariaLabel="Skill 详情"
+          value={detailTab}
+          items={[
+            { value: 'overview', label: '概览' },
+            { value: 'schema', label: '输入输出' },
+            { value: 'versions', label: '版本' },
+            { value: 'logs', label: '调用日志' }
+          ]}
+          onChange={(value) => (detailTab = value as typeof detailTab)}
+        />
         <div class="skill-detail-scroll">
           {#if versionsLoading}<div class="skill-detail-loading">
               正在加载版本...
@@ -586,7 +604,11 @@
             </section>
             <section class="skill-detail-section">
               <h3>标签</h3>
-              <TagList tags={selectedSkill.tags} className="skill-tag-list" emptyText="暂无标签" />
+              <TagList
+                tags={selectedSkill.tags}
+                className="skill-tag-list"
+                emptyText="暂无标签"
+              />
             </section>
             <section class="skill-detail-section">
               <div class="skill-section-title">
@@ -672,17 +694,50 @@
           >
         </FormActions>
 
-        {#if editing}<ModalDialog title="新增 Skill 版本" description={`为“${selectedSkill.name}”创建并配置新的版本草稿。`} confirmLabel="创建" confirmForm="skill-version-form" {busy} confirmDisabled={!selectedSkillId} onCancel={cancelEdit}>
+        {#if editing}<ModalDialog
+            title="新增 Skill 版本"
+            description={`为“${selectedSkill.name}”创建并配置新的版本草稿。`}
+            confirmLabel="创建"
+            confirmForm="skill-version-form"
+            {busy}
+            confirmDisabled={!selectedSkillId}
+            onCancel={cancelEdit}
+          >
             <form
               id="skill-version-form"
               class="skill-editor-form"
               on:submit|preventDefault={createVersion}
             >
-              <FormField label="正文内容" required><TextArea bind:value={instruction} rows={11} required placeholder="描述目标、边界、步骤与输出要求" /></FormField>
+              <FormField label="正文内容" required
+                ><TextArea
+                  bind:value={instruction}
+                  rows={11}
+                  required
+                  placeholder="描述目标、边界、步骤与输出要求"
+                /></FormField
+              >
               <div class="skill-editor-grid">
-                <FormField label="输入 Schema"><TextArea bind:value={inputSchema} rows={8} spellcheck={false} /></FormField><FormField label="输出 Schema"><TextArea bind:value={outputSchema} rows={8} spellcheck={false} /></FormField>
+                <FormField label="输入 Schema"
+                  ><TextArea
+                    bind:value={inputSchema}
+                    rows={8}
+                    spellcheck={false}
+                  /></FormField
+                ><FormField label="输出 Schema"
+                  ><TextArea
+                    bind:value={outputSchema}
+                    rows={8}
+                    spellcheck={false}
+                  /></FormField
+                >
               </div>
-              <FormField label="版本说明"><TextInput bind:value={description} placeholder="说明本版本的用途和变化" ariaLabel="版本说明" /></FormField>
+              <FormField label="版本说明"
+                ><TextInput
+                  bind:value={description}
+                  placeholder="说明本版本的用途和变化"
+                  ariaLabel="版本说明"
+                /></FormField
+              >
               <fieldset class="skill-tool-picker">
                 <legend
                   >可使用工具 <span>{selectedToolNames.length}</span></legend

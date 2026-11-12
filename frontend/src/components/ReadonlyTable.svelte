@@ -39,7 +39,12 @@
           {/each}
         </tr>
       {:else}
-        {#if emptyText}<tr><td class="readonly-table-empty" colspan={Math.max(columns.length, 1)}>{emptyText}</td></tr>{/if}
+        {#if emptyText}<tr
+            ><td
+              class="readonly-table-empty"
+              colspan={Math.max(columns.length, 1)}>{emptyText}</td
+            ></tr
+          >{/if}
       {/each}
     </tbody>
   </table>

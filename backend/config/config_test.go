@@ -11,28 +11,31 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("OPSK_BASE_PATH", "/test-ops")
 	t.Setenv("OPSK_ENVIRONMENT", "test")
-	t.Setenv("OPSK_HTTP_ADDRESS", ":9090")
-	t.Setenv("OPSK_DATABASE_URL", "postgres://test")
+	t.Setenv("OPSK_LISTEN_PORT", "9090")
+	t.Setenv("OPSK_DB_HOST", "test:5432")
+	t.Setenv("OPSK_DB_NAME", "test")
+	t.Setenv("OPSK_DB_USER", "test")
+	t.Setenv("OPSK_DB_PASSWORD", "test password")
 	t.Setenv("OPSK_REDIS_URL", "redis://test")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Environment != "test" || cfg.HTTPAddress != ":9090" {
+	if cfg.Environment != "test" || cfg.ListenPort != 9090 {
 		t.Fatalf("Load() returned unexpected config: %#v", cfg)
 	}
 	if cfg.LogFormat != "raw" {
 		t.Fatalf("Load() LogFormat = %q, want raw", cfg.LogFormat)
 	}
-	if cfg.CacheBackend != "postgres" || cfg.RepositoryStorageBackend != "postgres" {
-		t.Fatalf("Load() backend defaults = cache %q, storage %q", cfg.CacheBackend, cfg.RepositoryStorageBackend)
+	if cfg.CacheBackend != "postgres" || cfg.StorageBackend != "postgres" {
+		t.Fatalf("Load() backend defaults = cache %q, storage %q", cfg.CacheBackend, cfg.StorageBackend)
+	}
+	if cfg.StorageS3Provider != "minio" {
+		t.Fatalf("Load() S3 provider = %q, want minio", cfg.StorageS3Provider)
 	}
 	if cfg.NotificationQueueBackend != "postgres" || cfg.NotificationQueuePollInterval != 5*time.Second {
 		t.Fatalf("Load() notification queue config = %q, %s", cfg.NotificationQueueBackend, cfg.NotificationQueuePollInterval)
-	}
-	if cfg.RepositoryS3Provider != "minio" {
-		t.Fatalf("Load() S3 provider = %q, want minio", cfg.RepositoryS3Provider)
 	}
 	if !cfg.LogHealthIgnore {
 		t.Fatalf("Load() LogHealthIgnore = false, want true")
@@ -52,8 +55,28 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ConnectorTimeout != 10*time.Second || cfg.ConnectorMaxConcurrency != 8 || cfg.ConnectorMaxResponseBytes != 4<<20 {
 		t.Fatalf("Load() returned unexpected connector config: %#v", cfg)
 	}
+	if cfg.DiagnosisCollaboration != 2 || cfg.DiagnosisMaxSubagents != 24 || cfg.DiagnosisSubagentConcurrency != 4 {
+		t.Fatalf("Load() diagnosis collaboration defaults = %d/%d/%d", cfg.DiagnosisCollaboration, cfg.DiagnosisMaxSubagents, cfg.DiagnosisSubagentConcurrency)
+	}
 	if cfg.HTTPMaxBodyBytes != 5<<20 || cfg.HTTPRateLimitPerMinute != 600 || len(cfg.AllowedOrigins) != 0 {
 		t.Fatalf("Load() returned unexpected HTTP security config: %#v", cfg)
+	}
+}
+
+func TestLoadUsesSafeDiagnosisCollaborationLimits(t *testing.T) {
+	t.Setenv("OPSK_DIAGNOSIS_COLLABORATION", "5")
+	t.Setenv("OPSK_DIAGNOSIS_MAX_SUBAGENTS", "9")
+	t.Setenv("OPSK_DIAGNOSIS_SUBAGENT_CONCURRENCY", "3")
+	cfg, err := Load()
+	if err != nil || cfg.DiagnosisCollaboration != 5 || cfg.DiagnosisMaxSubagents != 9 || cfg.DiagnosisSubagentConcurrency != 3 {
+		t.Fatalf("Load() diagnosis limits = %d/%d/%d, err=%v", cfg.DiagnosisCollaboration, cfg.DiagnosisMaxSubagents, cfg.DiagnosisSubagentConcurrency, err)
+	}
+	for _, key := range []string{"OPSK_DIAGNOSIS_COLLABORATION", "OPSK_DIAGNOSIS_MAX_SUBAGENTS", "OPSK_DIAGNOSIS_SUBAGENT_CONCURRENCY"} {
+		t.Setenv(key, "999")
+	}
+	cfg, err = Load()
+	if err != nil || cfg.DiagnosisCollaboration != 2 || cfg.DiagnosisMaxSubagents != 24 || cfg.DiagnosisSubagentConcurrency != 4 {
+		t.Fatalf("invalid diagnosis limits did not use safe defaults: %d/%d/%d err=%v", cfg.DiagnosisCollaboration, cfg.DiagnosisMaxSubagents, cfg.DiagnosisSubagentConcurrency, err)
 	}
 }
 
@@ -96,8 +119,8 @@ func TestLoadRejectsInvalidStorageBackends(t *testing.T) {
 		value string
 	}{
 		{key: "OPSK_CACHE_BACKEND", value: "filesystem"},
-		{key: "OPSK_REPOSITORY_STORAGE_BACKEND", value: "redis"},
-		{key: "OPSK_MESSAGE_QUEUE_BACKEND", value: "redis"},
+		{key: "OPSK_STORAGE_BACKEND", value: "redis"},
+		{key: "OPSK_MQ_BACKEND", value: "redis"},
 	}
 	for _, test := range tests {
 		t.Run(test.key, func(t *testing.T) {
@@ -114,6 +137,26 @@ func TestLoadRequiresRedisURLOnlyForRedisCache(t *testing.T) {
 	t.Setenv("OPSK_REDIS_URL", "")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want Redis URL validation")
+	}
+}
+
+func TestLoadUsesGenericStorageEnvironment(t *testing.T) {
+	t.Setenv("OPSK_STORAGE_BACKEND", "s3")
+	t.Setenv("OPSK_REPOSITORY_LOCAL_ROOT", "/srv/opskeeper/repositories")
+	t.Setenv("OPSK_STORAGE_S3_PROVIDER", "minio")
+	t.Setenv("OPSK_STORAGE_S3_ENDPOINT", "https://storage.example.test")
+	t.Setenv("OPSK_STORAGE_S3_BUCKET", "opskeeper")
+	t.Setenv("OPSK_STORAGE_S3_PREFIX", "bundles")
+	t.Setenv("OPSK_STORAGE_S3_ACCESS_KEY", "access")
+	t.Setenv("OPSK_STORAGE_S3_SECRET_KEY", "secret")
+	t.Setenv("OPSK_STORAGE_S3_USE_SSL", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.StorageBackend != "s3" || cfg.RepositoryLocalRoot != "/srv/opskeeper/repositories" || cfg.StorageS3Provider != "minio" || cfg.StorageS3Endpoint != "https://storage.example.test" || cfg.StorageS3Bucket != "opskeeper" || cfg.StorageS3Prefix != "bundles" || cfg.StorageS3AccessKey != "access" || cfg.StorageS3SecretKey != "secret" || !cfg.StorageS3UseSSL {
+		t.Fatalf("Load() storage config = %#v", cfg)
 	}
 }
 
@@ -232,7 +275,8 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 
 func TestLoadRequiresSecureCookiesInProduction(t *testing.T) {
 	t.Setenv("OPSK_ENVIRONMENT", "production")
-	t.Setenv("OPSK_DATABASE_URL", "postgres://production-db/opskeeper")
+	t.Setenv("OPSK_DB_HOST", "production-db:5432")
+	t.Setenv("OPSK_DB_PASSWORD", "production password")
 	t.Setenv("OPSK_REDIS_URL", "rediss://production-redis/0")
 	t.Setenv("OPSK_COOKIE_SECURE", "false")
 	if _, err := Load(); err == nil {
@@ -253,11 +297,41 @@ func TestLoadRejectsDevelopmentDefaultsInProduction(t *testing.T) {
 		t.Fatal("Load() error = nil for production development database defaults")
 	}
 
-	t.Setenv("OPSK_DATABASE_URL", "postgres://production-db/opskeeper")
+	t.Setenv("OPSK_DB_HOST", "production-db:5432")
+	t.Setenv("OPSK_DB_PASSWORD", "production password")
 	t.Setenv("OPSK_REDIS_URL", "rediss://production-redis/0")
 	t.Setenv("OPSK_ALLOWED_ORIGINS", "http://ops.example.com")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil for production HTTP origin")
+	}
+}
+
+func TestLoadBuildsDatabaseURLFromParts(t *testing.T) {
+	t.Setenv("OPSK_DB_HOST", "db.example.test:5432")
+	t.Setenv("OPSK_DB_NAME", "ops data")
+	t.Setenv("OPSK_DB_USER", "app user")
+	t.Setenv("OPSK_DB_PASSWORD", "p@ss word")
+	t.Setenv("OPSK_DB_SSLMODE", "verify-full")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DatabaseURL != "postgres://app%20user:p%40ss%20word@db.example.test:5432/ops%20data?sslmode=verify-full" {
+		t.Fatalf("DatabaseURL = %q", cfg.DatabaseURL)
+	}
+}
+
+func TestLoadRejectsInvalidDatabaseConfiguration(t *testing.T) {
+	for _, test := range []struct{ key, value string }{
+		{"OPSK_DB_HOST", "bad host"},
+		{"OPSK_DB_SSLMODE", "unsafe"},
+	} {
+		t.Run(test.key, func(t *testing.T) {
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for %s=%q", test.key, test.value)
+			}
+		})
 	}
 }
 
@@ -285,6 +359,17 @@ func TestLoadRejectsInvalidSessionConfiguration(t *testing.T) {
 			t.Fatal("Load() error = nil for equal session TTLs")
 		}
 	})
+}
+
+func TestLoadRejectsInvalidListenPort(t *testing.T) {
+	for _, value := range []string{"0", "65536", "http", "8080x"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("OPSK_LISTEN_PORT", value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() error = nil for OPSK_LISTEN_PORT=%q", value)
+			}
+		})
+	}
 }
 
 func TestLoadAcceptsBasePaths(t *testing.T) {

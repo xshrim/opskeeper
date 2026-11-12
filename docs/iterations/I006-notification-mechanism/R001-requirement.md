@@ -20,7 +20,7 @@
 - 支持模板复用、版本冻结、变量校验、预览和 provider 特定格式转换；
 - 支持事件筛选、级别过滤、目标过滤、冷却、聚合、静默时段和多渠道路由；
 - 保证巡检状态、通知事件和投递任务在一个 PostgreSQL 事务中提交；
-- 默认使用 PostgreSQL 原生队列，并通过 `OPSK_MESSAGE_QUEUE_BACKEND=postgres` 明确选择当前唯一支持的后端；
+- 默认使用 PostgreSQL 原生队列，并通过 `OPSK_MQ_BACKEND=postgres` 明确选择当前唯一支持的后端；
 - 提供可靠投递、幂等、有限重试、死信、人工重试、审计和可观测性。
 
 ## 3. 范围
@@ -90,7 +90,7 @@
 ### 3.7 队列配置
 
 ```text
-OPSK_MESSAGE_QUEUE_BACKEND=postgres
+OPSK_MQ_BACKEND=postgres
 ```
 
 该变量为空时按 `postgres` 处理；当前服务只接受 `postgres`，配置其他值应在启动校验阶段明确报错。未来新增队列后端时，必须先完成独立 ADR、容量评估、数据一致性边界、健康检查和迁移/回滚设计，不在本需求中预留第二套实现。
@@ -254,12 +254,12 @@ API 采用当前 `/api/v1` 风格，至少包括：
 - `pgx/v5` 专用监听连接、断线重连和轮询兜底；
 - Worker、幂等键和路由快照校验；
 - 指数退避、Retry-After、最大尝试、死信、手动重试和限流；
-- `OPSK_MESSAGE_QUEUE_BACKEND` 的启动校验、健康指标和积压指标。
+- `OPSK_MQ_BACKEND` 的启动校验、健康指标和积压指标。
 
 #### 验收标准
 
 - PostgreSQL 模式在通知唤醒丢失、Worker 崩溃、租约过期和多 Worker 并发下不丢事件且不重复完成；
-- `OPSK_MESSAGE_QUEUE_BACKEND` 使用非法值时启动失败，不静默切换后端；
+- `OPSK_MQ_BACKEND` 使用非法值时启动失败，不静默切换后端；
 - 发送网络请求不持有数据库行锁；
 - 死信和重试均有审计、状态和可操作错误。
 
@@ -354,7 +354,7 @@ API 采用当前 `/api/v1` 风格，至少包括：
 5. 模板版本不可变、变量受限、可预览，不能执行代码或访问未声明数据。
 6. 规则支持事件、级别、目标、冷却、聚合、静默和多渠道路由；入队后使用规则/模板/渠道快照。
 7. PostgreSQL 默认队列使用事务写入、`FOR UPDATE SKIP LOCKED`、租约、`LISTEN/NOTIFY` 和轮询兜底；不依赖 `pgmq` 或其他扩展。
-8. `OPSK_MESSAGE_QUEUE_BACKEND` 默认值为 `postgres`，当前只接受该值，非法值启动失败。
+8. `OPSK_MQ_BACKEND` 默认值为 `postgres`，当前只接受该值，非法值启动失败。
 9. 投递失败有有限重试、退避、死信和人工重试；投递历史和审计可查询且敏感信息已脱敏。
 10. 后端、数据库、队列、前端和运维验证证据完整，未完成范围明确转移。
 

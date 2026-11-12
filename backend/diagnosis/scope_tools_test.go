@@ -35,6 +35,12 @@ func (scopeToolApplications) DiagnosticApplicationContextByLocator(context.Conte
 	return appdomain.DiagnosticContext{Application: appdomain.DiagnosticApplication{ID: "internal-app-id", Name: "Orders"}, Resources: []appdomain.DiagnosticResource{{ID: "internal-resource-id", Name: "Postgres", Kind: "postgresql"}}}, nil
 }
 
+type missingScopeToolApplications struct{ scopeToolApplications }
+
+func (missingScopeToolApplications) DiagnosticApplicationContextByLocator(context.Context, string, string, string) (appdomain.DiagnosticContext, error) {
+	return appdomain.DiagnosticContext{}, appdomain.ErrNotFound
+}
+
 func TestDiagnosticScopeToolsAreBoundedAndStripInternalIDs(t *testing.T) {
 	service := &Service{applications: scopeToolApplications{}}
 	tools := service.diagnosticScopeTools(context.Background(), "scope-1")
@@ -47,7 +53,7 @@ func TestDiagnosticScopeToolsAreBoundedAndStripInternalIDs(t *testing.T) {
 			t.Fatalf("definition = %#v", definition)
 		}
 	}
-	result, err := tools[3].Invoke(context.Background(), map[string]any{"code": "orders"})
+	result, err := tools[3].Invoke(context.Background(), map[string]any{"application_code": "orders"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +63,26 @@ func TestDiagnosticScopeToolsAreBoundedAndStripInternalIDs(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), "internal-app-id") || strings.Contains(string(encoded), "internal-resource-id") {
 		t.Fatalf("internal IDs leaked from scope tool: %v", result.Output)
+	}
+}
+
+func TestDiagnosticApplicationContextMissDoesNotTerminateObjectResolution(t *testing.T) {
+	service := &Service{applications: missingScopeToolApplications{}}
+	tools := service.diagnosticScopeTools(context.Background(), "scope-1")
+	definition := tools[3].Definition()
+	if !strings.Contains(definition.Description, "selected_resources") || !strings.Contains(string(definition.InputSchema), "application_name") {
+		t.Fatalf("application lookup definition is ambiguous: %#v", definition)
+	}
+	result, err := tools[3].Invoke(context.Background(), map[string]any{"application_name": "git"})
+	if err != nil {
+		t.Fatalf("not-found application should be a recoverable result: %v", err)
+	}
+	encoded, err := json.Marshal(result.Output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"found":false`) || !strings.Contains(string(encoded), "resource-specific tools") {
+		t.Fatalf("application miss did not direct the model to continue object resolution: %s", encoded)
 	}
 }
 

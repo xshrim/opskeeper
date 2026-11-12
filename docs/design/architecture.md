@@ -167,10 +167,10 @@ flowchart LR
 
 - 前后端源码和依赖保持独立；本地既可使用 Go API 与 Vite 分离热更新，也可通过 `make front-api-run` 构建并嵌入前端后只运行 API。生产构建同样将 Vite 静态制品嵌入 `opskeeper-api`，由一个进程提供页面、静态资源和业务 API。
 - 应用临时运行、二进制构建和最终镜像打包统一由根目录 Makefile 提供入口，不使用独立包装脚本。
-- API、Worker、Scheduler 和 Migration 的服务名称及镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker`、`opskeeper-scheduler` 和 `opskeeper-migrate`；`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
+- API、Worker 和 Scheduler 的服务名称及镜像内二进制文件名固定为 `opskeeper-api`、`opskeeper-worker` 和 `opskeeper-scheduler`；API 启动时执行迁移，`OPSK_BASE_PATH` 只控制 API 的 HTTP 路径前缀。
 - API、Worker、Scheduler 和 Migration 的日志格式由 `OPSK_LOG_FORMAT` 统一控制，支持 `json`、`text` 和 `raw`，默认使用 `raw`；字段顺序、Trace/Span 和 ReqID 规则遵循[后端日志规范](../standards/backend-logging.md)。
 - API 默认不信任客户端转发头；只有 `OPSK_TRUSTED_PROXIES` 明确列出的直连代理才能提供客户端 IP，解析结果写入请求日志并供后续审计使用。
-- 数据库迁移由滚动发布前的单实例 Migration Job 执行，使用 PostgreSQL advisory lock 防止并发；应用进程不自动迁移，Schema 演进遵循 Expand/Contract。
+- 数据库迁移由 API 启动阶段执行，使用 PostgreSQL advisory lock 防止并发；迁移完成前 API 不监听 HTTP 端口，Schema 演进遵循 Expand/Contract。
 - Connector 调用统一使用超时、全局并发、有限重试、查询范围和最大响应大小限制；连接检查只持久化安全分类、公开消息、耗时和能力，不保存上游响应正文或凭据。
 - T15 Helm Chart 已包含 API、Worker、Scheduler、Migration Hook、探针、资源限制、非 root 安全上下文、PDB、可选 HPA 和 NetworkPolicy；Chart 不生成或接管运行时 Secret。
 - API 在生产环境启用 HSTS，并统一设置 CSP、点击劫持与内容嗅探防护、Permissions Policy；状态变更请求经过 Origin/Fetch Metadata 校验，并有 CORS、请求体上限和按客户端 IP 的进程内限流。

@@ -65,7 +65,10 @@ func (w *Worker) run(ctx context.Context, job Job) error {
 	stop := make(chan struct{})
 	var once sync.Once
 	defer once.Do(func() { close(stop) })
+	leaseLost := make(chan struct{})
+	heartbeatDone := make(chan struct{})
 	go func() {
+		defer close(heartbeatDone)
 		ticker := time.NewTicker(w.lease / 3)
 		defer ticker.Stop()
 		for {
@@ -73,8 +76,12 @@ func (w *Worker) run(ctx context.Context, job Job) error {
 			case <-stop:
 				return
 			case <-ticker.C:
-				ok, _ := w.store.Heartbeat(context.Background(), job.ID, w.owner, w.lease)
-				if !ok {
+				heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, min(w.lease/3, 5*time.Second))
+				ok, err := w.store.Heartbeat(heartbeatCtx, job.ID, w.owner, w.lease)
+				heartbeatCancel()
+				if err != nil || !ok {
+					cancel()
+					close(leaseLost)
 					return
 				}
 			}
@@ -92,27 +99,41 @@ func (w *Worker) run(ctx context.Context, job Job) error {
 		values []RuleResult
 		err    error
 	}
-	semaphore := make(chan struct{}, maxConcurrent)
 	completed := make(chan targetResult, len(targets))
+	targetQueue := make(chan string)
 	var checks sync.WaitGroup
-	for _, target := range targets {
-		target := target
+	workers := min(maxConcurrent, len(targets))
+	for range workers {
 		checks.Add(1)
 		go func() {
 			defer checks.Done()
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			case <-ctx.Done():
-				completed <- targetResult{target: target, err: ctx.Err()}
-				return
+			for target := range targetQueue {
+				values, checkErr := w.checker.Check(ctx, target)
+				completed <- targetResult{target: target, values: values, err: checkErr}
 			}
-			values, checkErr := w.checker.Check(ctx, target)
-			completed <- targetResult{target: target, values: values, err: checkErr}
 		}()
 	}
+	for _, target := range targets {
+		select {
+		case targetQueue <- target:
+		case <-ctx.Done():
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	close(targetQueue)
 	checks.Wait()
 	close(completed)
+	if err := ctx.Err(); err != nil {
+		select {
+		case <-leaseLost:
+			return fmt.Errorf("inspection job lease lost")
+		default:
+			return err
+		}
+	}
 	results := []RuleResult{}
 	for result := range completed {
 		values := result.values
@@ -127,7 +148,19 @@ func (w *Worker) run(ctx context.Context, job Job) error {
 		results = append(results, values...)
 	}
 	policy.TargetResourceIDs = targets
-	findings, _, err := w.store.SaveResults(ctx, run, policy, results)
+	if ok, err := w.store.Heartbeat(ctx, job.ID, w.owner, w.lease); err != nil || !ok {
+		return fmt.Errorf("inspection job lease lost")
+	}
+	once.Do(func() { close(stop) })
+	<-heartbeatDone
+	var findings []Finding
+	if guarded, ok := w.store.(interface {
+		SaveResultsForJob(context.Context, string, string, Run, Policy, []RuleResult) ([]Finding, []HealthSnapshot, error)
+	}); ok {
+		findings, _, err = guarded.SaveResultsForJob(ctx, job.ID, w.owner, run, policy, results)
+	} else {
+		findings, _, err = w.store.SaveResults(ctx, run, policy, results)
+	}
 	if err != nil {
 		return err
 	}

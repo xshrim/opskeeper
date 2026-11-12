@@ -88,30 +88,45 @@ function theSVG(
 
 export const iconifyIconEntries: IconifyIconDefinition[] = [
   simple('iconify:simple-icons:anthropic', 'Anthropic', siAnthropic),
-  simple('iconify:simple-icons:apache-kafka', 'Apache Kafka', siApachekafka, ['Kafka']),
+  simple('iconify:simple-icons:apache-kafka', 'Apache Kafka', siApachekafka, [
+    'Kafka'
+  ]),
   simple('iconify:simple-icons:datadog', 'Datadog', siDatadog),
   simple('iconify:simple-icons:docker', 'Docker', siDocker),
   simple('iconify:simple-icons:elastic', 'Elastic', siElastic),
-  simple('iconify:simple-icons:elasticsearch', 'Elasticsearch', siElasticsearch, ['Elastic Search']),
+  simple(
+    'iconify:simple-icons:elasticsearch',
+    'Elasticsearch',
+    siElasticsearch,
+    ['Elastic Search']
+  ),
   simple('iconify:simple-icons:git', 'Git', siGit),
   simple('iconify:simple-icons:gitea', 'Gitea', siGitea),
   simple('iconify:simple-icons:github', 'GitHub', siGithub),
   simple('iconify:simple-icons:gitlab', 'GitLab', siGitlab),
   simple('iconify:simple-icons:grafana', 'Grafana', siGrafana),
-  simple('iconify:simple-icons:gemini', 'Gemini', siGooglegemini, ['Google Gemini']),
+  simple('iconify:simple-icons:gemini', 'Gemini', siGooglegemini, [
+    'Google Gemini'
+  ]),
   simple('iconify:simple-icons:harbor', 'Harbor', siHarbor),
   simple('iconify:simple-icons:helm', 'Helm', siHelm),
   simple('iconify:simple-icons:jaeger', 'Jaeger', siJaeger),
   simple('iconify:simple-icons:kimi', 'Kimi', siKimi),
-  simple('iconify:simple-icons:kubernetes', 'Kubernetes', siKubernetes, ['K8s']),
+  simple('iconify:simple-icons:kubernetes', 'Kubernetes', siKubernetes, [
+    'K8s'
+  ]),
   simple('iconify:simple-icons:minimax', 'MiniMax', siMinimax),
   simple('iconify:simple-icons:minio', 'MinIO', siMinio),
   simple('iconify:simple-icons:mongodb', 'MongoDB', siMongodb),
-  simple('iconify:simple-icons:moonshot', 'Moonshot', siMoonshotai, ['Moonshot AI']),
+  simple('iconify:simple-icons:moonshot', 'Moonshot', siMoonshotai, [
+    'Moonshot AI'
+  ]),
   simple('iconify:simple-icons:mysql', 'MySQL', siMysql),
   simple('iconify:simple-icons:ollama', 'Ollama', siOllama),
   simple('iconify:simple-icons:openrouter', 'OpenRouter', siOpenrouter),
-  simple('iconify:simple-icons:postgresql', 'PostgreSQL', siPostgresql, ['Postgres']),
+  simple('iconify:simple-icons:postgresql', 'PostgreSQL', siPostgresql, [
+    'Postgres'
+  ]),
   simple('iconify:simple-icons:prometheus', 'Prometheus', siPrometheus),
   simple('iconify:simple-icons:qwen', 'Qwen', siQwen, ['通义千问']),
   simple('iconify:simple-icons:rabbitmq', 'RabbitMQ', siRabbitmq),
@@ -123,11 +138,18 @@ export const iconifyIconEntries: IconifyIconDefinition[] = [
   theSVG('iconify:thesvg:grok-xai', 'Grok', grokXai, ['xAI']),
   theSVG('iconify:thesvg:longcat', 'LongCat', longcat),
   theSVG('iconify:thesvg:openai-chatgpt', 'OpenAI', openaiChatgpt, ['ChatGPT']),
-  theSVG('iconify:thesvg:siliconcloud-siliconflow', 'SiliconFlow', siliconflow, ['硅基流动']),
+  theSVG(
+    'iconify:thesvg:siliconcloud-siliconflow',
+    'SiliconFlow',
+    siliconflow,
+    ['硅基流动']
+  ),
   theSVG('iconify:thesvg:xiaomi-mimo', 'MiMo', mimo, ['Xiaomi MiMo'])
 ];
 
-const entriesByID = new Map(iconifyIconEntries.map((entry) => [entry.id, entry]));
+const entriesByID = new Map(
+  iconifyIconEntries.map((entry) => [entry.id, entry])
+);
 
 const namesToIDs: Record<string, string> = {
   Anthropic: 'iconify:simple-icons:anthropic',
@@ -187,9 +209,9 @@ export function iconifyIconForValue(value: string | undefined) {
 }
 
 export function iconifyValueForName(name: string | undefined) {
-  return name ? namesToIDs[name] ?? '' : '';
+  return name ? (namesToIDs[name] ?? '') : '';
 }
 
 export function providerBrandIconValue(providerType: string | undefined) {
-  return providerType ? providerBrandIconValues[providerType] ?? '' : '';
+  return providerType ? (providerBrandIconValues[providerType] ?? '') : '';
 }

@@ -31,7 +31,7 @@ COPY backend/ backend/
 COPY --from=frontend-builder /src/frontend/dist backend/webui/dist/
 RUN make backend-build VERSION="${VERSION}" COMMIT="${COMMIT}" BUILD_TIME="${BUILD_TIME}"
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -39,6 +39,15 @@ ARG BUILD_TIME=unknown
 LABEL org.opencontainers.image.version=${VERSION} \
       org.opencontainers.image.revision=${COMMIT} \
       org.opencontainers.image.created=${BUILD_TIME}
-COPY --from=backend-builder /src/backend/bin/ /app/
+COPY --from=backend-builder /src/backend/bin/opskeeper-api /app/opskeeper-api
+COPY --from=backend-builder /src/backend/bin/opskeeper-worker /app/opskeeper-worker
+COPY --from=backend-builder /src/backend/bin/opskeeper-scheduler /app/opskeeper-scheduler
 EXPOSE 8080
+FROM runtime AS api
 ENTRYPOINT ["/app/opskeeper-api"]
+
+FROM runtime AS worker
+ENTRYPOINT ["/app/opskeeper-worker"]
+
+FROM runtime AS scheduler
+ENTRYPOINT ["/app/opskeeper-scheduler"]

@@ -1,4 +1,8 @@
-export type RepositoryPreviewEntry = { path: string; type: string; size?: number };
+export type RepositoryPreviewEntry = {
+  path: string;
+  type: string;
+  size?: number;
+};
 
 export type RepositoryPreviewNode = {
   name: string;
@@ -11,7 +15,10 @@ export type RepositoryPreviewNode = {
 
 export function buildRepositoryPreviewTree(entries: RepositoryPreviewEntry[]) {
   const roots: RepositoryPreviewNode[] = [];
-  const childMaps = new Map<RepositoryPreviewNode[], Map<string, RepositoryPreviewNode>>([[roots, new Map()]]);
+  const childMaps = new Map<
+    RepositoryPreviewNode[],
+    Map<string, RepositoryPreviewNode>
+  >([[roots, new Map()]]);
 
   for (const entry of entries) {
     const parts = entry.path.split('/').filter(Boolean);

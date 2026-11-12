@@ -34,7 +34,10 @@
   export let variant: 'standard' | 'underline' | 'pill' | 'soft' = 'standard';
   export let menuClass = '';
 
-  const dispatch = createEventDispatcher<{ value: string | string[]; change: string | string[] }>();
+  const dispatch = createEventDispatcher<{
+    value: string | string[];
+    change: string | string[];
+  }>();
 
   let open = false;
   let query = '';
@@ -54,17 +57,26 @@
       ? [value]
       : [];
   $: selectedOptions = selectedValues
-    .map((selectedValue) => options.find((option) => option.value === selectedValue))
+    .map((selectedValue) =>
+      options.find((option) => option.value === selectedValue)
+    )
     .filter((option): option is DropdownOption => Boolean(option));
-  $: selected = Array.isArray(value) ? selectedOptions[0] : options.find((option) => option.value === value) ?? null;
+  $: selected = Array.isArray(value)
+    ? selectedOptions[0]
+    : (options.find((option) => option.value === value) ?? null);
   $: displayValue = selectedValues.includes(allValue)
     ? allLabel
     : multiple
       ? selectedOptions.map((option) => option.label).join('、')
-      : selected?.label ?? (allowCustom && typeof value === 'string' && value ? value : '');
+      : (selected?.label ??
+        (allowCustom && typeof value === 'string' && value ? value : ''));
   $: normalizedQuery = query.trim().toLocaleLowerCase();
   $: filteredOptions = normalizedQuery
-    ? options.filter((option) => `${option.label} ${option.value} ${option.description ?? ''}`.toLocaleLowerCase().includes(normalizedQuery))
+    ? options.filter((option) =>
+        `${option.label} ${option.value} ${option.description ?? ''}`
+          .toLocaleLowerCase()
+          .includes(normalizedQuery)
+      )
     : options;
 
   function emit(next: string) {
@@ -116,7 +128,10 @@
     const rect = root.getBoundingClientRect();
     const padding = 8;
     const gap = 5;
-    const availableHeight = Math.max(0, window.innerHeight - rect.bottom - gap - padding);
+    const availableHeight = Math.max(
+      0,
+      window.innerHeight - rect.bottom - gap - padding
+    );
     menuStyle = `top: ${Math.round(rect.bottom + gap)}px; left: ${Math.round(rect.left)}px; width: ${Math.round(rect.width)}px; max-height: ${Math.round(availableHeight)}px;`;
   }
 
@@ -158,7 +173,8 @@
   }
 
   function reorderSelected(targetValue: string, after = false) {
-    if (!reorderableSelection || !draggedValue || draggedValue === targetValue) return;
+    if (!reorderableSelection || !draggedValue || draggedValue === targetValue)
+      return;
     const next = [...selectedValues];
     const from = next.indexOf(draggedValue);
     if (from < 0) return;
@@ -172,7 +188,8 @@
   }
 
   function dragOverTag(event: DragEvent, targetValue: string) {
-    if (!reorderableSelection || !draggedValue || draggedValue === targetValue) return;
+    if (!reorderableSelection || !draggedValue || draggedValue === targetValue)
+      return;
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     reorderSelected(targetValue, event.clientX >= rect.left + rect.width / 2);
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
@@ -193,9 +210,21 @@
   }
 </script>
 
-<svelte:window on:click={close} on:resize={handleViewportChange} on:scroll={handleViewportChange} />
+<svelte:window
+  on:click={close}
+  on:resize={handleViewportChange}
+  on:scroll={handleViewportChange}
+/>
 
-<div class={`dropdown-select variant-${variant}`} class:open class:disabled class:invalid class:bubble={invalid && invalidMode === 'bubble'} data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined} bind:this={root}>
+<div
+  class={`dropdown-select variant-${variant}`}
+  class:open
+  class:disabled
+  class:invalid
+  class:bubble={invalid && invalidMode === 'bubble'}
+  data-error={invalid && invalidMode === 'bubble' ? invalidMessage : undefined}
+  bind:this={root}
+>
   <div class="dropdown-select-trigger" class:editable={allowCustom}>
     {#if allowCustom}
       <input
@@ -206,7 +235,13 @@
         aria-label={ariaLabel}
         on:input={handleCustomInput}
       />
-      {#if customValue}<button class="dropdown-select-clear" type="button" aria-label="清空" on:click|preventDefault|stopPropagation={clearCustom}><X size={13} /></button>{/if}
+      {#if customValue}<button
+          class="dropdown-select-clear"
+          type="button"
+          aria-label="清空"
+          on:click|preventDefault|stopPropagation={clearCustom}
+          ><X size={13} /></button
+        >{/if}
     {:else if multiple && taggedSelection}
       <div
         class="dropdown-select-tags"
@@ -233,7 +268,8 @@
             draggable={reorderableSelection && !disabled}
             on:dragstart={(event) => dragStart(event, option.value)}
             on:dragend={finishDrag}
-            on:dragover|preventDefault|stopPropagation={(event) => dragOverTag(event, option.value)}
+            on:dragover|preventDefault|stopPropagation={(event) =>
+              dragOverTag(event, option.value)}
             on:drop|preventDefault|stopPropagation={finishDrag}
           >
             <span>{option.label}</span>
@@ -241,8 +277,9 @@
               class="dropdown-select-tag-remove"
               type="button"
               aria-label={`移除 ${option.label}`}
-              on:click|preventDefault|stopPropagation={() => removeSelected(option.value)}
-            ><X size={12} /></button>
+              on:click|preventDefault|stopPropagation={() =>
+                removeSelected(option.value)}><X size={12} /></button
+            >
           </span>
         {:else}
           <span class="dropdown-select-value placeholder">{placeholder}</span>
@@ -258,22 +295,76 @@
         aria-label={ariaLabel}
         on:click|preventDefault|stopPropagation={toggle}
       >
-        {#if showIcons && selected?.icon}<span class="dropdown-select-icon"><IconValue value={selected.icon} size={14} /></span>{/if}
-        <span class:placeholder={!displayValue} class="dropdown-select-value">{displayValue || placeholder}</span>
+        {#if showIcons && selected?.icon}<span class="dropdown-select-icon"
+            ><IconValue value={selected.icon} size={14} /></span
+          >{/if}
+        <span class:placeholder={!displayValue} class="dropdown-select-value"
+          >{displayValue || placeholder}</span
+        >
       </button>
     {/if}
-    <button class="dropdown-select-chevron" type="button" aria-label={open ? '收起选项' : '展开选项'} {disabled} on:click|preventDefault|stopPropagation={toggle}><ChevronDown size={14} /></button>
+    <button
+      class="dropdown-select-chevron"
+      type="button"
+      aria-label={open ? '收起选项' : '展开选项'}
+      {disabled}
+      on:click|preventDefault|stopPropagation={toggle}
+      ><ChevronDown size={14} /></button
+    >
   </div>
 
   {#if open}
-    <div class={`dropdown-select-menu ${menuClass}`.trim()} style={menuStyle} role="listbox" tabindex="-1" aria-label={ariaLabel}>
-      {#if searchable}<SearchInput bind:value={query} width="100%" height="30px" placeholder="搜索" ariaLabel={`搜索${ariaLabel}`} />{/if}
+    <div
+      class={`dropdown-select-menu ${menuClass}`.trim()}
+      style={menuStyle}
+      role="listbox"
+      tabindex="-1"
+      aria-label={ariaLabel}
+    >
+      {#if searchable}<SearchInput
+          bind:value={query}
+          width="100%"
+          height="30px"
+          placeholder="搜索"
+          ariaLabel={`搜索${ariaLabel}`}
+        />{/if}
       <div class="dropdown-select-options">
-        {#if allowAll}<button class="dropdown-select-option all-option" type="button" role="option" aria-selected={selectedValues.includes(allValue)} on:click={() => select(allValue)}>{#if showIcons}<span class="dropdown-select-icon"><span aria-hidden="true">✦</span></span>{/if}<span>{allLabel}</span></button>{/if}
+        {#if allowAll}<button
+            class="dropdown-select-option all-option"
+            type="button"
+            role="option"
+            aria-selected={selectedValues.includes(allValue)}
+            on:click={() => select(allValue)}
+            >{#if showIcons}<span class="dropdown-select-icon"
+                ><span aria-hidden="true">✦</span></span
+              >{/if}<span>{allLabel}</span></button
+          >{/if}
         {#each filteredOptions as option}
-          <button class:selected={(multiple ? selectedValues.includes(option.value) : option.value === value)} class="dropdown-select-option" type="button" role="option" aria-selected={multiple ? selectedValues.includes(option.value) : option.value === value} disabled={option.disabled} data-tooltip={option.tooltip || undefined} on:click={() => select(option.value)}>
-            {#if showIcons && option.icon}<span class="dropdown-select-icon"><IconValue value={option.icon} size={14} /></span>{/if}
-            <span class="dropdown-select-option-copy"><strong>{option.label}{#if option.meta}<small class="dropdown-select-option-meta">{option.meta}</small>{/if}</strong>{#if option.description}<small>{option.description}</small>{/if}</span>
+          <button
+            class:selected={multiple
+              ? selectedValues.includes(option.value)
+              : option.value === value}
+            class="dropdown-select-option"
+            type="button"
+            role="option"
+            aria-selected={multiple
+              ? selectedValues.includes(option.value)
+              : option.value === value}
+            disabled={option.disabled}
+            data-tooltip={option.tooltip || undefined}
+            on:click={() => select(option.value)}
+          >
+            {#if showIcons && option.icon}<span class="dropdown-select-icon"
+                ><IconValue value={option.icon} size={14} /></span
+              >{/if}
+            <span class="dropdown-select-option-copy"
+              ><strong
+                >{option.label}{#if option.meta}<small
+                    class="dropdown-select-option-meta">{option.meta}</small
+                  >{/if}</strong
+              >{#if option.description}<small>{option.description}</small
+                >{/if}</span
+            >
           </button>
         {:else}<span class="dropdown-select-empty">没有匹配项</span>{/each}
       </div>
@@ -282,42 +373,280 @@
 </div>
 
 <style>
-  .dropdown-select { position: relative; min-width: 0; width: 100%; color: var(--theme-fg); }
-  .dropdown-select-trigger { display: flex; align-items: center; min-height: 36px; width: 100%; overflow: hidden; color: var(--theme-fg); background: var(--theme-bg-input); border: 1px solid var(--theme-border-strong); border-radius: 4px; }
-  .dropdown-select-trigger:focus-within, .dropdown-select-trigger:hover, .dropdown-select.open .dropdown-select-trigger { border-color: var(--theme-border-focus); }
-  .dropdown-select.invalid .dropdown-select-trigger { border-color: var(--theme-danger); box-shadow: 0 0 0 2px var(--theme-bg-danger-soft); }
-  .dropdown-select.invalid.bubble .dropdown-select-trigger { border-color: var(--theme-border-strong); box-shadow: none; }
-  .dropdown-select.bubble::after { position: absolute; z-index: 30; bottom: calc(100% + 7px); left: 0; max-width: min(280px, 90vw); padding: 6px 9px; color: var(--theme-danger); background: var(--theme-bg-danger-soft); border-radius: 4px; box-shadow: var(--theme-shadow-soft); content: attr(data-error); font-size: 11px; line-height: 1.35; white-space: normal; }
-  .dropdown-select.bubble::before { position: absolute; z-index: 30; bottom: calc(100% + 1px); left: 12px; width: 0; height: 0; border: 6px solid transparent; border-top-color: var(--theme-bg-danger-soft); content: ''; }
-  .dropdown-select-button { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; height: 34px; padding: 0 9px; color: inherit; background: transparent; border: 0; text-align: left; }
-  .dropdown-select-tags { display: flex; align-items: center; flex: 1 1 0; flex-wrap: wrap; gap: 4px; min-width: 0; min-height: 34px; padding: 4px 7px; box-sizing: border-box; cursor: pointer; }
-  .dropdown-select-tag { position: relative; display: inline-flex; align-items: center; max-width: 100%; min-height: 22px; padding: 0 8px; color: var(--theme-fg); background: var(--theme-bg-selected); border-radius: 3px; font-size: 11px; line-height: 1; cursor: grab; }
-  .dropdown-select-tag > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dropdown-select-tag.dragging { opacity: .45; }
-  .dropdown-select-tag-remove { position: absolute; top: -6px; right: -6px; z-index: 1; display: grid; place-items: center; width: 13px; height: 13px; padding: 0; color: var(--theme-fg-muted); background: transparent; border: 0; border-radius: 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-  .dropdown-select-tag:hover .dropdown-select-tag-remove, .dropdown-select-tag:focus-within .dropdown-select-tag-remove { opacity: 1; pointer-events: auto; }
-  .dropdown-select-tag-remove:hover, .dropdown-select-tag-remove:focus-visible { color: var(--theme-action); background: transparent; }
-  .dropdown-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-  .dropdown-select-value.placeholder, .dropdown-select-input::placeholder, .dropdown-select-empty { color: var(--theme-fg-muted); }
-  .dropdown-select-input { min-width: 0; flex: 1; height: 34px; padding: 0 9px; color: inherit; background: transparent; border: 0; outline: 0; font-size: 12px; }
-  .dropdown-select-chevron, .dropdown-select-clear { display: grid; place-items: center; flex: 0 0 30px; height: 34px; padding: 0; color: var(--theme-fg-muted); background: transparent; border: 0; }
-  .dropdown-select.open .dropdown-select-chevron { color: var(--theme-fg); transform: rotate(180deg); }
-  .dropdown-select.disabled { opacity: .6; pointer-events: none; }
-  .dropdown-select-menu { position: fixed; z-index: 1000; padding: 5px; overflow: auto; background: var(--theme-bg-raised); border: 1px solid var(--theme-border-strong); border-radius: 5px; box-shadow: var(--theme-shadow); }
-  .dropdown-select-menu :global(.search-input) { margin-bottom: 5px; border-radius: 4px; }
-  .dropdown-select-options { max-height: 240px; overflow: auto; }
-  .dropdown-select-option { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 5px 7px; color: var(--theme-fg); background: transparent; border: 0; border-radius: 3px; text-align: left; }
-  .dropdown-select-option:hover, .dropdown-select-option:focus-visible, .dropdown-select-option.selected { color: var(--theme-fg-strong); background: var(--theme-bg-selected); outline: 0; }
-  .dropdown-select-option:disabled { opacity: .5; cursor: not-allowed; }
-  .dropdown-select-option.all-option { color: var(--theme-accent); border-bottom: 1px solid var(--theme-divider); border-radius: 0; }
-  .dropdown-select-icon { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; color: var(--theme-fg-muted); }
-  .dropdown-select-option-copy { display: grid; min-width: 0; gap: 1px; }
-  .dropdown-select-option-copy strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-  .dropdown-select-option-meta { display: inline; margin-left: 6px; color: var(--theme-fg-muted); font-size: 10px; font-weight: 400; }
-  .dropdown-select-option-copy small { overflow: hidden; color: var(--theme-fg-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-  .dropdown-select-empty { display: block; padding: 9px 7px; font-size: 12px; }
-  .dropdown-select.variant-underline .dropdown-select-trigger { border-width: 0 0 1px; border-radius: 0; background: transparent; }
-  .dropdown-select.variant-pill .dropdown-select-trigger { border-radius: 18px; padding-left: 2px; }
-  .dropdown-select.variant-pill .dropdown-select-button { padding-left: 12px; }
-  .dropdown-select.variant-soft .dropdown-select-trigger { background: var(--theme-bg-selected); border-color: transparent; }
+  .dropdown-select {
+    position: relative;
+    min-width: 0;
+    width: 100%;
+    color: var(--theme-fg);
+  }
+  .dropdown-select-trigger {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+    width: 100%;
+    overflow: hidden;
+    color: var(--theme-fg);
+    background: var(--theme-bg-input);
+    border: 1px solid var(--theme-border-strong);
+    border-radius: 4px;
+  }
+  .dropdown-select-trigger:focus-within,
+  .dropdown-select-trigger:hover,
+  .dropdown-select.open .dropdown-select-trigger {
+    border-color: var(--theme-border-focus);
+  }
+  .dropdown-select.invalid .dropdown-select-trigger {
+    border-color: var(--theme-danger);
+    box-shadow: 0 0 0 2px var(--theme-bg-danger-soft);
+  }
+  .dropdown-select.invalid.bubble .dropdown-select-trigger {
+    border-color: var(--theme-border-strong);
+    box-shadow: none;
+  }
+  .dropdown-select.bubble::after {
+    position: absolute;
+    z-index: 30;
+    bottom: calc(100% + 7px);
+    left: 0;
+    max-width: min(280px, 90vw);
+    padding: 6px 9px;
+    color: var(--theme-danger);
+    background: var(--theme-bg-danger-soft);
+    border-radius: 4px;
+    box-shadow: var(--theme-shadow-soft);
+    content: attr(data-error);
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+  .dropdown-select.bubble::before {
+    position: absolute;
+    z-index: 30;
+    bottom: calc(100% + 1px);
+    left: 12px;
+    width: 0;
+    height: 0;
+    border: 6px solid transparent;
+    border-top-color: var(--theme-bg-danger-soft);
+    content: '';
+  }
+  .dropdown-select-button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1;
+    height: 34px;
+    padding: 0 9px;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    text-align: left;
+  }
+  .dropdown-select-tags {
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 7px;
+    box-sizing: border-box;
+    cursor: pointer;
+  }
+  .dropdown-select-tag {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 22px;
+    padding: 0 8px;
+    color: var(--theme-fg);
+    background: var(--theme-bg-selected);
+    border-radius: 3px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: grab;
+  }
+  .dropdown-select-tag > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dropdown-select-tag.dragging {
+    opacity: 0.45;
+  }
+  .dropdown-select-tag-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    color: var(--theme-fg-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+  .dropdown-select-tag:hover .dropdown-select-tag-remove,
+  .dropdown-select-tag:focus-within .dropdown-select-tag-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dropdown-select-tag-remove:hover,
+  .dropdown-select-tag-remove:focus-visible {
+    color: var(--theme-action);
+    background: transparent;
+  }
+  .dropdown-select-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .dropdown-select-value.placeholder,
+  .dropdown-select-input::placeholder,
+  .dropdown-select-empty {
+    color: var(--theme-fg-muted);
+  }
+  .dropdown-select-input {
+    min-width: 0;
+    flex: 1;
+    height: 34px;
+    padding: 0 9px;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font-size: 12px;
+  }
+  .dropdown-select-chevron,
+  .dropdown-select-clear {
+    display: grid;
+    place-items: center;
+    flex: 0 0 30px;
+    height: 34px;
+    padding: 0;
+    color: var(--theme-fg-muted);
+    background: transparent;
+    border: 0;
+  }
+  .dropdown-select.open .dropdown-select-chevron {
+    color: var(--theme-fg);
+    transform: rotate(180deg);
+  }
+  .dropdown-select.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .dropdown-select-menu {
+    position: fixed;
+    z-index: 1000;
+    padding: 5px;
+    overflow: auto;
+    background: var(--theme-bg-raised);
+    border: 1px solid var(--theme-border-strong);
+    border-radius: 5px;
+    box-shadow: var(--theme-shadow);
+  }
+  .dropdown-select-menu :global(.search-input) {
+    margin-bottom: 5px;
+    border-radius: 4px;
+  }
+  .dropdown-select-options {
+    max-height: 240px;
+    overflow: auto;
+  }
+  .dropdown-select-option {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 32px;
+    padding: 5px 7px;
+    color: var(--theme-fg);
+    background: transparent;
+    border: 0;
+    border-radius: 3px;
+    text-align: left;
+  }
+  .dropdown-select-option:hover,
+  .dropdown-select-option:focus-visible,
+  .dropdown-select-option.selected {
+    color: var(--theme-fg-strong);
+    background: var(--theme-bg-selected);
+    outline: 0;
+  }
+  .dropdown-select-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .dropdown-select-option.all-option {
+    color: var(--theme-accent);
+    border-bottom: 1px solid var(--theme-divider);
+    border-radius: 0;
+  }
+  .dropdown-select-icon {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    color: var(--theme-fg-muted);
+  }
+  .dropdown-select-option-copy {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+  .dropdown-select-option-copy strong {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dropdown-select-option-meta {
+    display: inline;
+    margin-left: 6px;
+    color: var(--theme-fg-muted);
+    font-size: 10px;
+    font-weight: 400;
+  }
+  .dropdown-select-option-copy small {
+    overflow: hidden;
+    color: var(--theme-fg-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dropdown-select-empty {
+    display: block;
+    padding: 9px 7px;
+    font-size: 12px;
+  }
+  .dropdown-select.variant-underline .dropdown-select-trigger {
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background: transparent;
+  }
+  .dropdown-select.variant-pill .dropdown-select-trigger {
+    border-radius: 18px;
+    padding-left: 2px;
+  }
+  .dropdown-select.variant-pill .dropdown-select-button {
+    padding-left: 12px;
+  }
+  .dropdown-select.variant-soft .dropdown-select-trigger {
+    background: var(--theme-bg-selected);
+    border-color: transparent;
+  }
 </style>

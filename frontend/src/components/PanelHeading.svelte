@@ -8,7 +8,14 @@
   export let titleId = '';
 </script>
 
-<SectionHeading {title} {eyebrow} {description} {titleTag} {titleId} className="panel-heading">
+<SectionHeading
+  {title}
+  {eyebrow}
+  {description}
+  {titleTag}
+  {titleId}
+  className="panel-heading"
+>
   <slot />
   <slot name="actions" slot="actions" />
 </SectionHeading>

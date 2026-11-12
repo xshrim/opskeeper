@@ -33,7 +33,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ $component }}
-          image: {{ include "opskeeper.image" $root }}
+          image: {{ include "opskeeper.image" (dict "root" $root "component" $component) }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           command: ["/app/opskeeper-{{ $component }}"]
           securityContext:

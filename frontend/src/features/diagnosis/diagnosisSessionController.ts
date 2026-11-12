@@ -24,26 +24,37 @@ type DiagnosisSessionAPI = {
     title?: string;
     question: string;
     target_resource_ids: string[];
-     provider_id?: string;
+    provider_id?: string;
     model_name?: string;
     skill_id?: string;
     persona_id?: string;
     links?: string[];
     attachments?: DiagnosisAttachment[];
     scope_shared?: boolean;
+    collaboration?: number;
   }) => Promise<DiagnosisSession>;
-  askDiagnosis: (id: string, body: {
-    content: string;
-    skill_id?: string;
-    persona_id?: string;
-    links?: string[];
-    attachments?: DiagnosisAttachment[];
-  }) => Promise<DiagnosisMessage>;
+  setDiagnosisCollaboration: (
+    id: string,
+    collaboration: number
+  ) => Promise<DiagnosisSession>;
+  askDiagnosis: (
+    id: string,
+    body: {
+      content: string;
+      skill_id?: string;
+      persona_id?: string;
+      links?: string[];
+      attachments?: DiagnosisAttachment[];
+    }
+  ) => Promise<DiagnosisMessage>;
   addDiagnosisTarget: (
     sessionID: string,
     resourceID: string
   ) => Promise<DiagnosisTarget>;
-  removeDiagnosisTarget?: (sessionID: string, resourceID: string) => Promise<void>;
+  removeDiagnosisTarget?: (
+    sessionID: string,
+    resourceID: string
+  ) => Promise<void>;
   deleteDiagnosis: (id: string) => Promise<void>;
 };
 
@@ -99,7 +110,9 @@ export function createDiagnosisSessionController(
     }
   }
 
-  function syncCursorToLatestQuestion(snapshot: DiagnosisSnapshot | null = options.getSnapshot()) {
+  function syncCursorToLatestQuestion(
+    snapshot: DiagnosisSnapshot | null = options.getSnapshot()
+  ) {
     if (!snapshot) return;
     const latestQuestion = [...snapshot.messages]
       .reverse()
@@ -119,7 +132,8 @@ export function createDiagnosisSessionController(
       eventCursor = Math.max(0, marker.id);
       handledEventIds.clear();
       for (const event of snapshot.events ?? []) {
-        if (event.id > 0 && event.id <= eventCursor) handledEventIds.add(event.id);
+        if (event.id > 0 && event.id <= eventCursor)
+          handledEventIds.add(event.id);
       }
       return;
     }
@@ -129,9 +143,15 @@ export function createDiagnosisSessionController(
 
   function hasPendingQuestion(snapshot: DiagnosisSnapshot | null) {
     if (!snapshot) return false;
-    const latestMessage = [...snapshot.messages].reverse().find((message) => message.role === 'user');
-    const latestRun = [...snapshot.runs].sort((left, right) => right.sequence - left.sequence)[0];
-    return Boolean(latestMessage && latestMessage.id !== latestRun?.question_message_id);
+    const latestMessage = [...snapshot.messages]
+      .reverse()
+      .find((message) => message.role === 'user');
+    const latestRun = [...snapshot.runs].sort(
+      (left, right) => right.sequence - left.sequence
+    )[0];
+    return Boolean(
+      latestMessage && latestMessage.id !== latestRun?.question_message_id
+    );
   }
 
   function hasUnconsumedExecution(snapshot: DiagnosisSnapshot | null) {
@@ -154,8 +174,8 @@ export function createDiagnosisSessionController(
     )[0];
     return Boolean(
       latestQuestion &&
-        latestRun?.status === 'running' &&
-        latestRun.question_message_id === latestQuestion.id
+      latestRun?.status === 'running' &&
+      latestRun.question_message_id === latestQuestion.id
     );
   }
 
@@ -167,11 +187,16 @@ export function createDiagnosisSessionController(
     const event = [...(snapshot.events ?? [])]
       .sort((left, right) => right.id - left.id)
       .find((item) =>
-        ['report.ready', 'diagnosis.failed', 'diagnosis.cancelled'].includes(item.type)
+        ['report.ready', 'diagnosis.failed', 'diagnosis.cancelled'].includes(
+          item.type
+        )
       );
     // A terminal marker from an earlier run must not turn off the current
     // answer while its newer execution is still producing events.
-    if (!event || (latestExecutionStart && event.id <= latestExecutionStart.id)) {
+    if (
+      !event ||
+      (latestExecutionStart && event.id <= latestExecutionStart.id)
+    ) {
       return '' as DiagnosisSession['status'] | '';
     }
     if (event.type === 'report.ready') return 'succeeded' as const;
@@ -181,7 +206,12 @@ export function createDiagnosisSessionController(
 
   function applyTerminalStatus(snapshot: DiagnosisSnapshot | null) {
     const status = terminalStatusFromEvents(snapshot);
-    if (!snapshot || !status || hasPendingQuestion(snapshot) || hasActiveLatestRun(snapshot)) {
+    if (
+      !snapshot ||
+      !status ||
+      hasPendingQuestion(snapshot) ||
+      hasActiveLatestRun(snapshot)
+    ) {
       return snapshot;
     }
     if (snapshot.session.status === status) return snapshot;
@@ -268,7 +298,8 @@ export function createDiagnosisSessionController(
       eventCursor,
       options.api.diagnosisEventsURL,
       (event) => handleEvent(sessionID, event),
-      (error) => options.onError(error, '诊断实时连接失败，请检查 API 服务和网络配置。')
+      (error) =>
+        options.onError(error, '诊断实时连接失败，请检查 API 服务和网络配置。')
     );
   }
 
@@ -327,15 +358,21 @@ export function createDiagnosisSessionController(
       );
       const terminalSession =
         !activeLatestRun &&
-        ['succeeded', 'failed', 'cancelled'].includes(merged.snapshot.session.status) &&
-        (!hasExecutionStart || Boolean(terminalStatusFromEvents(merged.snapshot)));
+        ['succeeded', 'failed', 'cancelled'].includes(
+          merged.snapshot.session.status
+        ) &&
+        (!hasExecutionStart ||
+          Boolean(terminalStatusFromEvents(merged.snapshot)));
       const activeGeneration =
         !terminalSession &&
         !state.answerCompleted &&
-        (options.isDiagnosisRunning(merged.snapshot.session.status) || state.generating);
+        (options.isDiagnosisRunning(merged.snapshot.session.status) ||
+          state.generating);
       const nextGenerating =
         !state.interruptedReason &&
-        (pendingQuestion || hasUnconsumedExecution(merged.snapshot) || activeGeneration);
+        (pendingQuestion ||
+          hasUnconsumedExecution(merged.snapshot) ||
+          activeGeneration);
       options.setStreamState({ ...state, generating: nextGenerating });
       options.updateSession(merged.snapshot.session);
 
@@ -434,6 +471,10 @@ export function createDiagnosisSessionController(
     return options.api.startDiagnosis(body);
   }
 
+  function setDiagnosisCollaboration(sessionID: string, collaboration: number) {
+    return options.api.setDiagnosisCollaboration(sessionID, collaboration);
+  }
+
   function loadSessions(scopeID: string) {
     return options.api.diagnosisSessions(scopeID);
   }
@@ -442,7 +483,10 @@ export function createDiagnosisSessionController(
     return options.api.diagnosisSession(sessionID);
   }
 
-  function askDiagnosis(sessionID: string, body: Parameters<DiagnosisSessionAPI['askDiagnosis']>[1]) {
+  function askDiagnosis(
+    sessionID: string,
+    body: Parameters<DiagnosisSessionAPI['askDiagnosis']>[1]
+  ) {
     return options.api.askDiagnosis(sessionID, body);
   }
 
@@ -451,7 +495,10 @@ export function createDiagnosisSessionController(
   }
 
   function removeDiagnosisTarget(sessionID: string, resourceID: string) {
-    return options.api.removeDiagnosisTarget?.(sessionID, resourceID) ?? Promise.resolve();
+    return (
+      options.api.removeDiagnosisTarget?.(sessionID, resourceID) ??
+      Promise.resolve()
+    );
   }
 
   function deleteDiagnosis(sessionID: string) {
@@ -479,6 +526,7 @@ export function createDiagnosisSessionController(
     stop,
     submit,
     startDiagnosis,
+    setDiagnosisCollaboration,
     syncCursor,
     syncCursorToLatestQuestion
   };
